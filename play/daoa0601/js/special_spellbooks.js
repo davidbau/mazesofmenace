@@ -1,7 +1,8 @@
 // Special spellbooks. C spell.c:deadbook(), deadbook_pacify_undead(),
 // and the novel branch of study_book(). Ordinary study owns its occupation.
 import { publishHeardMessage } from './hero_speech.js';
-import { ACH_INVK, ACH_NOVL, recordAchievement } from './achievements.js';
+import { ACH_INVK, ACH_NOVL } from './const.js';
+import { recordAchievement } from './insight.js';
 import { heroSpineName } from './body_parts.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { plineWithContinuation as pline } from './pline.js';
@@ -17,7 +18,7 @@ import { setMonsterMalign } from './makemon.js';
 import { MONSTER_ALIGNMENT, MONSTER_NAME, monsterIsUndead, monsterIsVampireShifter, requireMonsterData, } from './monster_data.js';
 import { makeMonsterFlee } from './monmove.js';
 import { monstersInFmonOrder } from './mon.js';
-import { novelTitle } from './novel_titles.js';
+import { novelTitle } from './do_name.js';
 import { readNovelTribute } from './novel_tribute.js';
 import { BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORPSE } from './object_data.js';
 import { learnObjectType, observeObject } from './o_init.js';

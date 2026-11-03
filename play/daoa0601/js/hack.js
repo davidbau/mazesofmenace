@@ -7,14 +7,14 @@ import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { BURNING, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, IS_TREE, Is_earthlevel, Is_juiblex_level, Is_waterlevel, Is_rogue_level, LAVAPOOL, LAVAWALL, Luck, MAX_TYPE, MOAT, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, W_ARTI, I_SPECIAL, TIMEOUT, NO_KILLER_PREFIX, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, DB_UNDER, DB_ICE, LEVEL_TIMER_KIND, def_warnsyms, A_CON, A_DEX, A_STR, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, SHOPBASE, Is_airlevel, In_sokoban, In_mines, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, OBJECT_TIMER_KIND, HOLE, LANDMINE, LEVEL_TELEP, MIGR_RANDOM, P_BASIC, P_RIDING, P_TWO_WEAPON_COMBAT, P_ISRESTRICTED, P_UNSKILLED, ROLLING_BOULDER_TRAP, TELEP_TRAP, TRAPDOOR, WT_SQUEEZABLE_INV, IN_SIGHT, SHOP_DOOR_COST, PARANOID_CONFIRM, PARANOID_TRAP, TRAP_EXPLANATIONS, TRAPNUM, W_QUIVER, W_SWAPWEP, SQKY_BOARD, SLP_GAS_TRAP, RUST_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, MAGIC_PORTAL, VIBRATING_SQUARE, WEB, HEADSTONE, In_endgame, is_hole, is_pit, NO_ROOM, ROOMOFFSET, SHARED, SHARED_PLUS, MAXNROFROOMS, Invocation_lev, OROOM, DELPHI, TEMPLE, COURT, MORGUE, ZOO, BARRACKS, BEEHIVE, LEPREHALL, COCKNEST, ANTHOLE, THRONE, ACH_TOWN, RLOC_NOMSG, IS_SINK, KILLED_BY_AN, LL_CONDUCT, SWAMP, GP_ALLOW_U } from './const.js';
 import { isok } from './cmd.js';
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain, beginBallAndChainMove, finishBallAndChainMove } from './ball.js';
-import { displayLiquidName, docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, canSeeMonster, monsterVisible, unmap_invisible, map_object, unmapObject, map_invisible, flush_screen } from './display.js';
+import { docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, canSeeMonster, monsterVisible, unmap_invisible, map_object, unmapObject, map_invisible, flush_screen } from './display.js';
 import { impossible } from './diagnostics.js';
 import { bot } from './botl.js';
 import { pline, plineWithContinuation, pline_dir, set_msg_xy } from './pline.js';
 import { heroPassesWalls, heroFormSticks, heroSpecies, heroLikesLava, heroFormClings, heroFormFlags, heroHidesOnCeiling, heroIsFlying, heroHasProtectionFromShapeChangers, heroIsPolymorphed, returnHeroToHumanForm, heroIsVerySmall, heroIsAmphibious } from './polyself.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { clearCannedCommands, currentMulti, setMulti, xyToDirection } from './cmd.js';
-import { monsterName } from './do_name.js';
+import { displayLiquidName, monsterName } from './do_name.js';
 import { shopkeeperName } from './shknam.js';
 import { beginHeroLifeSaving, completeHeroLifeSaving, finishHeroDeath, identifyLifeSavingAmulet, recordHeroKillConduct } from './end.js';
 import { placeObject, stack_object, updateIceObjectTimersAt, remove_object } from './floor_object.js';
@@ -91,7 +91,7 @@ import { autopickupAllows, autopickupAtHero } from './pickup.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { isRider } from './corpse_species.js';
 import { intemple } from './priest.js';
-import { recordAchievement } from './achievements.js';
+import { recordAchievement } from './insight.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { paranoidQuery } from './cmd.js';
 import { recorderLocalHour } from './calendar.js';
@@ -2254,8 +2254,12 @@ export async function lookaroundRun(state = game._runState, g = game) {
 export async function continueRun(g = game) {
     const state = g._runState;
     if (state?.mode === 8) {
+        // C hack.c:lookaround() stops travel through its `stop:` label
+        // (grid-bug diagonals stop directly), and every stop runs nomul(0),
+        // whose `disp.botl |= (multi >= 0)` (hack.c:4165) marks the whole
+        // status line dirty -- not just end_running()'s time_botl.
         if (await travelLookaroundStops(g)) {
-            stopRun(g);
+            endVoluntaryMultiTurn(g);
             g.context.move = 0;
             return { attemptedMove: false, tookTime: false };
         }
@@ -2295,8 +2299,20 @@ export async function continueRun(g = game) {
             arriveTravel(g);
         return { attemptedMove: true, tookTime: moved };
     }
-    if (!state || !await lookaroundRun(state, g)) {
+    if (!state) {
         stopRun(g);
+        g.context.move = 0;
+        return { attemptedMove: false, tookTime: false };
+    }
+    // C hack.c:lookaround() funnels every rush stop (visible monster, trap,
+    // closed door, dangerous liquid, interesting terrain, the widening
+    // corridor of a `g' rush, grid-bug diagonals) through `stop: nomul(0);`.
+    // nomul(0) marks the status line dirty (`disp.botl |= (multi >= 0)',
+    // hack.c:4165), so the next bot() repaints fields changed since the
+    // last full render -- e.g. the silent chain-lightning Pw decrement of
+    // spell.c:1087, which itself never sets disp.botl.
+    if (!await lookaroundRun(state, g)) {
+        endVoluntaryMultiTurn(g);
         g.context.move = 0;
         return { attemptedMove: false, tookTime: false };
     }

@@ -54,7 +54,7 @@ import { monsterBreathAttack, performPetRangedAttack } from './dogmove.js';
 import { heroCanSplitLikeGremlin, useHeroGremlinSplit } from './hero_gremlin.js';
 import { heroCanShriek, useHeroShriek } from './hero_shriek.js';
 import { heroCanSummonWerePack } from './were.js';
-import { heroHasHidingAbility, useHeroHide } from './hero_hide.js';
+import { heroHasHidingAbility, useHeroHide } from './polyself.js';
 import { heroCanUseUnicornHorn } from './unicorn_horn.js';
 import { doread } from './read.js';
 import { continueFoodMeal, doeat, continueTinOpening } from './eat.js';
@@ -73,7 +73,8 @@ import { dosit } from './sit.js';
 import { continueEngraving, doengrave } from './engrave_command.js';
 import { ledgerNo } from './hacklib.js';
 import { finishTeleportArrival } from './location_effects.js';
-import { doborn, doquit, finishHeroDeath } from './end.js';
+import { doquit, finishHeroDeath } from './end.js';
+import { doborn } from './insight.js';
 import { applyPickAxeDirection } from './pick_axe.js';
 import { dofire, dothrow } from './dothrow.js';
 import { doenhance } from './skills.js';
@@ -3018,7 +3019,13 @@ export async function readDirectionKey(message = 'In what direction? ', retry = 
         return queued;
     if (typeof queued === 'object')
         return queuedDirectionKey(queued);
-    if (queued !== undefined) {
+    // C getdir() pops one entry from CQ_CANNED (cmd.c:3962) and only
+    // CMDQ_KEY and CMDQ_DIR answer it. Every other popped entry — a
+    // user-input placeholder or a queued extended command reached through
+    // an empty response queue — makes getdir clear CQ_CANNED and report
+    // the impossible (cmd.c:3974-3977); getdir has no live-input case
+    // for a popped entry, unlike yn_function().
+    if (queued !== undefined || (!retry && game._cannedCommands?.length)) {
         clearCannedCommands();
         await impossible('getdir: command queue had no dir?');
         return 0;
