@@ -6,7 +6,8 @@
 // close_drawbridge(), open_drawbridge().
 import { formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { deleteTrap } from './trap.js';
-import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, ICED_MOAT, IS_DRAWBRIDGE, IS_WALL, Is_stronghold, LAVAPOOL, LAVAWALL, MOAT, POOL, ROOM, WATER, W_NONDIGGABLE, isok, STONE, CRUSHING, KILLED_BY_AN, NO_KILLER_PREFIX, IS_WATERWALL } from './const.js';
+import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, ICED_MOAT, IS_DRAWBRIDGE, IS_WALL, Is_stronghold, LAVAPOOL, LAVAWALL, MOAT, POOL, ROOM, WATER, W_NONDIGGABLE, STONE, CRUSHING, KILLED_BY_AN, NO_KILLER_PREFIX, IS_WATERWALL } from './const.js';
+import { isok } from './cmd.js';
 import { impossible } from './diagnostics.js';
 import { displayLiquidName, newsym, canSeeMonster, canSpotMonster } from './display.js';
 import { plineWithContinuation } from './pline.js';
@@ -17,7 +18,7 @@ import { remove_object } from './floor_object.js';
 import { BOULDER } from './object_data.js';
 import { wakeMonstersNearWithMessages, finishMonsterKilled, resolveMonsterLiquid } from './mon.js';
 import { delobj } from './invent.js';
-import { unpunishHero } from './punishment.js';
+import { unpunishHero } from './read.js';
 import { heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { cansee, vision_note_blocker_change, vision_recalc } from './vision.js';
 import { monsterAtPosition, placeMonsterOnMap } from './steed.js';

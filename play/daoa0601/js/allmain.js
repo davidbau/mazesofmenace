@@ -2,7 +2,7 @@ import { clearCannedCommands, currentMulti, heroHasInvoluntaryDelay, setMulti, c
 import { publishHeardMessage } from './hero_speech.js';
 import { dungeonBuildsUp, initOverviewRecord } from './dungeon.js';
 import { noticeAllMonsters, withMonsterNoticesBlocked, applyHeroLiquidEffects, continueRun, endVoluntaryMultiTurn, nomul, overexertHeroHp, finishDestinationSpotEffects, stopRun, captureRunmodeDelay, isTeleportRunmode, nearCapacity, checkSpecialRoom } from './hack.js';
-import { dolookaround } from './lookaround.js';
+import { dolookaround } from './cmd.js';
 import { recorderLocalDate, recorderLocalEpochSeconds } from './calendar.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { heroLegName } from './body_parts.js';
@@ -11,7 +11,7 @@ import { rewindEngravingsForSave, engravingAt, wipeEngravingAt, readEngravingAt,
 import { angerMonster, finishEnvironmentalMonsterDeath, finishMonsterHideUnder, finishMonsterKilled, finishMonsterLiquidDeath, mcalcmove, purgeDeadMonsters, restoreMonsterShape, seeNearbyMonsters, allocateMonsterMovement, monsterDistressEvents, monstersInFmonOrder, moveMonsters, resolveMonsterLiquid, monsterCanCarryObject, monsterFliesOrFloats, wakeMonstersNearWithMessages } from './mon.js';
 import { heroIsHallucinating, heroIsBlind, heroIsDeaf, syncBlindness } from './senses.js';
 import { learnWand, applyRayFloorFeatures, destroyColdInventory, destroyElectricInventory, destroyFireInventory, heroHasHalfSpellDamage } from './zap.js';
-import { flashBurn } from './sight_change.js';
+import { flashBurn } from './zap.js';
 import { makeBlinded, makeStunned } from './potion.js';
 import { finishMealMimicry, finishHeroDigestion, getHungry, recoverHeroFromFainting, regainHearingAfterHelplessness } from './eat.js';
 import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, requireLiveGame } from './gstate.js';
@@ -76,7 +76,7 @@ import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_BRIGHT_BLUE } from './terminal.js';
 import { uInitMisc, makedog, uInitInventoryAttrs, finishStartingDiscoveries } from './u_init.js';
 import { heroIsInvisible } from './hero_invisibility.js';
-import { discoverHeroReflectionSource, heroReflectionSource } from './ray.js';
+import { discoverHeroReflectionSource, heroReflectionSource } from './muse.js';
 import { addObjectToMonsterInventory, finishDelayedArmorTheft } from './steal.js';
 import { aligns, nativeRoleAt } from './roles.js';
 import { initializeSourceStartup } from './startup.js';

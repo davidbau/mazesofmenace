@@ -1,9 +1,10 @@
 // C refs: bones.c:savebones(), drop_upon_death(), and give_to_nearby_mon().
 import { clearBypasses } from './worn.js';
 import { DISMOUNT_BONES, PARANOID_BONES } from './const.js';
-import { paranoidQuery } from './query.js';
+import { paranoidQuery } from './cmd.js';
 import { monsterHasMapPosition } from './steed.js';
-import { CORPSTAT_INIT, G_NOCORPSE, GRAVE, HEADSTONE, isok, LEAVESTATUE, MM_NONAME, NON_PM, NO_MINVENT, ROOM, Upolyd, } from './const.js';
+import { CORPSTAT_INIT, G_NOCORPSE, GRAVE, HEADSTONE, LEAVESTATUE, MM_NONAME, NON_PM, NO_MINVENT, ROOM, Upolyd } from './const.js';
+import { isok } from './cmd.js';
 import { completeBonesMonster, giveHeroResistancesToMonster, prepareBonesMonstersForSave, } from './bones_monster.js';
 import { artifactEmitsLight } from './artifacts.js';
 import { newsym } from './display.js';
@@ -26,7 +27,7 @@ import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_SYMBOL, MONSTER_HAS_WEAPON_ATTACK
 import { objectNoLongerHeldSynchronously } from './do.js';
 import { rn2 } from './rng.js';
 import { dismountHero } from './steed.js';
-import { unpunishHero } from './punishment.js';
+import { unpunishHero } from './read.js';
 import { objectWeight } from './mkobj.js';
 const PM_HUMAN = 260;
 const PM_GHOST = 287;

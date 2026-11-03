@@ -1,7 +1,8 @@
 import { requirePlayingGame, game, requireLiveGame } from './gstate.js';
 // Camera traversal and light striking a monster.
 // C zap.c:bhit(FLASHED_LIGHT), uhitm.c:flash_hits_mon(), light.c.
-import { COLNO, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok } from './const.js';
+import { COLNO, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE } from './const.js';
+import { isok } from './cmd.js';
 import { CLR_WHITE } from './terminal.js';
 import { monsterHasArtifactDefense } from './artifacts.js';
 import { monsterResistsBlindingLight } from './blinding_attack.js';
@@ -16,7 +17,7 @@ import { makeMonsterFlee } from './monmove.js';
 import { monsterName } from './do_name.js';
 import { monsterAtPosition } from './steed.js';
 import { EXPENSIVE_CAMERA, WAN_LIGHT } from './object_data.js';
-import { rayPositionIsOpen } from './ray.js';
+import { rayPositionIsOpen } from './zap.js';
 import { visibleRegionAt } from './regions.js';
 import { d, rn2, rnd } from './rng.js';
 import { heroIsBlind } from './senses.js';

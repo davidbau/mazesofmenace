@@ -3,7 +3,8 @@ import { isLavaAt, isPoolAt } from './dbridge.js';
 // regions.js — Shared level-region construction.
 // C ref: region.c create_region(), make_gas_cloud(), and
 // create_gas_cloud_selection().
-import { ACCESSIBLE, M_SEEN_POISON, PLNMSG_ENVELOPED_IN_GAS, Upolyd, isok, } from './const.js';
+import { ACCESSIBLE, M_SEEN_POISON, PLNMSG_ENVELOPED_IN_GAS, Upolyd } from './const.js';
+import { isok } from './cmd.js';
 import { canSeeMonster, newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { game, requireGameLevel } from './gstate.js';
@@ -14,6 +15,7 @@ import { heroEyeName, heroLungName } from './body_parts.js';
 import { makePlural } from './objnam.js';
 import { refreshProperty } from './properties.js';
 import { teleportHeroSafely } from './teleport.js';
+import { validCloudPosition } from './read.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterIsVampireShifter, } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { AD_DRST, AD_RBRE, AT_BREA } from './monster_attack_types.js';
@@ -103,13 +105,6 @@ async function makeGasCloud(state, cells, ttl, damage, silent, publish) {
         state._lastPlineKind = PLNMSG_ENVELOPED_IN_GAS;
     }
     return region;
-}
-function validCloudPosition(state, x, y) {
-    if (!isok(x, y))
-        return false;
-    const typ = state.level?.at(x, y)?.typ;
-    return (typ !== undefined && ACCESSIBLE(typ))
-        || isPoolAt(x, y, state) || isLavaAt(x, y, state);
 }
 function gasCloudCells(state, x, y, cloudSize, random) {
     const cells = [{ x, y }];

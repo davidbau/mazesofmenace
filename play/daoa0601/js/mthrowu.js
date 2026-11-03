@@ -19,7 +19,8 @@ import { rangedTargetHitBonus } from './dothrow.js';
 import { couldsee, cansee, clearPath } from './vision.js';
 import { clearDescriptionKnowledge, linkObjectToMonsterInventory, unlinkMonsterObject, mksobj, unlinkObject } from './mkobj.js';
 import { destroyObjectFromMonsterInventory, findMonsterArmorClass } from './monworn.js';
-import { A_DEX, A_STR, BOLT_LIM, COULD_SEE, D_CLOSED, D_LOCKED, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_WATERWALL, LAVAWALL, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_ATTK_HIT, M_ATTK_MISS, MGIVENNAME, M_SEEN_REFL, NEED_RANGED_WEAPON, NEED_WEAPON, NON_PM, P_BOW, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SINK, SLT_ENCUMBER, Upolyd, W_WEP, isok, } from './const.js';
+import { A_DEX, A_STR, BOLT_LIM, COULD_SEE, D_CLOSED, D_LOCKED, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_WATERWALL, LAVAWALL, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_ATTK_HIT, M_ATTK_MISS, MGIVENNAME, M_SEEN_REFL, NEED_RANGED_WEAPON, NEED_WEAPON, NON_PM, P_BOW, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SINK, SLT_ENCUMBER, Upolyd, W_WEP } from './const.js';
+import { isok } from './cmd.js';
 import { impossible } from './diagnostics.js';
 import { canSeeMonster, canSpotMonster, displayLiquidName, newsym, flush_screen, lastDirtyMapCursor, transientObjectGlyph, } from './display.js';
 import { TemporaryMapEffect } from './temporary_map_effect.js';
@@ -67,7 +68,7 @@ import { shouldMulchMissile } from './projectile.js';
 import { projectileHitsIronBars } from './projectile_bars.js';
 import { rayDamageType } from './zap.js';
 import { displayRayName } from './ray_name.js';
-import { castNativeRay } from './ray_attack.js';
+import { castNativeRay } from './zap.js';
 import { capitalizedDefiniteName, rayHitMessage, rayMissMessage } from './ray_hit_message.js';
 import { d, rn2, rnd } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
@@ -518,14 +519,22 @@ export function monsterProjectileDisplay(object, state, { tethered = false, } = 
     async function clear() {
         await effect.clear();
     }
+    const begin = async () => {
+        if (!first)
+            return;
+        first = false;
+        // C mthrowu.c:m_throw() and zap.c bhit() init tmp_at() before the
+        // flight loop; the constructor's flush_screen(0) (display.c) runs
+        // before any impact can dirty the map.
+        await effect.start();
+    };
     return {
         glyph,
+        start: begin,
         async show(position) {
             if (!isok(position.x, position.y))
                 return;
-            if (first)
-                await effect.start();
-            first = false;
+            await begin();
             // Native tmp_at() stops before show_glyph() and its
             // flush_screen(0) when the flash cell cannot be seen, so an
             // impact that just blinded the hero hides its trailing frame
@@ -628,6 +637,13 @@ export async function throwMonsterProjectile(source, object, { state = game, dx,
         }
         const flightDisplay = monsterProjectileDisplay(missile, state, { tethered });
         display = flightDisplay;
+        // C mthrowu.c:m_throw() inits tmp_at(DISP_FLASH/DISP_TETHER) at
+        // line 651, before the flight loop. That init flush_screen(0) must
+        // precede the flight's impacts: when a potion of blindness breaks
+        // on the hero, vision_recalc()'s newsym changes stay unflushed, so
+        // the terminal still shows the old map at the --More-- that
+        // acknowledges the vapor message (C flushes it only at parse()).
+        await flightDisplay.start();
         while (range-- > 0) {
             const point = { x: state.bhitpos.x + dx, y: state.bhitpos.y + dy };
             state.bhitpos = point;
