@@ -3,7 +3,7 @@
 import { game, requireGameDisplay, requireGameLevel } from './gstate.js';
 import { ICE, Is_airlevel, Is_waterlevel, PLNMSG_ONE_ITEM_HERE, is_pit } from './const.js';
 import { dungeonFeatureAt, dungeonFeatureSentence, forceDescribeDecor } from './dungeon_feature.js';
-import { heroCanReachFloor } from './floor_reach.js';
+import { heroCanReachFloor } from './engrave.js';
 import { surfaceName } from './terrain_name.js';
 import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { nhgetch } from './input.js';
@@ -21,7 +21,7 @@ import { MONSTER_NAME } from './monster_data.js';
 import { heroIsBlind } from './senses.js';
 import { visibleRegionAt } from './regions.js';
 import { trapName } from './trap.js';
-import { feelPetrifyingCorpse, formCanBecomeStoneGolem, willFeelPetrifyingCorpse, } from './stoning.js';
+import { feelPetrifyingCorpse, formCanBecomeStoneGolem, willFeelPetrifyingCorpse } from './stoning.js';
 export async function readFloorEngraving(x, y) {
     const read = await readEngravingAt(x, y, plineWithContinuation);
     // engrave.c:read_engr_at() only calls nomul(0) for a real run

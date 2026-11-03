@@ -38,7 +38,7 @@ import { eggHasMonsterSpecies } from './egg_impact.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { useUpInventoryStack, freeInventoryObject } from './hero_inventory.js';
 import { lookHere } from './floor_object_display.js';
-import { heroCanReachFloor } from './floor_reach.js';
+import { heroCanReachFloor } from './engrave.js';
 import { surfaceName } from './terrain_name.js';
 import { dungeonFeatureAt, dungeonFeatureSentence, forceDescribeDecor } from './dungeon_feature.js';
 import { visibleRegionAt } from './regions.js';
@@ -50,7 +50,8 @@ import { impossible } from './diagnostics.js';
 import { armorSimpleName, armorSlotFor } from './do_wear.js';
 import { objectTypeKnown, currentShopResident, shopkeeperInOwnShop, costlySpot, chargeUnpaidUsage, deleteObject, billForObject, settleGlobAbsorptionBilling, visitBilledShopkeepers } from './shk.js';
 import { announceGlobMerge } from './glob.js';
-import { endObjectBurn, objectShedsLight } from './light.js';
+import { endObjectBurn, learnEggType } from './timeout.js';
+import { objectShedsLight } from './light.js';
 import { assertCreatedObject } from './do.js';
 import { isReviver } from './corpse_species.js';
 import { stopObjectTimers } from './timeout.js';
@@ -88,14 +89,6 @@ export function objectNeedsFullIdentification(object) {
     if (object.rknown || !([2, 3, 15].includes(object.oclass) || isWeaponTool(object)))
         return false;
     return ['rust', 'burn', 'rot', 'corrosion', 'crack'].some(kind => objectIsVulnerableToErosion(object, kind));
-}
-export function learnEggType(mnum, state) {
-    const adult = MONSTER_GROWTH_TARGET[mnum] ?? mnum;
-    if (!Array.isArray(state.mvitals))
-        state.mvitals = [];
-    const vital = state.mvitals[adult]
-        || (state.mvitals[adult] = { mvflags: 0, born: 0, died: 0 });
-    vital.mvflags = (vital.mvflags ?? 0) | MV_KNOWS_EGG;
 }
 export function fullyIdentifyObject(object, state = game) {
     const realObjectType = object.otyp >= FIRST_OBJECT;

@@ -2,21 +2,20 @@
 // C ref: trap.c trapeffect_anti_magic().
 import { objectMaterial } from './o_init.js';
 import { formatFeltMessage } from './hero_speech.js';
+import { plineWithContinuation } from './pline.js';
 import { finishMonsterKilled } from './mon.js';
 import { heroHasHalfSpellDamage } from './zap.js';
 import { artifactById, heroHasArtifactDefense, heroHasCarriedArtifactFlag } from './artifacts.js';
 import { W_ACCESSORY, W_ARMF, W_ARMOR, W_WEP } from './const.js';
 import { newsym } from './display.js';
-import { plineWithContinuation } from './pline.js';
 import { game } from './gstate.js';
-import { drainHeroEnergy } from './hero_energy.js';
-import { CLOAK_OF_MAGIC_RESISTANCE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, } from './object_data.js';
+import { drainHeroEnergy, monsterTrapVisibility, seeTrap } from './trap.js';
+import { CLOAK_OF_MAGIC_RESISTANCE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES } from './object_data.js';
 import { AD_MAGM, AD_RBRE, AT_BREA, AT_MAGC } from './monster_attack_types.js';
-import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_NAME, } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_NAME } from './monster_data.js';
 import { heroFormFlags, heroIsPolymorphed } from './polyself.js';
 import { propertyIsActive } from './properties.js';
 import { d, rn2, rnd } from './rng.js';
-import { monsterTrapVisibility, seeTrap } from './trap.js';
 import { chargeAlteredUnpaidObject } from './shk.js';
 import { monsterName } from './do_name.js';
 import { ownedObjectName } from './objnam.js';
@@ -29,6 +28,11 @@ const MAGIC_RESISTANCE_ARMOR = new Set([
     GRAY_DRAGON_SCALE_MAIL,
     GRAY_DRAGON_SCALES,
 ]);
+// C trap.c:trapeffect_anti_magic(): the hero branch — positively-enchanted
+// iron shoes shed the drain onto their enchantment; otherwise the
+// anti-magic field hits the protected hero (a carried artifact's
+// C zap.c:defends_when_carried() bonus included) and drains power; the
+// C trap.c:wearing_iron_shoes() test is ironShoes().
 export async function triggerHeroAntiMagicTrap(trap) {
     const hero = game.u;
     const shoes = ironShoes();
@@ -68,6 +72,10 @@ export async function triggerHeroAntiMagicTrap(trap) {
         maximumAlreadyDrained,
     }));
 }
+// C trap.c:trapeffect_anti_magic(): the monster branch — iron shoes shed
+// the drain silently (C trap.c:wearing_iron_shoes() is
+// monsterWornIronShoes), magic resistance shields, and the drained monster
+// loses power and maximum hit points.
 export async function applyMonsterAntiMagicTrap(monster, { rollDice = d, rollOne = rnd, trap, state = game } = {}) {
     const shoes = monsterWornIronShoes(monster);
     if (shoes && (shoes.spe ?? 0) > 0) {

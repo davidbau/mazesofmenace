@@ -1,17 +1,18 @@
 // Rules applied before the pickup menu or object transfer.
 // C ref: hack.c pickup_checks().
 import { heroHasWaterWalking } from './do_wear.js';
-import { ALTAR, D_ISOPEN, DOOR, FOUNTAIN, GRAVE, HOLE, P_BASIC, P_RIDING, SINK, STAIRS, THRONE, TRAPDOOR, is_pit, } from './const.js';
+import { ALTAR, D_ISOPEN, DOOR, FOUNTAIN, GRAVE, HOLE, P_BASIC, P_RIDING, SINK, STAIRS, THRONE, TRAPDOOR, is_pit } from './const.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
-import { floorReachProblem, heroTeetersAtPit } from './floor_reach.js';
 import { game } from './gstate.js';
-import { MONSTER_SYMBOL, monsterDigests, } from './monster_data.js';
+import { MONSTER_SYMBOL, monsterDigests } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
-import { heroFormClings, heroFormFlags, heroIsFlying, heroMonsterForm, } from './polyself.js';
+import { heroFormClings, heroFormFlags, heroIsFlying, heroMonsterForm } from './polyself.js';
 import { heroIsBlind } from './senses.js';
 import { surfaceName } from './terrain_name.js';
 import { riderCannotReachMessage } from './steed.js';
+import { floorReachProblem } from './engrave.js';
+import { heroTeetersAtPit } from './trap.js';
 const M1_BREATHLESS = 0x00000400;
 const S_EYE = 5;
 const S_LIGHT = 25;
@@ -66,6 +67,8 @@ function reachMessage(state, trap) {
             : surfaceName(state.u?.ux, state.u?.uy, state);
     return `You cannot reach the ${surface}.`;
 }
+// C hack.c:pickup_checks(): the pre-menu refusals — swallowed, on water or
+// lava, empty squares, and an unreachable floor.
 export function pickupLocationProblem({ state = game, objects, monster = null, }) {
     if (monster) {
         if (objects.length)

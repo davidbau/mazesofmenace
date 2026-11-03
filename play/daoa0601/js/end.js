@@ -4,14 +4,13 @@ import { formatFeltMessage } from './hero_speech.js';
 import { recorderLocalEpochSeconds, recorderLocalHour } from './calendar.js';
 import { adjustAttribute, currentAttribute } from './attrib.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
-import { cureHeroSickness } from './hero_illness.js';
+import { cureHeroSickness } from './potion.js';
 import { removeIntrinsicProperty, setPropertyTimeout } from './properties.js';
-import { resetHeroTrap } from './terrain_movement.js';
 import { stopRemainingVolleyShots } from './hero_multishot.js';
 import { MGIVENNAME, M_AP_MONSTER, M_AP_TYPE, PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE, ismnum, A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, G_EXTINCT, G_GENOD, G_GONE, GENOCIDED, PANICKED, QUIT, STARVING, STONING, TRICKED, In_endgame, In_quest, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, PICK_ONE, TT_LAVA, Upolyd, isok } from './const.js';
 import { PanicTermination } from './panic_termination.js';
 import { setMulti } from './cmd.js';
-import { endVoluntaryMultiTurn } from './hack.js';
+import { endVoluntaryMultiTurn, heroGoldAmount } from './hack.js';
 import { achievementEntries, recordAchievement } from './achievements.js';
 import { game, requireInitializedGame } from './gstate.js';
 import { expelHero, releaseHeroFromMonster } from './hero_expulsion.js';
@@ -25,7 +24,7 @@ import { clearMessageWindow, displayMessageWindow, flushPendingTopline, resetTop
 import { vision_recalc } from './vision.js';
 import { shopkeeperKillerName, finishShopkeeperRepossession, settleShopkeepersOnExit, deleteObject } from './shk.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { consumeInventoryItem, identifyObjectForDisclosure, showIdentifiedInventory } from './invent.js';
+import { consumeInventoryItem, identifyObjectForDisclosure, showIdentifiedInventory, lootSortMode, sortObjects } from './invent.js';
 import { isContainer } from './container.js';
 import { finalConductLines, showFinalAttributes } from './insight.js';
 import { ATR_INVERSE, ATR_NONE, showDisclosureOverlay, showInventoryWindow, showTextPages, showTextWindow } from './windows.js';
@@ -35,22 +34,19 @@ import { ATR_BOLD, NO_COLOR } from './terminal.js';
 import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
 import { d, rn2 } from './rng.js';
 import { mksobj } from './mkobj.js';
-import { makePlural, withIndefiniteArticle, objectDescription } from './objnam.js';
+import { makePlural, withIndefiniteArticle, objectDescription, definiteName, objectName, simpleObjectName, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { objectClassForType, recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
-import { lootSortMode, sortObjects } from './invent.js';
-import { definiteName, objectName, simpleObjectName, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { isQuantumBox, observeQuantumCat } from './quantum_cat.js';
 import { deepestLevelReached, depth, upstart } from './hacklib.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
-import { hiddenGold } from './vault.js';
+import { hiddenGold, payVaultGuardOnExit } from './vault.js';
 import { restoreHeroNutrition } from './eat.js';
 import { dungeonOverviewDisclosure } from './dungeon.js';
-import { AMULET_OF_LIFE_SAVING, BAG_OF_TRICKS, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, JADE, OBJECT_COST, OBJECT_NAMES, SPE_BOOK_OF_THE_DEAD, STATUE, } from './object_data.js';
+import { AMULET_OF_LIFE_SAVING, BAG_OF_TRICKS, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, JADE, OBJECT_COST, OBJECT_NAMES, SPE_BOOK_OF_THE_DEAD, STATUE } from './object_data.js';
 import { createBonesFromDeath } from './bones_death.js';
 import { canMakeBones } from './bones_admission.js';
 import { restoreLaunchedObjectForBones } from './rolling_boulder.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
-import { payVaultGuardOnExit } from './vault.js';
 import { currency } from './currency.js';
 import { clearNonlocalPriestsOnExit } from './priest.js';
 import { paranoidQuery, promptChoice, promptYesNo } from './query.js';
@@ -62,7 +58,7 @@ import { adjustedMonsterLevel } from './makemon.js';
 import { restoreBallAndChainPlacement } from './ball.js';
 import { placeObjectSynchronously, stack_object } from './floor_object.js';
 import { isAccessibleAt } from './monmove.js';
-import { heroGoldAmount } from './hack.js';
+import { resetHeroTrap } from './trap.js';
 export { SCORE_RECORD_STORAGE_KEY } from './score_records.js';
 const AMULET_CLASS = 5;
 const GEM_CLASS = 13;
@@ -828,6 +824,9 @@ function capitalizeScoreCause(value) {
     const text = String(value || '');
     return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }
+// C topten.c:outentry(): compose one score line — rank, points, the
+// name-role-race-gender-align column, and the death sentence with its
+// ascension, escape, and plane variants.
 function scoreEntryText(record, rank) {
     const rankText = rank ? String(rank).padStart(3) : '   ';
     const points = String(record.points || 0).padStart(10);
@@ -873,6 +872,9 @@ function scoreEntryText(record, rank) {
             .replace('; the ', ', the ')}.`;
     return line;
 }
+// C topten.c:outentry(): wrap a long score line at column 70, avoiding a
+// break inside " [max", and pad the hero's own rows so the bold attribute
+// covers the full width — topten_print_bold()'s ATR_BOLD row.
 function wrappedScoreEntryLines(record, rank, bold) {
     const wrapColumn = 70;
     const hp = record.hp <= 0 ? '-' : String(record.hp);
@@ -905,6 +907,9 @@ function wrappedScoreEntryLines(record, rank, bold) {
     lines.push(line);
     return lines;
 }
+// C topten.c:outheader(): the column header line; C topten.c:prscore()'s
+// top/around/own windowing is the loop over the records below.
+// C topten.c:topten_print(): each row is one text line of the menu.
 function scoreListLines(current, update, stopPrinting) {
     const lines = [{ text: '' }];
     if (update.previous) {
@@ -1380,6 +1385,9 @@ function fixupDeath(how) {
         game._helplessReason = 'fainted';
     }
 }
+// C end.c:done2(): the #quit command — the tutorial switch-back prompt,
+// the paranoid "Really quit without saving?" refusal that clears the
+// question and any pending multi, and the QUIT hand-off below.
 export async function doquit() {
     const abandonTutorial = !!game._tutorialActive
         && await promptChoice('Switch from the tutorial back to regular play?', ['y', 'n'], 'n', { menuable: true }) === 'y';
@@ -1500,6 +1508,14 @@ function objectBaseValue(type) {
         throw new RangeError(`No base value for object type ${type}`);
     return value;
 }
+// The final-disclosure inventory walk.
+// C end.c:get_valuables(): amulets and non-artifact gems, glass merged
+// into one slot, recursing through containers.
+// C end.c:sort_valuables(): most copies first within each of gems and
+// amulets (the listing prints the gems before the amulets).
+// C end.c:artifact_score(): the counting pass — artifacts and the three
+// invocation items add five-halves their value as points; artiname() is
+// the artifact's own name from the record.
 function collectFinalPossessions() {
     const artifacts = [];
     const valuables = new Map();
@@ -1540,6 +1556,8 @@ function collectFinalPossessions() {
         points += count * objectBaseValue(type);
     return { points, artifacts, valuables: groups, quantumCat };
 }
+// C end.c:artifact_score(): the listing pass — identify each artifact or
+// invocation item and report its value and points.
 async function finalPossessionLines(possessions) {
     const lines = possessions.artifacts.map(({ object, value, points, name }) => {
         recordObjectKnowledge(object.otyp);

@@ -13,14 +13,15 @@
 // dothrow.ts; inaccessible_equipment()'s covering test in
 // equipment_selection.ts.
 import { artifactWarningFeedback, wieldedArtifactWarns } from './artifacts.js';
-import { armorSlotFor, heroHasFreeAction, objectIsHardHelmet } from './do_wear.js';
+import { armorSlotFor, heroHasFreeAction, objectIsHardHelmet, coveringEquipment, reportCoveredEquipment } from './do_wear.js';
 import { setBallAndChainFelt } from './ball.js';
 import { adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, requireAttributeIndex } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroFootName, heroHandName, heroHasEyes, heroHeadName, heroLegName } from './body_parts.js';
 import { commandResultCancelled, commandResultFailed, setMulti, travelStairs } from './cmd.js';
 import { applyHeroLocationEffects, loseHeroHp, nearCapacity, nomul } from './hack.js';
-import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, IS_SINK, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, NO_KILLER_PREFIX, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SICK_VOMITABLE, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
+import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, IS_SINK, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, NO_KILLER_PREFIX, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SICK_ALL, SICK_NONVOMITABLE, SICK_VOMITABLE, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
 import { impossible } from './diagnostics.js';
+import { dipFountain, dipSink, drinkFountain, drinkSink, fingersOrGloves, washHands } from './fountain.js';
 import { canSeeMonster, canSpotMonster, displayColorName, displayLiquidName, map_invisible, newsym, randomDisplayMonsterName, see_monsters, see_objects, see_traps, shieldeff, show_glyph_cell, swallowed, unmap_invisible } from './display.js';
 import { monsterName } from './do_name.js';
 import { tameMonster } from './dog.js';
@@ -28,12 +29,10 @@ import { canHeroRiseUp, levelAtDepth, levelHasCeiling } from './dungeon.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
 import { addExperience, gainExperienceLevel, randomExperience } from './exper.js';
 import { explode } from './explosion.js';
-import { coveringEquipment, reportCoveredEquipment } from './do_wear.js';
-import { fireDamageObject } from './fire_damage.js';
+import { fireDamageObject, waterDamageObject, erodeObject, objectIsVulnerableToErosion, captureLevitationState, floatHeroUp } from './trap.js';
 import { explodeLitOilPotion } from './fire_explosion.js';
-import { heroCanReachFloor } from './floor_reach.js';
+import { heroCanReachFloor } from './engrave.js';
 import { useUpFloorObject } from './floor_consumption.js';
-import { dipFountain, dipSink, drinkFountain, drinkSink, fingersOrGloves, washHands } from './fountain.js';
 import { fruitName } from './fruit.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -42,17 +41,17 @@ import { releaseHeroFromMonster } from './hero_expulsion.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { hurtleHero } from './hero_hurtle.js';
-import { cureHeroSicknessWithMessages, cureHeroVomiting, heroIsSick, heroIsVomiting } from './hero_illness.js';
+import { burnAwayHeroSlime, dropHeroSliming, putHeroToSleep } from './timeout.js';
 import { freeInventoryObject, learnUnseenInventory, useUpInventoryStack } from './hero_inventory.js';
 import { hasInternalInvisibility, heroIsInvisible, invisibilityIsBlocked, syncHeroInvisibility } from './hero_invisibility.js';
 import { healHeroLegs } from './hero_legs.js';
-import { reportHeroThrownMiss } from './hero_physical_messages.js';
+import { reportHeroThrownMiss } from './dothrow.js';
 import { grantHeroSeeInvisible } from './hero_seeing.js';
-import { heroIsUnaware, putHeroToSleep } from './hero_sleep.js';
-import { heroFormSticks, heroSpecies } from './polyself.js';
+import { heroIsUnaware } from './senses.js';
+import { heroFormSticks, heroSpecies, heroHasProtectionFromShapeChangers, heroIsPolymorphed, heroIsUnchanging, polymorphHero } from './polyself.js';
 import { formatFeltMessage } from './hero_speech.js';
-import { heroIsStrangled } from './hero_strangulation.js';
-import { updateHeroHunger, updateMealMimicry, fixHeroPetrification } from './eat.js';
+import { heroIsStrangled } from './do_wear.js';
+import { heroCanBeSlimed, updateHeroHunger, updateMealMimicry, fixHeroPetrification } from './eat.js';
 import { peekCommandResponse } from './input.js';
 import { doEnlightenmentEffect, showEnlightenment } from './insight.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
@@ -65,38 +64,33 @@ import { detectMonsters, detectObjects } from './detect.js';
 import { cloneMonster, setMonsterMalign } from './makemon.js';
 import { putMonsterToSleep } from './mhitm.js';
 import { cloneHeroMonsterForm, makemonNear } from './mklev.js';
-import { mkobj, blessObjectState, curseObject, curseObjectState, deallocateObject, mksobj, unblessObjectState, uncurseObjectState, unlinkObject } from './mkobj.js';
+import { mkobj, blessObjectState, curseObject, curseObjectState, deallocateObject, mksobj, unblessObjectState, uncurseObjectState, unlinkObject, objectQuantity, splitObjectStack } from './mkobj.js';
 import { finishMonsterKilled, removeMonsterFromGame, removeWishGrantingMonster, revealMonsterAppearance, wakeMonstersNearWithMessages } from './mon.js';
 import { monsterHasAcidResistance, monsterHasPoisonResistance, monstersForgetHeroResistance, monstersObserveHeroResistance } from './mondata.js';
 import { AD_ACID, AD_DISE, AD_PEST } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, monsterHatesBlessings, monsterIsHuman, monsterIsPlayerMonster } from './monster_data.js';
 import { tryCallObjectType } from './do.js';
-import { objectDescription, makePlural, verbForSubject, withIndefiniteArticle } from './objnam.js';
+import { objectDescription, makePlural, verbForSubject, withIndefiniteArticle, definiteName, definiteObjectAction, objectAction, objectCombatName, objectName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { hitFloorWithObject, staggerVerb } from './dothrow.js';
 import { learnObjectType, observeObject, recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
-import { objectQuantity, splitObjectStack } from './mkobj.js';
 import { ALCHEMY_SMOCK, CORPSE, LENSES, MAGIC_LAMP, MUMMY_WRAPPING, OBJECT_DESCRIPTIONS, OBJECT_INITIAL_KNOWN, OBJECT_MAGIC, OBJECT_NAMES, OIL_LAMP, POT_ACID, POT_BLINDNESS, POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS, POT_SLEEPING, POT_SPEED, POT_WATER, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LEVITATION, SPE_RESTORE_ABILITY, TOWEL, UNICORN_HORN } from './object_data.js';
 import { isLauncherAmmunition, isPermanentlyPoisonedObject, isPoisonableObject, isWeaponTool } from './object_properties.js';
-import { definiteName, definiteObjectAction, objectAction, objectCombatName, objectName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { poisonAttributeMessage } from './poison.js';
-import { heroHasProtectionFromShapeChangers, heroIsPolymorphed, heroIsUnchanging, polymorphHero } from './polyself.js';
-import { captureLevitationState, grantIntrinsicProperty, grantWornProperty, hasCarriedProperty, hasIntrinsicProperty, hasInvokedProperty, hasPermanentIntrinsicProperty, hasWornProperty, propertyIsActive, propertyIsBlocked, propertyTimeout, refreshMovementProperties, refreshProperty, removeWornProperty, revokeIntrinsicProperty, setPropertyTimeout } from './properties.js';
+import { grantIntrinsicProperty, grantWornProperty, hasCarriedProperty, hasIntrinsicProperty, hasInvokedProperty, hasPermanentIntrinsicProperty, hasWornProperty, propertyIsActive, propertyIsBlocked, propertyTimeout, refreshMovementProperties, refreshProperty, removeWornProperty, revokeIntrinsicProperty, setPropertyTimeout } from './properties.js';
 import { promptYesNo } from './query.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { blindfolded, blindnessBlocked, heroDetectsMonsters, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, heroWouldBeBlindWithTimeout, permanentBlind, setHeroBlindnessTurns, syncDeafness } from './senses.js';
 import { chargeAlteredUnpaidObject, chargeUnpaidObjectAsDebt, chargeUnpaidUsage, objectOwnershipPrefix, objectTypeKnown, updateUnpaidObjectPrice, deleteObject } from './shk.js';
-import { clearHeroSliming, burnAwayHeroSlime, heroIsFlaming, heroIsSliming } from './slime.js';
+import { heroIsFlaming } from './polyself.js';
 import { monsterAtPosition, monsterSaddle } from './steed.js';
 import { heroIsPetrifying } from './stoning.js';
 import { ceilingName, surfaceName, waterbodyName } from './terrain_name.js';
-import { floatHeroUp } from './terrain_movement.js';
 import { isPoolAt } from './dbridge.js';
 import { applyLowStaminaThrow, applyThrowSlip } from './throw_state.js';
 import { offerThrownFood } from './thrown_food.js';
 import { detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget } from './thrown_object.js';
 import { tossObjectUp } from './toss_up.js';
-import { waterDamageObject, erodeObject, objectIsVulnerableToErosion } from './trap.js';
 import { flushPendingTopline } from './tty_topline.js';
 import { dropCursedSecondaryWeapon } from './two_weapon.js';
 import { cansee, vision_recalc } from './vision.js';
@@ -156,6 +150,49 @@ export async function startHeroSickness({ state = game, turns, cause = 'illness'
     hero.sickCause = cause;
     return { started: hero.sick, newlySick };
 }
+export function heroIsSick(state = game) {
+    return !!state.u?.sick || (state.u?.sickTurns ?? 0) > 0;
+}
+export function cureHeroSickness(state = game, type = SICK_ALL) {
+    const hero = state.u;
+    const currentType = hero.sickType ?? 0;
+    if (!heroIsSick(state) || !(currentType & type))
+        return false;
+    hero.sickType = currentType & ~type;
+    state.context.botl = true;
+    if (hero.sickType) {
+        hero.sick = true;
+        hero.sickTurns = Math.max(1, (hero.sickTurns ?? 1) * 2);
+    }
+    else {
+        hero.sick = false;
+        hero.sickTurns = 0;
+        delete hero.sickCause;
+    }
+    return true;
+}
+// Native make_sick(0, ..., talk, type): the type mask changes before the
+// cure message; the timeout and delayed cause remain until that line returns.
+export async function cureHeroSicknessWithMessages(state = game, type = SICK_ALL, publish = plineWithContinuation) {
+    const hero = state.u;
+    const currentType = hero.sickType ?? 0;
+    if (!heroIsSick(state) || !(currentType & type))
+        return false;
+    hero.sickType = currentType & ~type;
+    await publish(formatFeltMessage(hero.sickType ? 'somewhat better.' : 'cured.  What a relief!', state));
+    if (hero.sickType) {
+        hero.sickTurns = Math.min(TIMEOUT, (hero.sickTurns ?? 0) * 2);
+        state.context.botl = true;
+        await exerciseAttribute(A_CON, false, state);
+    }
+    else {
+        hero.sick = false;
+        hero.sickTurns = 0;
+        state.context.botl = true;
+        delete hero.sickCause;
+    }
+    return true;
+}
 // C potion.c:make_slimed(). This directly sets the timeout; the caller
 // separately decides whether a body admits infection and records its killer.
 export async function setHeroSlimingTimeout(turns, { state = game, message = null, publish = plineWithContinuation, } = {}) {
@@ -175,6 +212,55 @@ export async function setHeroSlimingTimeout(turns, { state = game, message = nul
     // The fake late-countdown appearance and cause survive the cure message.
     if (!hero.slimedTurns)
         clearHeroSliming(state);
+}
+export function heroIsSliming(state = game) {
+    return (state.u?.slimedTurns ?? 0) > 0 || !!state.u?.slimed;
+}
+// Starting the sliming countdown.
+// C end.c:delayed_killer(): the slime death defers its killer string until
+// the timeout fires; dropHeroSliming() in timeout.ts deallocates it.
+export function startHeroSliming({ state = game, turns = 10, killer = '', } = {}) {
+    const hero = state.u;
+    if (!heroCanBeSlimed(state))
+        return false;
+    hero.slimedTurns = turns;
+    hero.slimed = turns > 0;
+    if (hero.slimed)
+        state.context.botl = true;
+    hero.slimeKiller = killer;
+    return hero.slimed;
+}
+export function clearHeroSliming(state = game) {
+    const wasSliming = heroIsSliming(state);
+    if (wasSliming)
+        state.context.botl = true;
+    dropHeroSliming(state.u);
+    return wasSliming;
+}
+export function resetHeroSlimingCountdown(state = game, turns = 10) {
+    if (!heroIsSliming(state))
+        return false;
+    state.u.slimedTurns = turns;
+    state.u.slimed = true;
+    return true;
+}
+export function heroIsVomiting(state = game) {
+    return !!state.u?.vomiting || (state.u?.vomitingTurns ?? 0) > 0;
+}
+export function startHeroVomiting({ state = game, turns } = {}) {
+    const hero = state.u;
+    hero.vomitingTurns = Math.max(0, turns ?? 0);
+    hero.vomiting = hero.vomitingTurns > 0;
+    state.context.botl = true;
+    return hero.vomiting;
+}
+export function cureHeroVomiting(state = game) {
+    const hero = state.u;
+    const cured = heroIsVomiting(state);
+    hero.vomiting = false;
+    hero.vomitingTurns = 0;
+    state.context.botl = true;
+    return cured;
 }
 // C potion.c:make_stoned(). Admission belongs to the attack or command;
 // replacing an active timeout must retain its original delayed killer.

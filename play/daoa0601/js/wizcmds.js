@@ -2,98 +2,72 @@
 // C refs: wizcmds.c wiz_wish()/wiz_polyself()/wiz_genesis()/wiz_detect()/
 // wiz_kill()/wiz_telekinesis()/wiz_where()/wiz_level_tele()/wiz_level_change()/
 // wiz_map()/wiz_identify()/wiz_show_nhuuid().
-import { ACH_MINE_PRIZE, ACH_SOKO_PRIZE, A_WIS, COLNO, COULD_SEE, CORR, DIED, G_EXTINCT, In_endgame, In_mines, In_quest, In_sokoban, In_V_tower, IN_SIGHT, Invocation_lev, Is_airlevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, MAGIC_PORTAL, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, MGIVENNAME, MIGR_EXACT_XY, MM_NOMSG, MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, NHW_MENU, PICK_ANY, PICK_NONE, POLY_CONTROLLED, ROWNO, SICK_NONVOMITABLE, SICK_VOMITABLE, SDOOR, STONE, TEMP_LIT, WM_MASK, IS_WALL, IS_ROOM, IS_DOOR, } from './const.js';
+import { ACH_MINE_PRIZE, ACH_SOKO_PRIZE, A_WIS, COLNO, COULD_SEE, CORR, DIED, G_EXTINCT, In_endgame, In_mines, In_quest, In_sokoban, In_V_tower, IN_SIGHT, Invocation_lev, Is_airlevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, MAGIC_PORTAL, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, MGIVENNAME, MIGR_EXACT_XY, MM_NOMSG, MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, NHW_MENU, PICK_ANY, PICK_NONE, POLY_CONTROLLED, ROWNO, SICK_NONVOMITABLE, SICK_VOMITABLE, SDOOR, STONE, TEMP_LIT, WM_MASK, IS_WALL, IS_ROOM, IS_DOOR } from './const.js';
 import { AD_PHYS } from './monster_attack_types.js';
-import { game, requireGameLevel, requirePlayingGame } from './gstate.js';
+import { game, requireGameLevel, requirePlayingGame, requireInitializedGame } from './gstate.js';
 import { requireInitializedHero } from './hero_types.js';
-import { ATR_INVERSE, addMenuHeading, showDisclosureOverlay, showPagedPickOneMenu, showTextMenuOverlay, } from './windows.js';
-import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu, } from './tty_menu.js';
-import { canSpotMonster, consumeHallucinatedMenuObjectGlyph, docrt, map_engraving, map_trap, unmap_invisible, } from './display.js';
+import { ATR_INVERSE, addMenuHeading, showDisclosureOverlay, showPagedPickOneMenu, showTextMenuOverlay, showMultiSelectWindow, showTextWindow } from './windows.js';
+import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './tty_menu.js';
+import { canSpotMonster, consumeHallucinatedMenuObjectGlyph, docrt, map_engraving, map_trap, unmap_invisible, OBJECT_CLASS_SYMBOLS, cmapSymbolByte, objectClassSymbol, rogueColorsActive, cls, flush_screen, glyphAt, map_invisible } from './display.js';
 import { bot } from './botl.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { getLine, paranoidQuery, promptYesNoQuit } from './query.js';
+import { getLine, paranoidQuery, promptYesNoQuit, yn_function, promptChoice, promptYesNo } from './query.js';
 import { promptDirection, readDirectionKey } from './tty_prompts.js';
-import { visibleCommandKey } from './cmd.js';
-import { inventoryCommandLetter, fullyIdentifyObject, identifyPack, inventoryItemDescription, inventoryPrimaryHandDetail, objectNeedsFullIdentification, } from './invent.js';
+import { visibleCommandKey, setMulti } from './cmd.js';
+import { inventoryCommandLetter, fullyIdentifyObject, identifyPack, inventoryItemDescription, inventoryPrimaryHandDetail, objectNeedsFullIdentification, inventorySortMode, objectClassHeading, sortObjects } from './invent.js';
 import { askTeleportDestination } from './teleport.js';
 import { selectMapPosition } from './getpos.js';
-import { setMulti } from './cmd.js';
 import { makeWish } from './wish.js';
-import { polymorphHero } from './polyself.js';
+import { polymorphHero, heroSpecies, heroHasOlfaction } from './polyself.js';
 import { createParticularMonster } from './read_creation.js';
-import { findit } from './detect.js';
+import { findit, mapMagicLevel } from './detect.js';
 import { monsterName } from './do_name.js';
 import { monsterAtPosition, monsterHasMapPosition } from './steed.js';
-import { monsterIsNonliving } from './monster_data.js';
-import { finishMonsterKilled, finishMonsterLiquidDeath } from './mon.js';
+import { monsterIsNonliving, MONSTER_GENO, MONSTER_NAME, monsterTypeName } from './monster_data.js';
+import { finishMonsterKilled, finishMonsterLiquidDeath, killGenocidedMonsters, purgeDeadMonsters, removeMonsterFromGame, restoreNaturalMonsterShapes, smellUnseenMonster } from './mon.js';
 import { finishHeroDeath } from './end.js';
-import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath, } from './hero_monster_death.js';
+import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
 import { hurtleHero } from './hero_hurtle.js';
 import { hurtleMonster } from './dothrow.js';
 import { finishTeleportArrival } from './location_effects.js';
-import { gotoLevel } from './level_change.js';
+import { gotoLevel, deliverSpecialLevelMessages, placeHeroAtRandomArrival, resolveHeroArrivalCollision } from './level_change.js';
 import { levelTeleport } from './level_teleport.js';
 import { loseHeroExperience, gainExperienceLevel } from './exper.js';
 import { exerciseAttribute } from './attrib.js';
 import { reportHeroEncumbrance } from './encumbrance.js';
-import { withMonsterNoticesBlocked } from './hack.js';
-import { mapMagicLevel } from './detect.js';
-import { dungeonDepth } from './hacklib.js';
-import { specialDisplayName } from './dungeon.js';
+import { withMonsterNoticesBlocked, applyHeroLiquidEffects, mayDig, showGetposTip, checkSpecialRoom } from './hack.js';
+import { dungeonDepth, depth } from './hacklib.js';
+import { specialDisplayName, initOverviewRecord, insideWizardTower, levelAtDepth, levelIsWizardTower, sameDungeonLevel, specialPrototypeAt } from './dungeon.js';
 import { addInventoryItem } from './u_init.js';
 import { mksobj, unlinkObject, deallocateObject } from './mkobj.js';
 import { AMULET_OF_YENDOR } from './object_data.js';
 import { recordObjectEncounter } from './o_init.js';
-import { OBJECT_CLASS_SYMBOLS } from './display.js';
-import { inventorySortMode, objectClassHeading, sortObjects } from './invent.js';
 import { reassignInventoryLetters } from './inventory_prompt.js';
 import { observeObjectForNaming } from './objnam.js';
-import { objectTypeKnown } from './shk.js';
+import { objectTypeKnown, setPaidShopkeeper } from './shk.js';
 import { FUZZER_IMPOSSIBLE_CONTINUE, FUZZER_IMPOSSIBLE_PANIC, panic } from './diagnostics.js';
 import { flipSpecialLevel, flipSpecialLevelRandom } from './sp_lev.js';
-import { yn_function, promptChoice, promptYesNo } from './query.js';
-import { requireInitializedGame } from './gstate.js';
-import { applyHeroLiquidEffects } from './hack.js';
-import { makeDeaf } from './potion.js';
-import { startHeroSickness } from './potion.js';
-import { startHeroVomiting } from './hero_illness.js';
-import { makeHallucinated, makeStunned } from './potion.js';
-import { propertyIsActive, propertyTimeout, refreshMovementProperties, setPropertyTimeout, } from './properties.js';
+import { makeDeaf, startHeroSickness, makeHallucinated, makeStunned, makeBlinded, setHeroSlimingTimeout, setHeroPetrificationTimeout, setSlipperyHands } from './potion.js';
+import { startHeroVomiting } from './potion.js';
+import { propertyIsActive, propertyTimeout, refreshMovementProperties, setPropertyTimeout } from './properties.js';
 import { rn2 } from './rng.js';
-import { makeBlinded } from './potion.js';
-import { setHeroSlimingTimeout } from './potion.js';
-import { setHeroPetrificationTimeout } from './potion.js';
-import { setSlipperyHands } from './potion.js';
-import { showMultiSelectWindow, showTextWindow } from './windows.js';
-import { heroIsPunished, placeBallAndChain, releaseCarriedBall, unplaceBallAndChain, } from './ball.js';
-import { initOverviewRecord, insideWizardTower, levelAtDepth, levelIsWizardTower, sameDungeonLevel, specialPrototypeAt, } from './dungeon.js';
+import { heroIsPunished, placeBallAndChain, releaseCarriedBall, unplaceBallAndChain } from './ball.js';
 import { rewindEngravingsForSave } from './engrave.js';
-import { killGenocidedMonsters, purgeDeadMonsters, removeMonsterFromGame, restoreNaturalMonsterShapes, smellUnseenMonster, } from './mon.js';
 import { maybeResetPick } from './lock.js';
 import { mklev } from './mklev.js';
-import { MONSTER_GENO, MONSTER_NAME, monsterTypeName } from './monster_data.js';
-import { setPaidShopkeeper } from './shk.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { vision_reset_new_level } from './vision.js';
 import { collectLevelFollowers, deliverMigratingMonsters, migrateMonsterOffLevel } from './dog.js';
 import { makemonAt, rndmonstAdj } from './makemon.js';
 import { heroArmName } from './body_parts.js';
-import { heroSpecies } from './polyself.js';
-import { heroHasOlfaction } from './polyself.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { CmapSymbol } from './glyph_numbers.js';
-import { mayDig } from './hack.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { NO_COLOR } from './terminal.js';
 import { symsetMenuValue } from './options.js';
-import { cmapSymbolByte, objectClassSymbol, rogueColorsActive } from './display.js';
 import { customizedGlyphs } from './glyph_customizations.js';
 import { rumorCheck } from './rumor.js';
-import { depth } from './hacklib.js';
-import { clearHeroTrap } from './hero_traps.js';
-import { deliverSpecialLevelMessages, placeHeroAtRandomArrival, resolveHeroArrivalCollision, } from './level_change.js';
-import { cls, flush_screen, glyphAt, map_invisible } from './display.js';
-import { showGetposTip, checkSpecialRoom } from './hack.js';
+import { clearHeroTrap } from './trap.js';
 // C wizcmds.c:wiz_wish().
 export async function wizWish() {
     const verbose = game.flags.verbose;
@@ -335,6 +309,7 @@ function branchMenuLabel(branch) {
         return null;
     return `${branchTypeDescription(branch)} to ${child.dname}: ${dungeonDepth(branch.end1.dnum, branch.end1.dlevel)}`;
 }
+// C dungeon.c:br_string(): the branch kind's label for the level menu.
 function branchTypeDescription(branch) {
     return {
         portal: 'Portal',
@@ -366,6 +341,8 @@ function dungeonLayoutEvents(dnum) {
 // while its incoming branch still uses the synthetic n_dgns source end.
 // Once mk_knox_portal() resolves that end to a real main-dungeon level, the
 // named `knox` special level is selectable like every other wizard target.
+// C dungeon.c:unreachable_level(): a dummy or unplaced level, or any level
+// outside the endgame once the hero is in it, cannot be chosen.
 function specialLevelReachable(event) {
     if (event.name === 'dummy')
         return false;
@@ -399,6 +376,9 @@ async function endgamePrerequisite(destination) {
 }
 // C ref: dungeon.c print_dungeon(TRUE). Build one source-ordered menu stream;
 // the tty layer alone owns pagination and nested input capture.
+// print_branch() lists each child branch in level order, tport_menu()
+// assigns its menu letter (or padding when unreachable), and chr_u_on_lvl()
+// marks the hero's own square with '*'.
 function wizardLevelMenu() {
     const rows = [];
     const choices = new Map();
@@ -435,6 +415,7 @@ function wizardLevelMenu() {
                 reachable = specialLevelReachable(event);
             }
             if (reachable) {
+                // C add_menu(): the row joins the tty menu built below.
                 rows.push(`${key} - ${current ? '*' : ' '} ${label}`);
                 choices.set(key, destination);
             }
@@ -572,9 +553,11 @@ export async function wizLevelChange() {
     hero.ulevelmax = hero.ulevel;
     game.context.move = 0;
 }
-// C wizcmds.c:wiz_makemap(), makemap_remove_mons(), makemap_unmakemon();
-// cmd.c:makemap_prepost(). Pets leave before the old level is discarded.
 const G_UNIQ = 0x1000;
+// C wizcmds.c:wiz_makemap(), makemap_remove_mons(), makemap_unmakemon();
+// cmd.c:makemap_prepost(pre) and (post) frame the rebuild: Pets leave
+// before the old level is discarded, and the helpers below own the two
+// halves of that C function.
 export async function wizMakeMap() {
     requirePlayingGame(game);
     game.context.move = 0;
@@ -597,7 +580,8 @@ export async function wizMakeMap() {
     game._restoredBones = false;
     await returnToReplacementLevel(pets, wasInsideTower);
 }
-// C wizcmds.c:makemap_remove_mons().
+// C wizcmds.c:makemap_remove_mons(), the first step of
+// cmd.c:makemap_prepost(pre); dmonsfree() is purgeDeadMonsters() at its end.
 async function removeOldLevelMonsters() {
     const pets = await collectLevelFollowers(game, true);
     // C fmon is newest first, whereas level.monsters appends births.
@@ -652,6 +636,14 @@ function belongsToCurrentLevel(monster) {
 function sameLevel(first, second) {
     return first?.dnum === second.dnum && first.dlevel === second.dlevel;
 }
+// C dungeon.c:rm_mapseen(): discard the overview record of the level being
+// replaced (cmd.c:makemap_prepost(pre)). The rest of that pre half lives
+// here: dobjsfree() plus savelev(FREEING) release the level's objects —
+// get_freeing_nhfile() and close_nhfile() are only the file plumbing
+// around that release, which the port performs in memory — set_uinwater(0)
+// is the u.uinwater write below, and the svd.dndest/svu.updest memsets
+// need no counterpart because the arrival regions belong to the
+// replacement level, which rebuilds them.
 async function discardOldLevel() {
     requirePlayingGame(game);
     const key = `${game.u.uz.dnum}:${game.u.uz.dlevel}`;
@@ -705,6 +697,8 @@ function freeLevelObject(object) {
     unlinkObject(object);
     deallocateObject(object);
 }
+// C cmd.c:makemap_prepost(pre) prize reset: remove_achievement() revokes
+// the recorded Mine's-end or Sokoban-prize credit before the oid resets.
 async function revokeLevelPrize() {
     requirePlayingGame(game);
     const prototype = specialPrototypeAt(game.u.uz.dnum, game.u.uz.dlevel);
@@ -725,6 +719,13 @@ async function revokeLevelPrize() {
             prizes.soko_prize_oid = 0;
     }
 }
+// C cmd.c:makemap_prepost(FALSE): re-entering the rebuilt level —
+// vision_reset() is vision_reset_new_level(), u_on_rndspot() is
+// placeHeroAtRandomArrival(), losedogs() is deliverMigratingMonsters(),
+// u_collide_m() is resolveHeroArrivalCollision(), initrack() is the track
+// reset, and deliver_splev_message() is deliverSpecialLevelMessages().
+// The INSURANCE save_currentstate() checkpoint is modeled by the
+// save_engravings() rewind on the flags.checkpoint path.
 async function returnToReplacementLevel(pets, wasInsideTower) {
     requirePlayingGame(game);
     vision_reset_new_level();

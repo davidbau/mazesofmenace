@@ -5,23 +5,23 @@
 // dig_corridor, wallify_map, and themed-room map placement.  The des.*
 // binding table and the Lua level/themeroom sessions live in sp_lev_lua.ts.
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain } from './ball.js';
-import { mksobj_at, mkobj_at, mkgold, set_corpsenm, rndmonnum, unlinkMonsterObject, blessObjectState, curseObjectState, unblessObjectState, uncurseObjectState, addCreatedObjectToContainer, addObjectToContainer } from './mkobj.js';
+import { mksobj_at, mkobj_at, mkgold, set_corpsenm, rndmonnum, unlinkMonsterObject, blessObjectState, curseObjectState, unblessObjectState, uncurseObjectState, addCreatedObjectToContainer, addObjectToContainer, objectWeight } from './mkobj.js';
 import { isRoom } from './map_types.js';
-import { deleteTrap } from './trap.js';
+import { deleteTrap, maketrap } from './trap.js';
 import { setMonsterGivenName } from './do_name.js';
 import { game, requireGameLevel } from './gstate.js';
-import { makemon, mkclass, propagateMonsterSpecies } from './makemon.js';
+import { makemon, mkclass, propagateMonsterSpecies, setMonsterMalign } from './makemon.js';
 import { lookupNovelTitle } from './novel_titles.js';
 import { setWallState } from './wall_topology.js';
 import { ensureMinionData } from './minion.js';
 import { monsterAtPosition, putSaddleOnMonster } from './steed.js';
-import { monsterIsVampireShifter, MONSTER_GENO, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_NAME, MONSTER_RESISTS, monsterIsPlayerMonster, } from './monster_data.js';
-import { ismnum, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, THRONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, In_endgame, Is_waterlevel, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_NONE, AM_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, MM_NOGRP, MM_EMIN, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT, G_GONE, STRAT_WAITFORU, F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, } from './const.js';
+import { monsterIsVampireShifter, MONSTER_GENO, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_NAME, MONSTER_RESISTS, monsterIsPlayerMonster } from './monster_data.js';
+import { ismnum, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, THRONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, In_endgame, Is_waterlevel, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_NONE, AM_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, MM_NOGRP, MM_EMIN, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT, G_GONE, STRAT_WAITFORU, F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM } from './const.js';
 import { changeMonsterForm, removeMonsterFromGame, shapechangerGender } from './mon.js';
 import { impossible } from './diagnostics.js';
 import { tablePoint } from './lua/des.js';
-import { luaString } from './lua/arguments.js';
 import { objectToLuaTable } from './lua/runtime.js';
+import { luaString } from './lua/arguments.js';
 import { remove_object, stack_object } from './floor_object.js';
 import { buryObject } from './dig.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -30,29 +30,26 @@ import { depth as depth_of_level } from './hacklib.js';
 import { inducedAlignment, level_difficulty } from './dungeon.js';
 import { flood_fill_rm, litstate_rnd, mkmap } from './mkmap.js';
 import { carveMazeFrom, createMaze } from './maze_terrain.js';
-import { ANY_LOC, DRY, HOT, NO_LOC_WARN, SOLID, WET, getLocation, getLocationCoord, getPackedLocationCoord, } from './special_location.js';
+import { ANY_LOC, DRY, HOT, NO_LOC_WARN, SOLID, WET, getLocation, getLocationCoord, getPackedLocationCoord } from './special_location.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
-import { OBJECT_MERGE, CORPSE, SPE_NOVEL, BOULDER, STATUE, PICK_AXE, DWARVISH_MATTOCK, SADDLE, } from './object_data.js';
-import { setMonsterMalign } from './makemon.js';
+import { OBJECT_MERGE, CORPSE, SPE_NOVEL, BOULDER, STATUE, PICK_AXE, DWARVISH_MATTOCK, SADDLE } from './object_data.js';
 import { terrain_glyph } from './display.js';
 import { deleteEngravingAt } from './engrave.js';
 import { createPlayerMonster } from './mplayer.js';
 import { artifactByName, nameArtifact } from './artifacts.js';
 import { addObjectToMonsterInventory } from './steal.js';
-import { somexy, fillBarracksRoom, fillBeehiveRoom, fillCourtRoom, fillMorgueRoom, fillZooRoom } from './mkroom.js';
-import { beginObjectBurn } from './light.js';
+import { somexy, fillBarracksRoom, fillBeehiveRoom, fillCourtRoom, fillMorgueRoom, fillZooRoom, insideRoom } from './mkroom.js';
+import { beginObjectBurn } from './timeout.js';
 import { monsterEmitsLight, vision_reset } from './vision.js';
 import { SpecialSelection, match_maptyps, mapCharacterType, specialSelectionMatch } from './selvar.js';
-import { CANDELABRUM_OF_INVOCATION, GEM_CLASS, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, M2_DWARF, M2_FEMALE, M2_GNOME, M2_MALE, M2_SHAPESHIFTER, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RANDOM_CLASS, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, findMonsterNearPosition, is_hole, is_pit, make_engr_at, makecorridors, maketrap, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, stairway_add, topologize, } from './mklev.js';
-import { fillSpecialMazeGrid, fix_wall_spines, setLevelTerrainLit, setLevelTerrainType, vibratingSquarePoint, } from './mkmaze.js';
+import { CANDELABRUM_OF_INVOCATION, GEM_CLASS, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, M2_DWARF, M2_FEMALE, M2_GNOME, M2_MALE, M2_SHAPESHIFTER, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RANDOM_CLASS, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, findMonsterNearPosition, is_hole, is_pit, make_engr_at, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, stairway_add, topologize } from './mklev.js';
+import { fillSpecialMazeGrid, fix_wall_spines, setLevelTerrainLit, setLevelTerrainType, vibratingSquarePoint } from './mkmaze.js';
 import { makeroguerooms } from './extralev.js';
 import { stockShopRoom } from './shknam.js';
 import { specialShrinePriest } from './priest.js';
 import { makeSpecialDrawbridge } from './dbridge.js';
 import { monsterHasStoneResistance, monsterPolymorphsWhenStoned, setMonsterSpecies } from './mondata.js';
-import { insideRoom } from './mkroom.js';
 import { roomForIndex, roomsAt } from './hack.js';
-import { objectWeight } from './mkobj.js';
 export async function fillVault(room) {
     if (!room)
         return;
@@ -187,6 +184,7 @@ export function setSpecialTerrain(x, y, typ, lit) {
         deleteEngravingAt(x, y, level);
     }
 }
+// C sp_lev.c:lspo_mazewalk(): walk the maze outward from a coordinate.
 export function specialMazeWalk(context, mapX, mapY, direction, passageType = ROOM) {
     const level = requireGameLevel();
     // sp_lev.c:lspo_mazewalk() first opens the square just outside the
@@ -220,6 +218,7 @@ export function specialMazeWalk(context, mapX, mapY, direction, passageType = RO
         y += direction === 'south' ? 1 : -1;
     carveMazeFrom(x, y, passageType, (COLNO - 1) & ~1, (ROWNO - 1) & ~1);
 }
+// C sp_lev.c:maze1xy(): an odd, unclaimed, dry maze spot.
 function specialMazeStockPoint(mappedCells) {
     const level = requireGameLevel();
     // sp_lev.c:maze1xy().  The stock reservoir is outside every square
@@ -244,6 +243,8 @@ function specialMazeStockPoint(mappedCells) {
     } while (true);
     return point;
 }
+// C sp_lev.c:rndtrap(): a random trap, excluding holes, portals, vibrating
+// squares, and level-dependent cases.
 function randomSpecialTrapType() {
     const level = requireGameLevel();
     let typ;
@@ -344,6 +345,9 @@ function clearStairwaySquare(x, y) {
     if (trap)
         deleteTrap(trap);
 }
+// C sp_lev.c:set_wall_property(): flag the rectangle's walls, trees and
+// iron bars — sel_set_wall_property()'s per-point test is the condition
+// below. lspo_non_diggable() reaches this whole-map form.
 export function specialNonDiggable(context = null) {
     const level = requireGameLevel();
     const xstart = context?.xstart ?? 0;
@@ -363,6 +367,8 @@ export function specialNonDiggable(context = null) {
         }
     }
 }
+// C sp_lev.c:lspo_non_diggable(): the selection form flags the selected
+// walls and trees directly.
 export function specialSelectionNonDiggable(selection) {
     const level = requireGameLevel();
     selection.forEachXMajor((x, y) => {
@@ -396,6 +402,8 @@ async function specialObjectOfType(context, otyp, allowArtifacts = true) {
     const point = await specialRandomLocation(context);
     return point ? await mksobj_at(otyp, point.x, point.y, true, allowArtifacts) : null;
 }
+// C sp_lev.c:sel_set_door(): make the square a door (secret if asked),
+// orient it, and take the requested mask.
 function specialDoorAt(context, mask, x, y) {
     const level = requireGameLevel();
     const doorX = context.xstart + x, doorY = context.ystart + y;
@@ -408,6 +416,7 @@ function specialDoorAt(context, mask, x, y) {
     loc.doormask = mask;
     return { x: doorX, y: doorY };
 }
+// C sp_lev.c:rnddoor(): one of the five door states, uniformly.
 function randomSpecialDoorMask() {
     // lspo_door() uses rnddoor() directly for an explicit coordinate.
     const states = [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED];
@@ -1187,6 +1196,7 @@ async function specialTrapLocation(context, coordinate) {
 }
 // sp_lev.c:get_free_room_loc(). Furniture can satisfy DRY placement;
 // room features retry on ordinary floor instead of replacing each other.
+// C sp_lev.c:get_room_loc(): somexy() supplies the room-relative point.
 async function getFreeRoomLocation(context, coordinate, room) {
     const level = requireGameLevel();
     const point = await getLocationCoord(context, coordinate, DRY);
@@ -1466,6 +1476,7 @@ export function specialMapRows(source) {
         rows.pop();
     return rows;
 }
+// C sp_lev.c:lvlfill_solid(): fill the maze area and reset per-cell flags.
 function fillSpecialSolid(type, lit) {
     const level = requireGameLevel();
     for (let x = 2; x <= ((COLNO - 1) & ~1); x++) {
@@ -1484,6 +1495,8 @@ function fillSpecialSolid(type, lit) {
         }
     }
 }
+// C sp_lev.c:splev_initlev() behind lspo_level_init(): the level style
+// dispatch — solidfill, mazegrid, maze, rogue, mines and swamp.
 export async function fillSpecialLevel(options, active) {
     active.levelInitialized = true;
     const style = options.style ?? 'solidfill';
@@ -1544,6 +1557,7 @@ export async function fillSpecialLevel(options, active) {
     fillSpecialSolid(type, active.defaultLit);
     return;
 }
+// C sp_lev.c:lspo_level_flags(): the level flag names.
 export function setLuaLevelFlags(active, flags) {
     const level = requireGameLevel();
     if (!flags.length)
@@ -1604,6 +1618,8 @@ export function setLuaLevelFlags(active, flags) {
             throw new Error(`unknown Lua level flag ${flag}`);
     }
 }
+// C sp_lev.c:lspo_replace_terrain(): chance-gated terrain exchange over a
+// region, selection or map fragment match.
 export async function replaceLuaTerrain(context, options) {
     const level = requireGameLevel();
     const explicit = [
@@ -1638,6 +1654,10 @@ export async function replaceLuaTerrain(context, options) {
         setLevelTerrainLit(x, y, toType, lit);
     });
 }
+// C sp_lev.c:lspo_feature(): furniture at a dry random spot or an
+// author-chosen square; sel_set_feature() refuses existing furniture, and
+// l_table_getset_feature_flag()'s zero/one/random flag handling is the
+// loop below.
 export async function createLuaFeature(context, options) {
     const level = requireGameLevel();
     const { type, point } = options;
@@ -1702,6 +1722,8 @@ function noncoalignedSpecialAmask() {
         return AM_LAWFUL;
     return (noncoalignedSpecialAlignmentDraw() + 2) & 0xff;
 }
+// C sp_lev.c:get_table_align(): the align option as a mask, including the
+// coaligned, noncoaligned and random specials.
 function luaSpecialAlignment(value = 'random') {
     if (value === 'noalign')
         return A_NONE;
@@ -1730,6 +1752,7 @@ function specialRoomAt(x, y, roomType) {
 // C sp_lev.c:sp_amask_to_amask(): the Lua altar mask resolves here, drawing
 // induced_align(80) for "random" and the re-evaluated noncoalignment ternary
 // for "noncoaligned" before the altar stores its flags.
+// C sp_lev.c:lspo_altar(): the align and shrine options with placement.
 export async function createLuaAltar(context, options) {
     const level = requireGameLevel();
     const coordinate = tablePoint(options);
@@ -1762,6 +1785,7 @@ export async function createLuaAltar(context, options) {
         altar.flags |= AM_SANCTUM;
     level.flags.has_temple = true;
 }
+// C sp_lev.c:get_table_roomtype_opt(): the room type by name.
 function luaRoomType(name = 'ordinary') {
     const roomTypes = {
         ordinary: OROOM,
@@ -1797,6 +1821,8 @@ function luaRoomType(name = 'ordinary') {
         throw new Error(`unsupported Lua room type ${name}`);
     return roomType;
 }
+// C sp_lev.c:l_push_mkroom_table(): the room table passed to a contents
+// callback; get_mkroom_name()'s reverse lookup is the names map below.
 export function luaRoomTable(room) {
     const names = new Map([
         [OROOM, 'ordinary'], [THEMEROOM, 'themed'], [COURT, 'throne'],
@@ -1822,6 +1848,8 @@ export function luaRoomTable(room) {
         type: type ?? 'ordinary',
     });
 }
+// C sp_lev.c:lspo_region(): a region becomes a room unless it is ordinary,
+// regular and unconstrained; light_region() covers the no-room case.
 export async function createLuaRoomRegion(context, options) {
     const explicit = [options.x1 ?? -1, options.y1 ?? -1, options.x2 ?? -1, options.y2 ?? -1];
     const [x1, y1, x2, y2] = explicit.some(value => value !== -1)
@@ -1854,6 +1882,8 @@ export async function createLuaRoomRegion(context, options) {
         room.arrival_room = true;
     return room;
 }
+// C sp_lev.c:lspo_room(): the room table's placement fields — both x and y
+// or neither, alignments, type and size.
 export function luaRoomSpec(options) {
     const coordinate = tablePoint(options);
     if (coordinate && (coordinate.x === -1) !== (coordinate.y === -1))
@@ -1878,6 +1908,9 @@ export function luaRoomSpec(options) {
         yalign,
     };
 }
+// C sp_lev.c:lspo_stair() and lspo_ladder() through l_create_stairway():
+// stairs at a coordinate, or at a random good_stair_loc() — the filter
+// below — which set_ok_location_func() installs for the random draw.
 export async function createLuaStair(context, { direction, point }, usingLadder = false) {
     const up = direction === 'up';
     const random = !point || (point.x === -1 && point.y === -1);
@@ -1889,6 +1922,8 @@ export async function createLuaStair(context, { direction, point }, usingLadder 
         await mkstairs(location.x, location.y, up, context._room ?? null, !random);
     return location;
 }
+// C sp_lev.c:lspo_door(): a door state at a coordinate, or a room door by
+// wall and position.
 export async function createLuaDoor(context, { state, point, wall = 'all', pos = -1, }) {
     if (!point || (point.x === -1 && point.y === -1)) {
         if (!context?._room)
@@ -1922,6 +1957,8 @@ export async function createLuaDoor(context, { state, point, wall = 'all', pos =
     return specialDoorAt(context, mask, x, y);
 }
 // C sp_lev.c:create_corridor(). Corridors start from a door.
+// C sp_lev.c:lspo_corridor(): source and destination room, door index and
+// wall; lspo_random_corridors() is the srcroom -1 case.
 export async function createLuaCorridor(options) {
     const { srcroom, srcdoor, destroom, destdoor } = options;
     if (srcroom === undefined || srcdoor === undefined || destroom === undefined || destdoor === undefined)
@@ -1964,6 +2001,7 @@ function corridorDoorEndpoint(room, wall, door) {
     }
     return null;
 }
+// C sp_lev.c:lspo_drawbridge(): direction, open or closed state, placement.
 export async function createLuaDrawbridge(context, options) {
     const coordinate = tablePoint(options);
     if (!coordinate || !isok(coordinate.x, coordinate.y))
@@ -1986,6 +2024,8 @@ export async function createLuaDrawbridge(context, options) {
         await impossible('Cannot create drawbridge.');
     return point;
 }
+// C sp_lev.c:lspo_engraving(): dust, engrave, burn, mark or blood text at
+// a dry spot.
 export async function createLuaEngraving(context, options) {
     const point = await getLocationCoord(context, options.point, DRY);
     const types = {
@@ -2003,12 +2043,16 @@ export async function createLuaEngraving(context, options) {
         guardobjects: !!options.guardobjects,
     });
 }
+// C sp_lev.c:lspo_gold(): place gold, rolling a random amount when none is
+// given.
 export async function createLuaGold(context, options) {
     const point = await getLocationCoord(context, options.point, DRY);
     const requestedAmount = options.amount ?? -1;
     const amount = requestedAmount < 0 ? rnd(200) : requestedAmount;
     return await mkgold(amount, point.x, point.y);
 }
+// C sp_lev.c:lspo_object(): resolve montype, quantity and contents before
+// the per-piece creation below.
 export async function createLuaObject(context, options, parentContainer, parentMonster, invokeContents) {
     // lspo_object() resolves montype before create_object() chooses a
     // coordinate or initializes the object's random attributes.
@@ -2029,6 +2073,9 @@ export async function createLuaObject(context, options, parentContainer, parentM
         await invokeContents(options.contents, object);
     return object;
 }
+// C sp_lev.c:get_table_buc(): the blessed/uncursed/cursed/not-* curse
+// states are this branch chain; the body is create_object()'s per-piece
+// application of the Lua object overrides.
 async function createLuaObjectPiece(context, options, corpseSpecies, parentContainer, parentMonster) {
     const { point, objectClass, objectType } = options;
     const allowArtifacts = !options.name;
@@ -2231,6 +2278,8 @@ function applyLuaMonsterAppearance(monster, appearance) {
     monster.m_ap_type = M_AP_FURNITURE;
     monster.mappearance = symbol;
 }
+// C sp_lev.c:lspo_monster(): species, class or random monster request; the
+// appearance, name, alignment and state overrides follow create_monster().
 export async function createLuaMonster(context, options) {
     const { point, monsterClass, monsterType } = options;
     const peaceful = options.peaceful == null ? null : !!options.peaceful;
@@ -2343,6 +2392,7 @@ export async function createLuaMonster(context, options) {
         monster.msleeping = asleep ? 1 : 0;
     return monster ?? null;
 }
+// C sp_lev.c:lspo_trap(): trap type, placement and construction options.
 export async function createLuaTrap(context, options) {
     const { trapType, point } = options;
     const construction = {
@@ -2360,6 +2410,8 @@ export async function createLuaTrap(context, options) {
     }
     return trap;
 }
+// C sp_lev.c:lspo_exclusion(): a teleport or monster-generation exclusion
+// zone.
 export async function createLuaExclusion(context, options) {
     const type = options.type ?? 'teleport';
     if (type !== 'teleport' && type !== 'teleport-up'
@@ -2385,6 +2437,8 @@ async function regionCoordinates(context, coordinates, levelCoordinates) {
     const end = await getLocation(context, { x: x2, y: y2 }, ANY_LOC);
     return { lx: start.x, ly: start.y, hx: end.x, hy: end.y };
 }
+// C sp_lev.c:l_get_lregion(): the region and exclude rectangles, keeping an
+// absent exclusion off-map.
 export async function levelRegionCoordinates(context, options) {
     const region = await regionCoordinates(context, options.region, options.region_islev);
     // l_get_lregion() keeps negative exclusion bounds off-map.
@@ -2420,6 +2474,8 @@ export function flipLuaRegions(active) {
             region.exclude = flipSpecialRegion(region.exclude) ?? region.exclude;
     }
 }
+// C sp_lev.c:floodfillchk_match_accessible(): ACCESSIBLE terrain plus
+// secret corridors and doors.
 function accessibleSpecialTerrain(x, y) {
     const level = requireGameLevel();
     const type = level.at(x, y)?.typ;
@@ -2592,6 +2648,10 @@ async function medusaEmptyStatue(context, fixedPoint, deleteContents) {
     }
     return statue;
 }
+// C sp_lev.c:set_wallprop_in_selection(): apply a wall property to every
+// selected square — sel_set_wall_property()'s test is inlined. Also the
+// body of lspo_non_passwall(), which negates an absent selection to cover
+// the whole map.
 export function markSpecialSelectionWallProperty(selection, property) {
     const level = requireGameLevel();
     selection.forEachXMajor((x, y) => {
@@ -2601,6 +2661,8 @@ export function markSpecialSelectionWallProperty(selection, property) {
             loc.wall_info |= property;
     });
 }
+// C sp_lev.c:lspo_wall_property(): the property rectangle, defaulting to
+// the map's outline, resolved through get_location() before marking.
 export async function createLuaWallProperty(context, options) {
     const property = options.property ?? 'nondiggable';
     if (property !== 'nondiggable' && property !== 'nonpasswall')
@@ -2641,6 +2703,7 @@ export function specialMapSelection(context, rows = null) {
     }
     return selection;
 }
+// C sp_lev.c:light_region(): light a rectangular area.
 function lightSpecialArea(context, x1, y1, x2, y2, lit) {
     const level = requireGameLevel();
     // sp_lev.c:light_region() includes surrounding walls only when lit.
@@ -2657,6 +2720,7 @@ function lightSpecialArea(context, x1, y1, x2, y2, lit) {
         }
     }
 }
+// C sp_lev.c:lvlfill_swamp(): the relaxed-blockwise maze swamp.
 function fillSpecialSwamp(fg = ROOM, bg = MOAT, lit = false) {
     const level = requireGameLevel();
     // sp_lev.c:lvlfill_swamp().  First establish the full moat background,
@@ -3162,6 +3226,8 @@ export async function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
 // into a provisional straight wall.  The ordinary wallification pass below
 // then resolves corners and junctions.  Iterate y-major to preserve C's
 // mutation order, although newly created walls do not themselves propagate.
+// C sp_lev.c:lspo_wallify(): the bounds default to the map outline when
+// the des.wallify() table omits them.
 export function wallifyMap(x1, y1, x2, y2) {
     const level = requireGameLevel();
     const lowX = Math.max(x1, 1);
