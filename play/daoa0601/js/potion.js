@@ -13,7 +13,7 @@
 // dothrow.ts; inaccessible_equipment()'s covering test in
 // equipment_selection.ts.
 import { artifactWarningFeedback, wieldedArtifactWarns } from './artifacts.js';
-import { armorSlotFor, heroHasFreeAction, objectIsHardHelmet, coveringEquipment, reportCoveredEquipment } from './do_wear.js';
+import { armorSlotFor, heroHasFreeAction, objectIsHardHelmet, coveringEquipment, reportCoveredEquipment, fingersOrGloves } from './do_wear.js';
 import { setBallAndChainFelt } from './ball.js';
 import { adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, requireAttributeIndex } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroFootName, heroHandName, heroHasEyes, heroHeadName, heroLegName } from './body_parts.js';
@@ -21,7 +21,7 @@ import { commandResultCancelled, commandResultFailed, setMulti, travelStairs } f
 import { applyHeroLocationEffects, loseHeroHp, nearCapacity, nomul } from './hack.js';
 import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, IS_SINK, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, NO_KILLER_PREFIX, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SICK_ALL, SICK_NONVOMITABLE, SICK_VOMITABLE, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
 import { impossible } from './diagnostics.js';
-import { dipFountain, dipSink, drinkFountain, drinkSink, fingersOrGloves, washHands } from './fountain.js';
+import { dipFountain, dipSink, drinkFountain, drinkSink, washHands } from './fountain.js';
 import { canSeeMonster, canSpotMonster, map_invisible, newsym, see_monsters, see_objects, see_traps, shieldeff, show_glyph_cell, swallowed, unmap_invisible } from './display.js';
 import { displayColorName, displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { tameMonster } from './dog.js';
@@ -92,7 +92,7 @@ import { offerThrownFood } from './thrown_food.js';
 import { detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget } from './thrown_object.js';
 import { tossObjectUp } from './dothrow.js';
 import { flushPendingTopline } from './tty_topline.js';
-import { dropCursedSecondaryWeapon } from './two_weapon.js';
+import { dropCursedSecondaryWeapon } from './wield.js';
 import { cansee, vision_recalc } from './vision.js';
 import { applyHeroWaterVaporChange, applyHeroWereChange, purifyHeroLycanthropy, revertHeroWereForm, setHeroLycanthropy, transformWereMonster } from './were.js';
 import { makeWish } from './zap.js';
@@ -2587,11 +2587,11 @@ export async function dodip() {
         commandResultCancelled();
 }
 export async function dipInto() {
-    if (peekCommandResponse() === undefined) {
-        // C potion.c:dip_into() refuses to run without the item-action
-        // potion letter queued in CQ_CANNED. A ^A do-again replay pops
-        // dip_into from CQ_REPEAT while CQ_CANNED is empty, so the
-        // replayed dip can never proceed.
+    if (peekCommandResponse() === undefined && !game._cannedCommands?.length) {
+        // C potion.c:2384 dip_into() refuses to run when cmdq_peek(
+        // CQ_CANNED) finds nothing: the item-action potion letter is
+        // queued there. A ^A do-again replay pops dip_into from CQ_REPEAT
+        // while CQ_CANNED is empty, so the replayed dip can never proceed.
         await impossible('dip_into: where is potion?');
         commandResultFailed();
         game.context.move = 0;

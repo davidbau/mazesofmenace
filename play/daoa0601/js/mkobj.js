@@ -2,7 +2,7 @@
 // C ref: mkobj.c.
 import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_COST, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, ROCK, STATUE, SPLINT_MAIL, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, POT_OIL, BELL_OF_OPENING, ELVEN_SHIELD, OBJECT_MERGE, OBJECT_USES_KNOWN, ORCISH_SHIELD, SHIELD_OF_REFLECTION } from './object_data.js';
 import { APPLE, BANANA, EUCALYPTUS_LEAF, ORANGE, PEAR } from './object_data.js';
-import { game, requireLiveGame, requireInitializedGame } from './gstate.js';
+import { game, requireLiveGame } from './gstate.js';
 import { novelTitle } from './do_name.js';
 import { setTinVariety } from './eat.js';
 import { relocateObjectRandomly } from './teleport.js';
@@ -14,7 +14,7 @@ import { placeCreatedObject, remove_object } from './floor_object.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { level_difficulty } from './dungeon.js';
-import { In_quest, Is_rogue_level, G_GONE, G_NOCORPSE, MON_DETACH, MON_FLOOR, ROT_AGE, TROLL_REVIVE_CHANCE, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_INIT, CORPSTAT_SPE_VAL, ALTAR, OBJECT_TIMER_KIND } from './const.js';
+import { In_quest, Is_rogue_level, G_GONE, G_NOCORPSE, MON_DETACH, MON_FLOOR, ROT_AGE, TROLL_REVIVE_CHANCE, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_INIT, CORPSTAT_SPE_VAL, OBJECT_TIMER_KIND } from './const.js';
 import { isok } from './cmd.js';
 import { MONSTER_BODY_META, MONSTER_GENO, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_NAME, SPECIAL_PM, requireMonsterData } from './monster_data.js';
 import { isReviver, isRider, zombieForm } from './corpse_species.js';
@@ -26,24 +26,23 @@ import { OBJECT_WEIGHT, OBJECT_NUTRITION, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCA
 import { LARGEST_INT } from './const.js';
 import { isMultiGeneratedWeapon, isPoisonableObject, isBimanualObject } from './object_properties.js';
 import { rndmonstAdj } from './makemon.js';
-import { objectProb } from './o_init.js';
+import { objectMaterial, objectProb } from './o_init.js';
+import { OBJECT_PROPERTY, WAN_FIRE } from './object_data.js';
 import { nameObjectFromTopten } from './topten.js';
-import { rndClass, ownedObjectName } from './objnam.js';
+import { rndClass } from './objnam.js';
 import { attachEggHatchTimer } from './egg.js';
 import { assignCandyWrapper } from './read.js';
 import { mergable, mergeCreatedObjectStacks, mergeObjectStacks } from './invent.js';
-import { assertCreatedObject, createdObjectNoLongerHeld, objectNoLongerHeld, dropObjectAtHero } from './do.js';
+import { assertCreatedObject, createdObjectNoLongerHeld, objectNoLongerHeld } from './do.js';
 import { deleteObject, splitObjectBill, settleGlobAbsorptionBilling } from './shk.js';
 import { startGlobTimeout } from './glob.js';
 import { removeObjectFromMonsterInventory } from './monworn.js';
 import { plineWithContinuation } from './pline.js';
-import { landObjectOnAltar } from './altar_object.js';
-import { heroHandName } from './body_parts.js';
-import { shipObject } from './dokick.js';
-import { updateCarriedLuck, freeInventoryObject } from './hero_inventory.js';
+import { updateCarriedLuck } from './hero_inventory.js';
 import { objectLightRadius, adjustObjectLightAfterBlessing, objectShedsLight } from './light.js';
-import { bookCursed } from './spellbook_study.js';
+import { bookCursed } from './spell.js';
 import { resetBulkTakeoff } from './do_wear.js';
+import { dropCursedAlternateWeapon } from './wield.js';
 const RANDOM_CLASS = 0;
 const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
@@ -59,6 +58,10 @@ const WAND_CLASS = 11;
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
 const ROCK_CLASS = 14;
+const LIQUID = 1;
+const WOOD = 8;
+const DRAGON_HIDE = 10;
+const PLASTIC = 18;
 const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
 const PM_DEATH = 311;
 const PM_FAMINE = 313;
@@ -121,22 +124,6 @@ export async function curseObject(object, { state = game } = {}) {
     if (object?.lamplit)
         await adjustObjectLightAfterBlessing(object, oldLight, state);
     return changed;
-}
-// C wield.c:drop_uswapwep() and do.c:dropx(): announce before extraction,
-// then handle shipping and altar contact before placing the dropped weapon.
-async function dropCursedAlternateWeapon(object, state) {
-    await plineWithContinuation(`Your left ${heroHandName(state)} spasms and drops ${ownedObjectName(object, state, { capitalized: false, includeQuantity: true })}!`);
-    await freeInventoryObject(object, state);
-    if (!state.u.uswallow) {
-        const initialized = requireInitializedGame(state);
-        if (await shipObject(object, state.u.ux, state.u.uy, {
-            state: initialized, publish: plineWithContinuation,
-        }))
-            return;
-        if (state.level?.at(state.u.ux, state.u.uy)?.typ === ALTAR)
-            await landObjectOnAltar(object, { state });
-    }
-    await dropObjectAtHero(object, { state });
 }
 export function uncurseObjectState(object, state = game) {
     if (!object)
@@ -1441,5 +1428,23 @@ export function objectWeight(object) {
     if (base > 0)
         return base * quantity(object);
     return Math.trunc((count + 1) / 2);
+}
+// C mkobj.c:is_flammable(). Candles can be burned, but they are not
+// flammable in the erosion sense: they cannot get fire damage and it makes
+// no sense for them to be fireproofed; fire-resistant objects and the wand
+// of fire cannot burn either.
+export function objectIsFlammable(object, state) {
+    if (object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE)
+        return false;
+    if (OBJECT_PROPERTY[object.otyp] === 'fireResistance'
+        || object.otyp === WAN_FIRE)
+        return false;
+    const material = objectMaterial(object, state);
+    return (material <= WOOD && material !== LIQUID) || material === PLASTIC;
+}
+// C mkobj.c:is_rottable().
+export function objectIsRottable(object, state) {
+    const material = objectMaterial(object, state);
+    return (material <= WOOD && material !== LIQUID) || material === DRAGON_HIDE;
 }
 //# sourceMappingURL=mkobj.js.map

@@ -13,15 +13,23 @@ const TOOL_CLASS = 6;
 const WAND_CLASS = 11;
 const GEM_CLASS = 13;
 const LEATHER = 7;
+const WOOD = 8;
+const IRON = 11;
+const COPPER = 13;
+const MITHRIL = 17;
+const GLASS = 19;
 const WHACK = 4;
+const ARMOR_CLASS = 3;
 function objectClass(object) {
     return object?.oclass || objectClassForType(object?.otyp);
 }
+// C obj.h:is_graystone().
 export function isGrayStone(object) {
     if (!object)
         return false;
     return [LUCKSTONE, LOADSTONE, FLINT, TOUCHSTONE].includes(object.otyp);
 }
+// C obj.h:is_weptool().
 export function isWeaponTool(object) {
     if (!object)
         return false;
@@ -45,6 +53,7 @@ export function objectUsesCharges(object) {
         || (objectClass(object) === TOOL_CLASS && !isWeaponTool(object)
             && !!OBJECT_CHARGED[object.otyp]);
 }
+// C obj.h:is_missile().
 export function isMissileObject(object) {
     if (!object)
         return false;
@@ -53,6 +62,7 @@ export function isMissileObject(object) {
     return (kind === WEAPON_CLASS || kind === TOOL_CLASS)
         && skill >= -P_BOOMERANG && skill <= -P_DART;
 }
+// C obj.h:is_ammo().
 export function isLauncherAmmunition(object) {
     if (!object)
         return false;
@@ -61,6 +71,7 @@ export function isLauncherAmmunition(object) {
     return (kind === WEAPON_CLASS || kind === GEM_CLASS)
         && skill >= -P_CROSSBOW && skill <= -P_BOW;
 }
+// C obj.h:ammo_and_launcher().
 export function launcherMatchesAmmo(ammunition, launcher) {
     if (!ammunition || !launcher)
         return false;
@@ -68,6 +79,7 @@ export function launcherMatchesAmmo(ammunition, launcher) {
         && OBJECT_SUBTYPE[ammunition.otyp]
             === -(OBJECT_SUBTYPE[launcher.otyp] ?? 0);
 }
+// C dothrow.c:throwing_weapon().
 export function isThrowingWeapon(object) {
     if (!object)
         return false;
@@ -82,6 +94,7 @@ export function isThrowingWeapon(object) {
         || object.otyp === WAR_HAMMER
         || object.otyp === AKLYS;
 }
+// C obj.h:is_multigen().
 export function isMultiGeneratedWeapon(object) {
     if (!object)
         return false;
@@ -89,17 +102,20 @@ export function isMultiGeneratedWeapon(object) {
     return object.oclass === WEAPON_CLASS
         && skill >= -P_SHURIKEN && skill <= -P_BOW;
 }
+// C obj.h:is_poisonable().
 export function isPoisonableObject(object) {
     if (!object)
         return false;
     return isMultiGeneratedWeapon(object)
         || artifactById(object.oartifact)?.invokePower === 'fling-poison';
 }
+// C artifact.c:permapoisoned().
 export function isPermanentlyPoisonedObject(object) {
     if (!object)
         return false;
     return artifactById(object.oartifact)?.invokePower === 'fling-poison';
 }
+// C obj.h:is_blunt_weapon().
 export function isBluntWeapon(object) {
     if (!object)
         return false;
@@ -108,18 +124,46 @@ export function isBluntWeapon(object) {
         || (kind === TOOL_CLASS && (OBJECT_SUBTYPE[object.otyp] ?? 0) !== 0);
     return weaponOrTool && !!((OBJECT_DIR[object.otyp] ?? 0) & WHACK);
 }
+// C obj.h:is_flimsy().
 export function isFlimsyObject(object, state) {
     return objectMaterial(object, state) <= LEATHER
         || !!object && OBJECT_NAMES[object.otyp] === 'rubber hose';
 }
+// C objclass.h:is_organic().
+export function objectIsOrganic(object, state) {
+    return objectMaterial(object, state) <= WOOD;
+}
+// C objclass.h:is_metallic().
+export function objectIsMetallic(object, state) {
+    const material = objectMaterial(object, state);
+    return material >= IRON && material <= MITHRIL;
+}
+// C objclass.h:is_rustprone().
+export function objectIsRustprone(object, state) {
+    return objectMaterial(object, state) === IRON;
+}
+// C objclass.h:is_corrodeable().
+export function objectIsCorrodeable(object, state) {
+    const material = objectMaterial(object, state);
+    return material === COPPER || material === IRON;
+}
+// C objclass.h:is_crackable(). Only worn glass takes crack damage
+// (the erosion_matters() note in objclass.h).
+export function objectIsCrackable(object, state) {
+    return objectMaterial(object, state) === GLASS
+        && object.oclass === ARMOR_CLASS;
+}
+// C obj.h:is_pick().
 export function isPick(object) {
-    return (object?.oclass === WEAPON_CLASS || object?.oclass === 6)
+    return (object?.oclass === WEAPON_CLASS || object?.oclass === TOOL_CLASS)
         && OBJECT_SUBTYPE[object.otyp] === P_PICK_AXE;
 }
+// C obj.h:is_axe().
 export function isAxe(object) {
-    return (object?.oclass === WEAPON_CLASS || object?.oclass === 6)
+    return (object?.oclass === WEAPON_CLASS || object?.oclass === TOOL_CLASS)
         && OBJECT_SUBTYPE[object.otyp] === P_AXE;
 }
+// C obj.h:is_blade().
 export function isBlade(object) {
     if (!object)
         return false;
@@ -127,34 +171,22 @@ export function isBlade(object) {
     return object?.oclass === WEAPON_CLASS
         && skill >= P_DAGGER && skill <= P_SABER;
 }
-export function isAmmunition(object) {
-    if (!object)
-        return false;
-    const skill = OBJECT_SUBTYPE[object.otyp] ?? 0;
-    return (object?.oclass === WEAPON_CLASS || object?.oclass === 13)
-        && skill >= -P_CROSSBOW && skill <= -P_BOW;
-}
-export function ammunitionMatchesLauncher(ammunition, launcher) {
-    if (!ammunition || !launcher || !isAmmunition(ammunition))
-        return false;
-    const launcherSkill = OBJECT_SUBTYPE[launcher.otyp];
-    return launcherSkill !== undefined
-        && OBJECT_SUBTYPE[ammunition.otyp] === -launcherSkill;
-}
+// C obj.h:is_wet_towel().
 export function isWetTowel(object) {
     return object?.otyp === TOWEL && (object.spe ?? 0) > 0;
 }
+// C obj.h:is_pole().
 // Snickersnee has the same reach as a polearm despite being a katana.
 export function isPolearm(object) {
-    if (object?.oclass !== WEAPON_CLASS && object?.oclass !== 6)
+    if (object?.oclass !== WEAPON_CLASS && object?.oclass !== TOOL_CLASS)
         return false;
     const skill = OBJECT_SUBTYPE[object.otyp];
     return skill === P_POLEARMS || skill === P_LANCE
         || artifactById(object.oartifact)?.name === 'Snickersnee';
 }
-// C objclass.h is_sword().
+// C obj.h:is_sword().
 export function isSword(object) {
     const skill = OBJECT_SUBTYPE[object.otyp] ?? 0;
-    return object.oclass === 2 && skill >= P_SHORT_SWORD && skill <= P_SABER;
+    return object.oclass === WEAPON_CLASS && skill >= P_SHORT_SWORD && skill <= P_SABER;
 }
 //# sourceMappingURL=object_properties.js.map

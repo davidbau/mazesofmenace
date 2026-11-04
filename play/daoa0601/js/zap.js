@@ -27,7 +27,7 @@ import { displayColorName, displayLiquidName, monsterName, randomDisplayMonsterN
 import { possessiveName, mungWishSpaces } from './hacklib.js';
 import { destroyObjectFromMonsterInventory, checkMonsterGearNextTurn } from './monworn.js';
 import { commandResultCancelled } from './cmd.js';
-import { removeHeroAccessory, wearHeroAccessory, objectIsHardHelmet, applyArmorOnEffects, armorSlotFor, wearHeroArmor } from './do_wear.js';
+import { removeHeroAccessory, wearHeroAccessory, objectIsHardHelmet, applyArmorOnEffects, armorSlotFor, wearHeroArmor, isEyewear, wearEyewear } from './do_wear.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
 import { rechargeRing, unpunishHero } from './read.js';
 import { finishHeroDeath } from './end.js';
@@ -75,9 +75,8 @@ import { gotoLevel } from './level_change.js';
 import { okToQuest, onQuestStart } from './quest.js';
 import { askTeleportDestination, heroControlsTeleport, teleportHero } from './teleport.js';
 import { bot } from './botl.js';
-import { isWeaponTool, isBimanualObject, isPoisonableObject } from './object_properties.js';
+import { isWeaponTool, isBimanualObject, isPoisonableObject, objectIsMetallic } from './object_properties.js';
 import { hatchableEggSpecies, eggSpeciesIsDead } from './egg_species.js';
-import { isEyewear, wearEyewear } from './eyewear.js';
 import { setPrimaryWeapon, setQuiverObject, setSecondaryWeapon, setTwoWeaponCombat } from './wield.js';
 import { releaseObjectLeash } from './apply.js';
 import { fractureRock } from './rock_breakage.js';
@@ -1262,8 +1261,7 @@ function glovesBlockRingShock(object, state) {
     const gloves = state.uarmg || state.u?.uarmg;
     if (!gloves)
         return false;
-    const material = objectMaterial(gloves.otyp);
-    return material < 11 || material > 17;
+    return !objectIsMetallic(gloves);
 }
 function destructionMessage(object, damageType, count, quantity, state = game) {
     const one = count === 1;

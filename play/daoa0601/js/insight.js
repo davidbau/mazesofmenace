@@ -20,11 +20,11 @@ import { pline } from './pline.js';
 import { showDisclosureOverlay, showTextMenuOverlay, showTextPages, showTextWindow } from './windows.js';
 import { gameLogEvents, isSpoilerGameLogEvent } from './gamelog.js';
 import { G_GENOD, FROMFORM, FROMOUTSIDE, Upolyd, ACH_AMUL, ACH_ASTR, ACH_BELL, ACH_BGRM, ACH_BLND, ACH_BOOK, ACH_CNDL, ACH_ENDG, ACH_INVK, ACH_MEDU, ACH_MINE_PRIZE, ACH_NOVL, ACH_NUDE, ACH_ORCL, ACH_SHOP, ACH_SOKO, ACH_SOKO_PRIZE, ACH_TMPL, ACH_TUNE, ACH_UWIN, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, MGIVENNAME, NOT_HUNGRY, M_AP_NOTHING, M_AP_TYPE, P_ISRESTRICTED, P_NONE, P_SKILLED, P_TWO_WEAPON_COMBAT, P_UNSKILLED, SICK_NONVOMITABLE, SICK_VOMITABLE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, } from './const.js';
-import { simpleArmorName } from './do_wear.js';
+import { simpleArmorName, fingersOrGloves } from './do_wear.js';
 import { SHIELD_OF_REFLECTION } from './object_data.js';
 import { canAdvanceHeroSkill, ensureHeroSkills, skillName, SKILL_LEVEL_NAMES, weaponSkillType, } from './skills.js';
 import { weaponDescription } from './weapon.js';
-import { isAmmunition, isWetTowel } from './object_properties.js';
+import { isLauncherAmmunition, isWetTowel, objectIsMetallic } from './object_properties.js';
 import { emptyHandedDescription } from './wield.js';
 import { displayLiquidName, monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
@@ -35,7 +35,6 @@ import { heroFormSticks } from './polyself.js';
 import { monsterSaddle } from './steed.js';
 import { simpleObjectName, simpleObjectNameWithArticle } from './objnam.js';
 import { heroLegName, monsterLegName } from './body_parts.js';
-import { fingersOrGloves } from './fountain.js';
 import { surfaceName } from './terrain_name.js';
 import { trapName } from './trap.js';
 import { STRAT_WAITMASK } from './const.js';
@@ -489,7 +488,7 @@ function weaponInsightLines(final = 0) {
             : `wielding ${weapon.quan === 1 ? withIndefiniteArticle(what) : makePlural(what)}`);
     }
     const wtype = weaponSkillType(weapon);
-    if (wtype === P_NONE || (weapon && isAmmunition(weapon)))
+    if (wtype === P_NONE || (weapon && isLauncherAmmunition(weapon)))
         return lines;
     const sklvl = skillLevel(wtype);
     const sklvlName = skillLevelDescription(sklvl);
@@ -816,8 +815,7 @@ export function attributeEnlightenmentLines(final = 0) {
     if (eyewear?.otyp === TOWEL && (eyewear.spe ?? 0) > 0)
         message('You ', 'take', 'took', ' reduced poison gas damage');
     if (game.spells.length) {
-        const metallic = game.uarm && objectMaterial(game.uarm.otyp) >= 11
-            && objectMaterial(game.uarm.otyp) <= 17;
+        const metallic = !!game.uarm && objectIsMetallic(game.uarm);
         const robe = game.uarmc?.otyp === ROBE;
         if (metallic || robe)
             message('Your spell casting ', 'is', 'was', metallic
