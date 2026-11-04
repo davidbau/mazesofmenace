@@ -1,5 +1,6 @@
 // Monster body and terrain rules.
 // C ref: mon.c.
+import { SCROLL_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './objclass.js';
 import { objectBaseWeight, AXE, BATTLE_AXE, BOULDER, CARROT, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, GLOB_OF_GRAY_OOZE, GLOB_OF_GREEN_SLIME, ICE_BOX, PICK_AXE, TIN, AMULET_OF_STRANGULATION, BOOMERANG, BULLWHIP, CLUB, ELVEN_SPEAR, GRAPPLING_HOOK, GRAY_DRAGON_SCALES, IRON_CHAIN, LEASH, LEATHER_ARMOR, LEATHER_CLOAK, BELL_OF_OPENING, OBJECT_DESCRIPTIONS, QUARTERSTAFF, RIN_SLOW_DIGESTION, ROCK, SADDLE, SCR_BLANK_PAPER, SCR_SCARE_MONSTER, SMALL_SHIELD, STATUE, UNICORN_HORN, WORM_TOOTH, WORTHLESS_PIECE_OF_VIOLET_GLASS, WORTHLESS_PIECE_OF_WHITE_GLASS, } from './object_data.js';
 import { game, requireInitializedGame, requirePlayingGame, requireGameLevel, requireLiveGame } from './gstate.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
@@ -16,7 +17,7 @@ import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_COLOR, MONSTER_DIFFICULTY, 
 import { displayLiquidName, formatMonsterName, monsterName, namelessMonsterName, setMonsterGivenName } from './do_name.js';
 import { possessiveName, dist2, ordinalSuffix, pointsOnline } from './hacklib.js';
 import { monsterHasFireResistance, monsterHasSeductionAttack, monsterHasStoneResistance, monsterCorrodesBars, monsterPassesBars, monsterLocomotion, monsterFireDescription, monsterPolymorphsWhenStoned, nameToMonster, resolveMonsterClass, monsterHasPoisonResistance, setMonsterSpecies, monsterKnowsTrap } from './mondata.js';
-import { objectsInTimerGraph, stopObjectTimer } from './timeout.js';
+import { killEgg, objectsInTimerGraph, stopObjectTimer } from './timeout.js';
 import { d, rn2, rnd, rn1, rnl } from './rng.js';
 import { randomMonsterRelocation, relocateMonsterTo } from './teleport.js';
 import { reportMonsterTeleportRestriction, monsterTeleportRestricted, findNearbyMonsterPosition, goodPosition } from './teleport_rules.js';
@@ -55,7 +56,7 @@ import { hasTrack } from './track.js';
 import { inHeroSanctuary, ghodHitsu, priestIsCoaligned, templeRoomAt } from './priest.js';
 import { impossible } from './diagnostics.js';
 import { wereChange, isHumanWereMonster, isWereMonster, transformWereMonster } from './were.js';
-import { badRockForMonster, disturbBuriedZombies, roomsAt, loseHeroHp, heroLocomotion } from './hack.js';
+import { badRockForMonster, disturbBuriedZombies, roomsAt, loseHeroHp, heroLocomotion, mayDig } from './hack.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { deleteEngravingAt, hasCompletedEngraving } from './engrave.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
@@ -226,7 +227,7 @@ export async function killGenocidedMonsters(state = game) {
         // was genocided.
         if (object.otyp !== EGG || !eggSpeciesWasGenocided(object, state))
             continue;
-        stopObjectTimer(object, OBJECT_TIMER_KIND.HATCH_EGG);
+        killEgg(object);
         sterileEggs.push(object);
     }
     return { killed, reshaped, sterileEggs };
@@ -816,18 +817,9 @@ function monsterDigCapabilities(monster, flags) {
     treeOk = inventory.some((object) => object?.otyp === AXE || (object?.otyp === BATTLE_AXE && !hasShield));
     return { rockOk, treeOk };
 }
-// Diggability of a location for monster tunnelling.
-// C hack.c:may_dig(): stone walls and trees flagged W_NONDIGGABLE
-// cannot be dug through.
-export function monsterMayDigLocation(loc) {
-    if (!loc)
-        return false;
-    return !((IS_STWALL(loc.typ) || IS_TREE(loc.typ)) && (loc.wall_info ?? 0) & W_NONDIGGABLE);
-}
 // ---------------------------------------------------------------------------
 // C mon.c:can_touch_safely(), curr_mon_load(), max_mon_load() and can_carry().
 // ---------------------------------------------------------------------------
-const COIN_CLASS = 12, GEM_CLASS = 13;
 const M1_NOHANDS = 0x00002000;
 const M2_STRONG = 0x04000000;
 const M2_GREEDY = 0x10000000;
@@ -961,7 +953,7 @@ export async function mfndpos(monster, state, flags = monAllowFlags(monster, sta
                     continue;
                 const mayPassWall = !!(flags & ALLOW_WALL) &&
                     !(IS_STWALL(loc.typ) && loc.wall_info & W_NONPASSWALL);
-                const mayTunnel = (IS_TREE(loc.typ) ? treeOk : rockOk) && monsterMayDigLocation(loc);
+                const mayTunnel = (IS_TREE(loc.typ) ? treeOk : rockOk) && mayDig(nx, ny, state);
                 if (IS_OBSTRUCTED(loc.typ) && !mayPassWall && !mayTunnel)
                     continue;
                 if (IS_OBSTRUCTED(loc.typ) &&
@@ -1866,7 +1858,6 @@ export function initializeMonsterMovement(monster) {
 }
 // ── C mon.c:meatmetal(), meatobj(), and meatcorpse(). Non-pet meals
 // during post-move item handling.
-const SCROLL_CLASS = 9, ROCK_CLASS = 14;
 const PM_RUST_MONSTER = MONSTER_NAME.indexOf('rust monster');
 export async function consumeMonsterFloorObjects(monster, state, { originalSpecies, random = rn2, rollOne = rnd, rollDice = d, publish = plineWithContinuation, }) {
     requireLiveGame(state);

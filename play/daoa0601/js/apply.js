@@ -3,6 +3,7 @@
 // and the use_*() tool functions this file owns. use_whip() stays in
 // bullwhip.ts; the candle snuff/splash/catch helpers stay in light.ts with
 // the burning-object owners.
+import { WEAPON_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, } from './objclass.js';
 import { objectClassForType, objectBaseCost, objectSkill, objectMagic, AMULET_OF_YENDOR, BAG_OF_TRICKS, BANANA, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN, BULLWHIP, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, EGG, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MIRROR, OBJECT_COLOR, OBJECT_DESCRIPTIONS, OIL_LAMP, POT_OIL, SADDLE, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_JUMPING, SPE_NOVEL, STATUE, STETHOSCOPE, TALLOW_CANDLE, TIN, TIN_OPENER, TIN_WHISTLE, TINNING_KIT, TOUCHSTONE, TOWEL, UNICORN_HORN, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAX_CANDLE, } from './object_data.js';
 import { publishMonsterGrowl, publishMonsterWhimper, publishMonsterYelp } from './ambient_sounds.js';
 import { armorSimpleName, armorSlotFor, heroHasFreeAction, applyEyewear, removeEyewear } from './do_wear.js';
@@ -16,7 +17,7 @@ import { useBullwhip } from './bullwhip.js';
 import { commandResultCancelled, commandResultFailed, commandResultSpentTime, cmdq_add_ec, cmdq_add_key, setMulti } from './cmd.js';
 import { A_CHA, A_CON, A_DEX, A_NONE, A_STR, ACCESSIBLE, AIR, BEAR_TRAP, CLOUD, COLNO, CORR, CQ_CANNED, D_CLOSED, D_ISOPEN, D_LOCKED, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAILED, DOOR, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HOLE, HOMEMADE_TIN, ICE, IS_AIR, Is_airlevel, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, Is_stronghold, IS_STWALL, IS_WALL, Is_waterlevel, KILLED_BY, LANDMINE, LEVEL_TIMER_KIND, LUCKMIN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MAXULEV, MM_NOMSG, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, NO_KILLER_PREFIX, NO_MINVENT, OBJECT_TIMER_KIND, P_BASIC, P_RIDING, P_SKILLED, P_TWO_WEAPON_COMBAT, PARANOID_BREAKWAND, PIT, PLNMSG_enum, RLOC_MSG, RLOC_NONE, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SICK_ALL, SICK_NONVOMITABLE, STATUE_TRAP, STONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WEAK, xdir, ydir } from './const.js';
 import { isok } from './cmd.js';
-import { useContainer } from './pickup.js';
+import { use_container } from './pickup.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { isRider } from './corpse_species.js';
 import { useCrystalBall } from './crystal_ball.js';
@@ -25,7 +26,7 @@ import { impossible } from './diagnostics.js';
 import { digActualHole, digCheck, liquidFlow, liquidForHole, watchDigging, freeHeroFromBuriedBall } from './dig.js';
 import { canSeeMonster, canSenseMonster, canSpotMonster, feel_newsym, glyphAt, howMonsterSeen, map_invisible, map_object, newsym, unmap_invisible } from './display.js';
 import { displayColorName, displayLiquidName, monsterLeashName, monsterName, monsterReflexiveAction } from './do_name.js';
-import { restartEggHatchTimer } from './egg.js';
+import { attachEggHatchTimer, killEgg } from './timeout.js';
 import { heroHasFreeHand, wipeHeroEngraving } from './engrave.js';
 import { gulpBlindnessCheck } from './engulf_blindness.js';
 import { explode } from './explosion.js';
@@ -37,7 +38,6 @@ import { heroCanReachFloor } from './engrave.js';
 import { prepareMapPositionHighlights, selectMapPosition, showGetposInstructions } from './getpos.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { endVoluntaryMultiTurn, heroMayDisplaceMonster, nomul, shouldShowGetposTip, showGetposTip, loseHeroHp, checkHeroAttackOverexertion, heroIsOnStairs, isInvocationPosition, finishDestinationSpotEffects, roomsAt, exceedsActionCapacity, nearCapacity } from './hack.js';
-import { runSafepetDisplacement } from './uhitm.js';
 import { possessiveName } from './hacklib.js';
 import { applyCaitiffPenalty } from './uhitm.js';
 import { prepareAppliedWeaponAttack } from './uhitm.js';
@@ -50,7 +50,7 @@ import { hurtleHero, hurtleJumpTo } from './dothrow.js';
 import { cureHeroSickness, cureHeroVomiting, heroIsVomiting, startHeroVomiting } from './potion.js';
 import { freeInventoryObject, useUpInventoryStack } from './invent.js';
 import { heroIsInvisible } from './hero_invisibility.js';
-import { attackHostileMonster } from './uhitm.js';
+import { do_attack } from './uhitm.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
 import { hitMonsterWithAppliedWeapon } from './hero_ranged_attack.js';
 import { retouchHeroObject } from './hero_retouch.js';
@@ -93,7 +93,7 @@ import { propertyIsActive } from './properties.js';
 import { unpunishHero } from './read.js';
 import { promptChoice, promptYesNo } from './query.js';
 import { paranoidQuery } from './cmd.js';
-import { monsterReflectionSource } from './muse.js';
+import { mon_reflects } from './muse.js';
 import { rayPositionIsOpen } from './zap.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, setHeroBlindnessTimeout } from './senses.js';
@@ -125,14 +125,6 @@ import { monsterCarriesAmulet } from './wizard.js';
 import { adjustMonsterSpeed } from './worn.js';
 import { useMagicMarker } from './write.js';
 import { objectResistsDestruction, zappable } from './zap.js';
-const WEAPON_CLASS = 2;
-const TOOL_CLASS = 6;
-const POTION_CLASS = 8;
-const SPBOOK_CLASS = 10;
-const WAND_CLASS = 11;
-const COIN_CLASS = 12;
-const GEM_CLASS = 13;
-const RING_CLASS = 4;
 export async function useCamera(object, { state = game } = {}) {
     requireLiveGame(state);
     const result = { spentTime: false, heroDied: false, object };
@@ -382,7 +374,7 @@ async function diagnoseMonster(monster, x, y) {
         if (type === M_AP_OBJECT) {
             const fruit = monster.mcorpsenm ?? monster.mextra?.mcorpsenm;
             what = appearance === SLIME_MOLD && fruit !== undefined
-                ? minimalObjectName({ otyp: appearance, oclass: 7, dknown: true, spe: fruit }, game)
+                ? minimalObjectName({ otyp: appearance, oclass: FOOD_CLASS, dknown: true, spe: fruit }, game)
                 : simpleObjectTypeName(appearance, game);
             const slot = armorSlotFor(appearance);
             plural = slot === 'uarmf' || slot === 'uarmg' || appearance === LENSES;
@@ -1021,7 +1013,7 @@ async function showMonsterReflection(monster, object, mirror, invisible, state) 
             await pline(`${name()} doesn't have a reflection.`);
     }
     else if (able && monster.mnum === MEDUSA) {
-        const reflection = monsterReflectionSource(monster, state);
+        const reflection = mon_reflects(monster, state);
         if (reflection) {
             await pline(`The gaze is reflected away by ${possessiveName(monsterName(monster))} ${reflection.noun}!`);
             if (['shield', 'amulet'].includes(reflection.noun)) {
@@ -1834,7 +1826,7 @@ async function chooseTinningCorpse() {
         }
     }
     const corpse = await chooseInventoryObject('tin', object => {
-        if (!object || object.oclass !== 7)
+        if (!object || object.oclass !== FOOD_CLASS)
             return GETOBJ_EXCLUDE;
         return tinnable(object) ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE_SELECTABLE;
     }, { hands: declinedFloorCorpse ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE });
@@ -2087,7 +2079,7 @@ export async function useGrease(can) {
     return true;
 }
 function greaseSuggestion(object) {
-    if (object.oclass === 12)
+    if (object.oclass === COIN_CLASS)
         return GETOBJ_EXCLUDE;
     return coveringEquipment(object).length ? GETOBJ_EXCLUDE_INACCESS : GETOBJ_SUGGEST;
 }
@@ -2639,7 +2631,7 @@ async function applyPickAxe(item) {
         ensureWielded: () => wieldTool(item, 'swing', { swapWeapons: doswapweapon }, game),
         readDirection: pickAxeDirection,
         payShopkeeper: dopay,
-        attackMonster: (monster, struckAt) => attackHostileMonster(monster, struckAt.x, struckAt.y),
+        attackMonster: (monster, struckAt, permission) => do_attack(monster, struckAt.x, struckAt.y, { permission }),
     });
     if ('died' in result && result.died)
         return;
@@ -2792,12 +2784,12 @@ export async function useRoyalJelly(stack, chooseTarget) {
         await syncPline(wasTimed || egg.corpsenm !== oldSpecies
             ? quiverMessage(egg, 'feebly')
             : 'Nothing seems to happen.');
-        stopObjectTimer(egg, OBJECT_TIMER_KIND.HATCH_EGG);
+        killEgg(egg);
     }
     else {
         if ((egg.corpsenm ?? -1) !== -1) {
             if (!wasTimed)
-                restartEggHatchTimer(egg);
+                attachEggHatchTimer(egg);
             if (use.jelly.blessed && !egg.spe)
                 egg.spe = 2;
         }
@@ -3282,13 +3274,13 @@ export async function doapply() {
         game.context.move = 1;
         return;
     }
-    if (item.oclass === 11) {
+    if (item.oclass === WAND_CLASS) {
         const result = await breakWand(item);
         game.context.move = result.spentTime ? 1 : 0;
         return;
     }
-    if (item.oclass === 10 || item.oclass === 12) {
-        const result = item.oclass === 10
+    if (item.oclass === SPBOOK_CLASS || item.oclass === COIN_CLASS) {
+        const result = item.oclass === SPBOOK_CLASS
             ? await flipThroughBook(item) : await flipCoin(item);
         game.context.move = result.spentTime ? 1 : 0;
         return;
@@ -3413,22 +3405,15 @@ export async function applyTool(item, underlay) {
             // struck with forcefight forced on, while a pet keeps
             // do_attack()'s safepet displacement block.
             attackMonster: async (monster, x, y) => {
-                if (monster.mtame && !game.context.forcefight
-                    && heroMayDisplaceMonster(monster)
-                    && artifactById(game.uwep?.oartifact, game)?.name
-                        !== 'Stormbringer') {
-                    return await runSafepetDisplacement(monster) !== 'evaded';
-                }
+                const safeMonster = !!monster.mtame && !game.context.forcefight
+                    && heroMayDisplaceMonster(monster);
                 const savedForcefight = game.context.forcefight ?? false;
                 if (!monster.mtame)
                     game.context.forcefight = true;
                 try {
-                    const verdict = await prepareAppliedWeaponAttack(monster, game.uwep ?? null, { state: game, struckAt: { x, y } });
-                    if (!verdict.proceed)
-                        return verdict.spentTime;
-                    return await attackHostileMonster(monster, x, y, {
-                        confirmationOverridden: verdict.confirmationOverridden ?? false,
-                    });
+                    // force_attack() answers C's boolean: a declined
+                    // attack stopped the monster, so the whip does not snap.
+                    return (await do_attack(monster, x, y, { safeMonster })) !== false;
                 }
                 finally {
                     game.context.forcefight = savedForcefight;
@@ -3475,7 +3460,7 @@ export async function applyTool(item, underlay) {
         return item;
     }
     if (isContainer(item)) {
-        const result = await useContainer(item, {
+        const result = await use_container(item, {
             held: true,
             underlay,
         });

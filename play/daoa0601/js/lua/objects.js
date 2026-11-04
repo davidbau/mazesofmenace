@@ -1,4 +1,5 @@
 // Lua object handles and operations. C nhlobj.c.
+import { RANDOM_CLASS, POTION_CLASS } from '../objclass.js';
 import { objectClassForType, objectBaseWeight, objectBaseCost, objectDelay, objectPropertyId, objectDirection, objectBimanual, objectMerge, objectUsesKnown, objectUnique, objectMagic, objectCharged, ARROW, CORPSE, EGG, FIGURINE, STATUE, TIN, OBJECT_COLOR, OBJECT_DESCRIPTIONS, OBJECT_INITIAL_KNOWN, OBJECT_LARGE_DAMAGE, OBJECT_MATERIAL_NAMES, OBJECT_NAMES, OBJECT_NOWISH, OBJECT_NUTRITION, OBJECT_PROB, OBJECT_SMALL_DAMAGE, OBJECT_TOUGH, } from '../object_data.js';
 import { CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE, OBJECT_TIMER_KIND } from '../const.js';
 import { isok } from '../cmd.js';
@@ -15,7 +16,7 @@ import { objectMaterial } from '../o_init.js';
 import { isPoisonableObject } from '../object_properties.js';
 import { readObjectName } from '../objnam.js';
 import { addInventoryItem } from '../invent.js';
-import { objectTypeForName } from './des.js';
+import { find_objtype } from './des.js';
 import { luaInteger } from './arguments.js';
 import { LuaTable, LuaUserdata, luaTableToObject, objectToLuaTable } from './runtime.js';
 import { deleteObject } from '../shk.js';
@@ -143,11 +144,11 @@ export function createObjectApi(state = game) {
         else if (value instanceof LuaTable) {
             const options = luaTableToObject(value);
             const type = options.id == null ? 0
-                : objectTypeForName(options.id, options.class, state);
+                : find_objtype(options.id, options.class, state);
             const oclass = typeof options.class === 'string'
                 ? OBJECT_CLASS_SYMBOLS.indexOf(options.class) : -1;
             // ARROW is FIRST_OBJECT; earlier entries represent class glyphs.
-            item = type < ARROW ? await mkobj(Math.max(0, oclass), false)
+            item = type < ARROW ? await mkobj(Math.max(RANDOM_CLASS, oclass), false)
                 : await mksobj(type, true, false);
         }
         else
@@ -333,7 +334,7 @@ function objectTable(item, state) {
         values.male = Number(!!(item.spe & CORPSTAT_MALE));
         values.female = Number(!!(item.spe & CORPSTAT_FEMALE));
     }
-    if (item.oclass === 8)
+    if (item.oclass === POTION_CLASS)
         values.odiluted = Number(!!(item.odiluted || item.diluted));
     else
         values.oeroded = item.oeroded || 0;

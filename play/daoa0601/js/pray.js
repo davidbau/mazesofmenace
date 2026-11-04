@@ -1,6 +1,7 @@
 // pray.c owner: prayer trouble detection and repair, divine wrath and gifts,
 // and altar sacrifice.  Folded from prayer_trouble/divine_wrath/divine_gifts/
 // sacrifice (pure move, no behavior change).
+import { RANDOM_CLASS, WEAPON_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SPBOOK_CLASS, GEM_CLASS, } from './objclass.js';
 import { objectSkill, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, AMULET_OF_YENDOR, BOULDER, CORPSE, FAKE_AMULET_OF_YENDOR, FUMBLE_BOOTS, GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT, LEVITATION_BOOTS, LONG_SWORD, LOADSTONE, MAGIC_MARKER, OBJECT_NAMES, OBJECT_SPELL_CATEGORY, SPE_BLANK_PAPER, STATUE, getObjectClassBounds, } from './object_data.js';
 import { recordAchievement } from './insight.js';
 import { adjustHeroAlignment, convertHeroAlignment, deityName } from './alignment.js';
@@ -13,7 +14,7 @@ import { isRider } from './corpse_species.js';
 import { reviveCorpseForHero, reviveCorpseImmediately } from './corpse_revival.js';
 import { ACH_TUNE, A_CON, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, DISSOLVED, EXT_ENCUMBER, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HUNGRY, HVY_ENCUMBER, IS_OBSTRUCTED, Is_astralevel, LUCKMAX, LUCKMIN, Luck, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, MM_NOMSG, P_BROAD_SWORD, P_LONG_SWORD, PARANOID_CONFIRM, PARANOID_PRAY, PLNMSG_OBJ_GLOWS, ROOM, SCORR, SDOOR, STRAT_APPEARMSG, TT_BURIEDBALL, TT_LAVA, Upolyd, W_SADDLE, WEAK } from './const.js';
 import { isok } from './cmd.js';
-import { reportHeroEncumbrance } from './pickup.js';
+import { encumber_msg } from './pickup.js';
 import { finishHeroDeath, finishLivingGame } from './end.js';
 import { gainExperienceLevel, loseHeroExperience } from './exper.js';
 import { landFloorObject } from './floor_effects.js';
@@ -54,7 +55,7 @@ import { punishHero, unpunishHero } from './read.js';
 import { promptYesNo, promptYesNoQuit } from './query.js';
 import { paranoidQuery } from './cmd.js';
 import { heroIsInDangerousRegion, rescueHeroFromRegion } from './regions.js';
-import { discoverHeroReflectionSource, heroReflectionSource, heroReflectsRay } from './muse.js';
+import { discoverHeroReflectionSource, ureflects, heroReflectsRay } from './muse.js';
 import { d, rn1, rn2, rnl, rnd, rnz } from './rng.js';
 import { blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, permanentBlind, setHeroBlindnessTurns, syncDeafness } from './senses.js';
 import { adjustWeaponSkillSlots, ensureHeroSkills, SKILL_NAMES, unrestrictHeroSkill } from './skills.js';
@@ -338,7 +339,7 @@ async function changeAltarWater(bless) {
             object.bknown = known;
             changed += object.quan;
         }
-        else if (object.oclass === 8)
+        else if (object.oclass === POTION_CLASS)
             other = true;
     }
     if (!heroIsBlind(game) && changed) {
@@ -697,7 +698,7 @@ export async function fixPrayerTrouble(trouble, state = game) {
             for (const index of attributeIndices)
                 hero.acurr.a[index] = Math.max(hero.acurr.a[index], hero.amax.a[index]);
             state.context.botl = true;
-            await reportHeroEncumbrance(state, pline);
+            await encumber_msg(state, pline);
             return;
         }
         case Trouble.BLIND: {
@@ -901,7 +902,7 @@ export async function godZapsHero(alignment, state = game) {
             if (heroIsBlind(state))
                 await pline("For some reason you're unaffected.");
             else {
-                const reflection = heroReflectionSource(state);
+                const reflection = ureflects(state);
                 if (reflection) {
                     await pline(`It reflects from your ${reflection.noun}.`);
                     discoverHeroReflectionSource(reflection, state);
@@ -987,9 +988,6 @@ async function strikeSwallower(disintegration, state) {
 // ---------------------------------------------------------------------------
 // Divine gifts and crowning (divine_gifts)
 // ---------------------------------------------------------------------------
-const WEAPON_CLASS = 2;
-const TOOL_CLASS = 6;
-const SPBOOK_CLASS = 10;
 const RUNESWORD = OBJECT_NAMES.indexOf('runesword');
 const SPE_FINGER_OF_DEATH = OBJECT_NAMES.indexOf('finger of death');
 const SPE_RESTORE_ABILITY = OBJECT_NAMES.indexOf('restore ability');
@@ -1091,7 +1089,7 @@ async function restoreHeroVigor() {
     if (hero.acurr.a[A_STR] < hero.amax.a[A_STR]) {
         hero.acurr.a[A_STR] = hero.amax.a[A_STR];
         game.context.botl = true;
-        await reportHeroEncumbrance(game, pline);
+        await encumber_msg(game, pline);
     }
     if (hero.uhunger < 900)
         await init_uhunger(game, pline);
@@ -1347,8 +1345,6 @@ function isWeapon(object) {
 // ---------------------------------------------------------------------------
 // Altar sacrifice (sacrifice)
 // ---------------------------------------------------------------------------
-const AMULET_CLASS = 5;
-const FOOD_CLASS = 7;
 const PM_ACID_BLOB = MONSTER_NAME.indexOf('acid blob');
 const PM_WRAITH = MONSTER_NAME.indexOf('wraith');
 const MAX_VALUE = 24;
@@ -1790,7 +1786,7 @@ async function bestowArtifact(value) {
     hero.ublesscnt = rnz(300 + 50 * count);
     await exerciseAttribute(A_WIS, true);
     recordGameLogEvent(`was bestowed with ${artifact.name} by ${deityName(hero.ualign.type)}`, { flags: LL_DIVINEGIFT | LL_ARTIFACT });
-    const skillType = [2, 6, 13].includes(object.oclass ?? 0)
+    const skillType = [WEAPON_CLASS, TOOL_CLASS, GEM_CLASS].includes(object.oclass ?? RANDOM_CLASS)
         ? Math.abs(objectSkill(object.otyp)) : 0;
     unrestrictHeroSkill(skillType);
     if (!hallucinating && !blind) {

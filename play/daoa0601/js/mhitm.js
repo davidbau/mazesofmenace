@@ -37,8 +37,8 @@ import { weaponHitBonus } from './weapon.js';
 import { selectAttack } from './attack_selection.js';
 import { resolveMonsterCombatBreath, resolveMonsterCombatSpit, resolveMonsterCombatThrow } from './mthrowu.js';
 import { trapAt, mintrap, damageObjectWithAcid, erodeArmor } from './trap.js';
-import { applyMonsterCombatBlindness, applyMonsterDigestionEffect, applyMonsterDrainEffect, applyMonsterElementEffect, applyMonsterStatusEffect, applyMonsterTheftEffect, applyMonsterTransformEffect, mhitmAdBlnd, mhitmAdDrli, mhitmAdEnch, mhitmAdLegs, mhitmAdStun, monsterCombatAttackNegated, passiveAttack, passiveDamage, petrifyMonsterDefender, poisonMonsterFromAttack, rejectMonsterShadeContact, resolveMonsterBrainAttack, resolveMonsterPhysicalDamage, tryKnockback, applyMonsterCombatEffect, physicalEffect, effectResult, } from './uhitm.js';
-import { monsterReflectionSource } from './muse.js';
+import { applyMonsterCombatBlindness, applyMonsterDigestionEffect, applyMonsterDrainEffect, applyMonsterElementEffect, applyMonsterStatusEffect, applyMonsterTheftEffect, applyMonsterTransformEffect, mhitmAdBlnd, mhitmAdDrli, mhitmAdEnch, mhitmAdLegs, mhitmAdStun, passiveAttack, passiveDamage, petrifyMonsterDefender, poisonMonsterFromAttack, rejectMonsterShadeContact, mhitm_ad_phys, mhitm_knockback, applyMonsterCombatEffect, effectResult, } from './uhitm.js';
+import { mon_reflects } from './muse.js';
 import { contactIsProtected, touchPetrifies } from './stoning.js';
 import { finishMonsterEating } from './dogmove.js';
 import { clearMonsterWormFromMap, placeMonsterWormTailRandomly } from './worm.js';
@@ -570,9 +570,9 @@ export async function resolveMonsterCombatGaze(attacker, defender, attack, { sta
             await publish('but nothing happens.');
         return gazeResult(M_ATTK_MISS);
     }
-    if (attacker.mnum === PM_MEDUSA && monsterReflectionSource(defender, state)) {
+    if (attacker.mnum === PM_MEDUSA && mon_reflects(defender, state)) {
         await showGazeReflection(defender, state, publish);
-        if (monsterReflectionSource(attacker, state)) {
+        if (mon_reflects(attacker, state)) {
             await showGazeReflection(attacker, state, publish);
             return gazeResult(M_ATTK_MISS);
         }
@@ -616,7 +616,7 @@ function perceivesInvisible(monster) {
 async function showGazeReflection(monster, state, publish) {
     if (!canSeeMonster(monster))
         return;
-    const source = monsterReflectionSource(monster, state);
+    const source = mon_reflects(monster, state);
     if (!source)
         return;
     const owner = possessiveName(monsterName(monster, { state }));
@@ -924,7 +924,7 @@ export async function resolveMonsterCombatDamage(attacker, defender, attack, { s
     const context = {
         state, attack, damage, visible, notOnHead,
         dieRoll, weapon, random, rollOne, rollDice, publish, finishDeath, growAttacker,
-        applyPhysical: () => physicalEffect(attacker, defender, context),
+        applyPhysical: () => mhitm_ad_phys({ attacker, defender, context }),
         killDefender: async (options = {}) => {
             const outcome = await finishMonsterKilled(defender, state, {
                 damageType: options.damageType ?? attack[1], random, rollDice, publish,
@@ -960,7 +960,7 @@ export async function resolveMonsterCombatDamage(attacker, defender, attack, { s
     if (effect.heroDied)
         return result(effect);
     // Even an effect that set done or zero damage reaches native knockback.
-    const knockback = await tryKnockback(attacker, defender, { attackType: attack[0], damageType: attack[1] }, {
+    const knockback = await mhitm_knockback(attacker, defender, { attackType: attack[0], damageType: attack[1] }, {
         state, random, publish, weaponUsed: !!monsterWieldedWeapon(attacker),
         finishMonsterDeath: finishDeath,
         finishLiquidDeath: (monster, liquid) => finishDeath(monster, {
@@ -1140,7 +1140,7 @@ async function paralyzeAttacker(attacker, defender, duration, { state, random, p
         }
         // Native constructs this name even when there is no reflection.
         const gazeOwner = possessiveName(monsterName(defender, { state, capitalized: true }));
-        const reflection = monsterReflectionSource(attacker, state);
+        const reflection = mon_reflects(attacker, state);
         if (reflection) {
             if (visible) {
                 await publish(`${gazeOwner} gaze is reflected by ${possessiveName(monsterName(attacker, { state }))} ${reflection.noun}.`);

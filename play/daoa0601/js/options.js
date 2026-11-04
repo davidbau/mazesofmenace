@@ -1,5 +1,6 @@
 // options.js — Parse .nethackrc options.
 // C ref: options.c — handles OPTIONS=, BIND=, etc.
+import { ILLOBJ_CLASS, COIN_CLASS } from './objclass.js';
 import { game } from './gstate.js';
 import { clearCharacterFilter, createCharacterFilters, setCharacterFilter } from './character_filters.js';
 import { findAlignment, findGender, findRace, findRole, randomCharacterOption } from './roles.js';
@@ -31,7 +32,7 @@ import { chooseDiscoverySort, discoverySortDescription } from './o_init.js';
 import { ATR_INVERSE, restoreMenuUnderlay, showInventoryWindow, showMultiSelectWindow, snapshotMenuUnderlay } from './windows.js';
 import { NO_COLOR } from './terminal.js';
 import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP } from './const.js';
-import { parseAutocompleteStatement } from './cmd.js';
+import { parseAutocomplete } from './cmd.js';
 import { OBJECT_CLASS_SYMBOLS } from './display.js';
 import { DISCLOSURE_CATEGORIES, parseDisclosureSettings } from './end.js';
 import { setVanqOrder, vanquishedOptionValue } from './insight.js';
@@ -956,7 +957,7 @@ function handleConfigStatement(statement, parsed, result, addError, addRawError)
             }
             break;
         case 'AUTOCOMPLETE':
-            parseAutocompleteStatement(parsed.valueText, addRawError);
+            parseAutocomplete(parsed.valueText, addRawError);
             break;
         case 'AUTOPICKUP_EXCEPTION': {
             // ga.apelist is prepended, so the newest rule matches first.
@@ -3530,11 +3531,11 @@ export function changeInventoryOrder(symbols, state = game) {
 }
 export function planInventoryOrder(symbols, state = game) {
     const previous = inventoryClassOrder(state);
-    const order = symbols.includes('$') ? [] : [12];
+    const order = symbols.includes('$') ? [] : [COIN_CLASS];
     const errors = [];
     for (const [index, symbol] of [...symbols].entries()) {
         const oclass = OBJECT_CLASS_SYMBOLS.indexOf(symbol);
-        if (oclass < 1)
+        if (oclass < ILLOBJ_CLASS)
             errors.push(`Not an object class '${symbol}'`);
         else if (!previous.includes(oclass))
             errors.push(`Object class '${symbol}' not allowed`);

@@ -1,4 +1,5 @@
 // Hero eating and nutrition. Ports from eat.c.
+import { RANDOM_CLASS, WEAPON_CLASS, RING_CLASS, AMULET_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, COIN_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS, } from './objclass.js';
 import { objectDelay, objectCharged, AMULET_OF_STRANGULATION, AMULET_OF_YENDOR, APPLE, AXE, CANDY_BAR, CARROT, CLOVE_OF_GARLIC, CORPSE, CRAM_RATION, CREAM_PIE, EGG, EUCALYPTUS_LEAF, FAKE_AMULET_OF_YENDOR, FLINT, FOOD_RATION, FORTUNE_COOKIE, GLOB_OF_GREEN_SLIME, GOLD_PIECE, LEASH, LEMBAS_WAFER, LUMP_OF_ROYAL_JELLY, MEAT_RING, OBJECT_NAMES, OBJECT_NUTRITION, OBJECT_PROPERTY, ORANGE, PANCAKE, PEAR, PICK_AXE, RIN_PROTECTION, RIN_SLOW_DIGESTION, SCR_SCARE_MONSTER, SLIME_MOLD, SPRIG_OF_WOLFSBANE, TIN, TIN_OPENER, TRIDENT, TRIPE_RATION, requireObjectData, } from './object_data.js';
 import { heroCannotVomit, sameMonsterRace } from './mondata.js';
 import { setHeroPetrificationTimeout, makeDeaf, startHeroSickness, showInvisibilityMessage, makeConfused, makeHallucinated, makeStunned, drinkPotion, makeBlinded, setSlipperyHands } from './potion.js';
@@ -20,7 +21,7 @@ import { canSeeMonster, canSpotMonster, flush_screen, newsym, see_monsters } fro
 import { tryCallObjectType, healHeroLegs, dropInventoryObjectAtHero, dropObjectAtHero } from './do.js';
 import { displayColorName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { eggIsStale, isPyroliskEgg } from './egg_impact.js';
-import { reportHeroEncumbrance } from './pickup.js';
+import { encumber_msg } from './pickup.js';
 import { finishHeroDeath, finishMonsterAttackDeath } from './end.js';
 import { addExperience, checkExperienceLevel, gainExperienceLevel } from './exper.js';
 import { explode } from './explosion.js';
@@ -159,8 +160,6 @@ const NO_DIGESTED_EFFECT = new Set([SUSTAIN, type('amulet of life saving'),
 const WAX = 2, FLESH = 4, LEATHER = 7, BONE = 9;
 const ANIMAL_INGREDIENTS = new Set([PANCAKE, FORTUNE_COOKIE, CREAM_PIE, CANDY_BAR, LUMP_OF_ROYAL_JELLY]);
 const RUST_MONSTER = MONSTER_NAME.indexOf('rust monster');
-const FOOD_CLASS = 7, RING_CLASS = 4, AMULET_CLASS = 5, POTION_CLASS = 8;
-const SCROLL_CLASS = 9, COIN_CLASS = 12, BALL_CLASS = 15, CHAIN_CLASS = 16;
 const PAPER = 5;
 const SCR_MAIL = OBJECT_NAMES.indexOf('mail');
 // C eat.c:init_uhunger(). Hunger weakens temporary, not innate, strength.
@@ -173,7 +172,7 @@ export async function init_uhunger(state = game, publish = plineWithContinuation
     if (!hero.atemp || !(hero.atemp.a[A_STR] < 0))
         return;
     hero.atemp.a[A_STR] = 0;
-    await reportHeroEncumbrance(state, publish);
+    await encumber_msg(state, publish);
 }
 // C eat.c:eatmdone().
 export async function eatmdone(state = game) {
@@ -239,7 +238,7 @@ export async function choke(food, { state = game } = {}) {
     }
     await plineWithContinuation(food ? `You choke over your ${foodword(food, state)}.`
         : 'You choke over it.');
-    const cause = !food ? 'a quick snack' : food.oclass === 12
+    const cause = !food ? 'a quick snack' : food.oclass === COIN_CLASS
         ? 'a very rich meal' : killerObjectName(food, state);
     await plineWithContinuation('You die...');
     const died = await finishHeroDeath({
@@ -1647,7 +1646,7 @@ export async function fprefx(food, { state = game } = {}) {
                 await consumeInventoryItem(food, state);
             else
                 await useUpFloorObject(food, 1, { state });
-            await explode(state.u.ux, state.u.uy, -11, d(3, 6), 0, EXPL_FIERY, { state });
+            await explode(state.u.ux, state.u.uy, -11, d(3, 6), RANDOM_CLASS, EXPL_FIERY, { state });
             return false;
         }
         if (eggIsStale(food, state)) {
@@ -1757,7 +1756,7 @@ function bounded_increase(old, amount, objectType, state) {
 }
 // C eat.c:accessory_has_effect().
 function accessory_has_effect(object) {
-    return pline(`Magic spreads through your body as you digest the ${object.oclass === 4 ? 'ring' : 'amulet'}.`);
+    return pline(`Magic spreads through your body as you digest the ${object.oclass === RING_CLASS ? 'ring' : 'amulet'}.`);
 }
 // C eat.c:eataccessory().
 export async function eataccessory(object, { state = game } = {}) {
@@ -1773,7 +1772,7 @@ export async function eataccessory(object, { state = game } = {}) {
     }
     observeObject(object, state);
     object.known = true;
-    if (rn2(object.oclass === 4 ? 3 : 5))
+    if (rn2(object.oclass === RING_CLASS ? 3 : 5))
         return;
     if (NO_DIGESTED_EFFECT.has(object.otyp))
         return;
@@ -1786,7 +1785,7 @@ export async function eataccessory(object, { state = game } = {}) {
             if (message)
                 await pline(message);
             if (state._moveloopStarted && [A_STR, A_CON].includes(attribute))
-                await reportHeroEncumbrance(state);
+                await encumber_msg(state);
             learnObjectType(object.otyp, state);
         }
     }
@@ -1929,10 +1928,10 @@ async function eatspecial(object, meal, state) {
 }
 // C eat.c:foodword().
 export function foodword(food, state = game) {
-    if (food.oclass === 7)
+    if (food.oclass === FOOD_CLASS)
         return 'food';
     const material = objectMaterial(food, state);
-    if (food.oclass === 13 && material === 19 && food.dknown)
+    if (food.oclass === GEM_CLASS && material === 19 && food.dknown)
         recordObjectKnowledge(food.otyp, state);
     // C eat.c:foodwords[], indexed by the native oc_material enum.
     const word = ['meal', 'liquid', 'wax', 'food', 'meat', 'paper', 'cloth', 'leather',
@@ -2144,7 +2143,7 @@ export async function doeat_nonfood(object, state) {
         await rottenfood(object, { state });
         noDelicious = true;
     }
-    if (object.oclass === 2 && object.opoisoned) {
+    if (object.oclass === WEAPON_CLASS && object.opoisoned) {
         await pline('Ecch - that must have been poisonous!');
         if (state.u.poisonResistance)
             await pline('You seem unaffected by the poison.');

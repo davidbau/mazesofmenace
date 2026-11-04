@@ -1,6 +1,7 @@
 // Throne effects.
 // C ref: sit.c throne_sit_effect(), special_throne_effect(), attrcurse(),
 // and rndcurse().
+import { COIN_CLASS } from './objclass.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { makeConfused } from './potion.js';
 import { makeBlinded } from './potion.js';
@@ -8,7 +9,7 @@ import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { heroHasHalfSpellDamage } from './zap.js';
 import { A_CON, A_MAX, A_STR, Luck, ROOM, } from './const.js';
 import { adjustAttribute, attributeChangeMessage, changeHeroLuck, exerciseAttribute, } from './attrib.js';
-import { reportHeroEncumbrance } from './pickup.js';
+import { encumber_msg } from './pickup.js';
 import { artifactById } from './artifacts.js';
 import { mapLevel } from './detect.js';
 import { map_background, newsym, newsym_force, see_monsters, shieldeff, } from './display.js';
@@ -47,7 +48,6 @@ import { cansee } from './vision.js';
 import { makeWish } from './zap.js';
 import { aggravateMonsters } from './wizard.js';
 import { loseHeroHp } from './hack.js';
-const COIN_CLASS = 12;
 const M2_PRINCE = 0x00000800;
 const S_VAMPIRE = 48;
 const CURSEABLE_INTRINSICS = Object.freeze([
@@ -94,7 +94,7 @@ async function announceAttributeChange(attribute, amount, conditional) {
         await plineWithContinuation(message);
     if (result.changed && game._moveloopStarted
         && (attribute === A_STR || attribute === A_CON))
-        await reportHeroEncumbrance(game);
+        await encumber_msg(game);
     return result;
 }
 async function healHeroCompletely() {

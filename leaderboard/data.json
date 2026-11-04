@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-11-04T13:18:57.299Z",
+  "timestamp": "2026-11-04T19:24:24.965Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "NoahBPeterson",
       "fork": "NoahBPeterson/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-11-04T12:41:26.196Z",
+      "lastScored": "2026-11-04T18:41:41.677Z",
       "speed": {
-        "startup_ms": 1291.6,
-        "per_move_ms": 2.0609,
-        "r2": 0.548,
-        "label": "1292+2.06/turn",
+        "startup_ms": 1597.8,
+        "per_move_ms": 2.6283,
+        "r2": 0.558,
+        "label": "1598+2.63/turn",
         "sessions": 100
       },
       "playability": {
@@ -21,7 +21,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 5.083,
+        "ms_per_move": 6.039,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -32,9 +32,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 104500,
+        "total_cumulative_ms": 124169,
         "total_startup_moves": 0,
-        "total_startup_ms": 113419
+        "total_startup_ms": 139313
       },
       "public": {
         "points": 11405,
@@ -59,15 +59,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:09:48.513Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44,
-          "heldPoints": 11264,
-          "heldMaxPoints": 11265,
-          "heldPassing": 43
-        },
         {
           "ts": "2026-09-15T21:35:10.901Z",
           "points": 11405,
@@ -1858,6 +1849,15 @@
           "heldPoints": 13105,
           "heldMaxPoints": 13126,
           "heldPassing": 53
+        },
+        {
+          "ts": "2026-11-04T18:41:41.677Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 13105,
+          "heldMaxPoints": 13126,
+          "heldPassing": 53
         }
       ],
       "sessions": [
@@ -3100,12 +3100,12 @@
       "name": "jon-bell",
       "fork": "jon-bell/teleport-contest-soln",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:29:26.827Z",
+      "lastScored": "2026-11-04T18:27:15.879Z",
       "speed": {
-        "startup_ms": 158.7,
-        "per_move_ms": 6.9306,
-        "r2": 0.572,
-        "label": "159+6.93/turn",
+        "startup_ms": 226.7,
+        "per_move_ms": 8.7163,
+        "r2": 0.584,
+        "label": "227+8.72/turn",
         "sessions": 100
       },
       "playability": {
@@ -3115,7 +3115,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.938,
+        "ms_per_move": 3.934,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -3126,9 +3126,9 @@
         "timing_error": "QueueEmpty [Error] | at display.onEmptyQueue (file:///home/runner/work/teleport-judge/teleport-judge/sandbox/playability_runner.mjs:40:38)",
         "aborted_early": false,
         "total_moves": 19405,
-        "total_cumulative_ms": 57005,
+        "total_cumulative_ms": 76336,
         "total_startup_moves": 440,
-        "total_startup_ms": 11371
+        "total_startup_ms": 14441
       },
       "public": {
         "points": 11405,
@@ -3153,15 +3153,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T16:58:24.290Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:20:34.937Z",
           "points": 15,
@@ -4946,6 +4937,15 @@
         },
         {
           "ts": "2026-11-04T12:29:26.827Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 12638,
+          "heldMaxPoints": 13126,
+          "heldPassing": 49
+        },
+        {
+          "ts": "2026-11-04T18:27:15.879Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44,
@@ -9288,12 +9288,12 @@
       "name": "lockwo",
       "fork": "lockwo/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:33:58.493Z",
+      "lastScored": "2026-11-04T18:32:37.486Z",
       "speed": {
-        "startup_ms": 576.8,
-        "per_move_ms": 2.1122,
-        "r2": 0.747,
-        "label": "577+2.11/turn",
+        "startup_ms": 680.5,
+        "per_move_ms": 2.5301,
+        "r2": 0.74,
+        "label": "680+2.53/turn",
         "sessions": 100
       },
       "playability": {
@@ -9303,7 +9303,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.82,
+        "ms_per_move": 3.25,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -9314,9 +9314,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19903,
-        "total_cumulative_ms": 56132,
+        "total_cumulative_ms": 64682,
         "total_startup_moves": 487,
-        "total_startup_ms": 6630
+        "total_startup_ms": 7630
       },
       "public": {
         "points": 11405,
@@ -9341,15 +9341,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:01:44.957Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41,
-          "heldPoints": 4794,
-          "heldMaxPoints": 11265,
-          "heldPassing": 8
-        },
         {
           "ts": "2026-09-15T21:24:52.920Z",
           "points": 11404,
@@ -11140,6 +11131,15 @@
           "heldPoints": 12249,
           "heldMaxPoints": 13126,
           "heldPassing": 44
+        },
+        {
+          "ts": "2026-11-04T18:32:37.486Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 12249,
+          "heldMaxPoints": 13126,
+          "heldPassing": 44
         }
       ],
       "sessions": [
@@ -12382,12 +12382,12 @@
       "name": "richie3366",
       "fork": "richie3366/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:56:46.018Z",
+      "lastScored": "2026-11-04T18:59:54.348Z",
       "speed": {
-        "startup_ms": 661.4,
-        "per_move_ms": 1.7834,
-        "r2": 0.701,
-        "label": "661+1.78/turn",
+        "startup_ms": 795.9,
+        "per_move_ms": 2.1613,
+        "r2": 0.709,
+        "label": "796+2.16/turn",
         "sessions": 100
       },
       "playability": {
@@ -12397,7 +12397,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.494,
+        "ms_per_move": 2.997,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -12408,9 +12408,9 @@
         "timing_error": "NhTerminate: nh_terminate | at really_done (file:///home/runner/work/teleport-judge/teleport-judge/play/richie3366/js/end.js:1427:11)",
         "aborted_early": false,
         "total_moves": 19203,
-        "total_cumulative_ms": 47890,
+        "total_cumulative_ms": 57558,
         "total_startup_moves": 415,
-        "total_startup_ms": 14409
+        "total_startup_ms": 17580
       },
       "public": {
         "points": 11405,
@@ -12435,15 +12435,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:21:24.804Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44,
-          "heldPoints": 5633,
-          "heldMaxPoints": 11265,
-          "heldPassing": 11
-        },
         {
           "ts": "2026-09-15T21:50:18.524Z",
           "points": 11405,
@@ -14234,6 +14225,15 @@
           "heldPoints": 12775,
           "heldMaxPoints": 13126,
           "heldPassing": 39
+        },
+        {
+          "ts": "2026-11-04T18:59:54.348Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 12775,
+          "heldMaxPoints": 13126,
+          "heldPassing": 39
         }
       ],
       "sessions": [
@@ -15476,12 +15476,12 @@
       "name": "rohitgandikota",
       "fork": "rohitgandikota/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:44:34.671Z",
+      "lastScored": "2026-11-04T18:45:22.459Z",
       "speed": {
-        "startup_ms": 559.4,
-        "per_move_ms": 1.5545,
-        "r2": 0.721,
-        "label": "559+1.55/turn",
+        "startup_ms": 667.4,
+        "per_move_ms": 1.8403,
+        "r2": 0.728,
+        "label": "667+1.84/turn",
         "sessions": 100
       },
       "playability": {
@@ -15491,7 +15491,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 1.99,
+        "ms_per_move": 2.231,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -15502,9 +15502,9 @@
         "timing_error": "Error: nh_terminate | at really_done (file:///home/runner/work/teleport-judge/teleport-judge/play/rohitgandikota/js/end.js:968:17)",
         "aborted_early": false,
         "total_moves": 19042,
-        "total_cumulative_ms": 37899,
+        "total_cumulative_ms": 42475,
         "total_startup_moves": 401,
-        "total_startup_ms": 14497
+        "total_startup_ms": 17663
       },
       "public": {
         "points": 11405,
@@ -15529,15 +15529,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:13:04.809Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44,
-          "heldPoints": 10499,
-          "heldMaxPoints": 11265,
-          "heldPassing": 35
-        },
         {
           "ts": "2026-09-15T21:39:22.330Z",
           "points": 11405,
@@ -17328,6 +17319,15 @@
           "heldPoints": 12095,
           "heldMaxPoints": 13126,
           "heldPassing": 38
+        },
+        {
+          "ts": "2026-11-04T18:45:22.459Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 12095,
+          "heldMaxPoints": 13126,
+          "heldPassing": 38
         }
       ],
       "sessions": [
@@ -18570,12 +18570,12 @@
       "name": "serteal",
       "fork": "serteal/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-11-04T13:14:28.326Z",
+      "lastScored": "2026-11-04T19:18:55.615Z",
       "speed": {
-        "startup_ms": 897.5,
-        "per_move_ms": 1.1368,
-        "r2": 0.631,
-        "label": "898+1.14/turn",
+        "startup_ms": 1055.7,
+        "per_move_ms": 1.3393,
+        "r2": 0.638,
+        "label": "1056+1.34/turn",
         "sessions": 100
       },
       "playability": {
@@ -18585,20 +18585,20 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 82.859,
+        "ms_per_move": 112.106,
         "threshold_ms_per_move": 25,
-        "sessions": 45,
-        "sessions_skipped": 55,
+        "sessions": 22,
+        "sessions_skipped": 78,
         "sessions_killed": 0,
         "sessions_failed": 0,
         "session_failure_rate": 0,
         "max_session_failure_rate": 0.25,
         "timing_error": null,
         "aborted_early": true,
-        "total_moves": 6901,
-        "total_cumulative_ms": 571809,
+        "total_moves": 5310,
+        "total_cumulative_ms": 595281,
         "total_startup_moves": 0,
-        "total_startup_ms": 16747
+        "total_startup_ms": 8340
       },
       "public": {
         "points": 11405,
@@ -18623,15 +18623,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:39:41.725Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44,
-          "heldPoints": 10424,
-          "heldMaxPoints": 11265,
-          "heldPassing": 43
-        },
         {
           "ts": "2026-09-15T22:10:49.877Z",
           "points": 11405,
@@ -20422,6 +20413,15 @@
           "heldPoints": 11478,
           "heldMaxPoints": 13126,
           "heldPassing": 52
+        },
+        {
+          "ts": "2026-11-04T19:18:55.615Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 11478,
+          "heldMaxPoints": 13126,
+          "heldPassing": 52
         }
       ],
       "sessions": [
@@ -21664,12 +21664,12 @@
       "name": "vtjeng",
       "fork": "vtjeng/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:48:36.801Z",
+      "lastScored": "2026-11-04T18:50:11.364Z",
       "speed": {
-        "startup_ms": 598,
-        "per_move_ms": 2.5491,
-        "r2": 0.629,
-        "label": "598+2.55/turn",
+        "startup_ms": 682.5,
+        "per_move_ms": 2.9012,
+        "r2": 0.636,
+        "label": "682+2.90/turn",
         "sessions": 100
       },
       "playability": {
@@ -21679,7 +21679,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 3.346,
+        "ms_per_move": 4.238,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -21690,9 +21690,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19433,
-        "total_cumulative_ms": 65024,
+        "total_cumulative_ms": 82362,
         "total_startup_moves": 487,
-        "total_startup_ms": 8304
+        "total_startup_ms": 10253
       },
       "public": {
         "points": 11405,
@@ -21717,15 +21717,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:15:37.569Z",
-          "points": 9757,
-          "maxPoints": 11405,
-          "passing": 22,
-          "heldPoints": 3539,
-          "heldMaxPoints": 11265,
-          "heldPassing": 6
-        },
         {
           "ts": "2026-09-15T21:42:45.292Z",
           "points": 9984,
@@ -23516,6 +23507,15 @@
           "heldPoints": 12709,
           "heldMaxPoints": 13126,
           "heldPassing": 47
+        },
+        {
+          "ts": "2026-11-04T18:50:11.364Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44,
+          "heldPoints": 12709,
+          "heldMaxPoints": 13126,
+          "heldPassing": 47
         }
       ],
       "sessions": [
@@ -24758,12 +24758,12 @@
       "name": "daoa0601",
       "fork": "daoa0601/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:52:40.913Z",
+      "lastScored": "2026-11-04T18:55:00.416Z",
       "speed": {
-        "startup_ms": 698.6,
-        "per_move_ms": 2.2059,
-        "r2": 0.695,
-        "label": "699+2.21/turn",
+        "startup_ms": 827.9,
+        "per_move_ms": 2.5195,
+        "r2": 0.688,
+        "label": "828+2.52/turn",
         "sessions": 100
       },
       "playability": {
@@ -24773,7 +24773,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.977,
+        "ms_per_move": 3.478,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -24784,9 +24784,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20449,
-        "total_cumulative_ms": 60871,
+        "total_cumulative_ms": 71117,
         "total_startup_moves": 0,
-        "total_startup_ms": 10758
+        "total_startup_ms": 13209
       },
       "public": {
         "points": 11396,
@@ -24811,15 +24811,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:17:18.003Z",
-          "points": 8709,
-          "maxPoints": 11405,
-          "passing": 27,
-          "heldPoints": 3156,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:44:55.064Z",
           "points": 8709,
@@ -26610,6 +26601,15 @@
           "heldPoints": 12779,
           "heldMaxPoints": 13126,
           "heldPassing": 42
+        },
+        {
+          "ts": "2026-11-04T18:55:00.416Z",
+          "points": 11396,
+          "maxPoints": 11405,
+          "passing": 43,
+          "heldPoints": 12779,
+          "heldMaxPoints": 13126,
+          "heldPassing": 42
         }
       ],
       "sessions": [
@@ -27852,12 +27852,12 @@
       "name": "Hoimar",
       "fork": "Hoimar/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:58:48.434Z",
+      "lastScored": "2026-11-04T19:02:12.728Z",
       "speed": {
-        "startup_ms": 199.9,
-        "per_move_ms": 1.0335,
-        "r2": 0.718,
-        "label": "200+1.03/turn",
+        "startup_ms": 224,
+        "per_move_ms": 1.1737,
+        "r2": 0.733,
+        "label": "224+1.17/turn",
         "sessions": 100
       },
       "playability": {
@@ -27867,7 +27867,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 1.294,
+        "ms_per_move": 1.463,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -27878,9 +27878,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20286,
-        "total_cumulative_ms": 26243,
+        "total_cumulative_ms": 29681,
         "total_startup_moves": 274,
-        "total_startup_ms": 3214
+        "total_startup_ms": 3719
       },
       "public": {
         "points": 11379,
@@ -27905,15 +27905,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:23:32.005Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44,
-          "heldPoints": 2524,
-          "heldMaxPoints": 11265,
-          "heldPassing": 2
-        },
         {
           "ts": "2026-09-15T21:53:00.252Z",
           "points": 11405,
@@ -29704,6 +29695,15 @@
           "heldPoints": 2810,
           "heldMaxPoints": 13126,
           "heldPassing": 2
+        },
+        {
+          "ts": "2026-11-04T19:02:12.728Z",
+          "points": 11379,
+          "maxPoints": 11405,
+          "passing": 41,
+          "heldPoints": 2810,
+          "heldMaxPoints": 13126,
+          "heldPassing": 2
         }
       ],
       "sessions": [
@@ -30946,12 +30946,12 @@
       "name": "xeophon",
       "fork": "xeophon/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T13:01:19.137Z",
+      "lastScored": "2026-11-04T19:05:04.819Z",
       "speed": {
-        "startup_ms": 344.5,
-        "per_move_ms": 1.938,
-        "r2": 0.753,
-        "label": "344+1.94/turn",
+        "startup_ms": 386.2,
+        "per_move_ms": 2.1693,
+        "r2": 0.755,
+        "label": "386+2.17/turn",
         "sessions": 100
       },
       "playability": {
@@ -30961,7 +30961,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 1.841,
+        "ms_per_move": 2.202,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -30972,9 +30972,9 @@
         "timing_error": "TypeError: Cannot read properties of undefined (reading 'ranks') | at questPagerText (file:///home/runner/work/teleport-judge/teleport-judge/play/xeophon/js/cmd.js:5564:23)",
         "aborted_early": false,
         "total_moves": 19839,
-        "total_cumulative_ms": 36530,
+        "total_cumulative_ms": 43684,
         "total_startup_moves": 0,
-        "total_startup_ms": 3921
+        "total_startup_ms": 4638
       },
       "public": {
         "points": 10559,
@@ -30999,15 +30999,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:26:09.567Z",
-          "points": 10591,
-          "maxPoints": 11405,
-          "passing": 43,
-          "heldPoints": 3218,
-          "heldMaxPoints": 11265,
-          "heldPassing": 1
-        },
         {
           "ts": "2026-09-15T21:56:23.935Z",
           "points": 10591,
@@ -32798,6 +32789,15 @@
           "heldPoints": 3544,
           "heldMaxPoints": 13126,
           "heldPassing": 1
+        },
+        {
+          "ts": "2026-11-04T19:05:04.819Z",
+          "points": 10559,
+          "maxPoints": 11405,
+          "passing": 38,
+          "heldPoints": 3544,
+          "heldMaxPoints": 13126,
+          "heldPassing": 1
         }
       ],
       "sessions": [
@@ -34040,12 +34040,12 @@
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-11-04T13:18:57.156Z",
+      "lastScored": "2026-11-04T19:24:24.817Z",
       "speed": {
-        "startup_ms": 733.7,
-        "per_move_ms": 1.3642,
-        "r2": 0.547,
-        "label": "734+1.36/turn",
+        "startup_ms": 910.2,
+        "per_move_ms": 1.7236,
+        "r2": 0.55,
+        "label": "910+1.72/turn",
         "sessions": 100
       },
       "playability": {
@@ -34055,7 +34055,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 1.968,
+        "ms_per_move": 2.469,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -34066,9 +34066,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19672,
-        "total_cumulative_ms": 38711,
+        "total_cumulative_ms": 48562,
         "total_startup_moves": 564,
-        "total_startup_ms": 16006
+        "total_startup_ms": 20421
       },
       "public": {
         "points": 1957,
@@ -34093,15 +34093,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:44:17.774Z",
-          "points": 2073,
-          "maxPoints": 11405,
-          "passing": 15,
-          "heldPoints": 1201,
-          "heldMaxPoints": 11265,
-          "heldPassing": 2
-        },
         {
           "ts": "2026-09-15T22:17:01.503Z",
           "points": 2073,
@@ -35892,6 +35883,15 @@
           "heldPoints": 1256,
           "heldMaxPoints": 13126,
           "heldPassing": 2
+        },
+        {
+          "ts": "2026-11-04T19:24:24.817Z",
+          "points": 1957,
+          "maxPoints": 11405,
+          "passing": 11,
+          "heldPoints": 1256,
+          "heldMaxPoints": 13126,
+          "heldPassing": 2
         }
       ],
       "sessions": [
@@ -37134,12 +37134,12 @@
       "name": "aganders3",
       "fork": "aganders3/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-11-04T12:57:14.524Z",
+      "lastScored": "2026-11-04T19:00:27.291Z",
       "speed": {
-        "startup_ms": 76.1,
-        "per_move_ms": 0.1197,
-        "r2": 0.836,
-        "label": "76+0.12/turn",
+        "startup_ms": 90.3,
+        "per_move_ms": 0.1608,
+        "r2": 0.88,
+        "label": "90+0.16/turn",
         "sessions": 100
       },
       "playability": {
@@ -37149,7 +37149,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.147,
+        "ms_per_move": 0.178,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -37160,9 +37160,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20475,
-        "total_cumulative_ms": 3001,
+        "total_cumulative_ms": 3638,
         "total_startup_moves": 85,
-        "total_startup_ms": 1702
+        "total_startup_ms": 1942
       },
       "public": {
         "points": 169,
@@ -37187,15 +37187,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:21:53.586Z",
-          "points": 169,
-          "maxPoints": 11405,
-          "passing": 1,
-          "heldPoints": 52,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:50:54.825Z",
           "points": 169,
@@ -38986,6 +38977,15 @@
           "heldPoints": 69,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T19:00:27.291Z",
+          "points": 169,
+          "maxPoints": 11405,
+          "passing": 1,
+          "heldPoints": 69,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -40228,12 +40228,12 @@
       "name": "jburnhams",
       "fork": "jburnhams/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T13:01:49.598Z",
+      "lastScored": "2026-11-04T19:05:41.287Z",
       "speed": {
-        "startup_ms": 81,
-        "per_move_ms": 0.1491,
-        "r2": 0.906,
-        "label": "81+0.15/turn",
+        "startup_ms": 95.7,
+        "per_move_ms": 0.2071,
+        "r2": 0.92,
+        "label": "96+0.21/turn",
         "sessions": 100
       },
       "playability": {
@@ -40243,7 +40243,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.227,
+        "ms_per_move": 0.298,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -40254,9 +40254,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20360,
-        "total_cumulative_ms": 4626,
+        "total_cumulative_ms": 6076,
         "total_startup_moves": 200,
-        "total_startup_ms": 1136
+        "total_startup_ms": 1381
       },
       "public": {
         "points": 21,
@@ -40281,15 +40281,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:26:41.544Z",
-          "points": 21,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:57:05.427Z",
           "points": 21,
@@ -42080,6 +42071,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T19:05:41.287Z",
+          "points": 21,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -43322,12 +43322,12 @@
       "name": "JadenFiotto-Kaufman",
       "fork": "JadenFiotto-Kaufman/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T12:30:24.222Z",
+      "lastScored": "2026-11-04T18:28:24.204Z",
       "speed": {
-        "startup_ms": 72.9,
-        "per_move_ms": 0.1531,
-        "r2": 0.937,
-        "label": "73+0.15/turn",
+        "startup_ms": 86.5,
+        "per_move_ms": 0.1963,
+        "r2": 0.958,
+        "label": "86+0.20/turn",
         "sessions": 100
       },
       "playability": {
@@ -43337,7 +43337,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.211,
+        "ms_per_move": 0.27,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -43348,9 +43348,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4346,
+        "total_cumulative_ms": 5559,
         "total_startup_moves": 0,
-        "total_startup_ms": 1076
+        "total_startup_ms": 1290
       },
       "public": {
         "points": 15,
@@ -43375,15 +43375,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T16:59:22.329Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:21:48.184Z",
           "points": 15,
@@ -45174,6 +45165,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T18:28:24.204Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -46416,12 +46416,12 @@
       "name": "alazarteka",
       "fork": "alazarteka/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T12:34:28.267Z",
+      "lastScored": "2026-11-04T18:33:11.063Z",
       "speed": {
-        "startup_ms": 79.5,
-        "per_move_ms": 0.1547,
-        "r2": 0.92,
-        "label": "80+0.15/turn",
+        "startup_ms": 86,
+        "per_move_ms": 0.1964,
+        "r2": 0.956,
+        "label": "86+0.20/turn",
         "sessions": 100
       },
       "playability": {
@@ -46431,7 +46431,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.218,
+        "ms_per_move": 0.27,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -46442,9 +46442,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4478,
+        "total_cumulative_ms": 5551,
         "total_startup_moves": 0,
-        "total_startup_ms": 1128
+        "total_startup_ms": 1301
       },
       "public": {
         "points": 15,
@@ -46469,15 +46469,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:02:14.694Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:25:29.820Z",
           "points": 15,
@@ -48268,6 +48259,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T18:33:11.063Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -49510,12 +49510,12 @@
       "name": "holonicbio",
       "fork": "holonicbio/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T13:02:17.249Z",
+      "lastScored": "2026-11-04T19:06:14.245Z",
       "speed": {
-        "startup_ms": 71.6,
-        "per_move_ms": 0.144,
-        "r2": 0.936,
-        "label": "72+0.14/turn",
+        "startup_ms": 81.9,
+        "per_move_ms": 0.204,
+        "r2": 0.931,
+        "label": "82+0.20/turn",
         "sessions": 100
       },
       "playability": {
@@ -49525,7 +49525,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.208,
+        "ms_per_move": 0.264,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -49536,9 +49536,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4268,
+        "total_cumulative_ms": 5429,
         "total_startup_moves": 0,
-        "total_startup_ms": 1061
+        "total_startup_ms": 1259
       },
       "public": {
         "points": 15,
@@ -49563,15 +49563,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:27:09.825Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:57:41.905Z",
           "points": 15,
@@ -51362,6 +51353,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T19:06:14.245Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -52604,12 +52604,12 @@
       "name": "khaiwang",
       "fork": "khaiwang/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T12:29:55.678Z",
+      "lastScored": "2026-11-04T18:27:50.516Z",
       "speed": {
-        "startup_ms": 77.1,
-        "per_move_ms": 0.1473,
-        "r2": 0.925,
-        "label": "77+0.15/turn",
+        "startup_ms": 87.9,
+        "per_move_ms": 0.2011,
+        "r2": 0.959,
+        "label": "88+0.20/turn",
         "sessions": 100
       },
       "playability": {
@@ -52619,7 +52619,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.209,
+        "ms_per_move": 0.271,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -52630,9 +52630,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4302,
+        "total_cumulative_ms": 5569,
         "total_startup_moves": 0,
-        "total_startup_ms": 1077
+        "total_startup_ms": 1310
       },
       "public": {
         "points": 15,
@@ -52657,15 +52657,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T16:58:53.663Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:21:11.596Z",
           "points": 15,
@@ -54456,6 +54447,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T18:27:50.516Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -55698,12 +55698,12 @@
       "name": "sldas",
       "fork": "sldas/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-11-04T12:24:29.982Z",
+      "lastScored": "2026-11-04T18:20:56.468Z",
       "speed": {
-        "startup_ms": 72.2,
-        "per_move_ms": 0.1317,
-        "r2": 0.928,
-        "label": "72+0.13/turn",
+        "startup_ms": 88.6,
+        "per_move_ms": 0.2001,
+        "r2": 0.951,
+        "label": "89+0.20/turn",
         "sessions": 100
       },
       "playability": {
@@ -55713,7 +55713,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.197,
+        "ms_per_move": 0.272,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -55724,9 +55724,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4059,
+        "total_cumulative_ms": 5593,
         "total_startup_moves": 0,
-        "total_startup_ms": 1037
+        "total_startup_ms": 1347
       },
       "public": {
         "points": 15,
@@ -55751,15 +55751,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T16:57:54.920Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:19:57.969Z",
           "points": 15,
@@ -57550,6 +57541,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T18:20:56.468Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -58792,12 +58792,12 @@
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T13:14:56.923Z",
+      "lastScored": "2026-11-04T19:19:27.995Z",
       "speed": {
-        "startup_ms": 74.5,
-        "per_move_ms": 0.1461,
-        "r2": 0.946,
-        "label": "75+0.15/turn",
+        "startup_ms": 84.2,
+        "per_move_ms": 0.19,
+        "r2": 0.961,
+        "label": "84+0.19/turn",
         "sessions": 100
       },
       "playability": {
@@ -58807,7 +58807,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.213,
+        "ms_per_move": 0.266,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -58818,9 +58818,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4385,
+        "total_cumulative_ms": 5477,
         "total_startup_moves": 0,
-        "total_startup_ms": 1108
+        "total_startup_ms": 1271
       },
       "public": {
         "points": 15,
@@ -58845,15 +58845,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:40:10.729Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T22:11:27.126Z",
           "points": 15,
@@ -60644,6 +60635,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T19:19:27.995Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -61886,12 +61886,12 @@
       "name": "vtomnet",
       "fork": "vtomnet/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T12:53:09.637Z",
+      "lastScored": "2026-11-04T18:55:34.234Z",
       "speed": {
-        "startup_ms": 73.5,
-        "per_move_ms": 0.1464,
-        "r2": 0.939,
-        "label": "73+0.15/turn",
+        "startup_ms": 85.8,
+        "per_move_ms": 0.1961,
+        "r2": 0.953,
+        "label": "86+0.20/turn",
         "sessions": 100
       },
       "playability": {
@@ -61901,7 +61901,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.213,
+        "ms_per_move": 0.268,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -61912,9 +61912,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 20560,
-        "total_cumulative_ms": 4371,
+        "total_cumulative_ms": 5509,
         "total_startup_moves": 0,
-        "total_startup_ms": 1096
+        "total_startup_ms": 1288
       },
       "public": {
         "points": 15,
@@ -61939,15 +61939,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:17:47.362Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T21:45:32.318Z",
           "points": 15,
@@ -63738,6 +63729,15 @@
           "heldPoints": 0,
           "heldMaxPoints": 13126,
           "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T18:55:34.234Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
         }
       ],
       "sessions": [
@@ -64980,12 +64980,12 @@
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
       "category": "none",
-      "lastScored": "2026-11-04T13:15:25.631Z",
+      "lastScored": "2026-11-04T19:20:01.933Z",
       "speed": {
-        "startup_ms": 86,
-        "per_move_ms": 0.1008,
-        "r2": 0.501,
-        "label": "86+0.10/turn",
+        "startup_ms": 100.6,
+        "per_move_ms": 0.1374,
+        "r2": 0.549,
+        "label": "101+0.14/turn",
         "sessions": 100
       },
       "playability": {
@@ -64995,7 +64995,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.204,
+        "ms_per_move": 0.27,
         "threshold_ms_per_move": 25,
         "sessions": 100,
         "sessions_skipped": 0,
@@ -65006,9 +65006,9 @@
         "timing_error": "Error: Access to this API has been restricted. Use --allow-fs-read to manage permissions. | at readFileSync (node:fs:440:20)",
         "aborted_early": false,
         "total_moves": 18991,
-        "total_cumulative_ms": 3867,
+        "total_cumulative_ms": 5126,
         "total_startup_moves": 261,
-        "total_startup_ms": 1280
+        "total_startup_ms": 1587
       },
       "public": {
         "points": 3,
@@ -65033,15 +65033,6 @@
         "animTotal": 3006
       },
       "history": [
-        {
-          "ts": "2026-09-15T17:40:40.654Z",
-          "points": 3,
-          "maxPoints": 11405,
-          "passing": 0,
-          "heldPoints": 0,
-          "heldMaxPoints": 11265,
-          "heldPassing": 0
-        },
         {
           "ts": "2026-09-15T22:12:05.385Z",
           "points": 3,
@@ -66826,6 +66817,15 @@
         },
         {
           "ts": "2026-11-04T13:15:25.631Z",
+          "points": 3,
+          "maxPoints": 11405,
+          "passing": 0,
+          "heldPoints": 0,
+          "heldMaxPoints": 13126,
+          "heldPassing": 0
+        },
+        {
+          "ts": "2026-11-04T19:20:01.933Z",
           "points": 3,
           "maxPoints": 11405,
           "passing": 0,

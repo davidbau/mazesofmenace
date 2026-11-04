@@ -2,6 +2,7 @@
 // water effects, and the sink terrain.  Folded from fountain_effects/
 // fountain_sword/sink_dipping/sink_drinking/sink_terrain/dip_water
 // (pure move, no behavior change).
+import { RING_CLASS, POTION_CLASS, COIN_CLASS } from './objclass.js';
 import { distmin } from './hacklib.js';
 import { armorSimpleName, fingersOrGloves } from './do_wear.js';
 import { heroArmName, heroFaceName, heroFingerName, heroHandName, monsterArmName, monsterHeadName } from './body_parts.js';
@@ -40,7 +41,7 @@ import { fruitName } from './fruit.js';
 import { poisonHeroStrengthAndHp } from './poison.js';
 import { detectMonsters } from './detect.js';
 import { grantIntrinsicProperty, propertyIsActive, setPropertyTimeout } from './properties.js';
-import { reportHeroEncumbrance } from './pickup.js';
+import { encumber_msg } from './pickup.js';
 import { setHeroGoldAmount } from './hero_gold.js';
 import { someGold } from './steal.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
@@ -351,7 +352,7 @@ export async function drinkFountain(loc) {
         await exerciseAttribute(A_CON, false);
         // A curse can drop the offhand weapon and change the inventory.
         for (const object of [...game.inventory]) {
-            if (object.oclass !== 12 && !object.cursed && !rn2(5)) {
+            if (object.oclass !== COIN_CLASS && !object.cursed && !rn2(5)) {
                 await curseObject(object);
                 if (game.program_state.gameover)
                     return true;
@@ -435,7 +436,7 @@ async function blessedFountainDraught(loc) {
         }
         if (change.changed && state._moveloopStarted
             && (attribute === A_STR || attribute === A_CON))
-            await reportHeroEncumbrance(state);
+            await encumber_msg(state);
         if (change.changed && littleLuck)
             break;
     }
@@ -461,7 +462,7 @@ export async function dipFountain(object, loc) {
     let eventMessage = '';
     if (fate >= 16 && fate <= 20) {
         if (fate === 16) {
-            if (object !== 'hands' && object.oclass !== 12 && !object.cursed)
+            if (object !== 'hands' && object.oclass !== COIN_CLASS && !object.cursed)
                 await curseObject(object);
         }
         else if (object !== 'hands' && object.cursed) {
@@ -823,8 +824,6 @@ export async function breakSinkAt(x, y, state = game) {
 // ---------------------------------------------------------------------------
 const PM_SEWER_RAT = MONSTER_NAME.indexOf('sewer rat');
 const PM_WATER_ELEMENTAL = MONSTER_NAME.indexOf('water elemental');
-const POTION_CLASS = 8;
-const RING_CLASS = 4;
 export async function drinkSink({ state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -988,7 +987,7 @@ export async function dipSink(object) {
         await washHands();
         return;
     }
-    if (object.oclass !== 8) {
+    if (object.oclass !== POTION_CLASS) {
         await pline(`You hold ${definiteName(objectCombatName(object, { includeCorpseSpecies: false }))} under the tap.`);
         if (await waterDamageObject(object, [], game, { force: true, publish: pline }) === 'nothing')
             await pline('Nothing seems to happen.');
@@ -1056,7 +1055,7 @@ export async function sinkBacksUp(x = game.u.ux, y = game.u.uy) {
         return;
     if (!sight)
         await pline(formatSeenMessage('a ring shining in its midst.'));
-    placeCreatedObject(await mkobj(4, true), x, y);
+    placeCreatedObject(await mkobj(RING_CLASS, true), x, y);
     await newsym(x, y);
     await exerciseAttribute(A_DEX, true);
     await exerciseAttribute(A_WIS, true);

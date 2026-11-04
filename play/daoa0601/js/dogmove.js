@@ -1,3 +1,4 @@
+import { ROCK_CLASS, BALL_CLASS, CHAIN_CLASS } from './objclass.js';
 import { questMonsterSound } from './role_monsters.js';
 import { performMonsterHeroAttack, beginMonsterHeroAttack, presentMonsterAttackEffects } from './mhitu.js';
 import { inventoryItemDescription } from './invent.js';
@@ -8,7 +9,8 @@ import { observeDistantObjectForNaming } from './objnam.js';
 import { verbForSubject, withIndefiniteArticle } from './objnam.js';
 import { splitObjectStack, remove_object } from './mkobj.js';
 import { monsterAvoidsKickedLocation, monsterAvoidsSokobanPushLocation, readyMonsterDiggingWeapon, speciesHasWeaponAttack, setMonsterApparentHeroPosition, } from './monmove.js';
-import { mfndpos, monAllowFlags, monsterMayDigLocation, resistConflict } from './mon.js';
+import { mfndpos, monAllowFlags, resistConflict } from './mon.js';
+import { mayDig } from './hack.js';
 import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
 import { couldSeeFromHero, cansee, clearPath, visibleCellsFrom } from './vision.js';
 import { trapAt } from './trap.js';
@@ -57,9 +59,6 @@ const M1_WALLWALK = 0x00000008;
 const M1_NOEYES = 0x00001000;
 const M2_NEUTER = 0x00040000;
 // include/objclass.h nofetch classes dog_invent() refuses to carry.
-const ROCK_CLASS = 14;
-const BALL_CLASS = 15;
-const CHAIN_CLASS = 16;
 function isFiniteNumber(value) {
     return typeof value === 'number' && Number.isFinite(value);
 }
@@ -286,7 +285,7 @@ function petCanReachLocation(monster, mx, my, fx, fy, state) {
                 continue;
             const flags = MONSTER_FLAGS1[monster.mnum] ?? 0;
             if (IS_OBSTRUCTED(loc.typ) && !(flags & M1_WALLWALK)
-                && (!monsterMayDigLocation(loc) || !(flags & M1_TUNNEL)
+                && (!mayDig(x, y, state) || !(flags & M1_TUNNEL)
                     || Is_rogue_level(state.u.uz, state)))
                 continue;
             if (IS_DOOR(loc.typ) && (loc.doormask ?? 0) & (D_CLOSED | D_LOCKED))

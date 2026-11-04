@@ -1,3 +1,4 @@
+import { WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, BALL_CLASS, CHAIN_CLASS, } from './objclass.js';
 import { objectClassForType, objectSkill, BAG_OF_TRICKS, BOULDER, BRASS_LANTERN, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CHEST, ICE_BOX, FIRE_HORN, LARGE_BOX, OBJECT_MATERIAL_NAMES, OBJECT_PROPERTY, OILSKIN_SACK, MAGIC_LAMP, OIL_LAMP, POT_ACID, POT_OIL, POT_WATER, RED_DRAGON_SCALE_MAIL, RED_DRAGON_SCALES, RIN_FIRE_RESISTANCE, SCR_BLANK_PAPER, SCR_FIRE, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL, SPE_NOVEL, TALLOW_CANDLE, TOWEL, WAN_FIRE, WAX_CANDLE, DWARVISH_CLOAK, CORPSE, DART, STATUE, ARROW, BEARTRAP, LAND_MINE, ROCK, SADDLE, CLOAK_OF_MAGIC_RESISTANCE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, IRON_SHOES, KICKING_BOOTS, OBJECT_NAMES, } from './object_data.js';
 import { formatSeenMessage, formatFeltMessage, formatHeardMessage, publishHeardMessage } from './hero_speech.js';
 import { ANTI_MAGIC, ARROW_TRAP, BEAR_TRAP, DART_TRAP, FIRE_TRAP, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, MMOVE_DIED, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SLP_GAS_TRAP, SQKY_BOARD, SPIKED_PIT, STATUE_TRAP, TELEP_TRAP, TRAPDOOR, VIBRATING_SQUARE, WEB, Is_waterlevel, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_SWAPWEP, W_WEP, is_pit, TRAPNUM, TRAP_EXPLANATIONS, Upolyd, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, In_hell, In_quest, xdir, ydir, M_SEEN_FIRE, is_hole, SHOPBASE, A_CON, A_DEX, A_STR, A_WIS, DISMOUNT_FELL, DOOR, D_BROKEN, D_ISOPEN, D_NODOOR, D_TRAPPED, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, MAXULEV, WT_TOOMUCH_DIAGONAL, M_SEEN_SLEEP, VAULT, Is_stronghold, MGIVENNAME, KILLED_BY, STONING, I_SPECIAL, DISMOUNT_GENERIC, IS_ROOM, Is_airlevel, W_SADDLE, CORR, DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, D_CLOSED, D_LOCKED, FOUNTAIN, IS_AIR, IS_DOOR, IS_FURNITURE, IS_WALL, Is_knox_level, LEVEL_TIMER_KIND, MM_NOCOUNTBIRTH, MM_NOMSG, ROOM, SCORR, SDOOR, SHOP_HOLE_COST, SINK, STONE, ZAP_POS, TRAPPED_DOOR, TRAPPED_CHEST, BURNING, DISSOLVED, DROWNING, IS_WATERWALL, PLNMSG_BACK_ON_GROUND } from './const.js';
@@ -37,7 +38,7 @@ import { teleportMonsterFromTrap, teleportMonsterThroughHole, teleportMonsterThr
 import { canFallThrough, countLevelFeatures } from './mklev.js';
 import { displayColorName, displayLiquidName, monsterName, monsterName as canonicalMonsterName, monsterName as perceivedMonsterName } from './do_name.js';
 import { touchPetrifies, selfTouchPetrifyingWeapons, heroResistsStoning, formCanBecomeStoneGolem, PM_STONE_GOLEM } from './stoning.js';
-import { useMonsterStoningCure } from './muse.js';
+import { munstone } from './muse.js';
 import { adjustMonsterSpeed, monsterSpeedMessage } from './worn.js';
 import { recordHeroKillConduct, finishHeroDeath } from './end.js';
 import { LL_DUMP, LL_MINORAC, recordGameLogEvent } from './gamelog.js';
@@ -85,7 +86,7 @@ import { heroHasInvoluntaryDelay } from './cmd.js';
 import { autopickupAtHero } from './pickup.js';
 import { finishTeleportArrival } from './location_effects.js';
 import { holdingMonsterName, holdingMonsterSubject } from './hero_expulsion.js';
-import { reportHeroEncumbrance } from './pickup.js';
+import { encumber_msg } from './pickup.js';
 import { setHeroGrip } from './mon.js';
 import { putGeneratedMonsterInventoryInStatue } from './sp_lev.js';
 import { setLevelTerrainType } from './mkmaze.js';
@@ -147,9 +148,6 @@ export async function feelTrap(trap, state = game) {
     }
 }
 const PM_IRON_GOLEM = 259;
-const POTION_CLASS = 8;
-const SCROLL_CLASS = 9;
-const SPBOOK_CLASS = 10;
 const DRAGON_HIDE = 10;
 const FIRE_RESISTANT_OBJECTS = new Set([
     RED_DRAGON_SCALE_MAIL,
@@ -428,7 +426,7 @@ export async function waterDamageObject(object, messages = [], state = game, { f
     const luck = Luck(state.u);
     if (!force && luck + 5 > random(20))
         return 'nothing';
-    if (object.oclass === 9) {
+    if (object.oclass === SCROLL_CLASS) {
         if (object.otyp === SCR_BLANK_PAPER)
             return 'nothing';
         if (carried)
@@ -438,7 +436,7 @@ export async function waterDamageObject(object, messages = [], state = game, { f
         object.spe = 0;
         return 'damaged';
     }
-    if (object.oclass === 10) {
+    if (object.oclass === SPBOOK_CLASS) {
         if (object.otyp === SPE_BOOK_OF_THE_DEAD) {
             const position = getObjectLocation(object, state, { contained: true, buried: true });
             if (position) {
@@ -462,7 +460,7 @@ export async function waterDamageObject(object, messages = [], state = game, { f
             blankNovel(object);
         return 'damaged';
     }
-    if (object.oclass === 8) {
+    if (object.oclass === POTION_CLASS) {
         if (object.otyp === POT_ACID) {
             return await destroyWetAcidPotion(object, false, emit, state, acidContext);
         }
@@ -1479,7 +1477,7 @@ export async function monsterSelfTouch(monster, { prefix = '', creditHero = fals
     return { touched: true, corpse, ...petrification };
 }
 export async function petrifyMonsterFromContact(monster, { creditHero = false, finishDeath, publish = plineWithContinuation, rollOne = rnd, state = game, } = {}) {
-    const cure = await useMonsterStoningCure(monster, {
+    const cure = await munstone(monster, {
         byHero: creditHero, publish, rollOne, state,
     });
     if (cure.consumed && cure.heroDied)
@@ -2060,11 +2058,6 @@ async function activateTrap(target, hero, trap, state, falling) {
 function isHeroDefender(defender, state) {
     return defender === state.u;
 }
-const WEAPON_CLASS = 2;
-const ARMOR_CLASS = 3;
-const TOOL_CLASS = 6;
-const BALL_CLASS = 15;
-const CHAIN_CLASS = 16;
 const PM_STEAM_VORTEX = MONSTER_NAME.indexOf('steam vortex');
 const EROSION = {
     burn: { field: 'oeroded', verb: 'smoulder', past: 'burnt', cause: 'heat' },
@@ -3189,7 +3182,7 @@ function canAlmostSee(state, x, y) {
 }
 // C trap.c:trapeffect_sqky_board(): the hero branch — a flying hero notices
 // the board, otherwise it squeaks trapnote()'s note; the monster branch —
-// the squeak heard by the hero, waking nearby sleepers (C hack.c:wake_nearby()
+// the squeak heard by the hero, waking nearby sleepers (C mon.c:wake_nearby()
 // runs at the end).
 async function trapeffectSqkyBoard(mtmp, trap, { state = game, movement, publish = async () => { }, viaSitting = false, failedUntrap = false, forceTrap = false, } = {}) {
     if (isHeroDefender(mtmp, state)) {
@@ -3700,7 +3693,7 @@ async function resolveMineLiquid(monster, state, options) {
 // trap.c trapeffect_landmine(): the monster branch — a monster lighter
 // than the trigger weight never sets it off, airborne ones rarely do, and
 // the blast stages the pit and the kill; an unconscious hero is awakened
-// by the explosion (C hack.c:unconscious()).
+// by the explosion (C trap.c:unconscious()).
 export function beginMonsterLandMine(monster, trap, state = game, { random = rn2, rollOne = rnd } = {}) {
     const visibility = monsterTrapVisibility(monster, state);
     const rawDamage = rollOne(16);
@@ -4857,13 +4850,13 @@ async function triggerWeb(trap, { viaSitting = false, failedUntrap = false, forc
         noWebMessage = true;
     }
     const turns = webTrapDuration(strength);
-    setHeroTrap(turns, TT_WEB);
     if (!turns) {
         if (!noWebMessage)
             await plineWithContinuation(`You tear through ${trap.madeby_u ? 'your' : 'a'} web!`);
         deleteTrap(trap);
         await newsym(hero.ux, hero.uy);
     }
+    setHeroTrap(turns, TT_WEB);
 }
 // trap.c trapeffect_landmine() guards steedintrap() with a static
 // recursive_mine flag: the dying steed's dismount must not re-enter the
@@ -5228,7 +5221,6 @@ function heroPassesRocks() {
     return !!(flags & M1_WALLWALK) && !(flags & M1_UNSOLID);
 }
 // ── moved from src/js/hero_polymorph_trap.ts ──
-const WAND_CLASS = 12;
 // trap.c trapeffect_poly_trap(): the hero branch — the trigger message
 // with the steed's lead-in, the form change or its reversal, the worn-gear
 // consequences, and the steed's own steedintrap() polymorph.
@@ -5265,7 +5257,8 @@ export async function triggerHeroPolymorphTrap(trap, viaSitting) {
     if (steed) {
         steed.mx = game.u.ux;
         steed.my = game.u.uy;
-        if (!monsterHasMagicResistance(steed) && !monsterResistsEffect(steed, WAND_CLASS, rn2))
+        // C zap.c:resist() maps WAND_CLASS to attack level 12.
+        if (!monsterHasMagicResistance(steed) && !monsterResistsEffect(steed, 12, rn2))
             await changeMonsterForm(steed, null, game, {
                 showMessage: true, publish: plineWithContinuation,
             });
@@ -6130,7 +6123,7 @@ export async function floatHeroUp(state = game, previous = null) {
         await plineWithContinuation('You are no longer able to control your flight.');
     refreshMovementProperties(state);
     state.context.botl = true;
-    await reportHeroEncumbrance(state);
+    await encumber_msg(state);
 }
 // C trap.c:float_down(hmask, emask).  The raw C bitmask arguments are kept:
 // hmask clears intrinsic levitation (TIMEOUT zeroes the timeout, I_SPECIAL
@@ -6167,7 +6160,7 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
             await plineWithContinuation(`You are no longer trying to float up from the ${hold}.`);
         }
         refreshMovementProperties(state);
-        await reportHeroEncumbrance(state);
+        await encumber_msg(state);
         return 0;
     }
     state.context.botl = true;
@@ -6178,14 +6171,14 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
         if (propertyIsActive('flying', state)) {
             await plineWithContinuation('You have stopped levitating and are now flying.');
             refreshMovementProperties(state);
-            await reportHeroEncumbrance(state);
+            await encumber_msg(state);
             return 1;
         }
     }
     if (hero.uswallow) {
         await plineWithContinuation(`You float down, but you are still ${monsterDigests(hero.ustuck) ? 'swallowed' : 'engulfed'}.`);
         refreshMovementProperties(state);
-        await reportHeroEncumbrance(state);
+        await encumber_msg(state);
         return 1;
     }
     let ballTrap = null;
@@ -6298,7 +6291,7 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
     // Levitation gives maximum carrying capacity, so having it end can raise
     // encumbrance: after the landing messages, before traps and autopickup.
     refreshMovementProperties(state);
-    await reportHeroEncumbrance(state);
+    await encumber_msg(state);
     // Falling through a trap door changes the level before this returns.
     const levelBefore = { dnum: hero.uz?.dnum, dlevel: hero.uz?.dlevel };
     if (trap && trap.ttyp !== STATUE_TRAP) {

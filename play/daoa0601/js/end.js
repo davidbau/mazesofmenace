@@ -1,10 +1,11 @@
 // end.js — End-of-game disclosure and terminal presentation.
 // C refs: end.c disclose()/really_done(), insight.c, dungeon.c.
+import { AMULET_CLASS, GEM_CLASS } from './objclass.js';
 import { objectClassForType, objectBaseCost, AMULET_OF_LIFE_SAVING, BAG_OF_TRICKS, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, JADE, OBJECT_NAMES, SPE_BOOK_OF_THE_DEAD, STATUE, } from './object_data.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { recorderLocalEpochSeconds, recorderLocalHour } from './calendar.js';
 import { adjustAttribute, currentAttribute } from './attrib.js';
-import { reportHeroEncumbrance } from './pickup.js';
+import { encumber_msg } from './pickup.js';
 import { cureHeroSickness } from './potion.js';
 import { removeIntrinsicProperty, setPropertyTimeout } from './properties.js';
 import { stopRemainingVolleyShots } from './hero_multishot.js';
@@ -61,8 +62,6 @@ import { isAccessibleAt } from './monmove.js';
 import { resetUtrap } from './trap.js';
 import { DTHSZ, KILLED_BY_PREFIXES, formatKiller } from './topten.js';
 export { SCORE_RECORD_STORAGE_KEY } from './score_records.js';
-const AMULET_CLASS = 5;
-const GEM_CLASS = 13;
 // C end.c:done() records the fatal event before "But wait...". The caller
 // identifies the amulet after that message returns, then consumes it and
 // revives the hero after the crumble message.
@@ -98,7 +97,7 @@ export async function completeHeroLifeSaving(transaction, { deathType = null } =
     await consumeInventoryItem(amulet, game);
     const change = adjustAttribute(A_CON, -1);
     if (change.changed && game.program_state.in_moveloop)
-        await reportHeroEncumbrance();
+        await encumber_msg();
     await restoreHeroAfterDeath({ deathType });
     if (game.program_state.gameover)
         return false;
