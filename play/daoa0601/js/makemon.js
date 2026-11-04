@@ -18,14 +18,13 @@ import { level_difficulty, specialLevelAt } from './dungeon.js';
 import { hatchableEggSpecies } from './egg_species.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { nextIdent } from './ident.js';
 import { beginObjectBurn } from './timeout.js';
 import { mkobj, mkobj_at, mksobj, rndmonnum, set_corpsenm, linkCreatedObjectToMonsterInventory, restoreMonsterInventoryOwnership, addCreatedObjectToContainer } from './mkobj.js';
 import { occupied } from './mkroom.js';
 import { monsterAlignmentType, monsterAlignmentValue } from './priest.js';
 import { ensureMinionData } from './minion.js';
 import { tameMonster } from './dog.js';
-import { MONSTER_ALIGNMENT, MONSTER_CLASS_SYMBOLS, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_GROWTH_TARGET, MONSTER_HAS_WEAPON_ATTACK, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM, monsterClassSymbol, monsterIsAmorphous, monsterIsGolem, monsterIsHumanoid, monsterIsNoncorporeal, monsterIsNonliving, monsterIsPlayerMonster, monsterIsWhirly, monsterThrowsRocks, monsterTypeName, requireMonsterData } from './monster_data.js';
+import { MONSTER_ALIGNMENT, MONSTER_CLASS_SYMBOLS, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_HAS_WEAPON_ATTACK, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM, monsterClassSymbol, monsterIsAmorphous, monsterIsGolem, monsterIsHumanoid, monsterIsNoncorporeal, monsterIsNonliving, monsterIsPlayerMonster, monsterIsWhirly, monsterOlderForm, monsterThrowsRocks, monsterTypeName, requireMonsterData } from './monster_data.js';
 import { monsterDeathCount } from './mon.js';
 import { monsterName, randomGhostName, setMonsterGivenName } from './do_name.js';
 import { monsterSubjectPronoun, setMonsterSpecies } from './mondata.js';
@@ -51,7 +50,7 @@ import { getShopItem } from './shknam.js';
 import { questMonsterType } from './quest_pager.js';
 import { shopkeeperName } from './shknam.js';
 import { inTown, roomForIndex } from './hack.js';
-import { objectWeight } from './mkobj.js';
+import { objectWeight, nextIdent } from './mkobj.js';
 // Object/class constants (normally from objects.js, not in contest template)
 const RANDOM_CLASS = 0;
 const WEAPON_CLASS = 2;
@@ -2055,7 +2054,7 @@ function isHomeElementalAt(mnum, state) {
 function targetSpecies(mnum, killedMonster) {
     if (!killedMonster && mnum === PM_KILLER_BEE)
         return PM_QUEEN_BEE;
-    return MONSTER_GROWTH_TARGET[mnum] ?? mnum;
+    return monsterOlderForm(mnum);
 }
 function resultingGender(monster, newType) {
     const flags = MONSTER_FLAGS2[newType] ?? 0;

@@ -21,7 +21,7 @@ import { corpseName, killerObjectName, objectCombatName, objectName, observeObje
 import { inventoryItemDescription, delobj } from './invent.js';
 import { chooseInventoryObject } from './inventory_prompt.js';
 import { objectClassForType, objectMaterial } from './o_init.js';
-import { rejoinObjectStack, linkObjectToMonsterInventory } from './mkobj.js';
+import { rejoinObjectStack, linkObjectToMonsterInventory, placeObjectSynchronously, stack_object } from './mkobj.js';
 import { applyPolearm, applyTool, couldPoleMonster } from './apply.js';
 import { snapshotMenuUnderlay } from './windows.js';
 import { promptDirection } from './cmd.js';
@@ -81,7 +81,6 @@ import { hiddenGold } from './vault.js';
 import { detachHeroGold, heroGoldObject } from './hero_gold.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { hasShopkeeperData, requireShopGame } from './shop_types.js';
-import { placeObjectSynchronously, stack_object } from './floor_object.js';
 import { applyFloorEffects } from './floor_effects.js';
 import { finishMonsterEating } from './dogmove.js';
 const M2_ROCKTHROW = 0x08000000;
@@ -1400,9 +1399,13 @@ async function settleLiquid(options, remaining) {
         }
         return false;
     }
+    // C dothrow.c:926-928 resets the counter directly (`gm.multi = 0;
+    // (void) drown(); return FALSE;`) so drown() may crawl the hero out;
+    // it touches neither gm.multi_reason nor gn.nomovemsg, so hurtle()'s
+    // reason and its empty-but-set end message ("") both survive until
+    // the next nomul(0) (reason only, hack.c:4170), done_eating() or
+    // unmul() consumes them.
     setMulti(0);
-    game._helplessReason = null;
-    game._helplessDoneMessage = null;
     // C hurtle_step() calls drown() directly, then stops even if a swimmer
     // survives in place. pooleffects() would check the steed too early.
     await heroLiquidEffects({

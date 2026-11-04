@@ -1,6 +1,6 @@
 import { recorderLocalEpochSeconds, recorderTimestamp } from './calendar.js';
 import { rotCorpse } from './corpse_rot.js';
-import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, createCorpstatAt, set_corpsenm, rndmonnum, rndmonnumAdj, discardMonsterInventory, linkObjectToMonsterInventory, restoreMonsterInventoryOwnership, curseObjectState, deallocateObject, objectWeight } from './mkobj.js';
+import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, createCorpstatAt, set_corpsenm, rndmonnum, rndmonnumAdj, discardMonsterInventory, linkObjectToMonsterInventory, restoreMonsterInventoryOwnership, curseObjectState, deallocateObject, objectWeight, nextIdent, placeCreatedObject, stack_object, updateIceObjectTimersAt } from './mkobj.js';
 import { oinit, objectMaterial } from './o_init.js';
 import { isRoom } from './map_types.js';
 import { restoreLevelTimers, stopLevelTimer } from './timeout.js';
@@ -25,13 +25,9 @@ import { impossible } from './diagnostics.js';
 import { PanicTermination } from './panic_termination.js';
 import { finishHeroDeath, scoreDeathCause } from './end.js';
 import { LUA_SOURCES } from './generated/lua_sources.js';
-import { nextIdent } from './ident.js';
-import { placeCreatedObject, stack_object, updateIceObjectTimersAt } from './floor_object.js';
 import { addBuriedObject, buryObject, unearthFloorObjectsAt } from './dig.js';
 import { GameMap } from './game.js';
-import { levelAllowsBones } from './bones_admission.js';
 import { ageStoresFuel } from './pickup.js';
-import { restoreBonesMonsters } from './bones_monster.js';
 import { prepareBonesObjectForRestore, prepareBonesObjectForSave } from './bones_object.js';
 import { encodeSavedGraph } from './saved_graph.js';
 import { decodeBonesPayload } from './bones_validation.js';
@@ -49,14 +45,14 @@ import { nhgetch } from './input.js';
 import { flush_screen, newsym, terrain_glyph, canOverwriteTerrain } from './display.js';
 import { pline } from './pline.js';
 import { premap_detect, convertSecretDoor } from './detect.js';
-import { TRUE_RUMORS, FALSE_RUMORS, RANDOM_ENGRAVINGS, RANDOM_EPITAPHS } from './random_text_data.js';
-import { deleteEngravingAt, makeEngravingAt, restoreEngravings, sanitizeEngravings, wipeEngravingAt, wipeoutText } from './engrave.js';
+import { TRUE_RUMORS, FALSE_RUMORS } from './random_text_data.js';
+import { deleteEngravingAt, makeEngravingAt, make_grave, randomEngraving, make_engr_at, restoreEngravings, sanitizeEngravings, wipeEngravingAt } from './engrave.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { setupElementalBubbles } from './elemental.js';
 import { insideShopRoomAt, addShopDamage, fixShopDamage, deleteObject } from './shk.js';
 import { PM_SOLDIER, antholeMonsterType, markRandomSpecialRoom, mkshop, occupied, roomHasStair, somex, somey, somexyspace, insideRoom } from './mkroom.js';
 import { bound_digging, generateAstralLevel, generateBigRoom, generateDungeonMazeFile, generateElementalPlane, generateFakeWizardLevel, generateKnoxLevel, generateLuaQuestLevel, generateMedusaLevel, generateMinesEnd, generateMinetown, generateOracleLevel, generateRandomMaze, generateSokobanLevel, generateSpecialAndFixup, generateVladsTowerLevel, generateWizardLevel, isLuaQuestPrototype, mazeFloorPoint, mkportal, place_lregion, setLevelTerrainType, wallification } from './mkmaze.js';
-import { getbones } from './bones.js';
+import { getbones, levelAllowsBones, restoreBonesMonsters } from './bones.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { restoreLevelRegions } from './regions.js';
 import { beginObjectBurn } from './timeout.js';
@@ -597,23 +593,10 @@ export async function runClaimedObjectRotTimer(claimed, state = game) {
         await deleteObject(object, state);
     return { kind, object, where, x, y };
 }
-export function make_engr_at(x, y, text, pristine, epoch, engr_type, options = undefined) {
-    return makeEngravingAt(x, y, text, pristine, epoch, engr_type, options);
-}
-export function make_grave(x, y, text) {
-    const loc = game.level?.at(x, y);
-    const trapped = game.level?.traps?.some(trap => trap.tx === x && trap.ty === y);
-    if (!loc || (loc.typ !== ROOM && loc.typ !== GRAVE) || trapped)
-        return;
-    if (!setLevelTerrainType(x, y, GRAVE))
-        return;
-    const epitaph = text ?? getRandomTextLine(RANDOM_EPITAPHS);
-    make_engr_at(x, y, epitaph, null, 0, HEADSTONE);
-}
 // C ref: rumors.c get_rnd_line().  makedefs pads each source line to a
 // minimum of 59 text bytes plus its newline.  Selection deliberately seeks
 // into one line and returns the following line.
-function getRandomTextLine(lines) {
+export function getRandomTextLine(lines) {
     if (!lines.length)
         throw new Error('Random text needs at least one source line');
     const sizes = lines.map(line => Math.max(line.length, 59) + 1);
@@ -654,18 +637,6 @@ export function getRumor(excludeCookie, truth = 0) {
     if (!excludeCookie && rumor.startsWith('[cookie] '))
         rumor = rumor.slice('[cookie] '.length);
     return rumor;
-}
-// C ref: engrave.c random_engraving().
-export function randomEngraving() {
-    let pristine;
-    if (!rn2(4))
-        pristine = getRandomTextLine(RANDOM_ENGRAVINGS);
-    else
-        pristine = getRumor(true) || getRandomTextLine(RANDOM_ENGRAVINGS);
-    return {
-        pristine,
-        text: wipeoutText(pristine, Math.trunc(pristine.length / 4)),
-    };
 }
 // C ref: nhlua.c l_nhcore_init() (defined at nhlua.c:140)
 export async function l_nhcore_init() {

@@ -42,7 +42,7 @@ import { refreshHeroSeeing } from './hero_seeing.js';
 import { syncHeroInvisibility } from './hero_invisibility.js';
 import { stopHeroOccupation } from './occupation.js';
 import { finishHeroDeath } from './end.js';
-import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_GROWTH_TARGET, MONSTER_LEVEL, MONSTER_NAME, PM_GREEN_SLIME, monsterHasProperName, requireMonsterData } from './monster_data.js';
+import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, PM_GREEN_SLIME, monsterHasProperName, monsterOlderForm, requireMonsterData } from './monster_data.js';
 import { canSpotMonster, newsym, see_monsters } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { CANDLE_TYPES, LIGHT_TYPES, TIMED_LIGHT_TYPES, registerObjectLightSource } from './light.js';
@@ -51,10 +51,9 @@ import { removeWornHeroItem } from './hero_equipment.js';
 import { captureLevitationState, floatHeroDown, heroIsUnconscious, resolveImmediatePetrification, } from './trap.js';
 import { runClaimedEggHatchTimer, finishEggHatchTimer } from './egg.js';
 import { runClaimedFigurineTimer, finishFigurineTimer } from './figurine.js';
-import { runClaimedGlobTimer, finishGlobTimer } from './glob.js';
 import { meltIce } from './zap.js';
 import { runClaimedObjectRotTimer, finishBuriedZombieTimer } from './mklev.js';
-import { objectWeight } from './mkobj.js';
+import { objectWeight, runClaimedGlobTimer, finishGlobTimer } from './mkobj.js';
 import { useUpInventoryStack } from './hero_inventory.js';
 import { carriedObjectOwner, deleteObject } from './shk.js';
 import { possessiveName } from './hacklib.js';
@@ -1105,7 +1104,7 @@ export async function putHeroToSleep(turns, { state = game, doneMessage = 'You w
     return state._helplessTurns;
 }
 export function learnEggType(mnum, state) {
-    const adult = MONSTER_GROWTH_TARGET[mnum] ?? mnum;
+    const adult = monsterOlderForm(mnum);
     if (!Array.isArray(state.mvitals))
         state.mvitals = [];
     const vital = state.mvitals[adult]
