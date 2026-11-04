@@ -1,6 +1,6 @@
 // C pickup.c: command pickup, automatic pickup, floor inspection,
-// container looting (doloot()), and tipping (dotip()).
-import { commandResultCancelled, setMulti } from './cmd.js';
+import { objectClassForType, AMULET_OF_YENDOR, BAG_OF_HOLDING, BAG_OF_TRICKS, BELL_OF_OPENING, BOULDER, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CHEST, CORPSE, CRAM_RATION, FOOD_RATION, GOLD_PIECE, HORN_OF_PLENTY, ICE_BOX, LARGE_BOX, LEASH, LEMBAS_WAFER, LOADSTONE, MAGIC_LAMP, OIL_LAMP, OILSKIN_SACK, POT_OIL, SACK, SCR_SCARE_MONSTER, SPE_BOOK_OF_THE_DEAD, SPE_WIZARD_LOCK, STATUE, TALLOW_CANDLE, WAN_CANCELLATION, WAX_CANDLE, } from './object_data.js';
+import { commandResultCancelled, cmdq_add_ec, setMulti } from './cmd.js';
 import { endVoluntaryMultiTurn, nomul, roomsAt, exceedsActionCapacity, nearCapacity, loseHeroHp, heroGoldAmount, calcCapacity, invWeight, MOD_ENCUMBER, weightCapacity, } from './hack.js';
 import { monsterStagger } from './mondata.js';
 import { MONSTER_NAME, monsterIsBig, monsterThrowsRocks } from './monster_data.js';
@@ -10,19 +10,19 @@ import { isLavaAt, isPoolAt, drawbridgeUnderlyingType } from './dbridge.js';
 import { definiteName, objectCombatName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedSimpleObjectName, simpleObjectName, simpleObjectNameWithArticle, makeSingular, objectDescription, makePlural, withIndefiniteArticle, wishedObjectPresentation, ownedObjectAction, definiteObjectAction, ownedObjectQuestion, corpseName, killerObjectName, } from './objnam.js';
 import { autokey, autoUnlockFlags, pickLock, isForceableWeapon } from './lock.js';
 import { getAdjacentLocation } from './cmd.js';
-import { ALTAR, AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_UNTRAP, SHOPBASE, A_WIS, STONE, W_WEP, W_ARMOR, W_ACCESSORY, is_pit, GRAVE, ICE, P_BASIC, P_RIDING, LOST_THROWN, LOST_STOLEN, LOST_DROPPED, LOST_EXPLODING, MENU_TRADITIONAL, MENU_FULL, MENU_PARTIAL, MENU_COMBINATION, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, PLNMSG_OBJNAM_ONLY, PLNMSG_BACK_ON_GROUND, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, PARANOID_AUTOALL, PARANOID_CONFIRM, SORTLOOT_INVLET, OBJECT_TIMER_KIND, THRONE, T_LOOTED, DRAWBRIDGE_UP, IS_FURNITURE, IS_LAVA, IS_POOL } from './const.js';
+import { CQ_CANNED, ALTAR, AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_UNTRAP, SHOPBASE, A_WIS, STONE, W_WEP, W_ARMOR, W_ACCESSORY, is_pit, GRAVE, ICE, P_BASIC, P_RIDING, LOST_THROWN, LOST_STOLEN, LOST_DROPPED, LOST_EXPLODING, MENU_TRADITIONAL, MENU_FULL, MENU_PARTIAL, MENU_COMBINATION, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, PLNMSG_OBJNAM_ONLY, PLNMSG_BACK_ON_GROUND, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, PARANOID_AUTOALL, PARANOID_CONFIRM, SORTLOOT_INVLET, OBJECT_TIMER_KIND, THRONE, T_LOOTED, DRAWBRIDGE_UP, IS_FURNITURE, IS_LAVA, IS_POOL } from './const.js';
 import { isok } from './cmd.js';
 import { inventoryClassOrder, lootSortMode, objectClassHeading, sortObjects, selectInventoryObject, inventoryItemDescription, inventoryPrimaryHandDetail, mergable, consumeObjectCharge, dolook } from './invent.js';
 import { tryCallObjectType, dropObjectAtHero, dropInventoryObjectAtHero } from './do.js';
 import { objectQuantity, splitObjectStack, unlinkMonsterObject, addObjectToContainer, unlinkObject, objectWeight, startCorpseTimeout, remove_object, useHornOfPlenty, isContainer, updateContainerWeights, restoreRejectedSplit, startGlobTimeout } from './mkobj.js';
 import { hitFloorWithObject } from './dothrow.js';
-import { learnObjectType, objectClassForType, observeObject } from './o_init.js';
+import { learnObjectType, observeObject } from './o_init.js';
 import { OBJECT_CLASS_SYMBOLS, consumeHallucinatedMenuObjectGlyph, flush_screen, newsym, newsym_force } from './display.js';
-import { floorObjectDescription, pricedFloorObjectDescription, lookHere, readFloorEngraving, dungeonFeatureAt } from './floor_object_display.js';
+import { floorObjectDescription, pricedFloorObjectDescription, lookHere, readFloorEngraving, dungeonFeatureAt } from './invent.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { showMultiSelectWindow, snapshotMenuUnderlay, showDisclosureOverlay, restoreMenuUnderlay, showChoiceWindow, showTextWindow } from './windows.js';
-import { addInventoryItem } from './u_init.js';
-import { recordHeroPrizeAcquisition, finishInventoryRemoval, useUpInventoryStack, freeInventoryObject } from './hero_inventory.js';
+import { addInventoryItem } from './invent.js';
+import { recordHeroPrizeAcquisition, finishInventoryRemoval, useUpInventoryStack, freeInventoryObject } from './invent.js';
 import { takeQueuedInventoryChoice } from './inventory_queued_choice.js';
 import { promptYesNoQuit, getLine, promptChoice, tty_yn_function } from './query.js';
 import { yn_function, paranoidYesNoQuit } from './cmd.js';
@@ -33,13 +33,12 @@ import { addShopObjectToBill, billedPickupQuote, chargeUnpaidUsage, costlySpot, 
 import { pickupLocationProblem } from './pickup_location.js';
 import { finishGhostlyPickup } from './bones_object.js';
 import { touchArtifactByHero } from './artifacts.js';
-import { AMULET_OF_YENDOR, BAG_OF_HOLDING, BAG_OF_TRICKS, BELL_OF_OPENING, BOULDER, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CHEST, CORPSE, CRAM_RATION, FOOD_RATION, GOLD_PIECE, HORN_OF_PLENTY, ICE_BOX, LARGE_BOX, LEASH, LEMBAS_WAFER, LOADSTONE, MAGIC_LAMP, OIL_LAMP, OILSKIN_SACK, POT_OIL, SACK, SCR_SCARE_MONSTER, SPE_BOOK_OF_THE_DEAD, SPE_WIZARD_LOCK, STATUE, TALLOW_CANDLE, WAN_CANCELLATION, WAX_CANDLE } from './object_data.js';
 import { landObjectOnAltar } from './altar_object.js';
 import { isQuantumBox, observeQuantumCat } from './quantum_cat.js';
 import { triggerChestTrap } from './chest_trap.js';
 import { useBagOfTricks } from './bag_of_tricks.js';
 import { surfaceName, ceilingName, waterbodyName } from './terrain_name.js';
-import { chooseInventoryObject, getobj } from './inventory_prompt.js';
+import { chooseInventoryObject, getobj } from './invent.js';
 import { feelPetrifyingCorpse, willFeelPetrifyingCorpse, handlesPetrifyingCorpseBareHanded, petrifyFromCorpseContact } from './stoning.js';
 import { monsterHasMapPosition, monsterOccupiesPosition, monsterSaddle, riderCannotReachMessage } from './steed.js';
 import { displayLiquidName, monsterName } from './do_name.js';
@@ -50,7 +49,7 @@ import { rn2, rnd, d } from './rng.js';
 import { heroHasFreeHand } from './engrave.js';
 import { heroHandName } from './body_parts.js';
 import { tipWornHelmet } from './tip_hat.js';
-import { currency } from './currency.js';
+import { currency } from './invent.js';
 import { isRider } from './corpse_species.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
 import { exerciseAttribute } from './attrib.js';
@@ -920,9 +919,9 @@ async function lootLockedContainer(container, containerCount) {
         return;
     }
     if (flags & AUTOUNLOCK_FORCE && containerCount === 1 && isForceableWeapon(game.uwep)) {
-        // The queued command owns its confirmation and any time spent.
-        game._cannedCommands ??= [];
-        game._cannedCommands.push({ kind: 'command', name: 'force' });
+        // The queued command owns its confirmation and any time spent
+        // (pickup.c:2141-2143).
+        cmdq_add_ec(CQ_CANNED, 'doforce');
     }
 }
 // C pickup.c:able_to_loot(): floor-container admission for loot and tip.

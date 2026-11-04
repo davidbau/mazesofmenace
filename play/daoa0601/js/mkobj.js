@@ -1,13 +1,12 @@
 // Object creation and species-dependent initialization.
 // C ref: mkobj.c.
-import { getObjectClassBounds, getObjectDefinition, requireObjectData, OBJECT_COST, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, ROCK, STATUE, SPLINT_MAIL, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, POT_OIL, BELL_OF_OPENING, ELVEN_SHIELD, OBJECT_MERGE, OBJECT_USES_KNOWN, ORCISH_SHIELD, SHIELD_OF_REFLECTION, BOULDER, FOOD_RATION, LUMP_OF_ROYAL_JELLY, OBJECT_MAGIC, POT_BOOZE, POT_SICKNESS, POT_WATER } from './object_data.js';
-import { APPLE, BANANA, EUCALYPTUS_LEAF, ORANGE, PEAR } from './object_data.js';
+import { objectBaseWeight, objectBaseCost, objectMerge, objectUsesKnown, objectMagic, getObjectClassBounds, getObjectDefinition, requireObjectData, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, ROCK, STATUE, SPLINT_MAIL, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, POT_OIL, BELL_OF_OPENING, ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION, BOULDER, FOOD_RATION, LUMP_OF_ROYAL_JELLY, POT_BOOZE, POT_SICKNESS, POT_WATER, APPLE, BANANA, EUCALYPTUS_LEAF, ORANGE, PEAR, OBJECT_NUTRITION, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION, OBJECT_PROPERTY, WAN_FIRE, } from './object_data.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { novelTitle } from './do_name.js';
-import { activelyEatingGlob, setTinVariety } from './eat.js';
+import { eating_glob, set_tin_variety } from './eat.js';
 import { relocateObjectRandomly } from './teleport.js';
 import { erosionMatters, objectIsVulnerableToErosion } from './trap.js';
-import { eggSpeciesIsDead, hatchableEggSpecies } from './egg_species.js';
+import { eggSpeciesIsDead, hatchableEggSpecies } from './mon.js';
 import { attachFigurineTimer, attachCursedFigurineTimer } from './figurine_timer.js';
 import { isIceAt } from './dbridge.js';
 import { block_point, cansee, vision_note_blocker_change } from './vision.js';
@@ -24,12 +23,10 @@ import { forgetTempleEntry } from './priest.js';
 import { copyPetData, copyShopkeeperData, maybeUnhideAt, undeadToCorpse } from './mon.js';
 import { artifactExistCount, createRandomArtifact, uncreateArtifact } from './artifacts.js';
 import { objectTimers, scheduleObjectTimer, stopAllObjectTimers, stopObjectTimer, stopObjectTimers, objectsInTimerGraph, copyObjectTimers } from './timeout.js';
-import { OBJECT_WEIGHT, OBJECT_NUTRITION, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION } from './object_data.js';
 import { LARGEST_INT } from './const.js';
 import { isMultiGeneratedWeapon, isPoisonableObject, isBimanualObject } from './object_properties.js';
 import { rndmonstAdj } from './makemon.js';
 import { learnObjectType, objectMaterial, objectProb } from './o_init.js';
-import { OBJECT_PROPERTY, WAN_FIRE } from './object_data.js';
 import { nameObjectFromTopten } from './topten.js';
 import { makePlural, objectName, objectTypeName, observeObjectForNaming, ownedObjectName, rndClass } from './objnam.js';
 import { attachEggHatchTimer } from './egg.js';
@@ -48,7 +45,7 @@ import { surfaceName } from './terrain_name.js';
 import { removeObjectFromMonsterInventory } from './monworn.js';
 import { plineWithContinuation } from './pline.js';
 import { plineWithContinuation as pline } from './pline.js';
-import { updateCarriedLuck } from './hero_inventory.js';
+import { updateCarriedLuck } from './invent.js';
 import { objectLightRadius, adjustObjectLightAfterBlessing, objectShedsLight } from './light.js';
 import { bookCursed } from './spell.js';
 import { resetBulkTakeoff } from './do_wear.js';
@@ -373,7 +370,7 @@ async function mksobj_init(otmp, artif, definition) {
                         if (!nutrition || ((MONSTER_GENO[mndx] ?? 0) & 0x0010))
                             continue;
                         otmp.corpsenm = mndx;
-                        setTinVariety(otmp, RANDOM_TIN);
+                        set_tin_variety(otmp, RANDOM_TIN);
                         break;
                     }
                 }
@@ -461,7 +458,7 @@ async function initTool(otmp) {
     const otyp = otmp.otyp;
     if (otyp === TALLOW_CANDLE || otyp === WAX_CANDLE) {
         otmp.spe = 1;
-        otmp.age = 20 * requireObjectData(OBJECT_COST, otyp);
+        otmp.age = 20 * objectBaseCost(otyp);
         otmp.lamplit = false;
         otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
         blessorcurse(otmp, 5);
@@ -892,7 +889,7 @@ export function clearDescriptionKnowledge(object) {
     const descriptionNeedsObservation = DESCRIPTION_UNKNOWN_CLASSES.has(object.oclass)
         || (object.otyp >= ELVEN_SHIELD && object.otyp <= ORCISH_SHIELD)
         || object.otyp === SHIELD_OF_REFLECTION
-        || !!OBJECT_MERGE[object.otyp];
+        || !!objectMerge(object.otyp);
     object.dknown = isGlob || !descriptionNeedsObservation;
 }
 // C mkobj.c:unknow_object().
@@ -904,7 +901,7 @@ export function forgetObjectKnowledge(object) {
     object.cknown = false;
     object.lknown = false;
     object.tknown = false;
-    object.known = !OBJECT_USES_KNOWN[object.otyp];
+    object.known = !objectUsesKnown(object.otyp);
 }
 // ---------------------------------------------------------------------------
 // Floor-object ownership and pile order.
@@ -1107,15 +1104,6 @@ export function unlinkMonsterObject(monster, object) {
     delete object.carrierMid;
     object.where = 'free';
     return true;
-}
-// C mon.c:replmon()/restore.c:restmonchn(): ownership follows the current
-// actor instance, including while that actor has left the map but still
-// carries its drops.
-export function restoreMonsterInventoryOwnership(monster) {
-    for (const object of monster.minvent || monster.inventory || []) {
-        object.ocarry = monster;
-        object.carrierMid = monster.m_id;
-    }
 }
 // C mkobj.c:discard_minvent().
 export async function discardMonsterInventory(monster, uncreateArtifacts, state = game, { publish = plineWithContinuation, } = {}) {
@@ -1432,7 +1420,7 @@ export async function useHornOfPlenty(horn, { tipping = false, target = null, } 
     let what;
     if (!rn2(13)) {
         object = await mkobj(8, false);
-        if (OBJECT_MAGIC[object.otyp]) {
+        if (objectMagic(object.otyp)) {
             do {
                 object.otyp = rndClass(POT_BOOZE, POT_WATER);
             } while (object.otyp === POT_SICKNESS);
@@ -1899,7 +1887,7 @@ export async function runClaimedGlobTimer(claimed, state = game, currentTurn = s
             gone: false, message: null,
         };
     }
-    const beingEaten = activelyEatingGlob(glob, state);
+    const beingEaten = eating_glob(glob, state);
     const waitsOnIce = ice === 'buried'
         || (ice === 'on-ice' && currentTurn % 3 === 1);
     if (beingEaten || waitsOnIce) {
@@ -1996,7 +1984,7 @@ export function objectWeight(object) {
     // C stores a stack's complete weight in owt.  Several early JS object
     // constructors still leave owt at the one-item metadata value after
     // changing quan, so reconstruct ordinary stack weight from the table.
-    const base = requireObjectData(OBJECT_WEIGHT, object.otyp);
+    const base = objectBaseWeight(object.otyp);
     const count = quantity(object);
     if (count < 1)
         return 0;
@@ -2050,7 +2038,7 @@ export function objectWeight(object) {
     if (object.otyp === HEAVY_IRON_BALL && object.owt)
         return object.owt;
     if (object.otyp === CANDELABRUM_OF_INVOCATION && object.spe)
-        return (base || 0) + object.spe * (OBJECT_WEIGHT[TALLOW_CANDLE] || 0);
+        return (base || 0) + object.spe * objectBaseWeight(TALLOW_CANDLE);
     if (base > 0)
         return base * quantity(object);
     return Math.trunc((count + 1) / 2);

@@ -14,7 +14,8 @@ import { exerciseAttribute } from './attrib.js';
 import { objectIsHardHelmet } from './do_wear.js';
 import { heroHeadName, heroLegName } from './body_parts.js';
 import { removeHeroEquipment } from './hero_equipment.js';
-import { canLetGo, finishInventoryRemoval } from './hero_inventory.js';
+import { canLetGo } from './do.js';
+import { finishInventoryRemoval } from './invent.js';
 import { unlinkObject, placeObjectSynchronously, remove_object } from './mkobj.js';
 import { isWeldedPrimary, setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -23,7 +24,7 @@ import { dist2, distmin } from './hacklib.js';
 import { propertyIsActive } from './properties.js';
 import { heroIsBlind } from './senses.js';
 import { woundHeroLegs } from './do.js';
-import { fillPitWithBoulderAt, resetHeroTrap } from './trap.js';
+import { fillPitWithBoulderAt, resetUtrap } from './trap.js';
 import { endVoluntaryMultiTurn, applyHeroLocationEffects, moveObject, loseHeroHp, nearCapacity, SLT_ENCUMBER, weightCapacity } from './hack.js';
 import { hitMonsterWithHeroObject } from './uhitm.js';
 import { findMonsterArmorClass } from './monworn.js';
@@ -296,7 +297,7 @@ export async function dropBall(x, y, { state = game, publish = plineWithContinua
                         return;
                 }
             }
-            await resetHeroTrap(true, state);
+            await resetUtrap(true, state);
             await fillPitWithBoulderAt(hero.ux, hero.uy, state, { publish });
         }
         hero.ux0 = hero.ux;

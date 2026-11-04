@@ -7,21 +7,21 @@
 // docall(), docall_xname(), namefloorobj(), bogusmon(), rndmonnam(),
 // hcolor(), rndcolor(), hliquid(), rndorcname(), noveltitle(),
 // lookup_novel().  The category menu is naming_categories.ts.
+import { objectClassForType, objectBaseWeight, objectUnique, objectMagic, SPE_NOVEL, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, FIGURINE, HEAVY_IRON_BALL, OBJECT_DESCRIPTIONS, STATUE, TIN, TOWEL, CLOAK_OF_DISPLACEMENT, CLOAK_OF_PROTECTION, HELMET, LEATHER_GLOVES, LEVITATION_BOOTS, OBJECT_BASES, OBJECT_NAMES, POT_WATER, SPEED_BOOTS, } from './object_data.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, In_endgame, Is_astralevel, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, PL_PSIZ, QBUFSZ, Upolyd, W_SADDLE, } from './const.js';
-import { clearCannedCommands, takeQueuedAdjacentPosition, takeQueuedKey } from './cmd.js';
-import { takeRepeatCommand } from './cmd.js';
+import { cmdq_clear, cmdq_pop, takeQueuedAdjacentPosition } from './cmd.js';
+import { CMDQ_KEY, CQ_CANNED } from './const.js';
 import { chooseNamingCategory } from './naming_categories.js';
-import { renameDiscoveredType, recordObjectEncounter, rememberType, objectClassForType } from './o_init.js';
+import { renameDiscoveredType, recordObjectEncounter, rememberType } from './o_init.js';
 import { queryLevelAnnotation } from './dungeon.js';
-import { chooseInventoryObject } from './inventory_prompt.js';
-import { SPE_NOVEL, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, FIGURINE, HEAVY_IRON_BALL, OBJECT_DESCRIPTIONS, OBJECT_WEIGHT, STATUE, TIN, TOWEL, CLOAK_OF_DISPLACEMENT, CLOAK_OF_PROTECTION, HELMET, LEATHER_GLOVES, LEVITATION_BOOTS, OBJECT_BASES, OBJECT_MAGIC, OBJECT_NAMES, OBJECT_UNIQUE, POT_WATER, SPEED_BOOTS, } from './object_data.js';
+import { chooseInventoryObject } from './invent.js';
 import { canSenseMonster, canSpotMonster, flush_screen, glyphAt, monsterVisible, randomBogusMonsterIdentity, seeMonsterWithInfrared, } from './display.js';
 import { objectTypeKnown, repriceDiscoveredGems, objectOwnershipPrefix, updateUnpaidObjectPrice } from './shk.js';
 import { definiteName, makePlural, objectName, objectNameIsPlural, observeObjectForNaming, pluralizeObjectNoun, simpleObjectName, simpleObjectNameWithArticle, verbForSubject, withIndefiniteArticle, } from './objnam.js';
 import { impossible } from './diagnostics.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { GlyphOffset } from './glyph_numbers.js';
+import { glyphIsSwallow } from './glyph_numbers.js';
 import { selectMapPosition } from './getpos.js';
 import { heroBeautyDescription } from './apply.js';
 import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, SPECIAL_PM, monsterHasProperName, monsterIsAnimal, monsterIsHumanoid, monsterIsMindless, monsterIsPlayerMonster, monsterIsRider, monsterTypeName } from './monster_data.js';
@@ -50,27 +50,20 @@ import { showGetposTip } from './hack.js';
 // C do_name.c:name_ok().
 // C do_name.c:call_ok().
 export async function doname() {
-    // do_name.c:docallcmd() uses a queued key as the naming category.
-    // Only CMDQ_KEY selects one (do_name.c:511-518); any other entry —
-    // a direction, the user-input placeholder, or a queued command
-    // reached through an empty response queue — clears CQ_CANNED and
-    // leaves ch 0, whose switch case does nothing (do_name.c:558-560).
+    // C do_name.c:docallcmd(): one cmdq_pop() (do_name.c:511-518) chooses
+    // the naming category. Only a CMDQ_KEY selects one; every other
+    // popped entry clears CQ_CANNED and leaves ch 0, whose switch case
+    // does nothing (do_name.c:558-560). An empty queue asks the category
+    // menu.
     let queuedChoice;
-    if (game._inDoAgain) {
-        const queued = takeRepeatCommand();
-        if (queued && queued.kind === 'key')
-            queuedChoice = queued.key;
-        else if (queued) {
+    const cmdq = cmdq_pop();
+    if (cmdq) {
+        if (cmdq.typ === CMDQ_KEY)
+            queuedChoice = cmdq.key;
+        else {
+            cmdq_clear(CQ_CANNED);
             queuedChoice = 0;
-            clearCannedCommands();
         }
-    }
-    else {
-        const queued = takeQueuedKey();
-        if (queued === 'user-input')
-            clearCannedCommands();
-        queuedChoice = typeof queued === 'object' ? queued.key
-            : queued === 'none' ? undefined : 0;
     }
     const choice = queuedChoice === undefined ? await chooseNamingCategory()
         : String.fromCharCode(queuedChoice);
@@ -404,7 +397,7 @@ export async function nameChosenMonster() {
     let swallowed = false;
     if (!monster && game.u.uswallow) {
         const glyph = glyphAt(selected.x, selected.y)?.glyph;
-        if (glyph !== undefined && glyph >= GlyphOffset.swallow && glyph < GlyphOffset.explodeDark) {
+        if (glyph !== undefined && glyphIsSwallow(glyph)) {
             monster = game.u.ustuck ?? null;
             swallowed = true;
         }
@@ -774,7 +767,7 @@ function appearanceRange(object) {
     else if ([5, 9, 10].includes(object.oclass)) {
         high = low;
         while (objectClassForType(high) === object.oclass
-            && !OBJECT_UNIQUE[high] && OBJECT_MAGIC[high])
+            && !objectUnique(high) && objectMagic(high))
             high++;
         high--;
     }
@@ -826,7 +819,7 @@ export async function callObjectType(object, state = game) {
     else if (sample.otyp === FIGURINE)
         sample.corpsenm = -1;
     else if (sample.otyp === HEAVY_IRON_BALL)
-        sample.owt = OBJECT_WEIGHT[HEAVY_IRON_BALL] ?? sample.owt;
+        sample.owt = objectBaseWeight(HEAVY_IRON_BALL) ?? sample.owt;
     else if (sample.oclass === 7 && sample.globby)
         sample.owt = 120;
     let prompt;

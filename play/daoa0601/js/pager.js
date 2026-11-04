@@ -1,6 +1,6 @@
 // The what-is-it commands: farlook, encyclopedia lookup, and the help menu.
 // C refs: pager.c dowhatis()/doquickwhatis()/do_look()/checkfile()/dohelp().
-import { A_NONE, ALTAR, AM_SANCTUM, Amask2align, BEAR_TRAP, BOLT_LIM, BUFSZ, COLNO, CORR, D_BROKEN, D_TRAPPED, def_warnsyms, DOOR, DRAWBRIDGE_UP, GRAVE, HOLE, ICE, In_hell, Is_airlevel, Is_astralevel, Is_rogue_level, Is_waterlevel, is_hole, is_pit, LEVEL_TIMER_KIND, LOOK_ONCE, LOOK_QUICK, LOOK_VERBOSE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MONSEEN_DETECT, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_TELEPAT, MONSEEN_WARNMON, MONSEEN_XRAYVIS, PIT, ROCKTRAP, ROWNO, SCORR, STONE, STRAT_WAITMASK, TER_DETECT, TER_MAP, TER_MON, TER_OBJ, TREE, TRAP_EXPLANATIONS, TRAPPED_CHEST, TRAPPED_DOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, Upolyd, VIBRATING_SQUARE, WEB, } from './const.js';
+import { A_NONE, ALTAR, AM_SANCTUM, Amask2align, BEAR_TRAP, BOLT_LIM, BUFSZ, CMDQ_KEY, COLNO, CORR, CQ_CANNED, D_BROKEN, D_TRAPPED, def_warnsyms, DOOR, DRAWBRIDGE_UP, GRAVE, HOLE, ICE, In_hell, Is_airlevel, Is_astralevel, Is_rogue_level, Is_waterlevel, is_hole, is_pit, LEVEL_TIMER_KIND, LOOK_ONCE, LOOK_QUICK, LOOK_VERBOSE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MONSEEN_DETECT, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_TELEPAT, MONSEEN_WARNMON, MONSEEN_XRAYVIS, PIT, ROCKTRAP, ROWNO, SCORR, STONE, STRAT_WAITMASK, TER_DETECT, TER_MAP, TER_MON, TER_OBJ, TREE, TRAP_EXPLANATIONS, TRAPPED_CHEST, TRAPPED_DOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, Upolyd, VIBRATING_SQUARE, WEB, } from './const.js';
 import { canSpotHeroSelf, cmapSymbolAppearance, glyphAt, howMonsterSeen, monsterClassSymbol, objectClassSymbol, swallowSymbolAppearance, terrain_glyph, transientMonsterGlyph, transientTrapGlyph, unblindTelepathyRange, } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { game, requireGameLevel } from './gstate.js';
@@ -14,10 +14,10 @@ import { isPoolAt, drawbridgeUnderlyingType } from './dbridge.js';
 import { surfaceName, waterbodyName } from './terrain_name.js';
 import { trapName } from './trap.js';
 import { heroDetectsMonsters, heroIsBlind, heroIsHallucinating } from './senses.js';
-import { clearCannedCommands, takeQueuedKey } from './cmd.js';
+import { cmdq_clear, cmdq_pop, yn_function } from './cmd.js';
 import { takeQueuedInventoryChoice } from './inventory_queued_choice.js';
 import { getLine, promptYesNo } from './query.js';
-import { commandResultCancelled, describeCommandKey, keyText, rememberCommandKey, showKeyBindings, takeRepeatCommand, visibleCommandKey, } from './cmd.js';
+import { commandResultCancelled, describeCommandKey, keyText, showKeyBindings, visibleCommandKey, } from './cmd.js';
 import { selectMapPosition } from './getpos.js';
 import { decodeMixedLiteral, showChoiceWindow, showDisclosureOverlay, showMultiSelectWindow, showTextWindow, } from './windows.js';
 import { encyclopediaEntries, encyclopediaMatches, encyclopediaSupplementalName } from './encyclopedia.js';
@@ -29,7 +29,7 @@ import { singularObjectName } from './objnam.js';
 import { warningSymbols } from './warning_symbols.js';
 import { BOULDER } from './object_data.js';
 import { okToQuest, onQuestStart } from './quest.js';
-import { CmapSymbol, GlyphOffset, cmapToGlyph } from './glyph_numbers.js';
+import { CmapSymbol, cmapToGlyph, glyphIsCmapC, glyphIsCmapZap, glyphToWarning } from './glyph_numbers.js';
 import { displayLiquidName, distantMonsterName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { dist2 } from './hacklib.js';
 import { heroIsPunished } from './ball.js';
@@ -39,9 +39,8 @@ import { findDrawbridgeAt } from './dbridge.js';
 import { heroFormSticks, heroSpecies } from './polyself.js';
 import { DEC_TO_UNICODE } from './terminal.js';
 import { detectedTrapDisguise } from './detect.js';
-import { promptKey } from './tty_prompts.js';
 import { promptDirection, readDirectionKey, restoreCommandMap } from './cmd.js';
-import { clearMessageWindow, displayMessageWindow, flushPendingTopline } from './tty_topline.js';
+import { clearMessageWindow, displayMessageWindow } from './tty_topline.js';
 import { KEY_HELP } from './keyhelp_data.js';
 import { HELP_FILES } from './help_files.js';
 import { showExtendedCommandList } from './cmd.js';
@@ -167,15 +166,14 @@ export async function offerFarlookInformation(description, withoutAsking) {
 // nothing queued, mode 1 (the ';' glance) picks the cursor directly while
 // mode 0 asks through the category menu.
 async function runDoLook(mode) {
-    const queued = takeQueuedKey();
-    if (queued === 'cancel' || queued === 'user-input') {
-        if (queued === 'user-input')
-            clearCannedCommands();
+    const cmdq = cmdq_pop();
+    if (cmdq && cmdq.typ !== CMDQ_KEY) {
+        cmdq_clear(CQ_CANNED);
         game.context.move = 0;
         return;
     }
-    if (typeof queued === 'object') {
-        await doLookChoice(String.fromCharCode(queued.key), mode);
+    if (cmdq) {
+        await doLookChoice(String.fromCharCode(cmdq.key), mode);
         return;
     }
     if (mode === 1) {
@@ -390,18 +388,9 @@ export async function whatDoesCommand() {
         await pline(`Ask about '&' or '?' to get more info.${game.iflags.altmeta ? '  (For ESC, type it twice.)' : ''}`);
         game._whatdoesShown = true;
     }
-    const readKey = async (prompt) => {
-        const queued = takeRepeatCommand();
-        if (queued)
-            return queued.kind === 'key' ? queued.key : 27;
-        await flushPendingTopline();
-        const key = await promptKey(prompt);
-        rememberCommandKey(key);
-        return key;
-    };
-    let key = await readKey('What command? ');
+    let key = (await yn_function('What command?', null, '', true)).answer.charCodeAt(0);
     if (key === 27 && game.iflags.altmeta) {
-        key = await readKey('] ');
+        key = (await yn_function(']', null, '', true)).answer.charCodeAt(0);
         if (key !== 27)
             key |= 128;
     }
@@ -614,9 +603,9 @@ export function mapFeatureDescription(x, y, glyph) {
     if (glyph.kind === 'engraving')
         return 'engraving';
     if (glyph.kind === 'effect' && glyph.glyph !== undefined) {
-        if (glyph.glyph >= GlyphOffset.zap && glyph.glyph < GlyphOffset.cmapC)
+        if (glyphIsCmapZap(glyph.glyph))
             return '';
-        if (glyph.glyph >= GlyphOffset.cmapC && glyph.glyph < GlyphOffset.swallow) {
+        if (glyphIsCmapC(glyph.glyph)) {
             if (glyph.glyph === cmapToGlyph(CmapSymbol.poisoncloud))
                 return 'poison cloud';
             if (glyph.glyph === cmapToGlyph(CmapSymbol.goodpos))
@@ -788,7 +777,8 @@ export function screenDescription(x, y, description) {
             name = Is_waterlevel(game.u.uz) ? 'limitless water' : 'wall of water';
         else if (index === CmapSymbol.lava)
             name = 'lava';
-        const liquid = [CmapSymbol.pool, CmapSymbol.water, CmapSymbol.lava, CmapSymbol.lavawall, CmapSymbol.ice].includes(index);
+        const liquids = [CmapSymbol.pool, CmapSymbol.water, CmapSymbol.lava, CmapSymbol.lavawall, CmapSymbol.ice];
+        const liquid = liquids.includes(index);
         const article = name.includes(' of a room') ? `the ${name}`
             : liquid || index === CmapSymbol.stone || name === 'air' ? name : withIndefiniteArticle(name);
         append(!count && trap && trapType !== VIBRATING_SQUARE ? 'a trap' : article, name);
@@ -854,7 +844,7 @@ export async function farlookLocationDescription(x, y) {
         return 'unexplored area';
     }
     if (glyph?.kind === 'warning') {
-        const index = glyph.glyph === undefined ? -1 : glyph.glyph - GlyphOffset.warning;
+        const index = glyph.glyph === undefined ? -1 : glyphToWarning(glyph.glyph);
         const warning = def_warnsyms[index];
         if (!warning)
             throw new RangeError(`Unknown warning glyph ${glyph.glyph}`);
@@ -984,7 +974,7 @@ async function* lookListEntries(kind, nearby, mode, describeHero) {
                 else if (glyph.kind === 'invisible')
                     description = 'remembered, unseen, creature';
                 else if (glyph.kind === 'warning') {
-                    const warning = def_warnsyms[(glyph.glyph ?? -1) - GlyphOffset.warning];
+                    const warning = def_warnsyms[glyph.glyph === undefined ? -1 : glyphToWarning(glyph.glyph)];
                     if (warning)
                         description = warning.desc;
                 }

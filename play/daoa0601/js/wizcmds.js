@@ -39,11 +39,11 @@ import { reportHeroEncumbrance } from './pickup.js';
 import { withMonsterNoticesBlocked, applyHeroLiquidEffects, mayDig, showGetposTip, checkSpecialRoom } from './hack.js';
 import { dungeonDepth, depth } from './hacklib.js';
 import { specialDisplayName, initOverviewRecord, insideWizardTower, levelAtDepth, levelIsWizardTower, sameDungeonLevel, specialPrototypeAt } from './dungeon.js';
-import { addInventoryItem } from './u_init.js';
+import { addInventoryItem } from './invent.js';
 import { mksobj, unlinkObject, deallocateObject } from './mkobj.js';
 import { AMULET_OF_YENDOR } from './object_data.js';
 import { recordObjectEncounter } from './o_init.js';
-import { reassignInventoryLetters } from './inventory_prompt.js';
+import { reassignInventoryLetters } from './invent.js';
 import { observeObjectForNaming } from './objnam.js';
 import { objectTypeKnown, setPaidShopkeeper } from './shk.js';
 import { FUZZER_IMPOSSIBLE_CONTINUE, FUZZER_IMPOSSIBLE_PANIC, panic } from './diagnostics.js';
@@ -68,7 +68,7 @@ import { NO_COLOR } from './terminal.js';
 import { symsetMenuValue } from './options.js';
 import { customizedGlyphs } from './glyph_customizations.js';
 import { rumorCheck } from './rumor.js';
-import { clearHeroTrap } from './trap.js';
+import { resetUtrap } from './trap.js';
 // C wizcmds.c:wiz_wish().
 export async function wizWish() {
     const verbose = game.flags.verbose;
@@ -661,7 +661,7 @@ async function discardOldLevel() {
     game._travelTarget = null;
     if (game.context.polearm)
         game.context.polearm.hitmonId = null;
-    clearHeroTrap();
+    await resetUtrap(false);
     await checkSpecialRoom({ newLevel: true });
     game.u.ustuck = null;
     game.u.uswallow = game.uswallow = 0;

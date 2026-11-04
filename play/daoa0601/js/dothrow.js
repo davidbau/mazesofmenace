@@ -1,33 +1,34 @@
 // dothrow.js — Throw and fire command front ends.
 // C refs: dothrow.c ok_to_throw(), dothrow(), dofire(), and throw_obj()'s
 // per-missile handoff to the flight owners.
+import { objectClassForType, objectSkill, objectMagic, AKLYS, BOOMERANG, BOULDER, BULLWHIP, CORPSE, EGG, SLING, ACID_VENOM, BLINDING_VENOM, CREAM_PIE, EXPENSIVE_CAMERA, CRYSTAL_BALL, LENSES, MELON, MIRROR, POT_OIL, POT_WATER, STATUE, HEAVY_IRON_BALL, OBJECT_HIT_BONUS, TRIDENT, WAN_STRIKING, BAG_OF_HOLDING, BAG_OF_TRICKS, EUCALYPTUS_LEAF, FLINT, FORTUNE_COOKIE, HARD_GEM_TYPES, KELP_FROND, OBJECT_NAMES, OILSKIN_SACK, PANCAKE, SACK, SPRIG_OF_WOLFSBANE, } from './object_data.js';
 import { game, requirePlayingGame, requireLiveGame, requireGameLevel, requireInitializedGame } from './gstate.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { beginCommandResult, commandResultCancelled, setMulti, isok } from './cmd.js';
+import { beginCommandResult, commandResultCancelled, cmdq_add_ec, cmdq_add_key, setMulti, isok } from './cmd.js';
 import { requireInitializedHero } from './hero_types.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { currentAttribute, changeHeroLuck } from './attrib.js';
-import { AKLYS, BOOMERANG, BOULDER, BULLWHIP, CORPSE, EGG, OBJECT_SUBTYPE, SLING, ACID_VENOM, BLINDING_VENOM, CREAM_PIE, EXPENSIVE_CAMERA, CRYSTAL_BALL, LENSES, MELON, MIRROR, POT_OIL, POT_WATER, STATUE, HEAVY_IRON_BALL, OBJECT_HIT_BONUS, TRIDENT, WAN_STRIKING, BAG_OF_HOLDING, BAG_OF_TRICKS, EUCALYPTUS_LEAF, FLINT, FORTUNE_COOKIE, HARD_GEM_TYPES, KELP_FROND, OBJECT_COST, OBJECT_MAGIC, OBJECT_NAMES, OILSKIN_SACK, PANCAKE, SACK, SPRIG_OF_WOLFSBANE } from './object_data.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_MOVE, MONSTER_SIZE, MONSTER_SYMBOL, monsterHatesBlessings, monsterIsBig, monsterThrowsRocks, MONSTER_BODY_META, MONSTER_NAME, monsterDigests, monsterIsWhirly, monsterTypeName } from './monster_data.js';
 import { artifactById, artifactToHitBonus } from './artifacts.js';
 import { heroCannotTake, heroHasNoHands, heroHatesSilver, heroSpecies, polymonHero } from './polyself.js';
 import { isLauncherAmmunition, isPolearm, isWetTowel, launcherMatchesAmmo, objectIsCrackable } from './object_properties.js';
 import { isWeldedPrimary, setQuiverObject, doquiverCore } from './wield.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, A_DEX, A_STR, STR19, IS_WATERWALL, MM_IGNORELAVA, MM_IGNOREWATER, W_ARM, W_ARMC, W_ARMU, P_PICK_AXE, P_SPEAR, IS_SOFT, IS_ALTAR, HOLE, PIT, SPIKED_PIT, TRAPDOOR, MM_NOMSG, M_AP_MONSTER, M_AP_TYPE, A_CHA, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FIRE_TRAP, IRONBARS, IS_OBSTRUCTED, IS_STWALL, Is_airlevel, Is_waterlevel, KILLED_BY, LOST_THROWN, MAGIC_PORTAL, STONING, TREE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, W_NONPASSWALL, WT_TO_DMG, ZAP_POS, is_hole, is_pit, SHOPBASE } from './const.js';
+import { GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, A_DEX, A_STR, STR19, IS_WATERWALL, MM_IGNORELAVA, MM_IGNOREWATER, W_ARM, W_ARMC, W_ARMU, P_PICK_AXE, P_SPEAR, IS_SOFT, IS_ALTAR, CQ_CANNED, HOLE, PIT, SPIKED_PIT, TRAPDOOR, MM_NOMSG, M_AP_MONSTER, M_AP_TYPE, A_CHA, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FIRE_TRAP, IRONBARS, IS_OBSTRUCTED, IS_STWALL, Is_airlevel, Is_waterlevel, KILLED_BY, LOST_THROWN, MAGIC_PORTAL, STONING, TREE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, W_NONPASSWALL, WT_TO_DMG, ZAP_POS, is_hole, is_pit, SHOPBASE } from './const.js';
 import { isAutoReturningThrow } from './returning_throw.js';
 import { weaponHitBonus, dryTowel, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
 import { autoquiverCandidate } from './quiver.js';
 import { corpseName, killerObjectName, objectCombatName, objectName, observeObjectForNaming, singularObjectName, makePlural, verbForSubject, objectDescription, objectNameIsPlural, simpleObjectName, withIndefiniteArticle } from './objnam.js';
 import { inventoryItemDescription, delobj } from './invent.js';
-import { chooseInventoryObject } from './inventory_prompt.js';
-import { objectClassForType, objectMaterial } from './o_init.js';
+import { chooseInventoryObject } from './invent.js';
+import { objectMaterial } from './o_init.js';
 import { rejoinObjectStack, linkObjectToMonsterInventory, placeObjectSynchronously, stack_object } from './mkobj.js';
 import { applyPolearm, applyTool, couldPoleMonster } from './apply.js';
 import { snapshotMenuUnderlay } from './windows.js';
 import { promptDirection } from './cmd.js';
 import { captureThrownObjectFlight, detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget, heroDirectGoldThrowRange } from './thrown_object.js';
 import { wakeMonstersNearWithMessages, angerAttackedMonster, wakeAttackedMonster, finishEnvironmentalMonsterDeath, monsterWearsTorsoArmor, resolveMonsterLiquid, wakeMonster as awakenMonster, angerMonster } from './mon.js';
-import { canLetGo, freeInventoryObject } from './hero_inventory.js';
+import { canLetGo } from './do.js';
+import { freeInventoryObject } from './invent.js';
 import { wipeHeroEngraving } from './engrave.js';
 import { heroResistsStoning, touchPetrifies, formCanBecomeStoneGolem } from './stoning.js';
 import { heroHandName, heroEyeCount, heroEyeName, heroFaceName, heroHeadName } from './body_parts.js';
@@ -49,7 +50,7 @@ import { throwOrdinaryObject } from './ordinary_throw.js';
 import { monsterHasMapPosition, monsterOccupiesPosition } from './steed.js';
 import { canSeeMonster, canSpotMonster, flush_screen, newsym, glyphAt, map_invisible } from './display.js';
 import { goodPosition } from './teleport_rules.js';
-import { finishImmediateMonsterTrap, petrifyMonsterImmediately, triggerImmediateMonsterTrap, erodeObject, resolveImmediatePetrification, petrifyMonsterFromContact, trapName, triggerHeroTrap } from './trap.js';
+import { mintrap, petrifyMonsterImmediately, erodeObject, resolveImmediatePetrification, petrifyMonsterFromContact, trapName, dotrap } from './trap.js';
 import { stopHeroOccupation } from './occupation.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, d, rnl } from './rng.js';
@@ -67,7 +68,7 @@ import { objectResistsDestruction } from './zap.js';
 import { costlySpot, stolenValue, makeAngryShopkeeper, insideShopRoomAt, containedGold, donateGold, makeShopkeeperHappy, objectIsUnpaid, removeObjectAndContentsFromBill, sellHeroDroppedObject, shopResident } from './shk.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { exceedsActionCapacity, checkSpecialRoom, finishDestinationSpotEffects, heroBadRock, heroGoldAmount, heroLiquidEffects, heroTestMove, heroTightDiagonalReason, inventoryWeight, loseHeroHp, nomul, switchHeroTerrain, roomsAt } from './hack.js';
-import { currency } from './currency.js';
+import { currency } from './invent.js';
 import { heroCanBeBlindedByObject } from './blinding_attack.js';
 import { finishHeroDeath } from './end.js';
 import { hitHeroWithFallingArtifact } from './falling_artifact.js';
@@ -112,10 +113,11 @@ async function okToThrow() {
     }
     return true;
 }
-export async function dofire(cannedShotLimit = null) {
-    const shotLimit = cannedShotLimit === null
-        ? Math.max(0, game._commandCount || 0)
-        : Math.max(0, cannedShotLimit || 0);
+export async function dofire() {
+    // C dothrow.c:ok_to_throw() reads the count from gc.command_count; a
+    // queued dofire (fireassist swap chains) finds it untouched because
+    // no parse() runs between the two commands.
+    const shotLimit = Math.max(0, game._commandCount || 0);
     setMulti(0);
     if (!await okToThrow())
         return;
@@ -156,9 +158,10 @@ export async function dofire(cannedShotLimit = null) {
             const alternate = game.uswapwep || game.u?.uswapwep;
             if (game.flags?.fireassist !== false && alternate && isPolearm(alternate)
                 && !(alternate.cursed && alternate.bknown)) {
-                game._cannedCommands ||= [];
-                game._cannedCommands.push({ kind: 'swap-weapon' });
-                game._cannedCommands.push({ kind: 'fire', shotLimit });
+                // C dothrow.c:522-525: swap to the polearm and retry
+                // fire, each as its own queued command.
+                cmdq_add_ec(CQ_CANNED, 'doswapweapon');
+                cmdq_add_ec(CQ_CANNED, 'dofire');
                 game.context.move = 0;
                 return;
             }
@@ -198,9 +201,9 @@ export async function dofire(cannedShotLimit = null) {
         }
         if (fireassist && !matchingLauncher(game.uwep)
             && matchingLauncher(alternate)) {
-            game._cannedCommands ||= [];
-            game._cannedCommands.push({ kind: 'swap-weapon' });
-            game._cannedCommands.push({ kind: 'fire', shotLimit });
+            // C dothrow.c:567-569: swap weapons and retry fire.
+            cmdq_add_ec(CQ_CANNED, 'doswapweapon');
+            cmdq_add_ec(CQ_CANNED, 'dofire');
             game.context.move = quiverSelectionSpentTime ? 1 : 0;
             return;
         }
@@ -227,14 +230,13 @@ export async function dofire(cannedShotLimit = null) {
             if (inventoryLauncher) {
                 if (!inventoryLauncher.invlet)
                     throw new Error('Cannot queue a wield command for an object without an inventory letter.');
-                game._cannedCommands ||= [];
-                if (game.uwep && !game.flags?.pushweapon) {
-                    game._cannedCommands.push({ kind: 'swap-weapon' });
-                }
-                game._cannedCommands.push({
-                    kind: 'wield', invlet: inventoryLauncher.invlet,
-                });
-                game._cannedCommands.push({ kind: 'fire', shotLimit });
+                // C dothrow.c:573-577: push the old weapon aside, wield
+                // the launcher, and retry fire.
+                if (game.uwep && !game.flags?.pushweapon)
+                    cmdq_add_ec(CQ_CANNED, 'doswapweapon');
+                cmdq_add_ec(CQ_CANNED, 'dowield');
+                cmdq_add_key(CQ_CANNED, inventoryLauncher.invlet.charCodeAt(0));
+                cmdq_add_ec(CQ_CANNED, 'dofire');
                 game.context.move = quiverSelectionSpentTime ? 1 : 0;
                 return;
             }
@@ -287,7 +289,7 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
     // valid even when downplayed.
     const launcher = game.uwep;
     const wieldingSling = !!launcher
-        && OBJECT_SUBTYPE[launcher.otyp] === OBJECT_SUBTYPE[SLING];
+        && objectSkill(launcher.otyp) === objectSkill(SLING);
     // C getobj() sorts its candidates independently of the carried chain.
     const throwClassification = (item) => {
         const objectClass = item.oclass || objectClassForType(item.otyp);
@@ -776,11 +778,10 @@ async function hurtleOneSquare(monster, dx, dy, { state, announce, nameMonster, 
 // ends with mintrap(FORCEBUNGLE), which still rolls a known trap's avoidance.
 async function applyHurtleTrap(monster, options, stage) {
     const { state, announce, finishMonsterDeath, random } = options;
-    const action = await triggerImmediateMonsterTrap(monster, state, stage === 'in-flight'
-        ? { inAir: true, random } : { forceBungle: true, random });
-    await finishImmediateMonsterTrap(action, state, {
-        publish: announce,
+    await mintrap(monster, state, {
+        ...(stage === 'in-flight' ? { inAir: true } : { forcebungle: true }),
         random,
+        publish: announce,
         finishDeath: async (target, death) => {
             const outcome = await finishMonsterDeath(target, death);
             if (typeof outcome === 'boolean')
@@ -908,7 +909,7 @@ export function rangedTargetHitBonus(object, defender, { state = game, defenderN
         bonus += 6;
     }
     else if (object.oclass === WEAPON_CLASS || object.oclass === GEM_CLASS
-        || (object.oclass === TOOL_CLASS && OBJECT_SUBTYPE[object.otyp] !== 0)) {
+        || (object.oclass === TOOL_CLASS && objectSkill(object.otyp) !== 0)) {
         bonus += weaponHitBonus(object, defender, { state, random, rollOne });
     }
     return bonus;
@@ -1353,7 +1354,7 @@ async function triggerLandingTrap(trap, options, remaining) {
         await plineWithContinuation('The ground vibrates as you pass it.');
     if ([VIBRATING_SQUARE, FIRE_TRAP, MAGIC_PORTAL].includes(trap.ttyp) || sokobanFall) {
         const result = sokobanFall && options.jumping
-            ? { died: false } : await triggerHeroTrap(trap, options);
+            ? { died: false } : await dotrap(trap, options);
         if (result.died)
             return true;
         if (trap.ttyp === MAGIC_PORTAL)
@@ -1564,7 +1565,7 @@ export function harmlessMissile(object, state = game) {
     }
 }
 export function projectileKind(object) {
-    const subtype = object ? OBJECT_SUBTYPE[object.otyp] ?? 0 : 0;
+    const subtype = object ? objectSkill(object.otyp) : 0;
     if (subtype >= -P_CROSSBOW && subtype <= -P_BOW)
         return 'ammunition';
     if (subtype >= -P_BOOMERANG && subtype <= -P_DART)
@@ -1583,7 +1584,7 @@ export function destroyMulchedProjectile(object) {
 export function shouldMulchMissile(object, { monsterMoving = false } = {}) {
     if (!object || !projectileKind(object)
         || OBJECT_NAMES[object.otyp] === 'boomerang'
-        || OBJECT_MAGIC[object.otyp])
+        || objectMagic(object.otyp))
         return false;
     const erosion = Math.max(object.oeroded ?? 0, object.oeroded2 ?? 0);
     const enchantment = object.spe ?? object.enchantment ?? 0;

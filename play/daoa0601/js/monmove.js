@@ -1,8 +1,9 @@
+import { objectSkill, SCR_SCARE_MONSTER, SKELETON_KEY, LOCK_PICK, CREDIT_CARD, APPLE, BANANA, BULLWHIP, BOULDER, CARROT, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FLINT, ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK, ARROW, BAG_OF_HOLDING, BLINDFOLD, BOOMERANG, CANDY_BAR, CRYSKNIFE, DAGGER, FEDORA, FORTUNE_COOKIE, LEMBAS_WAFER, LEATHER_JACKET, LEASH, MAGIC_MARKER, MAGIC_WHISTLE, OILSKIN_SACK, PANCAKE, SACK, SLING, STETHOSCOPE, TALLOW_CANDLE, TIN_OPENER, TIN_WHISTLE, TOWEL, WAX_CANDLE, AXE, BATTLE_AXE, DART, IRON_SHOES, OBJECT_LARGE_DAMAGE, OBJECT_SMALL_DAMAGE, PICK_AXE, ROCK, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, SLIME_MOLD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, BAG_OF_TRICKS, LUMP_OF_ROYAL_JELLY, POT_POLYMORPH, WAN_MAKE_INVISIBLE, WAN_POLYMORPH, } from './object_data.js';
 import { formatHeardMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { objectMaterial, learnObjectType } from './o_init.js';
-import { moveMonsterNextToHero, teleportMonsterThroughHole, teleportMonsterThroughPortal, teleportMonsterToRandomLevel, relocateMonsterTo, randomMonsterRelocation, teleportMonsterFromTrap } from './teleport.js';
+import { teleportMonsterThroughHole, teleportMonsterThroughPortal, teleportMonsterToRandomLevel, relocateMonsterTo, randomMonsterRelocation, teleportMonsterFromTrap } from './teleport.js';
+import { moveMonsterNextToHero } from './mon.js';
 import { noticeMonster, disturbBuriedZombies, loseHeroHp, heroGoldAmount, inTown, roomsAt } from './hack.js';
-import { launchRollingBoulder } from './trap.js';
 import { impossible, panic } from './diagnostics.js';
 import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
 import { veganCorpse } from './food_traits.js';
@@ -38,14 +39,14 @@ import { tryCallObjectType } from './do.js';
 import { dissolveBars } from './projectile_bars.js';
 import { removeObjectFromMonsterInventory, findMonsterArmorClass } from './monworn.js';
 import { vision_recalc, cansee, clearPath, couldSeeFromHero, couldsee, monsterHasLineOfSightToHero, vision_note_blocker_change } from './vision.js';
-import { SCR_SCARE_MONSTER, SKELETON_KEY, LOCK_PICK, CREDIT_CARD, APPLE, BANANA, BULLWHIP, BOULDER, CARROT, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FLINT, ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK, ARROW, BAG_OF_HOLDING, BLINDFOLD, BOOMERANG, CANDY_BAR, CRYSKNIFE, DAGGER, FEDORA, FORTUNE_COOKIE, LEMBAS_WAFER, LEATHER_JACKET, LEASH, MAGIC_MARKER, MAGIC_WHISTLE, OILSKIN_SACK, PANCAKE, SACK, SLING, STETHOSCOPE, TALLOW_CANDLE, TIN_OPENER, TIN_WHISTLE, TOWEL, WAX_CANDLE, AXE, BATTLE_AXE, DART, IRON_SHOES, OBJECT_BIMANUAL, OBJECT_LARGE_DAMAGE, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, PICK_AXE, ROCK, POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, SLIME_MOLD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, BAG_OF_TRICKS, LUMP_OF_ROYAL_JELLY, POT_POLYMORPH, WAN_MAKE_INVISIBLE, WAN_POLYMORPH } from './object_data.js';
 import { plineWithContinuation } from './pline.js';
 import { heroSpecies, heroFormSticks, dragonFormForArmor, heroHasProtectionFromShapeChangers } from './polyself.js';
-import { releaseHeroFromMonster, releaseMonsterHold } from './hero_expulsion.js';
+import { releaseMonsterHold } from './hero_expulsion.js';
+import { releaseHeroFromMonster } from './mon.js';
 import { checkQuestMonsterStatus, talkQuestCharacter, performQuestExpulsion } from './quest.js';
 import { placeHeroOnLevel } from './hero_location.js';
 import { hasShopkeeperData } from './shop_types.js';
-import { trapName, beginMonsterFireTrap, finishMonsterFireTrap, beginMonsterPitTrap, finishDeferredMonsterTrap, burnArmorByFire, monsterTrapVisibility, seeTrap, trapAt, triggerMonsterTrap, tryMonsterTrapEscape, finishMonsterPitTrap, beginMonsterProjectileTrap, finishMonsterProjectileTrap, projectileTrapNeedsResume, finishMonsterWebTrap, maketrap } from './trap.js';
+import { mintrap, trapAt, maketrap } from './trap.js';
 import { levelHasCeiling, insideWizardTower, sameDungeonLevel, canHeroRiseUp, levelAtDepth } from './dungeon.js';
 import { movePet, monsterCouldReachItem, finishMonsterEating } from './dogmove.js';
 import { attackMonsterWithMonster, beginMonsterMeleeAttack, displaceMonster, fightNearbyMonster, monsterAttackStopsAggressor } from './mhitm.js';
@@ -64,18 +65,9 @@ import { monsterName as canonicalMonsterName, monsterName, visibleMonsterSubject
 import { possessiveName, depth, dist2, distmin } from './hacklib.js';
 import { shopkeeperName } from './shknam.js';
 import { heroHasEyes, monsterHandName } from './body_parts.js';
-import { applyMonsterAntiMagicTrap, finishMonsterAntiMagicTrap, monsterHasMagicResistance } from './trap.js';
-import { beginMonsterBearTrap, finishMonsterBearTrap } from './trap.js';
-import { beginMonsterLandMine, finishMonsterLandMine, landMineNeedsResume } from './trap.js';
-import { beginMonsterRockTrap, finishMonsterRockTrap, rockTrapNeedsResume } from './trap.js';
-import { beginMonsterSleepGasTrap, finishMonsterSleepGasTrap, sleepGasTrapNeedsResume } from './trap.js';
-import { beginMonsterSqueakyBoard, finishMonsterSqueakyBoard } from './trap.js';
-import { beginMonsterVibratingSquare, finishMonsterVibratingSquare } from './trap.js';
-import { applyMonsterPolymorphTrap, finishMonsterPolymorphTrap } from './trap.js';
-import { beginMonsterRustTrap, finishMonsterRustTrap } from './trap.js';
 import { heroGoldObject } from './hero_gold.js';
 import { beginHeroEngulf, monsterCanEngulfHero, resolveHeroEngulf } from './hero_engulf.js';
-import { canLetGo } from './hero_inventory.js';
+import { canLetGo } from './do.js';
 import { canFallThrough } from './mklev.js';
 import { isZombieMaker, zombieForm } from './corpse_species.js';
 import { getTrack, hasTrack } from './track.js';
@@ -1137,7 +1129,7 @@ function inventoryBlocksDoorPassage(inventory) {
         if (type === COIN_CLASS && object.quan > 100)
             return true;
         const flexibleArmor = object.oclass === ARMOR_CLASS
-            && [ARM_CLOAK, ARM_GLOVES, ARM_SHIRT].includes(OBJECT_SUBTYPE[type] ?? -1);
+            && [ARM_CLOAK, ARM_GLOVES, ARM_SHIRT].includes(objectSkill(type) ?? -1);
         const tinyCorpse = type === CORPSE && object.corpsenm !== undefined
             && monsterIsVerySmall(object.corpsenm);
         if (![RING_CLASS, AMULET_CLASS, GEM_CLASS, VENOM_CLASS].includes(object.oclass)
@@ -1901,26 +1893,23 @@ export async function completeMovedMonsterAction(monster, movement, state, rando
         if (state === game)
             await newsym(movement.oldx, movement.oldy);
         movement.postMoveOldSquarePainted = true;
-        await triggerMonsterTrap(monster, state, movement, random, rollDice, rollOne, calls);
-        if (movement.deferredAfterMonsterTrap) {
-            // C trap.c:mintrap(): the trap's message, escape roll, and
-            // effect completions run inline here, before postmov() continues
-            // with the door, tunneling, and floor tails.
-            const event = movement.trap;
-            if (!event)
-                throw new Error('A deferred monster trap must retain its event');
-            const outcome = await finishDeferredMonsterTrap(monster, movement, event, state, calls, { random, rollDice, rollOne, describeMonster: visibleMonsterSubject });
-            if (outcome === 'hero-died')
-                return movement;
-            if (outcome === 'killed') {
-                // C postmov() repaints the destination before returning
-                // MMOVE_DIED for a trap that killed the actor (monmove.c:1512);
-                // the presenter must not paint this return's cell a second
-                // time, which would consume an extra display-RNG draw.
-                await newsym(movement.x, movement.y);
-                movement.postMoveDestinationPainted = true;
-                return movement;
-            }
+        // trap.c mintrap(): the trap's message, escape roll, and effect
+        // completions run inline here, before postmov() continues with the
+        // door, tunneling, and floor tails.
+        const outcome = (await mintrap(monster, state, {
+            movement, random, rollDice, rollOne, calls,
+            describeMonster: visibleMonsterSubject,
+        })).movement.trapOutcome;
+        if (outcome === 'hero-died')
+            return movement;
+        if (outcome === 'killed') {
+            // C postmov() repaints the destination before returning
+            // MMOVE_DIED for a trap that killed the actor (monmove.c:1512);
+            // the presenter must not paint this return's cell a second
+            // time, which would consume an extra display-RNG draw.
+            await newsym(movement.x, movement.y);
+            movement.postMoveDestinationPainted = true;
+            return movement;
         }
         if (movementHasEnded(movement) || state.program_state.gameover)
             return movement;
@@ -2333,10 +2322,11 @@ export async function moveMonsterAfterTrap(monster, state, random, rollDice, rol
     if (!movement && monster.mtrapped) {
         const oldx = monster.mx;
         const oldy = monster.my;
-        await tryMonsterTrapEscape(monster, state, {
+        await mintrap(monster, state, {
             random,
             publish: plineWithContinuation,
             describeMonster: visibleMonsterSubject,
+            calls,
         });
         if (monster.mtrapped) {
             // Trap_Caught_Mon: m_move() returns MMOVE_NOTHING without

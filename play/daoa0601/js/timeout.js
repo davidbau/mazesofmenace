@@ -25,7 +25,7 @@ import { healHeroLegs } from './do.js';
 import { isPoolAt, isIceAt, isPoolOrLavaAt } from './dbridge.js';
 import { ACCESSIBLE, A_CON, A_DEX, A_STR, CLOUD, COLNO, DIED, DISMOUNT_FELL, FAINTING, FULL_MOON, G_GENOD, GENOCIDED, I_SPECIAL, Is_waterlevel, KILLED_BY, KILLED_BY_AN, LEVEL_TIMER_KIND, M_AP_MONSTER, MV_KNOWS_EGG, NO_KILLER_PREFIX, OBJECT_TIMER_KIND, PLNMSG_OK_DONT_DIE, PLNMSG_ONE_ITEM_HERE, POISONING, ROWNO, SICK_ALL, SICK_NONVOMITABLE, STONING, TIMEOUT, TURNED_SLIME, W_SADDLE, } from './const.js';
 import { AMULET_OF_STRANGULATION, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CORPSE, FEDORA, GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES, LUCKSTONE, MAGIC_LAMP, OIL_LAMP, POT_OIL, ROCK, TALLOW_CANDLE, WAX_CANDLE, } from './object_data.js';
-import { confersLuck } from './hero_inventory.js';
+import { confersLuck } from './invent.js';
 import { AD_ELEC, AT_MAGC } from './monster_attack_types.js';
 import { isWereMonster, revertHeroWereForm } from './were.js';
 import { heroFootName, heroHandName, heroNeckName } from './body_parts.js';
@@ -46,7 +46,7 @@ import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, PM_GREEN_SLI
 import { canSpotMonster, newsym, see_monsters } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { CANDLE_TYPES, LIGHT_TYPES, TIMED_LIGHT_TYPES, registerObjectLightSource } from './light.js';
-import { eatingDangerousCorpse, openingTinMaySaveHero, spendHeroNutrition, vomitHero } from './eat.js';
+import { eating_dangerous_corpse, Popeye, morehungry, vomit } from './eat.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { captureLevitationState, floatHeroDown, heroIsUnconscious, resolveImmediatePetrification, } from './trap.js';
 import { runClaimedEggHatchTimer, finishEggHatchTimer } from './egg.js';
@@ -54,7 +54,7 @@ import { runClaimedFigurineTimer, finishFigurineTimer } from './figurine.js';
 import { meltIce } from './zap.js';
 import { runClaimedObjectRotTimer, finishBuriedZombieTimer } from './mklev.js';
 import { objectWeight, runClaimedGlobTimer, finishGlobTimer } from './mkobj.js';
-import { useUpInventoryStack } from './hero_inventory.js';
+import { useUpInventoryStack } from './invent.js';
 import { carriedObjectOwner, deleteObject } from './shk.js';
 import { possessiveName } from './hacklib.js';
 import { getObjectLocation } from './zap.js';
@@ -98,7 +98,7 @@ export async function petrificationDialogue({ state = game, publish = plineWithC
             endVoluntaryMultiTurn(state);
     }
     else if (turns === 4) {
-        if (!openingTinMaySaveHero('stoned', state))
+        if (!Popeye('stoned', state))
             await stopHeroOccupation(state, publish);
         if (state.multi > 0)
             endVoluntaryMultiTurn(state);
@@ -153,7 +153,7 @@ export async function vomitingDialogue({ state = game, publish = pline, rollDice
         await makeStunned((hero.stunnedTurns ?? 0) + rollDice(2, 4), { state, talk: false });
         // stop_occupation finishes an already swallowed last bite before
         // abandoning the meal, including that food's digestion effects.
-        if (!openingTinMaySaveHero('vomiting', state))
+        if (!Popeye('vomiting', state))
             await stopHeroOccupation(state, publish);
         if (state.program_state.gameover)
             return { active: false, vomited: false, turns: nextTurns, died: true };
@@ -172,7 +172,7 @@ export async function vomitingDialogue({ state = game, publish = pline, rollDice
         if (state.program_state.gameover)
             return { active: false, vomited: false, turns: nextTurns, died: true };
         if (!heroCannotVomit(state)) {
-            await spendHeroNutrition(20, { state });
+            await morehungry(20, { state });
             if (state.program_state.gameover)
                 return { active: false, vomited: false, turns: nextTurns, died: true };
             if (hero.uhs < FAINTING) {
@@ -180,7 +180,7 @@ export async function vomitingDialogue({ state = game, publish = pline, rollDice
                     ? 'You hurl chunks!' : 'You vomit!');
             }
         }
-        await vomitHero({ state, publish });
+        await vomit({ state, publish });
         vomited = true;
     }
     await exerciseAttribute(A_CON, false, state);
@@ -346,7 +346,7 @@ export async function slimeDialogue({ state = game, publish = plineWithContinuat
     const stage = Math.trunc(turns / 2);
     if (stage === 3) {
         removeHeroSpeed(state);
-        if (!openingTinMaySaveHero('slimed', state))
+        if (!Popeye('slimed', state))
             await stopHeroOccupation(state, publish);
         if (state.multi > 0)
             endVoluntaryMultiTurn(state);
@@ -1396,7 +1396,7 @@ export async function advanceCorpseResistanceTimeouts(state = game) {
         refreshProperty(property, state);
         if (state.u[property])
             continue;
-        if (eatingDangerousCorpse(property, { state })) {
+        if (eating_dangerous_corpse(property, { state })) {
             state.u[timeout] = 1;
             refreshProperty(property, state);
             continue;

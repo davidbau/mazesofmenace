@@ -1,6 +1,7 @@
 // The kick command and its damage helpers.
 // C refs: dokick.c dokick()/kick_monster()/kickdmg()/kick_ouch()/kick_dumb()
 //     /kick_door()/kick_nondoor().
+import { objectBaseCost, objectBimanual, BOULDER, KICKING_BOOTS, ROCK, CHEST, CORPSE, LARGE_BOX, EGG, EXPENSIVE_CAMERA, MIRROR, BAG_OF_HOLDING, BAG_OF_TRICKS, APPLE, BANANA, DILITHIUM_CRYSTAL, EUCALYPTUS_LEAF, LUCKSTONE, ORANGE, PEAR, } from './object_data.js';
 import { A_CHA, A_CON, A_DEX, A_STR, A_WIS, ALTAR, CORR, DBWALL, D_BROKEN, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, DOOR, FOUNTAIN, G_GONE, GRAVE, IRONBARS, IS_DRAWBRIDGE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, Is_stronghold, LADDER, LA_DOWN, LAVAWALL, Luck, M_AP_MONSTER, M_AP_TYPE, MM_ANGRY, MM_FEMALE, MM_MALE, MM_NOMSG, ROOM, SCORR, SDOOR, SINK, S_LDWASHER, S_LPUDDING, STAIRS, THRONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, Is_airlevel, Is_waterlevel, D_CLOSED, SHOPBASE, SHOP_DOOR_COST, STATUE_TRAP, WEB, is_pit, IS_SOFT, MIGR_LADDER_UP, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MIGR_TO_SPECIES, MIGR_WITH_HERO, TRAPDOOR, Upolyd, W_ARMF, ZAP_POS, is_hole } from './const.js';
 import { isok } from './cmd.js';
 import { rn1, rnd, rn2, rnl } from './rng.js';
@@ -35,7 +36,6 @@ import { disturbGrave } from './engrave.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { mksobj, mkgold, unlinkObject, splitObjectStack, objectWeight, placeCreatedObject, placeObject, remove_object, stack_object, isContainer } from './mkobj.js';
 import { vision_recalc, vision_reset, cansee, couldsee, vision_note_blocker_change } from './vision.js';
-import { BOULDER, KICKING_BOOTS, ROCK, CHEST, CORPSE, LARGE_BOX, EGG, EXPENSIVE_CAMERA, MIRROR, OBJECT_BIMANUAL, BAG_OF_HOLDING, BAG_OF_TRICKS, OBJECT_COST, APPLE, BANANA, DILITHIUM_CRYSTAL, EUCALYPTUS_LEAF, LUCKSTONE, ORANGE, PEAR } from './object_data.js';
 import { convertSecretDoor, findTrap } from './detect.js';
 import { heroPolyGender, heroSpecies } from './polyself.js';
 import { makemonAt } from './makemon.js';
@@ -52,7 +52,7 @@ import { closedDoor, makeMonsterFlee, setMonsterApparentHeroPosition } from './m
 import { updateMonsterRegions } from './regions.js';
 import { findNearbyMonsterPosition, goodPosition, monsterTeleportRestricted } from './teleport_rules.js';
 import { specialContactDamage } from './contact_damage.js';
-import { finishImmediateMonsterTrap, trapAt, triggerImmediateMonsterTrap, resolveImmediatePetrification, waterDamageObject } from './trap.js';
+import { trapAt, mintrap, resolveImmediatePetrification, waterDamageObject } from './trap.js';
 import { artifactById } from './artifacts.js';
 import { heroFootName, heroLegName } from './body_parts.js';
 import { triggerChestTrap } from './chest_trap.js';
@@ -75,7 +75,7 @@ import { finishMonsterEating } from './dogmove.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { onQuestStart, okToQuest } from './quest.js';
 import { ceilingName, surfaceName } from './terrain_name.js';
-import { currency } from './currency.js';
+import { currency } from './invent.js';
 import { shopkeeperName } from './shknam.js';
 import { eggHasMonsterSpecies } from './egg_impact.js';
 import { objectResistsDestruction } from './zap.js';
@@ -402,7 +402,7 @@ export async function resolveGoldMonsterContact({ state, monster, gold, wakeMons
         return false;
     }
     const wasSleeping = !!monster.msleeping;
-    const value = goldQuantity(gold) * (OBJECT_COST[gold.otyp] ?? 1);
+    const value = goldQuantity(gold) * objectBaseCost(gold.otyp);
     monster.msleeping = 0;
     await finishMonsterEating(monster, state);
     if (!monster.isgd && rn2(4) === 0)
@@ -969,7 +969,7 @@ export async function prepareKick({ martial = false, state = game, announce = as
         const armor = state.uarm || state.u?.uarm;
         // C dokick.c:253 reads objects[uarm->otyp].oc_bulky raw; the
         // oc_bulky armor flag shares the oc_big bit with oc_bimanual.
-        const bulky = armor && OBJECT_BIMANUAL[armor.otyp];
+        const bulky = armor && objectBimanual(armor.otyp);
         if (bulky && currentAttribute(A_DEX, state) < rnd(25))
             clumsy = true;
     }
@@ -1068,15 +1068,15 @@ export async function tryKickReel(monster, dx, dy, { martial = false, state = ga
     await newsym(oldx, oldy);
     await newsym(x, y);
     setMonsterApparentHeroPosition(monster, state, rn2);
-    const trap = await triggerImmediateMonsterTrap(monster, state);
-    await finishImmediateMonsterTrap(trap, state, {
+    const trap = await mintrap(monster, state, {
         publish: announce, describeMonster: nameMonster,
     });
+    const event = trap.event;
     return {
         oldx, oldy, x, y,
-        trap: trap.event,
+        trap: event,
         dead: !!monster.dead || (monster.mhp ?? 1) <= 0,
-        heroDied: !!trap.event && 'heroDied' in trap.event && !!trap.event.heroDied,
+        heroDied: !!event && 'heroDied' in event && !!event.heroDied,
     };
 }
 // C dokick.c:container_impact_dmg().  A kicked, dropped, or thrown

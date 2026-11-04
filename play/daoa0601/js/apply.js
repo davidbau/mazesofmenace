@@ -3,6 +3,7 @@
 // and the use_*() tool functions this file owns. use_whip() stays in
 // bullwhip.ts; the candle snuff/splash/catch helpers stay in light.ts with
 // the burning-object owners.
+import { objectClassForType, objectBaseCost, objectSkill, objectMagic, AMULET_OF_YENDOR, BAG_OF_TRICKS, BANANA, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN, BULLWHIP, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, EGG, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MIRROR, OBJECT_COLOR, OBJECT_DESCRIPTIONS, OIL_LAMP, POT_OIL, SADDLE, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_JUMPING, SPE_NOVEL, STATUE, STETHOSCOPE, TALLOW_CANDLE, TIN, TIN_OPENER, TIN_WHISTLE, TINNING_KIT, TOUCHSTONE, TOWEL, UNICORN_HORN, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAX_CANDLE, } from './object_data.js';
 import { publishMonsterGrowl, publishMonsterWhimper, publishMonsterYelp } from './ambient_sounds.js';
 import { armorSimpleName, armorSlotFor, heroHasFreeAction, applyEyewear, removeEyewear } from './do_wear.js';
 import { artifactById, speakArtifact } from './artifacts.js';
@@ -12,8 +13,8 @@ import { heroFaceName, heroFingerName, heroHandName, heroHasEyes, heroHeadName, 
 import { bot } from './botl.js';
 import { dropBoulderIntoLiquid, dropInventoryObjectAtHero, woundHeroLegs } from './do.js';
 import { useBullwhip } from './bullwhip.js';
-import { commandResultCancelled, commandResultFailed, commandResultSpentTime, setMulti } from './cmd.js';
-import { A_CHA, A_CON, A_DEX, A_NONE, A_STR, ACCESSIBLE, AIR, BEAR_TRAP, CLOUD, COLNO, CORR, D_CLOSED, D_ISOPEN, D_LOCKED, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAILED, DOOR, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HOLE, HOMEMADE_TIN, ICE, IS_AIR, Is_airlevel, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, Is_stronghold, IS_STWALL, IS_WALL, Is_waterlevel, KILLED_BY, LANDMINE, LEVEL_TIMER_KIND, LUCKMIN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MAXULEV, MM_NOMSG, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, NO_KILLER_PREFIX, NO_MINVENT, OBJECT_TIMER_KIND, P_BASIC, P_RIDING, P_SKILLED, P_TWO_WEAPON_COMBAT, PARANOID_BREAKWAND, PIT, PLNMSG_enum, RLOC_MSG, RLOC_NONE, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SICK_ALL, SICK_NONVOMITABLE, STATUE_TRAP, STONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WEAK, xdir, ydir } from './const.js';
+import { commandResultCancelled, commandResultFailed, commandResultSpentTime, cmdq_add_ec, cmdq_add_key, setMulti } from './cmd.js';
+import { A_CHA, A_CON, A_DEX, A_NONE, A_STR, ACCESSIBLE, AIR, BEAR_TRAP, CLOUD, COLNO, CORR, CQ_CANNED, D_CLOSED, D_ISOPEN, D_LOCKED, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAILED, DOOR, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HOLE, HOMEMADE_TIN, ICE, IS_AIR, Is_airlevel, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, Is_stronghold, IS_STWALL, IS_WALL, Is_waterlevel, KILLED_BY, LANDMINE, LEVEL_TIMER_KIND, LUCKMIN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MAXULEV, MM_NOMSG, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, NO_KILLER_PREFIX, NO_MINVENT, OBJECT_TIMER_KIND, P_BASIC, P_RIDING, P_SKILLED, P_TWO_WEAPON_COMBAT, PARANOID_BREAKWAND, PIT, PLNMSG_enum, RLOC_MSG, RLOC_NONE, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SICK_ALL, SICK_NONVOMITABLE, STATUE_TRAP, STONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WEAK, xdir, ydir } from './const.js';
 import { isok } from './cmd.js';
 import { useContainer } from './pickup.js';
 import { reviveCorpseImmediately } from './corpse_revival.js';
@@ -42,12 +43,12 @@ import { applyCaitiffPenalty } from './uhitm.js';
 import { prepareAppliedWeaponAttack } from './uhitm.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { releaseHold } from './zap.js';
-import { setHeroGrip } from './hero_grip.js';
+import { setHeroGrip } from './mon.js';
 import { makeDeaf, startHeroSickness, makeConfused, makeHallucinated, makeStunned, releaseDjinni, setSlipperyHands, makeBlinded } from './potion.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { hurtleHero, hurtleJumpTo } from './dothrow.js';
 import { cureHeroSickness, cureHeroVomiting, heroIsVomiting, startHeroVomiting } from './potion.js';
-import { freeInventoryObject, useUpInventoryStack } from './hero_inventory.js';
+import { freeInventoryObject, useUpInventoryStack } from './invent.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { attackHostileMonster } from './uhitm.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
@@ -58,14 +59,14 @@ import { heroIsUnaware } from './senses.js';
 import { heroCanBlow, heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands } from './polyself.js';
 import { formatFeltMessage, formatHeardMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { heroStatusLine } from './insight.js';
-import { triggerHeroTrap, fillPitWithBoulderAt, deleteTrap, feelTrap, finishImmediateMonsterTrap, trapName, triggerImmediateMonsterTrap, resolveImmediatePetrification, resetHeroTrap, maketrap } from './trap.js';
+import { dotrap, fillPitWithBoulderAt, deleteTrap, feelTrap, trapName, mintrap, resolveImmediatePetrification, resetUtrap, maketrap } from './trap.js';
 import { requireInitializedHero } from './hero_types.js';
-import { spendHeroNutrition, vomitHero, setTinVariety, useTinOpener } from './eat.js';
+import { morehungry, vomit, set_tin_variety, use_tin_opener } from './eat.js';
 import { beginImmediateZap, finishImmediateZap, hitFloorPileWithWand } from './zap.js';
-import { hitMonsterWithWand } from './immediate_monster_magic.js';
+import { hitMonsterWithWand } from './zap.js';
 import { monsterStatusLine } from './insight.js';
 import { consumeInventoryItem, consumeObjectCharge, delobj, inventoryCommandLetter, inventoryItemDescription } from './invent.js';
-import { chooseInventoryObject, getobj } from './inventory_prompt.js';
+import { chooseInventoryObject, getobj } from './invent.js';
 import { gotoLevel } from './level_change.js';
 import { beginObjectBurn, endObjectBurn } from './timeout.js';
 import { lightDamage, lightRoom, transformMagicLampToOilLamp } from './light.js';
@@ -81,12 +82,11 @@ import { makeMonsterFlee, isAccessibleAt } from './monmove.js';
 import { AD_BLND, AT_ENGL } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, monsterDigests, monsterHasEyes, monsterHasProperName, monsterIsBig, monsterIsBreathless, monsterIsDemon, monsterIsHumanoid, monsterIsUnicorn, monsterIsVampire, monsterIsVampireShifter, monsterIsWhirly, monsterPerceives, monsterThrowsRocks, monsterTypeName } from './monster_data.js';
 import { PLAYABLE_INSTRUMENTS, playInstrument } from './music.js';
-import { learnObjectType, objectClassForType, objectMaterial } from './o_init.js';
-import { AMULET_OF_YENDOR, BAG_OF_TRICKS, BANANA, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN, BULLWHIP, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, EGG, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MIRROR, OBJECT_COLOR, OBJECT_COST, OBJECT_DESCRIPTIONS, OBJECT_MAGIC, OBJECT_SUBTYPE, OIL_LAMP, POT_OIL, requireObjectData, SADDLE, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_JUMPING, SPE_NOVEL, STATUE, STETHOSCOPE, TALLOW_CANDLE, TIN, TIN_OPENER, TIN_WHISTLE, TINNING_KIT, TOUCHSTONE, TOWEL, UNICORN_HORN, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAX_CANDLE } from './object_data.js';
+import { learnObjectType, objectMaterial } from './o_init.js';
 import { isAxe, isFlimsyObject, isGrayStone, isPick, isPolearm, isWetTowel } from './object_properties.js';
 import { corpseName, definiteName, definiteObjectAction, makePlural, minimalObjectName, objectMonsterName, objectName, objectNameIsPlural, observeObjectForNaming, ownedObjectName, simpleObjectTypeName, withIndefiniteArticle } from './objnam.js';
 import { walkPathCells } from './path_walk.js';
-import { usePickAxe } from './pick_axe.js';
+import { usePickAxe } from './dig.js';
 import { pickupFloorObject } from './pickup.js';
 import { pline as syncPline, plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { propertyIsActive } from './properties.js';
@@ -106,12 +106,13 @@ import { addObjectToMonsterInventory } from './steal.js';
 import { monsterAtPosition, stuckSteed, useSaddle } from './steed.js';
 import { feelPetrifyingCorpse, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, willFeelPetrifyingCorpse } from './stoning.js';
 import { findNearbyMonsterPosition, heroTeleportRestricted, monsterTeleportRestricted } from './teleport_rules.js';
-import { askTeleportDestination, distanceToHero, moveHeroByTeleport, moveMonsterNextToHero, randomMonsterRelocation, relocateMonsterTo, teleportHeroToRandomPet } from './teleport.js';
+import { askTeleportDestination, distanceToHero, moveHeroByTeleport, randomMonsterRelocation, relocateMonsterTo, teleportHeroToRandomPet } from './teleport.js';
+import { moveMonsterNextToHero } from './mon.js';
 import { ceilingName, surfaceName } from './terrain_name.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { objectTimers, stopLevelTimer, stopObjectTimer } from './timeout.js';
 import { confusePromptDirection, promptDirection, readDirectionKey } from './cmd.js';
-import { addInventoryItem } from './u_init.js';
+import { addInventoryItem } from './invent.js';
 import { summonUndead } from './undead_summoning.js';
 import { summonVaultGuardSoon } from './vault.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
@@ -546,10 +547,9 @@ async function summonPets(object, state) {
             await newsym(pet.mx, pet.my);
         }
         state._lastPlineKind = PLNMSG_enum;
-        const trap = await triggerImmediateMonsterTrap(pet, state, {
+        await mintrap(pet, state, {
             inAir: monsterInAir(pet, state),
         });
-        await finishImmediateMonsterTrap(trap, state);
         if (state.program_state.gameover)
             return;
         if (pet.mhp <= 0)
@@ -1270,7 +1270,7 @@ export async function useLamp(object, { state = game } = {}) {
         const owner = ownedObjectName(object, state);
         await plineWithContinuation(`${owner}${owner.endsWith('s') ? "'" : "'s"} flame${objectQuantity(object) > 1 ? 's burn' : ' burns'}${heroIsBlind(state) ? '.' : ' brightly!'}`);
         if (object.unpaid && costlySpot(state.u.ux, state.u.uy, state)
-            && object.age === 20 * requireObjectData(OBJECT_COST, object.otyp)) {
+            && object.age === 20 * objectBaseCost(object.otyp)) {
             const pronoun = objectQuantity(object) > 1 ? 'them' : 'it';
             await announcePurchase(`You burn ${pronoun}, you bought ${pronoun}!`);
             await billDummyObject(object, state);
@@ -1435,27 +1435,19 @@ async function rubRoyalJelly(jelly) {
 // cmd.c:CQ_CANNED.  Selecting an unwielded lamp does not rub it immediately:
 // wield_tool() installs it, consumes one action, and queues dorub plus the
 // inventory letter for the next hero command boundary.
-export async function dorub(cannedInvlet = null) {
+export async function dorub() {
     if (heroHasNoHands(game)) {
         await syncPline("You aren't able to rub anything without hands.");
         game.context.move = 0;
         return;
     }
-    const object = cannedInvlet === null
-        ? await chooseInventoryObject('rub', candidate => rubEligibleObject(candidate) ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE)
-        : game.inventory.find(candidate => candidate.invlet === cannedInvlet
-            && rubEligibleObject(candidate));
+    const object = await chooseInventoryObject('rub', candidate => rubEligibleObject(candidate) ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE);
     if (!object) {
         // apply.c:dorub() returns ECMD_CANCEL without an object; the
         // rhack seam clears the queues so ^A cannot replay the rub.
         commandResultCancelled();
         return;
     }
-    // Interactive entry owns a getobj prompt which selection replaces.
-    // Canned re-entry happens before the next physical key and inherits the
-    // wield/scheduler topline, so its result must append to that message.
-    if (cannedInvlet === null)
-        game._pending_message = '';
     if (isGrayStone(object)) {
         const result = await useGrayStone(object);
         game.context.move = result.spentTime ? 1 : 0;
@@ -1473,8 +1465,10 @@ export async function dorub(cannedInvlet = null) {
     if (wielded.newlyWielded) {
         if (!object.invlet)
             throw new Error('A wielded inventory object must have an inventory letter.');
-        game._cannedCommands ||= [];
-        game._cannedCommands.push({ kind: 'rub', invlet: object.invlet });
+        // C apply.c:1807-1809 wield_tool() queues dorub plus the object's
+        // letter; next turn's dorub() pops the letter from CQ_CANNED.
+        cmdq_add_ec(CQ_CANNED, 'dorub');
+        cmdq_add_key(CQ_CANNED, object.invlet.charCodeAt(0));
         game.context.move = 1;
         return;
     }
@@ -1655,7 +1649,7 @@ async function escapeJumpTrap(target, state) {
         default:
             await impossible(`Jumping out of strange trap (${hero.utraptype})?`, { state });
     }
-    await resetHeroTrap(true, state);
+    await resetUtrap(true, state);
     return true;
 }
 // C apply.c:jump(): the shared physical/spell jump owner, from the spell
@@ -1722,7 +1716,7 @@ export async function jumpHero(magic = 0, { state = game } = {}) {
         return jumpResult(true, state);
     if (target.x === hero.ux && target.y === hero.uy) {
         if (wasTrapped)
-            await spendHeroNutrition(rnd(10), { state });
+            await morehungry(rnd(10), { state });
         else {
             const trap = state.level.traps.find(trap => trap.tx === hero.ux && trap.ty === hero.uy);
             if (!trap) {
@@ -1731,7 +1725,7 @@ export async function jumpHero(magic = 0, { state = game } = {}) {
                 return jumpResult(false, state);
             }
             await plineWithContinuation(`You jump up and ${propertyIsActive('flying', state) ? 'fly' : 'come'} back down.`);
-            await triggerHeroTrap(trap, { forceTrap: true, tookPlunge: true,
+            await dotrap(trap, { forceTrap: true, tookPlunge: true,
                 finishTeleport: finishTeleportArrival, gotoLevel });
         }
         return jumpResult(true, state);
@@ -1750,7 +1744,7 @@ export async function jumpHero(magic = 0, { state = game } = {}) {
     nomul(-1, state);
     state._helplessReason = 'jumping around';
     state._helplessDoneMessage = '';
-    await spendHeroNutrition(rnd(25), { state });
+    await morehungry(rnd(25), { state });
     return jumpResult(true, state);
 }
 export async function useTinningKit(kit) {
@@ -1795,7 +1789,7 @@ export async function useTinningKit(kit) {
     tin.blessed = kit.blessed;
     tin.owt = objectWeight(tin);
     tin.known = true;
-    setTinVariety(tin, HOMEMADE_TIN);
+    set_tin_variety(tin, HOMEMADE_TIN);
     if (corpse.where === 'inventory') {
         if (corpse.unpaid)
             await pline('"You tin it, you bought it!"');
@@ -1950,7 +1944,7 @@ async function causeHornTrouble(object, state, publish, random, rollDice) {
     }
     if (trouble === 4) {
         if (heroIsVomiting(state)) {
-            await vomitHero({ state, publish, random, rollDice });
+            await vomit({ state, publish, random, rollDice });
         }
         else {
             startHeroVomiting({ state, turns: 14 });
@@ -2300,7 +2294,7 @@ export async function continueTrapSetting(state = game) {
         // C evaluates this luck roll before checking force_bungle too.
         const bungle = (object.cursed || propertyIsActive('fumbling', state)) && rnl(10) > 5;
         if (bungle || progress.forceBungle) {
-            await triggerHeroTrap(trap, { forceBungle: progress.forceBungle, gotoLevel, finishTeleport: finishTeleportArrival });
+            await dotrap(trap, { forceBungle: progress.forceBungle, gotoLevel, finishTeleport: finishTeleportArrival });
             if (state.program_state.gameover)
                 return false;
         }
@@ -2399,7 +2393,7 @@ function weaponSkillType(weapon, state) {
         weapon.oclass !== TOOL_CLASS &&
         weapon.oclass !== GEM_CLASS)
         return 0;
-    return Math.abs(OBJECT_SUBTYPE[weapon.otyp] ?? 0);
+    return Math.abs(objectSkill(weapon.otyp));
 }
 function calcPoleRange(weapon, { state = game } = {}) {
     const skillType = weaponSkillType(weapon, state);
@@ -2652,8 +2646,10 @@ async function applyPickAxe(item) {
     if (result.cancelled)
         commandResultCancelled(); // dig.c:use_pick_axe() res|ECMD_CANCEL.
     if ('resume' in result && result.resume) {
-        game._cannedCommands ||= [];
-        game._cannedCommands.push({ kind: 'apply', invlet: inventoryCommandLetter(item) });
+        // C dig.c:1104-1105 queues doapply plus the tool's letter; the
+        // next turn's apply pops the letter from CQ_CANNED.
+        cmdq_add_ec(CQ_CANNED, 'doapply');
+        cmdq_add_key(CQ_CANNED, inventoryCommandLetter(item).charCodeAt(0));
     }
     game.context.move = 'spentTime' in result && result.spentTime ? 1 : 0;
 }
@@ -2666,8 +2662,10 @@ export async function applyPolearm(item, autohit = false) {
     if ('heroDied' in result && result.heroDied)
         return;
     if ('resume' in result && result.resume) {
-        game._cannedCommands ||= [];
-        game._cannedCommands.push({ kind: 'apply', invlet: inventoryCommandLetter(item) });
+        // C apply.c:3441-3443 queues doapply plus the pole's letter; the
+        // next turn's apply pops the letter from CQ_CANNED.
+        cmdq_add_ec(CQ_CANNED, 'doapply');
+        cmdq_add_key(CQ_CANNED, inventoryCommandLetter(item).charCodeAt(0));
     }
     // use_pole() returns ECMD_CANCEL for a refused target prompt and
     // ECMD_FAIL for an out-of-range or unseen one (apply.c:3474-3505).
@@ -2815,7 +2813,7 @@ export async function useRoyalJelly(stack, chooseTarget) {
 const M2_STRONG = 0x04000000;
 function hookSkill(hook, state) {
     const skillType = state.u.twoweap
-        ? P_TWO_WEAPON_COMBAT : Math.abs(OBJECT_SUBTYPE[hook.otyp] ?? 0);
+        ? P_TWO_WEAPON_COMBAT : Math.abs(objectSkill(hook.otyp));
     return ensureHeroSkills(state)?.[skillType]?.skill ?? 0;
 }
 // C apply.c:grapple_range().
@@ -3260,7 +3258,7 @@ export function applySuggestion(object, state = game) {
     }
     return GETOBJ_EXCLUDE_SELECTABLE;
 }
-export async function doapply(cannedInvlet = null) {
+export async function doapply() {
     // apply.c:doapply() rejects the current body and excessive load before
     // choosing an object through getobj().
     if (heroHasNoHands(game)) {
@@ -3274,10 +3272,7 @@ export async function doapply(cannedInvlet = null) {
         return;
     }
     const underlay = snapshotMenuUnderlay();
-    const item = cannedInvlet === null
-        ? await chooseInventoryObject('use or apply', applySuggestion)
-        : game.inventory.find(object => object.invlet === cannedInvlet
-            && [GETOBJ_SUGGEST, GETOBJ_DOWNPLAY].includes(applySuggestion(object)));
+    const item = await chooseInventoryObject('use or apply', applySuggestion);
     if (!item) {
         commandResultCancelled(); // doapply() returns ECMD_CANCEL without an object.
         return;
@@ -3396,10 +3391,10 @@ export async function applyTool(item, underlay) {
             return item;
         }
         if (wielded.newlyWielded) {
-            game._cannedCommands ||= [];
-            game._cannedCommands.push({
-                kind: 'apply', invlet: inventoryCommandLetter(item),
-            });
+            // C apply.c:2965-2967 queues doapply plus the whip's letter;
+            // the next turn's apply pops the letter from CQ_CANNED.
+            cmdq_add_ec(CQ_CANNED, 'doapply');
+            cmdq_add_key(CQ_CANNED, inventoryCommandLetter(item).charCodeAt(0));
             game.context.move = 1;
             return item;
         }
@@ -3463,10 +3458,10 @@ export async function applyTool(item, underlay) {
             }),
         });
         if (result.resume) {
-            game._cannedCommands ||= [];
-            game._cannedCommands.push({
-                kind: 'apply', invlet: inventoryCommandLetter(item),
-            });
+            // C apply.c:3744-3746 queues doapply plus the hook's letter;
+            // the next turn's apply pops the letter from CQ_CANNED.
+            cmdq_add_ec(CQ_CANNED, 'doapply');
+            cmdq_add_key(CQ_CANNED, inventoryCommandLetter(item).charCodeAt(0));
         }
         game.context.move = result.spentTime ? 1 : 0;
         return item;
@@ -3494,7 +3489,7 @@ export async function applyTool(item, underlay) {
         return item;
     }
     if (item.otyp === TIN_OPENER) {
-        const result = await useTinOpener(item, { state: game, swapWeapons: doswapweapon });
+        const result = await use_tin_opener(item, { state: game, swapWeapons: doswapweapon });
         if (!result.heroDied)
             game.context.move = Number(result.usedTime);
         return item;
@@ -3594,7 +3589,7 @@ export async function flipThroughBook(book, { state = game } = {}) {
         const fading = FADED_INK[studies];
         if (fading === undefined)
             throw new Error(`Spellbook ${book.o_id} has invalid study count ${studies}`);
-        const ink = OBJECT_MAGIC[book.otyp] ? 'magical ink' : 'ink';
+        const ink = objectMagic(book.otyp) ? 'magical ink' : 'ink';
         await plineWithContinuation(`The ${ink} in this spellbook is ${fading}.`);
     }
     return { spentTime: true, heroDied: false };

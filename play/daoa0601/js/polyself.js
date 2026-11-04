@@ -4,7 +4,8 @@
 // (dobreathe, dospit, doremove, dospinweb, dosummon, dogaze, dopoly,
 // domindblast), uunstick(), ugolemeffects(), armor_to_dragon(),
 // ugenocided(), udeadinside().
-import { setHeroGrip } from './hero_grip.js';
+import { objectSkill, ACID_VENOM, BLINDING_VENOM, CORPSE, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LENSES, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, OBJECT_NAMES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
+import { setHeroGrip } from './mon.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { cansee, couldsee, monsterEmitsLight } from './vision.js';
 import { weaponDescription } from './weapon.js';
@@ -12,7 +13,6 @@ import { isWeldedPrimary, uswapwepgone, uwepgone } from './wield.js';
 import { BOLT_LIM, P_SHORT_SWORD, P_SABER, ANTI_MAGIC, ARROW_TRAP, BEAR_TRAP, DART_TRAP, FIRE_TRAP, GENOCIDED, HOLE, IS_AIR, IS_SOFT, KILLED_BY, LANDMINE, LEVEL_TELEP, LOST_THROWN, M_AP_FURNITURE, M_AP_TYPE, MAGIC_PORTAL, MAGIC_TRAP, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SHOPBASE, SHOP_WEB_COST, SLP_GAS_TRAP, SPIKED_PIT, SQKY_BOARD, STAIRS, STONING, TELEP_TRAP, TRAPDOOR, VIBRATING_SQUARE, WEB, A_CHA, A_CON, A_DEX, A_STR, A_WIS, G_GENOD, I_SPECIAL, In_endgame, M_AP_NOTHING, M_AP_OBJECT, STR18, STR19, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_MONSTER, POLY_NOFLAGS, POLY_REVERT, W_ACCESSORY, W_ARMOR, W_SADDLE, STRANGE_OBJECT } from './const.js';
 import { corpseName, simpleObjectTypeName, verbForSubject, makePlural, withIndefiniteArticle, minimalObjectName, ownedObjectName, simpleObjectName } from './objnam.js';
 import { learnObjectType, observeObject } from './o_init.js';
-import { ACID_VENOM, BLINDING_VENOM, CORPSE, OBJECT_SUBTYPE, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LENSES, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, OBJECT_NAMES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS } from './object_data.js';
 import { heroNeckName } from './body_parts.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { finishHeroDeath } from './end.js';
@@ -29,9 +29,9 @@ import { endVoluntaryMultiTurn, nomul, roomsAt, applyHeroLocationEffects, loseHe
 import { finishHeroHelplessness } from './allmain.js';
 import { setMimicBlocking } from './hero_seeing.js';
 import { makeBlinded, setSlipperyHands } from './potion.js';
-import { monsterName } from './do_name.js';
+import { displayLiquidName, monsterName } from './do_name.js';
 import { surfaceName } from './terrain_name.js';
-import { updateHeroHunger } from './eat.js';
+import { newuhs } from './eat.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { levelHasCeiling } from './dungeon.js';
 import { heroHidingStatus } from './insight.js';
@@ -49,7 +49,7 @@ import { hurtleHero } from './dothrow.js';
 import { mksobj, placeCreatedObject, stack_object } from './mkobj.js';
 import { breakFloorObject, breakObjectAtLocation, objectBreaksOnImpact } from './dothrow.js';
 import { tossObjectUp } from './dothrow.js';
-import { deleteTrap, feelTrap, clearHeroTrap, triggerHeroTrap, igniteItems, resetHeroTrap, maketrap } from './trap.js';
+import { deleteTrap, feelTrap, dotrap, igniteItems, resetUtrap, maketrap } from './trap.js';
 import { buryFloorObjectsAt, freeHeroFromBuriedBall } from './dig.js';
 import { destroyFireMonsterInventory, monsterHasElementalResistance } from './zap.js';
 import { currentAttribute, maximumAttribute, exerciseAttribute } from './attrib.js';
@@ -926,11 +926,11 @@ async function escapeTrapsAfterFormChange() {
             await plineWithContinuation('The buried ball is no longer bound to you.');
             await freeHeroFromBuriedBall();
         }
-        clearHeroTrap();
+        await resetUtrap(false);
     }
     else if (heroLikesLava() && hero.utrap && hero.utraptype === TT_LAVA) {
-        await plineWithContinuation('The lava now feels soothing.');
-        await resetHeroTrap(true);
+        await plineWithContinuation(`The ${displayLiquidName('lava')} now feels soothing.`);
+        await resetUtrap(true);
     }
     const body = { mnum: hero.umonnum };
     const slipsFree = monsterIsAmorphous(body) || monsterIsWhirly(body)
@@ -952,11 +952,11 @@ async function escapeTrapsAfterFormChange() {
                 && hero.utraptype === TT_BEARTRAP))) {
         const trapName = hero.utraptype === TT_WEB ? 'web' : 'bear trap';
         await plineWithContinuation(`You are no longer stuck in the ${trapName}.`);
-        await resetHeroTrap(true);
+        await resetUtrap(true);
     }
     if (heroCanSpinWeb() && hero.utrap && hero.utraptype === TT_WEB) {
         await plineWithContinuation('You orient yourself on the web.');
-        await resetHeroTrap(true);
+        await resetUtrap(true);
     }
 }
 // C break_armor(): garments react in body-slot order. Read each slot when
@@ -1136,7 +1136,7 @@ async function dropPolymorphWeapons(alone) {
     }
 }
 function droppedWeaponNoun(object) {
-    const skill = OBJECT_SUBTYPE[object.otyp] ?? 0;
+    const skill = objectSkill(object.otyp);
     return object.oclass === 2 && skill >= P_SHORT_SWORD && skill <= P_SABER
         ? 'sword' : weaponDescription(object);
 }
@@ -1326,7 +1326,7 @@ async function renewHumanForm(sexChangeAllowed = true) {
         else
             return unsuccessfulPolymorph();
     }
-    await updateHeroHunger(false);
+    await newuhs(false);
     if (game.program_state.gameover)
         return { transformed: false, died: true };
     const formName = newHumanFormName();
@@ -1363,7 +1363,7 @@ async function unsuccessfulPolymorph() {
     await plineWithContinuation("Your new form doesn't seem healthy enough to survive.", { urgent: true });
     const died = await finishHeroDeath({ killer: 'unsuccessful polymorph', deathLineShown: true });
     if (!died) {
-        await updateHeroHunger(false);
+        await newuhs(false);
         await reportHeroEncumbrance(game);
     }
     return { transformed: false, died };
@@ -1900,7 +1900,7 @@ async function spinWhileSwallowed(state, publish, refresh) {
         await publish(`The web dissolves into ${monsterName(monster, { state })}.`);
     }
 }
-export async function useHeroWeb({ state = game, publish = plineWithContinuation, refresh = newsym, createTrap = maketrap, activateTrap = triggerHeroTrap, } = {}) {
+export async function useHeroWeb({ state = game, publish = plineWithContinuation, refresh = newsym, createTrap = maketrap, activateTrap = dotrap, } = {}) {
     if (!heroCanSpinWeb(state))
         return { used: false, spentTime: false };
     const x = state.u.ux;

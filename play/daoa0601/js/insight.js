@@ -68,15 +68,15 @@ import { objectMaterial } from './o_init.js';
 import { canPraySafely } from './pray.js';
 import { deityName } from './alignment.js';
 import { magicNegation } from './mhitu.js';
-import { confersLuck } from './hero_inventory.js';
-import { temporaryResistance } from './eat.js';
+import { confersLuck } from './invent.js';
+import { temp_resist } from './eat.js';
 import { itemResistanceCause } from './zap.js';
 import { ATTRIBUTE_DISPLAY_ORDER, currentAttribute, maximumAttribute } from './attrib.js';
 import { artifactById } from './artifacts.js';
 import { recorderLocalHour } from './calendar.js';
 import { costlySpot } from './shk.js';
 import { hiddenGold } from './vault.js';
-import { currency } from './currency.js';
+import { currency } from './invent.js';
 import { experienceRankIndex, newExperienceThreshold } from './exper.js';
 import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
 import { heroIsInvisible } from './hero_invisibility.js';
@@ -668,14 +668,14 @@ export function attributeEnlightenmentLines(final = 0) {
     if (active('poisonResistance'))
         are('poison resistant', 'poisonResistance');
     if (active('acidResistance'))
-        are(`${temporaryResistance('acidResistance')}acid resistant`, 'acidResistance');
+        are(`${temp_resist('acidResistance')}acid resistant`, 'acidResistance');
     lines.push(...itemResistanceLines('acidResistance', 'acid', final));
     if (active('drainResistance'))
         are('level-drain resistant', 'drainResistance');
     if (active('sicknessResistance'))
         are('immune to sickness', 'sicknessResistance');
     if (active('stoneResistance'))
-        are(`${temporaryResistance('stoneResistance')}petrification resistant`, 'stoneResistance');
+        are(`${temp_resist('stoneResistance')}petrification resistant`, 'stoneResistance');
     if (active('hallucinationResistance'))
         message('You ', 'resist', 'resisted', ' hallucinations', fromWhat('hallucinationResistance'));
     if (u.uedibility)

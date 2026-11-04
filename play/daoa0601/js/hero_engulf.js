@@ -1,6 +1,6 @@
 // Monster-versus-hero engulf admission, capture, and per-slot effects.
 // C mhitm.c:engulf_target() and mhitu.c:gulpmu().
-import { setHeroGrip } from './hero_grip.js';
+import { setHeroGrip } from './mon.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { A_CON, A_STR, DISMOUNT_ENGULFED, DOOR, D_CLOSED, D_LOCKED, IRONBARS, IS_OBSTRUCTED, IS_TREE, TT_WEB, is_pit } from './const.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -16,7 +16,7 @@ import { displayMessageWindow } from './tty_topline.js';
 import { newsym, shieldeff, swallowed } from './display.js';
 import { applyEngulfBlindness } from './engulf_blindness.js';
 import { burnAwayHeroSlime } from './hack.js';
-import { drainHeroEnergy, petrifyMonsterImmediately, resetHeroTrap } from './trap.js';
+import { drainHeroEnergy, petrifyMonsterImmediately, resetUtrap } from './trap.js';
 import { expelHero } from './hero_expulsion.js';
 import { infectHeroWithMonsterDisease, damageHeroFromMonster } from './mhitu.js';
 import { resetOccupations } from './cmd.js';
@@ -99,7 +99,7 @@ export async function beginHeroEngulf(monster, attack, { state = game, random = 
         return { captured: false, died: true };
     if (hero.utrap) {
         await publish(`You are released from the ${hero.utraptype === TT_WEB ? 'web' : 'trap'}!`);
-        await resetHeroTrap(false, state);
+        await resetUtrap(false, state);
     }
     const leashes = state.inventory.filter(object => object.otyp === LEASH && object.leashmon).length;
     if (leashes) {

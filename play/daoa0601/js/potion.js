@@ -12,6 +12,7 @@
 // effect switch in spell_potion_effects.ts; the dothrow.c throwit() flight in
 // dothrow.ts; inaccessible_equipment()'s covering test in
 // equipment_selection.ts.
+import { objectMagic, ALCHEMY_SMOCK, CORPSE, LENSES, MAGIC_LAMP, MUMMY_WRAPPING, OBJECT_DESCRIPTIONS, OBJECT_INITIAL_KNOWN, OBJECT_NAMES, OIL_LAMP, POT_ACID, POT_BLINDNESS, POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS, POT_SLEEPING, POT_SPEED, POT_WATER, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LEVITATION, SPE_RESTORE_ABILITY, TOWEL, UNICORN_HORN, } from './object_data.js';
 import { artifactWarningFeedback, wieldedArtifactWarns } from './artifacts.js';
 import { armorSlotFor, heroHasFreeAction, objectIsHardHelmet, coveringEquipment, reportCoveredEquipment, fingersOrGloves } from './do_wear.js';
 import { setBallAndChainFelt } from './ball.js';
@@ -19,7 +20,7 @@ import { adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttr
 import { heroEyeCount, heroEyeName, heroFaceName, heroFootName, heroHandName, heroHasEyes, heroHeadName, heroLegName } from './body_parts.js';
 import { commandResultCancelled, commandResultFailed, setMulti, travelStairs } from './cmd.js';
 import { applyHeroLocationEffects, loseHeroHp, nearCapacity, nomul } from './hack.js';
-import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, IS_SINK, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, NO_KILLER_PREFIX, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SICK_ALL, SICK_NONVOMITABLE, SICK_VOMITABLE, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
+import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, CQ_CANNED, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, IS_SINK, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, NO_KILLER_PREFIX, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SICK_ALL, SICK_NONVOMITABLE, SICK_VOMITABLE, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK } from './const.js';
 import { impossible } from './diagnostics.js';
 import { dipFountain, dipSink, drinkFountain, drinkSink, washHands } from './fountain.js';
 import { canSeeMonster, canSpotMonster, map_invisible, newsym, see_monsters, see_objects, see_traps, shieldeff, show_glyph_cell, swallowed, unmap_invisible } from './display.js';
@@ -37,12 +38,12 @@ import { fruitName } from './fruit.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { depth, dist2, ledgerNo, possessiveName } from './hacklib.js';
-import { releaseHeroFromMonster } from './hero_expulsion.js';
+import { releaseHeroFromMonster } from './mon.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { hurtleHero } from './dothrow.js';
 import { burnAwayHeroSlime, dropHeroSliming, putHeroToSleep } from './timeout.js';
-import { freeInventoryObject, learnUnseenInventory, useUpInventoryStack } from './hero_inventory.js';
+import { freeInventoryObject, learnUnseenInventory, useUpInventoryStack } from './invent.js';
 import { hasInternalInvisibility, heroIsInvisible, invisibilityIsBlocked, syncHeroInvisibility } from './hero_invisibility.js';
 import { reportHeroThrownMiss } from './dothrow.js';
 import { grantHeroSeeInvisible } from './hero_seeing.js';
@@ -50,12 +51,12 @@ import { heroIsUnaware } from './senses.js';
 import { heroFormSticks, heroSpecies, heroHasProtectionFromShapeChangers, heroIsPolymorphed, heroIsUnchanging, polymorphHero } from './polyself.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { heroIsStrangled } from './do_wear.js';
-import { heroCanBeSlimed, updateHeroHunger, updateMealMimicry, fixHeroPetrification } from './eat.js';
-import { peekCommandResponse } from './input.js';
+import { heroCanBeSlimed, newuhs, eatmupdate, fix_petrification } from './eat.js';
+import { cmdq_peek } from './cmd.js';
 import { doEnlightenmentEffect } from './zap.js';
 import { showEnlightenment } from './insight.js';
 import { consumeInventoryItem, inventoryItemDescription } from './invent.js';
-import { chooseInventoryObject, getobj } from './inventory_prompt.js';
+import { chooseInventoryObject, getobj } from './invent.js';
 import { gotoLevel } from './level_change.js';
 import { floatingAbove } from './levitation_commands.js';
 import { pickupBurden } from './pickup.js';
@@ -73,7 +74,6 @@ import { tryCallObjectType, healHeroLegs } from './do.js';
 import { objectDescription, makePlural, verbForSubject, withIndefiniteArticle, definiteName, definiteObjectAction, objectAction, objectCombatName, objectName, objectNameIsPlural, objectQuestion, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName } from './objnam.js';
 import { hitFloorWithObject, staggerVerb } from './dothrow.js';
 import { learnObjectType, observeObject, recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
-import { ALCHEMY_SMOCK, CORPSE, LENSES, MAGIC_LAMP, MUMMY_WRAPPING, OBJECT_DESCRIPTIONS, OBJECT_INITIAL_KNOWN, OBJECT_MAGIC, OBJECT_NAMES, OIL_LAMP, POT_ACID, POT_BLINDNESS, POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS, POT_SLEEPING, POT_SPEED, POT_WATER, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LEVITATION, SPE_RESTORE_ABILITY, TOWEL, UNICORN_HORN } from './object_data.js';
 import { isLauncherAmmunition, isPermanentlyPoisonedObject, isPoisonableObject, isWeaponTool } from './object_properties.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { poisonAttributeMessage } from './poison.js';
@@ -393,7 +393,7 @@ export async function makeHallucinated(turns, { state = game, talk = true, publi
     }
     if (changed) {
         if (!heroIsHallucinating(state))
-            await updateMealMimicry(state);
+            await eatmupdate(state);
         if (hero.uswallow)
             await swallowed(false);
         else {
@@ -637,7 +637,7 @@ async function drinkWater(source, state) {
     if (!source.blessed && !source.cursed) {
         await plineWithContinuation(`This tastes like ${displayLiquidName('water', state)}.`);
         hero.uhunger += rnd(10);
-        await updateHeroHunger(false, { state });
+        await newuhs(false, { state });
         return !!state.program_state.gameover;
     }
     const hostileBody = monsterHatesBlessings({
@@ -711,7 +711,7 @@ async function boozeEffect(source, state) {
     // peffect_booze adds nutrition directly; it does not call lesshungry's
     // fullness/choking checks, even when drunk on a full stomach.
     state.u.uhunger = (state.u.uhunger ?? 900) + 10 * (2 + blessing(source));
-    await updateHeroHunger(false, { state });
+    await newuhs(false, { state });
     await exerciseAttribute(A_WIS, false, state);
     if (source.cursed) {
         await pline('You pass out.');
@@ -735,7 +735,7 @@ async function seeInvisible(source, state) {
             : `This tastes like ${diluted ? 'reconstituted ' : ''}${fruit}.`);
     if (source.otyp === POT_FRUIT_JUICE) {
         state.u.uhunger += (diluted ? 5 : 10) * (2 + (source.blessed ? 1 : source.cursed ? -1 : 0));
-        await updateHeroHunger(false, { state });
+        await newuhs(false, { state });
         return 1;
     }
     if (!source.cursed)
@@ -984,7 +984,7 @@ async function drinkAcid(source, state) {
             return true;
         await exerciseAttribute(A_CON, false, state);
     }
-    await fixHeroPetrification({ state });
+    await fix_petrification({ state });
     return !!state.program_state.gameover;
 }
 // C potion.c:peffect_polymorph().
@@ -2587,7 +2587,7 @@ export async function dodip() {
         commandResultCancelled();
 }
 export async function dipInto() {
-    if (peekCommandResponse() === undefined && !game._cannedCommands?.length) {
+    if (!cmdq_peek(CQ_CANNED)) {
         // C potion.c:2384 dip_into() refuses to run when cmdq_peek(
         // CQ_CANNED) finds nothing: the item-action potion letter is
         // queued there. A ^A do-again replay pops dip_into from CQ_REPEAT
@@ -2753,8 +2753,8 @@ async function finishDip(object, potion) {
 export async function mixPotions(object, potion) {
     requirePlayingGame(game);
     const mixture = mixtureType(object, potion);
-    const magic = mixture ? OBJECT_MAGIC[mixture]
-        : OBJECT_MAGIC[object.otyp] || OBJECT_MAGIC[potion.otyp];
+    const magic = mixture ? objectMagic(mixture)
+        : objectMagic(object.otyp) || objectMagic(potion.otyp);
     const count = objectQuantity(object);
     let amount = count;
     if (count > (object.odiluted ? 2 : magic ? 3 : 7)) {

@@ -17,7 +17,7 @@ import { vision_note_blocker_change, cansee, couldsee, monsterHasLineOfSightToHe
 import { setWallStateAt } from './wall_topology.js';
 import { stopLevelTimer } from './timeout.js';
 import { containedGold } from './shk.js';
-import { resetHeroFaint } from './eat.js';
+import { reset_faint } from './eat.js';
 import { heroIsDeaf, heroIsBlind } from './senses.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { heroHasInvoluntaryDelay } from './cmd.js';
@@ -34,7 +34,8 @@ import { formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { angerMonster, removeMonsterFromGame, sendMonsterToLimbo } from './mon.js';
 import { releaseMonsterInventory } from './steal.js';
 import { monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt } from './steed.js';
-import { randomMonsterRelocation, moveMonsterNextToHero, teleportHero, askTeleportDestination } from './teleport.js';
+import { randomMonsterRelocation, teleportHero, askTeleportDestination } from './teleport.js';
+import { moveMonsterNextToHero } from './mon.js';
 import { deleteTrap } from './trap.js';
 import { publishMonsterYelp } from './ambient_sounds.js';
 import { impossible } from './diagnostics.js';
@@ -42,8 +43,8 @@ import { heroFormSticks } from './polyself.js';
 import { linkObjectToMonsterInventory, unlinkObject, placeObject, remove_object, stack_object } from './mkobj.js';
 import { deleteObject } from './shk.js';
 import { findNearbyMonsterPosition } from './teleport_rules.js';
-import { currency } from './currency.js';
-import { freeInventoryObject } from './hero_inventory.js';
+import { currency } from './invent.js';
+import { freeInventoryObject } from './invent.js';
 import { make_grave } from './engrave.js';
 import { heroGoldAmount, roomForRoomno, roomsAt } from './hack.js';
 const PM_GUARD = 272;
@@ -120,7 +121,7 @@ export async function invault(state = game) {
     };
     guard._egd = corridor;
     state.u.uinvault = (state.u.uinvault ?? 0) + 1;
-    await resetHeroFaint({ state });
+    await reset_faint({ state });
     const boulders = requireGameLevel(state).objects[entry.x]?.[entry.y]?.filter(object => object.otyp === BOULDER) ?? [];
     for (const boulder of boulders)
         await fractureRock(boulder, entry.x, entry.y, { state });

@@ -29,6 +29,7 @@
 // steal_it(), theft_petrifies(), damageum() and mhitm_adtyping()'s two
 // actor arms, explum(), gulpum()/start_engulf()/end_engulf(), hmonas(),
 // that_is_a_mimic()/stumble_onto_mimic(), and nohandglow().
+import { objectSkill, ACID_VENOM, AMULET_OF_LIFE_SAVING, BLINDING_VENOM, BOOMERANG, BOULDER, CLOVE_OF_GARLIC, CORPSE, CREAM_PIE, DUNCE_CAP, EGG, ELVEN_ARROW, ELVEN_BOW, EXPENSIVE_CAMERA, GAUNTLETS_OF_POWER, HEAVY_IRON_BALL, IRON_CHAIN, IRON_SHOES, KATANA, LOADSTONE, MIRROR, OBJECT_DESCRIPTIONS, OBJECT_LARGE_DAMAGE, OBJECT_NAMES, OBJECT_SMALL_DAMAGE, TOWEL, YA, YUMI, } from './object_data.js';
 import { adjustHeroAlignment } from './alignment.js';
 import { monsterSentenceSubject, sessionIsNight } from './ambient_sounds.js';
 import { monsterHasMagicResistance } from './trap.js';
@@ -50,23 +51,23 @@ import { armorSimpleName, armorSlotFor, heroHasDrainResistance, heroHasFreeActio
 import { abusePetAfterHeroHit, tameMonster } from './dog.js';
 import { hurtleHero, hurtleMonster, objectBreaksOnImpact, releaseCameraDemon, staggerVerb, tryUnarmedStagger, willMonsterHurtle } from './dothrow.js';
 import { levelIsWaterLevel } from './dungeon.js';
-import { applyCannibalPenalty, eatHeroBrain, eatingConducts, eatMonsterBrain, spendHeroNutrition, updateHeroHunger } from './eat.js';
+import { eat_brains, eating_conducts, morehungry, newuhs } from './eat.js';
 import { finishHeroDeath, finishMonsterAttackDeath } from './end.js';
 import { wipeHeroEngraving } from './engrave.js';
 import { loseHeroExperience } from './exper.js';
 import { explode } from './explosion.js';
-import { floorObjectDescription } from './floor_object_display.js';
+import { floorObjectDescription } from './invent.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { game, requireGameLevel, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { checkHeroAttackOverexertion, doorlessDoor, exceedsActionCapacity, heroTestMove, nearCapacity, nomul, roomForRoomno, roomsAt, stopRun } from './hack.js';
 import { dist2, ordinalSuffix, possessiveName, upstart } from './hacklib.js';
 import { dropObjectAtHero, woundHeroLegs } from './do.js';
 import { resolveHeroEggHit } from './hero_egg_hit.js';
-import { releaseHeroFromMonster } from './hero_expulsion.js';
+import { releaseHeroFromMonster } from './mon.js';
 import { heroGrabMisses, heroSeductionCompatibility, monsterCanBeStrangled, showHeroSilverContact } from './hero_form_contact.js';
-import { setHeroGrip } from './hero_grip.js';
+import { setHeroGrip } from './mon.js';
 import { holdAnotherObject } from './hero_hold_object.js';
-import { freeInventoryObject } from './hero_inventory.js';
+import { freeInventoryObject } from './invent.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { finishHeroLiquidMonsterDeath, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { retouchEquipment } from './hero_retouch.js';
@@ -83,15 +84,14 @@ import { cloneHeroMonsterForm, makemonNear } from './mklev.js';
 import { deallocateObject, linkObjectToMonsterInventory, mksobj, objectQuantity, objectWeight, set_corpsenm, splitObjectStack, unlinkMonsterObject, unlinkObject } from './mkobj.js';
 import { angerAttackedMonster, angerWatchGuards, applyMonsterGolemEffects, changeMonsterForm, finishMonsterKilled, finishMonsterPetrification, grantMonsterCorpseIntrinsic, grantMonsterIntrinsic, healMonster, isWatch, monsterSubject, paralyzeMonster, removeMonsterFromGame, resolveMonsterCorpseChance, revealMonsterAppearance, turnGolemToStone, wakeAttackedMonster, wakeMonster, wakeMonstersNearWithMessages } from './mon.js';
 import { monsterCombatDefense, monsterFireDescription, monsterHasAcidResistance, monsterHasColdResistance, monsterHasDrainResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, monsterHasStoneResistance, monsterIsHelpless, monsterPossessive, monsterResistsSleep, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterSubjectPronoun } from './mondata.js';
-import { wornMonsterLifeSaver } from './mondeath.js';
+import { wornMonsterLifeSaver } from './mon.js';
 import { beginMonsterMove, makeMonsterFlee, presentMonsterMoveMessage, presentMonsterPostMove, setMonsterApparentHeroPosition } from './monmove.js';
 import { recordRandom } from './monster_action_types.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DRDX, AD_DREN, AD_DRIN, AD_DRLI, AD_DRST, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY, AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPC1, AD_SPC2, AD_SPEL, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TENT, AT_TUCH, AT_WEAP } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SYMBOL, PM_GREEN_SLIME, monsterCanTeleport, monsterDigests, monsterEnfolds, monsterHasEyes, monsterHasHead, monsterHasNoAttacks, monsterHasNoHands, monsterHasProperName, monsterHatesBlessings, monsterHatesLight, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsAnimal, monsterIsDemon, monsterIsEel, monsterIsFlyer, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsRider, monsterIsShade, monsterIsSlimeproof, monsterIsSlithy, monsterIsThickSkinned, monsterIsUndead, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterIsWooden, monsterPassesWalls, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterTypeName, requireMonsterData } from './monster_data.js';
 import { destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory } from './monworn.js';
 import { tryMonsterUnslime, useMonsterStoningCure } from './muse.js';
-import { objectClassForType, objectMaterial, observeObject } from './o_init.js';
-import { ACID_VENOM, AMULET_OF_LIFE_SAVING, BLINDING_VENOM, BOOMERANG, BOULDER, CLOVE_OF_GARLIC, CORPSE, CREAM_PIE, DUNCE_CAP, EGG, ELVEN_ARROW, ELVEN_BOW, EXPENSIVE_CAMERA, GAUNTLETS_OF_POWER, HEAVY_IRON_BALL, IRON_CHAIN, IRON_SHOES, KATANA, LOADSTONE, MIRROR, OBJECT_DESCRIPTIONS, OBJECT_LARGE_DAMAGE, OBJECT_NAMES, OBJECT_SMALL_DAMAGE, OBJECT_SUBTYPE, OBJECT_WEIGHT, TOWEL, YA, YUMI } from './object_data.js';
+import { objectMaterial, observeObject } from './o_init.js';
 import { isAxe, isBimanualObject, isBlade, isBluntWeapon, isFlimsyObject, isLauncherAmmunition, isMissileObject, isPermanentlyPoisonedObject, isPoisonableObject, isPolearm, isWeaponTool, launcherMatchesAmmo } from './object_properties.js';
 import { corpseName, makePlural, minimalObjectName, objectCombatName, objectHasPersonalName, objectName, objectNameIsPlural, observeObjectForNaming, ownedObjectAction, ownedObjectName, pluralizeObjectNoun, verbForSubject, withIndefiniteArticle } from './objnam.js';
 import { stopHeroOccupation } from './occupation.js';
@@ -118,9 +118,9 @@ import { goodPosition, reportMonsterTeleportRestriction } from './teleport_rules
 import { askTeleportDestination, heroControlsTeleport, randomMonsterRelocation, teleportHero, teleportMonsterByHero } from './teleport.js';
 import { attrcurse } from './throne.js';
 import { burnAwayHeroSlime, putHeroToSleep } from './timeout.js';
-import { damageObjectWithAcid, erodeArmor, erodeAttackingWeapon, erodeObject, finishImmediateMonsterTrap, heroIsUnconscious, igniteItems, monsterSelfTouch, petrifyMonsterFromContact, resolveImmediatePetrification, triggerImmediateMonsterTrap } from './trap.js';
+import { damageObjectWithAcid, erodeArmor, erodeAttackingWeapon, erodeObject, mintrap, heroIsUnconscious, igniteItems, monsterSelfTouch, petrifyMonsterFromContact, resolveImmediatePetrification } from './trap.js';
 import { canBeginTwoWeaponCombat, dropSecondaryWeapon, stopTwoWeaponCombat } from './wield.js';
-import { addInventoryItem } from './u_init.js';
+import { addInventoryItem } from './invent.js';
 import { cansee, monsterHasLineOfSightToHero } from './vision.js';
 import { dryTowel, heroStrengthDamageBonus, monsterWieldedWeapon, rollPhysicalWeaponDamage, shadeBlocksWeaponBaseDamage, unwieldMonsterWeapon, updateMonsterWeaponAfterPolymorph, weaponHitBonus } from './weapon.js';
 import { applyHeroWereChange, isHumanWereMonster, isWereMonster, revertHeroWereForm, setHeroLycanthropy, wereChange } from './were.js';
@@ -764,7 +764,7 @@ export async function prepareHeroWeaponContact(monster, weapon, { mode, dieRoll,
     const handToHand = mode === 'melee'
         || (mode === 'applied' && isPolearm(state.uwep || state.u.uwep));
     if (state.urole.key === 'healer' && handToHand && weapon.oclass === WEAPON_CLASS
-        && OBJECT_SUBTYPE[weapon.otyp] === P_KNIFE) {
+        && objectSkill(weapon.otyp) === P_KNIFE) {
         const vital = state.mvitals?.[monster.mnum];
         if (!vital)
             throw new Error(`Healer anatomy requires initialized vitals for species ${monster.mnum}.`);
@@ -801,7 +801,7 @@ export async function prepareHeroWeaponContact(monster, weapon, { mode, dieRoll,
     return result;
 }
 function isImprovisedContact(weapon, mode, state) {
-    const skill = OBJECT_SUBTYPE[weapon.otyp] ?? P_NONE;
+    const skill = objectSkill(weapon.otyp) ?? P_NONE;
     const launcher = weapon.oclass === WEAPON_CLASS && skill >= P_BOW && skill <= P_CROSSBOW;
     return launcher
         || (mode === 'melee' && (isMissileObject(weapon) || isLauncherAmmunition(weapon)))
@@ -846,7 +846,7 @@ function shatterCandidate(monster, weapon, dieRoll, state) {
         && !(state.uarms || state.u.uarms);
     if (!isBimanualObject(weapon) && !samuraiKatana)
         return null;
-    const skill = Math.abs(OBJECT_SUBTYPE[weapon.otyp] ?? P_NONE);
+    const skill = Math.abs(objectSkill(weapon.otyp) ?? P_NONE);
     if (skill === P_NONE)
         return null;
     const proficiency = ensureHeroSkills(state)?.[skill];
@@ -1140,7 +1140,7 @@ export function rollHeroJoust(monster, weapon, { state = game } = {}) {
     if (weapon !== primary && (weapon !== secondary || !hero.twoweap))
         return 0;
     const skills = ensureHeroSkills(state);
-    let rating = skills?.[Math.abs(OBJECT_SUBTYPE[weapon.otyp] ?? 0)]?.skill ?? P_ISRESTRICTED;
+    let rating = skills?.[Math.abs(objectSkill(weapon.otyp))]?.skill ?? P_ISRESTRICTED;
     if (hero.twoweap)
         rating = Math.min(rating, skills?.[P_TWO_WEAPON_COMBAT]?.skill ?? P_ISRESTRICTED);
     if (rating === P_ISRESTRICTED)
@@ -1202,8 +1202,7 @@ export async function tryHeroPuddingSplit(monster, weapon, { handToHand, materia
     const withWhat = state.u.twoweap && state.flags.verbose
         ? ` with ${ownedObjectName(weapon, state, { capitalized: false })}` : '';
     await publish(`${monsterName(monster, { state, capitalized: true })} divides as you hit it${withWhat}!`);
-    const trap = await triggerImmediateMonsterTrap(clone, state);
-    await finishImmediateMonsterTrap(trap, state, { publish });
+    await mintrap(clone, state, { publish });
     return { split: true, heroDied: !!state.program_state.gameover };
 }
 export function captureHeroPhysicalObjectName(object, state = game) {
@@ -1243,7 +1242,7 @@ export async function showHeroPhysicalHit(monster, object, { state = game, publi
     }
     else {
         const verb = object && (armorSlotFor(object.otyp) === 'uarms' || object.otyp === HEAVY_IRON_BALL)
-            ? 'bash' : object && (OBJECT_SUBTYPE[object.otyp] === P_WHIP || object.otyp === TOWEL && object.spe > 0)
+            ? 'bash' : object && (objectSkill(object.otyp) === P_WHIP || object.otyp === TOWEL && object.spe > 0)
             ? 'lash' : state.urole?.key === 'barbarian' ? 'smite' : 'hit';
         const punctuation = canSeeMonster(monster) ? damagePunctuation(damage) : '.';
         await publish(`You ${verb} ${monsterName(monster, { state })}${punctuation}`);
@@ -1561,7 +1560,7 @@ async function preparePhysicalContact(monster, object, context) {
     if (weapon.useWeaponSkill) {
         strike.lightContact = artifactEmitsLight(object) && !!object.lamplit && monsterHatesLight(monster);
         if (state.u.usteed && mode === 'melee' && strike.damage > 0
-            && Math.abs(OBJECT_SUBTYPE[object.otyp] ?? 0) === P_LANCE && monster !== state.u.ustuck) {
+            && Math.abs(objectSkill(object.otyp)) === P_LANCE && monster !== state.u.ustuck) {
             strike.joust = rollHeroJoust(monster, object, { state });
             if (strike.joust)
                 strike.trainWeaponSkill = true;
@@ -3053,7 +3052,7 @@ export async function drainHeroBrain(monster, attack, state, publish, random = r
     }
     if (helmet?.otyp !== DUNCE_CAP) {
         const mortality = hero.umortality ?? 0;
-        const eaten = await eatHeroBrain(monster, attack, state, publish, rollOne);
+        const eaten = await eat_brains({ kind: 'hero-defender', monster, attack, state, publish, rollOne });
         if ((hero.umortality ?? 0) > mortality)
             attack.skipBrainDrain = true;
         if (!eaten || state.program_state.gameover)
@@ -3092,8 +3091,9 @@ export async function resolveMonsterBrainAttack(attacker, defender, damage, { st
     }
     const amulet = wornAmulet(defender);
     const lifeSaving = amulet?.otyp === AMULET_OF_LIFE_SAVING;
-    const result = await eatMonsterBrain(attacker, defender, damage, {
-        state, visible, random, rollOne, publish, finishDeath,
+    const result = await eat_brains({
+        kind: 'monster-defender', attacker, defender, damage,
+        context: { state, visible, random, rollOne, publish, finishDeath },
     });
     return { ...result, skipBrainDrain: lifeSaving && !wornAmulet(defender) };
 }
@@ -4215,7 +4215,7 @@ export async function resolveHeroCombatEngulf(defender, attack, { state = game, 
     const fatal = (touchPetrifies(species) && !heroResistsStoning(state))
         || (damageType === AD_DGST && (rider || (species === PM_MEDUSA && !heroResistsStoning(state))));
     if (damageType === AD_DGST && (!state.u.slowDigestion || fatal))
-        await eatingConducts(species, { state });
+        await eating_conducts(species, { state });
     if (fatal && !rider) {
         await publish(`You ${digests ? 'englut' : 'engulf'} ${monsterName(defender, { state })}.`);
         const rawName = monsterTypeName(species, !!defender.female);
@@ -4281,7 +4281,7 @@ async function digestDefender(defender, species, state, { publish, random, rollD
     const amulet = wornMonsterLifeSaver(defender);
     if (amulet)
         await destroyObjectFromMonsterInventory(defender, amulet, state, { silently: true, publish });
-    await updateHeroHunger(false, { state });
+    await newuhs(false, { state });
     if (state.program_state.gameover)
         return { nativeResult: M_ATTK_MISS, heroDied: true };
     const previous = state._monsterSwallower;
@@ -5354,7 +5354,7 @@ export async function resolveMonsterContactEffect(monster, attack, { state, publ
     else if (attack.damageType === AD_FAMN) {
         await exerciseAttribute(A_CON, false, state);
         if (state.u.uhs !== FAINTED)
-            await spendHeroNutrition(random(40) + 40, { state });
+            await morehungry(random(40) + 40, { state });
     }
     else if (attack.damageType === AD_CONF) {
         const duration = attack.damage ?? 0;
@@ -5610,57 +5610,11 @@ export async function applyHeroNaturalBrain(monster, context) {
         return result;
     }
     const amulet = monster.minvent?.find(object => (object.owornmask ?? 0) & W_AMUL);
-    await heroEatsMonsterBrain(monster, context, result);
+    await eat_brains({ kind: 'hero-attacker', monster, context, result });
     if (amulet?.otyp === AMULET_OF_LIFE_SAVING
         && !monster.minvent?.some(object => (object.owornmask ?? 0) & W_AMUL))
         result.skipBrainDrain = true;
     return result;
-}
-async function heroEatsMonsterBrain(monster, context, result) {
-    const { state, publish, rollOne } = context;
-    const extraDamage = rollOne(10);
-    if (monsterIsNoncorporeal(monster)) {
-        const owner = possessiveName(monsterName(monster, { state, capitalized: true }));
-        await publish(`${owner} brain is unharmed.`);
-        return;
-    }
-    await publish(`You eat ${possessiveName(monsterName(monster, { state }))} brain!`);
-    if (fleshPetrifies(monster.mnum) && !heroResistsStoning(state) && !heroIsPetrifying(state)) {
-        await setHeroPetrificationTimeout(5, {
-            state, killer: monsterTypeName(monster.mnum, monster.female),
-            killerFormat: KILLED_BY_AN, publish,
-        });
-    }
-    await eatingConducts(monster.mnum, { state });
-    if (monsterIsMindless(monster.mnum)) {
-        await publish(`${monsterName(monster, { state, capitalized: true })} doesn't notice.`);
-        return;
-    }
-    if (monsterIsRider(monster)) {
-        await publish('Ingesting that is fatal.');
-        const cause = `unwisely ate the brain of ${monsterTypeName(monster.mnum, monster.female)}`;
-        result.heroDied = await finishHeroDeath({
-            killer: cause, deathCause: cause, deathType: DIED, deathLineShown: true,
-        });
-        if (result.heroDied) {
-            result.done = true;
-            return;
-        }
-        exerciseWisdom(false, state);
-    }
-    else {
-        // Native morehungry() accepts negative nutrition and cannot choke.
-        await spendHeroNutrition(-rollOne(30), { state });
-        const hero = state.u;
-        if (hero.acurr.a[A_INT] < hero.amax.a[A_INT]) {
-            // This repairs the base directly, including beneath a dunce cap.
-            hero.acurr.a[A_INT] = Math.min(hero.amax.a[A_INT], hero.acurr.a[A_INT] + rollOne(4));
-            state.context.botl = true;
-        }
-        exerciseWisdom(true, state);
-    }
-    result.damage += extraDamage;
-    await applyCannibalPenalty(monster.mnum, { state });
 }
 // ─── C uhitm.c:mhitm_ad_poly(), hero attacker (from hero_natural_polymorph.ts) ───
 // C uhitm.c:mhitm_ad_poly() and mhitm.c:mon_poly(), for a hero attacker.

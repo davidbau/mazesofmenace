@@ -1,11 +1,11 @@
+import { objectBaseWeight, objectDelay, objectBaseDirection, objectSkill, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORNUTHAUM, LENSES, OBJECT_DESCRIPTIONS, OBJECT_INITIAL_KNOWN, OBJECT_NAMES, OBJECT_SPELL_CATEGORY, OBJECT_SPELL_LEVEL, QUARTERSTAFF, requireObjectData, ROBE, SMALL_SHIELD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR, SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER, SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE, SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF, SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH, SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK, } from './object_data.js';
 import { requirePlayingGame } from './gstate.js';
 // Spell learning and the native spell.c:spelleffects() transaction.
 import { commandResultFailed } from './cmd.js';
 import { game, requireLiveGame } from './gstate.js';
 import { plineWithContinuation } from './pline.js';
-import { promptKey } from './tty_prompts.js';
 import { promptDirection } from './cmd.js';
-import { ACH_INVK, ACH_NOVL, A_INT, A_STR, A_WIS, CLOUD, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, DRAWBRIDGE_UP, EXPL_FIERY, EXPL_FROSTY, IS_STWALL, IS_TREE, Is_waterlevel, LAVAPOOL, MENU_TRADITIONAL, MOAT, NHW_MENU, NO_MINVENT, PICK_NONE, PICK_ONE, P_ATTACK_SPELL, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_HEALING_SPELL, P_ISRESTRICTED, P_MATTER_SPELL, P_SKILLED, P_UNSKILLED, POOL, SPACE_POS, ZAP_POS, xdir, ydir } from './const.js';
+import { ACH_INVK, ACH_NOVL, A_INT, A_STR, A_WIS, CLOUD, CMDQ_KEY, CQ_REPEAT, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, DRAWBRIDGE_UP, EXPL_FIERY, EXPL_FROSTY, IS_STWALL, IS_TREE, Is_waterlevel, LAVAPOOL, MENU_TRADITIONAL, MOAT, NHW_MENU, NO_MINVENT, PICK_NONE, PICK_ONE, P_ATTACK_SPELL, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_HEALING_SPELL, P_ISRESTRICTED, P_MATTER_SPELL, P_SKILLED, P_UNSKILLED, POOL, SPACE_POS, ZAP_POS, xdir, ydir } from './const.js';
 import { isok } from './cmd.js';
 import { exerciseWisdom, currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroHeadName, heroSpineName } from './body_parts.js';
@@ -18,8 +18,7 @@ import { mksobj } from './mkobj.js';
 import { deleteObject, chargeUnpaidUsage } from './shk.js';
 import { useHeroSkill, ensureHeroSkills } from './skills.js';
 import { findArmorClass } from './do_wear.js';
-import { rememberCommandKey, takeRepeatCommand } from './cmd.js';
-import { restoreCannedCommandTail } from './cmd.js';
+import { cmdq_add_key, cmdq_pop, yn_function } from './cmd.js';
 import { canSeeMonster, canSpotMonster, flush_screen, shieldeff, map_invisible, zapdir_to_glyph, } from './display.js';
 import { displayColorName, displayLiquidName, monsterName, novelTitle } from './do_name.js';
 import { explode } from './explosion.js';
@@ -29,8 +28,7 @@ import { heroIsSick } from './potion.js';
 import { makeBlinded, makeConfused, makeStunned } from './potion.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { formatFeltMessage, heroCanChant, publishHeardMessage } from './hero_speech.js';
-import { spendHeroNutrition } from './eat.js';
-import { takeCommandResponse } from './input.js';
+import { morehungry } from './eat.js';
 import { wakeMonster, monstersInFmonOrder } from './mon.js';
 import { monsterHasShockResistance } from './mondata.js';
 import { MONSTER_ALIGNMENT, MONSTER_NAME, monsterEnfolds, monsterIsAnimal, monsterIsUndead, monsterIsVampireShifter, monsterIsWhirly, requireMonsterData, } from './monster_data.js';
@@ -77,7 +75,6 @@ import { hitMonsterWithRay, adjustSpellDamage } from './zap.js';
 import { heroHasFreeHand } from './engrave.js';
 import { applyScrollEffects } from './read.js';
 import { applyWandEffect } from './zap.js';
-import { BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORNUTHAUM, LENSES, OBJECT_DELAY, OBJECT_DESCRIPTIONS, OBJECT_DIR, OBJECT_INITIAL_KNOWN, OBJECT_NAMES, OBJECT_SPELL_CATEGORY, OBJECT_SPELL_LEVEL, OBJECT_SUBTYPE, OBJECT_WEIGHT, QUARTERSTAFF, requireObjectData, ROBE, SMALL_SHIELD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR, SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER, SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE, SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF, SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH, SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK, } from './object_data.js';
 import { loseHeroHp, nomul, heroIsOnStairs, isInvocationPosition, shouldShowGetposTip, showGetposTip, exceedsActionCapacity, } from './hack.js';
 import { objectWeight } from './mkobj.js';
 export function knownSpell(otyp, state = game) {
@@ -529,7 +526,7 @@ function studyState(state) {
 }
 function readingDelay(type) {
     const level = requireObjectData(OBJECT_SPELL_LEVEL, type);
-    const delay = requireObjectData(OBJECT_DELAY, type);
+    const delay = objectDelay(type);
     if (level >= 1 && level <= 2)
         return -delay;
     if (level <= 4 && level >= 3)
@@ -669,7 +666,7 @@ async function applySpellEffect(source, skill, atSelf, state) {
 }
 async function applyDirectedSpell(source, atSelf, state) {
     const hero = state.u;
-    if (OBJECT_DIR[source.otyp] !== 1) {
+    if (objectBaseDirection(source.otyp) !== 1) {
         if (atSelf)
             hero.dx = hero.dy = hero.dz = 0;
         else if (!await promptDirection()) {
@@ -699,9 +696,8 @@ export async function docast() {
     }
     const index = (game.spells ?? []).indexOf(spell);
     const letter = index < 26 ? 97 + index : 65 + index - 26;
-    // C docast() appends the selected letter even during do_repeat().
-    game._repeatCommands ??= [];
-    game._repeatCommands.push({ kind: 'key', key: letter });
+    // C spell.c:824-825 appends the selected letter even during do_repeat().
+    cmdq_add_key(CQ_REPEAT, letter);
     await castSpell(spell.otyp);
 }
 export async function dowizcast() {
@@ -773,7 +769,7 @@ export async function checkSpellCast(spell, { state = game } = {}) {
         return { allowed: false, spentTime: !!amuletDrains, energy };
     }
     if (memorized.otyp !== SPE_DETECT_FOOD)
-        await spendHeroNutrition(castingNutritionCost(energy, state), { state });
+        await morehungry(castingNutritionCost(energy, state), { state });
     if (state.program_state.gameover)
         return { allowed: false, spentTime: true, energy };
     const chance = percentSuccess(memorized, state);
@@ -829,7 +825,7 @@ export function percentSuccess(spell, state = game) {
         chance += Math.min(20, Math.trunc(15 * -difficulty / level));
     chance = Math.max(0, Math.min(120, chance));
     const shield = wornObject('uarms', state);
-    if (shield && objectWeight(shield) > (OBJECT_WEIGHT[SMALL_SHIELD] ?? 0))
+    if (shield && objectWeight(shield) > objectBaseWeight(SMALL_SHIELD))
         chance = Math.trunc(chance / (OBJECT_NAMES[type] === role.special ? 2 : 4));
     chance = Math.trunc(chance * (20 - castingPenalty) / 15) - castingPenalty;
     return Math.max(0, Math.min(100, chance));
@@ -959,22 +955,16 @@ export async function selectSpellToCast(state = game) {
     }
     if (await rejectCasting(state))
         return null;
-    const queued = state._inDoAgain ? takeRepeatCommand() : takeCommandResponse();
-    if (queued !== undefined) {
-        const key = typeof queued === 'number' ? queued
-            : typeof queued === 'object' && 'kind' in queued && queued.kind === 'key'
-                ? queued.key : null;
-        if (key === null)
-            return null;
-        const index = spellIndex(key);
-        return index >= 0 ? spells[index] ?? null : null;
-    }
-    if (!state._inDoAgain) {
-        const command = state._cannedCommands?.shift();
-        if (command) {
-            restoreCannedCommandTail(command);
-            return null;
+    // C spell.c:getspell(): one cmdq_pop() (spell.c:729-743) must yield a
+    // CMDQ_KEY naming a known spell; every other popped entry returns
+    // FALSE, leaving the rest of the queue untouched.
+    const cmdq = cmdq_pop(state);
+    if (cmdq) {
+        if (cmdq.typ === CMDQ_KEY) {
+            const index = spellIndex(cmdq.key);
+            return index >= 0 ? spells[index] ?? null : null;
         }
+        return null;
     }
     if (state.flags.menu_style === MENU_TRADITIONAL) {
         const selection = await selectTraditionalSpell(spells);
@@ -1031,11 +1021,8 @@ async function selectTraditionalSpell(spells) {
     const letters = count === 1 ? 'a' : count < 27 ? `a-${spellLetter(count - 1)}`
         : count === 27 ? 'a-zA' : `a-zA-${spellLetter(count - 1)}`;
     for (let tries = 0; tries < 10; tries++) {
-        // yn_function() acknowledges unread prose before replacing it with
-        // an unrestricted, case-sensitive single-key question.
-        await flushPendingTopline();
-        const key = await promptKey(`Cast which spell? [${letters} *?] `);
-        rememberCommandKey(key);
+        const { answer } = await yn_function(`Cast which spell? [${letters} *?]`, null, '', true);
+        const key = answer.charCodeAt(0);
         if (key === 42 || key === 63)
             return 'menu';
         // C strchr(quitchars, ilet) also matches a literal fuzzer NUL.
@@ -1467,9 +1454,7 @@ export async function applyPotionSpell(source, { state = game } = {}) {
 export function spellSkillType(otyp, state = game) {
     if (roleInitClericLightSchool(otyp, state))
         return P_CLERIC_SPELL;
-    const subtype = OBJECT_SUBTYPE[otyp];
-    if (subtype === undefined)
-        throw new RangeError(`Unknown spell object type ${otyp}`);
+    const subtype = objectSkill(otyp);
     return subtype;
 }
 const SPELL_CATEGORIES = {

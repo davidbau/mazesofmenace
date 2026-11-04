@@ -24,7 +24,8 @@ import { setMonsterMalign } from './makemon.js';
 import { levelFollower } from './mondata.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { questMonsterFlags3 } from './role_monsters.js';
-import { expelHero, releaseHeroFromMonster } from './hero_expulsion.js';
+import { expelHero } from './hero_expulsion.js';
+import { releaseHeroFromMonster } from './mon.js';
 import { heroFormSticks, heroSpecies } from './polyself.js';
 import { AT_WEAP } from './monster_attack_types.js';
 import { wieldMonsterWeapon } from './weapon.js';
@@ -40,7 +41,7 @@ import { randomMonsterRelocation, relocateMonsterTo } from './teleport.js';
 import { findNearbyMonsterPosition, goodPosition } from './teleport_rules.js';
 import { somexy } from './mkroom.js';
 import { deliverOrcRaidLoot } from './orc_raid.js';
-import { tryMonsterTrapEscape } from './trap.js';
+import { mintrap } from './trap.js';
 import { monsterCarriesAmulet } from './wizard.js';
 import { setShopResidency, makeShopkeeperHappy, makeShoppersHappy } from './shk.js';
 import { placeObject } from './mkobj.js';
@@ -836,7 +837,7 @@ export async function collectLevelFollowers(state = game, petsOnly = false) {
             && !((monster.mstrategy ?? 0) & STRAT_WAITFORU);
         if (follows) {
             if (monster.mtrapped) {
-                await tryMonsterTrapEscape(monster, state, {
+                await mintrap(monster, state, {
                     describeMonster: target => monsterName(target, { capitalized: true, state }),
                 });
             }

@@ -1,4 +1,4 @@
-import { clearCannedCommands, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, getLine, promptYesNo, rhack, clearRepeatCommand } from './cmd.js';
+import { cmdq_clear, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, getLine, promptYesNo, rhack } from './cmd.js';
 import { publishHeardMessage } from './hero_speech.js';
 import { dungeonBuildsUp, initOverviewRecord } from './dungeon.js';
 import { noticeAllMonsters, withMonsterNoticesBlocked, applyHeroLiquidEffects, continueRun, endVoluntaryMultiTurn, nomul, overexertHeroHp, finishDestinationSpotEffects, stopRun, captureRunmodeDelay, isTeleportRunmode, nearCapacity, checkSpecialRoom } from './hack.js';
@@ -13,7 +13,7 @@ import { heroIsHallucinating, heroIsBlind, heroIsDeaf, syncBlindness } from './s
 import { learnWand, applyRayFloorFeatures, destroyColdInventory, destroyElectricInventory, destroyFireInventory, heroHasHalfSpellDamage } from './zap.js';
 import { flashBurn } from './zap.js';
 import { makeBlinded, makeStunned } from './potion.js';
-import { finishMealMimicry, finishHeroDigestion, getHungry, recoverHeroFromFainting, regainHearingAfterHelplessness } from './eat.js';
+import { eatmdone, Finish_digestion, gethungry, unfaint, Hear_again } from './eat.js';
 import { game, requireGameLevel, requireInitializedGame, requireGameDisplay, requireLiveGame } from './gstate.js';
 import { isRoom } from './map_types.js';
 import { recordRandom } from './monster_action_types.js';
@@ -22,7 +22,7 @@ import { clearSplitObjects, unlinkObject } from './mkobj.js';
 import { tryCallObjectType } from './do.js';
 import { observeBucForNaming, verbForSubject, withIndefiniteArticle, observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName } from './objnam.js';
 import { observeObject, recordObjectEncounter, recordObjectKnowledge, learnObjectType } from './o_init.js';
-import { A_CURRENT, A_ORIGINAL, ESCAPED, G_NOCORPSE, In_endgame, In_hell, MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM, RLOC_NOMSG, WATER, RLOC_MSG, LOST_STOLEN, MMOVE_DIED, NORMAL_SPEED, A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_ARMOR, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN } from './const.js';
+import { A_CURRENT, A_ORIGINAL, CQ_CANNED, CQ_REPEAT, ESCAPED, G_NOCORPSE, In_endgame, In_hell, MON_FLOOR, PICK_ONE, PLNMSG_MON_TAKES_OFF_ITEM, RLOC_NOMSG, WATER, RLOC_MSG, LOST_STOLEN, MMOVE_DIED, NORMAL_SPEED, A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_ARMOR, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN } from './const.js';
 import { showInventoryWindow } from './windows.js';
 import { pendingArmorAction, armorSimpleName, heroHasFreeAction, heroIsDisplaced, stopDonning, applyArmorOnEffects, applyStartingArmorEffects, armorOnIdentifiesType, findArmorClass, erodeWornArmor, isBeingTakenOff, finishArmorRemoval, heroHasSlipperyHands, slipFromSlipperyHands } from './do_wear.js';
 import { dosounds, sessionIsNight } from './ambient_sounds.js';
@@ -30,7 +30,8 @@ import { warnWithMasterKey, applyArtifactHit, findArtifact } from './artifacts.j
 import { regenerateHeroHp } from './hero_regeneration.js';
 import { ceilingName } from './terrain_name.js';
 import { consumeMonsterItem } from './mthrowu.js';
-import { heroCanTeleport, moveMonsterNextToHero, randomMonsterRelocation, teleportHero, askTeleportDestination } from './teleport.js';
+import { heroCanTeleport, randomMonsterRelocation, teleportHero, askTeleportDestination } from './teleport.js';
+import { moveMonsterNextToHero } from './mon.js';
 import { runDueTimers } from './timeout.js';
 import { askKeepRestoredSave, restoreMonsterCover } from './save.js';
 import { placeHeroAtRandomArrival, finishScheduledLevelChange } from './level_change.js';
@@ -47,14 +48,14 @@ import { OBJECT_DELAY, ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, OBJECT_BI
 import { heroIsUnaware } from './senses.js';
 import { heroSpecies, setHeroSpecies, feelingAfterSelfGenocide, heroHasBeenGenocided, heroHasOlfaction, heroIsUnchanging, polymorphHero, returnHeroToHumanForm } from './polyself.js';
 import { heroHasConflict } from './hero_conflict.js';
-import { openHoldingTrap, erodeArmor, erodeAttackingWeapon, igniteItems, petrifyMonsterImmediately, resumeDeferredMonsterTrap, burnHeroArmorByFire, sinkHeroIntoLava } from './trap.js';
+import { openHoldingTrap, erodeArmor, erodeAttackingWeapon, igniteItems, petrifyMonsterImmediately, burnHeroArmorByFire, sinkHeroIntoLava } from './trap.js';
 import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SEDU, AD_SITM, AD_SSEX, AD_STCK } from './monster_attack_types.js';
 import { loseHeroExperience } from './exper.js';
 import { makeMonsterFlee, interruptOccupationForMonster, monsterSightingBeforeAction, completeMonsterOffensiveAction, heroEveryturnEffect, runMonsterEveryturnEffects, beginMonsterMove, beginMonsterDochug, runMonsterAction } from './monmove.js';
 import { stopHeroOccupation } from './occupation.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { isWeldedPrimary } from './wield.js';
-import { finishInventoryRemoval } from './hero_inventory.js';
+import { finishInventoryRemoval } from './invent.js';
 import { reassessMonsterArmor } from './monworn.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { d, rn2, rnd } from './rng.js';
@@ -646,7 +647,7 @@ async function periodicTurnExercise(sourceTurn) {
 }
 async function finishInitialTurnMaintenanceAfterAmbient({ sourceTurn, }) {
     const game = requireInitializedGame();
-    await getHungry({ invulnerable: game.u.invulnerable });
+    await gethungry({ invulnerable: game.u.invulnerable });
     if (game.program_state.gameover)
         return { kind: 'complete' };
     // JS has already advanced `game.moves` for the hero action which caused
@@ -744,8 +745,8 @@ async function rollHeroTeleportitis() {
         return;
     if (!heroNextToLeashedFollowers())
         await checkHeroLeashes(from.x, from.y);
-    clearCannedCommands();
-    clearRepeatCommand();
+    cmdq_clear(CQ_CANNED);
+    cmdq_clear(CQ_REPEAT);
 }
 // C allmain.c:moveloop_core(). A selected change waits through involuntary
 // delays and Unchanging; losing the source of the change cancels it.
@@ -996,16 +997,16 @@ export async function finishHeroHelplessness(messageOverride, state = game, publ
             await finishDelayedArmorAction(after, state);
             break;
         case 'hear-again':
-            await regainHearingAfterHelplessness({ state });
+            await Hear_again({ state });
             break;
         case 'unfaint':
-            await recoverHeroFromFainting({ state });
+            await unfaint({ state });
             break;
         case 'end-mimic-meal':
-            await finishMealMimicry(state);
+            await eatmdone(state);
             break;
         case 'finish-digestion':
-            await finishHeroDigestion(state);
+            await Finish_digestion(state);
             break;
         case 'steal': {
             const theft = state._armorTheft;
