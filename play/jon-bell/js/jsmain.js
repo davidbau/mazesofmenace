@@ -4,7 +4,7 @@
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
 import { load_primary_symset_from_file, set_primary_symbol_override, init_ov_primary_symbols } from './symbols.js';
-import { vfsDeleteFile } from './storage.js';
+import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, report_config_errors, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
@@ -17,7 +17,7 @@ import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colo
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
-import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline } from './display.js';
+import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, nomuxOverflowApply, nomuxOverflowCursor } from './display.js';
 import { pline } from './pline.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
@@ -27,6 +27,9 @@ import { exit_nhwindows } from './rawterm.js';
 import { worm_seg_at } from './worm.js';
 import { worms_rest_snapshot } from './worm.js';
 import { bubbles_reset_process_state } from './mkmaze.js';
+import { getpos_reset_process_state } from './cmd.js';
+import { hitum_cleave_reset_process_state } from './uhitm.js';
+import { wish_history_flush } from './zap.js';
 import { lights_rest_snapshot } from './light.js';
 import { regions_rest_snapshot } from './region.js';
 import { vision_debug_snapshot, vision_init } from './vision.js';
@@ -97,6 +100,12 @@ export class NethackGame {
         lights_rest_snapshot(null);
         regions_rest_snapshot(null);
         bubbles_reset_process_state();
+        hitum_cleave_reset_process_state();
+        getpos_reset_process_state();
+        /* C zap.c:6222-6223 wish_history[] is a static array: a fresh process
+         * starts with no wish history even when the previous segment ended
+         * without reaching freedynamicdata() (save.c:1136). */
+        wish_history_flush();
         set_configfile_for_session(this._seed, this._datetime,
                                    this._nethackrc, this._moves);
         // Re-link the host storage handle after the globals reset.  js/storage.js
@@ -346,6 +355,23 @@ export class NethackGame {
                 return;
             }
         }
+        /* C unixmain.c:308-312: no save file; check_panic_save() (files.c:1312)
+         * looks for "<savefile>.e" and ask_about_panic_save() (unixunix.c:263)
+         * quits unless the answer is 'y'. */
+        {
+            const pname = ((this._rcName || g.flags.debug || selected?.plname) ? g.plname : '')
+                .split('-')[0].replace(/,/g, ' ');
+            if (vfsReadFile(savefile_name(pname) + '.e') !== null) {
+                game._base_topline = await tty_restore_base_topline(!selected);
+                await pline('There is no regular save file but there is a panic one.');
+                await pline('It might be recoverable with demi-divine intervention.');
+                const c = await game._base_topline.yn('Start a new game instead?', 'yn\x1bq', 'n');
+                if (c !== 'y') {
+                    exit_nhwindows(null);
+                    await nh_terminate(0);
+                }
+            }
+        }
         // ── PLAYED chargen (v5 contract) ──────────────────────────────────
         // C ref: sys/unix/unixmain.c:198 plnamesuffix() -> tty_askname(),
         // then :289 player_selection() -> role.c:2206 genl_player_setup(),
@@ -523,6 +549,9 @@ export class NethackGame {
                 nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
                     : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             }
+            nhGame._nomuxSpill = nomuxOverflowApply(nhGame._nomuxSpill, nhGame._screens[nhGame._screens.length - 1]);
+            const spillCursor = nomuxOverflowCursor(nhGame._nomuxSpill);
+            if (spillCursor) nhGame._cursors[nhGame._cursors.length - 1] = spillCursor;
             nhGame._rngSlices.push(slice);
             // Keep the marker through stale brown-mold frames; clear it only
             if (/^(?:[^\n]*?\s)?You return to \w+ form/.test(String(game._screen_output || '').split('\n', 1)[0]))

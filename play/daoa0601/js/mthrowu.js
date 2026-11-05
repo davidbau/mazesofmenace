@@ -4,8 +4,9 @@
 // return_from_mtoss(), thrwmm(), spitmm()/spitmu(), breamm(), thrwmu(),
 // breamu(), blocking_terrain(), linedup() and m_lined_up().
 import { WEAPON_CLASS, RING_CLASS, POTION_CLASS, GEM_CLASS, VENOM_CLASS } from './objclass.js';
+import { OBJ_NAME } from './object_data.js';
 import { objectSkill, ACID_VENOM, BLINDING_VENOM, BOULDER, CREAM_PIE, EGG, ELVEN_ARROW, ELVEN_BOW, OBJECT_NAMES, WAN_STRIKING, } from './object_data.js';
-import { currentAttribute } from './attrib.js';
+import { currentAttribute, poisonHero } from './attrib.js';
 import { artifactToHitBonus, applyArtifactHit } from './artifacts.js';
 import { heroArmName, monsterFootName, monsterHandName } from './body_parts.js';
 import { applyMonsterBlindness, monsterCanBeBlindedByObject, prepareHeroThrownBlindness, finishHeroThrownBlindness, } from './blinding_attack.js';
@@ -23,8 +24,7 @@ import { destroyObjectFromMonsterInventory, findMonsterArmorClass } from './monw
 import { A_DEX, A_STR, BOLT_LIM, COULD_SEE, D_CLOSED, D_LOCKED, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_WATERWALL, LAVAWALL, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_ATTK_HIT, M_ATTK_MISS, MGIVENNAME, M_SEEN_REFL, NEED_RANGED_WEAPON, NEED_WEAPON, NON_PM, P_BOW, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SINK, SLT_ENCUMBER, Upolyd, W_WEP } from './const.js';
 import { isok } from './cmd.js';
 import { impossible } from './diagnostics.js';
-import { canSeeMonster, canSpotMonster, newsym, flush_screen, lastDirtyMapCursor, transientObjectGlyph, } from './display.js';
-import { TemporaryMapEffect } from './temporary_map_effect.js';
+import { canSeeMonster, canSpotMonster, newsym, flush_screen, lastDirtyMapCursor, transientObjectGlyph, TemporaryMapEffect, } from './display.js';
 import { applyFloorEffects, landFloorObject } from './floor_effects.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { dist2, distmin, possessiveName } from './hacklib.js';
@@ -53,7 +53,6 @@ import { makePlural, withIndefiniteArticle, verbForSubject, definiteName, defini
 import { learnObjectType, observeObject, objectMaterial } from './o_init.js';
 import { shipObject } from './dokick.js';
 import { stopHeroOccupation } from './occupation.js';
-import { poisonHero } from './poison.js';
 import { hitMonsterWithSupportedPotion } from './potion.js';
 import { projectileHitsIronBars } from './projectile_bars.js';
 import { rayDamageType, castNativeRay } from './zap.js';
@@ -79,7 +78,7 @@ const PM_NINJA = MONSTER_NAME.indexOf('ninja');
 const FIRST_GLASS_GEM = OBJECT_NAMES.indexOf('worthless piece of white glass');
 const LAST_GLASS_GEM = OBJECT_NAMES.indexOf('worthless piece of violet glass');
 export function objectTypeName(object) {
-    return object ? OBJECT_NAMES[object.otyp] || '' : '';
+    return object ? OBJ_NAME(object.otyp) || '' : '';
 }
 // C mthrowu.c:thitu(). The hero is struck by a missile thrown or shot by a
 // monster: accuracy and damage rolls, poison, blinding payload, and the

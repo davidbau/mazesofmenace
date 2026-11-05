@@ -5223,7 +5223,6 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
          * svl.level.objects[tx][ty] rather than reusing a stale pointer. */
         const pileHead = g.level?.levelObjects?.[tx]?.[ty] || null;
         await create_polymon(pileHead, g._poly_zapped | 0);
-        g._poly_zapped = -1;
     }
     /* C zap.c:2487-2498: when boulders are present they're expected to be on
      * top; if some were changed into non-boulders while ones beneath resisted,

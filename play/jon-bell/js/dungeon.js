@@ -1,12 +1,12 @@
 // dungeon.js — port of nethack-c/src/dungeon.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
-import { In_quest, In_endgame, Is_knox_level, VISITED } from './const.js';
+import { In_quest, In_endgame, Is_knox_level, SHOPBASE, VISITED } from './const.js';
 import './hacklib.js';
 import { strsubst } from './hacklib.js';
 import { rnd } from './rng.js';
 import { goto_level } from './do.js';
-import { ledger_no as ledger_no_real } from './bones.js'; // relocate-fns
+export { ledger_no } from './bones.js'; // relocate-fns
 import { _earth_sense, switch_terrain } from './cmd.js'; // relocate-fns
 import { COLNO, Is_botlevel, Is_stronghold, LR_DOWNTELE, LR_UPTELE, ROWNO, isok } from './const.js'; // relocate-fns
 import { map_location, see_nearby_objects } from './display.js'; // relocate-fns
@@ -22,7 +22,7 @@ import { db_under_typ } from './dbridge.js'; // relocate-fns
 import { _m_at, canseemon } from './display.js';
 import { cmap_to_type } from './mkroom.js'; // relocate-fns
 import { insertBranch } from './dungeon_rng.js'; // relocate-fns
-import { surface as surface_real } from './cmd.js'; // relocate-fns
+export { surface } from './cmd.js'; // relocate-fns
 import { Is_earthlevel } from './const.js'; // relocate-fns
 export { describe_level } from './botl.js'; // relocate-fns
 export { describe_level_impl }; // relocate-fns
@@ -169,6 +169,12 @@ export function at_dgn_entrance(s) {
  * dungeon, i.e. the raw dlevel, NOT depth(). */
 export function dunlev(lev) {
     return lev?.dlevel | 0;
+}
+
+/* C ref: dungeon.c:1332-1335 dunlevs_in_dungeon(lev) —
+ *     return svd.dungeons[lev->dnum].num_dunlevs; */
+export function dunlevs_in_dungeon(lev) {
+    return (game.dungeons?.[lev?.dnum | 0]?.num_dunlevs | 0);
 }
 
 /* C dungeon.c:2805-2831 remdun_mapseen().  The port stores overview data
@@ -390,6 +396,17 @@ export async function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;
     game.u.uundetected = 0;
+    /* C dungeon.c:1583-1585 — "ridden steed always shares hero's location":
+     *     if (u.usteed)
+     *         u.usteed->mx = u.ux, u.usteed->my = u.uy;
+     * This is the invariant C's mon_sanity_check asserts (mon.c:273-277): the
+     * steed stays on the fmon chain but off the level's monster grid, with its
+     * <mx,my> tracking the hero.  Without it a rider who changed level or was
+     * teleported left the steed standing on the old square. */
+    if (game.u.usteed) {
+        game.u.usteed.mx = x;
+        game.u.usteed.my = y;
+    }
     /* C dungeon.c:1588 — on a level transition, remember the arrival square
      * in ux0/uy0 before rebuilding nearby visibility. */
     const uz = game.u.uz, uz0 = game.u.uz0;
@@ -402,17 +419,6 @@ export async function u_on_newpos(x, y) {
          * before spoteffects() and force switch_terrain() once. */
         map_location(x, y, false);
         invalidateTerrainStatus();
-    }
-    /* C dungeon.c:1576-1578 — "ridden steed always shares hero's location":
-     *     if (u.usteed)
-     *         u.usteed->mx = u.ux, u.usteed->my = u.uy;
-     * This is the invariant C's mon_sanity_check asserts (mon.c:273-277): the
-     * steed stays on the fmon chain but off the level's monster grid, with its
-     * <mx,my> tracking the hero.  Without it a rider who changed level or was
-     * teleported left the steed standing on the old square. */
-    if (game.u.usteed) {
-        game.u.usteed.mx = x;
-        game.u.usteed.my = y;
     }
     if (!(uz && uz0 && (uz.dnum !== uz0.dnum || uz.dlevel !== uz0.dlevel)) && !_Blind_mk()
         && !_Hallucination_mk()
@@ -474,7 +480,7 @@ export function single_level_branch(lev) {
  * "simpler name for #overview; Null if same"), the column this table was
  * missing entirely.  SHOPBASE == 14 (mkroom.h:66). */
 export function shop_string(rtype) {
-    const shoptype = (rtype | 0) - 14 /* SHOPBASE */;
+    const shoptype = (rtype | 0) - SHOPBASE;
     if (shoptype < 0)
         return 'untended shop';
     const row = _shtypes[shoptype];
@@ -483,17 +489,6 @@ export function shop_string(rtype) {
     if (row && row.name)
         return row.name;
     return 'shop?';   /* C's catchall */
-}
-
-/* C dungeon.c ledger_no(lev) — `svd.dungeons[lev->dnum].ledger_start +
- * lev->dlevel`, the absolute level index across branches.  Was `return 0`
- * ("no dungeon tracking in JS") — but js/allmain.js:231 has built
- * game.dungeons[].ledger_start for a long time, and js/cmd.js:5523 already
- * carries this exact body under the name ledger_no_cmd.  The stub is load
- * bearing: nameshk() adds ledger_no(&u.uz) into the shopkeeper's name index, so
- * every shop below Dlvl 1 was named as if it were on Dlvl 0. */
-export function ledger_no(uz) {
-    return ledger_no_real(uz);
 }
 
 // C ref: dungeon.c:1447-1457 Is_special() — walk the special-level
@@ -782,13 +777,12 @@ export function insert_branch(bp, extractFirst) {
     const ar = game._dungeon_branches || (game._dungeon_branches = []);
     if (extractFirst) {
         const ix = ar.indexOf(bp);
-        if (ix >= 0)
-            ar.splice(ix, 1);
+        if (ix < 0)
+            throw new Error('insert_branch: not found');
+        ar.splice(ix, 1);
     }
     insertBranch(ar, bp);
 }
-
-export function surface(x, y) { return surface_real(x, y); }
 
 /* C ref: dungeon.c:2016-2021 Invocation_lev(d_level *) — In_hell && dlevel ==
  * dunlevs_in_dungeon - 1.  Ported locally for the same reason js/mklev.js's
@@ -819,8 +813,9 @@ export function On_W_tower_level(uz) {
         return false;
     const g = game;
     for (const lv of [g.wiz1_level, g.wiz2_level, g.wiz3_level]) {
-        /* C ref: dungeon.c on_level — same dnum AND same dlevel. */
-        if (lv && (lv.dnum | 0) === (uz.dnum | 0) && (lv.dlevel | 0) === (uz.dlevel | 0))
+        /* C ref: dungeon.h:110-126 Lcheck(uz, &wizN_level) = Lassigned(lv) && on_level(uz, lv). */
+        if (lv && ((lv.dlevel | 0) || (lv.dnum | 0))
+            && (lv.dnum | 0) === (uz.dnum | 0) && (lv.dlevel | 0) === (uz.dlevel | 0))
             return true;
     }
     return false;

@@ -1,6 +1,8 @@
 // end.js — End-of-game disclosure and terminal presentation.
 // C refs: end.c disclose()/really_done(), insight.c, dungeon.c.
+import { goodbye } from './roles.js';
 import { AMULET_CLASS, GEM_CLASS } from './objclass.js';
+import { OBJ_NAME } from './object_data.js';
 import { objectClassForType, objectBaseCost, AMULET_OF_LIFE_SAVING, BAG_OF_TRICKS, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR, JADE, OBJECT_NAMES, SPE_BOOK_OF_THE_DEAD, STATUE, } from './object_data.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { recorderLocalEpochSeconds, recorderLocalHour } from './calendar.js';
@@ -37,7 +39,7 @@ import { mksobj, isContainer, placeObjectSynchronously, stack_object } from './m
 import { makePlural, withIndefiniteArticle, objectDescription, definiteName, objectName, simpleObjectName, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
 import { isQuantumBox, observeQuantumCat } from './quantum_cat.js';
-import { deepestLevelReached, depth } from './hacklib.js';
+import { deepestLevelReached, depth } from './dungeon.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { hiddenGold, payVaultGuardOnExit } from './vault.js';
 import { init_uhunger } from './eat.js';
@@ -228,8 +230,8 @@ export function recordHeroKillConduct(state = game) {
     if (firstKill)
         recordGameLogEvent('killed for the first time', { state, flags: LL_CONDUCT });
 }
-// C dungeon.c show_overview() with why > 0.  The final disclosure prints
-// every visited level in every dungeon with the full mapseen projection;
+// The final disclosure's overview lines, through dungeon.ts's
+// dungeonOverviewDisclosure() (dungeon.c show_overview() with why > 0);
 // only real deaths (final == 2) list the hero's own resting place.
 function overviewLines(killer, deathVerb = 'killed', deathCause = null, ending = null) {
     const cause = deathCause || killerDeathCause(killer, deathVerb);
@@ -373,10 +375,6 @@ function deathSummaryLines(killer, { gold, score, moves }, endtime, { deathVerb 
 function plur(count) {
     return count === 1 ? '' : 's';
 }
-// C role.c:Goodbye().
-function roleGoodbye() {
-    return game.urole?.goodbye || 'Goodbye';
-}
 function roleName() {
     return game.flags?.female && game.urole?.name?.f
         ? game.urole.name.f : game.urole?.name?.m || 'Adventurer';
@@ -385,7 +383,7 @@ function renderQuitSummaryPage({ gold, score, moves }) {
     const display = game.nhDisplay;
     display?.clearScreen();
     game._preserveLeadingStyledBlanks = false;
-    terminalLine(0, 0, `${roleGoodbye()} ${game.plname || 'player'} the ${roleName()}...`);
+    terminalLine(0, 0, `${goodbye()} ${game.plname || 'player'} the ${roleName()}...`);
     terminalLine(2, 0, finalLocationLine('quit', score));
     terminalLine(3, 0, `and ${gold} piece${plur(gold)} of gold, after ${moves} move${plur(moves)}.`);
     terminalLine(4, 0, `You were level ${game.u?.ulevel || 1} with a maximum of ${game.u?.uhpmax || 1} hit point${plur(game.u?.uhpmax || 1)} when you quit.`);
@@ -1080,7 +1078,7 @@ export async function finishLivingGame(outcome) {
     if (showSummary) {
         const title = outcome === 'ascended'
             ? (game.flags.female ? 'Demigoddess' : 'Demigod') : roleName();
-        const lines = [`${roleGoodbye()} ${game.plname || 'player'} the ${title}...`, ''];
+        const lines = [`${goodbye()} ${game.plname || 'player'} the ${title}...`, ''];
         const company = ['You', ...names].join(' and ');
         if (names.length)
             lines.push(company);
@@ -1134,7 +1132,7 @@ function collectFinalPossessions() {
                 const score = Math.trunc(value * 5 / 2);
                 points += score;
                 artifacts.push({ object, value, points: score,
-                    name: artifact?.name || `The ${OBJECT_NAMES[object.otyp]}` });
+                    name: artifact?.name || `The ${OBJ_NAME(object.otyp)}` });
             }
             else if (!object.contents?.length
                 && (object.oclass === AMULET_CLASS

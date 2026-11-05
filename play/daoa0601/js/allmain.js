@@ -1,8 +1,7 @@
-import { cmdq_clear, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, getLine, promptYesNo, rhack } from './cmd.js';
 import { publishHeardMessage } from './hero_speech.js';
-import { dungeonBuildsUp, initOverviewRecord } from './dungeon.js';
+import { ceilingName, dungeonBuildsUp, dungeonDepth, initOverviewRecord, printLevelAnnotation, u_on_rndspot } from './dungeon.js';
 import { noticeAllMonsters, withMonsterNoticesBlocked, applyHeroLiquidEffects, continueRun, endVoluntaryMultiTurn, nomul, overexertHeroHp, finishDestinationSpotEffects, stopRun, captureRunmodeDelay, isTeleportRunmode, nearCapacity, checkSpecialRoom } from './hack.js';
-import { dolookaround } from './cmd.js';
+import { cmdq_clear, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, getLine, promptYesNo, rhack, dolookaround } from './cmd.js';
 import { recorderLocalDate, recorderLocalEpochSeconds } from './calendar.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { heroLegName } from './body_parts.js';
@@ -28,15 +27,14 @@ import { pendingArmorAction, armorSimpleName, heroHasFreeAction, heroIsDisplaced
 import { dosounds, sessionIsNight } from './ambient_sounds.js';
 import { warnWithMasterKey, applyArtifactHit, findArtifact } from './artifacts.js';
 import { regenerateHeroHp } from './hero_regeneration.js';
-import { ceilingName } from './terrain_name.js';
 import { consumeMonsterItem } from './mthrowu.js';
 import { heroCanTeleport, randomMonsterRelocation, teleportHero, askTeleportDestination } from './teleport.js';
 import { moveMonsterNextToHero } from './mon.js';
 import { runDueTimers } from './timeout.js';
 import { askKeepRestoredSave, restoreMonsterCover } from './save.js';
-import { placeHeroAtRandomArrival, finishScheduledLevelChange } from './level_change.js';
+import { finishScheduledLevelChange } from './level_change.js';
 import { monsterName, randomDisplayMonsterName } from './do_name.js';
-import { possessiveName, dist2, dungeonDepth } from './hacklib.js';
+import { possessiveName, dist2 } from './hacklib.js';
 import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion, monsterIsAnimal, monsterIsNonliving } from './mondata.js';
 import { mhitm_knockback, resolveMonsterContactEffect } from './uhitm.js';
 import { MONSTER_GENO, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
@@ -44,7 +42,7 @@ import { monsterAtPosition } from './steed.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, finishInUseInventory } from './end.js';
 import { releaseObjectLeash, checkHeroLeashes, heroNextToLeashedFollowers } from './apply.js';
 import { touchPetrifies } from './stoning.js';
-import { OBJECT_DELAY, ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, OBJECT_BIMANUAL, OBJECT_NAMES } from './object_data.js';
+import { ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, } from './object_data.js';
 import { heroIsUnaware } from './senses.js';
 import { heroSpecies, setHeroSpecies, feelingAfterSelfGenocide, heroHasBeenGenocided, heroHasOlfaction, heroIsUnchanging, polymorphHero, returnHeroToHumanForm } from './polyself.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -65,12 +63,12 @@ import { performQuestExpulsion, ensureQuestStatus, talkQuestCharacter } from './
 import { amuletTurn, intervene, publishMonsterCuss } from './wizard.js';
 import { finishHeroLiquidMonsterDeath, finishHeroMonsterKill } from './hero_monster_death.js';
 import { grantAmuletWish } from './wish.js';
-import { checkAttributeExercise, currentAttribute, exerciseAttribute, exerciseWisdom, loseHeroStrength } from './attrib.js';
+import { checkAttributeExercise, currentAttribute, exerciseAttribute, exerciseWisdom, loseHeroStrength, periodicTurnExercise } from './attrib.js';
 import { encumber_msg } from './pickup.js';
 import { rndcurse } from './throne.js';
 import { resolveMonsterGaze, completeHeroAttackSlot, mattacku, missmu, resolveMonsterSelfExplosion } from './mhitu.js';
 import { bot, statusEvalNextUnhilite, updateStatusLines } from './botl.js';
-import { canSpotMonster, docrt, redrawMap, flush_screen, newsym, map_invisible, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff } from './display.js';
+import { canSpotMonster, docrt, redrawMap, flush_screen, newsym, map_invisible, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff, curs_on_u } from './display.js';
 import { clearMessageWindow, displayMessageWindow, flushPendingTopline, rememberToplines, appendSuppressedTopline, resetToplineClip } from './tty_topline.js';
 import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset_new_level, hasLightSources } from './vision.js';
 import { nhgetch } from './input.js';
@@ -170,9 +168,8 @@ async function showLegacy() {
     await nhgetch();
 }
 // C allmain.c:welcome(). Greeting, chronicle entry, and restore reminders
-// share the hero's innate identity even while another body is active.
-// Also C dungeon.c:print_level_annotation(): inlined here (the restore
-// reminder, like in goto_level()).
+// share the hero's innate identity even while another body is active; the
+// restore reminder is dungeon.c:print_level_annotation().
 export async function welcome(newGame) {
     const g = requireInitializedGame();
     await currentLuaLifecycle().callCore(g, newGame ? 'start_new_game' : 'restore_old_game');
@@ -212,9 +209,7 @@ export async function welcome(newGame) {
         await plineWithContinuation(`It is ${temperature > 0 ? 'hot' : 'cold'} here.`);
     if (In_hell(g.u.uz) && temperature > 0)
         await plineWithContinuation(`You ${heroHasOlfaction(g) ? 'smell' : 'sense'} smoke...`);
-    const annotation = g._levelAnnotations?.get(`${g.u.uz.dnum}:${g.u.uz.dlevel}`);
-    if (annotation)
-        await plineWithContinuation(`You remember this level as ${annotation}.`);
+    await printLevelAnnotation(g);
 }
 async function showInlineMore(message) {
     await plineWithContinuation(message);
@@ -396,7 +391,7 @@ async function enterTutorial() {
     game.vision_full_recalc = 0;
     // goto_level() arrives through u_on_rndspot(), even when Lua restricts
     // the region to a single square.
-    await placeHeroAtRandomArrival(game.level.downTeleportRegion);
+    await u_on_rndspot(game.level.downTeleportRegion);
     const tutorialLevel = game.level;
     const tutorialStairs = game.stairs;
     const tutorialPosition = {
@@ -575,75 +570,6 @@ async function finishInitialTurnMaintenanceRng(sourceTurn) {
         }
     }
     await finishInitialTurnMaintenanceAfterIntervention(sourceTurn);
-}
-// C ref: attrib.c:exerper().  Hunger is read after gethungry() has applied
-// this turn's decrement, so a completed meal can change the periodic RNG
-// branch even when no other status or monster state changed.
-async function periodicTurnExercise(sourceTurn) {
-    const game = requireInitializedGame();
-    if (!(sourceTurn % 10)) {
-        const hunger = game.u?.uhunger ?? 900;
-        if (hunger > 1000) {
-            await exerciseAttribute(A_DEX, false); // Satiated: abuse Dexterity
-            if (game.urole?.key === 'monk')
-                await exerciseAttribute(A_WIS, false);
-        }
-        else if (hunger > 150) {
-            await exerciseAttribute(A_CON, true); // Not Hungry: exercise Constitution
-        }
-        else if (hunger > 50) {
-            // Hungry has no hunger-driven exercise.
-        }
-        else if (hunger > 0) {
-            await exerciseAttribute(A_STR, false); // Weak: abuse Strength
-            if (game.urole?.key === 'monk')
-                await exerciseAttribute(A_WIS, true);
-        }
-        else {
-            await exerciseAttribute(A_CON, false); // Fainting/Fainted
-        }
-        switch (nearCapacity(game)) {
-            case MOD_ENCUMBER:
-                await exerciseAttribute(A_STR, true);
-                break;
-            case HVY_ENCUMBER:
-                await exerciseAttribute(A_STR, true);
-                await exerciseAttribute(A_DEX, false);
-                break;
-            case EXT_ENCUMBER:
-                await exerciseAttribute(A_DEX, false);
-                await exerciseAttribute(A_CON, false);
-                break;
-            default:
-                break;
-        }
-    }
-    if (!(sourceTurn % 5)) {
-        const u = game.u || {};
-        // C attrib.c:exerper() checks status in this order.  These are
-        // independent conditions: a confused hero with wounded legs abuses
-        // both Wisdom and Dexterity, consuming one exercise draw for each.
-        if (((u.clairvoyanceTurns ?? 0) > 0
-            || hasPermanentIntrinsicProperty('clairvoyant', game))
-            && !u.clairvoyanceBlocked)
-            await exerciseAttribute(A_WIS, true);
-        // attrib.c checks HRegeneration here, not the combined Regeneration
-        // property.  A worn ring supplies ERegeneration: it heals and raises
-        // metabolism, but it does not exercise Strength every fifth turn.
-        if (u.regenerationIntrinsic || (u.regenerationTurns ?? 0) > 0
-            || hasIntrinsicProperty('regeneration', null, game))
-            await exerciseAttribute(A_STR, true);
-        if (u.sick || (u.sickTurns ?? 0) > 0
-            || u.vomiting || (u.vomitingTurns ?? 0) > 0)
-            await exerciseAttribute(A_CON, false);
-        if ((u.confusionTurns ?? 0) > 0
-            || heroIsHallucinating(game))
-            await exerciseAttribute(A_WIS, false);
-        if (((u._woundedLegTurns ?? 0) > 0 && !u.usteed)
-            || u.fumbling || propertyIsActive('fumbling', game)
-            || u.stunned || (u.stunnedTurns ?? 0) > 0)
-            await exerciseAttribute(A_DEX, false);
-    }
 }
 async function finishInitialTurnMaintenanceAfterAmbient({ sourceTurn, }) {
     const game = requireInitializedGame();
@@ -1252,7 +1178,7 @@ export async function runMoveloopCore() {
     // parse() flushes before physical command input. Queued commands bypass
     // parse, so their message pagers retain the map until an explicit flush.
     if (g.context.botl || g.context.time_botl)
-        await flush_screen(1);
+        await curs_on_u();
     else
         updateStatusLines();
     await heroEveryturnEffect(g);

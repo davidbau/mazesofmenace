@@ -2,8 +2,10 @@
 // C refs: dothrow.c ok_to_throw(), dothrow(), dofire(), and throw_obj()'s
 // per-missile handoff to the flight owners.
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, } from './objclass.js';
-import { objectClassForType, objectSkill, objectMagic, AKLYS, BOOMERANG, BOULDER, BULLWHIP, CORPSE, EGG, SLING, ACID_VENOM, BLINDING_VENOM, CREAM_PIE, EXPENSIVE_CAMERA, CRYSTAL_BALL, LENSES, MELON, MIRROR, POT_OIL, POT_WATER, STATUE, HEAVY_IRON_BALL, OBJECT_HIT_BONUS, TRIDENT, WAN_STRIKING, BAG_OF_HOLDING, BAG_OF_TRICKS, EUCALYPTUS_LEAF, FLINT, FORTUNE_COOKIE, HARD_GEM_TYPES, KELP_FROND, OBJECT_NAMES, OILSKIN_SACK, PANCAKE, SACK, SPRIG_OF_WOLFSBANE, } from './object_data.js';
+import { objectClassForType, objectSkill, objectMagic, AKLYS, BOOMERANG, BOULDER, BULLWHIP, CORPSE, EGG, SLING, ACID_VENOM, BLINDING_VENOM, CREAM_PIE, EXPENSIVE_CAMERA, CRYSTAL_BALL, LENSES, MELON, MIRROR, POT_OIL, POT_WATER, STATUE, HEAVY_IRON_BALL, TRIDENT, WAN_STRIKING, BAG_OF_HOLDING, BAG_OF_TRICKS, EUCALYPTUS_LEAF, FLINT, FORTUNE_COOKIE, HARD_GEM_TYPES, KELP_FROND, OILSKIN_SACK, PANCAKE, SACK, SPRIG_OF_WOLFSBANE, } from './object_data.js';
 import { game, requirePlayingGame, requireLiveGame, requireGameLevel, requireInitializedGame } from './gstate.js';
+import { isWeaponTool, isMissileObject } from './object_properties.js';
+import { RUBBER_HOSE, OBJ_NAME } from './object_data.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { beginCommandResult, commandResultCancelled, cmdq_add_ec, cmdq_add_key, setMulti, isok, promptDirection } from './cmd.js';
 import { requireInitializedHero } from './hero_types.js';
@@ -16,7 +18,7 @@ import { isLauncherAmmunition, isPolearm, isWetTowel, launcherMatchesAmmo, objec
 import { isWeldedPrimary, setQuiverObject, doquiverCore } from './wield.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, A_DEX, A_STR, STR19, IS_WATERWALL, MM_IGNORELAVA, MM_IGNOREWATER, W_ARM, W_ARMC, W_ARMU, IS_SOFT, IS_ALTAR, CQ_CANNED, HOLE, PIT, SPIKED_PIT, TRAPDOOR, MM_NOMSG, M_AP_MONSTER, M_AP_TYPE, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FIRE_TRAP, IRONBARS, IS_OBSTRUCTED, IS_STWALL, Is_airlevel, Is_waterlevel, KILLED_BY, LOST_THROWN, MAGIC_PORTAL, STONING, TREE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, W_NONPASSWALL, WT_TO_DMG, ZAP_POS, is_hole, is_pit, SHOPBASE, } from './const.js';
 import { isAutoReturningThrow } from './returning_throw.js';
-import { weaponHitBonus, dryTowel, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
+import { weaponHitValue, dryTowel, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
 import { autoquiverCandidate } from './quiver.js';
 import { corpseName, killerObjectName, objectCombatName, objectName, observeObjectForNaming, singularObjectName, makePlural, verbForSubject, objectDescription, objectNameIsPlural, simpleObjectName, withIndefiniteArticle } from './objnam.js';
 import { inventoryItemDescription, delobj, chooseInventoryObject, freeInventoryObject } from './invent.js';
@@ -37,7 +39,6 @@ import { hitMonsterWithSupportedPotion, SUPPORTED_MONSTER_POTION_TYPES, applySup
 import { dist2, possessiveName } from './hacklib.js';
 import { resolveGoldMonsterContact, shipObject } from './dokick.js';
 import { landObjectOnAltar } from './altar_object.js';
-import { surfaceName, ceilingName } from './terrain_name.js';
 import { captureHeroProjectileName } from './uhitm.js';
 import { capitalizedDefiniteName, rayMissMessage } from './ray_hit_message.js';
 import { applyLowStaminaThrow, applyThrowSlip } from './throw_state.js';
@@ -68,9 +69,8 @@ import { heroCanBeBlindedByObject } from './blinding_attack.js';
 import { finishHeroDeath } from './end.js';
 import { hitHeroWithFallingArtifact } from './falling_artifact.js';
 import { hitHeroWithThrownPotion } from './hero_potion_hit.js';
-import { levelHasCeiling } from './dungeon.js';
+import { levelHasCeiling, placeHeroOnLevel, surfaceName, ceilingName } from './dungeon.js';
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished } from './ball.js';
-import { placeHeroOnLevel } from './hero_location.js';
 import { walkPathCells } from './path_walk.js';
 import { monsterObjectPronoun, monsterDigests, monsterHasNoLimbs, monsterHatesBlessings, monsterIsAmorphous, monsterIsBig, monsterIsFlyer, monsterIsSlithy, monsterIsThickSkinned, monsterIsWhirly, monsterPassesWalls, monsterThrowsRocks, passes_rocks, } from './mondata.js';
 import { detachHeroGold, heroGoldObject } from './hero_gold.js';
@@ -898,8 +898,8 @@ export function rangedTargetHitBonus(object, defender, { state = game, defenderN
         bonus += 6;
     }
     else if (object.oclass === WEAPON_CLASS || object.oclass === GEM_CLASS
-        || (object.oclass === TOOL_CLASS && objectSkill(object.otyp) !== 0)) {
-        bonus += weaponHitBonus(object, defender, { state, random, rollOne });
+        || isWeaponTool(object)) {
+        bonus += weaponHitValue(object, defender, { state, random, rollOne });
     }
     return bonus;
 }
@@ -1522,11 +1522,6 @@ export async function hurtleHero(dx, dy, range, { verbose = false, finishTelepor
 // Thrown-projectile helpers.
 // C refs: dothrow.c harmless_missile() and should_mulch_missile().
 // ---------------------------------------------------------------------------
-const P_BOW = 20;
-const P_CROSSBOW = 22;
-const P_DART = 23;
-const P_BOOMERANG = 25;
-const RUBBER_HOSE = OBJECT_NAMES.indexOf('rubber hose');
 const CLOTH = 6;
 // C dothrow.c:harmless_missile(). Contents make an otherwise soft bag hurt.
 export function harmlessMissile(object, state = game) {
@@ -1550,10 +1545,11 @@ export function harmlessMissile(object, state = game) {
     }
 }
 export function projectileKind(object) {
-    const subtype = object ? objectSkill(object.otyp) : 0;
-    if (subtype >= -P_CROSSBOW && subtype <= -P_BOW)
+    // C should_mulch_missile() tests is_ammo(obj) || is_missile(obj); the
+    // kind label is the port's own classification of the two branches.
+    if (isLauncherAmmunition(object))
         return 'ammunition';
-    if (subtype >= -P_BOOMERANG && subtype <= -P_DART)
+    if (isMissileObject(object))
         return 'missile';
     return null;
 }
@@ -1568,7 +1564,7 @@ export function destroyMulchedProjectile(object) {
 }
 export function shouldMulchMissile(object, { monsterMoving = false } = {}) {
     if (!object || !projectileKind(object)
-        || OBJECT_NAMES[object.otyp] === 'boomerang'
+        || OBJ_NAME(object.otyp) === 'boomerang'
         || objectMagic(object.otyp))
         return false;
     const erosion = Math.max(object.oeroded ?? 0, object.oeroded2 ?? 0);

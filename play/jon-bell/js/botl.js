@@ -477,6 +477,7 @@ export function status_eval_next_unhilite() {
             const h = hist[k];
             if (!h || !h.chg) continue;
             h.time = h.rule ? g.bl_hilite_moves + g.iflags.hilite_delta : 0;
+            h.evalStampMoves = g.bl_hilite_moves; /* this turn's eval already consumed an earlier chg */
             h.chg = false;
             if (g.disp) g.disp.botl = 1;
         }

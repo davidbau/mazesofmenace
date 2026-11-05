@@ -1860,7 +1860,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
                 else await pline('Your %s no longer glow so brightly %s.', hands, hcolor('red'));
             }
             u.umconf--;
-            if (!await resist(mon, 10 /* SPBOOK_CLASS */, 0, 0 /* NOTELL */)) {
+            if (!await resist(mon, SPBOOK_CLASS, 0, 0 /* NOTELL */)) {
                 mon.mconf = 1;
                 if (!mon.mstun && !helpless(mon) && canseemon(mon))
                     await pline('%s appears confused.', Monnam(mon));

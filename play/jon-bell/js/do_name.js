@@ -32,7 +32,6 @@ import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { m_at } from './uhitm.js'; // relocate-fns
 import { cansee } from './vision.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
-import { je_Monnam } from './mhitu.js'; // relocate-fns
 import { mon_nam as uhitm_mon_nam } from './uhitm.js'; // relocate-fns
 import { hcolor as hcolor_real } from './mhitm.js'; // relocate-fns
 import { NH_BLACK, NH_BLUE, NH_GOLDEN, NH_PURPLE, NH_RED, NH_SILVER } from './read.js'; // relocate-fns
@@ -764,7 +763,16 @@ export async function docall(obj) {
         update_inventory();
 }
 
-export function Monnam(mon) { return je_Monnam(mon); }
+/* Monnam(mtmp) — C ref: do_name.c:1073-1080.
+ *   char *bp = mon_nam(mtmp); *bp = highc(*bp); return bp;
+ * highc() only uppercases a-z (hacklib.h). */
+export function Monnam(mtmp) {
+    const bp = uhitm_mon_nam(mtmp);
+    if (!bp) return bp;
+    let first = bp.charCodeAt(0);
+    if (0x61 <= first && first <= 0x7a) first &= ~0x20;
+    return String.fromCharCode(first) + bp.slice(1);
+}
 
 export function mon_nam(mon) { return uhitm_mon_nam(mon); }
 
@@ -773,7 +781,10 @@ export function pmname(pm, mgender) { return monPmname(pm.pmidx, mgender); }
 
 /* C do_name.c:2432 hcolor(colorstr): identity unless hallucinating, in which
  * case mhitm.js hcolor draws from rn2_on_display_rng.  The table maps this
- * file's numeric NH_* tokens to the C c_color_names strings (decl.c:16-19). */
+ * file's numeric NH_* tokens to the C c_color_names strings (decl.c:16-19).
+ * Any other input is C's plain colorpref arm — hcolor_real returns it as-is
+ * (or draws when hallucinating / null) — never the "" this used to collapse
+ * to, which skipped the hallucination draw entirely. */
 export function hcolor(color) {
     const name = color === NH_BLUE ? "blue"
         : color === NH_RED ? "red"
@@ -782,7 +793,7 @@ export function hcolor(color) {
         : color === NH_SILVER ? "silver"
         : color === NH_GOLDEN ? "golden"
         : "";
-    return name ? hcolor_real(name) : name;
+    return name ? hcolor_real(name) : hcolor_real(color);
 }
 
 /* C do_name.c:1254-1287; permonst templates represent mons[] entries,

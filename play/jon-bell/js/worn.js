@@ -17,7 +17,7 @@ import {
     W_BALL, W_CHAIN, W_SADDLE, I_SPECIAL, INVIS, CLAIRVOYANT, BLINDED,
 } from './const.js';
 import { ARMOR_DATA } from './armor_data.js'; // relocate-fns
-import { Yname2, can_ride as can_ride_real, instapetrify as instapetrify_real, obj_extract_self_general as obj_extract_self, set_msg_xy as set_msg_xy_trap, surface as surface_real } from './cmd.js'; // relocate-fns
+import { Yname2, can_ride as can_ride_real, instapetrify as instapetrify_real, obj_extract_self_general as obj_extract_self, set_msg_xy as set_msg_xy_trap, surface } from './cmd.js'; // relocate-fns
 import { ACID_RES, ANTIMAGIC, COLD_RES, DISINT_RES, DISMOUNT_FELL, DISPLACED, FAST, FIRE_RES, FLYING, FUMBLING, JUMPING, LEVITATION, NON_PM, POISON_RES, PROTECTION, REFLECTING, SEE_INVIS, SHOCK_RES, SLEEP_RES, STEALTH, STONE_RES, TELEPAT, WWALKING } from './const.js'; // relocate-fns
 import { canseemon, newsym } from './display.js'; // relocate-fns
 import { obj_no_longer_held } from './do.js'; // relocate-fns
@@ -1277,7 +1277,6 @@ export async function mon_break_armor(mon, polyspot) {
     function sliparm(data) { return sliparm_real(data); }
     function can_saddle(mon) { return can_saddle_real(mon); }
     function can_ride(mon) { return can_ride_real(mon); }
-    function surface(mx, my) { return surface_real(mx, my); }
     /* C worn.c:1032-1044.  Armor which survives a form change is removed
        from the monster inventory, put on the current square, and marked as
        bypassed when this is a polymorph pass so the enclosing object walk

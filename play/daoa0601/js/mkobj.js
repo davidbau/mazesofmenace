@@ -1,7 +1,7 @@
 // Object creation and species-dependent initialization.
 // C ref: mkobj.c.
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, VENOM_CLASS, SPBOOK_no_NOVEL, } from './objclass.js';
-import { objectBaseWeight, objectBaseCost, objectMerge, objectUsesKnown, objectMagic, getObjectClassBounds, getObjectDefinition, requireObjectData, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, ROCK, STATUE, SPLINT_MAIL, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, POT_OIL, BELL_OF_OPENING, ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION, BOULDER, FOOD_RATION, LUMP_OF_ROYAL_JELLY, POT_BOOZE, POT_SICKNESS, POT_WATER, APPLE, BANANA, EUCALYPTUS_LEAF, ORANGE, PEAR, OBJECT_NUTRITION, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION, OBJECT_PROPERTY, WAN_FIRE, } from './object_data.js';
+import { objectBaseWeight, objectBaseCost, objectMerge, objectUsesKnown, objectMagic, getObjectClassBounds, getObjectDefinition, requireObjectData, WORM_TOOTH, UNICORN_HORN, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, LEVITATION_BOOTS, AMULET_OF_STRANGULATION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_CHANGE, AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, SACK, OILSKIN_SACK, BAG_OF_HOLDING, BAG_OF_TRICKS, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP, EXPENSIVE_CAMERA, CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER, MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP, DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND, SLIME_MOLD, CANDY_BAR, TIN, GOLD_PIECE, SPE_NOVEL, DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, ROCK, STATUE, SPLINT_MAIL, WAN_CANCELLATION, WAN_LIGHT, WAN_LIGHTNING, objectDirection, POT_OIL, BELL_OF_OPENING, ELVEN_SHIELD, ORCISH_SHIELD, SHIELD_OF_REFLECTION, BOULDER, FOOD_RATION, LUMP_OF_ROYAL_JELLY, POT_BOOZE, POT_SICKNESS, POT_WATER, APPLE, BANANA, EUCALYPTUS_LEAF, ORANGE, PEAR, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION, WAN_FIRE, oc_nutrition, objectPropertyName, } from './object_data.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { novelTitle } from './do_name.js';
 import { eating_glob, set_tin_variety } from './eat.js';
@@ -14,8 +14,7 @@ import { block_point, cansee, vision_note_blocker_change } from './vision.js';
 import { newsym } from './display.js';
 import { heroCanReachFloor } from './engrave.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
-import { depth as depth_of_level } from './hacklib.js';
-import { level_difficulty } from './dungeon.js';
+import { depth as depth_of_level, level_difficulty, surfaceName } from './dungeon.js';
 import { ALTAR, ICE, IRONBARS, In_quest, Is_airlevel, Is_rogue_level, Is_waterlevel, G_GONE, G_NOCORPSE, MON_DETACH, MON_FLOOR, ROT_AGE, TROLL_REVIVE_CHANCE, RANDOM_TIN, MAX_OIL_IN_FLASK, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_INIT, CORPSTAT_SPE_VAL, OBJECT_TIMER_KIND, LARGEST_INT, } from './const.js';
 import { isok } from './cmd.js';
 import { MONSTER_BODY_META, MONSTER_GENO, MONSTER_LEVEL, MONSTER_SYMBOL, MONSTER_SIZE, MONSTER_NAME, SPECIAL_PM, requireMonsterData } from './monster_data.js';
@@ -30,7 +29,8 @@ import { nameObjectFromTopten } from './topten.js';
 import { makePlural, objectName, objectTypeName, observeObjectForNaming, ownedObjectName, rndClass } from './objnam.js';
 import { attachEggHatchTimer } from './timeout.js';
 import { assignCandyWrapper } from './read.js';
-import { consumeObjectCharge, inventoryItemDescription, mergable, mergeCreatedObjectStacks, mergeObjectStacks, updateCarriedLuck } from './invent.js';
+import { consumeObjectCharge, inventoryItemDescription, mergable, mergeCreatedObjectStacks, mergeObjectStacks, confersLuck } from './invent.js';
+import { setMoreLuck } from './attrib.js';
 import { assertCreatedObject, createdObjectNoLongerHeld, dropObjectAtHero, objectNoLongerHeld, objectNoLongerHeldSynchronously } from './do.js';
 import { addShopObjectToBill, costlyAdjacent, costlySpot, deleteObject, findObjectOwner, objectPriceAdjustment, reconcileObjectDeletionBill, settleGlobAbsorptionBilling, splitObjectBill } from './shk.js';
 import { formatHeardMessage, formatSeenMessage } from './hero_speech.js';
@@ -40,7 +40,6 @@ import { encumber_msg } from './pickup.js';
 import { holdAnotherObject } from './hero_hold_object.js';
 import { hitFloorWithObject } from './dothrow.js';
 import { landObjectOnAltar } from './altar_object.js';
-import { surfaceName } from './terrain_name.js';
 import { removeObjectFromMonsterInventory } from './monworn.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { objectLightRadius, adjustObjectLightAfterBlessing, objectShedsLight } from './light.js';
@@ -56,8 +55,8 @@ const PLASTIC = 18;
 const PM_DEATH = 311;
 const PM_FAMINE = 313;
 function updateBlessingEffects(object, state) {
-    if (object && state.inventory.includes(object))
-        updateCarriedLuck(object, state);
+    if (object && state.inventory.includes(object) && confersLuck(object, state))
+        setMoreLuck(state);
     if (object?.otyp === BAG_OF_HOLDING)
         object.owt = objectWeight(object);
 }
@@ -2004,7 +2003,7 @@ export function objectWeight(object) {
     // mkobj.c:weight()->eaten_stat() scales partly eaten food by its
     // remaining nutrition per item, including stacks of partly eaten wishes.
     if (object.oclass === FOOD_CLASS && uneatenNutrition > 0 && base > 0) {
-        const fullNutrition = OBJECT_NUTRITION[object.otyp] ?? 0;
+        const fullNutrition = oc_nutrition(object.otyp) ?? 0;
         if (fullNutrition > 0) {
             return Math.max(1, Math.trunc(base * count * Math.min(uneatenNutrition, fullNutrition) / fullNutrition));
         }
@@ -2040,7 +2039,7 @@ export function objectWeight(object) {
 export function objectIsFlammable(object, state) {
     if (object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE)
         return false;
-    if (OBJECT_PROPERTY[object.otyp] === 'fireResistance'
+    if (objectPropertyName(object.otyp) === 'fireResistance'
         || object.otyp === WAN_FIRE)
         return false;
     const material = objectMaterial(object, state);

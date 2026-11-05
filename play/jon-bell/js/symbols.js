@@ -744,6 +744,11 @@ export function set_primary_symbol_override(symname, strval) {
     const symp = match_sym_real(`${symname}:${strval}`);
     if (!symp || symp.range === SYM_CONTROL)
         return false;
+    /* symbols.c:830-837: under H_UTF8 handling, or for a U+ value, the pair
+     * goes to glyphrep_to_custom_map_entries, never to ov_primary_syms. */
+    if (gs_symset(0).handling === H_UTF8
+        || (lowc(String(strval)[0]) === 'u' && String(strval)[1] === '+'))
+        return true;
     const { go } = ensure_sym_arrays();
     go.ov_primary_syms[symp.idx] = sym_val_real(strval);
     return true;
@@ -772,6 +777,25 @@ export function rogue_showsyms() {
     const overrides = game.go?.ov_rogue_syms;
     return Array.from({ length: SYMF_MAX }, (_, i) =>
         overrides?.[i] || game._roguePagerSymbols.symbols[i]);
+}
+
+/* glyphs.c:1160-1180 parse_id() is_S arm + glyph_find_core() (glyphs.c:216-258):
+ * `glyph:S_<name>:U+NNNN` customizes every glyph of that cmap/objclass/monster
+ * class.  The display here keys UTF8 on the symbol index, so record it as
+ * parse_sym_line_real does for a G_<cmap> line.  The entry only lands in
+ * glyphmap[].u when apply_customizations() runs (glyphs.c:530, from
+ * reset_customsymbols() or initoptions), so hold it pending until then.
+ * Returns whether S_ matched. */
+export function customize_s_glyph_utf8(id, uval) {
+    const sp = match_sym_real(id);
+    if (!sp || sp.range === SYM_CONTROL || !/^S_/i.test(id)) return false;
+    if (uval) (game._pendingSUtf8 ??= new Map()).set(sp.idx, uval);
+    return true;
+}
+export function apply_pending_s_utf8() {
+    if (gs_symset(0).handling === H_UTF8 && game.gp?.primary_utf8)
+        for (const [idx, uval] of game._pendingSUtf8 ?? [])
+            game.gp.primary_utf8[idx] = uval;
 }
 
 export function primary_unicode_symbol(idx) {

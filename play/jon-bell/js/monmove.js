@@ -42,7 +42,7 @@ import { sobj_at } from './invent.js';
 import { u_on_newpos, Is_special } from './dungeon.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
 import { upstart } from './hacklib.js';
-import { can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon as healmon_real, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear as monnear_real } from './mon.js';
+import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon as healmon_real, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear as monnear_real } from './mon.js';
 import { is_pool as is_pool_mv2 } from './look.js';
 import { may_dig } from './hack.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
@@ -123,11 +123,17 @@ async function msg_mon_movement(mtmp, omx, omy) {
     }
 }
 
+/* C mondata.h:53 nolimbs(ptr) — ((mflags1 & M1_NOLIMBS) == M1_NOLIMBS) */
+const M1_NOLIMBS_MV = 0x00006000;
+function nolimbs(ptr) {
+    return ((ptr?.mflags1 | 0) & M1_NOLIMBS_MV) === M1_NOLIMBS_MV;
+}
+
 /* C monmove.c:105-130 — deaf heroes see gestures instead of hearing speech. */
 export async function mon_yells(mon, shout) {
     if (Deaf()) {
         if (canspotmon(mon)) {
-            const limbless = ((mon.data.mflags1 | 0) & 0x6000) === 0x6000;
+            const limbless = nolimbs(mon.data);
             const name = Amonnam(mon);
             const possessive = mhis_mon(mon);
             const part = limbless ? mbodypart(mon, HEAD) : makeplural(mbodypart(mon, ARM));
@@ -1993,7 +1999,7 @@ export async function m_move(mtmp, after) {
          * skipNotice: this branch already opened with notice_mon above, at
          * monmove.c:1470's position — BEFORE the newsym pair — so postmov()
          * must not announce the same move a second time. */
-        return postmov(mtmp, res, true);
+        return postmov(mtmp, res, true, ptr);
     }
 
     /* C monmove.c:1802-1827: is_covetous branch.  A covetous monster (M3_COVETOUS
@@ -2276,7 +2282,7 @@ export async function m_move(mtmp, after) {
         if (_si.done)
             /* C monmove.c:1907 — `return postmov(..., mmoved, ...)` with mmoved
              * already set to MMOVE_DONE by m_search_items. */
-            return postmov(mtmp, MMOVE_DONE_MV);
+            return postmov(mtmp, MMOVE_DONE_MV, false, ptr);
     }
 
     /* C monmove.c:1942: flag = mon_allowflags(mtmp)
@@ -2660,7 +2666,7 @@ export async function m_move(mtmp, after) {
     /* C monmove.c:2073 — the mainline `return postmov(..., mmoved, ...)`. */
     if (ENV.FF_MFNDTRACE === '1')
         pushRngLogEntry(`^mresult[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0} mmoved=${mmoved | 0}]`);
-    return postmov(mtmp, mmoved); /* MMOVE_MOVED or MMOVE_NOTHING */
+    return postmov(mtmp, mmoved, false, ptr); /* MMOVE_MOVED or MMOVE_NOTHING */
 }
 
 export function mon_track_add(mtmp, x, y) {
@@ -2888,7 +2894,7 @@ async function maybe_spin_web(mtmp) {
     }
 }
 
-export async function postmov(mtmp, mmoved, skipNotice = false) {
+export async function postmov(mtmp, mmoved, skipNotice = false, origPtr = null) {
     /* C ref: monmove.c:1470 — postmov() opens with notice_mon(mtmp) (a11y
      * spot_monsters: "You see a peaceful gnome lord."), before any mmoved test.
      * The PET branch of m_move inlines postmov's middle (vampshifter door
@@ -2900,9 +2906,10 @@ export async function postmov(mtmp, mmoved, skipNotice = false) {
     if (mmoved !== MMOVE_MOVED_MV && mmoved !== MMOVE_DONE_MV)
         return mmoved;
     /* C:1692 — `ptr` inside postmov is re-read from mtmp->data after mintrap
-     * (monmove.c:1519 "in case mintrap() caused polymorph"), so at this point
-     * ptr IS mtmp->data; read it directly rather than caching a stale row. */
-    const ptr = mtmp.data;
+     * (monmove.c:1519 "in case mintrap() caused polymorph"), so for MMOVE_MOVED
+     * ptr IS mtmp->data. For MMOVE_DONE, C never ran mintrap and keeps the
+     * caller's passed-in `ptr` (monmove.c:1457). */
+    const ptr = (mmoved === MMOVE_MOVED_MV || !origPtr) ? mtmp.data : origPtr;
     /* C monmove.c:1661 `if (OBJ_AT(mtmp->mx, mtmp->my) && mtmp->mcanmove)`. */
     if ((game.level?.levelObjects?.[mtmp.mx | 0]?.[mtmp.my | 0])
         && (mtmp.mcanmove | 0)) {
@@ -3072,8 +3079,10 @@ async function meatmetal_mv(mtmp) {
                 } else {
                     /* C mon.c:1513 uses pline.c:436 You_hear, including its
                      * Deaf/acoustics guard and Underwater/Unaware prefixes. */
-                    if (game.flags?.verbose !== false)
+                    if (game.flags?.verbose !== false) {
+                        Soundeffect(se_crunching_sound, 50); /* C mon.c:1512 */
                         await You_hear('a crunching sound.');
+                    }
                 }
                 /* C:1516 mtmp->meating = otmp->owt / 2 + 1 — integer division on
                  * the CACHED weight (place_object/mksobj set owt = weight(obj)).
@@ -3436,9 +3445,7 @@ export async function m_break_boulder_mv(mtmp, x, y) {
         return false;
     const rider = is_rider_mcbb(mtmp.data);
     if (!rider) {
-        const deaf = !!(game.u?.uprops?.[DEAF]?.intrinsic
-                     || game.u?.uprops?.[DEAF]?.extrinsic);
-        if (!deaf && mdistu(mtmp) < 4 * 4) {
+        if (!Deaf() && mdistu(mtmp) < 4 * 4) {
             if (canspotmon(mtmp))
                 set_msg_xy(mtmp.mx, mtmp.my);
             await pline(`${Monnam_dm(mtmp)} mutters ${mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
@@ -3495,8 +3502,8 @@ const M1_REGEN_MON_REGEN = 0x00800000;
 /* C ref: mon.c:4585 healmon().  The canonical body lives in mklev.js and is
  * already used by the other healing callers; keep this export as a thin
  * compatibility wrapper for monmove's historical public surface. */
-export function healmon(mon, hpmax, hp) {
-    return healmon_real(mon, hpmax, hp);
+export function healmon(mtmp, amt, overheal) {
+    return healmon_real(mtmp, amt, overheal);
 }
 
 /* C ref: monmove.c:307-320 mon_regen — regenerate lost hit points and digest meals.

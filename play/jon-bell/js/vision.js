@@ -855,8 +855,8 @@ export function vision_recalc(control = 0) {
      * is -1 when the hero has none (an unset JS field reads as none); the
      * update loop below does the newsym for squares not previously in sight.
      * It lives in the final else of C's `uswallow || control == 2` / Blind /
-     * rogue chain, so a refresh (control 2) or a swallowed hero skips it. */
-    if (!see_nothing && u.xray_range != null && (u.xray_range | 0) >= 0) {
+     * rogue chain, so a refresh (control 2), a swallowed hero, or a rogue level skips it. */
+    if (!see_nothing && !Is_rogue_level(u.uz) && u.xray_range != null && (u.xray_range | 0) >= 0) {
         const xr = u.xray_range | 0;
         if (xr) {
             const ranges = circle_ptr(xr);

@@ -108,8 +108,9 @@ export async function pline(msg, ...args) {
     /* Before dorecover()'s docrt() there is no map window yet: the topline
      * pages over the base window (js/jsmain.js restore path). */
     if (game._base_topline) {
+        const urgent = !!game._topl_urgent_next;
         game._topl_urgent_next = false;
-        return await game._base_topline.put(args.length ? nh_sprintf(msg, args) : msg);
+        return await game._base_topline.put(args.length ? nh_sprintf(msg, args) : msg, urgent);
     }
     const deferred = args.length === 0 && game._deferredPline;
     if (!deferred || deferred.msg !== msg)

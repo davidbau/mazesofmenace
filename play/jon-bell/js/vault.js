@@ -31,6 +31,7 @@ import { makemon, make_grave, place_object, remove_object, obj_extract_self } fr
 import { xy_set_wall_state } from './display.js';
 import { mungspaces } from './hacklib.js';
 import { mongone, setmangry } from './mon.js';
+import { mon_track_clear } from './monmove.js'; /* C monmove.c:90 */
 import { relobj } from './steal.js';
 import { stackobj } from './sp_lev.js';
 import { on_level } from './dungeon.js';
@@ -688,6 +689,26 @@ export function findgd() {
         if (mtmp.isgd && egd?.gdlevel && on_level(egd.gdlevel, game.u.uz)) {
             if (!(mtmp.mx | 0) && !egd.gddone)
                 mtmp.mhp = mtmp.mhpmax;
+            return mtmp;
+        }
+    }
+    /* C vault.c:216-231 — if not on fmon, look for a guard waiting to migrate
+     * to this level (e.g. one that fell through a trap door while chasing the
+     * hero): take it out of migrating_mons and park it at <0,0>. */
+    let mprev = null;
+    for (let mtmp = game.migrating_mons; mtmp; mprev = mtmp, mtmp = mtmp.nmon) {
+        const egd = EGD(mtmp);
+        if (mtmp.isgd && egd?.gdlevel && on_level(egd.gdlevel, game.u.uz)) {
+            if (mprev)
+                mprev.nmon = mtmp.nmon;
+            else
+                game.migrating_mons = mtmp.nmon;
+            mtmp.nmon = game.fmon;
+            game.fmon = mtmp;
+            mon_track_clear(mtmp);
+            mtmp.mux = game.u.ux, mtmp.muy = game.u.uy;
+            mtmp.mx = mtmp.my = 0; /* not on map (note: mx is already 0) */
+            parkguard(mtmp);
             return mtmp;
         }
     }

@@ -22,7 +22,7 @@
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
-    RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
+    RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED, OBJ_DELETED,
     BURIED_TOO, CONTAINED_TOO, u_at, PLNMSG_OBJ_GLOWS,
 } from './const.js';
 import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
@@ -54,6 +54,10 @@ let light_base = null;
 // C ref: light.c:373 `#define mon_is_local(mon) ((mon)->mx > 0)`
 // (mon->mx == 0 implies migrating).
 function mon_is_local(mon) { return (mon?.mx | 0) > 0; }
+
+function ls_obj_is_local(obj) {
+    return (obj.where | 0) === OBJ_DELETED ? false : obj_is_local(obj);
+}
 
 
 
@@ -272,7 +276,7 @@ export async function save_light_sources(range) {
             is_global = false;
         } else switch (curr.type) {
         case LS_OBJECT:
-            is_global = !obj_is_local(curr.id.a_obj);
+            is_global = !ls_obj_is_local(curr.id.a_obj);
             break;
         case LS_MONSTER:
             is_global = !mon_is_local(curr.id.a_monst);
@@ -320,7 +324,7 @@ export function lights_save_snapshot() {
     discard_flashes();
     const local = [], global = [];
     for (let ls = light_base; ls; ls = ls.next) {
-        const isGlobal = ls.type === LS_OBJECT ? !obj_is_local(ls.id.a_obj)
+        const isGlobal = ls.type === LS_OBJECT ? !ls_obj_is_local(ls.id.a_obj)
             : ls.type === LS_MONSTER ? !mon_is_local(ls.id.a_monst) : false;
         (isGlobal ? global : local).push(ls);
     }

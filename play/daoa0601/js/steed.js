@@ -1,9 +1,9 @@
 import { trapName, resolveImmediatePetrification, mintrap, floatHeroDown } from './trap.js';
+import { OBJ_DESCR } from './o_init.js';
 import { encumber_msg } from './pickup.js';
 import { BOTH_SIDES, RLOC_ERR, RLOC_NOMSG, In_endgame, In_quest, D_CLOSED, D_LOCKED, DISMOUNT_BONES, DISMOUNT_BYCHOICE, DISMOUNT_ENGULFED, DISMOUNT_FELL, DISMOUNT_KNOCKED, DISMOUNT_POLY, DISMOUNT_THROWN, DOOR, IRONBARS, IS_OBSTRUCTED, Is_knox_level, LAVAWALL, MGIVENNAME, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, MON_FLOOR, NO_KILLER_PREFIX, NON_PM, P_RIDING, A_CHA, A_DEX, A_WIS, P_BASIC, P_SKILLED, P_EXPERT, TT_BEARTRAP, TT_PIT, TT_WEB, Upolyd, VIBRATING_SQUARE, W_SADDLE } from './const.js';
 import { isok, commandResultCancelled, promptDirection } from './cmd.js';
 import { impossible } from './diagnostics.js';
-import { depth, endgameLevelName } from './hacklib.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { levitationAtWill, refreshMovementProperties, propertyIsActive } from './properties.js';
@@ -14,7 +14,7 @@ import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { releaseMonsterLeash, releaseMonsterLeashWithFeedback } from './apply.js';
-import { BOULDER, SADDLE, OBJECT_DESCRIPTIONS } from './object_data.js';
+import { BOULDER, SADDLE, } from './object_data.js';
 import { mksobj } from './mkobj.js';
 import { fullyIdentifyObject, freeInventoryObject } from './invent.js';
 import { applyMonsterEquipmentProperties } from './monworn.js';
@@ -22,7 +22,7 @@ import { makePlural, withIndefiniteArticle } from './objnam.js';
 import { displayLiquidName, monsterName, monsterReflexiveAction } from './do_name.js';
 import { monsterSubjectPronoun, monsterPassesBars, monsterIsHelpless, is_domestic, monsterIsClinger, monsterIsFlyer, monsterIsHumanoid, monsterIsSlithy, monsterIsSwimmer, monsterThrowsRocks, needspick, tunnels, cant_drown, monsterIsAmorphous, monsterIsUnsolid, } from './mondata.js';
 import { shopkeeperName } from './shknam.js';
-import { currentAttribute, exerciseAttribute } from './attrib.js';
+import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroHandName, heroLegName } from './body_parts.js';
 import { heroHasFreeHand } from './engrave.js';
 import { isPolearm, objectIsMetallic } from './object_properties.js';
@@ -32,18 +32,16 @@ import { shopkeeperBlockingDoor, shopkeeperBlockingEntry } from './shk.js';
 import { heroKnowsLavaWalking, heroKnowsWaterWalking } from './do_wear.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { rn1, rn2, rnd, rnl } from './rng.js';
-import { useHeroSkill } from './skills.js';
+import { useHeroSkill } from './weapon.js';
 import { teleds, randomMonsterRelocation, relocateMonsterTo, enexto } from './teleport.js';
 import { promptYesNo } from './query.js';
 import { healHeroLegs, woundHeroLegs } from './do.js';
 import { touchPetrifies } from './stoning.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { blocksDiagonalDoor, heroBadRock, heroCanPassWallAt, heroTightDiagonalReason, applyHeroLocationEffects, heroLocomotion, loseHeroHp, nearCapacity, SLT_ENCUMBER, heroCouldMoveOntoBoulder, finishDestinationSpotEffects } from './hack.js';
-import { adjustHeroAlignment } from './alignment.js';
-import { levelHasCeiling } from './dungeon.js';
+import { depth, endgameLevelName, levelHasCeiling, surfaceName } from './dungeon.js';
 import { isAccessibleAt, heroCanOoze } from './monmove.js';
 import { isLavaAt, isPoolAt, isWaterwallAt } from './dbridge.js';
-import { surfaceName } from './terrain_name.js';
 const MZ_SMALL = 1;
 const MZ_LARGE = 3;
 const S_EYE = 5;
@@ -466,7 +464,7 @@ export async function useSaddle(saddle) {
     const skill = hero.weaponSkills?.[P_RIDING]?.skill ?? 0;
     chance += skill === P_EXPERT ? 30 : skill === P_SKILLED ? 15 : skill === P_BASIC ? 0 : -20;
     const description = (object) => object
-        ? game.objectDescriptions?.[object.otyp] ?? OBJECT_DESCRIPTIONS[object.otyp] : null;
+        ? OBJ_DESCR(object.otyp) : null;
     if (hero.confused || (hero.confusionTurns ?? 0) > 0 || propertyIsActive('fumbling', game)
         || hero.glib || (hero.glibTurns ?? 0) > 0)
         chance -= 20;

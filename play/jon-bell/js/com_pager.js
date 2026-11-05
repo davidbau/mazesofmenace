@@ -411,11 +411,10 @@ export function tty_text_window_utf8_line(line) {
 export function build_text_window_screen(lines) {
     const rows = new Array(24).fill('');
     for (let i = 0; i < lines.length && i < 23; i++) {
-        /* process_text_window (wintty.c:1810) prints at most cols-1 = 79 chars */
         let row = tty_text_window_utf8_line(lines[i]);
         if (row.length > 79 && !row.includes('\x1b'))
             row = row.slice(0, 79);
-        rows[i] = _encode_blank_runs(row.replace(/\s+$/, ''));
+        rows[i] = _encode_blank_runs(row.replace(/\s+$/, '').replace(/\t/g, '\x1b[1C'));
     }
     rows[23] = '--More--';
     return rows.join('\n');
@@ -607,9 +606,13 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 // WIN_STOP (wintty.c tty_putstr / topl.c more():232-235) and
                 // never reaches the terminal, so the row is physically blank
                 // blowing you a kiss..." is held in _pending_message only).
-                const topl = String((game._topl_win_stop ? '' : game._pending_message)
-                                    || game._topl_sticky
-                                    || '').replace(/\s+$/, '');
+                /* wintty.c:1921-1941 — a live (fresh) topline is erased by the window
+                 * display (tty_clear_nhwindow(WIN_MESSAGE) / cl_eos); only text C
+                 * left physically on the row with toplin EMPTY (_topl_sticky)
+                 * survives left of offx.  Fuzzer travel/getpos tip pages
+                 * "Where do you want to travel to?" away (rm398 step 54). */
+                const topl = String(game._pending_message ? ''
+                                    : (game._topl_sticky || '')).replace(/\s+$/, '');
                 const left = topl.slice(0, Math.max(0, col - 1));
                 output += left;
                 const gap = col - left.length;

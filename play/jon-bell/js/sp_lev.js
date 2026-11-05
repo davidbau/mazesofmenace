@@ -10,7 +10,7 @@
 // call in this file must match C's sp_lev.c in order and argument.
 import { game } from './gstate.js';
 import { okdoor } from './mklev.js';
-import { Can_dig_down as Can_dig_down_real } from './dungeon.js';
+import { Can_dig_down } from './dungeon.js';
 import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
 import { dig_corridor, mineralize, make_grave, remove_object } from './mklev.js';
@@ -3201,11 +3201,16 @@ export function induced_align(pct) {
     const lev = induced_align_slevel();
     if (lev && lev.flags && lev.flags.align)
         if (rn2(100) < pct)
-            /* C returns lev->flags.align RAW (dungeon.c:2000) — it is already
+            /* C returns lev->flags.align RAW (dungeon.c:2006) — it is already
              * an AM_* mask, since init_level stores (flags & D_ALIGN_MASK) >> 4
              * and D_ALIGN_<x> == (AM_<x> << 4).  No Align2amask here. */
             return lev.flags.align;
-    /* dungeon-wide flags.align check: always false (bitfield-truncation bug above) — no draw. */
+    /* C dungeon.c:2008-2010 — `if (svd.dungeons[u.uz.dnum].flags.align)`
+     * (populated with C's 3-bit Bitfield(align, 3) truncation at dungeon_rng.js:380). */
+    const dgn = game.dungeons?.[game.u?.uz?.dnum | 0];
+    if (dgn?.flags?.align)
+        if (rn2(100) < pct)
+            return dgn.flags.align;
     const al = rn2(3) - 1;
     return Align2amask(al);
 }
@@ -6671,10 +6676,6 @@ function maze1xy(m, humidity) {
 
     m.x = x;
     m.y = y;
-}
-
-function Can_dig_down(lev) {
-    return Can_dig_down_real(lev);
 }
 
 /** C ref: sp_lev.c:1155-1188 rndtrap() — random trap for a special level,

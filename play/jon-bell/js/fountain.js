@@ -1,6 +1,6 @@
 // fountain.js — C ref: fountain.c.
 import { discover_artifact } from './artifact.js';
-import { acurr, exercise, losestr } from './attrib.js';
+import { acurr, adjattrib, exercise, losestr } from './attrib.js';
 import { body_part, body_part as body_part_cmd, enlightenment_menu, in_town, useup, water_damage_chain } from './cmd.js';
 import { money_cnt } from './hack.js';
 import { ARM, A_CON, A_DEX, A_STR, A_WIS, BLINDED, DEAF, ER_GREASED, ER_NOTHING, FACE, FIRE_RES, FOUNTAIN, FROMOUTSIDE, GLIB, G_GONE, HAND, INVIS, IS_FOUNTAIN, KILLED_BY, KILLED_BY_AN, LEVITATION, LL_ARTIFACT, MAGICENLIGHTENMENT, MM_NOMSG, M_SEEN_FIRE, ONAME_KNOW_ARTI, ONAME_VIA_DIP, POLY_NOFLAGS, POOL, ROOM, SEE_INVIS, S_LRING, nothing_seems_to_happen, u_at } from './const.js';
@@ -92,87 +92,6 @@ function _acurr(u, i) {
     if (tmp <= 3)
         return 3;
     return tmp;
-}
-
-/* adjattrib(ndx, incr, msgflg) — mirror of attrib.js private adjattrib.
- * C ref: nethack-c/src/attrib.c:117-199.
- * msgflg=-1 → conditional (print if changed); 0 → always; >0 → never.
- * RNG: rn2() only on decrement below ATTRMIN.
- * Returns TRUE if ACURR changed.
- * NOTE: ndx is a C constant; u.acurr.a / u.amax.a are in DISPLAY order —
- * translate via _C_ATTR_TO_DISP before indexing. */
-const _plusattr_t = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
-
-const _minusattr_t = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
-
-async function _adjattrib(ndx, incr, msgflg) {
-    const u = game.u;
-    if (!u || !incr)
-        return false;
-    const di = _C_ATTR_TO_DISP[ndx] ?? ndx; /* C constant → display index */
-    const abase = _getAbase(u);
-    const amax = _getAmax(u);
-    const aexe = _getAexe(u);
-    const oldAcurr = _acurr(u, ndx);
-    const oldAbase = abase[di] | 0;
-    const oldAmax = amax[di] | 0;
-    abase[di] = (abase[di] | 0) + incr;
-    if (incr > 0) {
-        /* C attrib.c:140-143 — raise amax with abase, cap at race max */
-        if (abase[di] > amax[di]) {
-            amax[di] = abase[di];
-            const hi = _attrmax(u, ndx); /* attrmax uses C constant order — pass ndx */
-            if (hi > 18) {
-                if (abase[di] > hi)
-                    abase[di] = amax[di] = hi;
-            }
-            else {
-                if (amax[di] > hi)
-                    abase[di] = amax[di] = hi;
-            }
-        }
-    }
-    else {
-        /* C attrib.c:148-170 */
-        if (abase[di] < _RACE_ATTRMIN) {
-            const decr = rn2(_RACE_ATTRMIN - abase[di] + 1);
-            abase[di] = _RACE_ATTRMIN;
-            amax[di] = (amax[di] | 0) - decr;
-            if (amax[di] < _RACE_ATTRMIN)
-                amax[di] = _RACE_ATTRMIN;
-        }
-    }
-    const newAcurr = _acurr(u, ndx);
-    if (newAcurr === oldAcurr) {
-        /* C attrib.c:173-184: msgflg == 0 && flags.verbose */
-        if (msgflg == 0 && game.flags?.verbose) {
-            const _attrname = ['strength', 'intelligence', 'wisdom', 'dexterity', 'constitution', 'charisma'];
-            if ((abase[di] | 0) === oldAbase && (amax[di] | 0) === oldAmax) {
-                const abonflg = incr > 0 ? (_getAbon(u)[di] | 0) < 0 : (_getAbon(u)[di] | 0) > 0;
-                await pline(`You're ${abonflg ? 'currently' : 'already'} as ${incr > 0 ? _plusattr_t[ndx] : _minusattr_t[ndx]} as you can get.`);
-            }
-            else {
-                await pline(`Your innate ${_attrname[ndx]} has ${(incr > 0) ? 'improved' : 'declined'}.`);
-            }
-        }
-        return false;
-    }
-    /* C attrib.c:190-197: attribute changed — reset exercise, SET_BOTL, pline */
-    aexe[ndx] = 0; /* aexe indexed by C constant — correct */
-    if (game.disp)
-        game.disp.botl = 1;
-    if (msgflg <= 0) {
-        const _plusattr = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
-        const _minusattr = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
-        const attrstr = (incr > 0) ? _plusattr[ndx] : _minusattr[ndx];
-        const very = (incr > 1 || incr < -1) ? 'very ' : '';
-        await pline(`You feel ${very}${attrstr}!`);
-        await flush_screen(1);
-    }
-    /* C attrib.c:196-197: changed strength or constitution can change load. */
-    if (game.program_state?.in_moveloop && (ndx === A_STR || ndx === A_CON))
-        await encumber_msg();
-    return true;
 }
 
 export async function floating_above(what) {
@@ -355,7 +274,7 @@ export async function drinkfountain() {
         /* C fountain.c:265-270: adjattrib loop — try to gain one attribute */
         for (let ii = 0; ii < A_MAX; ii++) {
             const msgflg = littleluck ? -1 : 0;
-            if (await _adjattrib(i, 1, msgflg) && littleluck)
+            if (adjattrib(i, 1, msgflg) && littleluck)
                 break;
             if (++i >= A_MAX)
                 i = 0;

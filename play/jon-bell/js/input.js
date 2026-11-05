@@ -2,6 +2,7 @@
 // input.js — Keystroke input handling.
 // Provides async nhgetch() that reads from an input queue.
 import { game } from './gstate.js';
+import { randomkey } from './cmd.js';
 import { KEY_BINDINGS } from './terminal.js';
 import { pushRngLogEntry } from './rng.js';
 import { ENV } from './hostenv.js';
@@ -168,6 +169,18 @@ export async function nhgetch() {
      * buffer, and a run cannot span a key read. */
     game._toplRunCommitted = null;
     _emitToplInputTrace('after');
+    /* C win/tty/wintty.c:4067-4068 — the debug fuzzer replaces the terminal
+     * read inside tty_nhgetch itself, so the recorded key queue (this port's
+     * terminal) is not consulted either.  Everything above (the topline
+     * clears, the WIN_STOP reset) is tty_nhgetch's pre-read sequence and runs
+     * in C before the fuzzer branch, so it runs here too. */
+    if (game.iflags?.debug_fuzzer) {
+        let key = randomkey();
+        // C wintty.c:4093-4094: map NUL to ESC since nethack doesn't expect NUL
+        if (key === 0) key = 27;
+        _emitActionTrace(key);
+        return key;
+    }
     if (_inputQueue.length > 0) {
         let key = _inputQueue.shift();
         /* C wintty.c:4093-4094: map NUL to ESC since nethack doesn't expect NUL */

@@ -1,8 +1,10 @@
 // u_init.js — Initial hero, pet, inventory, and attribute setup.
 // C refs: u_init.c, attrib.c, dog.c, teleport.c, makemon.c.
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, } from './objclass.js';
-import { objectSkill, objectUsesKnown, objectMagic, objectCharged, AKLYS, ARROW, CROSSBOW_BOLT, YA, DART, DAGGER, SCALPEL, SPEAR, AXE, BATTLE_AXE, SHORT_SWORD, LONG_SWORD, TWO_HANDED_SWORD, KATANA, LANCE, MACE, CLUB, QUARTERSTAFF, BULLWHIP, BOW, CROSSBOW, YUMI, SLING, HELMET, FEDORA, SPLINT_MAIL, RING_MAIL, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, ROBE, SMALL_SHIELD, HAWAIIAN_SHIRT, CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE, LARGE_BOX, BAG_OF_TRICKS, SACK, CORPSE, STATUE, LOCK_PICK, CREDIT_CARD, EXPENSIVE_CAMERA, TOWEL, LEASH, STETHOSCOPE, TIN_OPENER, MAGIC_MARKER, BLINDFOLD, OIL_LAMP, PICK_AXE, TINNING_KIT, WOODEN_FLUTE, TOOLED_HORN, WOODEN_HARP, BELL, BUGLE, LEATHER_DRUM, CRAM_RATION, FOOD_RATION, TRIPE_RATION, TIN, EUCALYPTUS_LEAF, APPLE, ORANGE, PEAR, MELON, BANANA, CARROT, SPRIG_OF_WOLFSBANE, CLOVE_OF_GARLIC, SLIME_MOLD, CREAM_PIE, CANDY_BAR, FORTUNE_COOKIE, PANCAKE, LEMBAS_WAFER, POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING, POT_SICKNESS, POT_OIL, POT_WATER, SCR_MAGIC_MAPPING, SCR_PUNISHMENT, SPE_DETECT_MONSTERS, SPE_HEALING, SPE_FORCE_BOLT, SPE_CONFUSE_MONSTER, SPE_EXTRA_HEALING, SPE_STONE_TO_FLESH, SPE_PROTECTION, WAN_SLEEP, WAN_WISHING, GOLD_PIECE, AMULET_OF_YENDOR, TOUCHSTONE, FLINT, ROCK, OBJECT_NAMES, OBJECT_DESCRIPTIONS, OBJECT_BASES, OBJECT_SPELL_LEVEL, OBJECT_SPELL_CATEGORY, ELVEN_SHORT_SWORD, ELVEN_ARROW, ELVEN_BOW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_BROADSWORD, ELVEN_MITHRIL_COAT, ELVEN_LEATHER_HELM, ELVEN_SHIELD, ELVEN_BOOTS, ELVEN_CLOAK, ORCISH_ARROW, ORCISH_SPEAR, ORCISH_DAGGER, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_RING_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, CHAIN_MAIL, RIN_LEVITATION, RIN_HUNGER, RIN_AGGRAVATE_MONSTER, RIN_POISON_RESISTANCE, RIN_POLYMORPH, RIN_POLYMORPH_CONTROL, POT_POLYMORPH, WAN_POLYMORPH, SPE_POLYMORPH, SPE_BLANK_PAPER, SPE_NOVEL, WAN_NOTHING, POT_HALLUCINATION, POT_ACID, SCR_AMNESIA, SCR_FIRE, SCR_BLANK_PAPER, SCR_ENCHANT_WEAPON, } from './object_data.js';
+import { objectSkill, objectUsesKnown, objectMagic, objectCharged, AKLYS, ARROW, CROSSBOW_BOLT, YA, DART, DAGGER, SCALPEL, SPEAR, AXE, BATTLE_AXE, SHORT_SWORD, LONG_SWORD, TWO_HANDED_SWORD, KATANA, LANCE, MACE, CLUB, QUARTERSTAFF, BULLWHIP, BOW, CROSSBOW, YUMI, SLING, HELMET, FEDORA, SPLINT_MAIL, RING_MAIL, LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES, ROBE, SMALL_SHIELD, HAWAIIAN_SHIRT, CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE, LARGE_BOX, BAG_OF_TRICKS, SACK, CORPSE, STATUE, LOCK_PICK, CREDIT_CARD, EXPENSIVE_CAMERA, TOWEL, LEASH, STETHOSCOPE, TIN_OPENER, MAGIC_MARKER, BLINDFOLD, OIL_LAMP, PICK_AXE, TINNING_KIT, WOODEN_FLUTE, TOOLED_HORN, WOODEN_HARP, BELL, BUGLE, LEATHER_DRUM, CRAM_RATION, FOOD_RATION, TRIPE_RATION, TIN, EUCALYPTUS_LEAF, APPLE, ORANGE, PEAR, MELON, BANANA, CARROT, SPRIG_OF_WOLFSBANE, CLOVE_OF_GARLIC, SLIME_MOLD, CREAM_PIE, CANDY_BAR, FORTUNE_COOKIE, PANCAKE, LEMBAS_WAFER, POT_HEALING, POT_EXTRA_HEALING, POT_FULL_HEALING, POT_SICKNESS, POT_OIL, POT_WATER, SCR_MAGIC_MAPPING, SCR_PUNISHMENT, SPE_DETECT_MONSTERS, SPE_HEALING, SPE_FORCE_BOLT, SPE_CONFUSE_MONSTER, SPE_EXTRA_HEALING, SPE_STONE_TO_FLESH, SPE_PROTECTION, WAN_SLEEP, WAN_WISHING, GOLD_PIECE, AMULET_OF_YENDOR, TOUCHSTONE, FLINT, ROCK, OBJECT_NAMES, OBJECT_BASES, ELVEN_SHORT_SWORD, ELVEN_ARROW, ELVEN_BOW, ELVEN_SPEAR, ELVEN_DAGGER, ELVEN_BROADSWORD, ELVEN_MITHRIL_COAT, ELVEN_LEATHER_HELM, ELVEN_SHIELD, ELVEN_BOOTS, ELVEN_CLOAK, ORCISH_ARROW, ORCISH_SPEAR, ORCISH_DAGGER, ORCISH_SHORT_SWORD, ORCISH_BOW, ORCISH_HELM, ORCISH_CHAIN_MAIL, ORCISH_RING_MAIL, ORCISH_CLOAK, URUK_HAI_SHIELD, ORCISH_SHIELD, DWARVISH_SPEAR, DWARVISH_SHORT_SWORD, DWARVISH_MATTOCK, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT, DWARVISH_CLOAK, DWARVISH_ROUNDSHIELD, CHAIN_MAIL, RIN_LEVITATION, RIN_HUNGER, RIN_AGGRAVATE_MONSTER, RIN_POISON_RESISTANCE, RIN_POLYMORPH, RIN_POLYMORPH_CONTROL, POT_POLYMORPH, WAN_POLYMORPH, SPE_POLYMORPH, SPE_BLANK_PAPER, SPE_NOVEL, WAN_NOTHING, POT_HALLUCINATION, POT_ACID, SCR_AMNESIA, SCR_FIRE, SCR_BLANK_PAPER, SCR_ENCHANT_WEAPON, oc_level, } from './object_data.js';
 import { game } from './gstate.js';
+import { OBJ_DESCR } from './o_init.js';
+import { is_launcher, isLauncherAmmunition, is_spear } from './object_properties.js';
 import { createHeroState } from './hero_types.js';
 import { isGrayStone } from './object_properties.js';
 import { useUpInventoryStack, addCreatedInventoryItem } from './invent.js';
@@ -19,9 +21,10 @@ import { mkobj, mksobj, deallocateObject } from './mkobj.js';
 import { MONSTER_MOVE, MONSTER_NAME, SPECIAL_PM } from './monster_data.js';
 import { findArmorClass } from './do_wear.js';
 import { ensureQuestStatus } from './quest.js';
-import { GP_AVOID_MONPOS, A_CHA, A_CHAOTIC, A_CON, A_STR, COLNO, ROWNO, NOT_HUNGRY, } from './const.js';
+import { GP_AVOID_MONPOS, A_CHA, A_CHAOTIC, A_CON, A_STR, COLNO, ROWNO, NOT_HUNGRY, P_FIRST_SPELL, P_LAST_SPELL, } from './const.js';
 import { recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
-import { ensureHeroSkills, roleAllowsSpellbook } from './skills.js';
+import { ensureHeroSkills } from './weapon.js';
+import { spellSkillType } from './spell.js';
 import { hiddenGold } from './vault.js';
 import { addHeroGoldObject, setHeroGoldAmount } from './hero_gold.js';
 import { syncBlindness, syncDeafness } from './senses.js';
@@ -32,6 +35,7 @@ import { setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.j
 import { newMonsterHitPoints } from './makemon.js';
 import { invWeight } from './hack.js';
 import { objectWeight, nextIdent } from './mkobj.js';
+import { initAttributes, varyInitAttr } from './attrib.js';
 const ATTRIBUTE_INDICES = [0, 1, 2, 3, 4, 5];
 const UNDEF_BLESS = 2;
 const UNDEF_TYP = -1;
@@ -481,8 +485,9 @@ function knowsClass(oclass, role) {
             const skill = objectSkill(otyp);
             if (['barbarian', 'valkyrie'].includes(role) && skill === 16)
                 continue;
+            const view = { otyp, oclass: WEAPON_CLASS };
             if (role === 'ranger'
-                && !([-20, -22, 17, 20, 21, 22].includes(skill)))
+                && !(is_launcher(view) || isLauncherAmmunition(view) || is_spear(view)))
                 continue;
             if (role === 'rogue' && skill !== 1)
                 continue;
@@ -527,6 +532,106 @@ function initializeRolePreknowledge(role) {
     if (role === 'priest')
         recordObjectKnowledge(POT_WATER);
 }
+// u_init.c Skill_A and Skill_K.  Role maximums are distinct from the startup
+// inventory snapshot which promotes only weapons already carried to Basic.
+const ARCHEOLOGIST_MAXIMUMS = new Map([
+    [1, 2], [2, 2], [4, 4], [5, 2], [9, 4], [10, 3], [15, 3], [21, 3],
+    [23, 2], [25, 4], [26, 4], [27, 3], [28, 2], [29, 2], [30, 4],
+    [34, 2], [37, 2], [36, 2], [35, 4],
+]);
+const BARBARIAN_MAXIMUMS = new Map([
+    [1, 2], [3, 4], [4, 3], [5, 4], [6, 3], [7, 3], [8, 4], [9, 3],
+    [10, 3], [11, 3], [12, 3], [13, 2], [14, 4], [15, 2], [17, 3],
+    [18, 3], [20, 2], [28, 2], [33, 2], [37, 2], [36, 2], [35, 5],
+]);
+const CAVEMAN_MAXIMUMS = new Map([
+    [1, 2], [2, 3], [3, 3], [4, 2], [10, 4], [11, 4], [12, 2], [13, 3],
+    [14, 3], [15, 4], [16, 3], [17, 4], [18, 3], [20, 3], [21, 4],
+    [28, 2], [34, 3], [25, 4], [27, 2], [35, 5],
+]);
+const HEALER_MAXIMUMS = new Map([
+    [1, 3], [2, 4], [5, 3], [9, 2], [10, 3], [11, 2], [15, 4], [16, 2],
+    [17, 2], [18, 2], [21, 3], [23, 4], [24, 3], [27, 4], [29, 4],
+    [35, 2],
+]);
+const KNIGHT_MAXIMUMS = new Map([
+    [1, 2], [2, 2], [3, 3], [4, 2], [5, 3], [6, 3], [7, 4], [8, 3],
+    [9, 3], [10, 2], [11, 3], [12, 3], [13, 2], [14, 2], [16, 3],
+    [17, 3], [18, 2], [19, 4], [20, 2], [22, 3], [28, 3], [29, 3],
+    [32, 3], [37, 4], [36, 3], [35, 4],
+]);
+const MONK_MAXIMUMS = new Map([
+    [15, 2], [17, 2], [22, 2], [24, 2], [28, 2], [29, 4], [30, 2],
+    [31, 2], [32, 3], [33, 3], [34, 2], [35, 6],
+]);
+const PRIEST_MAXIMUMS = new Map([
+    [10, 4], [11, 4], [12, 4], [13, 4], [14, 4], [15, 4], [16, 3],
+    [17, 3], [18, 3], [19, 2], [20, 2], [21, 2], [22, 2], [23, 2],
+    [24, 2], [25, 2], [27, 3], [29, 4], [30, 4], [32, 4], [35, 2],
+]);
+const RANGER_MAXIMUMS = new Map([
+    [1, 4], [2, 3], [3, 3], [4, 2], [5, 2], [12, 2], [13, 3], [14, 2],
+    [15, 2], [16, 3], [17, 4], [18, 2], [20, 4], [21, 4], [22, 4],
+    [23, 4], [24, 3], [25, 4], [26, 2], [29, 2], [30, 4], [33, 2],
+    [37, 2], [35, 2],
+]);
+const ROGUE_MAXIMUMS = new Map([
+    [1, 4], [2, 4], [5, 4], [6, 3], [7, 3], [8, 2], [9, 3], [10, 3],
+    [11, 3], [12, 2], [13, 2], [14, 2], [16, 2], [17, 2], [22, 4],
+    [23, 4], [24, 3], [30, 3], [33, 3], [34, 3], [37, 2], [36, 4],
+    [35, 4],
+]);
+const SAMURAI_MAXIMUMS = new Map([
+    [1, 2], [2, 3], [5, 4], [6, 3], [7, 4], [8, 4], [9, 2], [13, 3],
+    [15, 2], [16, 3], [17, 3], [19, 3], [20, 4], [24, 4], [28, 2],
+    [30, 2], [32, 3], [37, 3], [36, 4], [35, 5],
+]);
+const TOURIST_MAXIMUMS = new Map([
+    [1, 4], [2, 3], [3, 2], [4, 2], [5, 4], [6, 2], [7, 2], [8, 2],
+    [9, 3], [11, 2], [12, 2], [13, 2], [14, 2], [15, 2], [16, 2],
+    [17, 2], [18, 2], [19, 2], [20, 2], [21, 2], [22, 2], [23, 4],
+    [24, 2], [25, 2], [26, 2], [27, 3], [30, 2], [31, 2], [33, 3],
+    [37, 2], [36, 3], [35, 3],
+]);
+const VALKYRIE_MAXIMUMS = new Map([
+    [1, 4], [3, 4], [4, 3], [5, 3], [6, 3], [7, 4], [8, 4], [9, 2],
+    [14, 4], [15, 2], [16, 3], [17, 4], [18, 2], [19, 3], [21, 2],
+    [28, 2], [33, 2], [37, 3], [36, 3], [35, 4],
+]);
+const WIZARD_MAXIMUMS = new Map([
+    [1, 4], [2, 3], [3, 3], [5, 2], [10, 3], [11, 2], [15, 4],
+    [16, 3], [17, 2], [18, 2], [21, 3], [23, 4], [24, 2], [28, 4],
+    [29, 3], [30, 4], [31, 3], [32, 3], [33, 4], [34, 4], [37, 2],
+    [35, 2],
+]);
+// C u_init.c:skills_for_role().
+export function roleMaximums(game) {
+    const key = game.urole?.key;
+    if (!key)
+        return null;
+    return {
+        archeologist: ARCHEOLOGIST_MAXIMUMS,
+        barbarian: BARBARIAN_MAXIMUMS,
+        caveman: CAVEMAN_MAXIMUMS,
+        healer: HEALER_MAXIMUMS,
+        knight: KNIGHT_MAXIMUMS,
+        monk: MONK_MAXIMUMS,
+        priest: PRIEST_MAXIMUMS,
+        ranger: RANGER_MAXIMUMS,
+        rogue: ROGUE_MAXIMUMS,
+        samurai: SAMURAI_MAXIMUMS,
+        tourist: TOURIST_MAXIMUMS,
+        valkyrie: VALKYRIE_MAXIMUMS,
+        wizard: WIZARD_MAXIMUMS,
+    }[key];
+}
+// C u_init.c:restricted_spell_discipline(): inverted to report an allowed discipline.
+// Startup precedes skill_init(); admission uses the role's skill list.
+function roleAllowsSpellbook(otyp, state) {
+    const skill = spellSkillType(otyp, state);
+    return skill >= P_FIRST_SPELL
+        && skill <= P_LAST_SPELL && !!roleMaximums(state)?.has(skill);
+}
 // C ref: u_init_skills_discoveries()->ini_inv_use_obj().  This runs after
 // the first map/status display and turns fully known starting objects with an
 // appearance into encountered discoveries without changing their earlier
@@ -535,7 +640,7 @@ export async function finishStartingDiscoveries() {
     if (game._startingEffectsApplied)
         return false;
     for (const item of game.inventory || []) {
-        if (OBJECT_DESCRIPTIONS[item.otyp] && item.known) {
+        if (OBJ_DESCR(item.otyp) && item.known) {
             recordObjectKnowledge(item.otyp);
             recordObjectEncounter(item.otyp);
         }
@@ -598,7 +703,7 @@ async function iniInv(table, restrictions = startingInventoryRestrictions()) {
             : await addCreatedInventoryItem(raw, null, false);
         if (!item)
             throw new Error('Starting inventory failed to link its object');
-        if (item.oclass === SPBOOK_CLASS && OBJECT_SPELL_LEVEL[item.otyp] === 1)
+        if (item.oclass === SPBOOK_CLASS && oc_level(item.otyp) === 1)
             gotLevelOneSpellbook = true;
         if (--quan)
             continue;
@@ -638,7 +743,7 @@ function randomStartingItemAllowed(item, gotLevelOneSpellbook, restrictions) {
     if (type === SPE_FORCE_BOLT && game.urole?.key === 'wizard')
         return false;
     return item.oclass !== SPBOOK_CLASS
-        || ((OBJECT_SPELL_LEVEL[type] ?? 0) <= (gotLevelOneSpellbook ? 3 : 1)
+        || ((oc_level(type) ?? 0) <= (gotLevelOneSpellbook ? 3 : 1)
             && roleAllowsSpellbook(type, game));
 }
 function restrictStartingCombinations(item, restrictions) {
@@ -694,47 +799,6 @@ function initialInventoryEntry(table, index) {
     if (!entry)
         throw new Error(`Initial inventory has no terminator at entry ${index}`);
     return entry;
-}
-// C attrib.c:rnd_attr()
-function rndAttr(weights) {
-    let x = rn2(100);
-    for (const i of ATTRIBUTE_INDICES) {
-        x -= weights[i];
-        if (x < 0)
-            return i;
-    }
-    return 6;
-}
-// C attrib.c:init_attr()
-// Also C attrib.c:init_attr_role_redist(): positive-point distribution is inlined here
-// C refs: init_attr(75), vary_init_attr().
-function initAttributes() {
-    const role = game.urole;
-    const race = game.urace;
-    if (!role || !race)
-        throw new Error('Hero role and race must be selected before attributes');
-    const values = [...role.attrbase];
-    let points = 75 - values.reduce((sum, value) => sum + value, 0);
-    let tries = 0;
-    while (points > 0 && tries < 100) {
-        const i = rndAttr(role.attrdist);
-        if (i === 6 || values[i] >= race.attrmax[i]) {
-            tries++;
-            continue;
-        }
-        tries = 0;
-        values[i]++;
-        points--;
-    }
-    for (const i of ATTRIBUTE_INDICES) {
-        if (!rn2(20)) {
-            const delta = rn2(7) - 2;
-            values[i] = Math.max(race.attrmin[i], Math.min(race.attrmax[i], values[i] + delta));
-        }
-    }
-    game.u.acurr = { a: [...values] };
-    game.u.amax = { a: [...values] };
-    game.u.atemp = { a: [0, 0, 0, 0, 0, 0] };
 }
 // C ref: u_init_carry_attr_boost(). Starting inventory must not leave the
 // hero over normal capacity. Strength is exhausted first, then Constitution.
@@ -978,6 +1042,7 @@ export async function uInitInventoryAttrs() {
         await iniInv(MONEY_INVENTORY);
     game._initialGoldCount += hiddenGold(game, true);
     initAttributes();
+    varyInitAttr();
     uInitCarryAttrBoost(game);
     heroRole.rank = heroRole.title[0] || heroRole.name;
     return true;

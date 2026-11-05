@@ -29,7 +29,8 @@ import { cuss } from './wizard.js';
 import { pending_death_is_final } from './end.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 import { couldsee, cansee } from './vision.js';
-import { newsym } from './display.js';
+import { newsym, impossible_sync } from './display.js';
+import { On_W_tower_level } from './dungeon.js';
 import { HALLUC as HALLUC_DH, HALLUC_RES as HALLUC_RES_DH } from './const.js';
 /* C youprop.h:120 Hallucination = (HHallucination && !Halluc_resistance),
  * Halluc_resistance = (HHalluc_resistance || EHalluc_resistance) — the same
@@ -952,14 +953,13 @@ function choose_stairs_wz(out, dir) {
  * same C functions, and one body each beats a third copy here. */
 
 export function In_W_tower_wz(x, y, lev) {
-    const same = (a, b) => !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
-    if (!(same(lev, game.wiz1_level) || same(lev, game.wiz2_level)
-          || same(lev, game.wiz3_level)))
+    if (!On_W_tower_level(lev))
         return false;
     const dn = game.dndest;
-    if (!dn || !(dn.nlx | 0))
-        return false; /* C: impossible("No boundary for Wizard's Tower?") */
+    if (!dn || !(dn.nlx | 0)) {
+        impossible_sync("No boundary for Wizard's Tower?");
+        return false;
+    }
     return within_bounded_area(x, y, dn.nlx | 0, dn.nly | 0,
                                dn.nhx | 0, dn.nhy | 0);
 }

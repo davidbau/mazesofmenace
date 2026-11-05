@@ -406,31 +406,6 @@ export async function arti_invoke(obj) {
         }
         if (inv_prop === ARTI_CREATE_AMMO)
             return await invoke_create_ammo(obj); /* artifact.c:2166 */
-        if (inv_prop === ARTI_CREATE_AMMO) {
-            /* C artifact.c:1934-1960 invoke_create_ammo */
-            const otmp = await mksobj(18 /* ARROW */, true, false);
-            if (!otmp) {
-                await nothing_special(obj);
-                return ECMD_TIME;
-            }
-            otmp.blessed = obj.blessed;
-            otmp.cursed = obj.cursed;
-            otmp.bknown = obj.bknown;
-            otmp.oeroded = otmp.oeroded2 = 0;
-            if (obj.blessed) {
-                if ((otmp.spe | 0) < 0)
-                    otmp.spe = 0;
-                otmp.quan += rnd(10);
-            } else if (obj.cursed) {
-                if ((otmp.spe | 0) > 0)
-                    otmp.spe = 0;
-            } else
-                otmp.quan += rnd(5);
-            otmp.owt = weight(otmp);
-            await hold_another_object(otmp, 'Suddenly %s out.',
-                                      await aobjnam(otmp, 'fall'), null);
-            return ECMD_TIME;
-        }
         if (inv_prop === ARTI_BANISH) return await invoke_banish(); /* artifact.c:2167 */
         if (inv_prop === ARTI_SNOWSTORM || inv_prop === ARTI_FIRESTORM)
             return await invoke_storm_spell(obj);   /* artifact.c:2181-2183 */
@@ -590,6 +565,7 @@ export async function doinvoke() {
     /* C artifact.c:1755 retouch_object(&obj, FALSE) — 0 means the hero cannot
      * handle it, and C still spends the turn. */
     const _uhpBefore = game.u.uhp, _mhBefore = game.u.mh;
+    const _botlPaintSeqBefore = game._botlPaintSeq | 0;
     const touched = await touch_artifact_youmonst(obj);
     /* C artifact.c:2526-2548 retouch_object: touch_artifact passed but
      * ag (silver && Hate_silver) or bane_applies(hero) still refuses. */
@@ -598,7 +574,9 @@ export async function doinvoke() {
         game._touch_artifact_blast_msg = null;
         if (_bl) await pline(_bl);
         await pline(`You can't handle ${yname(obj)}${obj.owornmask ? ' anymore' : ''}!`);
-        if (!_bl) {
+        /* C artifact.c:2535 `if (!touch_blasted)` — the static, not the held
+         * blast message (maybe_wail clears the message, not the static). */
+        if (!game._touch_blasted) {
             await losehp(_retouch_dmg(obj), `handling ${killer_xname(obj)}`, KILLED_BY);
             exercise(A_CON, false);
         }
@@ -646,8 +624,14 @@ export async function doinvoke() {
              * the menu frame keeps the pre-damage HP until the next bot(). */
             if (_invProp === ARTI_CREATE_PORTAL && game._botlStaleHp === undefined) {
                 const _poly = (game.u.umonnum | 0) !== (game.u.umonster | 0);
-                game._botlStaleHp = _poly ? _mhBefore | 0 : _uhpBefore | 0;
-                game._botlStaleHpmax = _poly ? game.u.mhmax | 0 : game.u.uhpmax | 0;
+                const _painted = (game._botlPaintSeq | 0) !== _botlPaintSeqBefore
+                    ? game._lastPaintedBotl : null;
+                game._botlStaleHp = _painted
+                    ? (_poly ? _painted.mh | 0 : _painted.uhp | 0)
+                    : (_poly ? _mhBefore | 0 : _uhpBefore | 0);
+                game._botlStaleHpmax = _painted
+                    ? (_poly ? _painted.mhmax | 0 : _painted.uhpmax | 0)
+                    : (_poly ? game.u.mhmax | 0 : game.u.uhpmax | 0);
             }
         } else if (_invProp > 0 && _invProp <= ARTI_LAST_PROP) {
             game._arti_blast_held = _blastMsg;
@@ -674,9 +658,15 @@ export async function doinvoke() {
          * disp.botl is still unflushed when artifact.c:1894 select_menu opens
          * (bot_disabled, windows.c:1859): the menu frame keeps the pre-damage HP. */
         const _poly = (game.u.umonnum | 0) !== (game.u.umonster | 0);
+        const _painted = (game._botlPaintSeq | 0) !== _botlPaintSeqBefore
+            ? game._lastPaintedBotl : null;
         if (_poly ? (game.u.mh | 0) !== (_mhBefore | 0) : (game.u.uhp | 0) !== (_uhpBefore | 0)) {
-            game._botlStaleHp = _poly ? _mhBefore | 0 : _uhpBefore | 0;
-            game._botlStaleHpmax = _poly ? game.u.mhmax | 0 : game.u.uhpmax | 0;
+            game._botlStaleHp = _painted
+                ? (_poly ? _painted.mh | 0 : _painted.uhp | 0)
+                : (_poly ? _mhBefore | 0 : _uhpBefore | 0);
+            game._botlStaleHpmax = _painted
+                ? (_poly ? _painted.mhmax | 0 : _painted.uhpmax | 0)
+                : (_poly ? game.u.mhmax | 0 : game.u.uhpmax | 0);
         }
     }
     if (!touched) {

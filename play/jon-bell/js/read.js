@@ -1,7 +1,7 @@
 import { trycall } from './do.js';
 import { dropy } from './do.js'; // C read.c:3040-3042; do.c:800-843.
 import { map_menu_cmd } from './options.js';
-import { compactify } from './cmd.js';
+import { compactify, readchar } from './cmd.js';
 import { ggetobj, _restrict_name, costly_alteration, fully_identify_obj as fully_identify_obj_cmd, prinv, _sortloot_within_class, key2txt } from './cmd.js';
 import { ONAME, has_oname, COST_UNCHRG, COST_DEGRD, COST_DECHNT, COST_UNCURS } from './const.js';
 // @ts-nocheck
@@ -476,7 +476,7 @@ export async function recharge(obj, curse_bless) {
                 if (is_cursed) {
                     await stripspe(obj);
                     if (obj.lamplit) {
-                        if (!game.u.blind) {
+                        if (!Blind()) {
                             await pline(`${Tobjnam_objnam(obj, 'go')} out!`);
                         }
                         end_burn(obj, true);
@@ -947,6 +947,12 @@ export async function doread() {
                 try { await force_more(standing); } finally { release(); }
             }
         }
+        /* C topl.c:418-421 tty_yn_function -> custompline() -> pline.c:282
+         * files "prompt " (trailing space included) in gp.prevmsg, so a
+         * Norep() of the message that stood BEFORE the prompt — do.c:2354
+         * "Are you waiting to get hit?..." after a cancelled read — is not
+         * read as a repeat.  Same filing at every re-prompt below. */
+        g._prevmsg = prompt + ' ';
         g._pending_message = prompt;
         await flush_screen(1);
         set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
@@ -972,7 +978,7 @@ export async function doread() {
              * prompt, while the physical topline keeps the unanswered one. */
             const savedSuppress = g._topl_suppress_history;
             g._topl_suppress_history = true;
-            try { raw = await nhgetch(); }
+            try { raw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
             finally { g._topl_suppress_history = savedSuppress; }
             putmsghistory(prompt + ' ' + key2txt((typeof raw === 'number'
                 ? raw : (raw?.charCodeAt(0) ?? 0)) & 0xff), false);
@@ -984,6 +990,7 @@ export async function doread() {
         if (keyCode >= 48 /* '0' */ && keyCode <= 57 /* '9' */) {
             await occupation_force_more('No count allowed with this command.',
                 null, (g.moves | 0), null);
+            g._prevmsg = prompt + ' '; /* invent.c:1935 re-asks via yn_function */
             g._pending_message = prompt;
             await flush_screen(1);
             set_cursor(prompt.length + 1, 0);
@@ -1010,6 +1017,7 @@ export async function doread() {
              * (oneloop, set only by force_invmenu, returns NULL instead). */
             if (!pick && _oneloop) { cancelled = true; break; }
             if (!pick) {
+                g._prevmsg = prompt + ' '; /* invent.c:1935 re-asks via yn_function */
                 g._pending_message = prompt;
                 await flush_screen(1);
                 set_cursor(prompt.length + 1, 0);
@@ -1027,7 +1035,21 @@ export async function doread() {
          * occupation_force_more drives win/tty/topl.c more(): it consumes any
          * non-dismiss keys (re-showing --More--) until a dismiss key (space/CR/
          * LF/ESC), exactly like C.  After dismissal we re-prompt and re-read. */
+        /* C invent.c:2049 — `disp.botl = TRUE` precedes the verify at 2058, so the
+         * pline's flush_screen (pline.c:273-274) runs bot() with the current clock
+         * before more() pages. */
+        /* C invent.c:2049 — `disp.botl = TRUE` precedes the !otmp check at
+         * 2058, so You("don't have that object.")'s flush_screen (pline.c:274)
+         * runs bot(): a run-suppressed T: is repainted under the --More--. */
+        g.disp = g.disp || {};
+        g.disp.botl = 1;
+        await _clear_botl();
+        /* C invent.c:2059 You("don't have that object.") is a real pline, so
+         * pline.c:282 files it in gp.prevmsg before the more() pages it (same
+         * idiom as js/do.js's drop loop).  The re-prompt below overwrites it. */
+        g._prevmsg = "You don't have that object.";
         await occupation_force_more("You don't have that object.", null, (g.moves | 0), null);
+        g._prevmsg = prompt + ' '; /* invent.c:1935 re-asks via yn_function */
         g._pending_message = prompt;
         await flush_screen(1);
         set_cursor(prompt.length + 1, 0);

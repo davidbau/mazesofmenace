@@ -4,8 +4,9 @@
 // bullwhip.ts; the candle snuff/splash/catch helpers stay in light.ts with
 // the burning-object owners.
 import { WEAPON_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, } from './objclass.js';
-import { objectClassForType, objectBaseCost, objectSkill, objectMagic, AMULET_OF_YENDOR, BAG_OF_TRICKS, BANANA, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN, BULLWHIP, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, EGG, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MIRROR, OBJECT_COLOR, OBJECT_DESCRIPTIONS, OIL_LAMP, POT_OIL, SADDLE, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_JUMPING, SPE_NOVEL, STATUE, STETHOSCOPE, TALLOW_CANDLE, TIN, TIN_OPENER, TIN_WHISTLE, TINNING_KIT, TOUCHSTONE, TOWEL, UNICORN_HORN, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAX_CANDLE, } from './object_data.js';
+import { objectClassForType, objectBaseCost, objectSkill, objectMagic, AMULET_OF_YENDOR, BAG_OF_TRICKS, BANANA, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN, BULLWHIP, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, EGG, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MIRROR, OIL_LAMP, POT_OIL, SADDLE, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_JUMPING, SPE_NOVEL, STATUE, STETHOSCOPE, TALLOW_CANDLE, TIN, TIN_OPENER, TIN_WHISTLE, TINNING_KIT, TOUCHSTONE, TOWEL, UNICORN_HORN, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAX_CANDLE, } from './object_data.js';
 import { publishMonsterGrowl, publishMonsterWhimper, publishMonsterYelp } from './ambient_sounds.js';
+import { OBJ_DESCR, objectTypeColor } from './o_init.js';
 import { armorSimpleName, armorSlotFor, heroHasFreeAction, applyEyewear, removeEyewear } from './do_wear.js';
 import { artifactById, speakArtifact } from './artifacts.js';
 import { currentAttribute } from './attrib.js';
@@ -53,7 +54,7 @@ import { heroIsInvisible } from './hero_invisibility.js';
 import { do_attack } from './uhitm.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
 import { hitMonsterWithAppliedWeapon } from './hero_ranged_attack.js';
-import { retouchHeroObject } from './hero_retouch.js';
+import { retouchHeroObject } from './artifacts.js';
 import { zapHeroWithObject } from './zap.js';
 import { heroIsUnaware } from './senses.js';
 import { heroCanBlow, heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands } from './polyself.js';
@@ -82,7 +83,7 @@ import { makeMonsterFlee, isAccessibleAt } from './monmove.js';
 import { AD_BLND, AT_ENGL } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
 import { PLAYABLE_INSTRUMENTS, playInstrument } from './music.js';
-import { learnObjectType, objectMaterial } from './o_init.js';
+import { learnObjectType, objectMaterial, objectTypeKnown } from './o_init.js';
 import { isAxe, isFlimsyObject, isGrayStone, isPick, isPolearm, isWetTowel } from './object_properties.js';
 import { corpseName, definiteName, definiteObjectAction, makePlural, minimalObjectName, objectMonsterName, objectName, objectNameIsPlural, observeObjectForNaming, ownedObjectName, simpleObjectTypeName, withIndefiniteArticle } from './objnam.js';
 import { walkPathCells } from './path_walk.js';
@@ -97,9 +98,9 @@ import { mon_reflects } from './muse.js';
 import { rayPositionIsOpen } from './zap.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, setHeroBlindnessTimeout } from './senses.js';
-import { addShopDamage, billDummyObject, carriedObjectOwner, chargeAlteredUnpaidObject, chargeUnpaidUsage, costlySpot, deleteObject, dopay, findObjectOwner, objectOwnershipPrefix, objectTypeKnown, payForShopDamage, shopkeeperIsMuted } from './shk.js';
+import { addShopDamage, billDummyObject, carriedObjectOwner, chargeAlteredUnpaidObject, chargeUnpaidUsage, costlySpot, deleteObject, dopay, findObjectOwner, objectOwnershipPrefix, payForShopDamage, shopkeeperIsMuted } from './shk.js';
 import { flashBurn } from './zap.js';
-import { ensureHeroSkills } from './skills.js';
+import { ensureHeroSkills, uwepSkillType } from './weapon.js';
 import { castSpell, knownSpell } from './spell.js';
 import { activateStatueTrapAt } from './statue_trap.js';
 import { addObjectToMonsterInventory } from './steal.js';
@@ -107,7 +108,7 @@ import { monsterAtPosition, stuckSteed, useSaddle } from './steed.js';
 import { feelPetrifyingCorpse, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, willFeelPetrifyingCorpse } from './stoning.js';
 import { askTeleportDestination, distanceToHero, enexto, goodPosition, heroTeleportRestricted, monsterTeleportRestricted, teleds, randomMonsterRelocation, relocateMonsterTo, teleportHeroToRandomPet } from './teleport.js';
 import { moveMonsterNextToHero } from './mon.js';
-import { ceilingName, surfaceName } from './terrain_name.js';
+import { ceilingName, surfaceName } from './dungeon.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { objectTimers, stopLevelTimer, stopObjectTimer } from './timeout.js';
 import { confusePromptDirection, promptDirection, readDirectionKey } from './cmd.js';
@@ -2178,7 +2179,7 @@ function stoneNoun(object, state) {
     return (object.quantity ?? object.quan ?? 1) > 1 ? makePlural(name) : name;
 }
 function stoneMarks(stone, object, gemLike, material, state) {
-    const colorIndex = state.objectColors?.[object.otyp] ?? OBJECT_COLOR[object.otyp];
+    const colorIndex = objectTypeColor(object.otyp, state);
     const color = colorIndex === undefined ? null : OBJECT_COLOR_NAMES[colorIndex] ?? null;
     if (gemLike) {
         if (stone.otyp !== TOUCHSTONE)
@@ -2368,23 +2369,12 @@ function heroIsImpaired(state) {
     const stunned = !!state.u?.stunned || (state.u?.stunnedTurns ?? 0) > 0;
     return confused || stunned || heroIsHallucinating(state);
 }
-// C apply.c calc_pole_range() reads the hero's skill through
-// wield.c uwep_skill_type(): dual wielding uses the two-weapon skill and
-// otherwise the wielded item's own class, so Snickersnee (a katana)
-// measures reach with sword skill, not polearm skill.
-function weaponSkillType(weapon, state) {
-    if (state.u?.twoweap)
-        return P_TWO_WEAPON_COMBAT;
-    if (!weapon)
-        return 0;
-    if (weapon.oclass !== WEAPON_CLASS &&
-        weapon.oclass !== TOOL_CLASS &&
-        weapon.oclass !== GEM_CLASS)
-        return 0;
-    return Math.abs(objectSkill(weapon.otyp));
-}
+// C apply.c:calc_pole_range() reads the hero's skill through weapon.c
+// uwep_skill_type() (weapon.js uwepSkillType): dual wielding uses the
+// two-weapon skill and otherwise the wielded item's own class, so
+// Snickersnee (a katana) measures reach with sword skill, not polearm skill.
 function calcPoleRange(weapon, { state = game } = {}) {
-    const skillType = weaponSkillType(weapon, state);
+    const skillType = uwepSkillType(weapon, state);
     const level = skillType === 0 ? 0 : (ensureHeroSkills(state)?.[skillType]?.skill ?? 0);
     let max = 4;
     if (!(skillType === 0 || level <= P_BASIC))
@@ -3016,7 +3006,7 @@ const affectsObjects = new Set([
 export async function breakWand(wand, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
-    const description = state.objectDescriptions?.[wand.otyp] ?? OBJECT_DESCRIPTIONS[wand.otyp];
+    const description = OBJ_DESCR(wand.otyp, state);
     const fragile = description === 'balsa' || description === 'glass';
     if (heroHasNoHands(state)) {
         observeObjectForNaming(wand, { state });

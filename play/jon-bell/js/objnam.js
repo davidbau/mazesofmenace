@@ -1141,7 +1141,7 @@ function wishymatch(u_str, o_str, retry_inverted) {
         }
     }
 
-    /* special cases (objnam.c:3274-3333) */
+    /* special cases (objnam.c:3276-3335) */
     if (o_str.startsWith("dwarvish ")) {
         if (_strncmpi0(u_str, "dwarven ", 8))
             return fuzzymatch(u_str.slice(8), o_str.slice(9), " -", true);
@@ -1855,7 +1855,7 @@ export function makesingular(str) {
 // fallback resolved the C symbol `the` onto the JS export `The` and every
 // record came back capitalised ("The scroll" for C's "the scroll").
 export function the(str) {
-    const bounded = (s) => s.slice(0, 255); /* C BUFSZ-1 strncat bound */
+    const bounded = (s) => s.slice(0, BUFSZ - 1); /* C BUFSZ-1 strncat bound */
     if (!str || str.length === 0) {
         /* C: impossible("Alphabet soup: 'the(%s)'.", str ? "\"\"" : "<null>");
          * then falls through to the "the []" return. */

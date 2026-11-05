@@ -20,6 +20,7 @@ import { init_rect } from './rect.js';
 import { align_str } from './cmd.js';
 import { setuwep } from './wield.js';
 import { rnd } from './rng.js';
+import { obj_no_longer_held } from './do.js';
 import { rest_engravings, _gm_migrating } from './mklev.js';
 import { In_hell } from './dungeon.js';
 import { restore_cham, hide_monst, hideunder } from './mon.js';
@@ -36,7 +37,8 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, COLNO } from './const.js';
+import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN } from './const.js';
+import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
 import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './calendar.js';
@@ -60,21 +62,6 @@ function find_lev_obj_clear_no_charge(level) {
             for (let o = col[y]; o; o = o.nexthere)
                 if (o.no_charge) o.no_charge = 0;
     }
-}
-
-/* C restore.c:1149-1161 getlev(): each trap record read is PREPENDED to
- * gf.ftrap (trap->ntrap = gf.ftrap; gf.ftrap = trap) while savetrapchn()
- * (save.c:918) wrote the chain head -> tail, so every level read reverses
- * gf.ftrap -- the order sense_trap() walks in display_trap_map(). */
-function rest_ftrap_reverse(head) {
-    let prev = null, cur = head || null;
-    while (cur) {
-        const nxt = cur.ntrap;
-        cur.ntrap = prev;
-        prev = cur;
-        cur = nxt;
-    }
-    return prev;
 }
 
 /* C restore.c:167-178 restdamage(): each record read is PREPENDED to
@@ -106,6 +93,22 @@ function restdamage_reverse(level) {
         cur = nxt;
     }
     if (level) level.damagelist = prev;
+}
+
+/* C save.c:864-869 / restore.c:354-356 — a level file stores each pet's
+ * edog droptime and hungrytime RELATIVE to the turn it was written
+ * (moves_to_relative_time) and restmon() makes them absolute again against the
+ * turn it is read (relative_time_to_moves).  The level store here keeps the
+ * monsters in memory, so the round trip is the shift by (read - write) turns:
+ * a pet left behind does not grow hungry while the hero is away. */
+function rest_edog_times(fmon, shift) {
+    if (!shift) return;
+    for (let mtmp = fmon; mtmp; mtmp = mtmp.nmon) {
+        const edog = mtmp.mextra?.edog;
+        if (!edog) continue;
+        edog.droptime = (edog.droptime | 0) + shift;
+        edog.hungrytime = (edog.hungrytime | 0) + shift;
+    }
 }
 
 export async function getlev(lev) {
@@ -143,10 +146,11 @@ export async function getlev(lev) {
         snap.stairs = prev;
     }
     g.fmon = snap.fmon;
+    /* C restore.c:1136 restmonchn -> restmon:354-356 */
+    rest_edog_times(g.fmon, (g.moves | 0) - (snap.omoves | 0));
     g.fobj = snap.fobj;
     g.billobjs = snap.billobjs ?? null;
     g.ftrap = snap.ftrap = rest_trapchn_reverse(snap.ftrap);
-    g.ftrap = snap.ftrap = rest_ftrap_reverse(snap.ftrap);
     g.updest = snap.updest;
     g.dndest = snap.dndest;
     g.smeq = snap.smeq;
@@ -291,6 +295,11 @@ async function restgamestate(state) {
     game.ga ||= {};
     game.ga.A_first_hint = 0;
     game.ga.A_second_hint = 0;
+    // decl.c:177 already_found_flag is process-local (save.c omits it).
+    game.ga.already_found_flag = 0;
+    game.gb ||= {};
+    game.gb.bhitpos = { x: 0, y: 0 };
+    game.bhitpos = game.gb.bhitpos;
     /* C save.c:265-333 does not save youmonst.  The restoring process starts
      * with decl.c's zeroed struct; restore.c:604,629 rebuild cham and data.
      * Clear in place so restored light-source references retain its identity. */
@@ -395,6 +404,13 @@ async function first_getlev_place_monsters(chain) {
     }
 }
 
+async function find_lev_obj_no_longer_held(fobj) {
+    const chain = [];
+    for (let o = fobj; o; o = o.nobj) chain.push(o);
+    for (let i = chain.length - 1; i >= 0; i--)
+        await obj_no_longer_held(chain[i]);
+}
+
 export async function dorecover(save) {
     const g = game;
     g.program_state = g.program_state || {};
@@ -403,6 +419,7 @@ export async function dorecover(save) {
     g.program_state.restoring = 1;
     // C first reads the current level before restoring the saved globals.
     await first_getlev_place_monsters(save.state.fmon);
+    await find_lev_obj_no_longer_held(save.state.fobj);
     const baseTopline = g._base_topline; /* restgamestate copies saved keys over game */
     delete g._base_topline;
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
@@ -411,6 +428,9 @@ export async function dorecover(save) {
     /* restore_msghistory -> topl.c:701-702: a standing TOPLINE_NEED_MORE becomes
      * NON_EMPTY, so docrt's cls() does not page it; it is only remembered. */
     baseTopline?.finish();
+    /* The tty base window (copyright banner) stays up until docrt()'s cls(), so
+     * the second getlev()'s impossible() pages over it too. */
+    if (baseTopline) g._base_topline = baseTopline;
     g._screen_output = '';
     /* C's new process has an empty gbuf; saved levl glyphs are memory only. */
     clear_glyph_buffer();
@@ -420,6 +440,7 @@ export async function dorecover(save) {
     init_rect();
     restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
+    await find_lev_obj_no_longer_held(g.fobj);
     // C restore.c:811,898 reads the original saved current level twice;
     // each rest_stairs (:955-984) prepends records in save_stairs order.
     // The final chain is therefore the reverse of the saved chain.
@@ -435,7 +456,6 @@ export async function dorecover(save) {
     }
     // Same for the trap chain (restore.c:1159-1160).
     g.ftrap = rest_trapchn_reverse(g.ftrap);
-    g.ftrap = rest_ftrap_reverse(g.ftrap); /* restore.c:1149-1161 */
     // Inactive level records are read/written in ledger order; C then rereads
     // the original current level. Bubble initial movement belongs to each read.
     const current = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + g.u.uz.dlevel;
@@ -452,6 +472,8 @@ export async function dorecover(save) {
             const reg = snap.regions.regions[i];
             if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - aged);
         }
+        /* the same read's restmon() re-bases each pet's edog times */
+        rest_edog_times(snap.fmon, aged);
         snap.omoves = g.moves | 0;
         /* that getlev() also re-prepends the stairway and trap chains
          * (restore.c:978, 1159-1160) before restlevelfile() writes them back */
@@ -509,6 +531,12 @@ export async function dorecover(save) {
      * is loaded but before docrt().  The saved viz arrays travel with the
      * level (they describe the same level the hero is standing on), so this is
      * a recompute over restored data, not a rebuild from nothing. */
+    /* C restore.c:910-915 — a lone ball or chain is dropped after complaining. */
+    if ((g.u.uball && !g.u.uchain) || (g.u.uchain && !g.u.uball)) {
+        await impossible('restgamestate: lost ball & chain');
+        await setworn(null, W_CHAIN);
+        await setworn(null, W_BALL);
+    }
     // C restore.c:926: normalize remembered dark-room glyphs before repainting.
     reglyph_darkroom();
     vision_reset();
@@ -518,6 +546,10 @@ export async function dorecover(save) {
     g.program_state.beyond_savefile_load = 1;
     /* C restore.c:932 docrt() — repaint the whole screen from the restored
      * level's remembered glyphs, monsters and hero. */
+    if (baseTopline) {
+        await baseTopline.flush();
+        delete g._base_topline;
+    }
     await docrt();
     /* C restore.c:932-933: finish docrt's notice pages before clearing them. */
     if (_topline_more_pending())
@@ -682,6 +714,14 @@ export async function restore_preamble() {
     if (g.flags.friday13) {
         msgs.push('Watch out!  Bad things can happen on Friday the 13th.');
         change_luck(-1);
+    }
+    /* C topl.c:260-275 update_topl(): a pline that fits the standing line
+     * (n0 + strlen(toplines) + 3 < CO - 8) is joined with two spaces, no more(). */
+    for (let i = 0; i + 1 < msgs.length;) {
+        if (msgs[i].length + msgs[i + 1].length + 3 < 72)
+            msgs.splice(i, 2, msgs[i] + '  ' + msgs[i + 1]);
+        else
+            i++;
     }
     const { topl_more_page } = await import('./com_pager.js');
     const { pline_flush_point } = await import('./display.js');

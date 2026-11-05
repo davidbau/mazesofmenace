@@ -34,6 +34,7 @@ import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, r
 import { visctrl } from './cmd_binds.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, CMDQ_USER_INPUT, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2,
          NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
+         NHKF_ESC, N_DIRS,
          CLICK_1, CLICK_2 } from './const.js';
 import { impossible } from './pline.js';
 import { force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, Unaware } from './display.js';
@@ -303,9 +304,10 @@ export async function doopen_indir(x, y) {
                     cmdq_add_ec(CQ_CANNED, 'dokick');
                     cmdq_add_dir(CQ_CANNED, Math.sign(cx - g.u.ux), Math.sign(cy - g.u.uy), 0);
                     res = ECMD_OK;
-                } else if (ans === 'q' && !g._pending_message && !g._resultMessage) {
+                } else if (!g._pending_message && !g._resultMessage) {
                     /* C topl.c:536-548 leaves the answered prompt painted when
-                     * nothing else is printed afterwards. */
+                     * nothing else is printed afterwards — whatever the answer
+                     * ('n' and 'q' alike; key2txt is not echoed to the screen). */
                     g._resultMessage = g._ynStaleTopline = 'Kick it? [ynq] (q)';
                 }
             }
@@ -443,6 +445,28 @@ async function _getdir_read(g, u, s, noPrompt, cmdq) {
             const reply = await yn_function(dirPrompt, null, '\0', false,
                 { retainFrame: noPrompt });
             keyCode = typeof reply === 'number' ? reply : reply.charCodeAt(0);
+            /* C cmd.c:3995-4013 — for the fuzzer, usually force the result to
+             * be a valid direction, but sometimes let it exercise the invalid
+             * direction code; no-diagonal grid-bug forms are deliberately not
+             * enforced here either. */
+            if (g.iflags?.debug_fuzzer && rn2(20)) {
+                const dirchars = g.Cmd?.dirchars || 'hykulnjb><';
+                switch (rn2(20)) {
+                case 0: {
+                    const selfDir = rn2(2);
+                    keyCode = g.Cmd?.spkeys?.[selfDir ? NHKF_GETDIR_SELF : NHKF_ESC]
+                        ?? (selfDir ? 46 : 27); /* reset_commands defaults */
+                    break;
+                }
+                case 1:
+                    /* movementdirs: DIR_DOWN=8, DIR_UP=9 (C enum order) */
+                    keyCode = dirchars.charCodeAt(rn2(2) ? 8 : 9);
+                    break;
+                default:
+                    keyCode = dirchars.charCodeAt(rn2(N_DIRS));
+                    break;
+                }
+            }
         }
         /* C clear_nhwindow(WIN_MESSAGE), including buffered reads. */
         g._pending_message = '';
@@ -1702,7 +1726,7 @@ function _Passes_walls_lk() {
     return !!((p.intrinsic | 0) || (p.extrinsic | 0));
 }
 
-async function _stumble_on_door_mimic_stub(x, y) {
+export async function _stumble_on_door_mimic_stub(x, y) {
     const mtmp = m_at(x, y);
     if (!mtmp || !is_door_mappear(mtmp) || _hero_prop_on_lk(PROT_FROM_SHAPE_CHANGERS)) return false;
     await stumble_onto_mimic(mtmp); return true;

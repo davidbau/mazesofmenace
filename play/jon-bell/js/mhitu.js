@@ -107,6 +107,8 @@ import { snuff_lit as snuff_lit_mu, cmdq_clear, catch_lit as catch_lit_mu, test_
 import { hurtle as hurtle_cmd, mhurtle as mhurtle_kb, will_hurtle as will_hurtle_mu } from './dothrow.js';
 import { m_is_steadfast as m_is_steadfast_kb } from './uhitm.js';
 import { W_SADDLE as W_SADDLE_KB, DISMOUNT_KNOCKED as DISMOUNT_KNOCKED_KB } from './const.js';
+import { ARTICLE_A as ARTICLE_A_MU, SUPPRESS_SADDLE as SUPPRESS_SADDLE_MU, AUGMENT_IT as AUGMENT_IT_MU } from './const.js';
+import { x_monnam as x_monnam_mu, xm_has_mgivenname as xm_has_mgivenname_mu } from './mhitm.js';
 import { mbodypart as mbodypart_mu, snuff_candle as snuff_candle_mu } from './cmd.js';
 /* C steal.c:569-570 — unpaid stolen objects are removed from the shop bill
  * before leaving inventory.  Reuse shk.js's canonical synchronous body. */
@@ -1414,19 +1416,22 @@ function _kb_boulder_at(x, y) {
     return false;
 }
 
-/* C ref: do_name.c x_monnam(mon, ARTICLE_A, ...) for the hurtle "bump into"
- * message — indefinite-article monster name ("a kitten"/"an ettin mummy").  A
- * monster with a given name yields that name; otherwise an(species).  The
- * species text (with any "saddled " prefix) comes from the shared mon_nam
- * ("the <species>"); we swap the "the " article for a/an. */
+/* C ref: dothrow.c:853-859 — the hurtle "bump into" name is a_monnam() with
+ * AUGMENT_IT added ("combination of a_monnam() and some_mon_nam(); yields
+ * 'someone' or 'something' instead of 'it' for unseen mon"):
+ *     x_monnam(mon, ARTICLE_A, (char *) 0,
+ *              (has_mgivenname(mon) ? SUPPRESS_SADDLE : 0) | AUGMENT_IT, FALSE)
+ * The hand-rolled approximation this replaces returned the mgivenname before
+ * C's do_hallu arm ever ran (hallucination names take precedence over given
+ * names, do_name.c:952-956), always said "something" for an unseen monster
+ * where C says "someone" for non-animal non-mindless humanoids — flipping a
+ * rn2(2) display coin while hallucinating — and built the article with a bare
+ * vowel test instead of just_an(). */
 function a_monnam_kb(mtmp) {
-    const given = mtmp?.mextra?.mgivenname || '';
-    if (given) return given;
-    let s = uhitm_mon_nam(mtmp);
-    if (!s || s === 'it') return 'something';
-    s = s.replace(/^the /, '');
-    const vowel = /^[aeiou]/i.test(s);
-    return (vowel ? 'an ' : 'a ') + s;
+    return x_monnam_mu(mtmp, ARTICLE_A_MU, null,
+                       (xm_has_mgivenname_mu(mtmp) ? SUPPRESS_SADDLE_MU : 0)
+                           | AUGMENT_IT_MU,
+                       false);
 }
 
 /* C youprop.h:77 `#define Punished (uball != 0)` — decl.h:97 uball is a
@@ -3500,14 +3505,10 @@ async function assess_dmg_um(mtmp, tmp) {
     return M_ATTK_HIT;
 }
 
-/* C mondata.h resists_cold(mon) — the monster's own MR_COLD bit plus anything
- * its gear confers.  Same expression js/mhitm.js:1774-1777 uses. */
-const MR_COLD_UM = 0x02;   /* monflag.h:63 */
+import { Resists_Elem as Resists_Elem_cold_um } from './mondata.js';
+const COLD_RES_UM = 2;      /* prop.h COLD_RES (js/const.js:2313) */
 function _resists_cold_um(mtmp) {
-    const bits = (((mtmp && mtmp.data) ? (mtmp.data.mresists | 0) : 0)
-                  | ((mtmp && mtmp.mextrinsics) | 0)
-                  | ((mtmp && mtmp.mintrinsics) | 0));
-    return (bits & MR_COLD_UM) !== 0;
+    return Resists_Elem_cold_um(mtmp, COLD_RES_UM);
 }
 
 /* C monattk.h — the adtyp numbers, transcribed from the header rather than
@@ -5597,13 +5598,15 @@ function engulf_target_hero_mu(magr) {
 export async function expels_gu(mtmp, mndx, message) {
     /* Callers may pass a live monster number (`mnum`), while the attack table
      * and C's `struct permonst *` predicates are indexed by species. */
-    const pmndx = (mtmp?.data?.pmidx ?? mndx) | 0;
+    /* C mhitu.c:265 — `mdat` is the caller's argument ("if mtmp is
+     * polymorphed, mdat != mtmp->data"), so a numeric mndx wins. */
+    const pmndx = (Number.isInteger(mndx) ? mndx : mtmp?.data?.pmidx) | 0;
     (game.disp ||= {}).botl = 1;
     if (message) {
         if (digests_gu(pmndx)) {
-            pline('You get regurgitated!');
+            You('get regurgitated!');                                    /* C mhitu.c:268 */
         } else if (enfolds_gu(pmndx)) {
-            pline(`${Monnam(mtmp)} unfolds and you are released!`);
+            pline_mon(mtmp, `${Monnam(mtmp)} unfolds and you are released!`); /* C mhitu.c:270 */
         } else {
             const attks = mon_mattk_raw(pmndx) || [];
             const attk = attks.find((a) => a && ((a.aatyp ?? a[0]) | 0) === AT_ENGL_MU);
@@ -5611,7 +5614,10 @@ export async function expels_gu(mtmp, mndx, message) {
                 await impossible_mu('Swallower has no engulfing attack?');
             } else {
                 let blast = '';
-                if (is_whirly_gu(pmndx, mtmp.data)) {
+                /* C is_whirly(mdat): the mlet of the caller's mdat. */
+                const _mdat = (pmndx >= 0 && pmndx < _KB_MONS.length)
+                    ? { mlet: _KB_MONS[pmndx][0] | 0 } : mtmp.data;
+                if (is_whirly_gu(pmndx, _mdat)) {
                     if (((attk.adtyp ?? attk[1]) | 0) === AD_ELEC_GU)
                         blast = ' in a shower of sparks';
                     else if (((attk.adtyp ?? attk[1]) | 0) === AD_COLD_GU)
@@ -5619,7 +5625,7 @@ export async function expels_gu(mtmp, mndx, message) {
                 } else {
                     blast = ' with a squelch';
                 }
-                pline(`You get expelled from ${mon_nam(mtmp)}${blast}!`);
+                You(`get expelled from ${mon_nam(mtmp)}${blast}!`);      /* C mhitu.c:291 */
             }
         }
     }
@@ -6232,7 +6238,7 @@ async function explmu(mtmp, mattk, ufound) {
                 await make_blinded_real_mu(tmp, false);
                 if (!Blind(gs))
                     Your1('vision quickly clears.');
-            } else if (gs.flags?.verbose !== false) {
+            } else if (gs.flags?.verbose) {                       /* C mhitu.c:1632 */
                 await You('get the impression it was not terribly bright.');
             }
         }
@@ -7112,7 +7118,7 @@ export function mpoisons_subj(mtmp, mattk) {
     }
 }
 
-export async function expels(mtmp, data, flag) { return expels_gu(mtmp, mtmp?.data?.pmidx, flag); }
+export async function expels(mtmp, data, flag) { return expels_gu(mtmp, data?.pmidx ?? mtmp?.data?.pmidx, flag); }
 
 export function mtrapped_in_pit(magr) {
     let ttmp = null;

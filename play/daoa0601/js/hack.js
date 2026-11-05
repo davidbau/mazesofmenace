@@ -1,7 +1,8 @@
 // Hero movement, travel, and terrain effects.
 // C refs: hack.c:test_move(), findtravelpath(), lookaround(), domove(), pooleffects().
 import { WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS } from './objclass.js';
-import { objectBaseWeight, objectSkill, AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING, STATUE, CORPSE, LEVITATION_BOOTS, OBJECT_NAMES, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION, OBJECT_NUTRITION, OBJECT_DESCRIPTIONS, TALLOW_CANDLE, } from './object_data.js';
+import { OBJ_DESCR } from './o_init.js';
+import { objectBaseWeight, objectSkill, AMULET_OF_LIFE_SAVING, BOULDER, LOADSTONE, PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING, STATUE, CORPSE, LEVITATION_BOOTS, OBJECT_NAMES, HEAVY_IRON_BALL, CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE, } from './object_data.js';
 import { setHeroGrip } from './mon.js';
 import { finishHeroHelplessness } from './allmain.js';
 import { formatFeltMessage, formatHeardMessage, publishHeardMessage } from './hero_speech.js';
@@ -9,7 +10,7 @@ import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { BURNING, CMDQ_EXTCMD, CQ_CANNED, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DISMOUNT_FELL, DISMOUNT_GENERIC, DISSOLVED, DROWNING, DOOR, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_WALL, IS_WATERWALL, IS_TREE, Is_earthlevel, Is_juiblex_level, Is_waterlevel, Is_rogue_level, LAVAPOOL, LAVAWALL, Luck, MAX_TYPE, MOAT, PARANOID_SWIM, POOL, ROOM, STONE, FAINTED, M_SEEN_FIRE, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WATER, W_NONDIGGABLE, W_NONPASSWALL, W_ARTI, I_SPECIAL, TIMEOUT, NO_KILLER_PREFIX, WT_TOOMUCH_DIAGONAL, TIP_SWIM, PLNMSG_BACK_ON_GROUND, DBWALL, DB_UNDER, DB_ICE, LEVEL_TIMER_KIND, def_warnsyms, A_CON, A_DEX, A_STR, COLNO, ROWNO, SCORR, SDOOR, CORR, ICE, IRONBARS, IS_FURNITURE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MGIVENNAME, SHOPBASE, Is_airlevel, In_sokoban, In_mines, ACCESSIBLE, AIR, DIGTYP_UNDIGGABLE, DRAWBRIDGE_UP, OBJECT_TIMER_KIND, HOLE, LANDMINE, LEVEL_TELEP, MIGR_RANDOM, P_BASIC, P_RIDING, P_TWO_WEAPON_COMBAT, P_ISRESTRICTED, P_UNSKILLED, ROLLING_BOULDER_TRAP, TELEP_TRAP, TRAPDOOR, WT_SQUEEZABLE_INV, IN_SIGHT, SHOP_DOOR_COST, PARANOID_CONFIRM, PARANOID_TRAP, TRAP_EXPLANATIONS, TRAPNUM, W_QUIVER, W_SWAPWEP, SQKY_BOARD, SLP_GAS_TRAP, RUST_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, MAGIC_PORTAL, VIBRATING_SQUARE, WEB, HEADSTONE, In_endgame, is_hole, is_pit, NO_ROOM, ROOMOFFSET, SHARED, SHARED_PLUS, MAXNROFROOMS, Invocation_lev, OROOM, DELPHI, TEMPLE, COURT, MORGUE, ZOO, BARRACKS, BEEHIVE, LEPREHALL, COCKNEST, ANTHOLE, THRONE, ACH_TOWN, RLOC_NOMSG, IS_SINK, KILLED_BY_AN, LL_CONDUCT, SWAMP, GP_ALLOW_U } from './const.js';
 import { isok } from './cmd.js';
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain, beginBallAndChainMove, finishBallAndChainMove } from './ball.js';
-import { docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, terrain_glyph, glyphAt, canSpotMonster, canSenseMonster, canSeeMonster, monsterVisible, unmap_invisible, map_object, unmapObject, map_invisible, flush_screen } from './display.js';
+import { docrt, feel_newsym, newsym, under_water, updateLastSeenTerrain, feel_location, back_to_glyph, glyphAt, canSpotMonster, canSenseMonster, canSeeMonster, monsterVisible, unmap_invisible, map_object, unmapObject, map_invisible, flush_screen, TemporaryMapEffect } from './display.js';
 import { impossible } from './diagnostics.js';
 import { bot } from './botl.js';
 import { pline, plineWithContinuation, pline_dir, set_msg_xy } from './pline.js';
@@ -37,18 +38,18 @@ import { isRoom } from './map_types.js';
 import { gotoLevel } from './level_change.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { armorOffMessage, destroyWornArmor, heroHasWaterWalking, heroKnowsLavaWalking, heroKnowsWaterWalking, removeHeroArmor, stopDonning, pendingArmorAction, removeHeroAccessory, objectIsHardHelmet } from './do_wear.js';
-import { waterbodyName, surfaceName, ceilingName } from './terrain_name.js';
+import { waterbodyName } from './pager.js';
 import { do_attack, prepareAppliedWeaponAttack } from './uhitm.js';
 import { heroCanTeleport, heroControlsTeleport, teleds, safe_teleds, teleportHeroAtWill, relocateObjectRandomly, relocateMonsterTo, askTeleportDestination, enexto, goodPosition, heroTeleportRestricted } from './teleport.js';
 import { moveMonsterNextToHero } from './mon.js';
 import { wormCrossesBetween } from './worm.js';
 import { vision_recalc, vision_reset, couldsee, cansee, vision_note_blocker_change } from './vision.js';
-import { levelAtDepth, recordDiscoveredRoom, levelHasCeiling, levelIsWaterLevel as heroIsOnWaterLevel } from './dungeon.js';
+import { depth, levelAtDepth, recordDiscoveredRoom, levelHasCeiling, levelIsWaterLevel as heroIsOnWaterLevel, surfaceName, ceilingName } from './dungeon.js';
 import { clearHeroSliming, heroIsSliming } from './potion.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt, isIceAt, drawbridgeUnderlyingType } from './dbridge.js';
 import { clearLevitationMasks, hasIntrinsicProperty, hasInvokedProperty, hasWornProperty, propertyIsActive, refreshMovementProperties, refreshProperty, restoreLevitationSources, setPropertyTimeout, stashLevitationSources, propertyIsBlocked, setPropertyTerrainBlocked, levitationIsPurelyTimed, propertySourceIsActive, levitationSourceIsActive, existingPropertyRecord, hasPermanentIntrinsicProperty } from './properties.js';
 import { iceDescriptionAt } from './pager.js';
-import { ingSuffix, upstart, depth } from './hacklib.js';
+import { ingSuffix, upstart } from './hacklib.js';
 import { objectTimers, stopObjectTimer, scheduleObjectTimer, stopLevelTimer, levelTimers } from './timeout.js';
 import { resetOccupations } from './cmd.js';
 import { maybeAdjustHeroBubble } from './elemental.js';
@@ -56,8 +57,7 @@ import { leaveMovementCloud, updateHeroRegions, visibleRegionAt } from './region
 import { requireShopGame } from './shop_types.js';
 import { finishTeleportArrival } from './teleport.js';
 import { CmapSymbol, GlyphOffset, cmapToGlyph } from './glyph_numbers.js';
-import { TemporaryMapEffect } from './temporary_map_effect.js';
-import { placeHeroOnLevel } from './hero_location.js';
+import { placeHeroOnLevel } from './dungeon.js';
 import { hideHeroUnder, wakeMonstersNearWithMessages, maybeUnhideAt, revealMonsterAppearance, currentMonsterLoad, monsterDeathCount, resolveMonsterLiquid, finishEnvironmentalMonsterDeath, publishMonsterWake } from './mon.js';
 import { hasDoorAppearance, stumbleOntoMimic } from './uhitm.js';
 import { makeMonsterFlee, heroCanOoze, monsterIsScaredAt } from './monmove.js';
@@ -66,10 +66,12 @@ import { AT_EXPL, AT_BOOM } from './monster_attack_types.js';
 import { confusePromptDirection } from './cmd.js';
 import { resolveHeroCombatExplosion } from './uhitm.js';
 import { artifactById, heroHasArtifactDefense, heroHasCarriedArtifactFlag } from './artifacts.js';
-import { isPick, isFlimsyObject, isBlade, objectIsOrganic, objectIsRustprone } from './object_properties.js';
+import { isWeaponTool, isPick, isFlimsyObject, isBlade, objectIsOrganic, objectIsRustprone } from './object_properties.js';
 import { applyPickAxeDirection } from './dig.js';
 import { diggingTarget, watchDigging, ensureDiggingContext, clearDiggingContext, buryFloorObjectsAt, buriedBallNear, buriedBallToPunishment } from './dig.js';
-import { objectTypeKnown, tendedShop, shopkeeperBlockingDoor, shopkeeperBlockingEntry, dopay, enterShop, leaveHeroShop, shopGreeting, addShopDamage, payForShopDamage, addShopObjectToBill, billForObject, removeObjectAndContentsFromBill, shopResident, findObjectOwner, stolenValue, costlySpot } from './shk.js';
+import { objectTypeKnown } from './o_init.js';
+import { tendedShop, shopkeeperBlockingDoor, shopkeeperBlockingEntry, dopay, enterShop, leaveHeroShop, addShopDamage, payForShopDamage, addShopObjectToBill, billForObject, removeObjectAndContentsFromBill, shopResident, findObjectOwner, stolenValue, costlySpot } from './shk.js';
+import { hello } from './roles.js';
 import { doopen } from './lock.js';
 import { engravingAt, wipeEngravingAt } from './engrave.js';
 import { heroGoldObject, heroGoldQuantity } from './hero_gold.js';
@@ -97,16 +99,14 @@ import { awardMonsterExperience, checkExperienceLevel } from './exper.js';
 import { findMonsterArmorClass } from './monworn.js';
 import { abusePet } from './dog.js';
 import { applyWaterFriction } from './mkmaze.js';
-import { adjustHeroAlignment } from './alignment.js';
 import { mdamageu } from './mhitu.js';
-import { currentStrength, currentAttribute, exerciseAttribute } from './attrib.js';
+import { adjustHeroAlignment, currentAttribute, currentStrength, exerciseAttribute } from './attrib.js';
 import { freeInventoryObject } from './invent.js';
 import { delobj } from './invent.js';
 import { objectBreaksOnImpact } from './dothrow.js';
 import { setPrimaryWeapon } from './wield.js';
 import { hitIronBars, dissolveBars } from './projectile_bars.js';
-import { ensureHeroSkills, useHeroSkill, weaponSkillType } from './skills.js';
-import { weaponDescription } from './weapon.js';
+import { ensureHeroSkills, useHeroSkill, weaponDescription, weaponSkillType } from './weapon.js';
 import { recordGameLogEvent } from './gamelog.js';
 // C hack.c:revive_nasty().
 export async function reviveNastyAt(x, y, message = null, state = game) {
@@ -1686,7 +1686,7 @@ async function showTravelSearch(positions, warningLevel, g) {
     await effect.start();
     try {
         for (const [x, y] of positions)
-            await effect.show(x, y);
+            await effect.tmp_at(x, y);
         const pauses = g.flags.runmode === 'crawl' ? (warningLevel === 1 ? 3 : 5) : 1;
         for (let pause = 0; pause < pauses; pause++)
             await g.animationFrame?.();
@@ -2380,7 +2380,7 @@ async function fightEmptyDestination(x, y) {
         }
         else if (solid) {
             if (loc.seenv || IS_STWALL(loc.typ) || loc.typ === SDOOR || loc.typ === SCORR)
-                target = `the ${terrain_glyph(loc, x, y).terrainName}`;
+                target = `the ${back_to_glyph(loc, x, y).terrainName}`;
         }
         else {
             target = 'thin air';
@@ -2788,7 +2788,7 @@ export async function checkSpecialRoom({ newLevel = false } = {}) {
             if (oracle) {
                 const name = game.plname;
                 await plineWithContinuation(oracle.mpeaceful
-                    ? `"${shopGreeting(oracle)}, ${name}, welcome to Delphi!"`
+                    ? `"${hello(oracle)}, ${name}, welcome to Delphi!"`
                     : `"You're in Delphi, ${name}."`);
                 recordDiscoveredRoom(roomno - ROOMOFFSET);
             }
@@ -3163,7 +3163,7 @@ export function checkSlipperyIce() {
     if (onIce) {
         const skater = hero.usteed ?? { mnum: heroSpecies(game) };
         const boots = game.uarmf ?? hero.uarmf;
-        const appearance = boots && (game.objectDescriptions?.[boots.otyp] ?? OBJECT_DESCRIPTIONS[boots.otyp]);
+        const appearance = boots && (OBJ_DESCR(boots.otyp));
         const symbol = MONSTER_SYMBOL[skater.mnum];
         const coldSkater = hero.usteed ? monsterHasColdResistance(hero.usteed)
             : propertyIsActive('coldResistance', game) || heroHasArtifactDefense('cold', game);
@@ -4048,7 +4048,7 @@ async function domoveCore(dx, dy) {
             // tree; pline_dir() marks the message's direction.
             let obstruction = '';
             if (loc) {
-                const name = terrain_glyph(loc, newx, newy).terrainName;
+                const name = back_to_glyph(loc, newx, newy).terrainName;
                 obstruction = name === 'stone' ? 'solid stone' : withIndefiniteArticle(name);
             }
             if (obstruction)
@@ -4610,7 +4610,7 @@ function maybeHalfPhysicalDamage(amount, state) {
 }
 function isWeaponOrWeaponTool(object) {
     return object.oclass === WEAPON_CLASS
-        || (object.oclass === TOOL_CLASS && objectSkill(object.otyp) !== 0);
+        || isWeaponTool(object);
 }
 export async function fallIntoSink(state = game, { publish = plineWithContinuation, die = finishHeroDeath } = {}) {
     // World side effects are singleton-only: every production caller uses

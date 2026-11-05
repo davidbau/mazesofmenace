@@ -1,6 +1,6 @@
 // windows.js — C ref: windows.c.
 import { putstr } from './cmd.js'; // relocate-fns
-import { cmdq_pop, doprev_message } from './cmd.js'; // relocate-fns
+import { cmdq_pop, doprev_message, pgetchar } from './cmd.js'; // relocate-fns
 import { CMDQ_KEY, COLNO } from './const.js'; // relocate-fns
 import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, topl_park_cursor, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
@@ -138,7 +138,7 @@ export async function getlin(prompt) {
     placeCursor();
     let doprev = false, prevIdx = 0;
     while (true) {
-        const keyCode = await nhgetch();
+        const keyCode = await pgetchar();
         /* C getline.c:106-119 ctrl-P with msg_window:single (or combination
          * behaving like single): recall earlier messages onto the topline and
          * keep reading; the first recall re-shows the query (the "need two
@@ -185,7 +185,7 @@ export async function getlin(prompt) {
                 const line = prompt + ' ';
                 if (!g._msg_history) g._msg_history = [];
                 const h = g._msg_history;
-                if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
+                h.push(line);
                 g._toplEmptyAfterSuppress = false; /* gt.toplines = "query " */
             }
             return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
@@ -218,7 +218,7 @@ export async function getlin(prompt) {
         const line = prompt + ' ' + buf;
         if (!g._msg_history) g._msg_history = [];
         const h = g._msg_history;
-        if (h.length === 0 || h[h.length - 1] !== line) h.push(line);
+        h.push(line);
         /* getline.c:223-226 empties gt.toplines only when suppress_history;
          * otherwise ^P's first recall (topl.c:46,106) shows "query answer". */
         g._toplEmptyAfterSuppress = false;

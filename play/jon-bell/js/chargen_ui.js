@@ -205,7 +205,7 @@ function roleLabel(rolenum, gendnum) {
     const role = ROLES[rolenum];
     if (role.f) {
         if (gendnum === 1) return role.f;             // female chosen → female name only
-        if (gendnum < 0) return role.m + '/' + role.f;  // both names
+        if (gendnum === ROLE_NONE) return role.m + '/' + role.f;  // both names
         return role.m;                                 // male chosen → male name only
     }
     return role.m;

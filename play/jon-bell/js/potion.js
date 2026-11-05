@@ -3,7 +3,7 @@
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
 import { ledger_no } from './bones.js';
-import { You as You_real, Your as Your_real, You_feel as You_feel_real } from './pline.js';
+import { You, Your as Your_real, You_feel as You_feel_real } from './pline.js';
 import { a_monnam } from './mhitm.js';
 import { make_blinded, resist, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { explode, explode_oil } from './explode.js';
@@ -34,7 +34,7 @@ import { burn_away_slime } from './timeout.js';
 import { aggravate } from './wizard.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
-import { key2txt, mime_action, pair_of } from './cmd.js';
+import { key2txt, mime_action, pair_of, readchar } from './cmd.js';
 import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
 import { map_monst } from './detect.js';
 import { unconstrain_map, map_redisplay } from './detect.js';
@@ -84,7 +84,7 @@ import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROS
 /* prop.h indices + you.h/end.h flags the make_*() setters below need. */
 import { DEAF, SICK, SICK_RES, STONED, VOMITING, GLIB, SLIMED, KILLED_BY_AN,
          M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK } from './const.js';
-import { getObjDescr, fruitname, docall_xname_potion, cxname, the, The, xname, otense, vtense as vtense_objnam } from './objnam.js';
+import { getObjDescr, fruitname, docall_xname_potion, cxname, the, The, xname, otense, vtense } from './objnam.js';
 import { short_oname, simpleonames, thesimpleoname, oname } from './objnam.js';
 import { exist_artifact, artiname } from './artifact.js';
 import { ONAME_VIA_DIP, ONAME_KNOW_ARTI } from './const.js';
@@ -1032,6 +1032,13 @@ export async function dodrink() {
             await force_more_lone_frame(g._pending_message);
         g._topl_win_stop = false;
         g._topl_win_stop_armed = false;
+        /* C topl.c:418-421 tty_yn_function -> custompline() -> pline.c:282
+         * files "prompt " (trailing space included) in gp.prevmsg, so a
+         * Norep() of the message that stood BEFORE the prompt — do.c:2354
+         * "Are you waiting to get hit?..." after a cancelled quaff — is not
+         * read as a repeat.  js/do.js's drop loop and js/read.js file theirs
+         * the same way. */
+        g._prevmsg = _qbuf + ' ';
         g._pending_message = _qbuf;
         await flush_screen(1);
         /* C tty: cursor parked one past the prompt + trailing space (qbuf len+1). */
@@ -1043,7 +1050,8 @@ export async function dodrink() {
         /* C topl.c:537-539 files prompt + key2txt(answer) in the history. */
         const _sh = g._topl_suppress_history;
         g._topl_suppress_history = true;
-        try { itemKey = await nhgetch(); }
+        /* C topl.c:426 readchar(): its fuzzer arm (cmd.c:5217) skips tty_nhgetch. */
+        try { itemKey = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
         finally { g._topl_suppress_history = _sh; }
         putmsghistory(_qbuf + ' ' + key2txt(itemKey & 0xff), false);
         // C leaves the getobj prompt physically painted after the answer.
@@ -1115,6 +1123,10 @@ export async function dodrink() {
             if (otmp)
                 break;
             await bot(); /* pline's flush_screen paints the botl set above */
+            /* C invent.c:2059 You("don't have that object.") is a real pline,
+             * so pline.c:282 files it in gp.prevmsg before more() pages it;
+             * the loop-top re-prompt above overwrites it on the next pass. */
+            g._prevmsg = "You don't have that object.";
             await force_more("You don't have that object.");
             continue;
         }
@@ -1909,14 +1921,8 @@ export function eyecount(mondata) {
 function makeplural(word) {
     return makeplural_objnam(word);
 }
-function vtense(subj, verb) {
-    return vtense_objnam(subj, verb);
-}
 async function Your(msg, ...args) {
     return Your_real(msg, ...args);
-}
-async function You(msg, ...args) {
-    return You_real(msg, ...args);
 }
 async function You_feel(msg, ...args) {
     return You_feel_real(msg, ...args);

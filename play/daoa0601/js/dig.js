@@ -1,10 +1,10 @@
 import { POTION_CLASS, COIN_CLASS } from './objclass.js';
+import { OBJ_NAME } from './object_data.js';
 import { wakeNearby } from './mon.js';
 import { bringLeashedFollowers, leashAttachedToMonster, releaseMonsterLeash, releaseObjectLeash } from './apply.js';
 import { publishMonsterYelp } from './ambient_sounds.js';
-import { adjustHeroAlignment } from './alignment.js';
 import { objectIsHardHelmet } from './do_wear.js';
-import { currentAttribute, exerciseAttribute } from './attrib.js';
+import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attrib.js';
 import { triggerBoobyTrap } from './booby_trap.js';
 import { heroFootName, heroHeadName, monsterStomachName } from './body_parts.js';
 import { A_LAWFUL, A_STR, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align, BEAR_TRAP, COLNO, CORR, COULD_SEE, DBWALL, DB_LAVA, DB_MOAT, DB_UNDER, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_ALTAR, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAILED, DIGCHECK_PASSED, DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_PASSED_PITONLY, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, EXPL_MAGICAL, FOUNTAIN, F_WARNED, HOLE, IN_SIGHT, IRONBARS, IS_ALTAR, IS_DOOR, IS_FURNITURE, IS_GRAVE, IS_OBSTRUCTED, IS_ROOM, IS_STWALL, IS_THRONE, IS_TREE, IS_WALL, Is_airlevel, Is_botlevel, Is_earthlevel, Is_stronghold, Is_waterlevel, KILLED_BY, LANDMINE, LAVAPOOL, MAGIC_PORTAL, MIGR_RANDOM, MM_NOMSG, MON_OFFMAP, MOAT, OBJECT_TIMER_KIND, PIT, POOL, RLOC_NOMSG, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, SHOP_WALL_COST, SINK, STONE, THRONE, TRAPDOOR, TRAP_EXPLODE, TT_BURIEDBALL, TT_INFLOOR, TT_PIT, Upolyd, VIBRATING_SQUARE, W_NONDIGGABLE, is_hole, is_magical_trap, is_pit, xdir, ydir } from './const.js';
@@ -25,7 +25,7 @@ import { breakSinkAt, dryFountainAt, gushForthFromFountain } from './fountain.js
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { CmapSymbol, cmapToGlyph } from './glyph_numbers.js';
 import { heroLiquidEffects, mayDig, spotChecks, loseHeroHp, finishDestinationSpotEffects, inTown, roomsAt, switchHeroTerrain } from './hack.js';
-import { depth, dist2, possessiveName, upstart } from './hacklib.js';
+import { dist2, possessiveName, upstart } from './hacklib.js';
 import { dropInventoryObjectAtHero, woundHeroLegs } from './do.js';
 import { expelHero } from './hero_expulsion.js';
 import { freeInventoryObject, objectAt } from './invent.js';
@@ -34,7 +34,7 @@ import { heroIsUnaware } from './senses.js';
 import { formatFeltMessage, formatHeardMessage } from './hero_speech.js';
 import { delobj } from './invent.js';
 import { gotoLevel } from './level_change.js';
-import { adjustedMonsterLevel, makemonAt, mkclassAligned } from './makemon.js';
+import { makemonAt, mkclassAligned } from './makemon.js';
 import { canDigDown, stairwayAt } from './mklev.js';
 import { createToptenObject, mksobj, placeTreeFruit, unlinkObject, placeCreatedObject, placeObject, remove_object, stack_object, updateIceObjectTimersAt, placeObjectSynchronously } from './mkobj.js';
 import { angerWatchGuards, maybeUnhideAt, monsterSubject, resolveMonsterLiquid, wakeMonstersNearWithMessages, monsterFliesOrFloats } from './mon.js';
@@ -45,7 +45,7 @@ import { BEARTRAP, BOULDER, CORPSE, HEAVY_IRON_BALL, LAND_MINE, LEASH, POT_OIL, 
 import { isAxe, isBimanualObject, isPick, objectIsOrganic } from './object_properties.js';
 import { stopHeroOccupation } from './occupation.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { heroMonsterForm, heroIsFlying } from './polyself.js';
+import { heroIsFlying } from './polyself.js';
 import { altarWrath, desecrateAltar } from './pray.js';
 import { punishHero, unpunishHero } from './read.js';
 import { autopickupAtHero } from './pickup.js';
@@ -57,12 +57,11 @@ import { shopkeeperName } from './shknam.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { monsterHasMapPosition } from './steed.js';
 import { randomMonsterRelocation } from './teleport.js';
-import { ceilingName, surfaceName } from './terrain_name.js';
-import { levelHasCeiling, levelAtDepth } from './dungeon.js';
+import { ceilingName, depth, levelHasCeiling, levelAtDepth, surfaceName } from './dungeon.js';
 import { CLR_WHITE } from './terminal.js';
 import { scheduleObjectTimer, stopObjectTimer } from './timeout.js';
 import { cansee, monsterHasLineOfSightToHero, unblock_point, vision_note_blocker_change } from './vision.js';
-import { heroStrengthDamageBonus, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
+import { heroAttackBonus, heroStrengthDamageBonus, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
 import { willWeld } from './wield.js';
 import { objectResistsDestruction } from './zap.js';
 import { breakStatue, fractureRock } from './rock_breakage.js';
@@ -80,7 +79,6 @@ import { wipeHeroEngraving } from './engrave.js';
 import { heroCanReachFloor } from './engrave.js';
 import { prepareAppliedWeaponAttack } from './uhitm.js';
 import { MONSTER_MOVE } from './monster_data.js';
-import { OBJECT_NAMES } from './object_data.js';
 import { confusePromptDirection } from './cmd.js';
 import { monsterDigests, monsterIsClinger, monsterIsFlyer, monsterIsWhirly, monsterPassesWalls } from './mondata.js';
 // dig.c owner: hero and monster digging, terrain changes, burial, and
@@ -187,27 +185,8 @@ export function clearDiggingContext(state) {
     digging.lastdigtime = 0;
     digging.quiet = false;
 }
-// C weapon.c abon().  cmd.js meleeAttributeBonus() holds the same human
-// ladder; dig.c needs the polymorphed-form branch too.
-function heroAttackBonus(state) {
-    if (Upolyd(state.u)) {
-        const form = heroMonsterForm(state);
-        return form == null ? 0 : adjustedMonsterLevel(form) - 3;
-    }
-    const strength = currentAttribute(A_STR, state);
-    const dexterity = currentAttribute(A_DEX, state);
-    let bonus = strength < 6 ? -2
-        : strength < 8 ? -1
-            : strength < 17 ? 0
-                : strength < 68 ? 1 // STR18(50)
-                    : strength < 118 ? 2 : 3; // STR18(100)
-    if ((state.u?.ulevel ?? 1) < 3)
-        bonus++;
-    return bonus + (dexterity < 4 ? -3
-        : dexterity < 6 ? -2
-            : dexterity < 8 ? -1
-                : dexterity < 14 ? 0 : dexterity - 14);
-}
+// weapon.c's abon() lives in weapon.js (heroAttackBonus); dig.c's digmon()
+// reads the same strength/dexterity ladder for digging effort.
 // C weapon.c greatest_erosion(): worst of fire and rot damage.
 function greatestErosion(object) {
     return Math.max(object.oeroded ?? 0, object.oeroded2 ?? 0);
@@ -2105,7 +2084,7 @@ export async function applyPickAxeDirection(tool, { state = game, attackMonster,
     else if (!hero.dx && !hero.dy && !hero.dz) {
         const damage = Math.max(1, rnd(2) + heroStrengthDamageBonus(state) + (tool.spe ?? 0));
         await plineWithContinuation(`You hit yourself with ${ownedObjectName(tool, state, { capitalized: false })}.`);
-        await hurtHero(damage, `${state.flags.female ? 'her' : 'his'} own ${OBJECT_NAMES[tool.otyp]}`, state);
+        await hurtHero(damage, `${state.flags.female ? 'her' : 'his'} own ${OBJ_NAME(tool.otyp)}`, state);
     }
     else if (!hero.dz) {
         confusePromptDirection(hero);

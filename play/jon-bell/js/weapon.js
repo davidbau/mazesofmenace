@@ -6,7 +6,7 @@ import { docorner_blank_utf8_captures, docrt, flush_screen, force_more, status_r
 import { yn_function } from './cmd.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { impossible, pline } from './pline.js';
+import { impossible, pline, pline_mon, You_feel } from './pline.js';
 import { PM_PONY } from './pm.generated.js';
 import { P_NAME, P_SKILL, ROLE_CLERIC, ROLE_HEALER, ROLE_MONK, ROLE_WIZARD, SKILLS_FOR_ROLE, skillrow } from './skills.js';
 import { skill_based_spellbook_id } from './spell.js';
@@ -22,10 +22,10 @@ import { s_suffix } from './mhitm.js'; // relocate-fns
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { Yobjnam2, vtense } from './objnam.js'; // relocate-fns
 import { mon_nam } from './uhitm.js'; // relocate-fns
-import { set_msg_xy as set_msg_xy_dm } from './cmd.js'; // relocate-fns
 import { OBJ_FREE } from './const.js'; // relocate-fns
 import { newsym } from './display.js'; // relocate-fns
-import { AT_WEAP, NEED_WEAPON$, stackobj_dm } from './dogmove.js'; // relocate-fns
+import { AT_WEAP, NEED_WEAPON$ } from './dogmove.js'; // relocate-fns
+import { stackobj } from './sp_lev.js';
 import { place_object } from './mklev.js'; // relocate-fns
 import { attacktype } from './mondata.js'; // relocate-fns
 import { distant_name, doname } from './objnam.js'; // relocate-fns
@@ -467,7 +467,7 @@ export async function enhance_weapon_skill() {
         let prompt = (to_advance > 0) ? 'Pick a skill to advance:' : 'Current skills:';
         if (wizardMode() && !speedy) {
             const slots = u.weapon_slots | 0;
-            prompt += `  (${slots} slot${slots === 1 ? '' : 's'} available)`;
+            prompt += `  (${slots} slot${plur(slots)} available)`;
         }
         const picked = await enhance_menu(items, prompt, to_advance > 0);
         /* C ref: weapon.c:1390 destroy_nhwindow(win).  The #enhance menu is a
@@ -500,7 +500,7 @@ export async function enhance_weapon_skill() {
             for (let i = 0; i < P_NUM_SKILLS; i++) {
                 if (can_advance(i, speedy)) {
                     if (!speedy)
-                        await pline('You feel you could be more dangerous!');
+                        await You_feel('you could be more dangerous!');
                     n++;
                     break;
                 }
@@ -584,7 +584,7 @@ export async function possibly_unwield(magr, polyspot) {
         setmnotwielded(magr, obj);
         magr.weapon_check = NO_WEAPON_WANTED$;
         if (cansee(magr.mx | 0, magr.my | 0)) {
-            { set_msg_xy_dm(magr.mx, magr.my); } pline(`${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
+            await pline_mon(magr, `${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
             newsym(magr.mx | 0, magr.my | 0);
         }
         if (prev) prev.nobj = cur.nobj;
@@ -596,7 +596,7 @@ export async function possibly_unwield(magr, polyspot) {
             if (polyspot)
                 bypass_obj(cur);
             place_object(cur, magr.mx | 0, magr.my | 0);
-            await stackobj_dm(cur);
+            await stackobj(cur);
         }
         return;
     }

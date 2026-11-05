@@ -1,12 +1,15 @@
 // @ts-nocheck
 import { pline_mon as pline_mon_real } from './pline.js';
-import { ledger_no as ledger_no_real } from './bones.js';
+import { ledger_no } from './bones.js';
+import { In_W_tower_wz } from './dochug.js';
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
 // @ts-nocheck — js sibling imports.
 import { flush_pending_messages } from './display.js';
 import { pline, livelog_printf } from './pline.js';
 import { raw_print } from './rawterm.js';           /* C wintty.c tty_raw_print */
+import { vfsWriteFile } from './storage.js';
+import { savefile_name } from './save.js';
 import { nhgetch } from './input.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { LL_CONDUCT } from './const.js';
 import { mon_pmname } from './do_name.js';
@@ -1273,16 +1276,19 @@ export async function mdrop_special_objs(mtmp) {
  * migrate_to_level's stub was even entered.  js/mklev.js:2485 and
  * js/cmd.js:5626 each keep the same one-liner file-locally; this is the third
  * copy of the C macro, not a stand-in. */
-function ledger_no(lev) {
-    return ledger_no_real(lev);
-}
 export async function panic(_msg) {
     await flush_pending_messages();
     game.program_state.panicking = 1;
     raw_print('');
     raw_print('Oops...');
-    for (;;)
-        await nhgetch();
+    /* C end.c:445-447 set_error_savefile() + dosave0(): the panic save is
+     * "<savefile>.e"; the next process's check_panic_save() (files.c:1312)
+     * finds it.  Marker only: the error save is never restored. */
+    if (game.program_state.something_worth_saving)
+        vfsWriteFile(savefile_name(String(game.plname || '').split('-')[0].replace(/,/g, ' ')) + '.e', '1');
+    await nhgetch();
+    const { nh_terminate } = await import('./end.js');
+    await nh_terminate(1, 'panic');
 }
 async function ledger_to_dnum(ledgerno) {
     const dgns = game.dungeons || [];
@@ -1306,16 +1312,7 @@ async function ledger_to_dlev(ledgerno) {
  * `return false` stub of this same macro; this one reads the real state.
  * Its only consumer here is migrate_to_level's xyflags bit 1. */
 function In_W_tower_dog(x, y, lev) {
-    const same = (a, b) => !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
-        && (a.dlevel | 0) === (b.dlevel | 0);
-    if (!(same(lev, game.wiz1_level) || same(lev, game.wiz2_level)
-          || same(lev, game.wiz3_level)))
-        return false;
-    const dn = game.dndest;
-    if (!dn || !(dn.nlx | 0))
-        return false; /* C: impossible("No boundary for Wizard's Tower?") */
-    return within_bounded_area(x, y, dn.nlx | 0, dn.nly | 0,
-                               dn.nhx | 0, dn.nhy | 0);
+    return In_W_tower_wz(x, y, lev);
 }
 
 /* C mon_leaving_level removes map occupancy before repainting, while leaving

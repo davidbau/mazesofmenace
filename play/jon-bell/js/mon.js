@@ -29,7 +29,7 @@ import { removed_from_icebox } from './pickup.js';
 import { which_armor } from './worn.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { aggravate as aggravate_real } from './wizard.js';
-import { hliquid as hliquid_ml, is_youmonst, new_mgivenname, noit_mon_nam, noname_monnam, seemimic, update_inventory, x_monnam, y_monnam } from './mhitm.js';
+import { AT_BOOM, AT_EXPL, hliquid as hliquid_ml, is_youmonst, new_mgivenname, noit_mon_nam, noname_monnam, seemimic, update_inventory, x_monnam, y_monnam } from './mhitm.js';
 import { growl } from './sounds.js';
 import { Resists_Elem, attacktype, big_to_little, little_to_big, locomotion, mon_hates_silver, on_fire as on_fire_ml, poly_when_stoned } from './mondata.js';
 import { digests_gu, expels_gu, mon_mattk_raw } from './mhitu.js';
@@ -48,7 +48,7 @@ import { discover_object as lifesave_discover_object, objdescr_is as objdescr_is
 import { The as The_rc, ansimpleoname, distant_name as distant_name_nc, doname as doname_nc, is_quest_artifact, makeplural, oname, quest_info, vtense, xname } from './objnam.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { impossible as lifecycle_impossible } from './pline.js';
-import { PM_AIR_ELEMENTAL, PM_ASMODEUS, PM_BABY_PURPLE_WORM, PM_BALROG, PM_BARBARIAN, PM_BLACK_UNICORN, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC, PM_CAVEMAN, PM_CHICKATRICE, PM_COCKATRICE, PM_DISPATER, PM_DWARF, PM_ELF, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GIANT, PM_GNOME, PM_GRAY_DRAGON, PM_GRAY_OOZE as PM_GRAY_OOZE_MK, PM_GRAY_UNICORN, PM_GREEN_SLIME, PM_GREMLIN as PM_GREMLIN_ML, PM_GRID_BUG, PM_HEZROU, PM_HORNED_DEVIL, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_IRON_GOLEM as PM_IRON_GOLEM_ML, PM_JELLYFISH, PM_KOBOLD, PM_LONG_WORM, PM_MAIL_DAEMON, PM_MANES, PM_MINOTAUR, PM_NEANDERTHAL, PM_NURSE, PM_ORC, PM_ORCUS, PM_OWLBEAR, PM_PONY, PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_PYROLISK, PM_ROTHE, PM_SALAMANDER, PM_SHRIEKER, PM_STEAM_VORTEX, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VIOLET_FUNGUS, PM_VLAD_THE_IMPALER, PM_VROCK, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_UNICORN, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_YEENOGHU, PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC } from './pm.generated.js';
+import { PM_SCORPIUS, PM_SCORPION, PM_AIR_ELEMENTAL, PM_ASMODEUS, PM_BABY_PURPLE_WORM, PM_BALROG, PM_BARBARIAN, PM_BLACK_UNICORN, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC, PM_CAVEMAN, PM_CHICKATRICE, PM_COCKATRICE, PM_DISPATER, PM_DWARF, PM_ELF, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GIANT, PM_GNOME, PM_GRAY_DRAGON, PM_GRAY_OOZE as PM_GRAY_OOZE_MK, PM_GRAY_UNICORN, PM_GREEN_SLIME, PM_GREMLIN as PM_GREMLIN_ML, PM_GRID_BUG, PM_HEZROU, PM_HORNED_DEVIL, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_IRON_GOLEM as PM_IRON_GOLEM_ML, PM_JELLYFISH, PM_KOBOLD, PM_LONG_WORM, PM_MAIL_DAEMON, PM_MANES, PM_MINOTAUR, PM_NEANDERTHAL, PM_NURSE, PM_ORC, PM_ORCUS, PM_OWLBEAR, PM_PONY, PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_PYROLISK, PM_ROTHE, PM_SALAMANDER, PM_SHRIEKER, PM_STEAM_VORTEX, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VIOLET_FUNGUS, PM_VLAD_THE_IMPALER, PM_VROCK, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_UNICORN, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_YEENOGHU, PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC } from './pm.generated.js';
 import { healup } from './potion.js';
 import { dryup as dryup_ml } from './fountain.js';
 import { in_your_sanctuary, newepri, p_coaligned } from './priest.js';
@@ -62,6 +62,8 @@ import { stackobj } from './sp_lev.js';
 import { rloco as steal_rloco, thiefdead } from './steal.js';
 import { place_monster, poly_steed } from './steed.js';
 import { minimal_monnam } from './do_name.js';
+import { Mgender, mon_pmname, pmname } from './do_name.js';
+import { MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, NEUTRAL, W_SADDLE, has_edog, has_egd, has_emin, has_epri, has_eshk } from './const.js';
 import { deal_with_overcrowding, enexto_out, rloc, rloc_to, tele_restrict, vamprises } from './teleport.js';
 import { obj_stop_timers, stop_timer } from './timeout.js';
 import { tt_doppel } from './topten.js';
@@ -206,15 +208,15 @@ const big_to_little_pm = big_to_little;
  * KILLER_BEE (1) and GARGOYLE (41) short-circuit without rn2(77).
  */
 export function can_be_hatched(mnum) {
-    if (mnum === 364 /* PM_SCORPIUS */)
-        mnum = 97 /* PM_SCORPION */;
+    if (mnum === PM_SCORPIUS)
+        mnum = PM_SCORPION;
     mnum = little_to_big_pm(mnum);
-    if (mnum === 1 /* PM_KILLER_BEE */ || mnum === 41 /* PM_GARGOYLE */)
+    if (mnum === PM_KILLER_BEE || mnum === PM_GARGOYLE)
         return mnum;
     if (mnum >= 0 && mnum < MONS_ROWS.length
         && (MONS_ROWS[mnum][6] & M1_OVIPAROUS) !== 0) {
         /* BREEDER_EGG = !rn2(77) — always consumed when lays_eggs(mnum) */
-        if (!rn2(77) || (mnum !== 5 /* PM_QUEEN_BEE */ && mnum !== 42 /* PM_WINGED_GARGOYLE */))
+        if (!rn2(77) || (mnum !== PM_QUEEN_BEE && mnum !== PM_WINGED_GARGOYLE))
             return mnum;
     }
     return NON_PM;
@@ -258,9 +260,31 @@ export function dealloc_mextra(m) {
     }
 }
 
+/* C `*DST = *SRC` for an mextra substruct: a struct VALUE copy.  Inline
+ * arrays (egd.fakecorr[], eshk.bill[], eshk.customer) and nested structs
+ * (coord, d_level, align) are duplicated, not shared; only a real C pointer
+ * member (eshk.bill_p, which keeps pointing at mtmp1's bill as in C) is
+ * copied as a reference.  parentmid is overwritten too, as in C. */
+function mextra_struct_copy(dst, src) {
+    const clone = (v) => (v && typeof v === 'object' && !Array.isArray(v)
+                          && Object.getPrototypeOf(v) === Object.prototype)
+        ? { ...v } : v;
+    for (const k of Object.keys(src)) {
+        const v = src[k];
+        if (k === 'bill_p')
+            dst[k] = v;
+        else if (Array.isArray(v))
+            dst[k] = v.map(clone);
+        else
+            dst[k] = clone(v);
+    }
+}
+
 /*
- * C ref: nethack-c/src/mon.c:2582 copy_mextra(struct monst *mtmp2, struct monst *mtmp1)
- * Copy mextra substructs from mtmp1 to mtmp2.
+ * C ref: mon.c:2597 copy_mextra(struct monst *mtmp2, struct monst *mtmp1)
+ * Copy mextra substructs from mtmp1 to mtmp2.  The assert(has_xxx(mtmp2))
+ * lines (mon.c:2611-2641) are debug-only checks that the newxxx() call just
+ * above succeeded; they cannot fire here and are kept as comments.
  */
 export function copy_mextra(mtmp2, mtmp1) {
     if (!mtmp2 || !mtmp1 || !mtmp1.mextra)
@@ -277,39 +301,37 @@ export function copy_mextra(mtmp2, mtmp1) {
         if (!mtmp2.mextra.egd)
             newegd(mtmp2);
         /* assert(has_egd(mtmp2)); */
-        Object.assign(mtmp2.mextra.egd, mtmp1.mextra.egd);
+        mextra_struct_copy(mtmp2.mextra.egd, mtmp1.mextra.egd);
     }
     if (mtmp1.mextra.epri) {
         if (!mtmp2.mextra.epri)
             newepri(mtmp2);
         /* assert(has_epri(mtmp2)); */
-        Object.assign(mtmp2.mextra.epri, mtmp1.mextra.epri);
+        mextra_struct_copy(mtmp2.mextra.epri, mtmp1.mextra.epri);
     }
     if (mtmp1.mextra.eshk) {
         if (!mtmp2.mextra.eshk)
             neweshk(mtmp2);
         /* assert(has_eshk(mtmp2)); */
-        Object.assign(mtmp2.mextra.eshk, mtmp1.mextra.eshk);
+        mextra_struct_copy(mtmp2.mextra.eshk, mtmp1.mextra.eshk);
     }
     if (mtmp1.mextra.emin) {
         if (!mtmp2.mextra.emin)
             newemin(mtmp2);
         /* assert(has_emin(mtmp2)); */
-        Object.assign(mtmp2.mextra.emin, mtmp1.mextra.emin);
+        mextra_struct_copy(mtmp2.mextra.emin, mtmp1.mextra.emin);
     }
     if (mtmp1.mextra.edog) {
         if (!mtmp2.mextra.edog)
             newedog(mtmp2);
         /* assert(has_edog(mtmp2)); */
-        Object.assign(mtmp2.mextra.edog, mtmp1.mextra.edog);
-        /* C copies struct edog by value; ogoal is a nested struct, not a shared ref */
-        mtmp2.mextra.edog.ogoal = { ...mtmp1.mextra.edog.ogoal };
+        mextra_struct_copy(mtmp2.mextra.edog, mtmp1.mextra.edog);
     }
     if (mtmp1.mextra.ebones) {
         if (!mtmp2.mextra.ebones)
             newebones(mtmp2);
         /* assert(has_ebones(mtmp2)); */
-        Object.assign(mtmp2.mextra.ebones, mtmp1.mextra.ebones);
+        mextra_struct_copy(mtmp2.mextra.ebones, mtmp1.mextra.ebones);
     }
     /* C: if (has_mcorpsenm(mtmp1)) MCORPSENM(mtmp2) = MCORPSENM(mtmp1); */
     if (mtmp1.mextra.mcorpsenm !== undefined && mtmp1.mextra.mcorpsenm !== NON_PM)
@@ -775,9 +797,11 @@ export function alloc_itermonarr(count) {
  * Macro implementations:
  * - touch_petrifies(ptr): ptr == &mons[PM_COCKATRICE] || ptr == &mons[PM_CHICKATRICE]
  * - is_rider(ptr): ptr == &mons[PM_DEATH_R] || ptr == &mons[PM_FAMINE] || ptr == &mons[PM_PESTILENCE]
- * - resists_ston(mon): Resists_Elem(mon, STONE_RES) — NOT YET PORTED, stub with throw
- * - touch_artifact(otmp, mtmp): C function — NOT YET PORTED, stub with throw
- * - is_covetous(ptr): ptr->mflags3 & M3_COVETOUS — NOT YET PORTED, stub with throw */
+ * - resists_ston(mon): Resists_Elem(mon, STONE_RES)
+ * - touch_artifact(otmp, mtmp): artifact.c touch_artifact
+ * - is_covetous(ptr): (ptr->mflags3 & M3_COVETOUS), mondata.h */
+const M3_COVETOUS = 0x001f; /* monflag.h: M3_WANTSAMUL|WANTSBELL|WANTSBOOK|WANTSCAND|WANTSARTI */
+function is_covetous(ptr) { return ((ptr?.mflags3 | 0) & M3_COVETOUS) !== 0; }
 export async function can_touch_safely(mtmp, otmp) {
     const otyp = otmp.otyp | 0;
     const mdat = mtmp.data;
@@ -805,8 +829,7 @@ export async function can_touch_safely(mtmp, otmp) {
     const _ocMat = (game._objMaterials && game._objMaterials[otyp] != null)
         ? (game._objMaterials[otyp] | 0) : MKOBJ_OC_MATERIAL[otyp | 0];
     if (_ocMat === SILVER_MATERIAL && mon_hates_silver(mtmp)) {
-        if (otyp !== BELL_OF_OPENING
-            || (((mdat?.mflags3 | 0) & 0x001f) === 0)) {
+        if (otyp !== BELL_OF_OPENING || !is_covetous(mdat)) {
             return false;
         }
     }
@@ -925,9 +948,9 @@ export async function m_respond(mtmp) {
 
 /* Unported helper for m_respond shrieker case */
 async function m_respond_shrieker(mtmp) {
-    if (!Deaf_live()) { /* C mon.c:4090 !Deaf */
+    if (!Deaf_live()) { /* C mon.c:4091 !Deaf */
         await pline(`${Monnam(mtmp)} shrieks.`);
-        /* C: mon.c:4092 stop_occupation() follows the shriek pline. */
+        /* C: mon.c:4093 stop_occupation() follows the shriek pline. */
         const { stop_occupation } = await import('./allmain.js');
         await stop_occupation();
     }
@@ -1176,8 +1199,6 @@ export function hideunder(mtmp) {
         /* C mon.c:4782-4783 — computed on `seeit` alone, so a visible monster
          * that FAILS to hide still pays y_monnam()'s cost (which under
          * Hallucination draws RNG through rndmonnam()). */
-        if (typeof process !== 'undefined' && ENV?.FF_HIDE_TRACE === '1')
-            pushRngLogEntry(`^hide_trace[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0} seeit=${seeit ? 1 : 0} cansee=${canseemon(mtmp) ? 1 : 0} undetected=${undetected ? 1 : 0} hallu=${game.u?.uprops?.[MK_HALLUC]?.intrinsic ? 1 : 0}]`);
         if (seeit)
             seenmon = y_monnam(mtmp);
         /* C's boolean field is zero-initialized.  An absent JS field likewise
@@ -1393,7 +1414,7 @@ function m_poisongas_ok_nonliving(ptr) {
     return is_undead || (ptr.pmidx | 0) === PM_MANES || weirdnonliving;
 }
 
-function m_poisongas_ok_is_vampshifter(mon) {
+function is_vampshifter_mon(mon) {
     return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LORD
         || mon.cham === PM_VLAD_THE_IMPALER;
 }
@@ -1410,7 +1431,7 @@ export function m_poisongas_ok(mtmp) {
     const is_you = is_youmonst(mtmp);
 
     /* Non living, non breathing, immune monsters are not concerned */
-    if (m_poisongas_ok_nonliving(mtmp.data) || m_poisongas_ok_is_vampshifter(mtmp)
+    if (m_poisongas_ok_nonliving(mtmp.data) || is_vampshifter_mon(mtmp)
         || m_poisongas_ok_breathless(mtmp.data) || m_poisongas_ok_immune_poisongas(mtmp.data))
         return M_POISONGAS_OK;
     /* not is_swimmer(); assume that non-fish are swimming on
@@ -1460,14 +1481,14 @@ export async function kill_genocided_monsters() {
         mtmp2 = mtmp.nmon;
         if (mtmp.mhp <= 0)
             continue;
-        /* C mon.c:5646 mndx = monsndx(mtmp->data); mondata.h:10
+        /* C mon.c:5660 mndx = monsndx(mtmp->data); mondata.h:10
          * `#define monsndx(ptr) ((ptr)->pmidx)` — permonst has no `mndx`. */
         mndx = mtmp.data.pmidx;
         kill_cham = (ismnum(mtmp.cham)
                      && ((game.mvitals?.[mtmp.cham]?.mvflags | 0) & G_GENOD));
         if (((game.mvitals?.[mndx]?.mvflags | 0) & G_GENOD) || kill_cham) {
             if (ismnum(mtmp.cham) && !kill_cham)
-                await newcham(mtmp, null, 0);
+                await newcham(mtmp, null, NC_SHOW_MSG); /* C mon.c:5665 */
             else
                 await mondead(mtmp);
         }
@@ -1595,7 +1616,7 @@ export async function meatobj(mtmp) {
                      * (no varargs/%-expansion), so the %c is expanded here. */
                     pline("Yum" + (otmp.blessed ? '!' : '.'));
             } else {
-                Soundeffect(0, 30); /* se_slurping_sound: audio-only enum */
+                Soundeffect(se_slurping_sound, 30); /* C mon.c:1625 */
                 if (game.flags.verbose)
                     You_hear("a slurping sound.");
             }
@@ -1884,8 +1905,11 @@ function objdescr_is(otmp, str) {
     return objdescr_is_real(otmp, str);
 }
 
-/* Stub: Soundeffect — not yet ported */
-function Soundeffect(se, vol) {
+/* C sndprocs.h:272 Soundeffect(seid, vol) — compiled empty without
+ * SND_LIB_INTEGRATED; the tty game has no soundlib, so a no-op is faithful.
+ * seffects.h enum sound_effect_entries (se_zero_invalid = 0 first). */
+export const se_crunching_sound = 60, se_slurping_sound = 154;
+export function Soundeffect(se, vol) {
 }
 
 /* C pline.c:113 pline1 — literal topline message without formatting or a
@@ -1931,11 +1955,14 @@ function kill_eggs(objlist) {
 }
 
 /* Stub: mondead — not yet ported */
+/* C objects.h AMULET_OF_LIFE_SAVING otyp (no shared otyp export in js/). */
+const AMULET_OF_LIFE_SAVING = 202;
+
 /* C mon.c:2827-2836: only a worn life-saving amulet can save this monster. */
 export function mlifesaver(mon) {
-    if (!lifesave_nonliving(mon.data) || m_poisongas_ok_is_vampshifter(mon)) {
+    if (!lifesave_nonliving(mon.data) || is_vampshifter_mon(mon)) {
         const amulet = which_armor(mon, W_AMUL);
-        if (amulet?.otyp === 202 /* AMULET_OF_LIFE_SAVING */) return amulet;
+        if (amulet?.otyp === AMULET_OF_LIFE_SAVING) return amulet;
     }
     return null;
 }
@@ -1947,10 +1974,10 @@ export async function lifesaved_monster(mon) {
     if (cansee(mon.mx, mon.my)) {
         await pline('But wait...');
         await pline(`${lifesave_s_suffix(Monnam_wm(mon))} medallion begins to glow!`);
-        lifesave_discover_object(202, true, true, true);
+        lifesave_discover_object(AMULET_OF_LIFE_SAVING, true, true, true);
         if (canseemon(mon)) {
-            const explodes = attacktype(mon.data, 13 /* AT_EXPL */)
-                || attacktype(mon.data, 14 /* AT_BOOM */);
+            const explodes = attacktype(mon.data, AT_EXPL)
+                || attacktype(mon.data, AT_BOOM);
             await pline(`${Monnam_wm(mon)} ${explodes ? 'reconstitutes' : 'looks much better'}!`);
         }
         await pline('The medallion crumbles to dust!');
@@ -2005,7 +2032,7 @@ export async function mondead(mtmp) {
     if ((mtmp.mhp | 0) > 0) { mtmp._dyingInGrid = false; return; }
     /* C mon.c:3096-3098: a killed vampire in another form rises before
      * death bookkeeping; newcham() also consumes the new form's gender/HP RNG. */
-    if (m_poisongas_ok_is_vampshifter(mtmp) && await vamprises(mtmp))
+    if (is_vampshifter_mon(mtmp) && await vamprises(mtmp))
         { mtmp._dyingInGrid = false; return; }
     if (beSad) await pline('You have a sad feeling for a moment, then it passes.');
     /* C mon.c:3103-3104 */
@@ -2042,7 +2069,7 @@ export async function mondead(mtmp) {
     if (mtmp.m_id === game.svq?.quest_status?.leader_m_id)
         game.svq.quest_status.leader_is_dead = true;
     await kop_revival(mtmp);
-    record_death_achievement(mndx);
+    record_death_achievement(mndx, mtmp);
     /* C mon.c:3170-3171: retire remembered 'I' before m_detach.  The test is
      * levl[][].glyph (hero memory), not glyph_at(): underwater the painted
      * cells are blanked while memory keeps the 'I'. */
@@ -3148,8 +3175,8 @@ async function minliquid_core(mtmp) {
                 | M1_BREATHLESS_ML)) !== 0 ? 0 : 1}]`);
     /* C mon.c:990-1001 — `else if (mtmp->data == &mons[PM_IRON_GOLEM] && inpool
      * && !rn2(5))`: an iron golem in a pool rusts for d(2,6).  The PM_GREMLIN
-     * split arm that precedes it (mon.c:983-989) stays a documented gap
-     * (split_mon is not a faithful clone_mon here). */
+     * split arm (mon.c:983-989) precedes it below
+     * (split_mon is js/mklev.js split_mon_ml, a port of potion.c:2873). */
     /* C mon.c:983-989 — gremlin in water/fountain multiplies:
      *     if (mtmp->data == &mons[PM_GREMLIN] && (inpool || infountain)
      *         && rn2(3)) {
@@ -4352,7 +4379,7 @@ export function mcalcmove(mon, m_moving = true) {
     if (mon === game.u?.usteed && (game.u?.ugallop | 0) && (game.context?.mv | 0)) {
         mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
     }
-    /* C mon.c:1137-1148 — only when m_moving: random rounding to a
+    /* C mon.c:1155-1166 — only when m_moving: random rounding to a
      * NORMAL_SPEED multiple. When m_moving is false (worm_move's call), C
      * skips this whole block and draws nothing here. */
     if (m_moving) {
@@ -4401,4 +4428,135 @@ export async function dmonsfree() {
                          count, g.iflags.purge_monsters | 0,
                          describe_level_buf(2, g.u && g.u.uz));
     g.iflags.purge_monsters = 0; /* mon.c:2510 */
+}
+
+/* C ref: mon.c:57-70 pet_sanity_check(mtmp, msgarg). */
+async function pet_sanity_check(mtmp, msgarg) {
+    if (has_edog(mtmp)) {
+        const edog = mtmp.mextra.edog;
+
+        if ((edog.droptime | 0) > (game.moves | 0))
+            await lifecycle_impossible(
+                'insane pet #%u has droptime (%ld) in the future (%ld) (%s)',
+                mtmp.m_id, edog.droptime, game.moves, msgarg);
+        /* TODO: verify some of the other edog fields */
+    }
+}
+
+const SADDLE_SC = 235; /* C onames.h SADDLE (js/u_init.js) */
+const LEASH_SC = 236;  /* C onames.h LEASH (js/mklev.js) */
+
+/* C ref: apply.c get_mleash(mtmp) — the hero's leash attached to mtmp. */
+function get_mleash_sc(mtmp) {
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+        if ((otmp.otyp | 0) === LEASH_SC && (otmp.leashmon | 0) === (mtmp.m_id | 0))
+            return otmp;
+    return null;
+}
+
+/* C ref: mon.c:72-254 sanity_check_single_mon(mtmp, chk_geno, msg).
+ * PARTIAL PORT.  Not ported: the mnum/monsndx and illegal-data checks (JS
+ * monsters carry no permonst pointer to compare), and the mundetected /
+ * M_AP_TYPE hiding-and-mimicry block (mon.c:166-232). */
+async function sanity_check_single_mon(mtmp, chk_geno, msg) {
+    const mptr = mtmp.data;
+    const mx = mtmp.mx, my = mtmp.my;
+    const mndx = (mptr?.pmidx ?? mtmp.mnum) | 0;
+    const mhp = mtmp.mhp | 0, mhpmax = mtmp.mhpmax | 0;
+
+    /* check before DEADMONSTER() because dead monsters should still
+       have sane mhpmax */
+    if (mhpmax < 1 || mhp > mhpmax)
+        await lifecycle_impossible('%s: level %d %s #%u [%s] has %d cur HP, %d max HP',
+            msg, mtmp.m_lev | 0, pmname(mptr, NEUTRAL), mtmp.m_id, '(ptr)',
+            mhp, mhpmax);
+    if (mhp < 1) /* DEADMONSTER */
+        return;
+    if (chk_geno && mvitals_genod_nc(mndx))
+        await lifecycle_impossible('genocided %s in play (%s)',
+                                   pmname(mptr, Mgender(mtmp)), msg);
+    if (mtmp.mtame && !mtmp.mpeaceful)
+        await lifecycle_impossible('tame %s is not peaceful (%s)',
+                                   pmname(mptr, Mgender(mtmp)), msg);
+    if (mtmp.isshk && !has_eshk(mtmp))
+        await lifecycle_impossible('shk without eshk (%s)', msg);
+    if (mtmp.ispriest && !has_epri(mtmp))
+        await lifecycle_impossible('priest without epri (%s)', msg);
+    if (mtmp.isgd && !has_egd(mtmp))
+        await lifecycle_impossible('guard without egd (%s)', msg);
+    if (mtmp.isminion && !has_emin(mtmp))
+        await lifecycle_impossible('minion without emin (%s)', msg);
+    /* guardian angel on astral level is tame but has emin rather than edog */
+    if (mtmp.mtame) {
+        if (!has_edog(mtmp) && !mtmp.isminion)
+            await lifecycle_impossible('pet without edog (%s)', msg);
+        else
+            await pet_sanity_check(mtmp, msg);
+    }
+    /* steed should be tame and saddled */
+    if (mtmp === game.u.usteed) {
+        const nt = !mtmp.mtame ? 'not tame' : null;
+        const ns = !m_carrying(mtmp, SADDLE_SC) ? 'no saddle'
+            : !which_armor(mtmp, W_SADDLE) ? 'saddle not worn'
+                : null;
+        if (ns || nt)
+            await lifecycle_impossible('steed: %s%s%s (%s)',
+                ns ? ns : '', (ns && nt) ? ', ' : '', nt ? nt : '', msg);
+    }
+
+    if (mtmp.mtrapped) {
+        if (mtmp.wormno) {
+            ; /* TODO: how to check worm in trap? */
+        } else if (!t_at(mx, my))
+            await lifecycle_impossible('trapped without a trap (%s)', msg);
+    }
+    if (mtmp.mfrozen && mtmp.mcanmove)
+        await lifecycle_impossible('frozen monster [%s%s] is able to move (%s)',
+            mtmp.mtame ? 'tame ' : mtmp.mpeaceful ? 'peaceful ' : '',
+            pmname(mptr, Mgender(mtmp)), msg);
+
+    if (mtmp.mleashed) {
+        if (!get_mleash_sc(mtmp))
+            await lifecycle_impossible('monst %u: leashed but no leash for %s',
+                                       mtmp.m_id, mon_pmname(mtmp));
+        else if (!mtmp.mtame)
+            await lifecycle_impossible('monst %u: leashed but not tame %s',
+                                       mtmp.m_id, mon_pmname(mtmp));
+    }
+}
+
+/* C ref: mon.c:257-319 mon_sanity_check(void).  PARTIAL PORT: the per-
+ * monster checks over fmon and migrating_mons.  Not ported: the
+ * map-grid/fmon cross-checks (this port has no grid separate from fmon —
+ * js/uhitm.js m_at walks fmon) and the worm checks (sanity_check_worm,
+ * wormno_sanity_check). */
+export async function mon_sanity_check() {
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        /* dead monsters should still have sane data */
+        await sanity_check_single_mon(mtmp, true, 'fmon');
+        if ((mtmp.mhp | 0) < 1 && !mtmp.isgd)
+            continue;
+
+        const x = mtmp.mx, y = mtmp.my;
+        if (!isok(x, y) && !(mtmp.isgd && x === 0 && y === 0)) {
+            await lifecycle_impossible('mon (%s) claims to be at <%d,%d>?',
+                                       '(ptr)', x, y);
+        } else if (mtmp === game.u.usteed) {
+            /* steed is in fmon list but not on the map; its
+               <mx,my> coordinates should match hero's location */
+            if (x !== game.u.ux || y !== game.u.uy)
+                await lifecycle_impossible('steed (%s) claims to be at <%d,%d>?',
+                                           '(ptr)', x, y);
+        }
+    }
+
+    for (let mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon) {
+        await sanity_check_single_mon(mtmp, false, 'migr');
+
+        if (((mtmp.mstate | 0)
+             & ~(MON_MIGRATING | MON_LIMBO | MON_ENDGAME_MIGR | MON_OFFMAP)) !== 0
+            || !((mtmp.mstate | 0) & MON_MIGRATING))
+            await lifecycle_impossible('migrating mon (%s) with mstate set to 0x%08lx',
+                                       '(ptr)', mtmp.mstate | 0);
+    }
 }

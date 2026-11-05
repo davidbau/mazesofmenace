@@ -1,7 +1,7 @@
 // Monster armor.
 // C refs: makemon.c:makemon(), mon.c:check_gear_next_turn() and
 // movemon_singlemon(), worn.c:m_dowear()/m_dowear_type().
-import { objectDelay, ALCHEMY_SMOCK, AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION, DUNCE_CAP, ELVEN_MITHRIL_COAT, HELM_OF_OPPOSITE_ALIGNMENT, MUMMY_WRAPPING, OBJECT_PROPERTY, SADDLE, requireObjectData, } from './object_data.js';
+import { objectPropertyName, objectDelay, ALCHEMY_SMOCK, AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION, DUNCE_CAP, ELVEN_MITHRIL_COAT, HELM_OF_OPPOSITE_ALIGNMENT, MUMMY_WRAPPING, SADDLE, } from './object_data.js';
 import { objectMaterial, learnObjectType } from './o_init.js';
 import { publishHeardMessage } from './hero_speech.js';
 import { armorBonus, armorSimpleName, armorSlotFor } from './do_wear.js';
@@ -15,7 +15,7 @@ import { artifactEmitsLight } from './artifacts.js';
 import { beginObjectBurn, endObjectBurn } from './timeout.js';
 import { equipmentLightDescription } from './light.js';
 import { cansee, vision_recalc } from './vision.js';
-import { surfaceName } from './terrain_name.js';
+import { surfaceName } from './dungeon.js';
 import { displayColorName, monsterName } from './do_name.js';
 import { monsterObjectPronoun, monsterPossessive, monsterBreaksArmor, monsterHasHead, monsterHasNoHands, monsterHornCount, monsterIsAnimal, monsterIsCentaur, monsterIsMindless, monsterIsSlithy, monsterIsVerySmall, monsterIsWhirly, monsterSlipsArmor, monsterWrappingAllowed } from './mondata.js';
 import { monsterCanBeSaddled } from './steed.js';
@@ -59,7 +59,7 @@ const RESISTANCE_BITS = {
     stoneResistance: 0x80,
 };
 function equipmentProperties(object) {
-    const primary = requireObjectData(OBJECT_PROPERTY, object.otyp);
+    const primary = objectPropertyName(object.otyp);
     if (!primary)
         return [];
     if (object.otyp !== ALCHEMY_SMOCK)

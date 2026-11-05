@@ -106,7 +106,7 @@ import { attrcurse } from './sit.js';
 import { A_DEX, A_CON, A_CHA, GLIB, Is_astralevel } from './const.js';
 import { acurrstr } from './dokick.js';
 import { makeplural, the, yobjnam, otense,
-         doname as doname_real, thesimpleoname as thesimpleoname_real, ansimpleoname,
+         doname as doname_real, thesimpleoname, ansimpleoname,
          killer_xname } from './objnam.js';
 import { the_unique_pm } from './makemon.js';
 import { rndmonnam } from './do_name.js';
@@ -730,10 +730,10 @@ export async function newuhs(incr) {
             g._saved_hs = true;
         }
         u.uhs = newhs;
-        /* C eat.c:3406 — return WITHOUT SET_BOTL: do not refresh the status mid-meal. */
+        /* C eat.c:3402 — return WITHOUT SET_BOTL: do not refresh the status mid-meal. */
         return;
     } else if (g._saved_hs) {
-        /* C eat.c:3409-3411 — meal ended: restore the saved status so the post-meal
+        /* C eat.c:3404-3407 — meal ended: restore the saved status so the post-meal
          * newhs comparison below decides the single end-of-meal status update. */
         u.uhs = g._save_hs | 0;
         g._saved_hs = false;
@@ -2176,9 +2176,9 @@ async function rottenfood(obj) {
             game.disp = game.disp || {};
             game.disp.botl = 1;
         }
-        nomul(-duration); /* C eat.c:1847 */
-        game.multi_reason = 'unconscious from rotten food'; /* C eat.c:1848 */
-        game.nomovemsg = 'You are conscious again.'; /* C eat.c:1849 */
+        nomul(-duration); /* C eat.c:1844 */
+        game.multi_reason = 'unconscious from rotten food'; /* C eat.c:1845 */
+        game.nomovemsg = 'You are conscious again.'; /* C eat.c:1846 */
         game.afternmv = 'Hear_again';
         return 1;
     }
@@ -3334,12 +3334,11 @@ export function tin_details(obj, mnum, buf) {
 
 /* getobj callback for object to be opened with a tin opener */
 function tinopen_ok(obj) {
-    /* values are getObjFromGetobj's private numbering (see eat_ok) */
-    if (obj && obj.otyp === 296) /* TIN = 296 */
-        return 2; /* GETOBJ_SUGGEST */
-    return 0; /* GETOBJ_EXCLUDE */
-        return 2; /* GETOBJ_SUGGEST (const.js) */
-    return 0; /* GETOBJ_EXCLUDE (const.js) */
+    /* C eat.c:3090-3093; GETOBJ_* are this file's getObjFromGetobj-local
+     * values (see the block above eat_ok). */
+    if (obj && (obj.otyp | 0) === TIN_OTYP)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
 }
 
 const TIN_OTYP = 296;
@@ -3619,7 +3618,7 @@ export async function opentin() {
         let here = false;
         for (let o = game.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0]; o; o = o.nexthere)
             if (o === t.tin) { here = true; break; }
-        if (!here)
+        if (!here || !can_reach_floor(true))
             return 0;
     }
     /* C eat.c:1710-1713 — give up after 50 turns. */
@@ -3714,7 +3713,7 @@ export async function start_tin(otmp) {
         } else if (_TIN_AXES.includes(wtyp)) {
             tmp = 6;
         } else {
-            /* C eat.c:1763 `default: goto no_opener;` — skips the pline below. */
+            /* C eat.c:1766-1767 `default: goto no_opener;` — skips the pline below. */
             tmp = await _tin_no_opener(otmp);
             if (tmp === null) return;
             return await _start_tin_tail(otmp, tmp, mesg);
@@ -4711,9 +4710,7 @@ export async function ynq(prompt) {
 export async function doname(obj) {
     return await doname_real(obj);
 }
-export function thesimpleoname(obj) {
-    return thesimpleoname_real(obj);
-}
+export { thesimpleoname };
 
 export async function floorfood(verb, corpsecheck) {
     const g = game;
@@ -4905,39 +4902,45 @@ function deltrap(ttmp) { return deltrap_real(ttmp); }
  * compares by IDENTITY against those literals.  js/engrave.js's stylus_ok is
  * the existing precedent for a getObjFromGetobj callback with its own local
  * copy of these same values. */
+/* C hack.h:515-538 GETOBJ_* enumerators for getobj callback return values.
+ * Local constants matching getObjFromGetobj's numbering scheme. */
+const GETOBJ_EXCLUDE = 0;
+const GETOBJ_DOWNPLAY = 1;
+const GETOBJ_SUGGEST = 2;
+const GETOBJ_EXCLUDE_NONINVENT = -2;
+const GETOBJ_EXCLUDE_SELECTABLE = -3;
+const AMULET_OF_YENDOR = 213;
+
 function eat_ok(obj) {
-    if (!obj) return (game.getobj_else | 0) ? -2 /* GETOBJ_EXCLUDE_NONINVENT */
-                                             : 0 /* GETOBJ_EXCLUDE */;
-    if (is_edible(obj)) return 2; /* GETOBJ_SUGGEST */
-    if ((obj.oclass | 0) === COIN_CLASS) return 0; /* GETOBJ_EXCLUDE */
-    return -3; /* GETOBJ_EXCLUDE_SELECTABLE */
+    if (!obj) return (game.getobj_else | 0) ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+    if (is_edible(obj)) return GETOBJ_SUGGEST;
+    if ((obj.oclass | 0) === COIN_CLASS) return GETOBJ_EXCLUDE;
+    return GETOBJ_EXCLUDE_SELECTABLE;
 }
 /* C eat.c:3539 offer_ok — same getObjFromGetobj-local numbering as eat_ok. */
 function offer_ok(obj) {
     /* C eat.c:3541-3542:
      *   if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE; */
-    if (!obj) return (game.getobj_else | 0) ? -2 /* GETOBJ_EXCLUDE_NONINVENT */
-                                             : 0 /* GETOBJ_EXCLUDE */;
+    if (!obj) return (game.getobj_else | 0) ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
     if ((obj.oclass | 0) !== FOOD_CLASS && (obj.oclass | 0) !== AMULET_CLASS)
-        return 0; /* GETOBJ_EXCLUDE */
+        return GETOBJ_EXCLUDE;
     if ((obj.otyp | 0) !== CORPSE_OTYP
-        && (obj.otyp | 0) !== 213 /* AMULET_OF_YENDOR */
-        && (obj.otyp | 0) !== 212 /* FAKE_AMULET_OF_YENDOR */)
-        return -3; /* GETOBJ_EXCLUDE_SELECTABLE */
+        && (obj.otyp | 0) !== AMULET_OF_YENDOR
+        && (obj.otyp | 0) !== FAKE_AMULET_OF_YENDOR)
+        return GETOBJ_EXCLUDE_SELECTABLE;
     const astral = Is_astralevel(game.u?.uz);
     if (astral !== ((obj.oclass | 0) === AMULET_CLASS))
-        return 1; /* GETOBJ_DOWNPLAY */
-    return 2; /* GETOBJ_SUGGEST */
+        return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
 }
 /* C eat.c:3561 tin_ok — the one port; js/cmd.js's tinning kit uses it too. */
 export function tin_ok(obj) {
-    if (!obj) return (game.getobj_else | 0) ? -2 /* GETOBJ_EXCLUDE_NONINVENT */
-                                             : 0 /* GETOBJ_EXCLUDE */;
+    if (!obj) return (game.getobj_else | 0) ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
     if ((obj.oclass | 0) !== FOOD_CLASS)
-        return 0; /* GETOBJ_EXCLUDE */
+        return GETOBJ_EXCLUDE;
     if ((obj.otyp | 0) !== CORPSE_OTYP || !tinnable(obj))
-        return -3; /* GETOBJ_EXCLUDE_SELECTABLE */
-    return 2; /* GETOBJ_SUGGEST */
+        return GETOBJ_EXCLUDE_SELECTABLE;
+    return GETOBJ_SUGGEST;
 }
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 

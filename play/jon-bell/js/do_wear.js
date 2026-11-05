@@ -12,7 +12,7 @@ import { shk_your as ownership_prefix } from './shk.js';
 import { setworn, setnotworn } from './worn.js';
 import { set_bc } from './ball.js';
 import { movobj } from './hack.js';
-import { OBJ_INVENT, is_pit, is_hole } from './const.js';
+import { OBJ_INVENT, is_pit, is_hole, BUFSZ } from './const.js';
 import { impossible as equipment_impossible } from './pline.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { artifact_light, arti_light_description } from './light.js';
@@ -37,7 +37,7 @@ function _hero_mflags1_dw() {
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline, livelog_printf } from './pline.js';
-import { You as You_real, Your as Your_real } from './pline.js';
+import { You, Your as Your_real } from './pline.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
@@ -4106,9 +4106,7 @@ export function cancel_don() {
 }
 
 
-export async function You(line, ...args) {
-    return You_real(line, ...args);
-}
+export { You };
 
 export async function Your(line, ...args) {
     return Your_real(line, ...args);
@@ -4131,7 +4129,8 @@ export async function Your(line, ...args) {
  * Ownership uses the shared shk.c:5862-5873 helper, including shop bills,
  * monster inventory, and unique corpses. */
 export function yname(obj) {
-    let owned = !!obj && (obj.where | 0) === 3;
+    const ART_ORB_OF_DETECTION = 21;
+    let owned = !!obj && (obj.where | 0) === OBJ_INVENT;
     if (obj && !owned) {
         for (let o = game.invent; o; o = o.nobj) {
             if (o === obj) { owned = true; break; }
@@ -4139,12 +4138,12 @@ export function yname(obj) {
     }
     const name = cxname(obj); // C objnam.c:2361: name before ownership prefix.
     // C objnam.c:2365-2366: most carried artifacts omit the possessive.
-    if (owned && obj_is_pname(obj) && obj.oartifact < 21 /* ART_ORB_OF_DETECTION */)
+    if (owned && obj_is_pname(obj) && obj.oartifact < ART_ORB_OF_DETECTION)
         return name;
     // Retain the inventory-chain fallback for objects without a where field.
     const prefix = owned && obj.where == null && !obj.unpaid
         ? 'your ' : ownership_prefix('', obj);
-    return (prefix + name).slice(0, 255);
+    return (prefix + name).slice(0, BUFSZ - 1);
 }
 export { xname };
 /* C shk.c:5862 shk_your — adapt the one-argument API to the shared port. */

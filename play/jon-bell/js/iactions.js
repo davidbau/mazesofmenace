@@ -4,7 +4,7 @@ import { FINGER, GETOBJ_SUGGEST, HAND, IA_ADJUST_OBJ, IA_ADJUST_STACK, IA_APPLY_
 import { build_window_screen, menu_search_case } from './com_pager.js';
 import { CQ_CANNED, ECMD_OK, Has_contents, IS_ALTAR, ONAME, PICK_ONE, ROOMOFFSET, SHOPBASE, has_oname } from './const.js';
 import { ia_checkfile } from './pager.js';
-import { _threeStatusLines, await_menu_key, docorner_blank_utf8_captures, docrt, flush_screen } from './display.js';
+import { _threeStatusLines, await_menu_key, docorner_blank_utf8_captures, docrt, flush_screen, force_more } from './display.js';
 import { call_ok, name_ok } from './do_name.js';
 import { is_edible } from './eat.js';
 import { game } from './gstate.js';
@@ -559,10 +559,14 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
                             _iaTitleText.length);
     /* C wintty.c:1927 — `!iflags.menu_overlay` drops the NHW_MENU to offx 0 and
      * clears the whole screen, however short the menu is. */
+    /* wintty.c:1927 `cw->offx == 10`: cols - maxcol - 1 <= 10 (a 67+ column
+     * title) takes the same clear-screen branch. */
     const iaFullScreen = game.iflags?.menu_overlay === false
-        || game.iflags?.menu_overlay === 0;
-    const WIN_COL = iaFullScreen ? 0 : Math.min(41,
-        80 - maxLen - 2);
+        || game.iflags?.menu_overlay === 0 || 77 - maxLen <= 10;
+    /* wintty.c:1917 `if (cw->offx < 0) cw->offx = 0;` — a window wider than the
+     * screen starts at offx 0, i.e. content column 1, never negative. */
+    const WIN_COL = iaFullScreen ? 0 : Math.max(1, Math.min(41,
+        80 - maxLen - 2));
     /* C iactions.c:698 — Sprintf(buf, "Do what with %s?", the(cxname(otmp))).
      * This read `"Do what with the " + _cxname_base(otmp)`, a file-local partial
      * namer that never pluralises: a stack of 2 tripe rations titled the menu
@@ -594,10 +598,24 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
            : (priorWinCol - 2)) : undefined;
     /* offx 0: one-space left margin, "(end) " footer, cursor after it
      * (same layout as the full-screen 'i' / getobj '*' menus). */
+    /* clip to 79 visible columns, keeping SGR sequences whole */
+    const _iaClip79 = (ln) => {
+        let out = '', vis = 0;
+        for (const m of ln.matchAll(/\x1b\[[0-9;]*m|[^\x1b]/g)) {
+            if (m[0].length > 1) { out += m[0]; } else if (vis < 79) { out += m[0]; vis++; }
+        }
+        return out;
+    };
     const iaBuild = (lines) => iaFullScreen
-        ? Array.from({ length: 24 }, (_, i) => (i < lines.length ? ` ${lines[i]}` : '')).join('\n')
-        : build_window_screen(lines, WIN_COL, uac, statusClip, undefined, false, 0, (priorWinRows ?? 0) >= 23,
+        ? Array.from({ length: 24 }, (_, i) => (i < lines.length ? _iaClip79(` ${lines[i]}`) : '')).join('\n')
+        : build_window_screen(lines, WIN_COL, uac, statusClip, undefined,
+                                  /* offx 0 over a dismissed full-screen window: the terminal is still blank */
+                                  priorFullScreen && WIN_COL === 1, 0, (priorWinRows ?? 0) >= 23,
                                   _threeStatusLines() && priorWinRows === 21 ? 21 : 23);
+    /* C wintty.c:1921-1922 tty_display_nhwindow(NHW_MENU): a standing topline
+     * (TOPLINE_NEED_MORE) is paged out with --More-- before the menu opens. */
+    if (g._pending_message)
+        await force_more(g._pending_message);
     const screenOutput = iaBuild(fullLines);
     g._screen_output = screenOutput;
     const endRow = fullLines.length - 1;

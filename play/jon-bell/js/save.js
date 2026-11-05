@@ -5,7 +5,8 @@ import { game } from './gstate.js';
 import { getnow } from './calendar.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { pline, There } from './pline.js';
-import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH } from './const.js';
+import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN } from './const.js';
+import { setworn } from './worn.js';
 import { save_light_sources, lights_save_snapshot } from './light.js';
 import { save_engravings, clear_level_structures } from './mklev.js';
 import { dmonsfree } from './mon.js';
@@ -14,8 +15,9 @@ import { regions_save_snapshot } from './region.js';
 import { worms_save_snapshot } from './worm.js';
 import { object_runtime_save_snapshot } from './o_init.js';
 import { bubbles_save_snapshot, bubbles_clear_level, bubbles_copy_snapshot } from './mkmaze.js';
-import { save_timers_level } from './timeout.js';
+import { save_timers_level, restore_timer_order } from './timeout.js';
 import { vfsWriteFile, vfsReadFile } from './storage.js';
+import { force_more_pages, _topl_more_pages, _topl_joins_snapshot } from './display.js';
 /* The save-file error path terminates through the shared end-game machinery;
  * keep this import aliased because save.js is also reached by bones.js. */
 import { done, done_object_cleanup } from './end.js';
@@ -107,6 +109,11 @@ export async function savelev(lev, freeing = false) {
      * which is exactly why those two are copied rather than referenced.
      * svr.rooms is g.level.rooms, already dropped with the GameMap; billobjs
      * is snapshotted above and detached from the active level below. */
+    for (let otmp = g.fobj; otmp; otmp = otmp.nobj) {
+        const bc = (otmp.owornmask | 0) & (W_BALL | W_CHAIN);
+        if (bc)
+            await setworn(null, bc);
+    }
     clear_level_structures();
     bubbles_clear_level();
     g.ftrap = null;
@@ -171,6 +178,9 @@ export const NOT_SAVED = [
     // C decl.c:341,555 initializes these to FALSE/0; save.c:265-333 omits
     // mhitm.c's noise throttle, so a restored process hears fights afresh.
     'far_noise', 'noisetime',
+    // C decl.h gb.bldrpush_oid / gb.bldrpushtime (hack.c:182-189) are process
+    // globals that save.c never writes; a restored process pushes afresh.
+    '_bldrpush_oid', '_bldrpushtime',
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
     // C save.c:265-333 omits blstats; botl.c:1694,1759-1795 initializes
     // field values, colors and temporary highlight timers in each process.
@@ -179,6 +189,9 @@ export const NOT_SAVED = [
     // blstats[].thresholds, which save.c never writes: a restored process has
     // only its config's hilite_status rules, not ones added from 'O'.
     'status_field_hilites', 'status_condition_hilites',
+    // C utf8map.c glyphmap_u / reset_customsymbols() state is process-local
+    // (apply_customizations at startup from the rc); save.c never writes it.
+    '_gm_customsymbols',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',
     // C save.c:265-333 omits the physical tty frame held by more()
@@ -206,6 +219,11 @@ export const NOT_SAVED = [
     'nhrect', 'n_rects', 'rect_cnt',
     // C decl.h:849: gs.smeq is outside the saved instance globals.
     'smeq',
+    // C mkmaze.c:701-703 gl.lregions / gn.num_lregions: decl.c:568 zeroes
+    // them per process and savegamestate() never writes them, so a lregion
+    // left pending by #wizloadlua does not reach a restored game's next
+    // fixup_special().
+    '_lregions',
     // C decl.h gx.xlock (lock.c lock-pick state) is outside savegamestate();
     // the restoring process starts with it zeroed.
     'xlock',
@@ -221,6 +239,17 @@ async function savegamestate() {
         clock.finish_time = getnow();
         clock.realtime += Math.trunc(clock.finish_time - clock.start_timing);
         clock.start_timing = clock.finish_time;
+    }
+    /* C save.c:166-167,704-718 — only a swallowed hero's free (OBJ_FREE) ball
+     * and chain are kept as gl.looseball/loosechain and written by save_bc();
+     * otherwise a free one is freed with no copy, so restore finds it gone
+     * (restore.c:910 "lost ball & chain"). */
+    {
+        const u = game.u;
+        if (u.uball && u.uball.where === OBJ_FREE && !u.uswallow)
+            await setworn(null, W_BALL);
+        if (u.uchain && u.uchain.where === OBJ_FREE && !u.uswallow)
+            await setworn(null, W_CHAIN);
     }
     const state = {};
     for (const k of Object.keys(game))
@@ -268,6 +297,9 @@ export async function dosave0() {
     g.program_state.saving = (g.program_state.saving | 0) + 1;
     // C save.c:98 — settle active inventory and objects in transit before saving.
     await done_object_cleanup();
+    if (g._pending_message
+        && _topl_more_pages(g._pending_message, _topl_joins_snapshot(g._pending_message)).length > 1)
+        await force_more_pages(g._pending_message, true, false, '');
     /* C save.c:98 — `if (!program_state.something_worth_saving || !gs.SAVEF[0])
      * goto done;` i.e. no game in progress, or no file name. */
     const path = savefile_name(g.plname);
@@ -319,7 +351,20 @@ export async function dosave0() {
                     ? [...state.levelStore.entries()] : [];
                 stored.sort((a, b) => a[0] - b[0]);
                 for (const [lev, snap] of stored) {
-                    if ((lev | 0) === current || !snap?.bubbles)
+                    if ((lev | 0) === current || !snap)
+                        continue;
+                    /* C save.c:210 getlev() re-prepends the stairway, trap
+                     * and damage chains and re-inserts the level timers
+                     * (restore.c:978, 1159-1160, restdamage, restore_timers)
+                     * before save.c:213 savelev() writes them back, so this
+                     * copy pass reverses each chain once, exactly as the
+                     * inactive-level pass of dorecover does again. */
+                    snap.stairs = reverse_chain(snap.stairs, 'next');
+                    snap.ftrap = reverse_chain(snap.ftrap, 'ntrap');
+                    if (snap.level)
+                        snap.level.damagelist = reverse_chain(snap.level.damagelist, 'next');
+                    if (snap.timers) restore_timer_order(snap.timers);
+                    if (!snap.bubbles)
                         continue;
                     snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
                 }
@@ -335,6 +380,18 @@ export async function dosave0() {
     } finally {
         g.program_state.saving = 0;
     }
+}
+
+/* Reverse a singly linked chain in place via its `link` field. */
+function reverse_chain(head, link) {
+    let prev = null, cur = head ?? null;
+    while (cur) {
+        const nxt = cur[link] ?? null;
+        cur[link] = prev;
+        prev = cur;
+        cur = nxt;
+    }
+    return prev;
 }
 
 /* Decode a fresh detached graph for every restore attempt. */

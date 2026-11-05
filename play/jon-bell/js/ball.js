@@ -316,10 +316,10 @@ export async function ballfall() {
     if (!gets_hit) return;
 
     let dmg = rn1(7, 25); // C ball.c:54 rn1(7,25) = rn2(7)+25
-    void pline(`The iron ball falls on your ${body_part(HEAD)}.`);
+    await pline(`The iron ball falls on your ${body_part(HEAD)}.`);
     if (u.uarmh) {
         if (hard_helmet(u.uarmh)) {
-            void pline('Fortunately, you are wearing a hard helmet.');
+            await pline('Fortunately, you are wearing a hard helmet.');
             dmg = 3;
         } else if (game.flags?.verbose !== false) {
             await pline(`${Yname2(u.uarmh)} does not protect you.`); /* C ball.c:59 */

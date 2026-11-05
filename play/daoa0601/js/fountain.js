@@ -7,7 +7,7 @@ import { distmin } from './hacklib.js';
 import { fingersOrGloves } from './do_wear.js';
 import { heroArmName, heroFaceName, heroHandName, monsterArmName, monsterHeadName } from './body_parts.js';
 import { artifactByName, discoverArtifact, nameArtifact, setWieldedArtifactProperties } from './artifacts.js';
-import { ATTRIBUTE_DISPLAY_ORDER, adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, exerciseWisdom } from './attrib.js';
+import { ATTRIBUTE_DISPLAY_ORDER, adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, exerciseWisdom, poisonHeroStrengthAndHp } from './attrib.js';
 import { A_CON, A_DEX, A_MAX, A_STR, A_WIS, DOOR, F_LOOTED, FOUNTAIN, F_WARNED, G_GONE, MM_NOMSG, M_SEEN_FIRE, MON_FLOOR, POOL, POLY_NOFLAGS, ROOM, SDOOR, SINK, S_LRING } from './const.js';
 import { monsterHasMapPosition } from './steed.js';
 import { canSpotMonster, glyphAt, newsym } from './display.js';
@@ -26,7 +26,7 @@ import { finishLiquidDeathForCurrentMover } from './hero_monster_death.js';
 import { displayColorName, displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { monsterPossessive, monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterHasNoLimbs } from './mondata.js';
 import { level_difficulty } from './dungeon.js';
-import { BOULDER, DILITHIUM_CRYSTAL, LONG_SWORD, LUCKSTONE, OBJECT_DESCRIPTIONS, POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_POLYMORPH, POT_WATER, requireObjectData } from './object_data.js';
+import { BOULDER, DILITHIUM_CRYSTAL, LONG_SWORD, LUCKSTONE, POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_POLYMORPH, POT_WATER, } from './object_data.js';
 import { promptYesNo } from './query.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
@@ -38,7 +38,6 @@ import { formatFeltMessage, formatHeardMessage, formatSeenMessage, publishHeardM
 import { morehungry, newuhs, vomit } from './eat.js';
 import { showEnlightenment } from './insight.js';
 import { fruitName } from './fruit.js';
-import { poisonHeroStrengthAndHp } from './poison.js';
 import { detectMonsters } from './detect.js';
 import { grantIntrinsicProperty, propertyIsActive, setPropertyTimeout } from './properties.js';
 import { encumber_msg } from './pickup.js';
@@ -47,7 +46,7 @@ import { someGold } from './steal.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { consumeInventoryItem } from './invent.js';
 import { tryCallObjectType, polymorphSink } from './do.js';
-import { observeObject } from './o_init.js';
+import { OBJ_DESCR, observeObject } from './o_init.js';
 import { heroIsUnchanging, polymorphHero } from './polyself.js';
 import { createPoisonGasCloud } from './regions.js';
 import { updateUnpaidObjectPrice, deleteObject } from './shk.js';
@@ -939,7 +938,7 @@ async function drinkFaucetPotion(state) {
     }
     source.blessed = source.cursed = false;
     try {
-        const appearance = state.objectDescriptions?.[source.otyp] ?? requireObjectData(OBJECT_DESCRIPTIONS, source.otyp);
+        const appearance = OBJ_DESCR(source.otyp, state);
         if (appearance === null)
             throw new Error(`Potion type ${source.otyp} has no appearance`);
         await pline(`Some ${heroIsBlind(state) ? 'odd' : displayColorName(appearance, state)} liquid flows from the faucet.`);

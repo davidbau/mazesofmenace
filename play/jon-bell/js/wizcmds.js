@@ -304,7 +304,12 @@ export function bane_applies_hero(arti) {
 
 export async function touch_artifact_youmonst(otmp) {
     const g = game;
-    g._touch_artifact_blast_msg = null; /* C artifact.c:913 touch_blasted = FALSE */
+    g._touch_artifact_blast_msg = null;
+    g._touch_blasted = false; /* C artifact.c:913 touch_blasted = FALSE — the
+                               * file static itself.  The message field above is
+                               * only routing: maybe_wail (hack.c:4210-4241) and other
+                               * publishers CLEAR it, so it cannot stand in for
+                               * the static retouch_object reads at :2535. */
     g._deferredPline = null;
     const arti = (otmp && (otmp.oartifact | 0)) || 0;
     if (!arti) return 1; /* C artifact.c:914-915 ART_NONARTIFACT → return 1 */
@@ -356,6 +361,7 @@ export async function touch_artifact_youmonst(otmp) {
          * objnam.c:663-664 proper-name shortcut for identified artifacts. */
         g._touch_artifact_blast_msg =
             `You are blasted by ${_ta_s_suffix(the(xname(otmp)))} power!`;
+        g._touch_blasted = true; /* C artifact.c:952 touch_blasted = TRUE */
         /* artifact.c:951 vpline flushes before :953/:958 roll/apply damage. */
         prepare_deferred_pline(g._touch_artifact_blast_msg);
         if (g._statusBlankAfterDocrt && g.disp?.botlx) await bot();
@@ -766,6 +772,10 @@ function _wish_mergable(into, obj) {
         if ((obj.corpsenm ?? -1) !== (into.corpsenm ?? -1)) return false;
         if (ot === 266 && (obj.timed || into.timed)) return false;
     }
+    /* C invent.c:4462-4465 — saved monster traits (e.g. a tame pet's corpse)
+     * or an omid never merge. */
+    if (obj.oextra?.omonst || obj.oextra?.omid
+        || into.oextra?.omonst || into.oextra?.omid) return false;
     /* C invent.c:4467-4477 — if both are named, the names must match
      * (a corpse needs equal name-presence too). */
     const _nm1 = obj.oextra?.oname ?? '', _nm2 = into.oextra?.oname ?? '';
@@ -862,7 +872,13 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
     const _botlOwed = !!(g.disp && (g.disp.botl || g.disp.botlx)) || g._wishBotlOwedAtPrinv === true;
     g._wishBotlOwedAtPrinv = false;
     const prev = g._resultMessage;
-    if (prev) {
+    if (g._topl_win_stop) {
+        /* topl.c:257 skip: the pline is buffered in gt.toplines, never painted
+         * or paged (:262-270 join, :289-291 replace). */
+        const hidden = String(g._topl_win_stop_buf || '');
+        g._topl_win_stop_buf = (hidden && hidden.length + 2 + msg.length < TOPL_LIMIT)
+            ? hidden + '  ' + msg : msg;
+    } else if (prev) {
         const joined = prev + '  ' + msg;
         _topl_record_join(prev, joined);
         g._resultMessage = joined;
@@ -1101,6 +1117,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
         if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
                 g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
                     : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+                _wish_prinv_owns_stop(prinvLine);
                 _c2last = undefined;
             }
             if (_c2last) await force_more(_c2last);
@@ -1191,10 +1208,25 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
         if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
                 g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
                     : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
+        _wish_prinv_owns_stop(prinvLine);
         _c2last = undefined;
     }
     if (_c2last) await force_more(_c2last);
     await _wish_encumber_msg(_oldcap, prinvLine);
+}
+
+/* C topl.c:232-234 + :257: an ESC at the decipher page force_more()d just
+ * above sets WIN_STOP inside prinv's OWN update_topl, after its skip sample,
+ * so prinv still paints (:300) but every later pline of this wish --
+ * encumber_msg's "Your movements are slowed slightly because of your load."
+ * (pickup.c:1979) -- is skipped: no paint, no more().  _topl_more only ARMS
+ * the bit; pline() turns it live in its owner, and prinv bypasses pline(). */
+function _wish_prinv_owns_stop(prinvLine) {
+    const g = game;
+    if (!g._topl_win_stop_armed) return;
+    g._topl_win_stop_armed = false;
+    g._topl_win_stop = true;
+    g._topl_win_stop_buf = prinvLine;
 }
 
 /* C topl.c:262-265 update_topl(): prinv's pline joins the standing

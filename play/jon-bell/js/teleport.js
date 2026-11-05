@@ -22,13 +22,13 @@ import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at
 import { game } from './gstate.js';
 import { You_feel, pline_mon } from './pline.js';
 import { registerStaticReset } from './statics.js';
-import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages } from './display.js';
+import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages, debugpline } from './display.js';
 import { vision_recalc } from './vision.js';
 import { nomul } from './allmain.js';
 import { Warning, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { pline } from './pline.js';
 import { Monnam } from './mcastu.js';
-import { Amonnam } from './mhitm.js';
+import { Amonnam, m_monnam } from './mhitm.js';
 import { You } from './eat.js';
 import { spot_time_left } from './timeout.js';
 import { is_ice } from './engrave.js';
@@ -1078,10 +1078,15 @@ function ok_to_obliterate_tp(mon) {
 
 /* C mon.c:3985 deal_with_overcrowding(mtmp). */
 export async function deal_with_overcrowding(mtmp) {
-    if (In_endgame(game.u?.uz))
+    /* debugpline1 (lint.h:61): shown only when debugcore() admits mon.c;
+     * m_monnam is EXACT_NAME, so building the argument draws nothing. */
+    if (In_endgame(game.u?.uz)) {
+        await debugpline('mon.c', 'overcrowding: elemental_clog on %s', m_monnam(mtmp));
         await elemental_clog(mtmp);
-    else
+    } else {
+        await debugpline('mon.c', 'overcrowding: sending %s into limbo', m_monnam(mtmp));
         await m_into_limbo(mtmp);
+    }
 }
 /* C mon.c:3955 mnexto(mtmp, rlocflags) — "make monster mtmp next to you (if
  * possible); might place monst on far side of a wall or boulder". */
@@ -1720,8 +1725,14 @@ export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
     }
     /* (set before the pline: its flush must not repaint the arrival Dlvl) mid-goto_level the status row still holds the last bot() paint (Dlvl of the
      * level being left): do.c:1840 docrt()/bot() has not run yet */
-    if (game._levelgenPaintFreeze && !game._status_blanked && game._levelgenPaintFreeze.dlevel != null)
-        game._botlUzFrozen = { dnum: game._levelgenPaintFreeze.dnum, dlevel: game._levelgenPaintFreeze.dlevel };
+    if (game._levelgenPaintFreeze && !game._status_blanked) {
+        /* mklev's own freeze frame (baalz_fixup -> rloc) carries no dlevel; the
+         * physical status row is then the last bot() paint */
+        const fz = game._levelgenPaintFreeze.dlevel != null ? game._levelgenPaintFreeze
+                 : game._lastPaintedBotl;
+        if (fz && fz.dlevel != null)
+            game._botlUzFrozen = { dnum: fz.dnum, dlevel: fz.dlevel };
+    }
     await pline(`Teleport ${noit_mon_nam(mon)} @ <${mon.mx},${mon.my}> where?`);
     const tcbuf = 'where to teleport ' + noit_mon_nam(mon);
     const gp = await getpos(cc_p, false, tcbuf);

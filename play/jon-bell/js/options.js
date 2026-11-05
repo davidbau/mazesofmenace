@@ -26,7 +26,7 @@ import { parseautocomplete } from './cmd.js';
 import { config_error_add } from './cfgfiles.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
-import { sym_val_real } from './symbols.js';
+import { sym_val_real, apply_pending_s_utf8 } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
 import { add_menu_coloring, match_str2clr, attr2attrname } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
@@ -785,6 +785,10 @@ export function parseNethackrc(rc) {
                 const pairMatch = entry.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
                 if (pairMatch)
                     (result.symbolPairs ||= []).push([pairMatch[1], pairMatch[2]]);
+                /* symbols.c:830-837: a U+ value goes to
+                 * glyphrep_to_custom_map_entries, not ov_primary_syms. */
+                if (pairMatch && /^u\+/i.test(pairMatch[2]))
+                    continue;
                 const symMatch = entry.match(/^\s*(S_(?:pool|boulder|vodoor|hodoor|room|corr|litcorr|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
                 if (symMatch)
                     (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
@@ -2659,13 +2663,13 @@ async function numberPadSubmenu() {
 // class symbols toggle selection in place; Enter/space confirm, ESC cancels.
 // On confirm, write the selected symbols (in PICKUP_CLASSES order) to
 // game.flags.pickup_types.  Consumes NO RNG.
-async function pickupTypesSubmenu(bgRows, preserveStatus = false) {
+async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = false) {
     const g = game;
     /* C ref: options.c:3330-3352 optfn_pickup_types(do_set) — under
      * menustyle:traditional/combination the value is read with getlin
      * ("New pickup_types: [<inv order> am] (<cur>|all)"), and only an answer
      * starting with 'm' falls through to the choose_classes_menu picker. */
-    if (g.flags?.menu_style === MENU_TRADITIONAL || g.flags?.menu_style === MENU_COMBINATION) {
+    if (!prompted && (g.flags?.menu_style === MENU_TRADITIONAL || g.flags?.menu_style === MENU_COMBINATION)) {
         const tbuf = oc_to_str(g.flags?.pickup_types);
         const ocl = (g.flags?.inv_order || [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16])
             .map((oc) => def_oc_syms_chars[oc]).join('');
@@ -2864,7 +2868,8 @@ async function optfn_pickup_types_handler(preserveStatus) {
     } else if (!op || op.charAt(0) === '\x1b') {
         /* restore: unchanged */
     } else if (op.charAt(0) === 'm') {
-        await pickupTypesSubmenu(undefined, preserveStatus);
+        /* C :3354 use_menu = TRUE — the getlin was already asked */
+        await pickupTypesSubmenu(undefined, preserveStatus, true);
     } else {
         g.flags.pickup_types = parse_pickup_types(op);
         const trimmed = op.replace(/^ +/, '');
@@ -3172,6 +3177,29 @@ export async function doset_simple() {
         }
         // any other key: ignore, menu stays displayed.
     }
+    /* C options.c:8724-8731: the do-while runs reset_needed_visuals() after the
+     * FINAL doset_simple_menu() too — the ESC/CR/space-past-the-end round.  Its
+     * select_menu exit dismissed the Options window inside the gb.bot_disabled
+     * span first (wintty.c:2794 -> tty_dismiss_nhwindow:1992 ->
+     * erase_menu_or_text:972-974 `docrt(); flush_screen(1);`, windows.c:1859
+     * -1863), so the map is already printed and cls/docrt left disp.botlx
+     * armed (display.c:2197/1769).  The bare `if (disp.botl || disp.botlx)
+     * bot()` of reset_needed_visuals (options.c:9006) then BL_RESET-repaints
+     * status row 1 whole over map y=20 (botl.c:1670) with no gnew flush after
+     * it — the frame read by the next key shows the status text, not the map
+     * print (statuslines:3, ro445 step 268: C "Wizard the Tenderfoot...",
+     * ours blank).  The dispatch tail's plain docrt()+flush_screen(1) modeled
+     * that exit bot-ENABLED, i.e. with bot() BEFORE the gnew map loop
+     * (display.c:2236-2256), so the map print landed on top instead. */
+    {
+        const oldBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await docrt();
+            await flush_screen(1);
+        } finally { g._bot_disabled = oldBotDisabled; }
+    }
+    await reset_needed_visuals(); // C options.c:8727: bare bot() with the dismissal's botlx.
     /* C options.c:8733 — doset_simple ends with give_opt_msg = TRUE, undoing
      * an earlier full doset()'s idlecheckpoint pick (options.c:5318). */
     option_state().give_opt_msg = true;
@@ -4212,6 +4240,20 @@ export async function doset() {
                             }
                             g.flags.inv_order = order.concat(previous.filter(oc => !order.includes(oc)));
                         }
+                    } else if (abuf !== '\x1b' && ent.row.name === 'glyph') {
+                        /* C options.c:1824-1838 optfn_glyph(do_set).  The
+                         * interactive 'O' command has config_error_ready clear,
+                         * so config_erradd() (cfgfiles.c:1556-1563) plines each
+                         * error at once, adding a period when unpunctuated. */
+                        const op = mungspaces(abuf);
+                        if (op) {
+                            const base = (g._config_errors ||= []).length;
+                            glyphrep_to_custom_map_entries(op, { value: 0 });
+                            for (const m of g._config_errors.splice(base)) {
+                                if (typeof m !== 'string') continue;
+                                await pline('%s%s', m, /[.!?]$/.test(m) ? '' : '.');
+                            }
+                        }
                     } else if (abuf !== '\x1b' && ent.row.name === 'statuslines') {
                         /* C options.c:4067-4098 optfn_statuslines(do_set) */
                         const message = optfn_statuslines_set(mungspaces(abuf));
@@ -4569,6 +4611,7 @@ export function can_set_perm_invent() {
  * when resolving them instead of allocating per-glyph u entries. */
 function reset_customsymbols() {
     game._gm_customsymbols = game.iflags.customsymbols !== false;
+    if (game._gm_customsymbols) apply_pending_s_utf8();
 }
 
 export async function reset_needed_visuals() {

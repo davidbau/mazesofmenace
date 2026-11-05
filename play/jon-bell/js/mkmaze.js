@@ -26,7 +26,7 @@ import {
 import { load_special } from './sp_lev.js';
 import { obj_ice_effects, count_level_features } from './mklev.js';
 import { place_object, remove_object } from './mklev.js';
-import { u_on_newpos } from './dungeon.js';
+import { u_on_newpos, dunlevs_in_dungeon } from './dungeon.js';
 import { stackobj } from './sp_lev.js';
 import { newsym, dec_mode } from './display.js';
 import { pline } from './pline.js';
@@ -1317,9 +1317,6 @@ function _sb_DEADMONSTER(mon) {
  * copies in js/makemon.js, js/dog.js, js/bones.js and js/cmd.js and exports
  * none of them, so these are file-local too rather than a fifth import path
  * invented for two callers. */
-function _sb_dunlevs_in_dungeon(lev) {
-    return (game.dungeons?.[lev?.dnum | 0]?.num_dunlevs | 0);
-}
 function _sb_ledger_no(lev) {
     return ledger_no(lev);
 }
@@ -1347,7 +1344,7 @@ async function migrate_orc(mtmp, mflags) {
     let nlev;
     const cur_depth = depth(uz) | 0;
     /* C: dunlevs_in_dungeon(&u.uz) + (svd.dungeons[u.uz.dnum].depth_start - 1) */
-    const max_depth = _sb_dunlevs_in_dungeon(uz)
+    const max_depth = dunlevs_in_dungeon(uz)
                       + ((g.dungeons?.[uz?.dnum | 0]?.depth_start | 0) - 1);
 
     if (mflags === ORC_LEADER) {

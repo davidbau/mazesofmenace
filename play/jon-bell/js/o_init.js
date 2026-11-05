@@ -142,13 +142,21 @@ export function randomize_gem_colors() {
     const g = game;
     g._objDescriptions = g._objDescriptions || {};
     g._objColors = g._objColors || {};
+    g._objDescrIdx = g._objDescrIdx || {};
     /* OC_DESCR/MKOBJ_OC_COLOR are the canonical (objects.c) tables; the source
      * gems are never re-described before this point, so reading them directly
      * is the same value C's objects[o_src] holds. */
     const COPY_OBJ_DESCR = (o_dst, o_src) => {
         g._objDescriptions[o_dst] = OC_DESCR[o_src];
         g._objColors[o_dst] = MKOBJ_OC_COLOR[o_src];
+        g._objDescrIdx[o_dst] = o_src; /* o_dst.oc_descr_idx = o_src.oc_descr_idx */
     };
+    /* objects[] is rebuilt per game (init_objects); drop a previous game's copy. */
+    for (const o of [TURQUOISE, AQUAMARINE, FLUORITE]) {
+        g._objDescriptions[o] = OC_DESCR[o];
+        g._objColors[o] = MKOBJ_OC_COLOR[o];
+        g._objDescrIdx[o] = o;
+    }
     if (rn2(2)) { /* change turquoise from green to blue? */
         COPY_OBJ_DESCR(TURQUOISE, SAPPHIRE);
     }

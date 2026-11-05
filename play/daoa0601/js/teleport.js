@@ -11,7 +11,7 @@ import { currentAttribute, exerciseWisdom } from './attrib.js';
 import { castSpell, createMemorizedSpell, knownSpell } from './spell.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './tty_menu.js';
 import { randomTeleportDepth, levelTeleport } from './level_teleport.js';
-import { depth, dist2, distmin } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
 import { clampHoleDestination, deleteTrap, seeTrap, mintrap, fillPitWithBoulderAt, resetUtrap, heroIsUnconscious } from './trap.js';
 import { levelAtDepth, insideWizardTower, levelIsWizardTower, levelIsWaterLevel } from './dungeon.js';
 import { propertyIsActive } from './properties.js';
@@ -24,7 +24,7 @@ import { leashAttachedToMonster, releaseMonsterLeash, bringLeashedFollowers } fr
 import { rn2, rnd } from './rng.js';
 import { isok } from './cmd.js';
 import { MONSTER_GENO, MONSTER_SYMBOL } from './monster_data.js';
-import { AMULET_OF_YENDOR, BOULDER, CORPSE, OBJECT_SPELL_LEVEL, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, SCR_SCARE_MONSTER, SPE_TELEPORT_AWAY, WAN_TELEPORTATION } from './object_data.js';
+import { AMULET_OF_YENDOR, BOULDER, CORPSE, oc_level, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, SCR_SCARE_MONSTER, SPE_TELEPORT_AWAY, WAN_TELEPORTATION } from './object_data.js';
 import { morehungry } from './eat.js';
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished, placeBallAndChain, unplaceBallAndChain } from './ball.js';
 import { ACCESSIBLE, ALTAR, CC_INCL_CENTER, CC_NO_FLAGS, CC_RING_PAIRS, CC_SKIP_INACCS, CC_SKIP_MONS, CC_UNSHUFFLED, COLNO, D_CLOSED, D_LOCKED, DOOR, GP_ALLOW_U, GP_ALLOW_XY, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_STWALL, LEVEL_TELEP, MAGIC_PORTAL, MAX_TYPE, MM_IGNORELAVA, MM_IGNOREWATER, RLOC_ERR, RLOC_MSG, RLOC_NOMSG, RLOC_NONE, ROWNO, SHOPBASE, STRAT_APPEARMSG, TELEP_TRAP, TT_BURIEDBALL, VAULT, VIBRATING_SQUARE, WATER, W_NONPASSWALL, ZAP_POS, In_endgame, Is_botlevel, Is_stronghold, MIGR_PORTAL, MIGR_RANDOM, M_AP_NOTHING, MON_FLOOR, Upolyd, is_hole, is_pit, A_STR, BOLT_LIM, HOLE, MENU_ITEMFLAGS_SELECTED, NHW_MENU, PICK_ONE } from './const.js';
@@ -41,7 +41,7 @@ import { heroLikesLava } from './polyself.js';
 import { promptYesNo } from './query.js';
 import { heroIsBlind, setHeroBlindnessTurns, heroIsHallucinating } from './senses.js';
 import { buriedBallToPunishment } from './dig.js';
-import { placeHeroOnLevel } from './hero_location.js';
+import { depth, placeHeroOnLevel } from './dungeon.js';
 import { makeStunned, makeConfused } from './potion.js';
 import { learnObjectType } from './o_init.js';
 import { hasShopkeeperData } from './shop_types.js';
@@ -564,7 +564,7 @@ export async function teleportHeroAtWill({ state = game, random = rn2, rollOne =
                 };
             }
         }
-        const level = OBJECT_SPELL_LEVEL[SPE_TELEPORT_AWAY];
+        const level = oc_level(SPE_TELEPORT_AWAY);
         if (level === undefined)
             throw new Error('Teleport-away has no spell level');
         const energy = 5 * level;

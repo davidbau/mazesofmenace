@@ -167,10 +167,22 @@ async function read_yn(prompt, acceptQ) {
         let key;
         try { key = await nhgetch(); }
         finally { g._topl_suppress_history = sh; }
-        /* C topl.c:432-459 — ^P recalls history (twice the first time); the next
-         * key is swallowed by the reprompt. */
+        /* C topl.c:432-459 — ^P recalls history.  msg_window:single recalls
+         * twice (first time "need two initially") and the NEXT key is then
+         * swallowed by the reprompt; the menu modes show the history window
+         * once and re-add the prompt with no swallow. */
         if (key === 16) {
             const { doprev_message } = await import('./cmd.js');
+            if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
+                /* topl.c:435-442: tty_doprev_message() (blocking window), then
+                 * tty_clear_nhwindow(WIN_MESSAGE) + addtopl(prompt); doprev
+                 * stays 0, so the next key answers the re-added prompt. */
+                await doprev_message();
+                g._pending_message = shown;
+                await flush_screen(1);
+                if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);
+                continue;
+            }
             if (!doprev) await doprev_message();
             await doprev_message();
             /* redotoplin leaves the cursor after the recalled text. */

@@ -30,8 +30,8 @@ import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level, ledger_no } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
-import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, impossible_sync } from './display.js';
-import { yn_function_menu } from './cmd.js';
+import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, impossible_sync } from './display.js';
+import { yn_function_menu, randomkey, readchar } from './cmd.js';
 import { bot } from './botl.js';
 import { pline, urgent_pline } from './pline.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
@@ -78,6 +78,7 @@ import { init_uhunger } from './eat.js';
 import { carrying } from './invent.js';
 import { make_sick, peffects, set_itimeout, POT_WATER } from './potion.js';
 import { bless } from './mkobj.js';
+import { ismnum } from './const.js';
 import { wiz_makemap } from './wizcmds.js';
 import { reset_utrap } from './trap.js';
 import { display_text_window } from './com_pager.js';
@@ -608,59 +609,52 @@ export async function savelife(how, inPlace, countdown = false) {
 async function fuzzer_savelife(how) {
     const g = game;
     const u = g.u || (g.u = {});
-    let otmp;
-
+    if (g.program_state?.panicking || how === PANICKED || how === TRICKED)
+        return false; /* panic or too many consecutive deaths */
     await savelife(how, true);
-    otmp = await mksobj(POT_RESTORE_ABILITY, false, false);
-    if (otmp) {
-        await bless(otmp);
-        await peffects(otmp);
-        await obfree(otmp, null);
-    }
-    otmp = await mksobj(POT_WATER, false, false);
-    if (otmp) {
-        await bless(otmp);
-        otmp.invlet = 'a';
-        otmp.owornmask = 0;
-        otmp.nobj = g.invent || null;
-        g.invent = otmp;
-        if (u.uamul) {
-            await bless(u.uamul);
-            u.uamul.oeroded = 0;
-            u.uamul.oeroded2 = 0;
-        }
-        if (u.ugloves) {
-            await bless(u.ugloves);
-            u.ugloves.oeroded = 0;
-            u.ugloves.oeroded2 = 0;
-        }
-        if (u.uarmh) {
-            await bless(u.uarmh);
-            u.uarmh.oeroded = 0;
-            u.uarmh.oeroded2 = 0;
-        }
-        for (let obj = g.invent; obj; obj = obj.nobj) {
-            obj.blessed = 1;
-            obj.cursed = 0;
-        }
-        await useup(otmp);
-    }
 
-    u.uprops = u.uprops || {};
-    for (const prop of [STONED, SLIMED]) {
-        const p = u.uprops[prop] || (u.uprops[prop] = { intrinsic: 0, extrinsic: 0 });
-        const box = { value: p.intrinsic | 0 };
-        set_itimeout(box, 0);
-        p.intrinsic = box.value;
+    if (!rn2(((g.done_seq | 0) > ((g.hero_seq | 0) + 2)) ? 2 : 10)) {
+        let potion;
+        let remedies = 0;
+        if (ismnum(u.ulycn | 0) && !rn2(3)) {
+            potion = await mksobj(POT_WATER, true, false);
+            await bless(potion);
+            await peffects(potion);
+            await obfree(potion, null);
+            ++remedies;
+        }
+        if (!remedies || rn2(3)) {
+            potion = await mksobj(POT_RESTORE_ABILITY, true, false);
+            await bless(potion);
+            await peffects(potion);
+            await obfree(potion, null);
+            ++remedies;
+        }
+        if (!rn2(3 + 3 * remedies)) {
+            u.uprops = u.uprops || {};
+            for (let propidx = 1; propidx <= 8; ++propidx) {
+                const p = u.uprops[propidx] || (u.uprops[propidx] = { intrinsic: 0, extrinsic: 0 });
+                let proptim;
+                if (!p.intrinsic && !p.extrinsic && (proptim = rn2(3)) > 0) {
+                    const box = { value: p.intrinsic | 0 };
+                    set_itimeout(box, 2 * proptim + 1);
+                    p.intrinsic = box.value;
+                }
+            }
+            ++remedies;
+        }
+        if (!rn2(5 + 5 * remedies)) {
+            ; /* might confer temporary Antimagic or Invulnerable */
+        }
     }
-
-    if ((g.moves | 0) > 2500 && !rn2(5)) {
-        cmdq_add_ec(CQ_CANNED, wiz_makemap);
-    }
-
     if (g.svk?.killer) {
         g.svk.killer.name = '';
-        g.svk.killer.format = KILLED_BY_AN;
+        g.svk.killer.format = 0;
+    }
+    if ((g.done_seq = (g.done_seq | 0) + 1) - 1 > (g.hero_seq | 0) + 100) {
+        if (!g.flags?.debug)
+            return false; /* can't deal with it */
+        cmdq_add_ec(CQ_CANNED, wiz_makemap);
     }
     return true;
 }
@@ -954,10 +948,16 @@ export async function do_death_sequence(opts) {
         if ((pd.how | 0) === CHOKING_END)
             await pline('You vomit ...');
         const _muchbetter = Unaware() ? 'You dream that you feel much better!' : 'You feel much better!'; /* You_feel, pline.c:387-400 */
+        /* Earlier plines of the turn that overflowed have each more()d by now
+         * in C (topl.c:272); only the last page's text is still on the topline.
+         * Split the WHOLE pending line first: a prejoined "But wait..." can
+         * itself be the tail of an earlier page ("You have turned to stone.
+         * You are a statue.  But wait...--More--"), and then the medallion
+         * pline opened the topline the next join is tested against. */
+        let _commit = _topl_more_pages(g._pending_message || '').at(-1);
         /* The pending string still carries the killing blow's line that the page
          * above already dismissed; only the topline opened by "But wait..."
          * (end.c:1082) is committed text the next pline must fit against. */
-        let _commit = g._pending_message || '';
         if (_prejoinedButWait && _commit.includes('But wait...'))
             _commit = _commit.slice(_commit.lastIndexOf('But wait...'));
         if (!_topl_joins_committed(_commit, _muchbetter))
@@ -1193,6 +1193,17 @@ const TOPL_LIMIT_END = 71;
  * two recorded keystrokes. */
 async function _yn_readchar() {
     const g = game;
+    /* C cmd.c:5217-5219 readchar_core: the fuzzer key comes from randomkey()
+     * and jumps to readchar_done, so no tty_nhgetch (no input boundary) and
+     * no altmeta fold. */
+    if (g.iflags?.debug_fuzzer) {
+        const sym0 = randomkey();
+        g.program_state.input_state = 0; // otherInp
+        return sym0;
+    }
+    /* C cmd.c:5217-5219 readchar_core: the fuzz tester's randomkey() skips
+     * tty_nhgetch (and its input boundary) and the altmeta decode below. */
+    if (g.iflags?.debug_fuzzer) return await readchar();
     let raw = await nhgetch();
     let sym = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
     if (sym === 27 && g.iflags?.altmeta && g.program_state?.input_state) {
@@ -1326,11 +1337,21 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             const key = typeof raw === 'number' ? raw
                       : (raw && raw.charCodeAt ? raw.charCodeAt(0) : 0);
             const _answered = (c) => { g._toplEmptyAfterSuppress = false; putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0))); return c; };
-            /* C topl.c:432-460 — ^P recalls message history (twice the first time,
-             * "need two initially"); the NEXT key is swallowed by the reprompt
-             * (topl.c:452-459 "BUG[?]") whatever it is. */
+            /* C topl.c:432-460 — ^P recalls message history.  msg_window:single
+             * recalls twice ("need two initially") and the NEXT key is then
+             * swallowed by the reprompt (topl.c:452-459 "BUG[?]"); the menu
+             * modes show the history window once and re-add the prompt with
+             * no swallow (topl.c:435-442). */
             if (key === 16) {
                 const { doprev_message } = await import('./cmd.js');
+                if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
+                    /* topl.c:438-442: tty_doprev_message() (blocking window),
+                     * then tty_clear_nhwindow(WIN_MESSAGE) + addtopl(prompt);
+                     * doprev stays 0, so the next key answers the prompt. */
+                    await doprev_message();
+                    doprev = false;
+                    continue; /* loop top re-adds the prompt */
+                }
                 if (!doprev) await doprev_message();
                 await doprev_message();
                 if (g.nhDisplay) topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
@@ -2344,7 +2365,13 @@ async function really_done(how) {
     }
 }
 
-function freedynamicdata() {}
+/* C save.c:1077 freedynamicdata — only the parts with state that outlives
+ * a JS segment are modelled.  save.c:1136 wish_history_flush(): C's static
+ * wish_history[] is emptied before exit, so a restored game starts with none. */
+async function freedynamicdata() {
+    const { wish_history_flush } = await import('./zap.js');
+    wish_history_flush();
+}
 function dlb_cleanup() {}
 
 // C end.c:1680-1692 nh_terminate. The process adapter catches this terminal exception.
@@ -2354,7 +2381,7 @@ export async function nh_terminate(status, reason = 'game over') {
     await l_nhcore_call(NHCORE_GAME_EXIT);
     // C end.c:1684-1688: don't bother to free memory if we're in panic mode.
     if (!game.program_state.panicking) {
-        freedynamicdata();
+        await freedynamicdata();
         dlb_cleanup();
         await l_nhcore_done();
     }

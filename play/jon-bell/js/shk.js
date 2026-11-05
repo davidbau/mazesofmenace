@@ -73,14 +73,14 @@ import { resist_conflict } from './mondata.js';
 import { move_special } from './priest.js';
 import { rn2 as rn2_shk, rnd as rnd_shk } from './rng.js';
 import { depth as depth_shk } from './dungeon.js';
-import { builds_up, on_level as on_level_real } from './dungeon.js';
+import { builds_up, on_level } from './dungeon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { OC_COST, OC_CHARGED } from './oc_cost_data.js';
 import { OC_NAME } from './oc_name_data.js';
-import { xname_flags as xname_flags_shk, CXN_NORMAL as CXN_NORMAL_SHK, the as the_shk, The as The_shk, thesimpleoname as thesimpleoname_real, simpleonames, simpleonames as simpleonames_real, short_oname as short_oname_shk, PREFIX } from './objnam.js';
+import { xname, the as the_shk, The as The_shk, thesimpleoname, simpleonames, simpleonames as simpleonames_real, short_oname as short_oname_shk, PREFIX } from './objnam.js';
 import { arti_cost } from './artifact.js';
 /* C attrib.c acurr(i) — ACURR(A_CHA) in get_cost(). */
 import { acurr, adjalign, adjalign as adjalign_real } from './attrib.js';
@@ -720,8 +720,71 @@ async function menu_pick_pay_items(ibillct, ibill) {
         }
         /* C process_menu_window default: ring the bell, leave the menu up. */
     }
+
+    const maxrow = renderLines().length + 1; /* cw->maxrow: footer row + 1 */
+    if (FULL_SCREEN) {
+        const { docrt: dismiss_docrt, status_r1_menu_docrt } = await import('./display.js');
+        /* windows.c:1859-1863: select_menu holds gb.bot_disabled over the
+         * whole dismissal, docrt() included, so a pline raised by docrt's
+         * redraw pages over blank status rows. */
+        const oldBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        g._statusBlankAfterDocrt = true;
+        try {
+            await dismiss_docrt();
+            /* wintty.c:978-979 flushes the map before bot processing is
+             * restored; consume docrt's pending glyphs now so the next bot()
+             * paints over the already printed map. */
+            await flush_screen(1);
+        } finally {
+            g._bot_disabled = oldBotDisabled;
+        }
+        /* same row-1 ordering as tty_menu.js's dismissal and cmd.js
+         * _dismissMenu: the botlx bot() rewrites status row 1 over docrt's
+         * map row 20 cells */
+        status_r1_menu_docrt();
+        g._r1botAfterMap = g.level;
+        g._r1textOver = true;
+        g._statusBlankAfterDocrt = true;
+        if (g.disp) g.disp.botlx = 1;
+        g._gm_corner = undefined;
+    } else {
+        /* wintty.c:982,3684-3688: docorner erases row 0 from offx-1,
+         * leaving only the prefix of an EMPTY message window's residue; its
+         * logical EMPTY state survives dismissal (tty_menu.js's same model).
+         * erase_menu_or_text passes cw->maxrow + 1 — the row below the
+         * footer included; the footer sits at row renderLines().length. */
+        if (g._topl_empty_sticky && g._topl_sticky === g._topl_empty_sticky) {
+            g._topl_sticky = g._topl_sticky.slice(0, Math.max(0, WIN_COL - 2)).trimEnd();
+            g._topl_empty_sticky = g._topl_sticky;
+        }
+        const prev = g._gm_corner;
+        g._gm_corner = { col: Math.min(WIN_COL, prev?.col ?? Infinity),
+                         rows: Math.max(maxrow, prev?.rows ?? 0) };
+        const { docorner_blank_utf8_captures, docorner_status_rows,
+                _threeStatusLines } = await import('./display.js');
+        const { _overlay_status_line } = await import('./com_pager.js');
+        docorner_blank_utf8_captures(WIN_COL - 1, maxrow + 1);
+        docorner_status_rows(WIN_COL - 1, maxrow + 1);
+        /* wintty.c:3715-3719 docorner(): a window tall enough to reach the
+         * status rows "wrecked the bottom line" and sets disp.botlx; bot()
+         * is a no-op because select_menu still holds gb.bot_disabled, so
+         * botlx stays pending for the next flush_screen. */
+        const statusOffy = SCREEN_ROWS - (_threeStatusLines() ? 3 : 2);
+        if (maxrow + 1 >= statusOffy) {
+            if (g.disp) g.disp.botlx = 1;
+            const rows = String(g._screen_output ?? '').split('\n');
+            for (let y = statusOffy; y < Math.min(maxrow + 1, SCREEN_ROWS, rows.length); y++)
+                rows[y] = _overlay_status_line(rows[y], Math.max(0, WIN_COL - 2), '')
+                    .replace(/(?: |\x1b\[\d+C)+$/, '');
+            if (rows.length >= SCREEN_ROWS) g._screen_output = rows.join('\n');
+        }
+    }
+    /* erase_menu_or_text repaints the rows the window covered (wintty.c:966-983)
+     * with the symset handling live at dismissal. */
+    if (g._decStaleFrom != null)
+        g._decStaleFrom = Math.max(g._decStaleFrom, maxrow + 1);
     g._pending_message = '';
-    await flush_screen(1);
     if (cancelled)
         return 0;
     let n = 0;
@@ -863,7 +926,7 @@ async function reject_purchase(shkp, obj, billedQuan) {
     obj.quan = (billedQuan | 0) - intact;
     if (!_shk_Deaf() && !muteshk(shkp)) {
         const which = (obj.where | 0) === OBJ_CONTAINED_SHK
-            ? `the one${plur(intact)} in ${thesimpleoname_real(obj.ocontainer)}`
+            ? `the one${plur(intact)} in ${thesimpleoname(obj.ocontainer)}`
             : intact > 1 ? "these" : "this one";
         SetVoice(shkp, 0, 80, 0);
         await verbalize("%s for the other %s before buying %s.",
@@ -2162,21 +2225,9 @@ export function oid_price_adjustment(obj, oid) {
  * re-point rather than re-derive. js/eat.js's `doname` is a `return "thing"`
  * partial and is NOT what this points to. */
 export async function doname(obj) { return await doname_pay(obj); }
-/* C objnam.c:2474-2482 thesimpleoname(obj) = the(simpleonames(obj)) — the
- * real general port lives in js/objnam.js and is imported above as
- * thesimpleoname_real. js/eat.js's `thesimpleoname` returns the literal
- * "thing" and is the partial-namer trap; NOT what this re-points to. */
-export function thesimpleoname(obj) { return thesimpleoname_real(obj); }
-/* C objnam.c:574-578 xname(obj) = xname_flags(obj, CXN_NORMAL) — the real
- * general namer. xname_flags_shk/CXN_NORMAL_SHK are the objnam.js import at
- * this file's header (the file-local xname_shk near FIRST_GLASS_GEM_SHK
- * already computes this same body under a different name so it wouldn't
- * collide with this export; this replaces the throwing stub with the
- * identical real call rather than the eat.js `return "thing"` partial). */
-export function xname(obj) { return xname_flags_shk(obj, CXN_NORMAL_SHK); }
-/* C objnam.c:2424-2442 simpleonames(obj) — the real general port lives in
- * js/objnam.js and is imported above. */
-export { simpleonames };
+/* C objnam.c thesimpleoname, simpleonames, xname — the real general ports
+ * live in js/objnam.js and are re-exported directly. */
+export { xname, thesimpleoname, simpleonames };
 function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 
 /* CORPSE_SHK (objects.h CORPSE = 265) is declared once below (contained_cost
@@ -3852,9 +3903,7 @@ const LOW_PM_SHK = 0;
 export function mongone(mtmp) {
     return mongone_real(mtmp);
 }
-export function on_level(l1, l2) {
-    return on_level_real(l1, l2);
-}
+export { on_level };
 /* C ref: shk.c:687-725 rob_shop — settle available credit, then mark the
  * remaining bill as an actual robbery and put the shopkeeper into pursuit.
  * This is synchronous in C; rouse_shk's async message path is intentionally
@@ -4239,7 +4288,16 @@ function Sprintf(fmt, ...args) {
 /* C hack.h:1329: y_n uses the shared yn_function reader, including its
  * custompline vision recalculation (topl.c:420; pline.c:266-274). */
 async function y_n(question) {
-    return await yn_function_shk(question, 'yn', 'n', true);
+    const ans = await yn_function_shk(question, 'yn', 'n', true);
+    /* C topl.c:532-537 tty_yn_function never erases the answered prompt: it
+     * stays on the topline until the next pline or parse()'s clear_nhwindow
+     * (pay_for_damage's silent-animal 'n' arm, shk.c:5341 growl of an
+     * MS_SILENT keeper, prints nothing over it). js/input.js nhgetch drops
+     * _pending_message on the read, so hand the prompt to the paint fallback;
+     * a queued ^A reply painted nothing. */
+    if (!game.gi?.in_doagain)
+        game._topl_sticky = `${question} [yn] (n)`;
+    return ans;
 }
 function SET_BOTL() {
     if (game.disp) game.disp.botl = 1;
@@ -4363,7 +4421,7 @@ const GLASS_GEM_UPGRADE = [
 ].map((pair) => pair.map(_otyp_named_shk));
 
 /* C objnam.c xname(obj) = xname_flags(obj, CXN_NORMAL) — the real body. */
-function xname_shk(obj) { return xname_flags_shk(obj, CXN_NORMAL_SHK); }
+function xname_shk(obj) { return xname(obj); }
 /* C shk.c:63 static const char the_contents_of[] = "the contents of ". */
 const the_contents_of_shk = 'the contents of ';
 
@@ -4741,15 +4799,16 @@ export function gem_learned(oindx) {
          shkp = next_shkp(shkp.nmon, true)) {
         const eshkp = ESHK(shkp);
         if (!eshkp || !eshkp.bill_p) continue;
-        let ct = eshkp.billct | 0;
+        let ct = eshkp.billct | 0, bi = 0;
         while (--ct >= 0) {
-            const bp = eshkp.bill_p[ct];
+            const bp = eshkp.bill_p[bi];
             const obj = find_oid(bp.bo_id >>> 0);
             if (!obj) /* shouldn't happen */
-                continue;
+                continue; /* C's `continue` skips the loop's ++bp: bp stays put */
             if ((oindx | 0) !== 0 ? ((obj.otyp | 0) === (oindx | 0))
                                   : ((obj.oclass | 0) === GEM_CLASS_SHK))
                 bp.price = get_cost(obj, shkp);
+            ++bi;
         }
     }
 }

@@ -5,7 +5,8 @@
 // domindblast), uunstick(), ugolemeffects(), armor_to_dragon(),
 // ugenocided(), udeadinside().
 import { WEAPON_CLASS } from './objclass.js';
-import { objectSkill, ACID_VENOM, BLINDING_VENOM, CORPSE, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, OBJECT_NAMES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
+import { OBJ_NAME } from './object_data.js';
+import { objectSkill, ACID_VENOM, BLINDING_VENOM, CORPSE, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
 import { setHeroGrip, angerAttackedMonster, hideHeroUnder, monstersInFmonOrder, wakeMonster, validVampireShiftForm } from './mon.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { cansee, couldsee, monsterEmitsLight } from './vision.js';
@@ -21,24 +22,22 @@ import { captureThrownObjectFlight, flyHeroThrownObject, heroThrowTrajectory } f
 import { heroBreathAttack, hitHeroWithRay, destroyFireMonsterInventory, monsterHasElementalResistance } from './zap.js';
 import { counterWereSpecies, heroCanSummonWerePack, isWereMonster, summonWerePack, wereBeastForSpecies } from './were.js';
 import { AD_BLND, AD_COLD, AD_CONF, AD_DRST, AD_ELEC, AD_FIRE, AD_HALU, AD_MAGM, AD_RBRE, AT_BREA, AT_ENGL, AT_EXPL, AT_GAZE, AT_SPIT } from './monster_attack_types.js';
-import { races } from './roles.js';
+import { character_race, races } from './roles.js';
 import { reassessStatusFields } from './botl.js';
 import { heroIsUnaware, heroIsBlind, heroIsHallucinating, setHeroBlindnessTimeout, syncBlindness } from './senses.js';
 import { heroHasInvoluntaryDelay, promptDirection, yn_function } from './cmd.js';
 import { clearHeroStrangulation, heroHasFreeAction, heroIsStrangled, pendingArmorAction, cancelDonning, findArmorClass, removeHeroArmor, simpleArmorName, isBeingTakenOff, removeEyewear } from './do_wear.js';
 import { endVoluntaryMultiTurn, nomul, roomsAt, applyHeroLocationEffects, loseHeroHp, roundDiv } from './hack.js';
 import { finishHeroHelplessness } from './allmain.js';
-import { setMimicBlocking } from './hero_seeing.js';
 import { makeBlinded, setSlipperyHands, cureHeroSickness, heroIsSick, clearHeroSliming, heroIsSliming, resetHeroSlimingCountdown } from './potion.js';
 import { displayLiquidName, monsterName } from './do_name.js';
-import { surfaceName } from './terrain_name.js';
 import { newuhs } from './eat.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
-import { levelHasCeiling } from './dungeon.js';
+import { levelHasCeiling, surfaceName } from './dungeon.js';
 import { heroHidingStatus } from './insight.js';
 import { game, requireInitializedGame, requirePlayingGame } from './gstate.js';
 import { d, rnd, rn1, rn2 } from './rng.js';
-import { adjustLevelAbilities, experienceRankIndex, randomExperience } from './exper.js';
+import { experienceRankIndex, randomExperience } from './exper.js';
 import { LL_CONDUCT, LL_MINORAC, recordGameLogEvent } from './gamelog.js';
 import { dist2, possessiveName } from './hacklib.js';
 import { heroCanSeeInvisible } from './mcastu.js';
@@ -49,12 +48,12 @@ import { hurtleHero, breakFloorObject, breakObjectAtLocation, objectBreaksOnImpa
 import { mksobj, placeCreatedObject, stack_object } from './mkobj.js';
 import { deleteTrap, feelTrap, dotrap, igniteItems, resetUtrap, maketrap } from './trap.js';
 import { buryFloorObjectsAt, freeHeroFromBuriedBall } from './dig.js';
-import { currentAttribute, maximumAttribute, exerciseAttribute } from './attrib.js';
+import { adjustLevelAbilities, currentAttribute, exerciseAttribute, maximumAttribute, newHeroHitPoints, redistributeActiveAttributes } from './attrib.js';
 import { encumber_msg } from './pickup.js';
 import { FLAMING_SPECIES, MONSTER_ATTACKS, MONSTER_EXPERIENCE_META, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, PM_GREEN_SLIME, S_GHOST, SPECIAL_PM, monsterTypeName, } from './monster_data.js';
-import { canSeeMonster, canSpotMonster, newsym, see_monsters } from './display.js';
+import { canSeeMonster, canSpotMonster, newsym, see_monsters, set_mimic_blocking } from './display.js';
 import { addShopDamage, deleteObject } from './shk.js';
-import { isFlimsyObject } from './object_properties.js';
+import { is_elven_armor, isFlimsyObject } from './object_properties.js';
 import { grantIntrinsicProperty, refreshMovementProperties, refreshProperty, revokeIntrinsicProperty } from './properties.js';
 import { heroIsInvisible, syncHeroInvisibility } from './hero_invisibility.js';
 import { adjustObjectLightAfterBlessing as adjustObjectLight, objectLightRadius } from './light.js';
@@ -62,7 +61,7 @@ import { endObjectBurn, learnEggType } from './timeout.js';
 import { nameToMonster, resolveMonsterClass, speciesCanBlow, your_race, monsterIsMindless, infravision, is_dwarf, is_elf, is_gnome, is_male, is_neuter, is_orc, is_were, lays_eggs, monsterBreaksArmor, monsterCanTeleport, monsterControlsTeleport, monsterDigests, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHasNoLimbs, monsterHasProperName, monsterHidesUnder, monsterHornCount, monsterIsAmorphous, monsterIsAmphibious, monsterIsAnimal, monsterIsBat, monsterIsBreathless, monsterIsCentaur, monsterIsClinger, monsterIsDemon, monsterIsEel, monsterIsFemale, monsterIsFlyer, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindFlayer, monsterIsNonliving, monsterIsSlithy, monsterIsSwimmer, monsterIsTelepathic, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVerySmall, monsterIsWeirdNonliving, monsterIsWhirly, monsterPassesWalls, monsterPerceives, monsterSlipsArmor, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterWrappingAllowed, notake, polyok, regenerates, strongmonst, cantwield, } from './mondata.js';
 import { getLine, promptYesNo } from './query.js';
 import { clearHeroPetrification, formCanBecomeStoneGolem, heroIsPetrifying, selfTouchPetrifyingWeapons, touchPetrifies } from './stoning.js';
-import { retouchEquipment } from './hero_retouch.js';
+import { retouchEquipment } from './artifacts.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { dropInventoryObjectAtHero } from './do.js';
 import { heroIsPunished } from './ball.js';
@@ -560,7 +559,7 @@ async function finishHumanFormChange(restored, state, publish) {
     const hero = state.u;
     // C polyman() only toggles mimic light blocking; its closing see_monsters() redraws.
     if (restored.changedSeeInvisible)
-        setMimicBlocking({ state });
+        set_mimic_blocking({ state });
     if (!heroCanUseTwoWeapons(state))
         await stopTwoWeaponCombat(state);
     if (hero.utrap && hero.utraptype === TT_PIT)
@@ -708,8 +707,7 @@ async function beginMonsterForm(mnum, { sexChangeAllowed = false, announceForm =
 }
 // C polyself.c:uasmon_maxStr(). Racial limits also apply to undead relatives,
 // but living giants are stronger than giant zombies and mummies.
-// C role.c:character_race(): the races.find() species match that maps a
-// polymorph form to its hero race.
+// character_race() (role.c) resolves the player-race species.
 export function formMaximumStrength(mnum) {
     let race;
     if (is_orc(mnum)) {
@@ -725,7 +723,7 @@ export function formMaximumStrength(mnum) {
     else if (is_gnome(mnum)) {
         race = races.find(candidate => candidate.name === 'gnome');
     }
-    race ||= races.find(candidate => candidate.mnum === mnum);
+    race ||= character_race(mnum);
     if (race)
         return race.attrmax[A_STR];
     if (!strongmonst(mnum))
@@ -967,8 +965,7 @@ async function changeArmorForHeroForm(mnum) {
     }
     else if (slipsArmor) {
         if ((object = worn('uarm'))
-            && !(MONSTER_NAME[mnum] === 'hobbit'
-                && object.otyp === ELVEN_MITHRIL_COAT)) {
+            && !(MONSTER_NAME[mnum] === 'hobbit' && is_elven_armor(object))) {
             const dressing = cancelPolymorphDressing(object);
             await plineWithContinuation('Your armor falls around you!');
             await removeHeroArmor(object, game, { ...dressing, deferArmorClass: true, voluntary: false });
@@ -1118,69 +1115,6 @@ function canDropPolymorphWeapon(object) {
     }
     return !(object.otyp === LEASH && object.leashmon);
 }
-function humanAttributeArrays() {
-    requirePlayingGame(game);
-    const u = game.u;
-    // This follows the source ordering deliberately.  While Upolyd,
-    // redist_attr() changes the active monster copy; polyman() subsequently
-    // restores macurr/mamax and discards those temporary changes.
-    return { base: u.acurr.a, max: u.amax.a };
-}
-// C attrib.c:redist_attr().
-function redistributeActiveAttributes() {
-    requirePlayingGame(game);
-    const { base, max } = humanAttributeArrays();
-    for (const index of [A_STR, A_DEX, A_CON, A_CHA]) {
-        const oldMax = max[index] || 1;
-        const raceMin = game.urace?.attrmin?.[index] ?? 3;
-        const raceMax = maximumAttribute(index);
-        max[index] = Math.max(raceMin, Math.min(raceMax, oldMax + rn2(5) - 2));
-        base[index] = Math.max(raceMin, Math.trunc((base[index] || raceMin) * max[index] / oldMax));
-    }
-}
-function constitutionHpBonus(constitution) {
-    if (constitution <= 3)
-        return -2;
-    if (constitution <= 6)
-        return -1;
-    if (constitution <= 14)
-        return 0;
-    if (constitution <= 16)
-        return 1;
-    if (constitution === 17)
-        return 2;
-    if (constitution === 18)
-        return 3;
-    return 4;
-}
-function newmanHpIncrement(level) {
-    requirePlayingGame(game);
-    const role = game.urole.hpadv;
-    const race = game.urace.hpadv;
-    let hp;
-    if (level === 0) {
-        hp = (role.infix || 0) + (race.infix || 0);
-        if ((role.inrnd || 0) > 0)
-            hp += rnd(role.inrnd);
-        if ((race.inrnd || 0) > 0)
-            hp += rnd(race.inrnd);
-    }
-    else {
-        const lower = level < (game.urole?.xlev ?? 10);
-        const fixedKey = lower ? 'lofix' : 'hifix';
-        const randomKey = lower ? 'lornd' : 'hirnd';
-        hp = (role[fixedKey] || 0) + (race[fixedKey] || 0);
-        if ((role[randomKey] || 0) > 0)
-            hp += rnd(role[randomKey]);
-        if ((race[randomKey] || 0) > 0)
-            hp += rnd(race[randomKey]);
-        hp += constitutionHpBonus(currentAttribute(A_CON));
-    }
-    hp = Math.max(1, hp);
-    if (level < MAXULEV)
-        game.u.uhpinc[level] = hp;
-    return hp;
-}
 // roles.js currently stores the pre-consumed initial energy die separately
 // during startup.  These are the corresponding role.c enadv.inrnd values
 // needed when newman() rolls an entirely new level-zero power increment.
@@ -1238,6 +1172,7 @@ function newHumanFormName() {
 // Both random polymorph and a selected human form can reach this operation.
 async function renewHumanForm(sexChangeAllowed = true) {
     requirePlayingGame(game);
+    const state = game;
     const u = game.u;
     const oldLevel = u.ulevel ?? 1;
     let newLevel = oldLevel + rn2(5) - 2;
@@ -1260,7 +1195,7 @@ async function renewHumanForm(sexChangeAllowed = true) {
     hpMaximum = roundDiv(hpMaximum * (rn2(4) + 8), 10);
     for (let i = 0; i < newLevel; i++) {
         u.ulevel = i;
-        hpMaximum += newmanHpIncrement(i);
+        hpMaximum += newHeroHitPoints(state);
     }
     u.ulevel = newLevel;
     hpMaximum = Math.max(hpMaximum, newLevel);
@@ -2226,7 +2161,7 @@ async function mergeDragonArmor(armor, mnum) {
             const name = simpleObjectName(armor).replace(' dragon ', ' ');
             await plineWithContinuation(`Your ${name} reverts to scales as you merge with them.`);
             armor.otyp += GRAY_DRAGON_SCALES - GRAY_DRAGON_SCALE_MAIL;
-            const scaleName = OBJECT_NAMES[armor.otyp];
+            const scaleName = OBJ_NAME(armor.otyp);
             if (!scaleName)
                 throw new Error(`Unknown dragon scales type: ${armor.otyp}`);
             armor.name = scaleName;

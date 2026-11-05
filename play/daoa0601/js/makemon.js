@@ -16,10 +16,9 @@ import { verbForSubject, withIndefiniteArticle, rndClass } from './objnam.js';
 import { visibleRegionAt } from './regions.js';
 import { monsterEmitsLight, block_point, visionCellBlocksLight } from './vision.js';
 import { objectAtMonsterDescription } from './pager.js';
-import { level_difficulty, specialLevelAt } from './dungeon.js';
+import { depth as depth_of_level, level_difficulty, specialLevelAt } from './dungeon.js';
 import { hatchableEggSpecies, monsterDeathCount, restoreMonsterInventoryOwnership, hideMonsterUnder, initialShapechangedBirth } from './mon.js';
 import { game, requireGameLevel, requireLiveGame } from './gstate.js';
-import { depth as depth_of_level } from './hacklib.js';
 import { beginObjectBurn, stopObjectTimer } from './timeout.js';
 import { mkobj, mkobj_at, mksobj, rndmonnum, set_corpsenm, linkCreatedObjectToMonsterInventory, addCreatedObjectToContainer, nextIdent, objectWeight } from './mkobj.js';
 import { monsterAlignmentType, monsterAlignmentValue } from './priest.js';
@@ -2372,5 +2371,15 @@ export async function cloneMonster(monster, state = game, { monsterMoving = !!st
     if (state === game)
         await newsym(clone.mx, clone.my);
     return clone;
+}
+// C makemon.c:summon_furies(). Erinyes are a real species with a birth
+// limit; makemon() updates that history, ending the unlimited Astral case.
+export async function summonFuries(limit, state) {
+    const species = MONSTER_NAME.indexOf('erinys');
+    let created = 0;
+    while (!((state.mvitals?.[species]?.mvflags ?? 0) & G_GONE) && (created < limit || limit === 0)) {
+        await makemonAt(species, state.u.ux, state.u.uy, MM_ADJACENTOK | MM_NOWAIT);
+        created++;
+    }
 }
 //# sourceMappingURL=makemon.js.map

@@ -64,7 +64,7 @@ import { removed_from_icebox } from './pickup.js';
 import { age_is_relative, stop_timer } from './timeout.js';
 import { ROT_CORPSE, REVIVE_MON, SHRINK_GLOB, MENU_PARTIAL, MENU_FULL } from './const.js';
 import { yn_function } from './cmd.js';
-import { PM_ICE_TROLL, PM_HOUSECAT } from './pm.generated.js';
+import { PM_ICE_TROLL, PM_HOUSECAT, PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 import { christen_monst } from './mhitm.js';
 import { mon_nam, newexplevel } from './uhitm.js';
 import { rndmonnam } from './do_name.js';
@@ -408,15 +408,20 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     const prevCarry = g._carryStatusClip;
     if (statusClip === undefined && prevCarry && prevCarry.moves === g.moves)
         statusClip = prevCarry.clip;
+    /* The carried wipe keeps the dismissed window's docorner() ymax: rows
+     * below maxrow + 1 (the status row 23 under a 22-row window) survive. */
     g._carryStatusClip = statusClip !== undefined
-        ? { clip: statusClip, moves: g.moves } : null;
+        ? { clip: statusClip, moves: g.moves,
+            maxRow: prior && statusClip === Math.max(0, prior.WIN_COL - 2)
+                ? prior.winRows : (prevCarry?.maxRow ?? 23) } : null;
     /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to offx 0 and
      * term_clear_screen()s, so the map and status are gone and every row is
      * drawn from column 1. */
-    /* wintty.c:1908-1921 offx = max(10, cols - maxcol - 1); offx == 10 takes the
-     * same full-screen branch, as a title of 67+ columns does. */
+    /* wintty.c:1907-1918 (H2344_BROKEN, defined at wintty.c:13): offx =
+     * min(40, cols - maxcol - 1), clamped at 0; an offx of 0 (a line of 77+
+     * columns) clears the screen in process_menu_window (wintty.c:1407). */
     const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0
-        || 77 - maxLen <= 10;
+        || 77 - maxLen <= 0;
     const paint = () => (fullScreen
         ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
         /* wintty.c:3684-3687: use this getobj window's offx and ymax.
@@ -639,17 +644,28 @@ function _sortloot_wear_tiers(o1, o2) {
     }
     return 0;
 }
-function _sortloot(list, byInvlet = false, filterfunc = null) {
+const SORTLOOT_PETRIFY = 0x20; /* C hack.h:1364 */
+function _touch_petrifies_mndx(mndx) {
+    const i = mndx | 0;
+    return i === PM_COCKATRICE || i === PM_CHICKATRICE;
+}
+function _sortloot(list, byInvlet = false, filterfunc = null, mode = 0) {
     const arr = [];
     /* C pickup.c:1079-1086, end.c:1632-1637: SORTLOOT_LOOT is optional;
      * sortloot:none still uses PACK's class/subclass/discovery tiers. */
     const loot = game.flags?.sortloot === 'f'
         || (game.flags?.sortloot === 'l' && !byInvlet);
     const pack = game.flags?.sortpack !== false;
-    /* C invent.c:610-618 — filterfunc rejects an object BEFORE it is populated
-     * into sliarray, so loot_classify()'s observe_object() (invent.c:170-171)
-     * never runs on it. */
-    for (let o = list; o; o = o.nobj) if (!filterfunc || filterfunc(o)) arr.push({ obj: o, indx: arr.length, orderclass: 0 });
+    const augment_filter = !!(mode & SORTLOOT_PETRIFY);
+    /* C invent.c:610-621 — filterfunc rejects an object BEFORE it is populated
+     * into sliarray, unless augment_filter preserves a petrifying corpse. */
+    for (let o = list; o; o = o.nobj) {
+        if (filterfunc && !filterfunc(o)
+            && (!augment_filter || (o.otyp | 0) !== _CORPSE_OTYP
+                || !_touch_petrifies_mndx(o.corpsenm)))
+            continue;
+        arr.push({ obj: o, indx: arr.length, orderclass: 0 });
+    }
     /* C invent.c:632 — `if (mode && n > 1)`; no comparisons, no classify. */
     if (arr.length > 1 && (loot || byInvlet || pack)) {
         for (const sli of arr) {
@@ -778,6 +794,10 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
          * 24-row terminal.  Short menus retain their ordinary `(end)` row;
          * tall ones replace that synthetic row with `(N of M)`. */
         const tall = allLines.length > 24;
+        /* wintty.c:1907-1918 (H2344_BROKEN): offx = min(40, cols - maxcol - 1),
+         * clamped at 0; offx 0 (a line of 77+ columns) clears the map in
+         * process_menu_window (wintty.c:1407). */
+        const wide = allLines.some((ln) => ln && 77 - ln.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length <= 0);
         const body = tall && allLines[allLines.length - 1] === '(end)'
             ? allLines.slice(0, -1) : allLines;
         const pageSize = 23;
@@ -787,10 +807,10 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         let lines = tall
             ? [...body.slice(start, end), `(${page + 1} of ${pageCount})`]
             : allLines;
-        const footerRow = lines.length - 1;
+        const footerRow = wide && !tall ? allLines.length - 1 : lines.length - 1;
         const lineItems = allLines._itemsByLine || [];
         const visibleItems = new Set(lineItems.slice(start, end).filter(Boolean));
-        if (tall) {
+        if (tall || wide) {
             /* tty menus remain full-screen even when the last page is short;
              * blank every physical row below its immediate page footer. */
             /* A single blank is truthy to the overlay composer, so rows 22/23
@@ -802,7 +822,7 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
          * The geometry comes from the UNERASED lines: cw->offx was fixed when
          * the window was built, so the post-search blank title must not
          * re-right-align the overlay. */
-        const WIN_COL = tall ? 1 : lines.length >= 24 ? 1
+        const WIN_COL = tall || wide ? 1 : lines.length >= 24 ? 1
             : tty_window_offx(lines, winColFooter);
         if (titleErased)
             lines = ['', ...lines.slice(1)];
@@ -811,7 +831,7 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         g._topl_sticky = null;
         const carry = g._carryStatusClip;
         g._screen_output = build_window_screen(lines, WIN_COL, uac,
-                                               tall ? 0
+                                               tall || wide ? 0
                                                : (carry && carry.moves === g.moves ? carry.clip : undefined));
         /* docorner() clears through maxrow, including the row below the footer
          * (wintty.c:982,3684-3687). With three status lines that can be row 21;
@@ -821,15 +841,16 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         const clipPrior = !tall && prior && prior.col > 1
             && prior.rows >= (_threeStatusLines() ? 21 : 22);
         g._screen_output = build_window_screen(lines, WIN_COL, uac,
-                                               tall ? 0 : clipPrior ? prior.col - 2
+                                               tall || wide ? 0 : clipPrior ? prior.col - 2
                                                : (carry && carry.moves === g.moves ? carry.clip : undefined),
                                                undefined, false, 0, true,
-                                               clipPrior ? prior.rows : 23);
+                                               clipPrior ? prior.rows
+                                               : (carry && carry.moves === g.moves ? carry.maxRow ?? 23 : 23));
         _lastPickGeom = { rows: tall ? 24 : lines.length, col: WIN_COL };
         set_cursor(tall
             ? WIN_COL + String(lines[footerRow] || '').length
             : WIN_COL + 6,
-            tall ? footerRow : lines.length - 1);
+            tall ? footerRow : (wide ? footerRow : lines.length - 1));
         const raw = await nhgetch();
         const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         const ch = String.fromCharCode(k);
@@ -1127,6 +1148,13 @@ async function _query_category(contents, action, withJustPicked) {
                 itemByLine.push(null);
             }
         }
+        /* C wintty.c:2728-2734 tty_end_menu cuts each entry to cols - 2 = 78
+         * cells (SGR is JS rendering metadata, not part of C's curr->str). */
+        for (let i = 0; i < out.length; i++) {
+            let col = 0;
+            out[i] = out[i].replace(/\x1b\[[0-9;]*m|[\s\S]/g,
+                ch => ch.startsWith('\x1b') || col++ < 78 ? ch : '');
+        }
         out.push('(end)');
         itemByLine.push(null);
         out._itemsByLine = itemByLine;
@@ -1330,8 +1358,9 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
                 out.push(menu_heading_text(e.heading));
                 itemByLine.push(null);
             } else {
+                /* wintty.c:2730-2732 tty_end_menu cuts str to cols - 2 = 78 */
                 out.push(`${e.item.sel} ${e.item.selected
-                    ? (e.item.count > 0 ? '#' : '+') : '-'} ${e.text}`);
+                    ? (e.item.count > 0 ? '#' : '+') : '-'} ${e.text}`.slice(0, 78));
                 itemByLine.push(e.item);
             }
         }

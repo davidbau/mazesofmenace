@@ -11,7 +11,7 @@ import { credit_report } from './shk_credit.js';
 // RNG sites depend on terrain type and Luck/state; all inline rn2/rnd/rn1/rnl calls
 // mirror C's exact call ordering.
 import { game } from './gstate.js';
-import { on_level as on_level_real } from './dungeon.js';
+import { on_level } from './dungeon.js';
 import { update_inventory } from './inventory_refresh.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
@@ -1984,12 +1984,12 @@ export async function impact_drop(missile, x, y, dlev) {
                 if (cansee(shkp.mx, shkp.my)) {
                     if ((eshk.customer || "")[0] === undefined || (eshk.customer || "").charCodeAt(0) === 0) {
                         /* C: strncpy(ESHK(shkp)->customer, svp.plname, PL_NSIZ) */
-                        eshk.customer = (u.plname || "").slice(0, PL_NSIZ);
+                        eshk.customer = (g.plname || "").slice(0, PL_NSIZ);
                     }
                     if (angry)
                         await pline("%s is infuriated!", Shknam(shkp));
                     else
-                        await pline("\"%s, you are a thief!\"", u.plname);
+                        await pline("\"%s, you are a thief!\"", g.plname);
                 } else {
                     await You_hear("a scream, \"Thief!\"");
                 }
@@ -2006,9 +2006,6 @@ export async function impact_drop(missile, x, y, dlev) {
     }
 }
 
-function on_level(a, b) {
-    return on_level_real(a, b);
-}
 export function down_gate(x, y) {
     const g = game;
     const u = g.u || {};

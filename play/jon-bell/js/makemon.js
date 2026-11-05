@@ -2,9 +2,9 @@ import { impossible_sync } from './display.js';
 import { pline_The, urgent_pline } from './pline.js';
 import { pline_mon as pline_mon_real } from './pline.js';
 import { Mgender } from './do_name.js';
-import { ledger_no as ledger_no_real } from './bones.js';
-import { On_W_tower_level as On_W_tower_level_real } from './dungeon.js';
-import { has_ceiling as has_ceiling_real } from './dungeon.js';
+import { ledger_no } from './bones.js';
+import { On_W_tower_level, has_ceiling, dunlevs_in_dungeon } from './dungeon.js';
+import { In_W_tower_wz } from './dochug.js';
 import { pooleffects_is_lava as is_lava_real } from './cmd.js';
 import { expels_gu } from './mhitu.js';
 import { stop_occupation } from './allmain.js';
@@ -109,7 +109,7 @@ import { attacktype as attacktype_real } from './mondata.js';
 import { rndmonnam } from './do_name.js';
 import { paralyze_monst } from './dogmove.js';
 import { observe_object, discover_object } from './o_init.js';
-import { g_at, surface, ceiling as ceiling_real } from './cmd.js';
+import { g_at, surface, ceiling } from './cmd.js';
 import { docall } from './do_name.js';
 import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, start_corpse_timeout, start_glob_timeout } from './mklev.js';
 import { Can_dig_down } from './dungeon.js';
@@ -199,7 +199,7 @@ import { create_gas_cloud } from './region.js';
 import { mon_track_clear, mon_would_take_item } from './monmove.js';
 /* C muse.c:1342-1415 hero_behind_chokepoint / mon_likes_objpile_at deps. */
 import { xytodir, dirtocoord } from './cmd.js';
-import { get_level as get_level_core, random_teleport_level } from './cmd.js';
+import { get_level, random_teleport_level } from './cmd.js';
 import { is_pool } from './look.js';
 import { accessible } from './monmove.js';
 import { is_ice } from './engrave.js';
@@ -1970,11 +1970,6 @@ function isFlyerMndx(mndx) {
 /** C mondata.h:22 is_clinger(ptr) — M1_CLING (can cling to ceiling). */
 function isClingerMndx(mndx) {
     return (monMflags1(mndx) & M1_CLING) !== 0;
-}
-/** C dungeon.c:1684 has_ceiling(lev) — TRUE everywhere except endgame
- * non-earth levels (which have no ceiling to cling to / float against). */
-function has_ceiling(lev) {
-    return has_ceiling_real(lev);
 }
 export function m_in_air(mtmp) {
     const pmidx = mtmp?.data?.pmidx;
@@ -4507,47 +4502,25 @@ async function mloot_container(mon, container, vismon) {
  * three muse.c visibility reads below (use_defensive / use_misc / MUSE_POLY_TRAP),
  * so every one of them believed the monster's square was in sight and printed
  * messages C suppresses.  This file already imports from './vision.js'. */
-function ceiling(x, y) { return ceiling_real(x, y); }
 function Can_rise_up(x, y, uz) {
-    if (!uz || In_endgame(uz) || In_sokoban(uz))
+    const wiz1 = game.wiz1_level;
+    const isWiz1 = !!(wiz1 && uz && ((wiz1.dlevel | 0) || (wiz1.dnum | 0))
+        && (uz.dnum | 0) === (wiz1.dnum | 0) && (uz.dlevel | 0) === (wiz1.dlevel | 0));
+    if (!uz || In_endgame(uz) || In_sokoban(uz)
+        || (isWiz1 && In_W_tower_wz(x, y, uz)))
         return false;
     const dgn = game.dungeons?.[uz.dnum | 0];
     if ((uz.dlevel | 0) > 1)
         return true;
     /* A branch whose entry level is one can rise only when the special
        inter-dungeon upstairs exists and this is not ledger level one. */
-    if (!dgn || (dgn.entry_lev | 0) !== 1
-        || ((uz.dlevel | 0) + (dgn.ledger_start | 0)) === 1)
+    if (!dgn || (dgn.entry_lev | 0) !== 1 || ledger_no(uz) === 1)
         return false;
     for (let s = game.stairs; s; s = s.next) {
         if (s.tolev?.dnum !== (uz.dnum | 0) && s.up)
             return true;
     }
     return false;
-}
-/* C ref: dungeon.c:1796 get_level(lev, newlev) — map an ABSOLUTE depth back to
- * a {dnum,dlevel} struct; the real branch-walking body already lives at
- * js/cmd.js:10330 (exported above as get_level_core), which returns a fresh
- * object instead of C's out-param.  WAS `tolevel.dnum = 0; tolevel.dlevel =
- * tolev;` — always the MAIN dungeon at the raw depth number, which is only
- * correct when the caller is already in dungeon 0 and the target is not
- * behind a branch.  Dead on use_misc's MUSE_POT_GAIN_LEVEL (guarded by
- * Can_rise_up, itself a `return false` stub, so unreachable there); live on
- * use_defensive's MUSE_SCR_TELEPORTATION cursed/mconf arm (board
- * use_defensive rec#0/#11: m_defensive_cursed=1), where the naive stub would
- * have migrated a monster teleporting off dungeon 2 straight into dungeon 0. */
-function get_level(tolevel, tolev) {
-    const lev = get_level_core(tolev);
-    tolevel.dnum = lev.dnum;
-    tolevel.dlevel = lev.dlevel;
-}
-/* C dungeon.c:1310 ledger_no(lev) — `lev->dlevel + svd.dungeons[lev->dnum]
- * .ledger_start`, the absolute cross-branch level index.  WAS `return 0`,
- * which made use_misc()'s MUSE_POT_GAIN_LEVEL migrate every monster to ledger
- * 0 and would have done the same to every use_defensive() stairway arm below.
- * Same arithmetic js/bones.js:90 already uses. */
-function ledger_no(lev) {
-    return ledger_no_real(lev);
 }
 /* C ref: rm.h:526-534 `#define remove_monster(x, y) svl.level.monsters[x][y]
  * = (struct monst *) 0` — clear the monster-presence GRID cell at <x,y>.
@@ -4708,20 +4681,6 @@ function Hallucination() {
     const h = up?.[HALLUC_MM], r = up?.[HALLUC_RES_MM];
     return !!(h?.intrinsic | 0)
         && !((r?.intrinsic | 0) || (r?.extrinsic | 0));
-}
-
-/* C ref: dungeon.c:1332-1335 dunlevs_in_dungeon(lev) —
- *   return svd.dungeons[lev->dnum].num_dunlevs;  */
-function dunlevs_in_dungeon(lev) {
-    return (game.dungeons?.[lev?.dnum | 0]?.num_dunlevs | 0);
-}
-
-/* C ref: dungeon.c:1914-1918 On_W_tower_level(lev) —
- *   Is_wiz1_level(lev) || Is_wiz2_level(lev) || Is_wiz3_level(lev)
- * js/dungeon_rng.js:643-650 publishes game.wiz1_level/wiz2_level/wiz3_level
- * from the sp_levchn; js/dog.js:856 already reads the same three. */
-function On_W_tower_level(lev) {
-    return On_W_tower_level_real(lev);
 }
 
 /* C ref: mkobj.c:1767-1780 unbless(otmp).  Called from use_defensive at

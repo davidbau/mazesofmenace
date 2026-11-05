@@ -333,6 +333,9 @@ function ingestDungeonLua(du, dix, pd, wizardLike, svn, unconn, nums, ents, dept
         hellish: _dgnFlagList.includes('hellish'),
         maze_like: _dgnFlagList.includes('mazelike'),
         rogue_like: _dgnFlagList.includes('roguelike'),
+        /* C dungeon.c:1092 / dungeon.h:21: `svd.dungeons[dngidx].flags.align = dgn_align`
+         * into `Bitfield(align, 3)` (3-bit unsigned bitfield, masking D_ALIGN_* by 0x7). */
+        align: _dgnAlignBits(du.alignment) & 0x7,
         unconnected: unconn[dix],
     };
     pd._names[dix] = du.name;
@@ -524,7 +527,7 @@ export function consumeDungeonInitRng() {
             ledger_start: ledgerStart,
             flags: dgnFlagWords[i] || { town: false, hellish: false,
                                     maze_like: false, rogue_like: false,
-                                    unconnected: !!unconnected[i] },
+                                    align: 0, unconnected: !!unconnected[i] },
             /* C ref: dungeon.c:1062-1064 — Strcpy(svd.dungeons[i].fill_lvl,
              * dgn_fill) / .proto, dgn_fill = get_table_str_opt(L, "lvlfill",
              * emptystr) and dgn_protoname = get_table_str_opt(L, "protofile",

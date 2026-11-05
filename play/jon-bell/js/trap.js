@@ -40,7 +40,7 @@ import { PM_STALKER, PM_BLACK_LIGHT } from './pm.generated.js';
 import { PM_MAIL_DAEMON } from './pm.generated.js';
 import { impossible as trap_impossible } from './pline.js';
 import { on_level, at_dgn_entrance } from './dungeon.js';
-import { has_ceiling as has_ceiling_real } from './dungeon.js';
+import { has_ceiling } from './dungeon.js';
 /* Local C helpers whose canonical bodies are not exported by their home modules. */
 function m_next2u(mon) { return dist2(mon.mx | 0, mon.my | 0, game.u?.ux | 0, game.u?.uy | 0) <= 2; }
 import { rn2, rn1, d, rnl, rnd, pushRngLogEntry } from './rng.js';
@@ -67,7 +67,7 @@ import { mksobj as mksobj_ice, next_ident } from './mklev.js';
 import { tamedog, unstuck, wary_dog } from './dog.js';
 import { m_unleash } from './apply.js';
 import { seffects } from './read.js';
-import { seemimic, YMonnam } from './mhitm.js';
+import { seemimic, YMonnam, Amonnam } from './mhitm.js';
 import { rndmonnam } from './do_name.js';
 import { setnotworn, racial_exception } from './worn.js';
 /* read.c:3018 punish() — reused when digging or struggling uncovers the
@@ -158,6 +158,7 @@ import { ballfall, unplacebc, placebc } from './ball.js';
  * defsyms[trap_to_defsym(ttyp)].explanation; DEFSYM_EXPLANATION is the
  * generated dump of exactly that table (see its header). */
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
+import { DISSOLVED, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, TT_NONE } from './const.js';
 import { DIR_180, DIR_ERR, KILLED_BY_AN, NO_KILLER_PREFIX, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, STRAT_CLOSE, STRAT_WAITFORU } from './const.js';
 /* m_dowear_type (C worn.c:798) reads objects[otyp].oc_delay / .oc_armcat /
  * .a_ac out of the generated C armor table, exactly as C indexes objects[]. */
@@ -529,7 +530,7 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
      * part of this death's ordering. */
     /* C mon.c:3144-3162: mondead's S_KOP revival roll precedes m_detach. */
     await kop_revival(mtmp);
-    record_death_achievement(mndx);
+    record_death_achievement(mndx, mtmp);
     /* C mon.c:2702-2703: mon_leaving_level() releases the hero before
      * removing the monster, dropping inventory, or rolling for a corpse.
      * unstuck() also redraws after swallowing and rolls the re-hold cooldown. */
@@ -1547,7 +1548,7 @@ export async function maketrap(x, y, typ) {
             let clear_flags = true;
             if (lev_typ(x, y) === DRAWBRIDGE_UP) {
                 clear_flags = false;
-                const wasIce = lev && ((lev.drawbridgemask | 0) & 28 /* DB_UNDER */) === 8 /* DB_ICE */;
+                const wasIce = lev && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE;
                 if (lev) {
                     lev.drawbridgemask = (lev.drawbridgemask | 0) & ~28;
                     lev.drawbridgemask = (lev.drawbridgemask | 0) | 16;
@@ -1762,18 +1763,18 @@ export async function sink_into_lava() {
         if (u.utrap < (1 << 8)) {
             game.svk = game.svk || {};
             game.svk.killer = game.svk.killer || {};
-            game.svk.killer.format = 1; /* KILLED_BY */
+            game.svk.killer.format = KILLED_BY;
             game.svk.killer.name = 'molten lava';
             await _urgent_pline_sil('You sink below the surface and die.');
             await _burn_away_slime_sil();
-            await _done_sil(6 /* DISSOLVED */);
+            await _done_sil(DISSOLVED);
             await reset_utrap(true);
             if (!_gp_Levitation() && !_gp_Flying())
-                await _safe_teleds_sil(1 | 2); /* TELEDS_ALLOW_DRAG | TELEDS_TELEPORT */
+                await _safe_teleds_sil(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
         } else if (!u.umoved) {
             const sl = game.u.uprops && game.u.uprops[22]; /* SLIMED, intrinsic only */
             const slimed = sl ? (sl.intrinsic | 0) : 0;
-            if (slimed && rnd(10 - 1) >= (slimed & 0xffffff)) { /* TIMEOUT */
+            if (slimed && rnd(10 - 1) >= (slimed & TIMEOUT)) {
                 await pline(sink_deeper);
                 await _burn_away_slime_sil();
             } else {
@@ -1793,9 +1794,8 @@ export async function reset_utrap(msg) {
 
     /* C: set_utrap(0, 0) -> ... -> float_vs_flight() -> SET_BOTL()
      * unconditionally at the end of float_vs_flight (polyself.c:150).
-     * js/dig.js's set_utrap doesn't carry float_vs_flight, so its
-     * unconditional botl write is inlined here — same pattern as the
-     * reset_utrap(FALSE) inline in maketrap() above. */
+     * set_utrap() below already ends in float_vs_flight(), so this
+     * explicit botl write is redundant but harmless. */
     set_utrap(0, 0);
     if (!game.disp) game.disp = {};
     game.disp.botl = true;
@@ -2037,7 +2037,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     if (style === (ROLL | LAUNCH_UNSEEN)) {
         if (otyp === BOULDER_OTYP) {
             if (cansee(x1, y1)) {
-                void pline(`You see ${an(cxname(singleobj))} start to roll.`);
+                await You_see(`${an(xname(singleobj))} start to roll.`); /* trap.c:3322 */
             } else if (_lo_hallucinating()) {
                 await You_hear('someone bowling.');
             } else {
@@ -3861,10 +3861,6 @@ function _wearing_iron_shoes(mtmp) {
 }
 function _body_part(_part) { return body_part_real(FOOT); }
 function _mbodypart(mon, _part) { return mbodypart_real(mon, FOOT); }
-function _yname2(obj) {
-    /* C Yname2(uarmf): the carried armor's capitalized possessive name. */
-    return (obj && (obj.otyp | 0) === 164) ? "Your iron shoes" : "Your armor";
-}
 function _soundeffect(se, vol) { void se; void vol; /* no-op */ }
 /* C ref: pline.c:435-452 You_hear — forwards to the shared body in
  * js/display.js.  This was `void msg`, a SILENT no-op, and its two call sites
@@ -3975,7 +3971,7 @@ async function trapeffect_bear_trap(trap, trflags) {
         if (u.umonnum === PM_OWLBEAR || u.umonnum === PM_BUGBEAR)
             await You("howl in anger!");
         if (_wearing_iron_shoes(mtmp))
-            await pline(`${_yname2(u.uarmf)} protects your leg.`);
+            await pline(`${Yname2(u.uarmf)} protects your leg.`);
         else {
             const sideval = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
             const duration = rn1(10, 10);
@@ -4417,7 +4413,7 @@ async function trapeffect_pit_mon(mtmp, trap, trflags = 0) {
     const is_floater_pit = (mlet === _IMM_S_EYE || mlet === _IMM_S_LIGHT);
     const is_clinger_pit = (mf1 & _IMM_M1_CLING) !== 0;
     const grounded = !is_flyer_pit && !is_floater_pit
-        && (!is_clinger_pit || !_imm_has_ceiling(game.u?.uz));
+        && (!is_clinger_pit || !has_ceiling(game.u?.uz));
     /* C trap.c:1969-1970: inescapable = (forcetrap || (Sokoban && !madeby_u)). */
     const forcetrap_pit = ((trflags | 0) & FORCETRAP) !== 0;
     const sokoban_pit = !!(game.level?.flags?.sokoban_rules ?? game.sokoban);
@@ -4475,7 +4471,7 @@ export async function trapeffect_hole_mon(mtmp, trap, trflags) {
      * spells out above; sourced through the _imm_* helpers so there is one
      * definition of is_floater (a CLASS test, not a flag) in this file. */
     const grounded = !_imm_is_flyer(mptr) && !_imm_is_floater(mptr)
-        && (!_imm_is_clinger(mptr) || !_imm_has_ceiling(u?.uz));
+        && (!_imm_is_clinger(mptr) || !has_ceiling(u?.uz));
     const wormtoolong = ((mtmp.wormno | 0) !== 0 && count_wsegs(mtmp) > 5);
     if (!grounded || wormtoolong
         || trap_msize((mtmp.mndx ?? mtmp.mnum ?? -1) | 0) >= _WORN_MZ_HUGE) {
@@ -5413,6 +5409,16 @@ export async function mintrap(mtmp, mintrapflags) {
          * no async screen I/O for the ported types). */
         trap_result = await trapeffect_selector_mon(mtmp, trap, mintrapflags);
         void forcetrap;
+
+        /* C trap.c:3827-3837: mtmp can't stay hiding under an object if
+         * trapped in non-pit. */
+        if ((mtmp.mhp | 0) > 0 /* !DEADMONSTER */ && mtmp.mtrapped) {
+            const alreadyspotted = canspotmon(mtmp);
+
+            maybe_unhide_at(mtmp.mx, mtmp.my);
+            if (!alreadyspotted && canseemon(mtmp))
+                await pline_mon(mtmp, `${Amonnam(mtmp)} appears.`);
+        }
     }
     return trap_result;
 }
@@ -5986,7 +5992,7 @@ export async function grease_protect(obj, name, victim) {
     }
     if (!rn2(2)) {
         obj.greased = 0;
-        if ((obj.where | 0) === 3 || _obj_in_invent(obj)) {
+        if ((obj.where | 0) === OBJ_INVENT || _obj_in_invent(obj)) {
             await pline('The grease dissolves.'); update_inventory();
         }
         return true;
@@ -6201,10 +6207,6 @@ function _imm_webmaker(pm) {
     const idx = pm.pmidx | 0;
     return idx === PM_CAVE_SPIDER || idx === PM_GIANT_SPIDER;
 }
-/* C dungeon.c:1690-1698 — share the endgame/earth ceiling predicate. */
-function _imm_has_ceiling(lev) {
-    return has_ceiling_real(lev);
-}
 
 export async function immune_to_trap(mon, ttype) {
     if (!mon) {
@@ -6242,7 +6244,7 @@ export async function immune_to_trap(mon, ttype) {
         if (In_sokoban(game?.u?.uz) && (ttype | 0) === ROLLING_BOULDER_TRAP)
             return TRAP_CLEARLY_IMMUNE;
         if (_imm_is_floater(pm) || _imm_is_flyer(pm)
-            || (_imm_is_clinger(pm) && _imm_has_ceiling(game?.u?.uz)))
+            || (_imm_is_clinger(pm) && has_ceiling(game?.u?.uz)))
             return TRAP_CLEARLY_IMMUNE;
         else if (is_you && (uprop_active(LEVITATION) || uprop_active(FLYING)
                             || _steed_flies()))
@@ -7047,7 +7049,7 @@ export function set_utrap(tim, typ) {
         set_utrap_SET_BOTL();
 
     u.utrap = tim;
-    u.utraptype = tim ? typ : 0 /* TT_NONE */;
+    u.utraptype = tim ? typ : TT_NONE;
 
     /* float_vs_flight() (js/mhitm.js) dereferences u.uprops[LEVITATION],
      * [FLYING] and [STEALTH] unconditionally, mirroring C's dense,
@@ -7102,13 +7104,13 @@ export function m_harmless_trap(mtmp, ttmp) {
         case T_PIT: case T_SPIKEDPIT: case T_HOLE: case T_TRAPDOOR:
             /* C trap.c:1155-1156: ceiling clingers ignore pits and holes
              * outside Sokoban (M1_CLING, monflag.h:89). */
-            if ((mf1 & 0x00000010) && !sokoban) return true;
+            if ((mf1 & _IMM_M1_CLING) && !sokoban) return true;
             break;
         case T_TELEP: case T_LEVTELEP: case T_MAGICPORTAL: case T_POLY:
             break;
         case T_WEB:
             /* C trap.c:1164 — webmakers are unharmed by webs. */
-            if (amorphous || whirly || unsolid || mndx === 94 || mndx === 96) return true;
+            if (amorphous || whirly || unsolid || mndx === PM_CAVE_SPIDER || mndx === PM_GIANT_SPIDER) return true;
             break;
         case T_STATUE: return true;
         case T_MAGIC: return true;

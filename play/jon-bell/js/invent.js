@@ -23,7 +23,7 @@ import { near_capacity } from './hack.js';
 import { setuqwep } from './wield.js';
 import { _pickup_burden_level, touch_artifact_youmonst } from './wizcmds.js';
 import { setnotworn, setworn } from './worn.js';
-import { _sortloot_within_class, fully_identify_obj as fully_identify_obj_cmd, ggetobj, useup as useup_cmd } from './cmd.js'; // relocate-fns
+import { _sortloot_within_class, fully_identify_obj as fully_identify_obj_cmd, ggetobj, useup } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { _topl_joins_committed, flush_screen, obj_to_glyph, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
@@ -565,9 +565,8 @@ function _fmt1(fmt, arg) {
 
 /* C ref: invent.c useup() / useupall() — consume one scroll from inventory.
  * A stack quan>1 is decremented; a singleton is unlinked from gi.invent. */
-export function useup(obj) {
-    return useup_cmd(obj);
-}
+// C invent.c:1321-1333 useup(obj) — canonical port in js/cmd.js
+export { useup };
 
 /* C ref: invent.c:2698 count_unidentified — number of not-fully-identified items
  * in a chain. */
@@ -690,6 +689,18 @@ async function _identify_objlist_menu(promptText) {
 
 async function _identify_objlist_menu_body(promptText) {
     const g = game;
+    /* Collect in inventory-letter order; query_objlist uses SORTLOOT_INVLET
+     * unless sortloot:full requests SORTLOOT_LOOT (pickup.c:1079-1086). */
+    let eligible = [];
+    for (let o = g.invent; o; o = o.nobj)
+        if (not_fully_identified(o)) eligible.push(o);
+    /* C pickup.c query_objlist: `if (!olist ...) return 0;` / the n == -1
+     * SIGNAL_NOMENU arm — with nothing to offer, NO window is opened at all
+     * and the caller gets -1.  Distinguish that from "menu shown, nothing
+     * picked" (n == 0), which menu_identify handles very differently. */
+    if (!eligible.length)
+        return NO_ELIGIBLE_ITEMS;
+
     if (g._pending_message) {
         const full = String(g._pending_message);
         const joins = (g._topl_joins_src === full && Array.isArray(g._topl_joins))
@@ -714,17 +725,6 @@ async function _identify_objlist_menu_body(promptText) {
         if (!stopped) await topline_more_loop(page);
         g._pending_message = '';
     }
-    /* Collect in inventory-letter order; query_objlist uses SORTLOOT_INVLET
-     * unless sortloot:full requests SORTLOOT_LOOT (pickup.c:1079-1086). */
-    let eligible = [];
-    for (let o = g.invent; o; o = o.nobj)
-        if (not_fully_identified(o)) eligible.push(o);
-    /* C pickup.c query_objlist: `if (!olist ...) return 0;` / the n == -1
-     * SIGNAL_NOMENU arm — with nothing to offer, NO window is opened at all
-     * and the caller gets -1.  Distinguish that from "menu shown, nothing
-     * picked" (n == 0), which menu_identify handles very differently. */
-    if (!eligible.length)
-        return NO_ELIGIBLE_ITEMS;
 
     /* C invent.c:447-469: full sorting compares subclass and discovery
      * before names, so armor such as cloaks precedes suits regardless of
@@ -889,6 +889,23 @@ async function _identify_objlist_menu_body(promptText) {
                 pageIndex = target; titleErased = false;
             }
             continue;
+        }
+        /* C wintty.c:1739-1747 group_accel: query_objlist passes each item's
+         * def_oc_syms class symbol as its group accelerator (pickup.c:1135-1136);
+         * invert_all() flips every entry of that class, on any page. */
+        const GACC = ' )[="(%!?+/$*`0_';
+        if (kc > 32 && kc < 127 && !onPage().has(LETTERSET.get(kc))) {
+            const gch = String.fromCharCode(kc);
+            const goc = GACC.indexOf(gch) + 1;
+            const grp = goc > 1 ? entries.filter(en => (en.obj.oclass | 0) === goc) : [];
+            if (grp.length) {
+                for (const en of grp) {
+                    if (en.selected) { en.selected = false; en.count = -1; }
+                    else if (counting && count > 0) { en.count = count; en.selected = true; }
+                    else if (!counting) en.selected = true;
+                }
+                continue;
+            }
         }
         const e = LETTERSET.get(kc);
         if (onPage().has(e)) {

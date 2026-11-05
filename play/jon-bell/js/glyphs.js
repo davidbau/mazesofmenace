@@ -4,7 +4,8 @@
 import { game } from './gstate.js';
 import { config_error_add } from './cfgfiles.js';
 import { gs, H_UTF8 } from './const.js';
-import { glyphid_is_known } from './display.js';
+import { glyphid_is_known, glyphid_number, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
+import { customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbols.js';
 import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
 import { set_map_u } from './utf8map.js'; // relocate-fns
 
@@ -344,6 +345,7 @@ export function apply_customizations(which_set, docustomize) {
     let at_least_one = false;
     const do_colors = ((docustomize & do_custom_colors) !== 0);
     const do_symbols = ((docustomize & do_custom_symbols) !== 0);
+    if (do_symbols && game.iflags.customsymbols) apply_pending_s_utf8();
 
     for (let custs = 0; custs < custom_count; ++custs) {
         const sc = gs.sym_customizations[which_set | 0][custs];
@@ -396,7 +398,7 @@ function shuffle_customizations() {
      * customization file has been applied; move each object glyph's color
      * and unicode replacement along with its description. */
     const NUM_OBJECTS = 481;
-    const offsets = [28, 5]; /* GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF */
+    const offsets = [GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF];
     const descrIdx = game._objDescrIdx || {};
     for (const offset of offsets) {
         const tmp = Array.from({ length: NUM_OBJECTS }, () => ({
@@ -444,13 +446,18 @@ function shuffle_customizations() {
  * other G_ id that parse_id would name (glyphs.c:890-1118) is taken to match
  * one glyph (0); an unknown G_ id matches nothing and returns 0. */
 function glyph_find_core(id, findwhat) {
+    if (id && /^S_/i.test(id)) {
+        const m = /^[Uu]\+([0-9a-fA-F]{1,7})/.exec(findwhat.unicode_val || '');
+        customize_s_glyph_utf8(id, m ? parseInt(m[1], 16) : 0);
+        return 1;
+    }
     if (!id || !/^G_/.test(id)) return 1;
     /* C glyphs.c:1099-1103 parse_id names these two glyphs directly;
      * display.h:543-551 puts them last, before MAX_GLYPH. */
     const special = { g_unexplored: MAX_GLYPH - 2, g_nothing: MAX_GLYPH - 1 }[id.toLowerCase()];
     if (special === undefined && !glyphid_is_known(id)) return 0;
     findwhat.glyphid = id; /* parse_id resolves the name to a glyph number; keep the name */
-    if (findwhat.callback) findwhat.callback(special ?? 0, findwhat);
+    if (findwhat.callback) findwhat.callback(special ?? glyphid_number(id), findwhat);
     return 1;
 }
 function rgbstr_to_int32(s) { return rgbstr_to_int32_real(s); }

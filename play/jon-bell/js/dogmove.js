@@ -3,7 +3,7 @@ import { shkgone, unpaid_cost, currency, obfree, costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { is_mines_prize, is_soko_prize } from './cmd.js';
 import { mpickobj } from './steal.js';
-import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real } from './mhitm.js';
+import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real, obj_pmname as obj_pmname_real } from './mhitm.js';
 import { noit_mon_nam } from './mhitm.js';
 import { PM_PAPER_GOLEM, PM_STRAW_GOLEM, PM_KILLER_BEE, PM_LONG_WORM } from './pm.generated.js';
 import { surface, costly_alteration, u_locomotion } from './cmd.js';
@@ -141,6 +141,7 @@ import { stop_occupation as stop_occupation_dm } from './allmain.js';
 import { grddead } from './vault.js';
 /* MONS row layout: [mlet, mlevel, mov, geno, malign, mr, mflags1, mflags2, ...] */
 const _MONS = /** @type {number[][]} */ (monsPack.mons);
+const MONS_MFLAGS2 = 7; /* row column holding permonst.mflags2 */
 /* C monflag.h dietary M1_* flags (permonst.mflags1 column 5 of MONS_ROWS). */
 const M1_HERBIVORE = 0x40000000;
 const M1_CARNIVORE = 0x20000000;
@@ -189,15 +190,14 @@ function _has_mgivenname_dm(mtmp) {
 }
 /* C do_name.c:1319-1345 obj_pmname(obj) — the corpse/statue/figurine species
  * name, whose gender comes from the CORPSTAT_GENDER bits of obj->spe
- * (hack.h:1189-1199), not from any monst. */
+ * (hack.h:1189-1199), not from any monst.  The partial namer this used to be
+ * (corpsenm straight to monPmname) dropped C's otyp CORPSE/STATUE/FIGURINE +
+ * ismnum guard, the PM_ALIGNED_CLERIC && CORPSTAT_RANDOM -> PM_CLERIC swap,
+ * and the impossible() + "two-legged glorkum-seeker" fallback; it forwards to
+ * the one shared port now (js/mhitm.js obj_pmname), the same convention as
+ * mon_nam_dm above routing through x_monnam. */
 function obj_pmname_dm(obj) {
-    const mndx = (obj?.corpsenm ?? -1) | 0;
-    if (mndx < 0) return '';
-    const cgend = (obj.spe | 0) & 0x03;           /* CORPSTAT_GENDER */
-    const mgend = (cgend === 2) ? 0               /* CORPSTAT_MALE   -> MALE */
-                : (cgend === 1) ? 1               /* CORPSTAT_FEMALE -> FEMALE */
-                                : 2;              /* NEUTRAL */
-    return monPmname(mndx, mgend) || '';
+    return obj_pmname_real(obj);
 }
 function mon_nam_dm(mtmp) {
     return x_monnam(mtmp, ARTICLE_THE_DM, null,
@@ -438,7 +438,8 @@ function obj_weight(obj) {
 export function curr_mon_load(mtmp) {
     let curload = 0;
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-    const mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][7] | 0) : 0;
+    const mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][MONS_MFLAGS2] | 0) : 0;
+    /* C mon.c:1919 throws_rocks(mtmp->data): mflags2 & M2_ROCKTHROW */
     const rockThrower = (mflags2 & M2_ROCKTHROW) !== 0;
     for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
         if ((obj.otyp | 0) !== BOULDER_OTYP || !rockThrower)
@@ -452,7 +453,7 @@ export function max_mon_load(mtmp) {
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     const cwt = (mndx >= 0 && mndx < MONS_CWT.length) ? (MONS_CWT[mndx] | 0) : 0;
     const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : MZ_HUMAN;
-    const mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][7] | 0) : 0;
+    const mflags2 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][MONS_MFLAGS2] | 0) : 0;
     const strong = (mflags2 & M2_STRONG) !== 0;
 
     let maxload;
@@ -493,9 +494,12 @@ export function can_carry(mtmp, otmp) {
         if (is_rider_dm({ pmidx: cn }))
             return 0;
     }
-    if (((MKOBJ_OC_MATERIAL[otyp] | 0) === 14 /* SILVER */) && mon_hates_silver(mtmp)
-        && (otyp !== 263 /* BELL_OF_OPENING */
-            || (((mtmp.data?.mflags3 | 0) & 0x001f) === 0)))
+    /* objects[otyp].oc_material: MKOBJ_OC_MATERIAL is the RUNTIME table --
+     * o_init.js shuffle writes the swapped materials back into it
+     * (C o_init.c:141-146), so a shuffled silver appearance is seen here. */
+    if (((MKOBJ_OC_MATERIAL[otyp] | 0) === SILVER_DM) && mon_hates_silver(mtmp)
+        && (otyp !== BELL_OF_OPENING_DM
+            || (((mtmp.data?.mflags3 | 0) & M3_COVETOUS_DM) === 0 /* !is_covetous */)))
         return 0;
     /* C mon.c:2002 can_touch_safely's last clause: !touch_artifact(otmp, mtmp).
      * A pet never touches the hero's cross-aligned/bane artifact (hero case is
@@ -1130,11 +1134,15 @@ async function relobj_dm(mtmp) {
 async function relobj_dead_dm(mtmp) {
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
-    /* C objnam.c distant_name: r = 2 (no xray), neardist = r*r*2 - r = 6. */
-    const nearAndSeen = cansee(omx, omy) && distu(omx, omy) <= 6;
+    /* C objnam.c:370-371 distant_name: r = (u.xray_range > 2) ? u.xray_range : 2,
+     * neardist = r*r*2 - r (6 without xray, 15 with the Eyes of the Overworld). */
+    const xr = (game.u?.xray_range | 0) > 2 ? (game.u.xray_range | 0) : 2;
+    const neardist = xr * xr * 2 - xr;
+    const nearAndSeen = cansee(omx, omy) && distu(omx, omy) <= neardist;
     let otmp;
     while ((otmp = mtmp.minvent) != null) {
-        if (nearAndSeen)
+        /* objnam.c:387-388: an artifact is observed from any seen square. */
+        if (nearAndSeen || (cansee(omx, omy) && otmp.oartifact))
             /* C distant_name() reaches observe_object(), which both marks the
              * appearance seen and appends the type to svd.disco[].  Keeping
              * only the dknown bit loses discoveries for gear dropped by a
@@ -2328,19 +2336,18 @@ function find_targ(mtmp, dx, dy, maxdist) {
         /* C dogmove.c:727-735: targ = m_at(curx, cury); accept it as a target
          * only if visible to the pet AND not mundetected AND (for a long worm)
          * this square is the head, not a tail segment. */
-        for (let m = game.fmon; m; m = m.nmon) {
-            if ((m.mhp | 0) > 0 && (m.mx | 0) === curx && (m.my | 0) === cury) {
-                /* C dogmove.c:729-732 — an invisible tame pet is visible to
-                 * this pet only when its species has M1_SEE_INVIS.  The
-                 * reconstructed monster may lack `data`, so use the
-                 * authoritative MONS row as the same fallback. */
-                const _petdata = mtmp.data ?? { mflags1: _MONS[(mtmp.mndx ?? mtmp.mnum ?? -1) | 0]?.[6] ?? 0 };
-                if ((!m.minvis || perceives_dm(_petdata))
-                    && !(m.mundetected | 0)
-                    && (m.mx | 0) === curx && (m.my | 0) === cury /* not tail */)
-                    return m;
-                /* C: pet can't see it → assume it ain't there; keep scanning. */
-            }
+        const m = m_at_dm(curx, cury);
+        if (m) {
+            /* C dogmove.c:729-732 — an invisible tame pet is visible to
+             * this pet only when its species has M1_SEE_INVIS.  The
+             * reconstructed monster may lack `data`, so use the
+             * authoritative MONS row as the same fallback. */
+            const _petdata = mtmp.data ?? { mflags1: _MONS[(mtmp.mndx ?? mtmp.mnum ?? -1) | 0]?.[6] ?? 0 };
+            if ((!m.minvis || perceives_dm(_petdata))
+                && !(m.mundetected | 0)
+                && (m.mx | 0) === curx && (m.my | 0) === cury /* not tail */)
+                return m;
+            /* C: pet can't see it → assume it ain't there; keep scanning. */
         }
     }
     return null;
@@ -2484,6 +2491,8 @@ const T_ARROW=1, T_DART=2, T_ROCK=3, T_SQKY=4, T_BEAR=5, T_LANDMINE=6,
 const M1_FLY_DM = 0x00000001, M1_AMORPHOUS_DM = 0x00000004, M1_UNSOLID_DM = 0x00100000;
 const M1_NOEYES_DM = 0x00001000;      /* C monflag.h M1_NOEYES */
 const SILVER_DM = 14;                 /* C objclass.h:27 SILVER */
+const BELL_OF_OPENING_DM = 263;       /* C objects.h BELL_OF_OPENING */
+const M3_COVETOUS_DM = 0x001f;        /* C monflag.h:168 M3_COVETOUS */
 const S_TROLL_DM = 46;                /* C defsym.h:347 S_TROLL */
 const ART_TROLLSBANE_DM = 17;         /* C artilist.h enum order */
 const ART_SNICKERSNEE_DM = 19;        /* C artilist.h enum order */
@@ -3488,7 +3497,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
                     const mv = (g.mvitals[mndx_dead] ||= { born: 0, died: 0, mvflags: 0 });
                     if ((mv.died | 0) < 255) mv.died = (mv.died | 0) + 1;
                 }
-                record_death_achievement(mndx_dead);
+                record_death_achievement(mndx_dead, mdef);
                 mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
                 game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
                 if (mdef.m_id === game.stealmid) thiefdead(); // C mon.c:2782-2783
@@ -3551,7 +3560,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
     /* C mon.c:3147-3165 mondead(): dead Kops may return, before m_detach
      * and mondied()'s corpse_chance roll. */
     await kop_revival(mdef);
-    record_death_achievement((mdef.mndx ?? mdef.mnum ?? -1) | 0);
+    record_death_achievement((mdef.mndx ?? mdef.mnum ?? -1) | 0, mdef);
     /* levl[][].glyph is hero memory; glyph_is_invisible_at() reads the painted cell, which under_water() blanks. */
     if (game.level?.at(deadMx, deadMy)?.remembered_glyph?.cls === GLYPHCLS_INVIS) unmap_object(deadMx, deadMy);
 

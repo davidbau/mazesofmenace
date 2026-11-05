@@ -11,9 +11,9 @@ import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { menucolor_row } from './coloratt.js';
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js';
 import { money_cnt } from './hack.js';
-import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
+import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
 import { is_pick, use_pick_axe2 } from './dig.js';
-import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint } from './display.js';
+import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint } from './display.js';
 import { check_gold_symbol } from './botl.js';
 import { You_hear, You_see, livelog_printf, pline } from './pline.js';
 import { You, encumber_msg, xname, yname } from './do_wear.js';
@@ -26,7 +26,7 @@ import { losehp } from './hack.js';
 import { def_oc_syms_chars } from './drawing.js';
 import { In_tutorial, assign_rnd_level, at_dgn_entrance, builds_up, describe_level_buf, dunlev, goto_hell, remdun_mapseen } from './dungeon.js';
 import { done } from './end.js';
-import { yn_function } from './cmd.js';
+import { readchar, yn_function } from './cmd.js';
 import { copy_you } from './game.js';
 import { game, wizard } from './gstate.js';
 import { depth } from './dungeon.js';
@@ -75,7 +75,7 @@ import { stucksteed } from './steed.js';
 import { RLOC_NOMSG, enexto_out, mnexto as mnexto_arrival, next_to_u as next_to_u_real, rloc, safe_teleds } from './teleport.js';
 import { run_timers } from './timeout.js';
 import { initrack } from './track.js';
-import { dosinkring as _fl_dosinkring, selftouch as _gl_selftouch, clamp_hole_destination, climb_pit, delfloortrap, dotrap, fill_pit, reset_utrap, seetrap, t_at, water_damage } from './trap.js';
+import { dosinkring as _fl_dosinkring, selftouch as _gl_selftouch, clamp_hole_destination, climb_pit, delfloortrap, deltrap, dotrap, fill_pit, reset_utrap, seetrap, t_at, water_damage } from './trap.js';
 import { m_dowear as _fl_m_dowear, bypass_objlist, nxt_unbypassed_obj } from './worn.js';
 import { menu_heading_text } from './tty_menu.js';
 import { monmightthrowwep as _fl_monmightthrowwep, dmgval, m_at, minstapetrify, mon_nam, more_experienced, newexplevel } from './uhitm.js';
@@ -785,7 +785,7 @@ async function dodrop_body() {
          * typed count digit ("... or ?*] 3") is part of the entry. */
         const _sh = g._topl_suppress_history;
         g._topl_suppress_history = true;
-        try { ilet = await nhgetch(); /* read the object letter */ }
+        try { ilet = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); /* read the object letter; cmd.c:5217 fuzzer arm */ }
         finally { g._topl_suppress_history = _sh; }
         putmsghistory(prompt + ' ' + key2txt((typeof ilet === 'number' ? ilet : (ilet?.charCodeAt(0) ?? 0)) & 0xff), false);
         }
@@ -870,7 +870,13 @@ async function dodrop_body() {
                 if (dropCnt > (obj.quan | 0)) {
                     // C invent.c:2064 You() flushes before update_topl/more().
                     pline_flush_point();
-                    await force_more(`You don't have that many!  You have only ${obj.quan}.`);
+                    /* force_invmenu: the menu left the topline empty and C's
+                     * oneloop retry re-drops at once, so the message just
+                     * concatenates with "You drop ..." (no --More--). */
+                    if (dropForce)
+                        await pline(`You don't have that many!  You have only ${obj.quan}.`);
+                    else
+                        await force_more(`You don't have that many!  You have only ${obj.quan}.`);
                     obj = null;
                     continue;
                 }
@@ -2313,14 +2319,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             _arrivalMsg = `You ${g.at_ladder ? 'climb down the ladder' : 'descend the stairs'}.`;
         }
     }
+    if (_arrivalMsg)
+        g._prevmsg = _arrivalMsg;
     /* C ball.c:998-1001 — drag_down's first two statements run BEFORE its cls(),
      * so the rn2(3) they may draw and the "You lose your grip on the iron ball."
      * they may pline both land on THIS side of the page. */
     let _dragPre = null;
     if (_fellDownstairs && _st_Punished()) {
         _dragPre = _drag_down_pre();
-        if (_dragPre.gripMsg)
+        if (_dragPre.gripMsg) {
             _arrivalMsg = `${_arrivalMsg}  ${_dragPre.gripMsg}`;
+            /* C ball.c:1000 — the grip message is the LAST pline before cls(),
+             * so it is the one gp.prevmsg ends up holding (pline.c:282), not the
+             * merged two-line page the pager shows. */
+            g._prevmsg = _dragPre.gripMsg;
+        }
     }
     /* C do.c:1783-1795: only drag_down() has a cls() before the fall
      * effects.  Otherwise dismount_steed/losehp run before docrt's message
@@ -2397,7 +2410,20 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (_st_Punished()) await placebc();
     // C do.c:1815 — obj_delivery(FALSE): objects that migrated to this level
     // (kicked / fell down a hole or trap door) arrive before the monsters do.
-    await obj_delivery(false);
+    /* do.c:1720 delay_flushing still holds bot(): a pline raised by
+     * obj_delivery (dokick.c:439-454 "You hear something shatter!") pages
+     * over the physical status row of the departed level. */
+    {
+        const _heldDeliv = g._botlPaintHeld;
+        g._botlPaintHeld = true;
+        if (oldUz) g._botlUzFrozen = { dnum: oldUz.dnum, dlevel: oldUz.dlevel };
+        try {
+            await obj_delivery(false);
+        } finally {
+            g._botlUzFrozen = null;
+            g._botlPaintHeld = _heldDeliv;
+        }
+    }
     // C do.c:1816 — Before_you, With_you, After_you; consumes mydogs.
     // The terminal still holds the OLD level's last flush until docrt()
     // (do.c:1840), so a prompt raised from inside losedogs() -> mnexto() ->
@@ -3036,6 +3062,15 @@ export async function deferred_goto() {
             !!(typmask & UTOTYPE_FALLING),
             !!(typmask & UTOTYPE_PORTAL)
         );
+        // C do.c:2088 — if (typmask & UTOTYPE_RMPORTAL) remove portal
+        if (typmask & UTOTYPE_RMPORTAL) {
+            const t = t_at(u.ux, u.uy);
+
+            if (t) {
+                deltrap(t);
+                newsym(u.ux, u.uy);
+            }
+        }
         // C do.c:2115 — if (dfr_post_msg && !on_level(uz, oldlev)) pline it
         if (g._dfr_post_msg) {
             const newuz = g.u?.uz;
@@ -3906,17 +3941,26 @@ export function heal_legs(how) {
 function recbranch_mapseen(source, dest) {
     if ((source.dnum | 0) === (dest.dnum | 0))
         return;                                  /* not a branch */
-    const on_lev = (a, b) => (a.dnum | 0) === (b.dnum | 0)
+    const on_lev = (a, b) => !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
                           && (a.dlevel | 0) === (b.dlevel | 0);
     let br = null;
     for (const b of (game._dungeon_branches || [])) {
-        if (on_lev(source, b.end1) && on_lev(dest, b.end2)) { br = b; break; }
-        if (on_lev(source, b.end2) && on_lev(dest, b.end1)) return;
+        if (!b.end1_floating && on_lev(source, b.end1) && on_lev(dest, b.end2)) { br = b; break; }
+        if (!b.end1_floating && on_lev(source, b.end2) && on_lev(dest, b.end1)) return;
     }
     if (!br)
         return;                                  /* not a real branch */
-    const all = (game._level_br = game._level_br || {});
-    all[`${source.dnum | 0}:${source.dlevel | 0}`] = br;
+    const mptr = (game._mapseen_entries || []).find(entry => !entry.duplicate && on_lev(entry, source));
+    if (mptr) {
+        const all = (game._level_br = game._level_br || {});
+        const key = `${source.dnum | 0}:${source.dlevel | 0}`;
+        if (all[key] && br !== all[key])
+            impossible_sync('Two branches on the same level?');
+        all[key] = br;
+    } else {
+        impossible_sync("Can't note branch for unseen level (%d, %d)",
+                        source.dnum | 0, source.dlevel | 0);
+    }
 }
 
 /* C ref: dungeon.h:132 Is_qstart(x) = Lcheck(x, &qstart_level) — the same

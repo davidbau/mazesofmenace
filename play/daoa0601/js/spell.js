@@ -1,10 +1,10 @@
 import { RANDOM_CLASS } from './objclass.js';
-import { objectBaseWeight, objectDelay, objectBaseDirection, objectSkill, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORNUTHAUM, LENSES, OBJECT_DESCRIPTIONS, OBJECT_INITIAL_KNOWN, OBJECT_NAMES, OBJECT_SPELL_CATEGORY, OBJECT_SPELL_LEVEL, QUARTERSTAFF, requireObjectData, ROBE, SMALL_SHIELD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR, SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER, SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE, SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF, SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH, SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK, } from './object_data.js';
+import { objectBaseWeight, objectDelay, objectBaseDirection, objectSkill, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORNUTHAUM, LENSES, QUARTERSTAFF, OBJ_NAME, oc_level, OBJECT_SPELL_CATEGORY, SMALL_SHIELD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR, ROBE, SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER, SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE, SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF, SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH, SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK, } from './object_data.js';
 import { requirePlayingGame, game, requireLiveGame } from './gstate.js';
 import { commandResultFailed, isok, promptDirection, cmdq_add_key, cmdq_pop, yn_function } from './cmd.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { ACH_INVK, ACH_NOVL, A_INT, A_STR, A_WIS, CLOUD, CMDQ_KEY, CQ_REPEAT, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, DRAWBRIDGE_UP, EXPL_FIERY, EXPL_FROSTY, IS_STWALL, IS_TREE, Is_waterlevel, LAVAPOOL, MENU_TRADITIONAL, MOAT, NHW_MENU, NO_MINVENT, PICK_NONE, PICK_ONE, P_ATTACK_SPELL, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_HEALING_SPELL, P_ISRESTRICTED, P_MATTER_SPELL, P_SKILLED, P_UNSKILLED, POOL, SPACE_POS, ZAP_POS, xdir, ydir } from './const.js';
-import { exerciseWisdom, currentAttribute, exerciseAttribute } from './attrib.js';
+import { exerciseWisdom, currentAttribute, exerciseAttribute, poisonHeroStrengthAndHp } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroHeadName, heroSpineName } from './body_parts.js';
 import { impossible } from './diagnostics.js';
 import { makeFamiliar } from './familiar.js';
@@ -13,9 +13,10 @@ import { jumpHero } from './apply.js';
 import { mapVicinity } from './detect.js';
 import { mksobj, objectWeight } from './mkobj.js';
 import { deleteObject, chargeUnpaidUsage } from './shk.js';
-import { useHeroSkill, ensureHeroSkills } from './skills.js';
+import { useHeroSkill, ensureHeroSkills, initializedSkills, requiredSkill } from './weapon.js';
+import { recordObjectKnowledge } from './o_init.js';
 import { findArmorClass } from './do_wear.js';
-import { canSeeMonster, canSpotMonster, flush_screen, shieldeff, map_invisible, zapdir_to_glyph, } from './display.js';
+import { canSeeMonster, canSpotMonster, flush_screen, shieldeff, map_invisible, zapdir_to_glyph, TemporaryMapEffect, } from './display.js';
 import { displayColorName, displayLiquidName, monsterName, novelTitle } from './do_name.js';
 import { explode } from './explosion.js';
 import { prepareMapPositionHighlights, selectMapPosition, showGetposInstructions } from './getpos.js';
@@ -38,7 +39,7 @@ import { recordAchievement } from './insight.js';
 import { makeInvocationArea } from './invocation_area.js';
 import { consumeInventoryItem } from './invent.js';
 import { tryCallObjectType } from './do.js';
-import { learnObjectType, observeObject } from './o_init.js';
+import { learnObjectType, observeObject, objectTypeKnown, OBJ_DESCR } from './o_init.js';
 import { erodeObject } from './trap.js';
 import { putHeroToSleep } from './timeout.js';
 import { stopHeroOccupation } from './occupation.js';
@@ -51,11 +52,9 @@ import { tameMonster } from './dog.js';
 import { readNovelTribute } from './novel_tribute.js';
 import { makemonAt, setMonsterMalign } from './makemon.js';
 import { makeUndeadNear } from './mkroom.js';
-import { poisonHeroStrengthAndHp } from './poison.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
-import { roleInitClericLightSchool } from './startup.js';
+import { roleInitClericLightSchool } from './roles.js';
 import { monsterAtPosition } from './steed.js';
-import { TemporaryMapEffect } from './temporary_map_effect.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, tty_destroy_nhwindow, } from './tty_menu.js';
 import { clearMessageWindow, flushPendingTopline } from './tty_topline.js';
 import { cansee } from './vision.js';
@@ -93,7 +92,7 @@ export function forceLearnSpell(otyp, state = game) {
 }
 export function createMemorizedSpell(otyp, knowledge, state) {
     const category = spellCategory(otyp, state);
-    const name = OBJECT_NAMES[otyp];
+    const name = OBJ_NAME(otyp);
     if (category == null || name == null)
         throw new RangeError(`Object type ${otyp} is not a spellbook.`);
     return {
@@ -107,7 +106,7 @@ export async function learnInitialSpell(book, state = game) {
     if (spells.length >= 52)
         await impossible('Too many spells memorized!', { state });
     else if (spells.some(spell => spell.otyp === book.otyp))
-        await impossible(`Spell ${OBJECT_NAMES[book.otyp]} already known.`, { state });
+        await impossible(`Spell ${OBJ_NAME(book.otyp)} already known.`, { state });
     else
         spells.push(createMemorizedSpell(book.otyp, 20000, state));
 }
@@ -117,7 +116,7 @@ export async function cursedBook(book, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
     let destroyed = false;
-    switch (rn2(requireObjectData(OBJECT_SPELL_LEVEL, book.otyp))) {
+    switch (rn2(oc_level(book.otyp))) {
         case 0:
             await pline(formatFeltMessage('a wrenching sensation.', state));
             await teleportHero({ chooseDestination: askTeleportDestination });
@@ -343,7 +342,7 @@ export async function continueSpellbookStudy({ state = game } = {}) {
     if (index >= MAX_SPELLS)
         await impossible('Too many spells memorized!', { state });
     else {
-        const quoted = typeKnown(type, state) ? `"${OBJECT_NAMES[type]}"` : `the "${OBJECT_NAMES[type]}" spell`;
+        const quoted = typeKnown(type, state) ? `"${OBJ_NAME(type)}"` : `the "${OBJ_NAME(type)}" spell`;
         const studied = book.spestudied || 0;
         const remembered = spells[index];
         if (studied >= (alreadyKnown ? MAX_STUDIES + 1 : MAX_STUDIES)) {
@@ -388,9 +387,9 @@ export async function studyBook(book, { state = game } = {}) {
     requirePlayingGame(state);
     const study = studyState(state);
     const type = book.otyp;
-    const level = requireObjectData(OBJECT_SPELL_LEVEL, type);
+    const level = oc_level(type);
     const confused = (state.u.confusionTurns ?? 0) > 0;
-    const appearance = state.objectDescriptions?.[type] ?? OBJECT_DESCRIPTIONS[type];
+    const appearance = OBJ_DESCR(type, state);
     if (!confused && !propertyIsActive('sleepResistance', state)
         && !state.u.sleepResistance && appearance === 'dull') {
         let drowsiness = rnd(25) - currentAttribute(A_WIS, state);
@@ -424,7 +423,7 @@ export async function studyBook(book, { state = game } = {}) {
         study.delay = delay;
         const remembered = state.spells.find(spell => spell.otyp === type);
         if (remembered && currentSpellKnowledge(remembered, state) > 2000) {
-            await pline(`You know "${OBJECT_NAMES[type]}" quite well already.`);
+            await pline(`You know "${OBJ_NAME(type)}" quite well already.`);
             learnObjectType(type, state);
             if (await promptYesNo('Refresh your memory anyway?', 'n') !== 'y')
                 return outcome(false, state);
@@ -511,7 +510,7 @@ function studyState(state) {
     return state.context.spbook ||= { book: null, o_id: 0, delay: 0 };
 }
 function readingDelay(type) {
-    const level = requireObjectData(OBJECT_SPELL_LEVEL, type);
+    const level = oc_level(type);
     const delay = objectDelay(type);
     if (level >= 1 && level <= 2)
         return -delay;
@@ -522,7 +521,7 @@ function readingDelay(type) {
     return level === 7 ? -8 * delay : null;
 }
 function typeKnown(type, state) {
-    return OBJECT_INITIAL_KNOWN[type] || state._knownObjectTypes?.has(type);
+    return objectTypeKnown({ otyp: type }, state);
 }
 function delayReading(delay, state) {
     nomul(delay, state);
@@ -699,10 +698,30 @@ export async function dovspell() {
     game.context.move = 0;
 }
 function spellLevel(type) {
-    const level = OBJECT_SPELL_LEVEL[type];
+    const level = oc_level(type);
     if (level === undefined)
         throw new RangeError(`Object type ${type} has no spell level.`);
     return level;
+}
+// C spell.c:skill_based_spellbook_id() grants knowledge without an
+// encounter or Wisdom exercise, and reevaluates every school after a gain.
+export function identifySpellbooks(state) {
+    if (state.urole?.key !== 'wizard')
+        return;
+    const skills = initializedSkills(state);
+    for (let type = 0; type < OBJECT_SPELL_CATEGORY.length; type++) {
+        if (!OBJECT_SPELL_CATEGORY[type])
+            continue;
+        const category = spellSkillType(type, state);
+        const spellLevel = oc_level(type);
+        if (spellLevel === undefined)
+            throw new Error(`Spellbook ${type} has incomplete skill data`);
+        const skill = requiredSkill(skills, category).skill;
+        const level = skill >= P_EXPERT ? 7 : skill === P_SKILLED ? 5
+            : skill === P_BASIC ? 3 : state.u.uroleplay?.pauper ? 0 : 1;
+        if (spellLevel <= level)
+            recordObjectKnowledge(type, state);
+    }
 }
 const HEALING_BONUS_SPELLS = new Set([
     SPE_HEALING, SPE_EXTRA_HEALING, SPE_CURE_BLINDNESS,
@@ -715,7 +734,7 @@ export async function checkSpellCast(spell, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
     const memorized = state.spells?.find(known => known.otyp === spell?.otyp);
-    if (!memorized || !OBJECT_SPELL_CATEGORY[memorized.otyp]
+    if (!memorized || !spellCategory(memorized.otyp, state)
         || await rejectCasting(state))
         return { allowed: false, spentTime: false, energy: 0 };
     const hero = state.u;
@@ -815,7 +834,7 @@ export function percentSuccess(spell, state = game) {
     chance = Math.max(0, Math.min(120, chance));
     const shield = wornObject('uarms', state);
     if (shield && objectWeight(shield) > objectBaseWeight(SMALL_SHIELD))
-        chance = Math.trunc(chance / (OBJECT_NAMES[type] === role.special ? 2 : 4));
+        chance = Math.trunc(chance / (OBJ_NAME(type) === role.special ? 2 : 4));
     chance = Math.trunc(chance * (20 - castingPenalty) / 15) - castingPenalty;
     return Math.max(0, Math.min(100, chance));
 }
@@ -839,7 +858,7 @@ function innateCastingPenalty(type, state) {
                 penalty += amount;
         }
     }
-    if (OBJECT_NAMES[type] === role.special)
+    if (OBJ_NAME(type) === role.special)
         penalty += role.specialBonus;
     if (HEALING_BONUS_SPELLS.has(type))
         penalty += role.healing;
@@ -890,7 +909,7 @@ async function backfireForgottenSpell(spell, state) {
         await makeStunned(stunned + duration, quiet);
 }
 function nativeSpellLevel(type) {
-    const level = OBJECT_SPELL_LEVEL[type];
+    const level = oc_level(type);
     if (level === undefined)
         throw new RangeError(`Unknown spell object type ${type}`);
     return level;
@@ -920,7 +939,7 @@ export async function selectWizardSpell() {
     try {
         await tty_start_menu(window);
         for (let otyp = SPE_DIG; otyp < SPE_BLANK_PAPER; otyp++) {
-            const name = OBJECT_NAMES[otyp];
+            const name = OBJ_NAME(otyp);
             if (name == null)
                 throw new Error(`Missing spell name for object ${otyp}`);
             tty_add_menu(window, { identifier: otyp, text: name });
@@ -1039,8 +1058,8 @@ async function showSpellMenu(title, { state, order = null, view = false, presele
     const displayOrder = order || state.spells.map((_spell, index) => index);
     const items = displayOrder.map((index, position) => {
         const spell = spellAt(state, index);
-        const name = OBJECT_NAMES[spell.otyp];
-        const level = OBJECT_SPELL_LEVEL[spell.otyp];
+        const name = OBJ_NAME(spell.otyp);
+        const level = oc_level(spell.otyp);
         const category = spellCategory(spell.otyp, state);
         if (name == null || level === undefined || category == null)
             throw new Error(`Missing spell metadata for object ${spell.otyp}`);
@@ -1101,15 +1120,15 @@ function compareSpells(first, second, mode, state) {
             return difference;
     }
     if ([SORT_LEVEL_LOW, SORT_LEVEL_HIGH, SORT_SKILL_LOW, SORT_SKILL_HIGH].includes(mode)) {
-        const firstLevel = OBJECT_SPELL_LEVEL[firstType];
-        const secondLevel = OBJECT_SPELL_LEVEL[secondType];
+        const firstLevel = oc_level(firstType);
+        const secondLevel = oc_level(secondType);
         if (firstLevel === undefined || secondLevel === undefined)
             throw new Error('A memorized spell has no native spell level.');
         const difference = firstLevel - secondLevel;
         if (difference)
             return [SORT_LEVEL_HIGH, SORT_SKILL_HIGH].includes(mode) ? -difference : difference;
     }
-    const firstLabel = OBJECT_NAMES[firstType], secondLabel = OBJECT_NAMES[secondType];
+    const firstLabel = OBJ_NAME(firstType), secondLabel = OBJ_NAME(secondType);
     if (firstLabel == null || secondLabel == null)
         throw new Error('A memorized spell has no native spell name.');
     const firstName = firstLabel.toLowerCase();
@@ -1442,7 +1461,7 @@ export async function applyPotionSpell(source, { state = game } = {}) {
 }
 // ── spell.c:spell_skilltype() and spelltypemnemonic() ──
 // C spell.c:spell_skilltype(). The Priest light-school override is
-// role.c:role_init() (role.c:2088), carried by startup.ts.
+// role_init's, at role.c:2088, carried by roles.ts.
 export function spellSkillType(otyp, state = game) {
     if (roleInitClericLightSchool(otyp, state))
         return P_CLERIC_SPELL;

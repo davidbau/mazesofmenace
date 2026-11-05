@@ -71,7 +71,7 @@ const SHOCK_RES_MC = 5; /* prop.h SHOCK_RES (js/const.js:2316) */
 /* monst.h:82/:85 seen_resistance bits (js/makemon.js:3464/3468). */
 const M_SEEN_ELEC_MC = 0x0020, M_SEEN_REFL_MC = 0x0100, M_SEEN_FIRE_MC = 0x0002;
 const FIRE_RES = 1, COLD_RES = 2, ANTIMAGIC = 12, BLINDED = 15, DEAF = 16,
-    HALLUC = 23, SEE_INVIS = 29, INVIS = 40, DISPLACED = 41, HALF_SPDAM = 55;
+    HALLUC = 23, HALLUC_RES = 24, SEE_INVIS = 29, INVIS = 40, DISPLACED = 41, HALF_SPDAM = 55;
 
 // mcastu.h: magic and clerical spells share one enum + flags table.
 const MCAST_PSI_BOLT = 0, MCAST_OPEN_WOUNDS = 1, MCAST_LIGHTNING = 2,
@@ -140,7 +140,8 @@ function propOn(id) {
     return !!(p && (p.intrinsic || p.extrinsic));
 }
 function Antimagic() { return propOn(ANTIMAGIC); }
-function Hallucination() { return propOn(HALLUC); }
+// youprop.h:120 Hallucination = HHallucination && !Halluc_resistance
+function Hallucination() { return propOn(HALLUC) && !propOn(HALLUC_RES); }
 function Blinded() { return propOn(BLINDED); }
 /* youprop.h Deaf == (HDeaf || EDeaf) || u.uroleplay.deaf; this port keeps the
  * HDeaf timeout in the flat u.HDeaf slot (eat.c:3421 newuhs, js/eat.js:788). */
@@ -261,7 +262,7 @@ export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
     if (adtyp === AD_MAGM || adtyp === AD_ACID) {
         /* C zap.c:5509-5516 — engraving clobber. */
         const e = engr_at(_x, _y);
-        if (e && e.engr_type !== HEADSTONE && e.text != null)
+        if (e && e.text != null)
             wipe_engr_at(_x, _y, String(e.text || '').length + d(6, 6), true);
     }
     if (adtyp >= AD_MAGM && adtyp <= AD_ACID) {

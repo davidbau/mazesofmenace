@@ -7,6 +7,7 @@
 //         danger_uprops(), cmd_safety_prevention(), donull(), dowipe(),
 //         wipeoff(), set_wounded_legs(), heal_legs().
 import { ILLOBJ_CLASS, RING_CLASS, COIN_CLASS, VENOM_CLASS } from './objclass.js';
+import { OBJ_NAME } from './object_data.js';
 import { setHeroBlindnessTimeout, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './gstate.js';
 import { pline, plineWithContinuation } from './pline.js';
@@ -18,9 +19,10 @@ import { paranoidQuery, commandResultCancelled, commandResultFailed, resetOccupa
 import { makeBlinded } from './potion.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { heroFaceName, heroHandName, heroLegName, monsterStomachName } from './body_parts.js';
-import { BOULDER, CORPSE, CRYSKNIFE, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LEASH, LOADSTONE, MEATBALL, MEAT_RING, MEAT_STICK, OBJECT_NAMES, TIN, WORM_TOOTH } from './object_data.js';
+import { BOULDER, CORPSE, CRYSKNIFE, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LEASH, LOADSTONE, MEATBALL, MEAT_RING, MEAT_STICK, TIN, WORM_TOOTH } from './object_data.js';
 import { makePlural, withIndefiniteArticle, ownedObjectName, verbForSubject, objectCombatName, objectDescription, objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle, objectMonsterName, ownedObjectAction, definiteObjectAction } from './objnam.js';
-import { billForObject, chargeAlteredUnpaidObject, objectTypeKnown, deleteObject, objectIsUnpaid, stolenValue, sellHeroDroppedObject, SELL_DELIBERATE, SELL_NORMAL, setSellDisposition } from './shk.js';
+import { objectTypeKnown } from './o_init.js';
+import { billForObject, chargeAlteredUnpaidObject, deleteObject, objectIsUnpaid, stolenValue, sellHeroDroppedObject, SELL_DELIBERATE, SELL_NORMAL, setSellDisposition } from './shk.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import { callObjectType, displayColorName, displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { threateningMonsterNearby, loseHeroHp, impactDisturbsZombies, switchHeroTerrain, burnAwayHeroSlime } from './hack.js';
@@ -37,7 +39,7 @@ import { useUpFloorObject } from './floor_consumption.js';
 import { deleteFloorTrap, resetUtrap, petrifyMonsterImmediately } from './trap.js';
 import { heroHasArtifactDefense, heroHasCarriedArtifactFlag } from './artifacts.js';
 import { impossible } from './diagnostics.js';
-import { waterbodyName } from './terrain_name.js';
+import { waterbodyName } from './pager.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { chooseObjectCategories } from './pickup.js';
 import { selectInventoryObject, inventoryClassOrder, lootSortMode, objectClassHeading, inventoryItemDescription, consumeInventoryItem, delobj, sortObjects, chooseInventoryObject, finishInventoryRemoval, floorObjectDescription, freeInventoryObject, } from './invent.js';
@@ -51,7 +53,7 @@ import { touchPetrifies, heroResistsStoning } from './stoning.js';
 import { holdingMonsterName } from './hero_expulsion.js';
 import { possessiveName } from './hacklib.js';
 import { heroCanReachFloor, engravingAt, make_grave } from './engrave.js';
-import { beginLevitatingArtifactDrop, finishLevitatingArtifactDrop } from './levitation_drop.js';
+import { beginLevitatingArtifactDrop, finishLevitatingArtifactDrop } from './artifacts.js';
 import { hitFloorWithObject } from './dothrow.js';
 import { shipObject, containerImpactDamage } from './dokick.js';
 import { landObjectOnAltar } from './altar_object.js';
@@ -68,7 +70,7 @@ import { monsterAlignmentType } from './priest.js';
 import { createPlayerMonsters } from './mplayer.js';
 import { gainGuardianAngel } from './guardian_angel.js';
 import { randomMonsterRelocation, enexto } from './teleport.js';
-import { placeHeroOnLevel } from './hero_location.js';
+import { placeHeroOnLevel } from './dungeon.js';
 import { is_shapeshifter, monsterDigests, monsterIsNonliving, monsterIsVampireShifter, monsterPassesWalls, monsterThrowsRocks } from './mondata.js';
 // Also C invent.c:any_obj_ok(): inlined as the drop chooser's
 // GETOBJ_SUGGEST callback below.
@@ -804,7 +806,7 @@ function* crysknifeReversions(object) {
 function revertCrysknife(object) {
     object.otyp = WORM_TOOTH;
     object.oerodeproof = false;
-    const name = OBJECT_NAMES[WORM_TOOTH];
+    const name = OBJ_NAME(WORM_TOOTH);
     if (typeof name !== 'string')
         throw new Error('Worm tooth has no canonical object name');
     if (object.name !== undefined)

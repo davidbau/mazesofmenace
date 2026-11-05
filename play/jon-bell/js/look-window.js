@@ -85,9 +85,12 @@ export async function displayLookWindow(lines) {
      * (wintty.c:1983-2020). */
     const underWindow = (g._topl_win_stop ? '' : g._pending_message) || g._topl_sticky || '';
     /* C wintty.c:1943-1944 — a putstr NHW_MENU is painted by
-     * process_text_window; the trailing "--More--" is dmore's, not a line. */
+     * process_text_window; the trailing "--More--" is dmore's, not a line.
+     * A tab byte in a line (region.c:679's fldsep under menu_tab_sep) is one
+     * unpainted column there — CUF(1) on the wire, never a tab glyph. */
     const paintLines = windowLines.map((ln, i) =>
-        (i === windowLines.length - 1 ? ln : tty_text_window_utf8_line(ln)));
+        (i === windowLines.length - 1 ? ln
+                                      : tty_text_window_utf8_line(ln).replace(/\t/g, '\x1b[1C')));
     const screen = build_window_screen(paintLines, col, g.u.uac);
     for (;;) {
         g._screen_output = screen;

@@ -6,18 +6,20 @@
 // (shknam.ts); this module owns the live relationship among room, resident,
 // customer, and hero.
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS, } from './objclass.js';
-import { objectBaseWeight, objectBaseCost, objectMagic, objectCharged, BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CORPSE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, EXPENSIVE_CAMERA, HORN_OF_PLENTY, LARGE_BOX, MAGIC_FLUTE, MAGIC_LAMP, MAGIC_MARKER, OBJECT_NAMES, OBJECT_INITIAL_KNOWN, DUNCE_CAP, OIL_LAMP, POT_OIL, TINNING_KIT, WORTHLESS_PIECE_OF_WHITE_GLASS, PICK_AXE, DWARVISH_MATTOCK, MIRROR, POT_WATER, WAX_CANDLE, TALLOW_CANDLE, TIN, EGG, CANDELABRUM_OF_INVOCATION, BOULDER, ROCK, LAND_MINE, BEARTRAP, LEASH, GOLD_PIECE, } from './object_data.js';
+import { objectBaseWeight, objectBaseCost, objectMagic, objectCharged, BAG_OF_TRICKS, BRASS_LANTERN, CAN_OF_GREASE, CORPSE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, EXPENSIVE_CAMERA, HORN_OF_PLENTY, LARGE_BOX, MAGIC_FLUTE, MAGIC_LAMP, MAGIC_MARKER, OBJECT_NAMES, DUNCE_CAP, OIL_LAMP, POT_OIL, TINNING_KIT, WORTHLESS_PIECE_OF_WHITE_GLASS, PICK_AXE, DWARVISH_MATTOCK, MIRROR, POT_WATER, WAX_CANDLE, TALLOW_CANDLE, TIN, EGG, CANDELABRUM_OF_INVOCATION, BOULDER, ROCK, LAND_MINE, BEARTRAP, LEASH, GOLD_PIECE, } from './object_data.js';
 import { impossible } from './diagnostics.js';
-import { objectMaterial, learnObjectType, observeObject } from './o_init.js';
+import { objectMaterial, learnObjectType, observeObject, objectTypeKnown } from './o_init.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { isRoom } from './map_types.js';
 import { pline, plineWithContinuation, verbalize } from './pline.js';
 import { hasShopBill, hasShopkeeperData, requireShopGame } from './shop_types.js';
 import { SHOP_TYPES, saleable, shopkeeperName, shopStocksObject } from './shknam.js';
+import { hello } from './roles.js';
 import { MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SOUND, MONSTER_SYMBOL } from './monster_data.js';
 import { heroSpecies, heroPolyGender, heroPassesWalls } from './polyself.js';
 import { monsterName } from './do_name.js';
-import { possessiveName, depth, distmin, dist2, pointsOnline, upstart } from './hacklib.js';
+import { possessiveName, distmin, dist2, pointsOnline, upstart } from './hacklib.js';
+import { depth } from './dungeon.js';
 import { monsterPossessive, monsterSubjectPronoun, monsterIsHelpless, monsterObjectPronoun, is_elf, monsterHasEyes, monsterHasHead, monsterHasNoLimbs, monsterHasProperName, monsterIsDemon, monsterIsHuman, monsterIsVampire, monsterPassesWalls, } from './mondata.js';
 import { hiddenGold } from './vault.js';
 import { canSeeMonster, canSenseMonster, flush_screen, canSpotMonster, newsym, map_invisible } from './display.js';
@@ -26,7 +28,7 @@ import { simpleObjectName, objectTypeName, objectName, objectCombatName, definit
 import { rn2, rnd } from './rng.js';
 import { recordRandom } from './monster_action_types.js';
 import { heroGoldObject, detachHeroGold } from './hero_gold.js';
-import { currentAttribute, exerciseAttribute } from './attrib.js';
+import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { propertyIsActive } from './properties.js';
 import { angerWatchGuards, removeMonsterFromGame, mnearto, resistConflict, moveMonsterNextToHero } from './mon.js';
@@ -45,7 +47,6 @@ import { heroIsDisplaced } from './do_wear.js';
 import { monsterHandName, heroArmName, monsterHeadName } from './body_parts.js';
 import { diggingTimeToHole } from './dig.js';
 import { heroHasConflict } from './hero_conflict.js';
-import { adjustHeroAlignment } from './alignment.js';
 import { dropHeroInventoryForBones } from './bones.js';
 import { recordGameLogEvent } from './gamelog.js';
 import { releaseAllMonsterLeashes, releaseObjectLeash, umDist } from './apply.js';
@@ -123,11 +124,6 @@ export function shopkeeperKillerName(monster) {
     const personal = /^[-+=]/.test(raw);
     const honorific = personal ? '' : monster?.female ? 'Ms. ' : 'Mr. ';
     return `${honorific}${shopkeeperName(monster)}; the shopkeeper`;
-}
-// C objects[otyp].oc_name_known belongs to the type, never to an instance.
-export function objectTypeKnown(object, state = game) {
-    return !!OBJECT_INITIAL_KNOWN[object.otyp]
-        || !!state._knownObjectTypes?.has(object.otyp);
 }
 function shopkeeperForRoom(roomno, state = game) {
     if (!roomno)
@@ -1152,26 +1148,6 @@ export function billedPickupQuote(transaction, state = game) {
 function possessive(name) {
     return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
-// C role.c:Hello().
-export function shopGreeting(monster, state = game) {
-    switch (state.urole?.key) {
-        case 'knight': return 'Salutations';
-        case 'samurai': return MONSTER_NAME[monster?.mnum] === 'shopkeeper'
-            ? 'Irasshaimase' : 'Konnichi wa';
-        case 'tourist': return 'Aloha';
-        case 'valkyrie': return 'Velkommen';
-        case 'archeologist':
-        case 'barbarian':
-        case 'caveman':
-        case 'healer':
-        case 'monk':
-        case 'priest':
-        case 'ranger':
-        case 'rogue':
-        case 'wizard':
-        case undefined: return 'Hello';
-    }
-}
 // C shk.c:deserted_shop(). Disguised or unseen occupants leave uncertainty.
 async function describeUntendedShop(room) {
     requireShopGame(game);
@@ -1264,7 +1240,7 @@ export async function enterShop({ room, roomno }) {
         const again = eshk.visitct ? ' again' : '';
         eshk.visitct = (eshk.visitct ?? 0) + 1;
         message = deaf ? `You enter ${possessive(shopkeeperName(shopkeeper))} ${typeName}${again}!`
-            : `"${shopGreeting(shopkeeper)}, ${playerName}!  Welcome${again} to ${possessive(shopkeeperName(shopkeeper))} ${typeName}!"`;
+            : `"${hello(shopkeeper)}, ${playerName}!  Welcome${again} to ${possessive(shopkeeperName(shopkeeper))} ${typeName}!"`;
     }
     await plineWithContinuation(message);
     await blockShopEntry(shopkeeper);
@@ -2800,11 +2776,11 @@ export async function chatWithShopkeeper(monster, state = game) {
     else if (shop.following) {
         if (shop.customer !== state.plname) {
             if (speaking)
-                await plineWithContinuation(`"${shopGreeting(monster, state)} ${state.plname}!  I was looking for ${shop.customer}."`);
+                await plineWithContinuation(`"${hello(monster, state)} ${state.plname}!  I was looking for ${shop.customer}."`);
             shop.following = 0;
             return;
         }
-        message = speaking ? `"${shopGreeting(monster, state)} ${state.plname}!  Didn't you forget to pay?"`
+        message = speaking ? `"${hello(monster, state)} ${state.plname}!  Didn't you forget to pay?"`
             : `${name()} taps you on the ${heroArmName(state)}.`;
     }
     else if (shop.billct) {
@@ -4462,14 +4438,14 @@ export async function moveShopkeeper(monster, state, random, rollDice, rollOne, 
         if (eshk.following) {
             if ((eshk.customer ?? '').slice(0, PL_NSIZ) !== state.plname.slice(0, PL_NSIZ)) {
                 if (!heroIsDeaf(state) && !shopkeeperIsMuted(monster)) {
-                    await plineWithContinuation(`"${shopGreeting(monster, state)}, ${state.plname}!  I was looking for ${eshk.customer}."`);
+                    await plineWithContinuation(`"${hello(monster, state)}, ${state.plname}!  I was looking for ${eshk.customer}."`);
                 }
                 eshk.following = false;
                 return stopped;
             }
             if (state.moves > (state._shopFollowMessageTurn ?? 0) + 4) {
                 if (!heroIsDeaf(state) && !shopkeeperIsMuted(monster)) {
-                    await plineWithContinuation(`"${shopGreeting(monster, state)}, ${state.plname}!  Didn't you forget to pay?"`);
+                    await plineWithContinuation(`"${hello(monster, state)}, ${state.plname}!  Didn't you forget to pay?"`);
                 }
                 else {
                     await plineWithContinuation(`${shopkeeperName(monster, { state, capitalized: true })} holds out ${monsterPossessive(monster, { state, random, noIt: true })} upturned ${monsterHandName(monster.mnum)}.`);

@@ -1948,12 +1948,15 @@ async function _pickup_old_style(objchain, traverse_how, count) {
                                              ansimpleoname, 'something');
             const rs = ((obj.quan | 0) < 2) ? 'ynaq' : 'yn#aq';
             /* C hack.h:1331,1334 ynaq()/ynNaq(): record the answer for repeat. */
-            let sym = await yn_function(base, rs, 'y', true);
-            let yn_number = 0;
-            if (sym === '#') {
-                yn_number = await _yn_count_tail(`${base} [${rs}] (y)`);
-                if (yn_number < 0) { sym = 'n'; yn_number = 0; }
-            }
+            let sym, yn_number;
+            /* topl.c:526-531: an aborted count removes the number and
+             * tty_yn_function asks the same question again. */
+            do {
+                yn_number = 0;
+                sym = await yn_function(base, rs, 'y', true);
+                if (sym === '#')
+                    yn_number = await _yn_count_tail(`${base} [${rs}] (y)`);
+            } while (yn_number < 0);
             /* topl.c:533-550 clean_up leaves the prompt on row 0 even for
              * 'q', until parse()'s clear_nhwindow; nhgetch dropped it. */
             if (base.length + rs.length + 8 <= 79)

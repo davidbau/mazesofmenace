@@ -1539,7 +1539,7 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
     /* C ref: wintty.c:1927 tty_display_nhwindow — a menu whose rows reach the
      * screen height goes full-screen (offx 0), and tty_end_menu (:2649) pages
      * it at lmax = rows - 1 lines.  The shared TtyMenu models both. */
-    if (items.length + 3 > 23 /* rows - 1 */) {
+    if (items.length + 3 >= 23 /* maxrow = nitems + 1 >= rows (wintty.c:1927) */) {
         const menu = new TtyMenu({ overlay: false });
         menu.add_menu_heading(headingRaw);
         for (const it of items)
@@ -1601,11 +1601,25 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
      * large enough to paginate (objclass.h MAXSPELL is 42 in the pinned build)
      * would need real paging. */
     try {
+    /* C ref: wintty.c:1334-1399,1570-1612 counting/count/reset_count: digits
+     * build a count, and ESC while counting only stops the count (counting
+     * clears at the next loop turn); a key outside resp is re-read inside
+     * xwaitforspace so a live count survives it. */
+    let counting = false, reset_count = true;
     for (;;) {
+        if (reset_count) counting = false;
+        else reset_count = true;
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
-        if (key === 27 /* ESC — C ref: tty menu cancel */)
-            return { count: 0, picked: 0 };
+        if (key === 27 /* ESC — C ref: tty menu cancel */) {
+            if (!counting)
+                return { count: 0, picked: 0 };
+            continue;
+        }
+        if (ch >= '0' && ch <= '9' && !items.some((it) => it.accel === ch)) {
+            if (ch !== '0' || counting) { counting = true; reset_count = false; }
+            continue;
+        }
         if (ch === ' ' || ch === '\n' || ch === '\r') {
             /* Confirm/dismiss: tty returns the still-selected (preselected)
              * entry, if any (wintty.c process_menu_window finished path). */
@@ -1644,6 +1658,7 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
              * re-reads (the dismiss keys above already returned). */
             continue;
         /* Unrecognised accelerator: bell, no redraw, read again. */
+        reset_count = false;
     }
     } finally {
         /* spell.c:2153 destroy_nhwindow -> wintty.c:982 erase_menu_or_text:

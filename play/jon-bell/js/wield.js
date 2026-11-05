@@ -503,7 +503,7 @@ export async function dowield() {
         /* C topl.c:537-539 — tty_yn_function files prompt + key2txt(answer). */
         const _sh = g._topl_suppress_history;
         g._topl_suppress_history = true;
-        try { itemRaw = await nhgetch(); /* C: tty_nhgetch reads the item key */ }
+        try { itemRaw = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); /* C: tty_nhgetch reads the item key */ }
         finally { g._topl_suppress_history = _sh; }
         putmsghistory(qbuf + ' ' + key2txt((typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
         g._pending_message = '';
@@ -594,6 +594,10 @@ export async function dowield() {
          * for the disp.botl set at invent.c:2049, so the --More-- frame shows
          * the status as of now (the turn counter ticked since the last paint). */
         if (g.disp.botl) await bot();
+        if (g.gi?.in_doagain) { /* invent.c:2060-2061: no re-prompt on repeat */
+            await You("don't have that object.");
+            return ECMD_CANCEL;
+        }
         await force_more("You don't have that object.");
     }
     }
@@ -750,7 +754,12 @@ export async function dowield() {
     if (!invocationBell && (_retouch_ag(wep) || bane_applies_hero(wep.oartifact | 0))) {
         if (_blastHeld) await pline(_blastHeld);
         await pline(`You can't handle ${yname(wep)}${wep.owornmask ? ' anymore' : ''}!`);
-        if (!_blastHeld) {
+        /* C artifact.c:2535 `if (!touch_blasted)` — the static, NOT the held
+         * blast message: when the blast's own losehp dropped the hero low
+         * enough, maybe_wail (hack.c:4210-4241) already published AND cleared
+         * _touch_artifact_blast_msg, so _blastHeld is null while the static
+         * is still TRUE (rb381 step 432). */
+        if (!g._touch_blasted) {
             await losehp(_retouch_dmg(wep), `handling ${killer_xname(wep)}`, KILLED_BY);
             exercise(A_CON, false);
         }

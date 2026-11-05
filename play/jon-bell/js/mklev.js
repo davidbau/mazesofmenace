@@ -15,7 +15,7 @@ import { You_feel } from './pline.js';
 import { nonliving as lifesave_nonliving } from './makemon.js';
 import { m_useup as lifesave_m_useup } from './mthrowu.js';
 import { discover_object as lifesave_discover_object, isWanNothingNodir, objdescr_is as objdescr_is_real } from './o_init.js';
-import { s_suffix as lifesave_s_suffix } from './hacklib.js';
+import { s_suffix as lifesave_s_suffix, ordin as logdeadmon_ordin } from './hacklib.js';
 import { wary_dog, dismount_steed as dismount_steed_mk, sticks, tamedog as tamedog_mk, m_into_limbo, newedog } from './dog.js';
 import { MM_EDOG, MM_ESHK } from './const.js';
 import { debugpline } from './display.js';
@@ -227,7 +227,8 @@ import { setmnotwielded, mwepgone, minstapetrify } from './uhitm.js'; /* C worn.
 import { mwelded } from './wield.js';                           /* C obj.h:434 */
 import { wizdeadorgone, record_achievement } from './cmd.js';
 import { PM_MEDUSA } from './pm.generated.js';
-import { ACH_MEDU } from './const.js';
+import { ACH_MEDU, LL_UMONST, LL_ACHIEVE } from './const.js';
+import { livelog_printf } from './pline.js';
 import { bypass_obj, setnotworn } from './worn.js';            /* C worn.c:1090 */
 import { flooreffects } from './do.js';                      /* C do.c:161 */
 import { stackobj } from './sp_lev.js';                       /* C mkobj.c:2411 */
@@ -7799,9 +7800,9 @@ export function occupied(x, y) {
     const traps = game.level.traps;
     if (traps && traps.some(t => t.tx === x && t.ty === y))
         return true;
-    // every record, but stairway placement always is.
-    if (stairway_at(x, y))
-        return true;
+    // C mklev.c:1806 tests only levl[x][y].typ, never the stairway list: after
+    // #wizloadlua re-fills a level, stale gs.stairs nodes sit on non-STAIRS
+    // terrain and C treats those squares as free.
     const loc = game.level.at(x, y);
     if (loc && (IS_FURNITURE(loc.typ)
                 || loc.typ === LAVAPOOL || loc.typ === LAVAWALL
@@ -10034,11 +10035,51 @@ export async function kop_revival(mtmp) {
     }
 }
 
-/* C mon.c:2997-3002 logdeadmon(): every death path records the first
- * Medusa defeat, after unshapeshifting and incrementing mvitals[].died. */
-export function record_death_achievement(mndx) {
-    if (mndx === PM_MEDUSA && game.mvitals?.[mndx]?.died === 1)
+/* C mon.c:2997-3067 logdeadmon(): every death path records the first
+ * Medusa defeat, after unshapeshifting and incrementing mvitals[].died, else
+ * livelogs a unique or shopkeeper kill.  livelog_mon_nam (mon.c:2991-2992) is
+ * x_monnam(EXACT_NAME, hack.h 0x1F; const.js has it wrong): SUPPRESS_HALLUCINATION keeps x_monnam off rndmonnam,
+ * but shkname() still tests Hallucination itself (shknam.c:873-890), so a
+ * hallucinating hero's shopkeeper kill draws rn2(num) + rn2(names) here. */
+export function record_death_achievement(mndx, mtmp) {
+    let howmany = game.mvitals?.[mndx]?.died | 0;
+
+    if (mndx === PM_MEDUSA && howmany === 1) {
         record_achievement(ACH_MEDU);
+    } else if (mtmp
+               && ((((mtmp.data?.geno | 0) & 0x1000 /* G_UNIQ */)
+                    && (mndx !== PM_HIGH_CLERIC || !mtmp.mrevived))
+                   || (mtmp.isshk && !mtmp.mrevived))) {
+        let shkdetail = '';
+        const herodidit = !game.context?.mon_moving;
+
+        if (mtmp.isshk) {
+            howmany = 1;
+            shkdetail = `, the ${shtype_name((mtmp.mextra?.eshk?.shoptype | 0) - SHOPBASE)} `
+                + `${mtmp.female ? 'proprietrix' : 'proprietor'}${herodidit ? '' : ','}`;
+        } else if (mndx === PM_HIGH_CLERIC) {
+            howmany = 1;
+        }
+        if (howmany <= 3 || howmany === 5 || howmany === 10 || howmany === 25
+            || (howmany % 50) === 0) {
+            let xtra = '';
+            let llevent_type = LL_UMONST;
+
+            if (howmany === 1 || mtmp.iswiz || is_rider_pm(mndx))
+                llevent_type |= LL_ACHIEVE;
+            if (howmany > 1)
+                xtra = ` (${howmany}${logdeadmon_ordin(howmany)} time)`;
+            const mkilled = lifesave_nonliving(mtmp.data) ? 'destroyed' : 'killed';
+            if (herodidit)
+                livelog_printf(llevent_type, '%s %s%s%s', mkilled,
+                               x_monnam(mtmp, ARTICLE_THE, null, 0x1F /* hack.h EXACT_NAME */, false),
+                               shkdetail, xtra);
+            else
+                livelog_printf(llevent_type, '%s%s has been %s%s',
+                               x_monnam(mtmp, ARTICLE_THE, null, 0x1F /* hack.h EXACT_NAME */, false),
+                               shkdetail, mkilled, xtra);
+        }
+    }
 }
 
 
