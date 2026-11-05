@@ -70,7 +70,15 @@ import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unbl
 import { linedup } from './mthrowu.js';
 import { hmon_egg_petrify, touch_petrifies, mon_nam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
 import { exclam } from './zap.js';
-import { first_weapon_hit, hmon_hitmon_knockback, Monnam as Monnam_real } from './uhitm.js';
+import { first_weapon_hit, hmon_hitmon_knockback, Monnam as Monnam_real, hmon_hitmon_pet, backstabbable, uwep_skill_type, setmnotwielded } from './uhitm.js';
+import { PM_HEALER as PM_HEALER_HM, PM_ROGUE as PM_ROGUE_HM } from './pm.generated.js';
+import { P_NONE as P_NONE_HM, P_KNIFE as P_KNIFE_HM, P_SKILLED as P_SKILLED_HM, NEED_WEAPON as NEED_WEAPON_HM } from './const.js';
+import { P_SKILL } from './skills.js';
+import { is_flimsy } from './do_wear.js';
+import { obj_resists } from './zap.js';
+import { m_useupall } from './mthrowu.js';
+import { otense, is_poisonable } from './objnam.js';
+import { is_art } from './artifact.js';
 /* C mon.c:3470 killed() is a one-line wrapper over xkilled(), which lives in
  * js/uhitm.js.  mhitm.js already imports from uhitm.js (mon_nam, dmgval_weapon,
  * ...), so this rides the existing edge rather than adding a new one. */
@@ -1823,7 +1831,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     if ((mon.mhp | 0) < 1) /* DEADMONSTER */
         hmd.destroyed = true;
 
-    await _hmon_hitmon_pet(hmd, mon);
+    await hmon_hitmon_pet(hmd, mon);
     await hmon_hitmon_splitmon(hmd, mon, obj);
     await hmon_hitmon_msg_hit(hmd, mon, obj);
     if (hmd.dryit) await dry_a_towel(obj, -1, true);
@@ -1913,7 +1921,50 @@ export async function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
     hmd.dmg = dmgval_weapon(obj, mon);
     hmd.train_weapon_skill = (hmd.dmg > 1);
 
-    /* Healer/rogue/shatter special cases require hand_to_hand — skipped for THROWN */
+    /* C uhitm.c:948-951 Healer with anatomy knowledge */
+    if ((game.urole?.mnum | 0) === PM_HEALER_HM && hmd.hand_to_hand
+        && obj.oclass === _OCLASS_WEAPON
+        && (MKOBJ_OC_SKILL[obj.otyp | 0] | 0) === P_KNIFE_HM)
+        hmd.dmg += Math.min(3, Math.trunc(((game.mvitals?.[mon.data?.pmidx | 0]?.died) | 0) / 6));
+
+    /* C uhitm.c:953-1013 special attack actions.  The Healer and backstab
+     * arms need hand_to_hand; the shatter arm does not (a tethered aklys
+     * thrown from the hand arrives as HMON_APPLIED with obj == uwep). */
+    let monwep;
+    if (!hmd.train_weapon_skill || mon === u.ustuck || u.twoweap
+        || (hmd.hand_to_hand && is_art(obj, ART_CLEAVER_HM))) {
+        ; /* no special bonuses */
+    } else if ((game.urole?.mnum | 0) === PM_ROGUE_HM && backstabbable(mon)
+               && !Upolyd(u) && hmd.hand_to_hand) {
+        await You(`strike ${mon_nam(mon)} from behind!`);
+        hmd.dmg += rnd(u.ulevel | 0);
+        hmd.hittxt = true;
+    } else if (hmd.dieroll === 2 && obj === uwep
+               && obj.oclass === _OCLASS_WEAPON
+               && (bimanual_mm(obj)
+                   || ((game.urole?.mnum | 0) === PM_SAMURAI_HM
+                       && (obj.otyp | 0) === KATANA_HM && !u.uarms))
+               && (uwep_skill_type() !== P_NONE_HM
+                   && P_SKILL(uwep_skill_type()) >= P_SKILLED_HM)
+               && ((monwep = mon.mw) && !is_flimsy(monwep)
+                   && !obj_resists(monwep,
+                                   50 + 15 * (Math.max(obj.oeroded | 0, obj.oeroded2 | 0)
+                                              - Math.max(monwep.oeroded | 0, monwep.oeroded2 | 0)),
+                                   100))) {
+        setmnotwielded(mon, monwep);
+        mon.weapon_check = NEED_WEAPON_HM;
+        let buf;
+        if (canseemon(mon))
+            buf = Yobjnam2(monwep, 'shatter');
+        else
+            buf = `${s_suffix(Monnam(mon))} weapon${(monwep.quan | 0) === 1 ? '' : 's'} ${otense(monwep, 'shatter')}`;
+        await pline(buf + ' from the force of your blow!');
+        await m_useupall(mon, monwep);
+        /* If someone just shattered MY weapon, I'd flee! */
+        if (rn2(4))
+            await monflee(mon, d(2, 3), true, true);
+        hmd.hittxt = true;
+    }
 
     /* C uhitm.c:1015-1033: artifact_hit adds spec_dbon (rnd(24) for
      * Mjollnir) and may print its own message. */
@@ -1936,23 +1987,29 @@ export async function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
     }
     if (hmd.material === _MAT_SILVER_HMON && mon_hates_silver(mon))
         hmd.silvermsg = hmd.silverobj = true;
-    /* light / jousting require !thrown or usteed — skipped */
+    /* C uhitm.c:1038-1047 light and jousting: hmon_hitmon_do_hit (js/uhitm.js)
+     * applies both after this returns, together with the permapoisoned arm. */
 
     if (hmd.thrown === HMON_THROWN
         && (_is_ammo_hmon(obj) || _is_missile_hmon(obj))) {
         if (_ammo_and_launcher_hmon(obj, uwep)) {
-            if (((game.urole?.mnum | 0) === PM_SAMURAI_HM) && (obj.otyp | 0) === 22 /* YA */
-                && (uwep.otyp | 0) === 86 /* YUMI */)
+            if (((game.urole?.mnum | 0) === PM_SAMURAI_HM) && (obj.otyp | 0) === YA_HM
+                && (uwep.otyp | 0) === YUMI_HM)
                 hmd.dmg++;
-            else if (((game.urace?.mnum | 0) === PM_ELF_HM) && (obj.otyp | 0) === 19 /* ELVEN_ARROW */
-                     && (uwep.otyp | 0) === 84 /* ELVEN_BOW */)
+            else if (((game.urace?.mnum | 0) === PM_ELF_HM) && (obj.otyp | 0) === ELVEN_ARROW_HM
+                     && (uwep.otyp | 0) === ELVEN_BOW_HM)
                 hmd.dmg++;
             hmd.train_weapon_skill = (hmd.dmg > 0);
         }
-        if (obj.opoisoned /* && is_poisonable(obj) */)
+        if (obj.opoisoned && is_poisonable(obj))
             hmd.ispoisoned = true;
     }
+    /* C uhitm.c:1064-1066 permapoisoned arm: hmon_hitmon_do_hit (js/uhitm.js)
+     * applies it after this returns (no RNG in between). */
 }
+/* objects.h otyps / artilist.h / skills.h constants for the arms above. */
+const ELVEN_ARROW_HM = 19, YA_HM = 22, KATANA_HM = 56, ELVEN_BOW_HM = 84, YUMI_HM = 86;
+const ART_CLEAVER_HM = 4;
 
 async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
     /* C uhitm.c:1125-1130 — BOULDER 1d20, HEAVY_IRON_BALL 1d25, IRON_CHAIN 1d4+1 */
@@ -2114,14 +2171,8 @@ async function _hmon_hitmon_dmg_recalc(hmd, obj, u, uwep) {
 /* C dog.c:1371 abuse_dog — defined in js/dog.js, which imports yelp/growl from
  * here; the cycle is runtime-only and both sides are hoisted declarations, the
  * same shape as this file's existing mklev.js / uhitm.js edges. */
-/* uhitm.c:1589 hmon_hitmon_pet — tame monster reprisal (RNG only if tame) */
-async function _hmon_hitmon_pet(hmd, mon) {
-    if (mon.mtame && hmd.dmg > 0) {
-        abuse_dog(mon);
-        if (mon.mtame && !hmd.destroyed)
-            await monflee(mon, 10 * rnd(hmd.dmg), false, false);
-    }
-}
+/* uhitm.c:1589 hmon_hitmon_pet — the real body is js/uhitm.js's (it also
+ * keeps a zero-HP pet visible to abuse_dog's newsym); imported above. */
 
 /* uhitm.c:1638 hmon_hitmon_msg_hit — message only, no RNG / no state-diff */
 function _hmon_hitmon_msg_hit(hmd, mon, obj) {

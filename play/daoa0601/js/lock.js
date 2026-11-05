@@ -6,7 +6,7 @@
 // boxlock(), doorlock().
 import { WEAPON_CLASS, TOOL_CLASS, POTION_CLASS, WAND_CLASS, ROCK_CLASS } from './objclass.js';
 import { objectSkill, BAG_OF_TRICKS, CHEST, LARGE_BOX, CORPSE, ICE_BOX, CREDIT_CARD, LOCK_PICK, SKELETON_KEY, WAN_OPENING, WAN_LOCKING, WAN_STRIKING, SPE_KNOCK, SPE_WIZARD_LOCK, SPE_FORCE_BOLT, oc_wldam, } from './object_data.js';
-import { currency } from './invent.js';
+import { currency, stack_object } from './invent.js';
 import { currentAttribute, currentStrength, exerciseAttribute } from './attrib.js';
 import { CQ_CANNED, A_CON, A_DEX, A_STR, P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_KICK, DBWALL, DOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, SHOPBASE, SHOP_DOOR_COST, TT_PIT, A_WIS, AUTOUNLOCK_UNTRAP, AUTOUNLOCK_FORCE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, SDOOR, Is_rogue_level } from './const.js';
 import { isok } from './cmd.js';
@@ -20,7 +20,6 @@ import { vision_note_blocker_change, cansee, vision_recalc } from './vision.js';
 import { findDrawbridgeAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { recordMappedOverviewState, surfaceName } from './dungeon.js';
 import { hasDoorAppearance, stumbleOntoMimic } from './uhitm.js';
-import { triggerBoobyTrap } from './booby_trap.js';
 import { heroPassesWalls, heroHasNoHands, heroIsVerySmall } from './polyself.js';
 import { rnl, rn2 } from './rng.js';
 import { pline, plineWithContinuation } from './pline.js';
@@ -31,19 +30,18 @@ import { withIndefiniteArticle, definiteName, objectName, observeObjectForNaming
 import { heroCanReachFloor } from './engrave.js';
 import { objectResistsDestruction } from './zap.js';
 import { isWeaponTool, isBlade } from './object_properties.js';
-import { startCorpseTimeout, unlinkObject, isContainer, placeObject, stack_object } from './mkobj.js';
+import { startCorpseTimeout, unlinkObject, isContainer, placeObject } from './mkobj.js';
 import { applySupportedPotionVapor, randomBottleName } from './potion.js';
 import { promptYesNoQuit, promptYesNo } from './query.js';
 import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { costlySpot, currentShopResident, chargeAlteredUnpaidObject, stolenValue, addShopDamage, deleteObject } from './shk.js';
 import { artifactById, touchArtifactByHero } from './artifacts.js';
 import { heroFingerName } from './body_parts.js';
-import { triggerChestTrap } from './chest_trap.js';
 import { monsterAtPosition } from './steed.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { displayLiquidName, monsterName } from './do_name.js';
 import { maybeAbsorbItem } from './steal.js';
-import { untrap, untrapAbilityProblem } from './trap.js';
+import { untrap, untrapAbilityProblem, triggerChestTrap, triggerBoobyTrap } from './trap.js';
 import { possessiveName } from './hacklib.js';
 import { heroIsUnaware } from './senses.js';
 import { formatHeardMessage } from './hero_speech.js';

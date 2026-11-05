@@ -136,7 +136,7 @@ import { bcsign } from './mklev.js';
 import { dog_nutrition } from './dogmove.js';
 import { possibly_unwield } from './weapon.js';
 import { dismount_steed, instapetrify } from './cmd.js';
-import { DISMOUNT_GENERIC, DISMOUNT_POLY, M_ATTK_AGR_DONE, CXN_ARTICLE, LL_ARTIFACT, LL_KILLEDPET, MGIVENNAME } from './const.js';
+import { DISMOUNT_GENERIC, DISMOUNT_POLY, M_ATTK_AGR_DONE, CXN_ARTICLE, LL_ARTIFACT, LL_KILLEDPET, MGIVENNAME, A_LAWFUL, NO_TRAP_FLAGS } from './const.js';
 import { monstseesu, monstunseesu, touch_of_death } from './mcastu.js';
 import { burn_away_slime as burn_away_slime_real } from './timeout.js';
 import { LS_MONSTER, Is_rogue_level, TELEPAT as TELEPAT_PROP } from './const.js';
@@ -2198,9 +2198,10 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
      *       tmp += weapon_hit_bonus((struct obj *) 0);
      *   }
      * Because weapon_hit_bonus is async in js/, _find_roll_to_hit stores base tmp
-     * into _tmpBase, and callers apply hitval and weapon_hit_bonus immediately:
-     *   - _swing (AT_WEAP): lines 2912-2917 (hitval and await weapon_hit_bonus)
-     *   - hmonas (AT_CLAW, AT_KICK): lines 4354-4357 (await weapon_hit_bonus) */
+     * into _tmpBase, and its callers apply this block right after it:
+     *   - _swing (AT_WEAP): hitval + await weapon_hit_bonus(weapon)
+     *   - _hmonas weaponless rows: AT_CLAW weapon_hit_bonus(null), AT_KICK
+     *     weapon_hit_bonus(null) only with martial_bonus() */
     _tmpBase = tmp;
     };
     _find_roll_to_hit();
@@ -2471,18 +2472,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
             && (uwep.oclass | 0) === WEAPON_CLASS
             && sr_oc_skill(uwep.otyp) === 2 /* P_KNIFE */)
             dmg += Math.min(3, Math.trunc(((game.mvitals?.[mtmp.data?.pmidx | 0]?.died) | 0) / 6));
-        const _backstabData = mtmp?.data;
-        const _backstabMlet = _backstabData?.mlet | 0;
-        const _backstabbable = !!_backstabData
-            && (((_backstabData.mflags1 | 0) & 0x00000004) === 0) /* !amorphous */
-            && _backstabMlet !== 22  /* !is_whirly: S_VORTEX */
-            && (_backstabData.pmidx | 0) !== 154 /* PM_AIR_ELEMENTAL */
-            && _backstabMlet !== 54  /* !noncorporeal: S_GHOST */
-            && _backstabMlet !== 2   /* S_BLOB */
-            && _backstabMlet !== 5   /* S_EYE */
-            && _backstabMlet !== 32  /* S_FUNGUS */
-            && canseemon(mtmp)
-            && (!!mtmp.mflee || helpless(mtmp));
+        const _backstabbable = backstabbable(mtmp);
         if ((game.flags?.initrole | 0) === 7 /* Rogue */
             && !Upolyd(u)
             && isWeaponClassHit && !isRangedMelee
@@ -3416,8 +3406,8 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                 continue;
             }
             if (aatyp === AT_MAGC_H)
-                continue; /* NAMED GAP: spellcaster-weapon-fallback state
-                             machine is not modelled. */
+                continue; /* C uhitm.c:5796-5807: the kobold/orc/gnome
+                             use_weapon arm is taken above (_magcWeap). */
             /* weaponless: AT_CLAW/AT_TUCH/AT_KICK/AT_BITE/AT_STNG/AT_BUTT/
              * AT_TENT [uhitm.c:5564-5568]. */
             /* C uhitm.c:5566 find_roll_to_hit() runs per attack row, so state
@@ -8770,7 +8760,7 @@ export async function hmon_hitmon_poison(hmd, mon, obj) {
     if (Role_if(PM_SAMURAI)) {
         await You('dishonorably use a poisoned weapon!');
         adjalign(-Math.sign(u.ualign.type));
-    } else if (u.ualign.type === 1 && u.ualign.record > -10) {
+    } else if (u.ualign.type === A_LAWFUL && u.ualign.record > -10) {
         await You_feel_uh('like an evil coward for using a poisoned weapon.');
         adjalign(-1);
     }
@@ -8828,7 +8818,7 @@ async function hmon_hitmon_stagger(hmd, mon) {
 }
 
 // C uhitm.c:1587-1600; HP and destroyed must already be updated by the caller.
-async function hmon_hitmon_pet(hmd, mon) {
+export async function hmon_hitmon_pet(hmd, mon) {
     if (mon.mtame && hmd.dmg > 0) {
         /* C uhitm.c:1845 already applied a lethal blow, but killed() has not
          * run: the pet is still on svl.level.monsters, so abuse_dog's
@@ -8844,19 +8834,20 @@ async function hmon_hitmon_pet(hmd, mon) {
 }
 
 // C uhitm.c:1603-1633.
+const IRON_UH = 11, METAL_UH = 12; /* objclass.h materials */
 export async function hmon_hitmon_splitmon(hmd, mon, obj) {
     const u = game.u;
     if ((hmd.mdat.pmidx === PM_BLACK_PUDDING || hmd.mdat.pmidx === PM_BROWN_PUDDING)
         && mon.mhp > 1 && !mon.mcan && !hmd.offmap && obj
         && (obj === u.uwep || (u.twoweap && obj === u.uswapwep))
-        && (hmd.material === 11 || hmd.material === 12)
+        && (hmd.material === IRON_UH || hmd.material === METAL_UH)
         && !(_uh_is_ammo(obj) || _uh_is_missile(obj)) && hmd.hand_to_hand) {
         const clone = await clone_mon_ml(mon, 0, 0);
         if (clone) {
             const withwhat = u.twoweap && game.flags?.verbose ? ' with ' + yname(obj) : '';
             await pline(Monnam(mon) + ' divides as you hit it' + withwhat + '!');
             hmd.hittxt = true;
-            await mintrap(clone, 0);
+            await mintrap(clone, NO_TRAP_FLAGS);
         }
     }
 }
@@ -8895,6 +8886,22 @@ export async function hmon_hitmon_msg_silver(hmd, mon) {
     if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
         whom = s_suffix(whom) + ' flesh';
     await pline(spotted ? `${prefix} ${whom}!` : `${whom} is seared!`);
+}
+
+/* C uhitm.c:918-930 backstabbable — can monster be stabbed in the back? */
+export function backstabbable(mon) {
+    const ptr = mon?.data;
+    const mlet = ptr?.mlet | 0;
+    return !!ptr
+        && (((ptr.mflags1 | 0) & 0x00000004) === 0) /* !amorphous */
+        && mlet !== 22  /* !is_whirly: S_VORTEX */
+        && (ptr.pmidx | 0) !== 154 /* PM_AIR_ELEMENTAL */
+        && mlet !== 54  /* !noncorporeal: S_GHOST */
+        && mlet !== 2   /* S_BLOB */
+        && mlet !== 5   /* S_EYE */
+        && mlet !== 32  /* S_FUNGUS */
+        && canseemon(mon)
+        && (!!mon.mflee || helpless(mon));
 }
 
 // C uhitm.c:1038-1041 and mondata.c:547-550.

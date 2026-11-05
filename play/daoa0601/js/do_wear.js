@@ -25,14 +25,15 @@ import { heroHasNoHead, heroSpecies, changeHeroSex, heroIsBreathless, heroPolyGe
 import { retouchHeroObject } from './artifacts.js';
 import { learnObjectType, observeObject, objectTypeKnown, OBJ_DESCR } from './o_init.js';
 import { observeObjectForNaming, objectName, ownedObjectName, corpseName, killerObjectName, objectNameIsPlural, simpleObjectName, makePlural, withIndefiniteArticle, makeSingular, objectDescription, objectHasPersonalName, objectMonsterName } from './objnam.js';
-import { inventoryItemDescription, consumeInventoryItem, selectInventoryObject, inventoryClassOrder, inventorySortMode, objectClassHeading, sortObjects } from './invent.js';
+import { inventoryItemDescription, consumeInventoryItem, selectInventoryObject, inventoryClassOrder, inventorySortMode, objectClassHeading, sortObjects, carryingStoningCorpse, takingOff } from './invent.js';
 import { chooseInventoryObject, compactInventoryLetters } from './invent.js';
 import { isWeldedPrimary, setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.js';
 import { setworn, bypassObjectList, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { setBallAndChainFelt } from './ball.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { getLine, promptYesNoAllQuit } from './query.js';
-import { restoreMenuUnderlay, showMultiSelectWindow, snapshotMenuUnderlay } from './windows.js';
+import { showMultiSelectWindow } from './windows.js';
+import { restoreMenuUnderlay, snapshotMenuUnderlay } from './wintty.js';
 import { yn_function } from './cmd.js';
 import { objectOwnershipPrefix } from './shk.js';
 import { formatFeltMessage } from './hero_speech.js';
@@ -40,9 +41,8 @@ import { heroDetectsMonsters, heroIsBlind, heroIsHallucinating, isEyesOfTheOverw
 import { makeHallucinated, setSlipperyHands, showInvisibilityMessage, toggleBlindness } from './potion.js';
 import { newsym, see_monsters, consumeHallucinatedMenuObjectGlyph, OBJECT_CLASS_SYMBOLS, refreshInvisibleMonsters } from './display.js';
 import { objectResistsDestruction } from './zap.js';
-import { erodeObject, erosionMatters, objectIsVulnerableToErosion, resolveImmediatePetrification, captureLevitationState, floatHeroUp, floatHeroDown } from './trap.js';
+import { erodeObject, erosionMatters, objectIsVulnerableToErosion, resolveImmediatePetrification, captureLevitationState, floatHeroUp, floatHeroDown, selfTouchPetrifyingWeapons, } from './trap.js';
 import { stopHeroOccupation } from './occupation.js';
-import { heroResistsStoning, selfTouchPetrifyingWeapons, touchPetrifies } from './stoning.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { levelHasCeiling, levelIsWaterLevel, surfaceName } from './dungeon.js';
 import { removeWornHeroItem } from './hero_equipment.js';
@@ -55,7 +55,7 @@ import { encumber_msg } from './pickup.js';
 import { curseObjectState, objectIsFlammable, objectIsRottable } from './mkobj.js';
 import { displayColorName, displayLiquidName, monsterName } from './do_name.js';
 import { grantWornProperty, hasIntrinsicProperty, hasWornProperty, propertyIsActive, propertyIsBlocked, propertyTimeout, refreshMovementProperties, refreshProperty, removeWornProperty, setPropertyTimeout } from './properties.js';
-import { monstersForgetHeroResistance, seenResistanceForProperty, heroResistsLifeDrain, monsterIsAmphibious, monsterIsBreathless, monsterBreaksArmor, monsterHornCount, monsterIsCentaur, monsterIsHumanoid, monsterIsSlithy, monsterSlipsArmor, monsterWrappingAllowed } from './mondata.js';
+import { monstersForgetHeroResistance, seenResistanceForProperty, heroResistsLifeDrain, monsterIsAmphibious, monsterIsBreathless, monsterBreaksArmor, monsterHornCount, monsterIsCentaur, monsterIsHumanoid, monsterIsSlithy, monsterSlipsArmor, monsterWrappingAllowed, heroResistsStoning, touchPetrifies, } from './mondata.js';
 import { tryCallObjectType, dropInventoryObjectAtHero } from './do.js';
 import { LL_MINORAC, recordGameLogEvent } from './gamelog.js';
 import { experienceRankIndex } from './exper.js';
@@ -193,7 +193,7 @@ async function putOnAccessoryObject(object) {
 // allmain only after negative multi has reached zero; zero-delay armor can use
 // the same state owner immediately.
 export async function finishArmorRemoval(object, { silent = false } = {}) {
-    await removeHeroArmor(object, game, { deferArmorClass: true });
+    await removeHeroArmor(object, game);
     if (silent || game.flags?.verbose === false)
         return '';
     return await armorOffMessage(object, game);
@@ -646,7 +646,7 @@ async function removeSelectedSlot(slot, state) {
     else {
         // Native armor-off functions leave AC for allmain.c:find_ac(),
         // after the removal messages and the elapsed monster turns.
-        await removeHeroArmor(object, state, { deferArmorClass: true });
+        await removeHeroArmor(object, state);
         if (!state.program_state.gameover) {
             await offMessage(object, state);
         }
@@ -726,9 +726,7 @@ export async function canSelectOff(object, slot) {
 // between the hero and a carried stoning corpse, so taking them off asks
 // for confirmation; refusing leaves the gloves on.
 async function betterNotTakeThatOff(object, state = game) {
-    // C invent.c:carrying_stoning_corpse(): the first inventory corpse that
-    // petrifies on touch.
-    const corpse = state.inventory.find(candidate => candidate.otyp === CORPSE && touchPetrifies(candidate.corpsenm));
+    const corpse = carryingStoningCorpse(state);
     if (!corpse)
         return false;
     // C pickup.c:u_safe_from_fatal_corpse(corpse, st_corpse | st_petrifies):
@@ -836,7 +834,7 @@ function bucCategory(object) {
         return game.flags.goldX ? 'X' : 'U';
     return !object.bknown ? 'X' : object.blessed ? 'B' : object.cursed ? 'C' : 'U';
 }
-// C invent.c:count_buc(): the priest bless/curse knowledge pass and the
+// Removal-category subset of invent.c:count_buc(): the priest knowledge pass and
 // per-status tallies for the removal-category menu (query_classes in
 // pickup.ts builds the same set for pickup menus).
 function wornBucCategories(worn) {
@@ -1026,9 +1024,9 @@ function restoreMap(underlay) {
 // C do_wear.c:remove_ok().
 // C do_wear.c:wear_ok().
 // C do_wear.c:takeoff_ok().
-// C invent.c:taking_off(): the 'T' and 'R' phrasings both mean removing.
+// Uses invent.c:taking_off() for the two removal prompts.
 export function equipmentClassification(object, action, itemAction = false, state = game) {
-    const removing = action === 'take off' || action === 'remove';
+    const removing = takingOff(action);
     const accessory = action === 'put on' || action === 'remove';
     const worn = !!((object.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY));
     if (removing !== worn)
@@ -1381,7 +1379,7 @@ async function losePetrificationProtection(armor, state, voluntary) {
 // C do_wear.c:Shield_off().
 // C do_wear.c:Shirt_off().
 export async function clearHeroArmor(object, state = game, { cancelledDon = pendingArmorAction(state)?.kind === 'wear'
-    && pendingArmorAction(state)?.object === object, deferArmorClass = false, embeddedSkin = false, } = {}) {
+    && pendingArmorAction(state)?.object === object, embeddedSkin = false, } = {}) {
     const slot = armorSlotFor(object?.otyp);
     if (!slot)
         return false;
@@ -1431,10 +1429,14 @@ export async function clearHeroArmor(object, state = game, { cancelledDon = pend
     if ((object.otyp === FUMBLE_BOOTS || object.otyp === GAUNTLETS_OF_FUMBLING)
         && !fumblingHasPermanentOrEquipmentSource(state))
         setPropertyTimeout('fumbling', 0, state);
-    if (deferArmorClass)
-        state._armorClassDirty = true;
-    else
-        findArmorClass(state);
+    // C body-armor transitions never recompute u.uac: setworn()/
+    // setnotworn() (worn.c) and Armor_off()/Armor_gone()/Shirt_off()
+    // (do_wear.c) call no find_ac(); the explicit find_ac() callers are
+    // the once-per-input allmain.c:453, polymon() (polyself.c:890,967),
+    // guarding/protection accessories, and spell protection.  u.uac keeps
+    // its previous value through the removal messages and only the dirty
+    // flush (or an explicit caller) updates it.
+    state._armorClassDirty = true;
     return true;
 }
 // C do_wear.c:hard_helmet().
@@ -2145,7 +2147,7 @@ export async function stopDonning(stolenObject = null, state = game) {
         : `You stop ${puttingOn ? 'putting on' : 'taking off'} the ${simpleObjectName(delayed.object, state)}.`;
     await finishHeroHelplessness(message, state);
     if (puttingOn)
-        await removeHeroArmor(delayed.object, state, { cancelledDon: true, deferArmorClass: true });
+        await removeHeroArmor(delayed.object, state, { cancelledDon: true });
     return true;
 }
 // The amulet of strangulation's timed grip on the hero: the predicate

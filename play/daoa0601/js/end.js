@@ -10,7 +10,7 @@ import { adjustAttribute, currentAttribute } from './attrib.js';
 import { encumber_msg } from './pickup.js';
 import { cureHeroSickness } from './potion.js';
 import { removeIntrinsicProperty, setPropertyTimeout } from './properties.js';
-import { stopRemainingVolleyShots } from './hero_multishot.js';
+import { endmultishot } from './dothrow.js';
 import { BUFSZ, MGIVENNAME, M_AP_MONSTER, M_AP_TYPE, PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE, ismnum, A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, GENOCIDED, PANICKED, QUIT, STARVING, STONING, TRICKED, In_endgame, In_quest, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, TT_LAVA, Upolyd } from './const.js';
 import { isok, setMulti, paranoidQuery } from './cmd.js';
 import { PanicTermination } from './panic_termination.js';
@@ -21,7 +21,7 @@ import { expelHero } from './hero_expulsion.js';
 import { releaseHeroFromMonster } from './mon.js';
 import { heroFormSticks } from './polyself.js';
 import { monsterName } from './do_name.js';
-import { scheduleLevelChange } from './level_change.js';
+import { scheduleLevelChange } from './do.js';
 import { nhgetch } from './input.js';
 import { bot } from './botl.js';
 import { canSpotMonster, flush_screen } from './display.js';
@@ -29,13 +29,13 @@ import { clearMessageWindow, displayMessageWindow, flushPendingTopline, resetTop
 import { vision_recalc } from './vision.js';
 import { shopkeeperKillerName, finishShopkeeperRepossession, settleShopkeepersOnExit, deleteObject } from './shk.js';
 import { plineWithContinuation } from './pline.js';
-import { consumeInventoryItem, identifyObjectForDisclosure, showIdentifiedInventory, lootSortMode, sortObjects, currency } from './invent.js';
+import { consumeInventoryItem, identifyObjectForDisclosure, showIdentifiedInventory, lootSortMode, sortObjects, currency, stack_object } from './invent.js';
 import { showDisclosureOverlay, showTextPages, showTextWindow } from './windows.js';
 import { artifactById } from './artifacts.js';
 import { MONSTER_GENO, MONSTER_NAME, monsterTypeName } from './monster_data.js';
 import { ATR_BOLD, NO_COLOR } from './terminal.js';
 import { d, rn2 } from './rng.js';
-import { mksobj, isContainer, placeObjectSynchronously, stack_object } from './mkobj.js';
+import { mksobj, isContainer, placeObjectSynchronously } from './mkobj.js';
 import { makePlural, withIndefiniteArticle, objectDescription, definiteName, objectName, simpleObjectName, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
 import { isQuantumBox, observeQuantumCat } from './quantum_cat.js';
@@ -45,7 +45,7 @@ import { hiddenGold, payVaultGuardOnExit } from './vault.js';
 import { init_uhunger } from './eat.js';
 import { dungeonOverviewDisclosure } from './dungeon.js';
 import { canMakeBones, createBonesFromDeath } from './bones.js';
-import { restoreLaunchedObjectForBones } from './trap.js';
+import { force_launch_placement, launch_in_progress } from './trap.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { clearNonlocalPriestsOnExit } from './priest.js';
 import { promptChoice, promptYesNo } from './query.js';
@@ -138,7 +138,7 @@ export async function restoreHeroAfterDeath({ deathType = null } = {}) {
     removeIntrinsicProperty('unchanging');
     await flush_screen(1);
     // end.c:savelife() truncates any in-flight volley (endmultishot(FALSE)).
-    stopRemainingVolleyShots(game);
+    await endmultishot(false);
     const holder = game.u.ustuck;
     if (game.u.uswallow) {
         if (!holder)
@@ -901,8 +901,8 @@ async function startGameExit(outcome, deathType = DIED) {
     }
     game._canMakeBones = outcome === 'died' && deathType < GENOCIDED
         && canMakeBones();
-    if (game._canMakeBones)
-        restoreLaunchedObjectForBones(game);
+    if (game._canMakeBones && launch_in_progress(game))
+        force_launch_placement(game);
     return endtime;
 }
 async function settleGameExit(outcome) {

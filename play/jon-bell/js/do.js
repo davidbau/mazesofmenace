@@ -2417,9 +2417,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const _heldDeliv = g._botlPaintHeld;
         g._botlPaintHeld = true;
         if (oldUz) g._botlUzFrozen = { dnum: oldUz.dnum, dlevel: oldUz.dlevel };
+        /* do.c:1717 flush_screen(-1): delay_flushing makes the flush_screen(1)
+         * in docall (do_name.c:644, via breakobj -> potionbreathe) a no-op, so
+         * the terminal still holds the OLD level's last flush. */
+        g._levelgenPaintFreeze = _oldPaint || _preSavelevPaint;
         try {
             await obj_delivery(false);
         } finally {
+            g._levelgenPaintFreeze = null;
             g._botlUzFrozen = null;
             g._botlPaintHeld = _heldDeliv;
         }

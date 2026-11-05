@@ -32,7 +32,7 @@ import { heroCanTeleport, randomMonsterRelocation, teleportHero, askTeleportDest
 import { moveMonsterNextToHero } from './mon.js';
 import { runDueTimers } from './timeout.js';
 import { askKeepRestoredSave, restoreMonsterCover } from './save.js';
-import { finishScheduledLevelChange } from './level_change.js';
+import { finishScheduledLevelChange } from './do.js';
 import { monsterName, randomDisplayMonsterName } from './do_name.js';
 import { possessiveName, dist2 } from './hacklib.js';
 import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion, monsterIsAnimal, monsterIsNonliving } from './mondata.js';
@@ -41,12 +41,11 @@ import { MONSTER_GENO, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_
 import { monsterAtPosition } from './steed.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, finishInUseInventory } from './end.js';
 import { releaseObjectLeash, checkHeroLeashes, heroNextToLeashedFollowers } from './apply.js';
-import { touchPetrifies } from './stoning.js';
 import { ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, } from './object_data.js';
 import { heroIsUnaware } from './senses.js';
 import { heroSpecies, setHeroSpecies, feelingAfterSelfGenocide, heroHasBeenGenocided, heroHasOlfaction, heroIsUnchanging, polymorphHero, returnHeroToHumanForm } from './polyself.js';
 import { heroHasConflict } from './hero_conflict.js';
-import { openHoldingTrap, erodeArmor, erodeAttackingWeapon, igniteItems, petrifyMonsterImmediately, burnHeroArmorByFire, sinkHeroIntoLava } from './trap.js';
+import { openHoldingTrap, igniteItems, petrifyMonsterImmediately, burnHeroArmorByFire, sinkHeroIntoLava, activateStatueTrapAt, } from './trap.js';
 import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SEDU, AD_SITM, AD_SSEX, AD_STCK } from './monster_attack_types.js';
 import { loseHeroExperience } from './exper.js';
 import { makeMonsterFlee, interruptOccupationForMonster, monsterSightingBeforeAction, completeMonsterOffensiveAction, heroEveryturnEffect, runMonsterEveryturnEffects, beginMonsterMove, beginMonsterDochug, runMonsterAction } from './monmove.js';
@@ -91,10 +90,9 @@ import { clearJustPicked } from './pickup.js';
 import { runLevelRegions } from './regions.js';
 import { invault, moveVaultGuard } from './vault.js';
 import { automaticSearch, mapVicinity, revealWarnedMonsters } from './detect.js';
-import { activateStatueTrapAt } from './statue_trap.js';
 import { finishPrayerOccupation } from './pray.js';
 import { monsterAlignmentType } from './priest.js';
-import { moveElementalBubbles } from './elemental.js';
+import { movebubbles } from './mkmaze.js';
 import { removeObjectAndContentsFromBill, currentShopResident, fixShopDamage } from './shk.js';
 import { inventoryItemDescription, rerollMenu } from './invent.js';
 import { hasCarriedProperty, hasIntrinsicProperty, hasInvokedProperty, hasPermanentIntrinsicProperty, hasWornProperty, propertyIsActive, propertyTimeout, propertyIsBlocked, refreshProperty, setPropertyTimeout } from './properties.js';
@@ -517,7 +515,7 @@ async function finishInitialTurnMaintenanceAfterIntervention(sourceTurn) {
     // Water share the moving bubble list created by fixup_special(); Fire
     // reuses the same fumarole sampler as initial arrival.
     if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz))
-        await moveElementalBubbles();
+        await movebubbles();
     else if (game.level?.flags?.fumaroles)
         await fumaroles(game);
     // C allmain.c:379-388, still inside the once-per-turn block: an immobile

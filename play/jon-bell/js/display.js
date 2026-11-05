@@ -6090,6 +6090,8 @@ function _status_temp_hilites(row, cells) {
     const fields = [
         ['gold', /\$:(\d+)/, (m) => [m.index, m[0].length]],
         ['experience', /Xp:\d+\/(\d+)/, (m) => [m.index + m[0].length - m[1].length, m[1].length]],
+        /* BL_XP (experience-level): plain value direction (botl.c:1592-1595) */
+        ['experience-level', /Xp:(\d+)/, (m) => [m.index, m[0].length]],
     ];
     for (const [fname, re, span] of fields) {
         const m = re.exec(row);
@@ -10655,6 +10657,25 @@ async function _flush_screen_body(mode, repaint = true) {
                  * update_topl, so more() (topl.c:233) never set WIN_STOP:
                  * disarm what _topl_more armed for this ESC. */
                 game._topl_win_stop_armed = false;
+                /* topl.c:257-290: gt.toplines kept receiving the suppressed
+                 * messages between the ESC and the urgent one, and the urgent
+                 * update_topl's remember_topl() (:280) files that buffer.  The
+                 * incoming owner was drawn (skip sampled before more()); each
+                 * later message either joins the buffer (:266-272) or
+                 * replaces it, filing the old one (:280/:290). */
+                if (_rel > 0 && pageHasIncomingOwner) {
+                    const _js = remainderJoins || [];
+                    let _buf = null;
+                    for (let _i = 0; _i <= _js.length; _i++) {
+                        const _e = (_i < _js.length) ? _js[_i] : remainder.length;
+                        if (_e >= _rel) break;
+                        const _m = remainder.slice(_i === 0 ? 0 : _js[_i - 1] + 2, _e);
+                        if (_buf === null) _buf = _m;
+                        else if (_buf.length + 2 + _m.length < TOPL_LIMIT) _buf += '  ' + _m;
+                        else { putmsghistory(_buf); _buf = _m; }
+                    }
+                    if (_buf) putmsghistory(_buf);
+                }
                 const _newRem = remainder.slice(_rel);
                 const _newJoins = (remainderJoins || [])
                     .filter((j) => j >= _rel).map((j) => j - _rel);

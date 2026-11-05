@@ -35,14 +35,15 @@ import { monsterNeckName } from './body_parts.js';
 import { loseHeroExperience } from './exper.js';
 import { burnAwayHeroSlime, applyHeroLocationEffects, loseHeroHp, heroIsOnStairs, isInvocationPosition, nomul } from './hack.js';
 import { formatFeltMessage } from './hero_speech.js';
-import { lightDamage, lightRoom } from './light.js';
+import { lightDamage } from './zap.js';
+import { lightRoom } from './light.js';
 import { healMonster, wakeMonstersNearWithMessages, migrateMonsterToLevel, setHeroGrip } from './mon.js';
 import { makeMonsterFlee } from './monmove.js';
 import { displayColorName, monsterName } from './do_name.js';
 import { destroyInventoryByElement, destroyMonsterInventoryByElement, INVENTORY_DAMAGE, flashBurn, cancelMonster, monsterResistsEffect, probeMonster } from './zap.js';
 import { cansee, couldsee } from './vision.js';
 import { monsterHitPointsPerLevel } from './makemon.js';
-import { moveIntoFailedUntrap, untrap, igniteItems, captureLevitationState, floatHeroUp, floatHeroDown } from './trap.js';
+import { moveIntoFailedUntrap, untrap, igniteItems, captureLevitationState, floatHeroUp, floatHeroDown, selfTouchPetrifyingWeapons, } from './trap.js';
 import { recalculateTelepathyRange, bypassObject, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { hasNonArtifactConflict, syncHeroConflict } from './hero_conflict.js';
 import { hasNonArtifactInvisibility, invisibilityIsBlocked, syncHeroInvisibility } from './hero_invisibility.js';
@@ -51,25 +52,23 @@ import { showEnlightenment } from './insight.js';
 import { chooseInventoryObject, freeInventoryObject } from './invent.js';
 import { useCrystalBall } from './crystal_ball.js';
 import { chooseObjectToCharge, rechargeObject } from './read.js';
-import { doBlindingRay } from './flash.js';
+import { doBlindingRay } from './zap.js';
 import { castSpell, spellSkillType } from './spell.js';
 import { upstart } from './hacklib.js';
 import { AT_MAGC } from './monster_attack_types.js';
-import { selfTouchPetrifyingWeapons } from './stoning.js';
 import { dismountHero, monsterSaddle } from './steed.js';
 import { dropInventoryObjectAtHero } from './do.js';
 import { hitFloorWithObject } from './dothrow.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { depth, surfaceName } from './dungeon.js';
-import { gotoLevel } from './level_change.js';
+import { gotoLevel } from './do.js';
 import { levelTeleport } from './level_teleport.js';
 import { teleportMonsterByHero } from './teleport.js';
 import { bringLeashedFollowers } from './apply.js';
 import { showPagedPickOneMenu } from './windows.js';
-import { throwOrdinaryObject } from './ordinary_throw.js';
-import { resolveSwallowedEggPieOrVenomThrow } from './swallowed_throw.js';
+import { throwOrdinaryObject, resolveSwallowedEggPieOrVenomThrow } from './dothrow.js';
 import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
-import { holdAnotherObject } from './hero_hold_object.js';
+import { holdAnotherObject } from './invent.js';
 const M2_GIANT = 0x00002000;
 const M2_DEMON = 0x00000100;
 const M2_ORC = 0x00000080;
@@ -2017,11 +2016,11 @@ export async function deactivateArtifactProperty(object, artifact, { state = gam
     await invokeProperty(object, artifact, state, publish, rollDice, scaledRandom);
     return true;
 }
-// C do.c:drop() finesse for dropping an invoked levitation artifact while
-// unable to reach the floor: finesse_ahriman() (artifact.c) decides whether
-// freeinv() would end levitation, pins a carried W_ART source so the hero
-// stays aloft through freeinv()/hitfloor(), and the caller lands the hero
-// afterwards with the explicit float-down below.
+// Finesse for the do.c drop caller: dropping an invoked levitation
+// artifact while unable to reach the floor.  finesse_ahriman() (artifact.c)
+// decides whether freeinv() would end levitation, pins a carried W_ART
+// source so the hero stays aloft through freeinv()/hitfloor(), and the
+// caller lands the hero afterwards with the explicit float-down below.
 // C finesse_ahriman(): true when dropping `object` would toggle levitation
 // off inside freeinv().  On true, the invoked source is replaced by an
 // explicit carried source (C `ELevitation = W_ART`), so set_artifact_

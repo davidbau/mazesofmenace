@@ -7,7 +7,7 @@
 // timeout_queue.js, timeout_warnings.js, storms.js, timer_effects.js,
 // timeout_luck.js, and timeout_body.js.
 import { castMonsterSpellRay } from './breath_ray.js';
-import { runClaimedCorpseRevivalTimer } from './corpse_revival.js';
+import { runClaimedCorpseRevivalTimer } from './do.js';
 import { formatFeltMessage, formatHeardMessage, formatSeenMessage, publishHeardMessage } from './hero_speech.js';
 import { clearHeroSliming, cureHeroSickness, cureHeroVomiting, heroIsSick, heroIsSliming, heroIsVomiting, makeBlinded, makeConfused, makeHallucinated, makeStunned, makeDeaf, setSlipperyHands, } from './potion.js';
 import { clearHeroStrangulation } from './do_wear.js';
@@ -29,14 +29,14 @@ import { confersLuck } from './invent.js';
 import { AD_ELEC, AT_MAGC } from './monster_attack_types.js';
 import { isWereMonster, revertHeroWereForm } from './were.js';
 import { heroFootName, heroHandName, heroNeckName } from './body_parts.js';
-import { clearHeroPetrification, heroIsPetrifying, heroResistsStoning, touchPetrifies } from './stoning.js';
+import { clearHeroPetrification, heroIsPetrifying } from './stoning.js';
 import { displayColorName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { dismountHero } from './steed.js';
 import { adjustAttribute, currentAttribute, exerciseAttribute } from './attrib.js';
 import { extinguishHeroFormLight, heroHasNoLimbs, heroIsBreathless, heroIsGreenSlime, heroIsPolymorphed, heroIsUnchanging, heroSpecies, polymonHero, returnHeroToHumanForm, } from './polyself.js';
 import { hurtleHero } from './dothrow.js';
 import { finishTeleportArrival } from './teleport.js';
-import { gotoLevel } from './level_change.js';
+import { gotoLevel } from './do.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { syncHeroInvisibility } from './hero_invisibility.js';
 import { stopHeroOccupation } from './occupation.js';
@@ -63,7 +63,7 @@ import { heroIsSurroundedByRock } from './pray.js';
 import { heroIsInDangerousRegion, visibleRegionLines } from './regions.js';
 import { showDisclosureOverlay } from './windows.js';
 import { surfaceName } from './dungeon.js';
-import { heroCannotVomit, nameToMonster, monsterHasProperName, monsterOlderForm } from './mondata.js';
+import { heroCannotVomit, nameToMonster, monsterHasProperName, monsterOlderForm, heroResistsStoning, touchPetrifies, } from './mondata.js';
 import { encumber_msg } from './pickup.js';
 // C timeout.c:stoned_dialogue().
 export async function petrificationDialogue({ state = game, publish = plineWithContinuation, } = {}) {

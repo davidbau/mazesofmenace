@@ -5549,7 +5549,7 @@ export async function zap_over_floor(
                         `The iron bars ${damgtype === ZT_ACID ? 'corrode away' : 'melt'}.`,
                         state, env,
                     );
-                await dissolve_bars(x, y, state);
+                await dissolve_bars(x, y, state, { newsym: redrawAt });
                 if (in_rooms(x, y, SHOPBASE, state).length) {
                     add_damage(x, y, type >= 0 ? SHOP_BARS_COST : 0, state);
                     if (type >= 0) {
@@ -5690,7 +5690,13 @@ export async function zap_over_floor(
     }
     if (!ignoremon) {
         const mon = m_at(x, y, state);
-        if (mon) await wakeup(mon, type >= 0, { state, random });
+        // wakeup() prints and redraws through this function's operations,
+        // which a monster turn's planning pass silences.
+        if (mon) {
+            await wakeup(mon, type >= 0, {
+                ...env, message, redraw: redrawAt,
+            });
+        }
     }
     return rangemod;
 }
@@ -5922,8 +5928,10 @@ async function buzzmonst(
             // slept_monst() releases a sleeping grabber.
             await slept_monst(mon, { ...env, message });
         }
+        // wake_msg() prints through this function's message operation,
+        // which a monster turn's planning pass silences.
         if (damgtype !== ZT_SLEEP)
-            await wakeup(mon, type >= 0, { state, random });
+            await wakeup(mon, type >= 0, { ...env, state, random, message });
     }
     return { hit: true, reflected: false, clearGas: false, stop: false };
 }
@@ -6143,8 +6151,11 @@ export async function dobuzz(
                     );
                     if (Reflecting(state)) {
                         if (!heroIsBlind(state)) {
+                            // Printed through dobuzz()'s message operation,
+                            // which a planned breath silences.
                             await ureflects(
                                 'But %s reflects from your %s!', 'it', state,
+                                { message },
                             );
                         } else {
                             await message(
@@ -6187,7 +6198,9 @@ export async function dobuzz(
                     await flashburn(random.d(nd, 50), true, state,
                         { ...env, message });
                 }
-                await stop_occupation(state, { message: ttyPline });
+                // stop_occupation() prints through dobuzz()'s message
+                // operation, which a planned breath silences.
+                await stop_occupation(state, { message });
                 nomul(0, state);
             }
             // C ref: zap.c:4995-4996. Gas that missed or was not reflected

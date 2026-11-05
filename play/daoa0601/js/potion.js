@@ -20,7 +20,7 @@ import { armorSlotFor, heroHasFreeAction, objectIsHardHelmet, coveringEquipment,
 import { setBallAndChainFelt } from './ball.js';
 import { adjustAttribute, attributeChangeMessage, currentAttribute, exerciseAttribute, poisonAttributeMessage, requireAttributeIndex } from './attrib.js';
 import { heroEyeCount, heroEyeName, heroFaceName, heroFootName, heroHandName, heroHasEyes, heroHeadName, heroLegName } from './body_parts.js';
-import { commandResultCancelled, commandResultFailed, setMulti, travelStairs, cmdq_peek } from './cmd.js';
+import { commandResultCancelled, commandResultFailed, setMulti, cmdq_peek } from './cmd.js';
 import { applyHeroLocationEffects, loseHeroHp, nearCapacity, nomul } from './hack.js';
 import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, BOLT_LIM, COLNO, CQ_CANNED, EXPL_FIERY, FOUNTAIN, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, G_GONE, IS_SINK, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, MM_NOMSG, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, M_SEEN_SLEEP, NO_KILLER_PREFIX, PLNMSG_OBJ_GLOWS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, ROWNO, SICK_ALL, SICK_VOMITABLE, SINK, STRAT_WAITFORU, TIMEOUT, Upolyd, WEAK, } from './const.js';
 import { impossible } from './diagnostics.js';
@@ -35,7 +35,7 @@ import { explode } from './explosion.js';
 import { fireDamageObject, waterDamageObject, erodeObject, objectIsVulnerableToErosion, captureLevitationState, floatHeroUp } from './trap.js';
 import { explodeLitOilPotion } from './fire_explosion.js';
 import { heroCanReachFloor } from './engrave.js';
-import { useUpFloorObject } from './floor_consumption.js';
+import { useUpFloorObject } from './invent.js';
 import { fruitName } from './fruit.js';
 import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -43,7 +43,7 @@ import { possessiveName } from './hacklib.js';
 import { depth, ledgerNo } from './dungeon.js';
 import { releaseHeroFromMonster, finishMonsterKilled, removeMonsterFromGame, removeWishGrantingMonster, revealMonsterAppearance, wakeMonstersNearWithMessages, } from './mon.js';
 import { removeWornHeroItem } from './hero_equipment.js';
-import { holdAnotherObject } from './hero_hold_object.js';
+import { holdAnotherObject } from './invent.js';
 import { staggerVerb } from './dothrow.js';
 import { burnAwayHeroSlime, dropHeroSliming, putHeroToSleep } from './timeout.js';
 import { freeInventoryObject, learnUnseenInventory, useUpInventoryStack, chooseInventoryObject, consumeInventoryItem, getobj, inventoryItemDescription, } from './invent.js';
@@ -54,7 +54,7 @@ import { formatFeltMessage } from './hero_speech.js';
 import { heroCanBeSlimed, newuhs, eatmupdate, fix_petrification } from './eat.js';
 import { doEnlightenmentEffect, makeWish, obj_unpolyable, objectResistsDestruction, poly_obj, polymorphMonsterFromMagic } from './zap.js';
 import { showEnlightenment } from './insight.js';
-import { gotoLevel } from './level_change.js';
+import { gotoLevel, doup } from './do.js';
 import { floatingAbove } from './levitation_commands.js';
 import { adjustObjectLightAfterBlessing, objectLightRadius } from './light.js';
 import { detectMonsters, detectObjects } from './detect.js';
@@ -1303,7 +1303,7 @@ export async function applyLevitationPotion(potion, { state = game, publish = pl
         revokeIntrinsicProperty('levitation', 'potion', state);
         if (!blocked && !propertyIsBlocked('levitation', state)) {
             if (upStairwayAt(hero.ux, hero.uy, state)) {
-                await travelStairs(true);
+                await doup();
                 potionNothing = false; /* not nothing after all */
             }
             else if (levelHasCeiling(state)) {
@@ -1588,7 +1588,7 @@ function sicknessCannotHarmMonster(monster) {
     return monsterHasPoisonResistance(monster)
         || MONSTER_ATTACKS[monster?.mnum]?.some(attack => attack[1] === AD_DISE || attack[1] === AD_PEST);
 }
-// zap.c:resist() uses potion attack level 6 and the target's runtime level.
+// Potion impacts use zap.c:resist() with attack level 6 and the target's runtime level.
 // NOTELL suppresses shield presentation but the resistance draw still occurs.
 function monsterResistsPotion(monster, state = game) {
     const mnum = monster?.mnum;

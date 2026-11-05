@@ -28343,6 +28343,10 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "wiz_intrinsic": {
         g.context.move = 0;
         await wiz_intrinsic();
+        /* wizcmds.c:1095 returns ECMD_OK, so rhack's reset_cmd_vars()
+         * (cmd.c:3814-3815) zeroes a travel endpoint's lingering context.run = 8
+         * and the next turn's time_botl is no longer suppressed (allmain.c:262). */
+        outcome.value = ECMD_OK;
     }
         return true;
     default:
@@ -30633,8 +30637,8 @@ async function _do_look_lookat(x, y) {
         return {
             kind: arboreal ? 'cmap-tree' : 'cmap-wall',
             glyphChar: wg.ch,
-            glyphDec: !!wg.dec,
-            ...cmapClassDescription(wg.ch, !!wg.dec),
+            glyphDec: !!(wg.dec || wg.decgfx), /* a remembered glyph (_rgw) carries decgfx */
+            ...cmapClassDescription(wg.ch, !!(wg.dec || wg.decgfx)),
             firstmatch: arboreal ? 'tree' : 'wall',
             dbaseEntry: arboreal ? 'tree' : null, /* dat/data.base has no "wall" entry */
         };

@@ -799,7 +799,8 @@ async function trapeffect_arrow_trap(mtmp, trap, _trflags, env) {
             );
         }
         deltrap(trap, state);
-        newsym(mtmp.mx, mtmp.my);
+        // The caller's redraw is silent in a monster turn's planning pass.
+        requireTrapOperation(env, 'redraw')(mtmp.mx, mtmp.my, state);
         return Trap_Is_Gone;
     }
 
@@ -2993,7 +2994,12 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                     // whether the rolling object was consumed.
                     x2 = x;
                     y2 = y;
-                    if (await flooreffects(singleobj, x2, y2, 'fall', env)) {
+                    // flooreffects() repaints through env.newsym; hand it
+                    // this caller's redraw, which a planning pass silences.
+                    if (await flooreffects(singleobj, x2, y2, 'fall', {
+                        ...env,
+                        newsym: env.newsym ?? redraw,
+                    })) {
                         used_up = true;
                         launch_drop_spot(null, 0, 0, state);
                     }

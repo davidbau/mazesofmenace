@@ -1947,7 +1947,12 @@ export async function bee_eat_jelly(mon, obj, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? { rn2 };
     const message = env.message ?? ttyPline;
-    const objectEnv = objectGenerationEnv({ ...env, state, random, message });
+    // delobj() repaints the jelly's square through objectEnv.redraw, which a
+    // monster turn's planning pass silences.
+    const objectEnv = objectGenerationEnv({
+        ...env, state, random, message,
+        redraw: env.planning ? () => {} : (env.redraw ?? newsym),
+    });
     const mtmp = find_pmmonst(PM_QUEEN_BEE, state);
 
     if (!mtmp) {
@@ -2784,6 +2789,10 @@ export async function dochug(monster, rawEnv = {}) {
         }
         if (monster.wormno && await wormhitu(monster, env)) return 1;
     }
+    // C done() never returns: an attack that killed the hero, such as
+    // mattacku()'s use_offensive() wand, ends the game before the speech
+    // and cuss gates below.
+    if (state.program_state?.gameover) return 0;
 
     // C ref: monmove.c:980-982. Nearby quest monsters speak after their
     // movement/attack work, unless helpless; the planning caller supplies a
@@ -2918,7 +2927,13 @@ export function select_postmove_object_action(
     const random = rawEnv.random ?? { rn2 };
     const env = { ...rawEnv, state, random };
     const objects = state.level?.objects?.[x]?.[y] ?? null;
-    if (!objects || !monster.mcanmove) return null;
+    if (!monster.mcanmove) return null;
+    // postmov() tests OBJ_AT() once, before meatmetal(), meatobj() and
+    // meatcorpse() (monmove.c:1661), and then calls mpickstuff() even when
+    // eating emptied the square; mpickstuff()'s shop test still draws its
+    // rn2(25) (mon.c:1857). The postmov() caller has made that test and
+    // passes skipConsumption, so only other callers stop here.
+    if (!objects && !rawEnv.skipConsumption) return null;
 
     // Tests and bounded preflight callers may ask about another square. Give
     // source predicates those coordinates without mutating the real monster.
@@ -3519,7 +3534,8 @@ export async function postmov(
                         env,
                     );
                 }
-                await dissolve_bars(monster.mx, monster.my, state);
+                await dissolve_bars(monster.mx, monster.my, state,
+                    { newsym: redraw });
                 return MMOVE_DONE;
             } else if (state.flags?.verbose && canseemon(monster, state)) {
                 // C uses makeplural() to conjugate the movement verb and
@@ -4377,8 +4393,11 @@ export function can_hide_under_obj(headObject, state = game) {
 }
 
 // C ref: monmove.c dissolve_bars() (2170-2180). Remove iron bars at (x,y),
-// replacing with the appropriate terrain type and redrawing.
-export async function dissolve_bars(x, y, state = game) {
+// replacing with the appropriate terrain type and redrawing. A monster's
+// planning pass supplies its own newsym(), so the square is not repainted on
+// the live display before the live pass changes it.
+export async function dissolve_bars(x, y, state = game, rawEnv = {}) {
+    const redraw = rawEnv.newsym ?? newsym;
     const loc = state.level.at(x, y);
     const edge = loc.edge;
     loc.typ = edge === 1 ? DOOR
@@ -4387,7 +4406,7 @@ export async function dissolve_bars(x, y, state = game) {
             : CORR;
     loc.flags = 0; /* doormask = D_NODOOR */
     loc.doormask = 0;
-    newsym(x, y);
+    redraw(x, y, state);
     if (x === state.u.ux && y === state.u.uy) /* u_at(x, y) */
         await switch_terrain(state);
 }

@@ -5663,6 +5663,12 @@ export async function expels_gu(mtmp, mndx, message) {
      * docrt();`.  The whole level was cls()'d by swallowed(1), and this is the
      * repaint that puts it back; it runs BEFORE expels' mnexto, as in C. */
     docrt_flags_mu(0);
+    /* C mon.c:3462-3465: holder/engulfer cooldown roll follows docrt() */
+    const hold = dmgtype(mtmp.data, AD_STCK_)
+        || attacktype_mu(mtmp.data, AT_ENGL_)
+        || attacktype_mu(mtmp.data, AT_HUGS_);
+    if (!(mtmp.mspec_used | 0) && hold)
+        mtmp.mspec_used = rnd(2);
     await mnexto_mu(mtmp, RLOC_NOMSG_MU);
     newsym(game.u.ux | 0, game.u.uy | 0);
     /* C mhitu.c:302-304 — "to cover for a case where mtmp is not in a next

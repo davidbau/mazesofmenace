@@ -2959,10 +2959,8 @@ async function hmon_hitmon_weapon_ranged(hmd, mon, obj, state, env, random) {
             + `${yname(obj, state)} breaks into splinters.`,
             state,
         );
-        if (!moreThanOne) {
-            state.gn ??= {};
-            state.gn.unweapon = true;
-        }
+        // uwepgone() clears the slot and sets gu.unweapon.
+        if (!moreThanOne) await uwepgone({ ...env, state });
         await useup(obj, { ...env, state });
         hmd.hittxt = true;
         if (hmd.mdat !== state.mons[PM_SHADE]) hmd.dmg++;
@@ -3086,10 +3084,8 @@ async function hmon_hitmon_misc_obj(hmd, mon, obj, state, env, random) {
         hmd.dmg = 1;
         hmd.get_dmg_bonus = false;
         hmd.hittxt = true;
-        if (obj === state.uwep) {
-            state.gn ??= {};
-            state.gn.unweapon = true;
-        }
+        // C gu.unweapon is this port's state.unweapon field.
+        if (obj === state.uwep) state.unweapon = true;
         if (obj.spe && ismnum(obj.corpsenm))
             change_luck(-Math.min(count, 5), state);
         const eggSpecies = ismnum(obj.corpsenm)
@@ -4328,11 +4324,13 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
             && !(await tele_restrict(magr, state, { ...env, message }))) {
             const couldspot = canspotmon(magr, state);
             mhm.hitflags = M_ATTK_AGR_DONE;
+            // rloc_to_core() redraws through rlocEnv.newsym, which a
+            // monster turn's planning pass silences.
             const rlocEnv = {
                 ...env,
                 state,
                 random,
-                newsym,
+                newsym: env.planning ? () => {} : newsym,
                 onscary: (x, y, mon, normalized) =>
                     onscary(x, y, mon, normalized.state),
                 setApparxy: set_apparxy,

@@ -3748,11 +3748,11 @@ async function litter_scatter(litter, x, y, shkp, state = game, env = {}) {
 }
 
 // C ref: shk.c litter_newsyms() (4712-4720). Redraw only squares to which
-// litter was moved.
-function litter_newsyms(litter, x, y) {
+// litter was moved, through repair_damage()'s redraw.
+function litter_newsyms(litter, x, y, redraw = newsym) {
     for (let i = 0; i < 9; ++i) {
         if (litter[i] & LITTER_UPDATE)
-            newsym(x + litterHoriz(i), y + litterVert(i));
+            redraw(x + litterHoriz(i), y + litterVert(i));
     }
 }
 
@@ -3760,6 +3760,10 @@ function litter_newsyms(litter, x, y) {
 // and returns one as soon as the terrain is restored for an off-level repair.
 async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
     if (!repairable_damage(damage, shkp, state)) return 0;
+    const message = shopRepairMessage(env);
+    // A shopkeeper's move in a monster turn's planning pass repairs only the
+    // planning copy; the live pass repaints the squares.
+    const redraw = env.planning ? () => {} : newsym;
 
     const { x, y } = damage.place;
     const seeit = cansee(x, y, state);
@@ -3794,14 +3798,14 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
             if (!catchup) {
                 if (canseemon(shkp, state)
                     && dist2(x, y, shkp.mx, shkp.my) <= 2) {
-                    await ttyPline(
+                    await message(
                         `${Shknam(shkp, state, env)} untraps ${
                             ansimpleoname(object, state)}.`,
                         state,
                         env,
                     );
                 } else if (trap.tseen && cansee(trap.tx, trap.ty, state)) {
-                    await ttyPline(
+                    await message(
                         `The ${trapname(trap.ttyp, true, state, randomFor(env))} vanishes.`,
                         state,
                         env,
@@ -3812,7 +3816,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
         } else if (!catchup && trap.tseen && cansee(trap.tx, trap.ty, state)) {
             const verb = trap.ttyp === HOLE || trap.ttyp === PIT
                 || trap.ttyp === SPIKED_PIT ? 'is filled in' : 'vanishes';
-            await ttyPline(
+            await message(
                 `The ${trapname(trap.ttyp, true, state, randomFor(env))} ${verb}.`,
                 state,
                 env,
@@ -3821,7 +3825,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
 
         deltrap(trap, state);
         del_engr_at(x, y, state);
-        if (seeit) newsym(x, y);
+        if (seeit) redraw(x, y);
         if (!catchup) disposition = 3;
     }
 
@@ -3848,34 +3852,44 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
         await litter_scatter(litter, x, y, shkp, state, env);
     del_engr_at(x, y, state);
 
-    if (seeit) newsym(x, y);
+    if (seeit) redraw(x, y);
     block_point(x, y, state);
     if (catchup) return 1;
 
     if (seeit) {
         if (IS_WALL(damage.typ)) {
             location.seenv = SVALL;
-            await ttyPline('Suddenly, a section of the wall closes up!', state, env);
+            await message('Suddenly, a section of the wall closes up!', state, env);
         } else if (IS_DOOR(damage.typ)) {
-            await ttyPline('Suddenly, the shop door reappears!', state, env);
+            await message('Suddenly, the shop door reappears!', state, env);
         }
-        newsym(x, y);
+        redraw(x, y);
     } else if (IS_WALL(damage.typ)) {
         if (inside_shop(state.u.ux, state.u.uy, state)
             === shkp.mextra.eshk.shoproom) {
-            await ttyPline(youFeelPrefix(state)
+            await message(youFeelPrefix(state)
                 + ' more claustrophobic than before.', state, env);
         } else if (!heroIsDeaf(state) && !randomFor(env).rn2(10)) {
-            await ttyNorep('The dungeon acoustics noticeably change.', state, env);
+            await (env.planning ? message : ttyNorep)(
+                'The dungeon acoustics noticeably change.', state, env);
         }
     }
 
     // shk.c:4838.
     if (stopPicking)
-        await stop_occupation(state, { ...env, message: env.message ?? ttyPline });
-    litter_newsyms(litter, x, y);
+        await stop_occupation(state, {
+            ...env,
+            message: env.planning ? message : (env.message ?? ttyPline),
+        });
+    litter_newsyms(litter, x, y, redraw);
     if (disposition < 3) disposition = 2;
     return disposition;
+}
+
+// The once-per-turn planning pass runs shk_move() on a cloned state; its
+// repair messages must neither draw nor wait for --More-- on the live terminal.
+function shopRepairMessage(env) {
+    return env.planning ? async () => {} : ttyPline;
 }
 
 function randomFor(env) {
@@ -3893,11 +3907,12 @@ function youFeelPrefix(state) {
 async function shk_fixes_damage(shkp, state, env = {}) {
     const damage = find_damage(shkp, state);
     if (!damage) return;
+    const message = shopRepairMessage(env);
 
     const closeby = dist2(shkp.mx, shkp.my, state.u.ux, state.u.uy)
         <= Math.trunc(BOLT_LIM / 2) ** 2;
     if (canseemon(shkp, state)) {
-        await ttyPline(
+        await message(
             `${Shknam(shkp, state, env)} whispers ${
                 closeby ? 'an incantation' : 'something'}.`,
             state,
@@ -3905,7 +3920,7 @@ async function shk_fixes_damage(shkp, state, env = {}) {
         );
     } else if (closeby && !heroIsDeaf(state)) {
         const heard = youHear('someone muttering an incantation.', state);
-        if (heard) await ttyPline(heard, state, env);
+        if (heard) await message(heard, state, env);
     }
 
     await repair_damage(shkp, damage, false, state, env);

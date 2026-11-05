@@ -15,7 +15,6 @@ import { endVoluntaryMultiTurn, loseHeroHp, roomsAt } from './hack.js';
 import { BEAR_TRAP, BOLT_LIM, CORR, D_BROKEN, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_UP, EXPL_FIERY, FIRE_TRAP, G_GONE, HOLE, In_endgame, In_sokoban, IS_AIR, IS_DOOR, IS_DRAWBRIDGE, IS_FURNITURE, IS_OBSTRUCTED, is_hole, is_pit, ismnum, LADDER, MFAST, MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP, MM_NOMSG, MON_OFFMAP, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_SLEEP, NORMAL_SPEED, P_DAGGER, P_KNIFE, PIT, PLNMSG_enum, PLNMSG_UNKNOWN, POLY_TRAP, QBUFSZ, RLOC_MSG, SCORR, SDOOR, SHOPBASE, STAIRS, STRAT_WAITFORU, TELEP_TRAP, TEMPLE, WAND_BACKFIRE_CHANCE, W_ARM, W_ARMF, W_ARMG, W_ARMH, W_WEP, WEB, W_NONDIGGABLE, ZAP_POS, W_AMUL, W_ARMS, } from './const.js';
 import { heroHasArtifactDefense, weaponReflects } from './artifacts.js';
 import { monsterHasMagicResistance } from './trap.js';
-import { touchPetrifies } from './stoning.js';
 import { fillPitWithBoulderAt, mintrap, seeTrap, trapAt, trapName, heroIsUnconscious, maketrap } from './trap.js';
 import { CLR_BRIGHT_GREEN, CLR_GREEN } from './terminal.js';
 import { MONSTER_ATTACKS, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
@@ -27,7 +26,7 @@ import { enexto, monsterTeleportRestricted, reportMonsterTeleportRestriction } f
 import { displayColorName, monsterName, monsterReflexiveAction, randomDisplayMonsterName, visibleMonsterSubject } from './do_name.js';
 import { possessiveName, dist2, distmin, upstart } from './hacklib.js';
 import { depth, ledgerNo } from './dungeon.js';
-import { monsterObjectPronoun, monsterSubjectPronoun, monsterKnowsTrap, monsterLearnsTrap, monsterIsHelpless, monsterHasAcidResistance, monsterHasStoneResistance, monsterLocomotion, monsterPolymorphsWhenStoned, monstersForgetHeroResistance, monstersObserveHeroResistance, sameMonsterRace, speciesCanBlow, is_mercenary, monsterHasEyes, monsterHasNoHands, monsterHasNoLimbs, monsterHatesLight, monsterHatesSilver, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsFlyer, monsterIsKop, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsSlimeproof, monsterIsSlithy, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterPassesWalls, monsterThrowsRocks, needspick, acidic as speciesIsAcidic, } from './mondata.js';
+import { monsterObjectPronoun, monsterSubjectPronoun, monsterKnowsTrap, monsterLearnsTrap, monsterIsHelpless, monsterHasAcidResistance, monsterHasStoneResistance, monsterLocomotion, monsterPolymorphsWhenStoned, monstersForgetHeroResistance, monstersObserveHeroResistance, sameMonsterRace, speciesCanBlow, is_mercenary, monsterHasEyes, monsterHasNoHands, monsterHasNoLimbs, monsterHatesLight, monsterHatesSilver, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsFlyer, monsterIsKop, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsSlimeproof, monsterIsSlithy, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterPassesWalls, monsterThrowsRocks, needspick, acidic as speciesIsAcidic, touchPetrifies, } from './mondata.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { canSeeMonster, canSenseMonster, canSpotMonster, cls, displaySelf, docrt, flashGlyphAt, map_invisible, newsym, shieldeff, show_glyph_cell, transientMonsterGlyph } from './display.js';
 import { plineWithContinuation } from './pline.js';
@@ -56,7 +55,7 @@ import { isWeldedPrimary, willWeld } from './wield.js';
 import { heroResistsBlindingLight } from './blinding_attack.js';
 import { dropBoulderOnHero, dropBoulderOnMonster } from './read.js';
 import { beginObjectBurn } from './timeout.js';
-import { lightDamage } from './light.js';
+import { lightDamage } from './zap.js';
 import { throwMonsterProjectile, blockingTerrain, monsterLinedUpWithHero, consumeMonsterItem } from './mthrowu.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating, heroIsUnaware } from './senses.js';
 import { makeBlinded } from './potion.js';
@@ -64,7 +63,7 @@ import { destroyDrawbridge, findDrawbridgeAt, isIceAt, isLavaAt, isPoolAt } from
 import { changeDoorByMagic } from './lock.js';
 import { stopHeroOccupation } from './occupation.js';
 import { propertyIsActive } from './properties.js';
-import { rayHitMessage, rayMissMessage } from './ray_hit_message.js';
+import { rayHitMessage, rayMissMessage } from './zap.js';
 import { heroHasHalfSpellDamage, monsterResistsEffect, learnWand } from './zap.js';
 import { askTeleportDestination, heroControlsTeleport, randomMonsterRelocation, teleportHero } from './teleport.js';
 import { randomTeleportDepth } from './level_teleport.js';
@@ -83,7 +82,7 @@ import { displayMessageWindow } from './tty_topline.js';
 import { migrateMonsterOffLevel } from './dog.js';
 import { exerciseWisdom } from './attrib.js';
 import { recordObjectKnowledge } from './o_init.js';
-import { castNativeRay, hitMonsterWithRay } from './zap.js';
+import { buzz, dobuzz, hitMonsterWithRay } from './zap.js';
 import { hitObjectWithWand } from './zap.js';
 import { turnCarriedObjects, turnHeroWithUndeadMagic } from './zap.js';
 // ---------------------------------------------------------------------------
@@ -1237,14 +1236,14 @@ async function fhito_loc({ state, wand }) {
 }
 // C muse.c:buzz_force_miss().
 async function buzz_force_miss(type, dice, direction, options) {
-    return castNativeRay(type, dice, direction, { ...options, forceMiss: true });
+    return dobuzz(type, dice, direction, { ...options, forceMiss: true });
 }
 // C muse.c:use_offensive().
 export async function use_offensive(monster, choice, options) {
     const { state, random = rn2, rollOne = rnd, rollDice = d, publish = plineWithContinuation } = options;
     requireLiveGame(state);
     const object = choice.object;
-    const buzzfn = monster.mwandexp ? castNativeRay : buzz_force_miss;
+    const buzzfn = monster.mwandexp ? buzz : buzz_force_miss;
     if (object.oclass !== POTION_CLASS) {
         const result = await precheck(monster, object, options);
         if (result)

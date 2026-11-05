@@ -720,7 +720,7 @@ export { Hallucination }; // relocate-fns
 async function get_iter_mons_aw(bfunc) {
     for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
         next = mtmp.nmon;
-        if ((mtmp.mhp | 0) < 1)       /* DEADMONSTER */
+        if ((mtmp.mhp | 0) < 1 || (mtmp.mstate | 0) !== 0)
             continue;
         if (await bfunc(mtmp))
             return mtmp;

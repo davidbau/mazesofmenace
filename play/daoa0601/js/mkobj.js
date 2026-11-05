@@ -37,7 +37,7 @@ import { formatHeardMessage, formatSeenMessage } from './hero_speech.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { nearCapacity } from './hack.js';
 import { encumber_msg } from './pickup.js';
-import { holdAnotherObject } from './hero_hold_object.js';
+import { holdAnotherObject } from './invent.js';
 import { hitFloorWithObject } from './dothrow.js';
 import { landObjectOnAltar } from './altar_object.js';
 import { removeObjectFromMonsterInventory } from './monworn.js';
@@ -994,7 +994,8 @@ function linkFloorObject(object, x, y, state) {
     updateCorpseIceTimer(object, x, y, isIceAt(x, y, state), state);
     return object;
 }
-// C zap.c:bhitpile() and muse.c:fhito_loc() save each successor before
+// Shared floor-chain traversal used by zap.c:bhitpile() and muse.c:fhito_loc().
+// Both save each successor before
 // applying the effect. Fracturing can reinsert rocks below another boulder,
 // so the same ray may reach those rocks again. Returning false stops the sweep.
 export async function sweepFloorPile(x, y, state, visit) {
@@ -1014,17 +1015,6 @@ export async function sweepFloorPile(x, y, state, visit) {
         }
         current = next;
     }
-}
-export async function stack_object(object, state = game) {
-    if (!object)
-        return object;
-    const pile = state.level?.objects?.[object.ox]?.[object.oy];
-    if (!pile)
-        return object;
-    const existing = pile.find(candidate => candidate !== object && mergable(object, candidate, state));
-    if (!existing)
-        return object;
-    return await mergeObjectStacks(object, existing, state) || object;
 }
 export function remove_object(object, state = game) {
     if (!object || !state.level)

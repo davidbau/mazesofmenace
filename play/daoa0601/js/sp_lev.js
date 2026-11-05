@@ -4,10 +4,11 @@
 // fill_special_room, check_room, create_room, create_subroom,
 // dig_corridor, wallify_map, and themed-room map placement.  The des.*
 // binding table and the Lua level/themeroom sessions live in sp_lev_lua.ts.
+import { stack_object } from './invent.js';
 import { RANDOM_CLASS, GEM_CLASS } from './objclass.js';
 import { objectMerge, EGG, TIN, FIGURINE, CORPSE, SPE_NOVEL, BOULDER, STATUE, PICK_AXE, DWARVISH_MATTOCK, SADDLE, } from './object_data.js';
 import { heroIsPunished, placeBallAndChain, unplaceBallAndChain } from './ball.js';
-import { mksobj_at, mkobj_at, mkgold, set_corpsenm, rndmonnum, unlinkMonsterObject, blessObjectState, curseObjectState, unblessObjectState, uncurseObjectState, addCreatedObjectToContainer, addObjectToContainer, objectWeight, remove_object, stack_object } from './mkobj.js';
+import { mksobj_at, mkobj_at, mkgold, set_corpsenm, rndmonnum, unlinkMonsterObject, blessObjectState, curseObjectState, unblessObjectState, uncurseObjectState, addCreatedObjectToContainer, addObjectToContainer, objectWeight, remove_object } from './mkobj.js';
 import { isRoom } from './map_types.js';
 import { deleteTrap, maketrap } from './trap.js';
 import { lookupNovelTitle, setMonsterGivenName } from './do_name.js';
@@ -38,7 +39,7 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, inducedAlignment, level_difficulty } from './dungeon.js';
 import { flood_fill_rm, litstate_rnd, mkmap } from './mkmap.js';
-import { carveMazeFrom, createMaze } from './maze_terrain.js';
+import { create_maze, walkfrom } from './mkmaze.js';
 import { ANY_LOC, DRY, HOT, NO_LOC_WARN, SOLID, WET, get_location, get_location_coord, getPackedLocationCoord } from './special_location.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { back_to_glyph, set_wall_state } from './display.js';
@@ -139,7 +140,7 @@ export async function lspo_mazewalk(context, mappedCells, value, yValue, directi
     }
     if (!(y % 2))
         y += direction === 'south' ? 1 : -1;
-    carveMazeFrom(x, y, terrain, (COLNO - 1) & ~1, (ROWNO - 1) & ~1);
+    walkfrom(x, y, terrain, (COLNO - 1) & ~1, (ROWNO - 1) & ~1);
     if (stocked)
         await fill_empty_maze(mappedCells);
 }
@@ -1097,7 +1098,7 @@ export async function splev_initlev(options, active) {
         return;
     }
     if (style === 'maze') {
-        createMaze(options.corrwid ?? -1, options.wallthick ?? -1, options.deadends === false);
+        create_maze(options.corrwid ?? -1, options.wallthick ?? -1, options.deadends === false);
         active.defaultLit = false;
         return;
     }

@@ -4028,8 +4028,10 @@ export async function wakeup(monster, via_attack, rawEnv = {}) {
     if (((monster.m_ap_type ?? 0) & M_AP_TYPMASK) !== M_AP_NOTHING) {
         // C ref: mon.c:4339-4343. Mimics come out of hiding, but a disguised
         // Wizard (M_AP_MONSTER) keeps his disguise.
+        // A monster turn's planning pass leaves the redraw to the live pass.
         if (((monster.m_ap_type ?? 0) & M_AP_TYPMASK) !== M_AP_MONSTER) {
-            seemimic(monster, state);
+            seemimic(monster, state,
+                rawEnv.planning ? { newsym: () => {} } : {});
         }
     } else if (state.context?.forcefight && !state.context?.mon_moving
                && monster.mundetected) {
@@ -4525,7 +4527,15 @@ export function unstuck(mtmp, state = game, env = {}) {
             const visionRecalc = env.visionRecalc ?? vision_recalc;
             const visionEnv = redraw
                 ? { ...env, state, redraw } : { ...env, state };
+            // display.c docrt_flags() raises program_state.in_docrt before
+            // its vision_recalc(2) and lowers it only after see_monsters(),
+            // so show_glyph() reports no glyph-update notice for any of the
+            // redraw. The port runs the vision phases and the monster overlay
+            // outside its docrt(), which would lower the flag in between.
+            state.program_state ??= {};
+            state.program_state.in_docrt = true;
             await visionRecalc(2, visionEnv);
+            state.program_state.in_docrt = false;
             if (typeof env.docrt === 'function') {
                 await env.docrt({ ...env, state, overlayMonsters: false });
             } else if (!env.planning) {
@@ -4542,9 +4552,22 @@ export function unstuck(mtmp, state = game, env = {}) {
             // display.c restores vision and only then overlays monsters. The
             // explicit redraw option is required for a planning clone because
             // see_monsters() otherwise paints the live game map.
-            await visionRecalc(0, visionEnv);
-            const monsterOverlay = { ...env, ...(redraw ? { redraw } : {}) };
-            await see_monsters(state, monsterOverlay);
+            // C runs both inside docrt_flags(), whose program_state.in_docrt
+            // keeps show_glyph() from reporting mention_map glyph changes.
+            // docrt() above has already cleared its own bracket, so restore it
+            // for this tail.
+            state.program_state ??= {};
+            const outerInDocrt = state.program_state.in_docrt;
+            state.program_state.in_docrt = true;
+            try {
+                await visionRecalc(0, visionEnv);
+                const monsterOverlay = {
+                    ...env, ...(redraw ? { redraw } : {}),
+                };
+                await see_monsters(state, monsterOverlay);
+            } finally {
+                state.program_state.in_docrt = outerInDocrt;
+            }
 
             /* "prevent holder/engulfer from immediately re-holding/re-engulfing
                [note: this call to unstuck() might be because u.ustuck has just

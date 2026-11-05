@@ -2820,9 +2820,12 @@ async function _faithful_turn_over_stale_yn() {
     const g = game;
     const stale = (g._resultMessage && g._resultMessage === g._ynStaleTopline)
         ? g._resultMessage : null;
+    const prev0 = g._prevmsg;
     if (stale) g._resultMessage = '';
     await faithful_moveloop_turn();
-    if (stale && !g._resultMessage && !g._pending_message)
+    /* pline.c:282 gp.prevmsg moves on every pline, so a changed value means the
+     * turn printed (and already paged/ESC-suppressed) something over the prompt. */
+    if (stale && !g._resultMessage && !g._pending_message && g._prevmsg === prev0)
         g._resultMessage = stale;
 }
 
@@ -2934,6 +2937,7 @@ async function moveloop_core_faithful() {
         const _ynStale = (g._resultMessage && g._resultMessage === g._ynStaleTopline)
             ? g._resultMessage : null;
         if (_ynStale) g._resultMessage = '';
+        const _ynPrev0 = g._prevmsg;
         g._ynStaleTopline = null;
         const _resultMsgJoins = _topl_joins_snapshot(g._resultMessage);
         if (g._resultMessage && _resultMsgJoins && _resultMsgJoins.length)
@@ -2984,7 +2988,7 @@ async function moveloop_core_faithful() {
         // correctly.  The ettin mummy hits!  ...") that must page across 3 --More--
         // frames before the wizard-mode "You die..." pager, else the death event's
         // recorded keystroke window shifts and the "Die?"/savelife screens misalign.
-        if (_ynStale && !g._resultMessage && !g._pending_message) g._resultMessage = _ynStale;
+        if (_ynStale && !g._resultMessage && !g._pending_message && g._prevmsg === _ynPrev0) g._resultMessage = _ynStale;
         if (g._resultMessage && g._pending_message) {
             g._resultMessage = _topl_merge_result(g._resultMessage, g._pending_message, _resultMsgJoins);
             g._pending_message = '';

@@ -9,7 +9,7 @@ import { selectMapPosition } from './getpos.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { currentAttribute, exerciseWisdom } from './attrib.js';
 import { castSpell, createMemorizedSpell, knownSpell } from './spell.js';
-import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './tty_menu.js';
+import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './wintty.js';
 import { randomTeleportDepth, levelTeleport } from './level_teleport.js';
 import { dist2, distmin } from './hacklib.js';
 import { clampHoleDestination, deleteTrap, seeTrap, mintrap, fillPitWithBoulderAt, resetUtrap, heroIsUnconscious } from './trap.js';
@@ -48,11 +48,11 @@ import { hasShopkeeperData } from './shop_types.js';
 import { publishMonsterYelp } from './ambient_sounds.js';
 import { migrateMonsterOffLevel } from './dog.js';
 import { isHomeElemental } from './makemon.js';
-import { reviveCorpseImmediately } from './corpse_revival.js';
+import { reviveCorpseImmediately } from './do.js';
 import { isRider } from './corpse_species.js';
 import { applyFloorEffects } from './floor_effects.js';
 import { unlinkObject, placeObject } from './mkobj.js';
-import { gotoLevel, gotoLevel as changeLevel, scheduleLevelChange } from './level_change.js';
+import { gotoLevel, gotoLevel as changeLevel, scheduleLevelChange } from './do.js';
 import { monsterIsAmphibious, monsterIsSwimmer, monsterPassesWalls, monsterIsAmorphous, monsterThrowsRocks, is_lord, is_prince, monsterHasEyes, monsterIsCovetous, monsterIsEel, monsterCanTeleport, monsterControlsTeleport, monsterIsRider, } from './mondata.js';
 export function requireLevel(state) {
     if (!state.level)

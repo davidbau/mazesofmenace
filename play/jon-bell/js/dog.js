@@ -1568,11 +1568,13 @@ export async function unstuck(mtmp, skipDocrt = false) {
             await docrt();
         }
     }
-    const hold = _dmgtype_real(ptr, AD_STCK)
-        || _attacktype_real(ptr, AT_ENGL)
-        || _attacktype_real(ptr, AT_HUGS);
-    if (!(mtmp.mspec_used | 0) && hold)
-        mtmp.mspec_used = rnd(2);
+    if (!skipDocrt) {
+        const hold = _dmgtype_real(ptr, AD_STCK)
+            || _attacktype_real(ptr, AT_ENGL)
+            || _attacktype_real(ptr, AT_HUGS);
+        if (!(mtmp.mspec_used | 0) && hold)
+            mtmp.mspec_used = rnd(2);
+    }
 }
 
 export function update_mlstmv() {

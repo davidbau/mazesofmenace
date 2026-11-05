@@ -4,8 +4,9 @@ import { MONSTER_SYMBOL, resetErinys } from './monster_data.js';
 import { game, requireLiveGame } from './gstate.js';
 import { PanicTermination } from './panic_termination.js';
 import { clearMessageWindow, displayMessageWindow, rememberToplines } from './tty_topline.js';
+import { tty_exit_nhwindows } from './wintty.js';
 import { docrt, reglyphSymbolSet } from './display.js';
-import { pline, plineWithContinuation, rawPrint } from './pline.js';
+import { pline, plineWithContinuation } from './pline.js';
 import { doneObjectCleanup } from './end.js';
 import { restoreSavedLightSources } from './light.js';
 import { promptChoice, promptYesNo } from './query.js';
@@ -25,10 +26,10 @@ import { rewindEngravingsForSave, restoreEngravings } from './engrave.js';
 import { weaponNeedsBashingMessage } from './wield.js';
 import { GRAPPLING_HOOK, PICK_AXE, SLIME_MOLD } from './object_data.js';
 import { forgetTempleEntry } from './priest.js';
-import { restoreElementalBubbles } from './elemental.js';
+import { restore_waterlevel } from './mkmaze.js';
 import { restoreLevelRegions } from './regions.js';
 import { oinit } from './o_init.js';
-import { restoreScheduledLevelChange } from './level_change.js';
+import { restoreScheduledLevelChange } from './do.js';
 import { recorderRestoredTime } from './calendar.js';
 import { restoreSavedTimers } from './timeout.js';
 import { restoreLevelChains } from './level_restore.js';
@@ -108,8 +109,6 @@ function restoreSavedMonsters(state) {
     ], 0);
 }
 // C save.c:dosave()
-// Also C wintty.c:tty_exit_nhwindows(): inlined here when the saved game exits its windows.
-// Also C wintty.c:tty_suspend_nhwindows(): inlined here to clear the screen and print the farewell.
 export async function dosave() {
     // C save.c:dosave() clears WIN_MESSAGE before asking and after either
     // answer. Acknowledgment alone leaves the seen question on tty.
@@ -133,11 +132,10 @@ export async function dosave() {
     game.u.uhp = -1;
     // C save.c:dosave() displays WIN_MESSAGE so the "Saving..." line is
     // seen, then exit_nhwindows("Be seeing you...") tears the windows down
-    // (term_end_screen clears the screen, settty raw-prints the goodbye
-    // with a trailing newline), and nh_terminate() never returns here.
-    game.program_state.windows_exited = true;
-    game.nhDisplay?.clearScreen();
-    rawPrint('Be seeing you...');
+    // (wintty.c:tty_exit_nhwindows() -> tty_suspend_nhwindows(): settty
+    // clears the screen and raw-prints the goodbye), and nh_terminate()
+    // never returns here.
+    tty_exit_nhwindows('Be seeing you...');
     game.program_state.gameover = true;
     game.context.move = 0;
 }
@@ -317,7 +315,7 @@ export async function restoreGame(name, storage = game.storage) {
         game._toplines = sessionToplines;
         restoreMessageHistory(snapshot.state._messageHistory ?? []);
         restoreScheduledLevelChange();
-        restoreElementalBubbles();
+        restore_waterlevel();
         // restgamestate() rebuilds the first-use reminder from the restored
         // weapon, treating applied tools conservatively as improvised weapons.
         const weapon = game.uwep || game.u.uwep;
