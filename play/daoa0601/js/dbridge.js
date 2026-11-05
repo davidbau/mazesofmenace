@@ -19,25 +19,22 @@ import { BOULDER } from './object_data.js';
 import { wakeMonstersNearWithMessages, finishMonsterKilled, resolveMonsterLiquid } from './mon.js';
 import { delobj } from './invent.js';
 import { unpunishHero } from './read.js';
-import { heroIsDeaf, heroIsHallucinating } from './senses.js';
+import { heroIsDeaf, heroIsHallucinating, heroIsUnaware } from './senses.js';
 import { cansee, vision_note_blocker_change, vision_recalc } from './vision.js';
 import { monsterAtPosition, placeMonsterOnMap } from './steed.js';
-import { heroIsUnaware } from './senses.js';
 import { finishHeroDeath } from './end.js';
 import { finishHeroMonsterKill, finishLiquidDeathForCurrentMover } from './hero_monster_death.js';
-import { heroLiquidEffects } from './hack.js';
-import { MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
+import { heroLiquidEffects, reviveNastyAt, finishDestinationSpotEffects } from './hack.js';
+import { MONSTER_MOVE, MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
 import { AD_DGST, AD_PHYS } from './monster_attack_types.js';
 import { heroIsAmphibious, heroIsBreathless, heroSpecies } from './polyself.js';
 import { heroHasWaterWalking } from './do_wear.js';
 import { verbForSubject } from './objnam.js';
 import { rnd } from './rng.js';
 import { updateMonsterRegions } from './regions.js';
-import { moveHeroByTeleport } from './teleport.js';
-import { findNearbyMonsterPosition } from './teleport_rules.js';
+import { teleds, enexto } from './teleport.js';
 import { displayLiquidName, monsterName } from './do_name.js';
-import { monsterSubjectPronoun } from './mondata.js';
-import { reviveNastyAt, finishDestinationSpotEffects } from './hack.js';
+import { monsterSubjectPronoun, monsterPassesWalls, monsterIsFlyer, monsterIsSwimmer } from './mondata.js';
 // C dbridge.c terrain predicates.
 // C ref: dbridge.c is_pool().
 export function isPoolAt(x, y, state = game) {
@@ -391,9 +388,6 @@ export function drawbridgeUnderlyingType(mask) {
         default: return STONE;
     }
 }
-const M1_FLY = 0x00000001;
-const M1_SWIM = 0x00000002;
-const M1_WALLWALK = 0x00000008;
 const S_EYE = 5;
 const S_LIGHT = 25;
 const S_GHOST = 54;
@@ -412,9 +406,6 @@ function entityAt(x, y, state) {
     return { hero: false, actor: monster, x, y, active: true,
         species: tail ? MONSTER_NAME.indexOf('long worm tail') : monster.mnum };
 }
-function entityFlags(entity) {
-    return MONSTER_FLAGS1[entity.species] ?? 0;
-}
 function entitySymbol(entity) {
     return MONSTER_SYMBOL[entity.species] ?? null;
 }
@@ -431,13 +422,13 @@ function entityPassesWalls(entity, state) {
     if (entity.hero
         && state.u.passesWalls)
         return true;
-    return !!(entityFlags(entity) & M1_WALLWALK);
+    return monsterPassesWalls(entity.species);
 }
 function entityIsNoncorporeal(entity) {
     return entitySymbol(entity) === S_GHOST;
 }
 function entityIsFlying(entity) {
-    return !!(entityFlags(entity) & M1_FLY);
+    return monsterIsFlyer(entity.species);
 }
 function entityIsFloating(entity) {
     const symbol = entitySymbol(entity);
@@ -472,7 +463,7 @@ function heroSurvivesPool(state) {
         || hero.levitating || hero.levitation);
 }
 function speciesSurvivesPool(entity) {
-    return !!(entityFlags(entity) & (M1_SWIM | M1_FLY))
+    return (monsterIsSwimmer(entity.species) || monsterIsFlyer(entity.species))
         || entityIsFloating(entity);
 }
 // C dbridge.c:e_survives_at().
@@ -548,11 +539,11 @@ async function moveEntity(entity, destination, state) {
 async function moveSurvivingHeroAway(entity, state) {
     if (entitySurvivesAt(entity, state))
         return;
-    const destination = findNearbyMonsterPosition(entity.species, entity.x, entity.y, { state });
+    const destination = enexto(entity.species, entity.x, entity.y, { state });
     if (!destination)
         return;
     await plineWithContinuation(`A ${heroIsHallucinating(state) ? 'normal' : 'strange'} force teleports you away...`);
-    await moveHeroByTeleport(destination.x, destination.y, state);
+    await teleds(destination.x, destination.y, state);
     entity.x = state.u.ux;
     entity.y = state.u.uy;
 }
@@ -603,6 +594,7 @@ async function crushEntity(entity, bridge, state, options, killer, death) {
 function occupantAt(occupants, x, y) {
     return occupants.find(entity => entity?.active && entity.x === x && entity.y === y) ?? null;
 }
+// C dbridge.c:E_phrase()
 function entityPhrase(entity, verb, state) {
     return `${entityName(entity, state, true)} ${entity.hero ? verb : verbForSubject(null, verb)}`;
 }

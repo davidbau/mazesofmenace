@@ -10,43 +10,40 @@ import { game, requireGameLevel, requireInitializedGame, requireLiveGame } from 
 import { recordTempleOverview } from './dungeon.js';
 import { deityName, hallucinatedDeityName } from './alignment.js';
 import { heroSpineName } from './body_parts.js';
-import { nomul } from './hack.js';
+import { nomul, checkSpecialRoom, roomForRoomno, roomsAt } from './hack.js';
 import { recordAchievement } from './insight.js';
-import { setMonsterMalign } from './makemon.js';
+import { setMonsterMalign, makemon, makemonAt } from './makemon.js';
 import { canSeeMonster, canSpotMonster, newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { exerciseAttribute } from './attrib.js';
 import { castMonsterSpellRay } from './breath_ray.js';
 import { AT_MAGC, AD_ELEC } from './monster_attack_types.js';
-import { cansee, couldSeeFromHero, couldsee } from './vision.js';
+import { couldSeeFromHero, couldsee } from './vision.js';
 import { d, rn2 } from './rng.js';
 import { recordRandom } from './monster_action_types.js';
 import { A_NONE, A_WIS, ALLOW_M, ALLOW_ROCK, AM_SHRINE, MM_EPRI, MMOVE_DIED, MMOVE_MOVED, MMOVE_NOTHING, NOTONL, ROOMOFFSET, SPACE_POS, Amask2align, BOLT_LIM, D_CLOSED, D_LOCKED, IS_ROOM, RLOC_NOMSG, STONE, ACH_TMPL, In_endgame, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, Is_astralevel, LAVAWALL, MM_NOMSG, TEMPLE, WATER, } from './const.js';
 import { dist2, pointsOnline } from './hacklib.js';
 import { angerMonster, mfndpos, monAllowFlags, removeMonsterFromGame, resistConflict, wakeMonster } from './mon.js';
 import { breakMonsterBoulder, moveMonsterAggress } from './monmove.js';
-import { beginMonsterHeroAttack } from './mhitu.js';
+import { mattacku } from './mhitu.js';
 import { monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt } from './steed.js';
 import { shopkeeperInOwnShop } from './shk.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { heroIsDisplaced } from './do_wear.js';
 import { heroIsInvisible } from './hero_invisibility.js';
-import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_NAME, monsterPerceives, monsterTypeName } from './monster_data.js';
+import { MONSTER_NAME, monsterTypeName } from './monster_data.js';
 import { monsterName, randomDisplayMonsterIdentity } from './do_name.js';
 import { heroIsHallucinating } from './senses.js';
 import { indefiniteArticlePrefix } from './objnam.js';
-import { makemon, makemonAt } from './makemon.js';
-import { questMonsterAlignment, questMonsterSound } from './role_monsters.js';
+import { questMonsterAlignment } from './role_monsters.js';
 import { mksobj, mkobj } from './mkobj.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { randomMonsterRelocation } from './teleport.js';
 import { AMULET_OF_YENDOR, BOULDER, CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_PROTECTION, ROBE } from './object_data.js';
 import { xdir, ydir } from './mklev.js';
-import { roomForRoomno, roomsAt, checkSpecialRoom } from './hack.js';
-const M2_MINION = 0x00001000;
+import { is_minion, monsterPerceives } from './mondata.js';
 const PM_DEATH = 311, PM_PESTILENCE = 312, PM_FAMINE = 313;
 const PM_ALIGNED_CLERIC = 275, PM_HIGH_CLERIC = 276;
-const M1_SEE_INVIS = 0x01000000;
 function sameLevel(left, right) {
     return (left?.dnum ?? 0) === (right?.dnum ?? 0)
         && (left?.dlevel ?? 1) === (right?.dlevel ?? 1);
@@ -57,6 +54,8 @@ function priestData(priest) {
 function minionData(priest) {
     return priest?.emin || priest?.mextra?.emin || null;
 }
+// C priest.c:histemple_at()
+// This caller supplies the priest's own position through its room number.
 export function priestInOwnTemple(priest, roomno, state = game) {
     const epri = priestData(priest);
     if (!priest?.ispriest || !epri || epri.shroom !== roomno
@@ -70,6 +69,7 @@ export function priestIsInOwnTemple(priest, state = game) {
     return roomno != null && priestInOwnTemple(priest, roomno, state)
         && priestHasShrine(priest, state);
 }
+// C priest.c:findpriest()
 function findPriest(roomno, state = game) {
     // makemon prepends to Native fmon; JS appends to the level array.
     const monsters = state.level?.monsters || [];
@@ -139,7 +139,7 @@ export function forgetTempleEntry(priest) {
 // sharing the temple of their intact, coaligned shrine.
 export function inHeroSanctuary(monster, x, y, state = game) {
     if (monster) {
-        if (((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_MINION)
+        if (is_minion(monster.mnum)
             || [PM_DEATH, PM_PESTILENCE, PM_FAMINE].includes(monster.mnum))
             return false;
         x = monster.mx;
@@ -159,6 +159,7 @@ export function inHeroSanctuary(monster, x, y, state = game) {
 }
 // C priest.c:ghod_hitsu(). The original shrine supplies the deity, while
 // the hero's current temple supplies the fallback launch edges.
+// Also C pray.c:a_gname_at(): inlined here for the validated shrine square
 export async function ghodHitsu(priest, { state = game, publish = plineWithContinuation, } = {}) {
     requireLiveGame(state);
     const { u, level } = requireInitializedGame(state);
@@ -660,7 +661,7 @@ export async function movePriest(monster, state, random, rollDice, rollOne, call
                 postMoveStatus: MMOVE_NOTHING,
                 movementStage: 'postmov',
                 deferredAfterSpecialAttack: true,
-                ...await beginMonsterHeroAttack(monster, state, random, rollOne, rollDice, calls),
+                ...await mattacku(monster, state, random, rollOne, rollDice, calls),
             };
         }
         if (state.u.urooms.includes(epri.shroom)) {

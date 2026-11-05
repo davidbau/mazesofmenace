@@ -6,12 +6,13 @@ import { COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, TREE, CLOUD, D_CLOSED
 import { newsym } from './display.js';
 import { noticeAllMonsters } from './hack.js';
 import { BOULDER } from './object_data.js';
-import { MONSTER_FLAGS1, MONSTER_SYMBOL, monsterPerceives } from './monster_data.js';
+import { MONSTER_SYMBOL } from './monster_data.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { objectLightRadius } from './light.js';
 import { objectsInTimerGraph } from './timeout.js';
 import { isMoatAt, isPoolAt } from './dbridge.js';
 import { isRoom } from './map_types.js';
+import { monsterPerceives } from './mondata.js';
 export function mimicBlocksLight(monster) {
     if (monster.mappearance === undefined)
         return false;
@@ -939,6 +940,7 @@ async function extendHeroSight(output, range, xray) {
 }
 // C vision.c:vision_recalc(). Build geometric sight, apply special vision
 // and lighting, then repaint only visibility or viewing-angle changes.
+// Also C vision.c:get_unused_cs(): inlined here to choose and clear the alternate work buffer.
 export async function vision_recalc(control = 0) {
     const u = game.u, level = game.level;
     if (!u || !level)
@@ -1049,7 +1051,6 @@ export function couldsee(x, y) {
 // C ref: vision.h m_canseeu(m). Assumes that if the hero has a clear line of
 // sight to the monster's location and the hero is visible, the monster could
 // see the hero; it deliberately does not test the monster's blindness.
-const M1_SEE_INVIS = 0x01000000;
 export function monsterHasLineOfSightToHero(monster, state = game) {
     return (!heroIsInvisible(state) || monsterPerceives(monster.mnum))
         && !state.u.uinwater && couldsee(monster.mx, monster.my);

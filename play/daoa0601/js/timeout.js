@@ -35,14 +35,14 @@ import { dismountHero } from './steed.js';
 import { adjustAttribute, currentAttribute, exerciseAttribute } from './attrib.js';
 import { extinguishHeroFormLight, heroHasNoLimbs, heroIsBreathless, heroIsGreenSlime, heroIsPolymorphed, heroIsUnchanging, heroSpecies, polymonHero, returnHeroToHumanForm, } from './polyself.js';
 import { hurtleHero } from './dothrow.js';
-import { finishTeleportArrival } from './location_effects.js';
+import { finishTeleportArrival } from './teleport.js';
 import { gotoLevel } from './level_change.js';
 import { finishHeroMonsterKill } from './hero_monster_death.js';
 import { refreshHeroSeeing } from './hero_seeing.js';
 import { syncHeroInvisibility } from './hero_invisibility.js';
 import { stopHeroOccupation } from './occupation.js';
 import { finishHeroDeath } from './end.js';
-import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, PM_GREEN_SLIME, monsterHasProperName, monsterOlderForm, requireMonsterData } from './monster_data.js';
+import { MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, PM_GREEN_SLIME, requireMonsterData } from './monster_data.js';
 import { canSpotMonster, newsym, see_monsters } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { CANDLE_TYPES, LIGHT_TYPES, TIMED_LIGHT_TYPES, registerObjectLightSource } from './light.js';
@@ -64,7 +64,7 @@ import { heroIsSurroundedByRock } from './pray.js';
 import { heroIsInDangerousRegion, visibleRegionLines } from './regions.js';
 import { showDisclosureOverlay } from './windows.js';
 import { surfaceName } from './terrain_name.js';
-import { heroCannotVomit, nameToMonster } from './mondata.js';
+import { heroCannotVomit, nameToMonster, monsterHasProperName, monsterOlderForm } from './mondata.js';
 import { encumber_msg } from './pickup.js';
 // C timeout.c:stoned_dialogue().
 export async function petrificationDialogue({ state = game, publish = plineWithContinuation, } = {}) {
@@ -372,6 +372,7 @@ export async function burnAwayHeroSlime({ state = game, publish = plineWithConti
 // The bare Slimed reset shared by potion.c's make_slimed(0) and
 // slimed_to_death() below: no botl request, so the status line keeps
 // "Slime" until something else asks for a redraw.
+// Also C end.c:dealloc_killer(): the delayed slime killer is removed inline here
 export function dropHeroSliming(hero) {
     hero.slimedTurns = 0;
     hero.slimed = false;
@@ -1357,6 +1358,7 @@ export function queuedTimers(state = game) {
 }
 // C timeout.c:obj_is_local(). Contents follow their outermost owner;
 // objects carried by migrating monsters belong to the global batch.
+// Also C timeout.c:timer_is_local(): object-timer classification is inlined here
 function objectTimerIsGlobal(object, state) {
     let outer = object;
     while (outer.where === 'contained' && outer.container)
@@ -1737,6 +1739,8 @@ export function endObjectBurn(object, state = game, currentTurn = state.moves ??
     return cleanupObjectBurn(object, timer.deadline, state, currentTurn);
 }
 // C timeout.c:cleanup_burn(), also called when Lua stops a burning object's timer.
+// Also C light.c:delete_ls(): inlined as the lamplit/_litSeq clearing and
+// vision_full_recalc that removes the source.
 export function cleanupObjectBurn(object, deadline, state = game, currentTurn = state.moves ?? 0) {
     if (!object.lamplit)
         return false;
@@ -1876,7 +1880,9 @@ const TIMER_FUNC_NAMES = {
     [OBJECT_TIMER_KIND.SHRINK_GLOB]: 'shrink_glob',
     'melt-ice-away': 'melt_ice_away',
 };
-// timeout.c:print_queue(). C shows fmt_ptr() of the timer argument: the
+// C timeout.c:print_queue()
+// Also C timeout.c:kind_name(): object and level labels are inlined here
+// C shows fmt_ptr() of the timer argument: the
 // packed (x << 16 | y) spot coordinate for level timers and the object
 // address for object timers. Object addresses belong to the native heap, so
 // the port shows the object's stable id in the same 0x-prefixed shape.

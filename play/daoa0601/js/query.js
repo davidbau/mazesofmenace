@@ -52,6 +52,8 @@ export async function getLine(prompt, accepts = ch => /^[0-9+-]$/.test(ch), opti
         game._statusUpdatesDisabled = statusUpdatesDisabled;
     }
 }
+// C getline.c:tty_getlin()
+// Also C getline.c:hooked_tty_getlin(): line editing is inlined here
 // Direct tty callers, such as menu search, read live input without consuming
 // queued command answers. Core getlin() owns that queue through getLine().
 export async function tty_getlin(prompt, accepts, { suppressStatus = false, inMenu = false }) {
@@ -234,6 +236,9 @@ export async function promptChoice(query, choices, defaultAnswer, { visibleChoic
     return choices.find(choice => choice === result.answer) ?? defaultAnswer;
 }
 // C getline.c:ext_cmd_getlin_hook().
+// Also C cmd.c:extcmds_match(): inlined here (the case-insensitive prefix
+// match over autocomplete-eligible commands; the eligibility filter half
+// is availableExtendedCommands()).
 export function completeExtendedCommand(prefix) {
     const matches = availableExtendedCommands().filter(command => commandAutocompletes(command)
         && command.name?.toLowerCase().startsWith(prefix.toLowerCase()));
@@ -345,6 +350,8 @@ export async function tty_yn_function(query, responses, defaultAnswer = '', visi
         return number === 0n ? finish('n') : finish('#', number);
     }
 }
+// C topl.c:tty_yn_function(): numeric response entry.
+// Also C topl.c:removetopl(): inlined here when erasing digits or abandoning the count.
 async function readChoiceNumber(first, prompt, readAnswer, paint) {
     let digits = first === '#' ? '' : first;
     let value = digits ? BigInt(digits) : 0n;

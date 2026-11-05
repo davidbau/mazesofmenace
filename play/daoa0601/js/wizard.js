@@ -6,35 +6,29 @@ import { newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
 import { makemonNear, summonNastyMonsters } from './mklev.js';
 import { setMonsterMalign } from './makemon.js';
-import { monsterAlignmentType } from './priest.js';
+import { monsterAlignmentType, priestIsInOwnTemple } from './priest.js';
 import { BOLT_LIM, Is_astralevel, Is_rogue_level, MAGIC_PORTAL, M_AP_MONSTER, MM_NOWAIT, RLOC_MSG, STRAT_APPEARMSG, STRAT_GROUND, STRAT_HEAL, STRAT_MONSTR, STRAT_PLAYER, STRAT_WAITFORU, STRAT_WAITMASK } from './const.js';
 import { isok } from './cmd.js';
 import { msummon } from './minion.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { rndcurse } from './throne.js';
 import { dungeonBuildsUp, insideWizardTower } from './dungeon.js';
-import { monsterIsHelpless } from './mondata.js';
-import { mksobj } from './mkobj.js';
-import { linkObjectToMonsterInventory, remove_object } from './mkobj.js';
+import { monsterIsHelpless, is_minion } from './mondata.js';
+import { mksobj, linkObjectToMonsterInventory, remove_object } from './mkobj.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { recordRandom } from './monster_action_types.js';
-import { MONSTER_DIFFICULTY, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, monsterClassSymbol, } from './monster_data.js';
+import { MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_NAME, monsterClassSymbol } from './monster_data.js';
 import { catchUpMonster, monsterArrive, WIZ_ARRIVE, } from './dog.js';
-import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, SPE_BOOK_OF_THE_DEAD, } from './object_data.js';
-import { FAKE_AMULET_OF_YENDOR } from './object_data.js';
+import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, SPE_BOOK_OF_THE_DEAD, FAKE_AMULET_OF_YENDOR } from './object_data.js';
 import { rn2, rnd } from './rng.js';
-import { definiteObjectAction, observeDistantObjectForNaming } from './objnam.js';
+import { definiteObjectAction, observeDistantObjectForNaming, objectDescription } from './objnam.js';
 import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { monsterAtPosition } from './steed.js';
 import { questMonsterFlags3 } from './role_monsters.js';
 import { expelHero } from './hero_expulsion.js';
-import { healMonster, monsterIndexByName, speciesWasGenocided, mnearto } from './mon.js';
-import { randomMonsterRelocation, relocateMonsterTo } from './teleport.js';
-import { monsterTeleportRestricted } from './teleport_rules.js';
-import { wakeMonstersNearWithMessages } from './mon.js';
+import { healMonster, monsterIndexByName, speciesWasGenocided, mnearto, wakeMonstersNearWithMessages } from './mon.js';
+import { randomMonsterRelocation, relocateMonsterTo, monsterTeleportRestricted } from './teleport.js';
 import { deliverCommonQuestInsult } from './quest_pager.js';
-import { objectDescription } from './objnam.js';
-import { priestIsInOwnTemple } from './priest.js';
 import { shopkeeperInOwnShop } from './shk.js';
 import { cansee } from './vision.js';
 const WIZARD = 285;
@@ -268,6 +262,7 @@ const WANTS_BELL = 2;
 const WANTS_BOOK = 4;
 const WANTS_CANDELABRUM = 8;
 const WANTS_ARTIFACT = 16;
+// C wizard.c:strategy(): install the chosen strategy and goal.
 export function chooseCovetousStrategy(monster, state) {
     const { strategy, goal } = decideCovetousStrategy(monster, state);
     if (goal)
@@ -279,6 +274,7 @@ export function chooseCovetousStrategy(monster, state) {
     monster.mstrategy = ((monster.mstrategy ?? 0) & (STRAT_WAITMASK | STRAT_APPEARMSG)) | flags;
     return strategy;
 }
+// C wizard.c:strategy(): health thresholds and artifact priorities.
 function decideCovetousStrategy(monster, state) {
     if (shopkeeperInOwnShop(monster, state) || priestIsInOwnTemple(monster, state))
         return { strategy: { kind: 'harass' }, goal: undefined };
@@ -291,6 +287,7 @@ function decideCovetousStrategy(monster, state) {
         : [WANTS_BOOK, WANTS_BELL, WANTS_CANDELABRUM, WANTS_ARTIFACT]));
     let goal;
     for (const mask of masks) {
+        // C wizard.c:strategy() selects individual targets from the raw wants word.
         if (!(questMonsterFlags3(monster.mnum, state) & mask))
             continue;
         const target = findCovetousTarget(monster, mask, state);
@@ -301,7 +298,12 @@ function decideCovetousStrategy(monster, state) {
     }
     return { strategy: { kind: health < 3 ? 'heal' : 'harass' }, goal };
 }
+// C wizard.c:target_on()
+// Also C wizard.c:mon_has_arti(): inlined here for the seeking monster.
+// Also C wizard.c:on_ground(): inlined here for floor objects.
+// Also C wizard.c:other_mon_has_arti(): inlined here for other carriers.
 function findCovetousTarget(monster, mask, state) {
+    // C wizard.c:target_on() checks the requested wants mask directly.
     if (!(questMonsterFlags3(monster.mnum, state) & mask))
         return null;
     const matches = (object) => objectMatchesTarget(object, mask, state);
@@ -320,6 +322,7 @@ function findCovetousTarget(monster, mask, state) {
     }
     return null;
 }
+// Also C wizard.c:which_arti(): object-type selection is inlined into this predicate.
 function objectMatchesTarget(object, mask, state) {
     if (mask === WANTS_AMULET)
         return object.otyp === AMULET_OF_YENDOR;
@@ -331,6 +334,7 @@ function objectMatchesTarget(object, mask, state) {
         return object.otyp === CANDELABRUM_OF_INVOCATION;
     return !!object.questArtifact || !!artifactById(object.oartifact, state)?.questArtifact;
 }
+// C wizard.c:you_have()
 function heroHasTarget(mask, state) {
     const owns = state.u.uhave;
     if (mask === WANTS_AMULET)
@@ -419,6 +423,7 @@ export async function retreatCovetousMonster(monster, state, random = rn2, rollO
 // point for guardians (Kops). C prefers stairs, then a ladder, in the travel
 // direction; then a branch stairway in any direction; then stairs or a
 // ladder in the other direction. Null when only a portal reaches the level.
+// Also C stairs.c:stairway_find_type_dir(): inlined here in the ordered searches.
 export function chooseStairs(dir, state) {
     const stairs = [];
     for (let stair = state.stairs; stair; stair = stair.next)
@@ -436,7 +441,6 @@ export function chooseStairs(dir, state) {
         ?? null;
 }
 // C wizard.c:cuss(), shared by monster turns and sounds.c:domonnoise().
-const M2_MINION = 0x00001000;
 const WIZARD_CUSS_INSULTS = [
     'antic', 'blackguard', 'caitiff', 'chucklehead', 'coistrel', 'craven',
     'cretin', 'cur', 'dastard', 'demon fodder', 'dimwit', 'dolt', 'fool',
@@ -460,7 +464,7 @@ const WIZARD_CUSS_MALEDICTIONS = [
 export async function publishMonsterCuss(monster, state, random = rn2) {
     if (heroIsDeaf(state))
         return;
-    const minion = !!((MONSTER_FLAGS2[monster.mnum] ?? 0) & M2_MINION);
+    const minion = is_minion(monster.mnum);
     const extension = monster.emin ?? monster.mextra?.emin;
     if (monster.iswiz) {
         await plineWithContinuation(selectWizardCussMessage(monster, state, random));

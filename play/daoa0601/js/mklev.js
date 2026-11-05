@@ -1,7 +1,7 @@
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS, SPBOOK_no_NOVEL, } from './objclass.js';
 import { recorderLocalEpochSeconds, recorderTimestamp } from './calendar.js';
 import { rotCorpse } from './corpse_rot.js';
-import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, createCorpstatAt, set_corpsenm, rndmonnum, rndmonnumAdj, discardMonsterInventory, linkObjectToMonsterInventory, curseObjectState, deallocateObject, objectWeight, nextIdent, placeCreatedObject, stack_object, updateIceObjectTimersAt } from './mkobj.js';
+import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, mkcorpstat, set_corpsenm, rndmonnum, rndmonnumAdj, discardMonsterInventory, linkObjectToMonsterInventory, curseObjectState, deallocateObject, objectWeight, nextIdent, placeCreatedObject, stack_object, updateIceObjectTimersAt } from './mkobj.js';
 import { restoreMonsterInventoryOwnership } from './mon.js';
 import { oinit, objectMaterial } from './o_init.js';
 import { isRoom } from './map_types.js';
@@ -60,12 +60,13 @@ import { restoreLevelRegions } from './regions.js';
 import { beginObjectBurn } from './timeout.js';
 import { createOrcRaid } from './orc_raid.js';
 import { vision_note_blocker_change, vision_reset_new_level } from './vision.js';
-import { goodPosition } from './teleport_rules.js';
+import { goodPosition, enexto, enexto_gpflags } from './teleport.js';
 import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { addToContainer, check_room, create_room, dig_corridor, fill_special_room, fillVault, finishLevelTrapConstruction, medusaPetrifiable, putGeneratedMonsterInventoryInStatue } from './sp_lev.js';
 import { beginLuaThemerooms, callLuaThemerooms, load_special, themerooms_generate } from './sp_lev_lua.js';
 import { purgeDeadMonsters, removeMonsterFromGame, sendMonsterToLimbo } from './mon.js';
 import { switchHeroTerrain, roomsAt } from './hack.js';
+import { is_domestic } from './mondata.js';
 // mklev.js — regular level generation.
 // C ref: mklev.c — mklev, makelevel, makerooms, makecorridors,
 // generate_stairs, fill_ordinary_room, mineralize, level_finalize_topology.
@@ -74,13 +75,10 @@ import { switchHeroTerrain, roomsAt } from './hack.js';
 // room selection and filling in mkroom.ts; bones.c in bones.ts; the Rogue
 // level (extralev.c) in extralev.ts. Level construction uses the game's
 // main random-number stream.
-const M2_DOMESTIC = 0x00400000;
 export const G_NOGEN = 0x0200;
 export const G_IGNORE = 0x8000;
 export const SCR_TELEPORTATION = 333;
 export const RIN_TELEPORTATION = 194;
-const SCR_LIGHT = 332;
-const SPE_LIGHT = 372;
 const BELL = 255;
 export const CANDELABRUM_OF_INVOCATION = 262;
 export const PM_VAMPIRE_BAT = 129;
@@ -89,7 +87,6 @@ const POT_HEALING = 307;
 const POT_EXTRA_HEALING = 308;
 const POT_SPEED = 302;
 const POT_GAIN_ENERGY = 313;
-const POT_FULL_HEALING = 315;
 const SCR_ENCHANT_WEAPON = 328;
 const SCR_ENCHANT_ARMOR = 323;
 const SCR_CONFUSE_MONSTER = 325;
@@ -100,16 +97,10 @@ const FOOD_RATION = 293;
 const CRAM_RATION = 292;
 const LEMBAS_WAFER = 291;
 export const WAN_TELEPORTATION = 424;
-const WAN_SLEEP = 432;
 export const PM_GIANT_SPIDER = 96;
 export const PM_MINOTAUR = 177;
-const PM_HUMAN_ZOMBIE = 244;
-const PM_WRAITH = 230;
-const PM_DWARF = 44;
-const PM_GNOME = 165;
 export const PM_FIRE_ELEMENTAL = 155;
 export const PM_VAMPIRE = 226;
-const PM_VAMPIRE_LEADER = 227;
 export const PM_VLAD_THE_IMPALER = 228;
 const PM_ARCHAEOLOGIST = 331;
 const PM_WIZARD = 343;
@@ -120,9 +111,6 @@ const S_DEMON = 56;
 const G_UNIQ_MASK = 0x1000;
 export const PM_BLACK_LIGHT = 119;
 export const PM_STALKER = 153;
-const PM_BLACK_PUDDING = 209;
-const PM_LEATHER_GOLEM = 253;
-const PM_FLESH_GOLEM = 255;
 export const XLIM = 4;
 export const YLIM = 3;
 // Direction deltas
@@ -192,6 +180,8 @@ function sameLevel(left, right) {
     return !!right && left.dnum === right.dnum && left.dlevel === right.dlevel;
 }
 // C stairs.c:stairs_description().
+// Also C stairs.c:known_branch_stairs(): inlined here (the traversed
+// cross-branch destination test).
 export function stairwayDescription(stairway, state) {
     const noun = stairway.isladder ? 'ladder' : 'staircase';
     const direction = stairway.up ? 'up' : 'down';
@@ -278,82 +268,6 @@ export async function u_on_downstairs() {
     }
     await u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
-const M2_HUMAN = 0x00000008;
-const M2_ELF = 0x00000010;
-export const M2_DWARF = 0x00000020;
-export const M2_GNOME = 0x00000040;
-const M2_ORC = 0x00000080;
-const M2_JEWELS = 0x20000000;
-export const M2_SHAPESHIFTER = 0x00004000;
-export const M2_MALE = 0x00010000;
-export const M2_FEMALE = 0x00020000;
-// C teleport.c:collect_coords().  Each square ring is completely collected
-// and shuffled before the next ring begins.  A zero maximum means the whole
-// usable map, excluding the center and unused column zero.
-function collectShuffledMonsterCoordinates(centerX, centerY, maxRadius = 0) {
-    const candidates = [];
-    const rowRange = centerY < ROWNO / 2
-        ? ROWNO - 1 - centerY : centerY;
-    const columnRange = centerX < COLNO / 2
-        ? COLNO - 1 - centerX : centerX;
-    const finalRadius = maxRadius
-        ? Math.min(maxRadius, Math.max(rowRange, columnRange))
-        : Math.max(rowRange, columnRange);
-    for (let radius = 1; radius <= finalRadius; radius++) {
-        const ring = [];
-        const lowx = centerX - radius, highx = centerX + radius;
-        const lowy = centerY - radius, highy = centerY + radius;
-        for (let y = Math.max(lowy, 0); y <= Math.min(highy, ROWNO - 1); y++) {
-            for (let x = Math.max(lowx, 1); x <= Math.min(highx, COLNO - 1); x++) {
-                if (x !== lowx && x !== highx && y !== lowy && y !== highy)
-                    continue;
-                ring.push({ x, y });
-            }
-        }
-        for (let i = 0, remaining = ring.length; remaining > 1; i++, remaining--) {
-            const pick = rn2(remaining);
-            if (pick) {
-                const current = ring[i], chosen = ring[i + pick];
-                if (!current || !chosen)
-                    throw new RangeError('monster placement shuffle exceeded its coordinate ring');
-                ring[i] = chosen;
-                ring[i + pick] = current;
-            }
-        }
-        candidates.push(...ring);
-    }
-    return candidates;
-}
-export function findMonsterNearPositionCore(mnum, centerX, centerY, gpflags, state) {
-    const species = mnum ?? state.u.umonster;
-    if (species === undefined)
-        throw new Error('monster placement requires a species or initialized hero body');
-    const subject = { kind: 'species', mnum: species };
-    const nearby = collectShuffledMonsterCoordinates(centerX, centerY, 3);
-    for (const pos of nearby) {
-        if (goodPosition(pos.x, pos.y, subject, { state, gpflags }))
-            return pos;
-    }
-    // NEW_ENEXTO deliberately reshuffles the near rings while collecting the
-    // complete map, then skips their count because they were already tested.
-    const all = collectShuffledMonsterCoordinates(centerX, centerY, 0);
-    for (const pos of all.slice(nearby.length)) {
-        if (goodPosition(pos.x, pos.y, subject, { state, gpflags }))
-            return pos;
-    }
-    if ((gpflags & GP_ALLOW_XY)
-        && goodPosition(centerX, centerY, subject, { state, gpflags }))
-        return { x: centerX, y: centerY };
-    return null;
-}
-// C teleport.c:enexto().  The first complete search avoids scary squares;
-// only total failure triggers an independently shuffled unrestricted search.
-// Exposing selection separately lets callbacks distinguish enexto failure
-// from a later makemon()/make_familiar() construction failure.
-export function findMonsterNearPosition(mnum, centerX, centerY, { ignoreWater = false, gpflags = 0, state = game } = {}) {
-    const flags = gpflags | (ignoreWater ? MM_IGNOREWATER : 0);
-    return findMonsterNearPositionCore(mnum, centerX, centerY, flags | GP_CHECKSCARY, state) || findMonsterNearPositionCore(mnum, centerX, centerY, flags, state);
-}
 // C refs: mhitu.c:cloneu() and dog.c:initedog().
 // The actor is a fresh makemon birth rather than a copy of youmonst: it owns
 // ordinary placement, HP, gender, attitude, and identity RNG before cloneu()
@@ -395,7 +309,7 @@ export async function cloneHeroMonsterForm(state = game) {
     clone.mcloned = 1;
     setMonsterGivenName(clone, name);
     clone.m_lev = MONSTER_LEVEL[mnum] ?? clone.m_lev;
-    clone.mtame = Math.max((MONSTER_FLAGS2[mnum] ?? 0) & M2_DOMESTIC ? 10 : 5, clone.mtame ?? 0);
+    clone.mtame = Math.max(is_domestic(mnum) ? 10 : 5, clone.mtame ?? 0);
     clone.mpeaceful = 1;
     clone.mavenge = 0;
     clone.mleashed = 0;
@@ -426,9 +340,7 @@ export async function makemonNear(mnum, centerX, centerY, flags = 0, requestedBy
     // Other callers, such as egg hatching, call enexto() before makemon().
     if (requestedByHero && game.iflags.debug_mongen)
         return null;
-    const pos = findMonsterNearPosition(mnum, centerX, centerY, {
-        ignoreWater: !!(flags & MM_IGNOREWATER),
-    });
+    const pos = enexto_gpflags(mnum, centerX, centerY, flags & MM_IGNOREWATER);
     if (!pos)
         return null;
     // teleport.c:enexto_core() tests every shuffled coordinate through
@@ -483,7 +395,7 @@ export async function summonNastyMonsters(summoner) {
                 || (summonerClass === S_ANGEL && candidateClass === S_DEMON));
             if (makeindex == null)
                 continue;
-            const position = summoner ? findMonsterNearPosition(makeindex, summoner.mux ?? game.u.ux, summoner.muy ?? game.u.uy)
+            const position = summoner ? enexto(makeindex, summoner.mux ?? game.u.ux, summoner.muy ?? game.u.uy)
                 : { x: game.u.ux, y: game.u.uy };
             if (!position)
                 continue;
@@ -665,6 +577,9 @@ export function countLevelFeatures(state = game) {
     lvl.flags.nsinks = nsinks;
 }
 // C ref: mklev.c clear_level_structures()
+// Also C region.c:clear_regions(): a fresh GameMap owns no regions.
+// Also C dungeon.c:free_exclusions(): a fresh GameMap owns no exclusion zones.
+// Also C stairs.c:stairway_free_all(): inlined here as the stairway-chain reset.
 function clear_level_structures() {
     const g = game;
     g.fmon = null;
@@ -716,6 +631,8 @@ function clear_level_structures() {
     init_rect();
 }
 // C ref: mklev.c makelevel()
+// Also C mklev.c:themerooms_post_level_generate(): inlined here (the
+// post_level_generate theme call plus whole-level wallification).
 async function makelevel() {
     const g = game;
     oinit();
@@ -1876,7 +1793,7 @@ async function makeniche(trap_type) {
                     if (rn2(3)) {
                         const S_HUMAN = 53;
                         const human = mkclass(S_HUMAN, 0);
-                        await createCorpstatAt(CORPSE, null, human, xx, yy + dy, 1);
+                        await mkcorpstat(CORPSE, null, human, xx, yy + dy, 1);
                     }
                 }
                 if (!level.flags.noteleport) {
@@ -2119,7 +2036,7 @@ export async function mktrap_victim(trap) {
     }
     if (victim_mnum === PM_HUMAN && rn2(25))
         victim_mnum = rn1(PM_WIZARD - PM_ARCHAEOLOGIST, PM_ARCHAEOLOGIST);
-    const corpse = await createCorpstatAt(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
+    const corpse = await mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
     // C makes every trap-victim corpse older than TAINT_AGE after creating
     // it.  The existing rot timer is intentionally left unchanged; dogfood()
     // observes the backdated age immediately and classifies it as unsafe.
@@ -2327,7 +2244,7 @@ export async function fill_ordinary_room(croom, bonus_items) {
         await mkgrave_room(croom);
     // Statue
     if (!rn2(20) && somexyspace(croom, pos)) {
-        await createCorpstatAt(STATUE, null, null, pos.x, pos.y, 8);
+        await mkcorpstat(STATUE, null, null, pos.x, pos.y, 8);
     }
     // Bonus items
     let skip_chests = false;

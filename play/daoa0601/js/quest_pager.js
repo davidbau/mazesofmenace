@@ -7,7 +7,7 @@ import { G_GENOD, MIN_QUEST_LEVEL } from './const.js';
 import { mkclass } from './makemon.js';
 import { game } from './gstate.js';
 import { experienceRankIndex } from './exper.js';
-import { MONSTER_FLAGS2, MONSTER_NAME, monsterHasProperName } from './monster_data.js';
+import { MONSTER_NAME } from './monster_data.js';
 import { possessiveName, upstart } from './hacklib.js';
 import { makePlural, makeSingular, withIndefiniteArticle } from './objnam.js';
 import { heroIsBlind } from './senses.js';
@@ -18,8 +18,10 @@ import { LuaTable } from './lua/runtime.js';
 import { flushPendingTopline, putMessageHistory } from './tty_topline.js';
 import { plineWithContinuation } from './pline.js';
 import { showTextWindow, showTextMenuOverlay } from './windows.js';
-const M2_PNAME = 0x00080000;
-// C com_pager_core(): each attempted section opens its own Lua state,
+import { monsterHasProperName } from './mondata.js';
+// C questpgr.c:com_pager_core()
+// Also C questpgr.c:skip_pager(): wizard-kit suppression is inlined here
+// Each attempted section opens its own Lua state,
 // including nhlib's alignment shuffle, before resolving a fallback or choice.
 async function prepareSection(section, messageId, state) {
     if (state.program_state.wizkit_wishing)
@@ -78,6 +80,8 @@ export async function prepareQuestText(messageId, state = game, common = false) 
     return await prepareSection(state.urole?.filecode ?? '', messageId, state)
         ?? await prepareSection('common', messageId, state);
 }
+// Also C questpgr.c:deliver_by_pline(): inlined here after prepareSection converts lines
+// Also C questpgr.c:deliver_by_window(): inlined here after prepareSection converts lines
 export async function displayQuestText(text, state = game) {
     if (!text)
         return false;

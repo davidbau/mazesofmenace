@@ -6,47 +6,41 @@ import { COIN_CLASS } from './objclass.js';
 import { game, requireGameLevel, requireLiveGame, requireInitializedGame } from './gstate.js';
 import { isRoom } from './map_types.js';
 import { getLine } from './query.js';
-import { deleteEngravingAt } from './engrave.js';
-import { bot } from './botl.js';
-import { redrawMap, newsym, canSpotMonster, map_invisible, map_location, monsterVisible } from './display.js';
+import { deleteEngravingAt, make_grave } from './engrave.js';
+import { newsym, canSpotMonster, map_invisible, map_location, monsterVisible } from './display.js';
 import { plineWithContinuation, plineWithContinuation as pline } from './pline.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { ROOM, ROOMOFFSET, DOOR, D_NODOOR, VAULT, IS_WALL, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, MM_NOMSG, M_AP_OBJECT, M_AP_TYPE, NEED_HTH_WEAPON, LEVEL_TIMER_KIND, RLOC_MSG, CORR, IS_OBSTRUCTED, IS_STWALL, STONE, Upolyd, ACCESSIBLE, COLNO, COULD_SEE, GD_DESTROYGOLD, GD_EATGOLD, IN_SIGHT, IS_POOL, IS_ROOM, MMOVE_DIED, MMOVE_MOVED, MMOVE_NOTHING, RLOC_ERR, RLOC_NOMSG, ROWNO, SCORR } from './const.js';
-import { isok } from './cmd.js';
+import { isok, heroHasInvoluntaryDelay } from './cmd.js';
 import { makemonAt, setMonsterMalign } from './makemon.js';
 import { vision_note_blocker_change, cansee, couldsee, monsterHasLineOfSightToHero, unset_seenv } from './vision.js';
 import { setWallStateAt } from './wall_topology.js';
 import { stopLevelTimer } from './timeout.js';
-import { containedGold } from './shk.js';
+import { containedGold, deleteObject } from './shk.js';
 import { reset_faint } from './eat.js';
 import { heroIsDeaf, heroIsBlind } from './senses.js';
 import { adjustHeroAlignment } from './alignment.js';
-import { heroHasInvoluntaryDelay } from './cmd.js';
 import { stopHeroOccupation } from './occupation.js';
-import { monsterIsSilent, monsterTypeName } from './monster_data.js';
+import { monsterTypeName } from './monster_data.js';
 import { monsterName } from './do_name.js';
-import { monsterPossessive, monsterSubjectPronoun } from './mondata.js';
+import { monsterPossessive, monsterSubjectPronoun, monsterIsSilent } from './mondata.js';
 import { monsterWieldedWeapon, wieldMonsterWeapon } from './weapon.js';
 import { BOULDER, GOLD_PIECE, ROCK, TIN_WHISTLE } from './object_data.js';
 import { simpleObjectTypeName } from './objnam.js';
 import { fractureRock } from './rock_breakage.js';
 import { rn2 } from './rng.js';
 import { formatSeenMessage, publishHeardMessage } from './hero_speech.js';
-import { angerMonster, removeMonsterFromGame, sendMonsterToLimbo } from './mon.js';
+import { angerMonster, removeMonsterFromGame, sendMonsterToLimbo, moveMonsterNextToHero } from './mon.js';
 import { releaseMonsterInventory } from './steal.js';
 import { monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt } from './steed.js';
 import { randomMonsterRelocation, teleportHero, askTeleportDestination } from './teleport.js';
-import { moveMonsterNextToHero } from './mon.js';
 import { deleteTrap } from './trap.js';
 import { publishMonsterYelp } from './ambient_sounds.js';
 import { impossible } from './diagnostics.js';
 import { heroFormSticks } from './polyself.js';
 import { linkObjectToMonsterInventory, unlinkObject, placeObject, remove_object, stack_object } from './mkobj.js';
-import { deleteObject } from './shk.js';
-import { findNearbyMonsterPosition } from './teleport_rules.js';
-import { currency } from './invent.js';
-import { freeInventoryObject } from './invent.js';
-import { make_grave } from './engrave.js';
+import { currency, freeInventoryObject } from './invent.js';
+import { enexto } from './teleport.js';
 import { heroGoldAmount, roomForRoomno, roomsAt } from './hack.js';
 const PM_GUARD = 272;
 const VAULT_GUARD_TIME = 30;
@@ -763,12 +757,14 @@ async function restoreEntry(guard, x, y, state) {
     deleteEngravingAt(x, y, requireGameLevel(state));
     await newsym(x, y);
 }
+// C vault.c:restfakecorr()
 async function restoreFakeCorridor(guard, state) {
     if (await clearVaultCorridor(guard, false, state)) {
         guard.isgd = 0;
         await removeMonsterFromGame(guard);
     }
 }
+// C vault.c:gd_move_cleanup()
 async function finishEscort(guard, semiDead, alreadyAnnounced, state) {
     const x = guard.mx, y = guard.my, spotted = canSpotMonster(guard);
     await parkVaultGuard(guard, state);
@@ -781,6 +777,7 @@ async function finishEscort(guard, semiDead, alreadyAnnounced, state) {
     }
     return MMOVE_DIED;
 }
+// C vault.c:gd_letknow()
 async function letHeroKnow(guard, state) {
     if (!cansee(guard.mx, guard.my) || !monsterVisible(guard)) {
         await publishHeardMessage(guard.minvent?.some(object => object.otyp === TIN_WHISTLE)
@@ -792,6 +789,7 @@ async function letHeroKnow(guard, state) {
         await pline(distant ? `You see ${name} approaching.` : `You are confronted by ${name}.`);
     }
 }
+// C vault.c:gd_mv_monaway()
 async function moveMonsterAside(guard, x, y, state, random) {
     const occupant = monsterAtPosition(requireGameLevel(state), x, y);
     if (!occupant || occupant === guard)
@@ -864,6 +862,7 @@ async function pickGoldAtGuard(guard, state) {
     if (cansee(guard.mx, guard.my))
         await newsym(guard.mx, guard.my);
 }
+// C vault.c:gd_pick_corridor_gold()
 async function pickCorridorGold(guard, x, y, state, random) {
     const oldx = guard.mx, oldy = guard.my, seen = cansee(x, y);
     const underHero = x === state.u.ux && y === state.u.uy;
@@ -877,7 +876,7 @@ async function pickCorridorGold(guard, x, y, state, random) {
         if (distance(oldx, oldy) > 2 && seen) {
             let best = { x: oldx, y: oldy };
             for (let attempt = 0; attempt < 10; attempt++) {
-                const point = findNearbyMonsterPosition(guard.mnum, x, y, { state, random });
+                const point = enexto(guard.mnum, x, y, { state, random });
                 if (!point)
                     continue;
                 if (distance(point.x, point.y) < distance(best.x, best.y)

@@ -1,24 +1,21 @@
+// detect.js — Searching and detection.
+// C ref: detect.c — dosearch(), dosearch0().
 import { RANDOM_CLASS, WEAPON_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, ROCK_CLASS, VENOM_CLASS, } from './objclass.js';
 import { objectClassForType, objectMerge, BOULDER, CHEST, LARGE_BOX, LENSES, GOLD_PIECE, OBJECT_BASES, OBJECT_NAMES, getObjectClassBounds, } from './object_data.js';
 import { formatFeltMessage } from './hero_speech.js';
-import { requirePlayingGame, requireGameLevel } from './gstate.js';
-// detect.js — Searching and detection.
-// C ref: detect.c — dosearch(), dosearch0().
+import { requirePlayingGame, requireGameLevel, game, requireLiveGame } from './gstate.js';
 import { monsterAtPosition, monsterHasMapPosition } from './steed.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { game } from './gstate.js';
-import { endVoluntaryMultiTurn } from './hack.js';
+import { endVoluntaryMultiTurn, showGetposTip } from './hack.js';
 import { artifactById } from './artifacts.js';
 import { exerciseWisdom } from './attrib.js';
-import { canSpotMonster, canSenseMonster, currentBoulderSymbol, monsterHasWarningProjection, feel_location, flush_screen, glyphAt, magic_map_background, map_background, map_engraving, map_invisible, map_object, map_trap, newsym, see_monsters, show_glyph_cell, under_ground, under_water, unmapObject, unmap_invisible, flashGlyphAt, terrain_glyph, transientMonsterGlyph, transientTrapGlyph, cls, displaySelf, docrt, feel_newsym, } from './display.js';
+import { canSpotMonster, canSenseMonster, currentBoulderSymbol, monsterHasWarningProjection, feel_location, flush_screen, glyphAt, magic_map_background, map_background, map_engraving, map_invisible, map_object, map_trap, newsym, see_monsters, show_glyph_cell, under_ground, under_water, unmapObject, unmap_invisible, flashGlyphAt, terrain_glyph, transientMonsterGlyph, transientTrapGlyph, cls, displaySelf, docrt, feel_newsym, OBJECT_CLASS_NAMES, OBJECT_CLASS_SYMBOLS, terrainCoversObjectsAt, } from './display.js';
 import { displayMessageWindow, flushPendingTopline } from './tty_topline.js';
 import { pline, plineWithContinuation, set_msg_xy } from './pline.js';
-import { BOLT_LIM, COLNO, ROWNO, ROOMOFFSET, STONE, SDOOR, SCORR, DOOR, CORR, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, IN_SIGHT, M_AP_OBJECT, M_AP_TYPE, STATUE_TRAP, TER_MAP, TRAPPED_CHEST, TRAPPED_DOOR, W_NONDIGGABLE, W_NONPASSWALL, WM_MASK, Is_airlevel, Is_waterlevel, IS_FURNITURE } from './const.js';
+import { BOLT_LIM, COLNO, ROWNO, ROOMOFFSET, STONE, SDOOR, SCORR, DOOR, CORR, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, IN_SIGHT, M_AP_OBJECT, M_AP_TYPE, STATUE_TRAP, TER_MAP, TRAPPED_CHEST, TRAPPED_DOOR, W_NONDIGGABLE, W_NONPASSWALL, WM_MASK, Is_airlevel, Is_waterlevel, IS_FURNITURE, TER_DETECT, TER_MON, TER_OBJ, TER_TRP, } from './const.js';
 import { isok } from './cmd.js';
-import { OBJECT_CLASS_NAMES, OBJECT_CLASS_SYMBOLS } from './display.js';
-import { observeObject } from './o_init.js';
+import { observeObject, objectMaterial } from './o_init.js';
 import { withIndefiniteArticle, makePlural } from './objnam.js';
-import { objectMaterial } from './o_init.js';
 import { strangeFeelingMessage } from './potion.js';
 import { activateStatueTrapAt } from './statue_trap.js';
 import { rnl, rn2, rnd } from './rng.js';
@@ -26,26 +23,22 @@ import { commandSafetyPrevention } from './do.js';
 import { cansee, clearAreaCells, vision_note_blocker_change } from './vision.js';
 import { recordDiscoveredRoom, recordMappedOverviewState } from './dungeon.js';
 import { revealMonsterAppearance, wakeMonstersNearWithMessages } from './mon.js';
-import { MONSTER_FLAGS1, MONSTER_SYMBOL, monsterDigests } from './monster_data.js';
+import { MONSTER_SYMBOL, MONSTER_NAME } from './monster_data.js';
 import { monsterName } from './do_name.js';
 import { NO_COLOR } from './terminal.js';
 import { visibleRegionAt } from './regions.js';
 import { openFallingTrap, openHoldingTrap, trapName } from './trap.js';
-import { TER_DETECT, TER_MON, TER_OBJ, TER_TRP } from './const.js';
 import { heroFootName, heroNoseName, heroToeName } from './body_parts.js';
-import { requireLiveGame } from './gstate.js';
 import { propertyIsActive } from './properties.js';
-import { terrainCoversObjectsAt } from './display.js';
 import { selectMapPosition, showGetposInstructions } from './getpos.js';
 import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
 import { expelHero } from './hero_expulsion.js';
 import { findDrawbridgeAt, openDrawbridge } from './dbridge.js';
 import { currency } from './invent.js';
-import { MONSTER_NAME } from './monster_data.js';
 import { getObjectLocation } from './zap.js';
 import { isQuantumBox } from './quantum_cat.js';
 import { triggerBoobyTrap } from './booby_trap.js';
-import { showGetposTip } from './hack.js';
+import { monsterDigests, monsterHidesUnder, monsterIsHider } from './mondata.js';
 // C ref: detect.c premap_detect().  Sokoban's Lua `premapped` flag maps the
 // finalized background, boulders, and traps before deferred room filling.
 // C detect.c:skip_premap_detect().
@@ -176,6 +169,8 @@ export async function automaticSearch() {
 // secret square owns its Luck-adjusted roll before later neighbours are
 // examined.  Finding one cancels an active count-prefixed occupation via
 // nomul(0), but the successful search still consumes the current action.
+// Also C artifact.c:spec_ability(): inlined here; the SPFX_SEARCH check on
+// the wielded artifact's flags stands in for uwep->spe as search bonus.
 async function searchAdjacentSecrets(automatic = false) {
     const u = game.u;
     const weapon = game.uwep;
@@ -308,7 +303,7 @@ async function findHiddenMonster(monster, viaWarning) {
     }
     else {
         found = !canSpotMonster(monster);
-        const hides = ((MONSTER_FLAGS1[monster.mnum] ?? 0) & (M1_CONCEAL | M1_HIDE))
+        const hides = (monsterHidesUnder(monster.mnum) || monsterIsHider(monster.mnum))
             || MONSTER_SYMBOL[monster.mnum] === 57;
         if (monster.mundetected && hides) {
             if (viaWarning && found) {
@@ -380,6 +375,7 @@ async function senseDetectedTrap(trap) {
         corpsenm: species, ox: trap.tx, oy: trap.ty };
     await map_object(image, true, false);
 }
+// C detect.c:foundone()
 async function showFoundFeature(x, y, glyph) {
     const location = requireGameLevel(game).requireAt(x, y);
     if (glyph.kind === 'terrain' || glyph.kind === 'trap'
@@ -394,6 +390,7 @@ async function showFoundFeature(x, y, glyph) {
     await newsym(x, y);
     vision[x] = previousVision;
 }
+// C detect.c:detect_obj_traps(): trapped-container reporting during magical searching.
 async function revealTrappedContainers(objects, x, y) {
     let found = 0;
     for (const object of objects || []) {
@@ -421,9 +418,10 @@ function joinFindings(parts) {
 function countDescription(count, singular, plural) {
     return count === 1 ? singular : `${count} ${plural}`;
 }
-const M1_CONCEAL = 0x80, M1_HIDE = 0x100;
 // C detect.c:findit().  Magical searching reveals every hidden thing within
 // eight spaces that is not behind blocking terrain.
+// Also C detect.c:findone(): inlined here.
+// Also C detect.c:detecting(): the findone() callback choice is explicit here.
 export async function findit() {
     requirePlayingGame(game);
     if (game.u?.uswallow)
@@ -493,7 +491,7 @@ export async function findit() {
                 revealedMonster = true;
             }
             else if (monster.mundetected
-                && (((MONSTER_FLAGS1[monster.mnum] ?? 0) & (M1_CONCEAL | M1_HIDE))
+                && ((monsterHidesUnder(monster.mnum) || monsterIsHider(monster.mnum))
                     || MONSTER_SYMBOL[monster.mnum] === 57)) {
                 await flashGlyphAt(x, y, transientMonsterGlyph(monster), 6);
                 monster.mundetected = 0;
@@ -575,6 +573,7 @@ export async function dosearch(force = false) {
     return found;
 }
 const HERE = 1, ELSEWHERE = 2;
+// C detect.c:trap_detect()
 export async function detectTraps(source, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -645,6 +644,7 @@ async function displayTrapMap(cursed, state) {
     }
     return { result: 0, known: false, strangeFeeling: false };
 }
+// C detect.c:detect_obj_traps(): detection and optional map display.
 async function detectContainerTraps(objects, shown, cursed, state) {
     let result = 0;
     for (const object of objects) {
@@ -708,6 +708,8 @@ const GOLD_GOLEM = MONSTER_NAME.indexOf('gold golem');
 const LONG_WORM = MONSTER_NAME.indexOf('long worm');
 const LONG_WORM_TAIL = MONSTER_NAME.indexOf('long worm tail');
 const WORM_TAIL_CLASS = MONSTER_SYMBOL[LONG_WORM_TAIL];
+// Also C steal.c:findgold(): inlined as the GOLD_PIECE membership tests
+// (monsters' gold and the golem special case) below.
 export async function detectGold(source, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -793,6 +795,7 @@ export async function detectGold(source, { state = game } = {}) {
     }
     return effectResult(0, known);
 }
+// C detect.c:food_detect()
 export async function detectFood(source, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -904,6 +907,7 @@ export async function detectMonsters(source, { state = game, monsterClass = 0 } 
     }
     return effectResult(0, true);
 }
+// C detect.c:object_detect()
 export async function detectObjects(source, { state = game, objectClass = RANDOM_CLASS } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -1073,6 +1077,8 @@ function goldIn(object, blessed, state) {
     return blessed && objectOfMaterial(object, GOLD, state)
         || objectOfClass(object, COIN_CLASS);
 }
+// C detect.c:clear_stale_map()
+// Also C detect.c:check_map_spot(): inlined here.
 async function clearStaleObjects(objectClass, material, state) {
     let changed = false;
     const monsters = new Map(liveMonsters(state).map(monster => [`${monster.mx},${monster.my}`, monster]));
@@ -1356,6 +1362,7 @@ function glyphCharacter(glyph) {
     return glyph && 'ch' in glyph && typeof glyph.ch === 'string' ? glyph.ch : undefined;
 }
 // C detect.c:openit()/openone(). Each opened feature keeps its normal owner.
+// Also C detect.c:detecting(): the openone() callback choice is explicit here.
 export async function openit(state = game) {
     requireLiveGame(state);
     requirePlayingGame(state);

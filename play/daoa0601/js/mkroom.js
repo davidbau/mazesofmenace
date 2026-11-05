@@ -27,7 +27,8 @@ import { impossible } from './diagnostics.js';
 import { addToContainer } from './sp_lev.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { specialShrinePriest } from './priest.js';
-import { findMonsterNearPosition, topologize } from './mklev.js';
+import { topologize } from './mklev.js';
+import { enexto } from './teleport.js';
 import { make_grave } from './engrave.js';
 import { isRoom } from './map_types.js';
 import { objectWeight } from './mkobj.js';
@@ -213,6 +214,8 @@ async function invalidShopShape(croom) {
     }
     return exits === 1;
 }
+// C mkroom.c:mkshop().
+// Also C mkroom.c:isbig(): inlined here (the area > 20 wand/book shop test).
 export async function mkshop() {
     const level = requireGameLevel();
     const rooms = level.rooms.slice(0, level.nroom);
@@ -592,7 +595,7 @@ export async function makeUndeadNear(x, y, { state = game, reviveCorpses = false
         const species = morgueMonsterType();
         if (species == null || species < 0)
             continue;
-        const position = findMonsterNearPosition(species, x, y, { state });
+        const position = enexto(species, x, y, { state });
         if (!position)
             continue;
         const corpse = reviveCorpses

@@ -5,10 +5,10 @@ import { game, requireGameDisplay, requireGameLevel, requireLiveGame } from './g
 import { hideUnhideMessageTypes } from './message_types.js';
 import { encyclopediaEntries } from './encyclopedia.js';
 import { objectBlessingDescription, objectDescription, primaryHandDescriptionDetail, makePlural, withIndefiniteArticle, corpseName, ownedObjectName, distantObjectName, wishedObjectPresentation, armorUsesPairGrammar, definiteName, objectCombatName, objectLooksUnique, objectName, objectNameIsPlural, observeObjectForNaming, simpleObjectName, singularObjectName } from './objnam.js';
-import { rejoinObjectStack, splitObjectStack, objectQuantity, curseObjectState, unlinkObject, deallocateObject, absorbGlob, objectWeight, isContainer, announceGlobMerge } from './mkobj.js';
+import { rejoinObjectStack, splitObjectStack, objectQuantity, curseObjectState, unlinkObject, absorbGlob, objectWeight, isContainer, announceGlobMerge, } from './mkobj.js';
 import { ATTRIBUTE_DISPLAY_ORDER } from './attrib.js';
-import { consumeHallucinatedMenuObjectGlyph, docrt, flush_screen, newsym, OBJECT_CLASS_SYMBOLS } from './display.js';
-import { bot, formatStrength } from './botl.js';
+import { consumeHallucinatedMenuObjectGlyph, flush_screen, newsym, OBJECT_CLASS_SYMBOLS } from './display.js';
+import { formatStrength } from './botl.js';
 import { clearMessageWindow, displayMessageWindow, flushPendingTopline, putMessageHistory, showMessageMenu, renderKeyPrompt } from './tty_topline.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { showChoiceWindow, showDisclosureOverlay, showInventoryWindow, showMultiSelectWindow, showTextMenuOverlay, snapshotMenuUnderlay, restoreMenuUnderlay } from './windows.js';
@@ -17,8 +17,8 @@ import { nhgetch } from './input.js';
 import { readchar, commandResultCancelled, commandResultFailed, cmdq_add_int, cmdq_add_key, cmdq_clear, cmdq_pop, getCount, GC_SAVEHIST, GC_ECHOFIRST, GC_CONDHIST, ynSingleKey, yn_function } from './cmd.js';
 import { ingSuffix, possessiveName } from './hacklib.js';
 import { NATIVE_COMMAND_CONSTANTS } from './command_data.js';
-import { CMDQ_INT, CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, ALTAR, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MENU_FULL, MENU_PARTIAL, MSGTYP_MASK_REP_SHOW, MV_KNOWS_EGG, PICK_NONE, PICK_ONE, W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL, W_SADDLE, OBJECT_TIMER_KIND, ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, AM_SANCTUM, Amask2align, A_NONE, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN, D_NODOOR, FOUNTAIN, GRAVE, IRONBARS, SINK, THRONE, TREE, PLNMSG_ONE_ITEM_HERE, LOST_NONE, LOST_THROWN, is_pit, SORTLOOT_PACK, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_INUSE, SORTLOOT_PETRIFY, P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE, W_WEAPONS, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR } from './const.js';
-import { MONSTER_GROWTH_TARGET, MONSTER_NAME, monsterIsHumanoid } from './monster_data.js';
+import { CMDQ_INT, CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, ALTAR, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MENU_FULL, MENU_PARTIAL, MSGTYP_MASK_REP_SHOW, PICK_NONE, PICK_ONE, W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL, W_SADDLE, OBJECT_TIMER_KIND, ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, AM_SANCTUM, Amask2align, A_NONE, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN, D_NODOOR, FOUNTAIN, GRAVE, IRONBARS, SINK, THRONE, TREE, PLNMSG_ONE_ITEM_HERE, LOST_NONE, LOST_THROWN, is_pit, SORTLOOT_PACK, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_INUSE, SORTLOOT_PETRIFY, P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE, W_WEAPONS, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, } from './const.js';
+import { MONSTER_NAME } from './monster_data.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { levelPrizeKind } from './level_prize.js';
 import { recordLiteracy } from './literacy.js';
@@ -48,8 +48,8 @@ import { iceDescriptionAt } from './pager.js';
 import { lookInsideSwallower } from './swallowed_inventory.js';
 import { impossible, panic } from './diagnostics.js';
 import { armorSimpleName, armorSlotFor } from './do_wear.js';
-import { objectTypeKnown, currentShopResident, shopkeeperInOwnShop, costlySpot, chargeUnpaidUsage, deleteObject, billForObject, settleGlobAbsorptionBilling, visitBilledShopkeepers, unpaidObjectCost, reportShopFinances, pickedContainer } from './shk.js';
-import { endObjectBurn, learnEggType, stopObjectTimer, objectsInTimerGraph, stopObjectTimers } from './timeout.js';
+import { objectTypeKnown, currentShopResident, shopkeeperInOwnShop, costlySpot, chargeUnpaidUsage, deleteObject, billForObject, visitBilledShopkeepers, unpaidObjectCost, reportShopFinances, pickedContainer, } from './shk.js';
+import { endObjectBurn, learnEggType, stopObjectTimer, stopObjectTimers } from './timeout.js';
 import { objectShedsLight } from './light.js';
 import { assertCreatedObject } from './do.js';
 import { isReviver } from './corpse_species.js';
@@ -64,6 +64,7 @@ import { NO_COLOR } from './terminal.js';
 import { maybeUnhideAt } from './mon.js';
 import { rn2 } from './rng.js';
 import { objectResistsDestruction, showProbedObjectInventory } from './zap.js';
+import { monsterIsHumanoid } from './mondata.js';
 const SCR_MAIL = OBJECT_NAMES.indexOf('mail');
 // invent.c:loot_xname() ignores counts and individual user names. Its
 // temporary adjustments group water, towels, and globs without altering them.
@@ -686,6 +687,8 @@ function updateCarriedFlags(object, carried, state) {
 function carriedPossessionFlag(object, state) {
     return CARRIED_FLAGS.get(object.otyp) ?? (isQuestArtifact(object, state) ? 'questart' : undefined);
 }
+// C attrib.c:set_moreluck()
+// Also C attrib.c:stone_luck(): inventory quantity sum is inlined here
 export function updateCarriedLuck(object, state = game) {
     if (confersLuck(object, state)) {
         const lucky = state.inventory.filter(item => confersLuck(item, state));
@@ -731,6 +734,8 @@ function admitsChoice(classification) {
 // split_otmp behavior use chooseInventoryObject().
 // C invent.c:getobj_hands_txt(): callers pass the hands entry's wording
 // (fingers, fingertip, gloved/bare hands, empty quiver) as handsText.
+// Also C invent.c:obj_to_let(): inlined as the fixinv-off letter
+// reassignment before the inventory letters are read.
 export async function getobj(word, classify, { forcePrompt = false, allowCount = false, hands = GETOBJ_EXCLUDE, handsText = 'your hands' } = {}) {
     const queued = takeQueuedInventorySelection(classify, allowCount, hands);
     if (queued)
@@ -1109,6 +1114,9 @@ export async function checkInventoryGold(why, state = game) {
     await impossible(`${why}: ${wrongSlotMessage}${wrongSlots && gold.length > 1 ? ' and ' : ''}${gold.length > 1 ? 'multiple gold stacks' : ''}`, { state });
     return true;
 }
+// C objnam.c:not_fully_identified().
+// Also C artifact.c:undiscovered_artifact(): inlined here as the
+// _artifactDiscoveries membership test.
 export function objectNeedsFullIdentification(object) {
     if (!object || object.oclass === COIN_CLASS)
         return false;
@@ -1224,6 +1232,8 @@ function matchesIdentificationCategories(object, categories) {
 }
 // C ggetobj()/askchain(), restricted to identify. Category order controls
 // which class is questioned first; identifying never splits a stack.
+// Also C invent.c:safeq_xprname(): inlined here as the inventory-letter
+// and full object description in each question.
 async function identifyTraditionally(limit) {
     const identified = [];
     while (limit > 0) {
@@ -1503,6 +1513,12 @@ export async function inventoryActionForObject(item) {
     const key = await showItemActionMenu(item);
     return key === 0 ? null : { key: inventoryActionKey(key), item };
 }
+// Also C iactions.c:item_naming_classification(): inlined here
+// Also C iactions.c:ia_addmenu(): keyed action rows are built inline here
+// Also C worn.c:armcat_to_wornmask(): inlined here as armorSlotFor(),
+// using a typed slot name instead of an intermediate numeric mask.
+// Also C worn.c:wearmask_to_obj(): inlined here as the occupied-slot read
+// that supplies the wear action's already-wearing label.
 function itemActionEntries(item, state, repairGold) {
     const itemName = simpleObjectName(item, state);
     const entries = [];
@@ -3326,6 +3342,8 @@ export async function probedContentsTitle(object, state) {
     return name.replace('an trapped ', 'a trapped ');
 }
 // C invent.c:display_binventory(): objects beneath the probed surface.
+// Also C invent.c:only_here(): inlined as the buried-objects filter by
+// (x, y) below.
 export async function displayBuriedInventory(x, y, state) {
     const pile = state.level.objects[x]?.[y] || [];
     let underwhat = 'here', count = 0;

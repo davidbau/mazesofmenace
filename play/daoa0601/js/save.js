@@ -1,6 +1,6 @@
 // save.js — Web-Storage-backed save and restore.
 // C refs: save.c and restore.c.
-import { MONSTER_FLAGS1, MONSTER_SYMBOL, monsterHidesUnder, monsterIsEel, resetErinys } from './monster_data.js';
+import { MONSTER_SYMBOL, resetErinys } from './monster_data.js';
 import { game, requireLiveGame } from './gstate.js';
 import { PanicTermination } from './panic_termination.js';
 import { clearMessageWindow, displayMessageWindow, rememberToplines } from './tty_topline.js';
@@ -13,15 +13,13 @@ import { requireInitializedHero } from './hero_types.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { encodeSavedGraph, isSavedRecord } from './saved_graph.js';
 import { decodeSavedGame } from './persistent_state_validation.js';
-import { cmdq_clear } from './cmd.js';
+import { cmdq_clear, isok } from './cmd.js';
 import { endVoluntaryMultiTurn } from './hack.js';
 import { copyPersistentState, restorePersistentState, SAVE_VERSION } from './state_schema.js';
 import { rollQuestFigureGenders } from './startup.js';
 import { resolveDungeonIdentities } from './dungeon.js';
-import { purgeDeadMonsters, attemptMonsterRestrap, hideMonsterUnder } from './mon.js';
-import { restoreMonsterInventoryOwnership } from './mon.js';
+import { purgeDeadMonsters, attemptMonsterRestrap, hideMonsterUnder, restoreMonsterInventoryOwnership } from './mon.js';
 import { CQ_CANNED, CQ_REPEAT, FULL_MOON, LUCKMAX, LUCKMIN, M_AP_NOTHING, Upolyd, AM_CHAOTIC, AM_LAWFUL, AM_NEUTRAL, AM_NONE, COULD_SEE, IN_SIGHT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPMASK, M_AP_TYPE, MAX_NUM_WORMS, MON_FLOOR, NON_PM, ismnum } from './const.js';
-import { isok } from './cmd.js';
 import { vision_reset_new_level } from './vision.js';
 import { rewindEngravingsForSave, restoreEngravings } from './engrave.js';
 import { weaponNeedsBashingMessage } from './wield.js';
@@ -37,11 +35,16 @@ import { restoreLevelChains } from './level_restore.js';
 import { validSavedHeroAlignment } from './character_validation.js';
 import { validSavedSpeciesOrNone } from './species_validation.js';
 import { arrayOf, boolean, closedFieldsMatch, integer, nullable, optional, string, validateSavedEntity, } from './saved_validation.js';
+import { monsterHidesUnder, monsterIsEel, monsterIsHider } from './mondata.js';
 const SAVE_PREFIX = 'teleport-save:';
 const ERROR_SAVE_PREFIX = 'teleport-error-save:';
 function saveKey(name, prefix = SAVE_PREFIX) {
     return `${prefix}${String(name || 'player').toLowerCase()}`;
 }
+// Snapshot persistent state, including the message window's recall history.
+// Also C save.c:save_msghistory(): inlined here with the rest of the saved state.
+// Also C topl.c:msghistory_snapshot(): inlined here before serializing the oldest-first history.
+// Also C topl.c:tty_getmsghistory(): inlined here; saving reads the history array directly.
 function snapshotState() {
     // C save_msghistory() -> getmsghistory() flushes the pending topline
     // into the ring before the messages are written out.
@@ -104,6 +107,9 @@ function restoreSavedMonsters(state) {
         ...state.inventory, ...state.migratingObjects ?? [], ...state.billObjects ?? [],
     ], 0);
 }
+// C save.c:dosave()
+// Also C wintty.c:tty_exit_nhwindows(): inlined here when the saved game exits its windows.
+// Also C wintty.c:tty_suspend_nhwindows(): inlined here to clear the screen and print the farewell.
 export async function dosave() {
     // C save.c:dosave() clears WIN_MESSAGE before asking and after either
     // answer. Acknowledgment alone leaves the seen question on tty.
@@ -719,22 +725,20 @@ export function validSavedMonsterTraits(value, context) {
 // (restrap()/hideunder()/maybe_unhide_at()) and monmove.ts
 // (can_hide_under_obj()).
 // ---------------------------------------------------------------------------
-const M1_CONCEAL = 0x80, M1_HIDE = 0x100;
-const S_EEL = 57, S_MIMIC = 13;
+const S_MIMIC = 13;
 // C restore.c:getlev() rechecks existing cover before catch-up and shape
 // changes. A saved mundetected bit alone does not establish valid cover.
 export async function restoreMonsterCover(monster, state = game) {
     if (monster !== state.u.usteed && monster.mundetected
-        && (monsterHidesUnder(monster.mnum)))
+        && monsterHidesUnder(monster.mnum))
         await hideMonsterUnder(monster, state);
 }
 // Restored hiders get their attempt before normal vision can expose their spot.
 // Only that square's vision bits are hidden, and hideunder sees restored vision.
 export async function hideMonsterOnRestore(monster, state = game) {
     requireLiveGame(state);
-    const flags = MONSTER_FLAGS1[monster.mnum] ?? 0;
-    const hiderUnder = !!(flags & M1_CONCEAL) || monsterIsEel(monster.mnum);
-    if (!(flags & M1_HIDE) && !hiderUnder)
+    const hiderUnder = monsterHidesUnder(monster.mnum) || monsterIsEel(monster.mnum);
+    if (!monsterIsHider(monster.mnum) && !hiderUnder)
         return;
     if (monster.mundetected || M_AP_TYPE(monster))
         return;
@@ -744,7 +748,7 @@ export async function hideMonsterOnRestore(monster, state = game) {
         throw new Error('Restoring monster hiding requires an initialized vision square.');
     row[monster.mx] = savedVision & ~(IN_SIGHT | COULD_SEE);
     try {
-        if (flags & M1_HIDE)
+        if (monsterIsHider(monster.mnum))
             await attemptMonsterRestrap(monster, state);
         if (MONSTER_SYMBOL[monster.mnum] === S_MIMIC && !M_AP_TYPE(monster))
             await attemptMonsterRestrap(monster, state);

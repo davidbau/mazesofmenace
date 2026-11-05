@@ -37,9 +37,9 @@ import { askKeepRestoredSave, restoreMonsterCover } from './save.js';
 import { placeHeroAtRandomArrival, finishScheduledLevelChange } from './level_change.js';
 import { monsterName, randomDisplayMonsterName } from './do_name.js';
 import { possessiveName, dist2, dungeonDepth } from './hacklib.js';
-import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion } from './mondata.js';
+import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion, monsterIsAnimal, monsterIsNonliving } from './mondata.js';
 import { mhitm_knockback, resolveMonsterContactEffect } from './uhitm.js';
-import { MONSTER_GENO, monsterIsAnimal, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterTypeName } from './monster_data.js';
+import { MONSTER_GENO, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
 import { monsterAtPosition } from './steed.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, finishInUseInventory } from './end.js';
 import { releaseObjectLeash, checkHeroLeashes, heroNextToLeashedFollowers } from './apply.js';
@@ -68,7 +68,7 @@ import { grantAmuletWish } from './wish.js';
 import { checkAttributeExercise, currentAttribute, exerciseAttribute, exerciseWisdom, loseHeroStrength } from './attrib.js';
 import { encumber_msg } from './pickup.js';
 import { rndcurse } from './throne.js';
-import { resolveMonsterGaze, completeHeroAttackSlot, beginMonsterHeroAttack, monsterMissMessage, resolveMonsterSelfExplosion } from './mhitu.js';
+import { resolveMonsterGaze, completeHeroAttackSlot, mattacku, missmu, resolveMonsterSelfExplosion } from './mhitu.js';
 import { bot, statusEvalNextUnhilite, updateStatusLines } from './botl.js';
 import { canSpotMonster, docrt, redrawMap, flush_screen, newsym, map_invisible, see_monsters, see_objects, see_traps, show_glyph_cell, swallowed, under_ground, under_water, canSeeMonster, monsterVisible, shieldeff } from './display.js';
 import { clearMessageWindow, displayMessageWindow, flushPendingTopline, rememberToplines, appendSuppressedTopline, resetToplineClip } from './tty_topline.js';
@@ -85,7 +85,7 @@ import { fumaroles } from './mkmaze.js';
 import { commitPetPickup } from './dogmove.js';
 import { monsterWieldedWeapon } from './weapon.js';
 import { applyHeroWereChange, presentWereChange } from './were.js';
-import { reportMonsterTeleportRestriction } from './teleport_rules.js';
+import { reportMonsterTeleportRestriction } from './teleport.js';
 import { clearHeroSliming } from './potion.js';
 import { initTrack, setTrack } from './track.js';
 import { autopickupAtHero } from './pickup.js';
@@ -171,6 +171,8 @@ async function showLegacy() {
 }
 // C allmain.c:welcome(). Greeting, chronicle entry, and restore reminders
 // share the hero's innate identity even while another body is active.
+// Also C dungeon.c:print_level_annotation(): inlined here (the restore
+// reminder, like in goto_level()).
 export async function welcome(newGame) {
     const g = requireInitializedGame();
     await currentLuaLifecycle().callCore(g, newGame ? 'start_new_game' : 'restore_old_game');
@@ -675,6 +677,8 @@ async function finishInitialTurnMaintenanceAfterAutomaticSearch({ sourceTurn, })
         return { kind: 'complete' };
     return finishInitialTurnMaintenanceAfterAmbient({ sourceTurn });
 }
+// Also C allmain.c:regen_pw(): inlined here (the power-recovery block
+// before teleportitis and shape changes).
 async function finishInitialTurnMaintenanceAfterRegions({ sourceTurn, capacity, }) {
     const game = requireInitializedGame();
     if (game.u.ublesscnt > 0)
@@ -920,6 +924,9 @@ async function advanceWorldTurn() {
 }
 // C allmain.c:moveloop_core() calls unmul() at the end of the world turn
 // which finishes negative multi, even if burden still prevents hero movement.
+// Also C do_wear.c:Shield_on(): inlined here as the wear completion
+// marking the shield's enchantment known.
+// Also C do_wear.c:Shirt_on(): the same completion marks shirts known.
 async function finishDelayedArmorAction(delayed, g) {
     if (delayed.kind === 'wear') {
         // unmul() has printed nomovemsg before Armor_on() and find_ac().
@@ -973,6 +980,7 @@ async function settleHeroLiquidAfterAction() {
 }
 // Native hack.c:unmul(). The after-handler is cleared before invocation so
 // recovery can start another delay without inheriting the old completion.
+// Also C steal.c:unstolenarm(): the 'unstolen-armor' case below.
 export async function finishHeroHelplessness(messageOverride, state = game, publish = plineWithContinuation) {
     state.context.botl = true;
     setMulti(0, state);

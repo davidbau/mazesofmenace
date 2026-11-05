@@ -24,12 +24,12 @@ import { createParticularMonster } from './read.js';
 import { findit, mapMagicLevel } from './detect.js';
 import { monsterName } from './do_name.js';
 import { monsterAtPosition, monsterHasMapPosition } from './steed.js';
-import { monsterIsNonliving, MONSTER_GENO, MONSTER_NAME, monsterTypeName } from './monster_data.js';
+import { MONSTER_GENO, MONSTER_NAME, monsterTypeName } from './monster_data.js';
 import { finishMonsterKilled, finishMonsterLiquidDeath, killGenocidedMonsters, purgeDeadMonsters, removeMonsterFromGame, restoreNaturalMonsterShapes, smellUnseenMonster } from './mon.js';
 import { finishHeroDeath } from './end.js';
 import { finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath } from './hero_monster_death.js';
 import { hurtleHero, hurtleMonster } from './dothrow.js';
-import { finishTeleportArrival } from './location_effects.js';
+import { finishTeleportArrival } from './teleport.js';
 import { gotoLevel, deliverSpecialLevelMessages, placeHeroAtRandomArrival } from './level_change.js';
 import { resolveHeroArrivalCollision } from './do.js';
 import { levelTeleport } from './level_teleport.js';
@@ -69,6 +69,7 @@ import { symsetMenuValue } from './options.js';
 import { customizedGlyphs } from './glyph_customizations.js';
 import { rumorCheck } from './rumor.js';
 import { resetUtrap } from './trap.js';
+import { monsterIsNonliving } from './mondata.js';
 // C wizcmds.c:wiz_wish().
 export async function wizWish() {
     const verbose = game.flags.verbose;
@@ -674,6 +675,8 @@ function freeLevelObject(object) {
 // deliverSpecialLevelMessages(). The INSURANCE save_currentstate()
 // checkpoint is modeled by the save_engravings() rewind on the
 // flags.checkpoint path.
+// Also C dungeon.c:rm_mapseen(): inlined here (the overview record and
+// annotation of the replaced level are discarded).
 async function makemapPrepost(pre, wasInsideTower, pets = []) {
     requirePlayingGame(game);
     if (pre) {
@@ -1041,6 +1044,8 @@ export async function showTerrainCodes() {
     await showTerrainText(lines);
 }
 // C wizcmds.c:wiz_levltyp_legend().
+// Also C cmd.c:levltyp_to_name(): inlined here (TERRAIN_NAMES indexed
+// directly; C's other callers are nhlua and a dead mon.c branch).
 export async function showTerrainCodeLegend() {
     const lines = ['#terrain encodings:', ''];
     const half = TERRAIN_NAMES.length / 2;

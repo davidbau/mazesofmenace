@@ -14,7 +14,7 @@ import { setMonsterGivenName } from './do_name.js';
 import { impossible } from './diagnostics.js';
 import { setMonsterMalign } from './makemon.js';
 import { rn2, rnd, d, rne } from './rng.js';
-import { findMonsterNearPosition } from './mklev.js';
+import { enexto_gpflags } from './teleport.js';
 import { mkobj, mksobj, deallocateObject } from './mkobj.js';
 import { MONSTER_MOVE, MONSTER_NAME, SPECIAL_PM } from './monster_data.js';
 import { findArmorClass } from './do_wear.js';
@@ -335,43 +335,6 @@ export function uInitMisc(handednessRoll) {
     g._lastInvNr = 51;
     g.spells = [];
 }
-// C ref: collect_coords().  Each of the first three rings is completely
-// collected and shuffled before enexto_core() tests candidate positions.
-export function collectNearbyCoords(cx, cy, maxradius = 3, random = rn2, calls = null) {
-    const coords = [];
-    const mapRadius = Math.max(cx, COLNO - 1 - cx, cy, ROWNO - 1 - cy);
-    maxradius = maxradius ? Math.min(maxradius, mapRadius) : mapRadius;
-    for (let radius = 1; radius <= maxradius; radius++) {
-        const start = coords.length;
-        const lox = cx - radius, hix = cx + radius;
-        const loy = cy - radius, hiy = cy + radius;
-        for (let y = Math.max(loy, 0); y <= Math.min(hiy, ROWNO - 1); y++) {
-            for (let x = Math.max(lox, 1); x <= Math.min(hix, COLNO - 1); x++) {
-                if (x !== lox && x !== hix && y !== loy && y !== hiy)
-                    continue;
-                coords.push({ x, y });
-            }
-        }
-        let pass = start;
-        let n = coords.length - start;
-        while (n > 1) {
-            const k = random(n);
-            if (calls)
-                calls.push(`rn2(${n})`);
-            if (k) {
-                const current = coords[pass];
-                const chosen = coords[pass + k];
-                if (!current || !chosen || k < 0 || k >= n)
-                    throw new RangeError(`Invalid coordinate shuffle index ${k} for ${n} entries`);
-                coords[pass] = chosen;
-                coords[pass + k] = current;
-            }
-            pass++;
-            n--;
-        }
-    }
-    return coords;
-}
 const DEFAULT_DOG_NAMES = {
     caveman: 'Slasher',
     ranger: 'Sirius',
@@ -406,7 +369,7 @@ export async function makedog() {
     g.context.startingpet_typ = pettype;
     // C makemon() places a monster made on the hero with enexto_core(),
     // first avoiding scary squares and only then accepting them.
-    const spot = findMonsterNearPosition(pettype, g.u.ux, g.u.uy, { gpflags: GP_AVOID_MONPOS });
+    const spot = enexto_gpflags(pettype, g.u.ux, g.u.uy, GP_AVOID_MONPOS);
     if (!spot)
         return null;
     const monsterId = nextIdent();
@@ -527,6 +490,7 @@ function knowsClass(oclass, role) {
         recordObjectKnowledge(otyp);
     }
 }
+// Also C u_init.c:u_init_role(): the role-specific discovery knowledge.
 function initializeRolePreknowledge(role) {
     const pauper = !!game.u?.uroleplay?.pauper;
     if (role === 'archeologist') {
@@ -601,6 +565,7 @@ function startingInventoryRestrictions() {
 }
 // C ini_inv(): exclusions persist across a role's inventory tables and reset
 // before race inventory. The level-one-book threshold belongs to each table.
+// Also C u_init.c:ini_inv_obj_substitution(): inlined here after object creation.
 async function iniInv(table, restrictions = startingInventoryRestrictions()) {
     if (game.u.uroleplay?.pauper)
         return;
@@ -646,6 +611,7 @@ const FORBIDDEN_RANDOM_STARTING_ITEMS = new Set([
     SCR_AMNESIA, SCR_FIRE, SCR_BLANK_PAPER, SPE_BLANK_PAPER,
     RIN_AGGRAVATE_MONSTER, RIN_HUNGER, WAN_NOTHING, SPE_NOVEL,
 ]);
+// C u_init.c:ini_inv_mkobj_filter().
 async function randomStartingItem(oclass, gotLevelOneSpellbook, restrictions) {
     for (let attempts = 0;; attempts++) {
         const item = await mkobj(oclass, false);
@@ -729,6 +695,7 @@ function initialInventoryEntry(table, index) {
         throw new Error(`Initial inventory has no terminator at entry ${index}`);
     return entry;
 }
+// C attrib.c:rnd_attr()
 function rndAttr(weights) {
     let x = rn2(100);
     for (const i of ATTRIBUTE_INDICES) {
@@ -738,6 +705,8 @@ function rndAttr(weights) {
     }
     return 6;
 }
+// C attrib.c:init_attr()
+// Also C attrib.c:init_attr_role_redist(): positive-point distribution is inlined here
 // C refs: init_attr(75), vary_init_attr().
 function initAttributes() {
     const role = game.urole;
@@ -828,6 +797,7 @@ const WISHING_INVENTORY = [
         min: 1, max: 1, bless: 0 },
     { typ: 0, spe: 0, cls: RANDOM_CLASS, min: 0, max: 0, bless: 0 },
 ];
+// C u_init.c:u_init_race().
 async function uInitRaceInventoryAndKnowledge(role) {
     const race = game.urace?.raceIndex;
     let preknown = [];
@@ -869,6 +839,7 @@ const PAUPER_PREKNOWLEDGE = new Map([
     ['tourist', SACK],
     ['samurai', FOOD_RATION],
 ]);
+// Also C u_init.c:pauper_reinit(): the role's one retained object discovery.
 function applyPauperPreknowledge(role) {
     if (!role || !game.u?.uroleplay?.pauper)
         return;
@@ -876,6 +847,8 @@ function applyPauperPreknowledge(role) {
     if (otyp)
         recordObjectKnowledge(otyp);
 }
+// C u_init.c:u_init_inventory_attrs().
+// Also C u_init.c:u_init_role(): inlined here for role inventory and starting turn.
 export async function uInitInventoryAttrs() {
     const heroRole = game.urole;
     if (!heroRole)

@@ -17,11 +17,11 @@ import { pline, plineWithContinuation } from './pline.js';
 import { commandResultCancelled, cmdq_clear, setMulti, paranoidQuery } from './cmd.js';
 import { nomul, applyHeroLocationEffects, heroCanSwim, applyHeroLiquidEffects } from './hack.js';
 import { finishHeroHelplessness } from './allmain.js';
-import { monsterIsHumanoid, MONSTER_NAME, MONSTER_SIZE, monsterBreaksArmor, monsterHornCount, monsterIsCentaur, monsterIsSlithy, monsterSlipsArmor, monsterWrappingAllowed } from './monster_data.js';
+import { MONSTER_NAME, MONSTER_SIZE } from './monster_data.js';
 import { CQ_CANNED, GETOBJ_SUGGEST, PARANOID_REMOVE, W_ACCESSORY, W_ARMOR, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, A_CHA, A_DEX, A_INT, A_WIS, LUCKMIN, LUCKMAX, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, A_CON, A_STR, Is_airlevel, Upolyd, W_AMUL, W_RING, W_RINGL, W_RINGR, W_TOOL, W_WEAPONS, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, P_LONG_SWORD, P_SHORT_SWORD, P_BROAD_SWORD, P_SABER, P_TWO_HANDED_SWORD, MENU_COMBINATION, MENU_FULL, MENU_ITEMFLAGS_SKIPINVERT, MENU_TRADITIONAL, SORTLOOT_INVLET } from './const.js';
 import { isBimanualObject, isSword, isFlimsyObject, objectIsMetallic, objectIsCrackable, objectIsRustprone, objectIsCorrodeable } from './object_properties.js';
 import { heroFingerName, heroHandName, heroNeckName, heroHeadName, heroFootName, heroLegName } from './body_parts.js';
-import { heroHasNoHead, heroSpecies, changeHeroSex, heroIsBreathless, heroPolyGender, heroHasNoHands, heroHasNoLimbs, heroIsVerySmall, heroFormClings, heroFormFlags, heroIsUnchanging, heroMonsterForm } from './polyself.js';
+import { heroHasNoHead, heroSpecies, changeHeroSex, heroIsBreathless, heroPolyGender, heroHasNoHands, heroHasNoLimbs, heroIsVerySmall, heroFormClings, heroIsUnchanging, heroMonsterForm } from './polyself.js';
 import { retouchHeroObject } from './hero_retouch.js';
 import { learnObjectType, observeObject } from './o_init.js';
 import { observeObjectForNaming, objectName, ownedObjectName, corpseName, killerObjectName, objectNameIsPlural, simpleObjectName, makePlural, withIndefiniteArticle, makeSingular, objectDescription, objectHasPersonalName, objectMonsterName } from './objnam.js';
@@ -30,7 +30,7 @@ import { chooseInventoryObject, compactInventoryLetters } from './invent.js';
 import { isWeldedPrimary, setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.js';
 import { setworn, bypassObjectList, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { setBallAndChainFelt } from './ball.js';
-import { gulpBlindnessCheck } from './engulf_blindness.js';
+import { gulp_blnd_check } from './mhitu.js';
 import { getLine, promptYesNoAllQuit } from './query.js';
 import { restoreMenuUnderlay, showMultiSelectWindow, snapshotMenuUnderlay } from './windows.js';
 import { yn_function } from './cmd.js';
@@ -57,7 +57,7 @@ import { encumber_msg } from './pickup.js';
 import { curseObjectState, objectIsFlammable, objectIsRottable } from './mkobj.js';
 import { displayColorName, displayLiquidName, monsterName } from './do_name.js';
 import { grantWornProperty, hasIntrinsicProperty, hasWornProperty, propertyIsActive, propertyIsBlocked, propertyTimeout, refreshMovementProperties, refreshProperty, removeWornProperty, setPropertyTimeout } from './properties.js';
-import { monstersForgetHeroResistance, seenResistanceForProperty, heroResistsLifeDrain } from './mondata.js';
+import { monstersForgetHeroResistance, seenResistanceForProperty, heroResistsLifeDrain, monsterIsAmphibious, monsterIsBreathless, monsterBreaksArmor, monsterHornCount, monsterIsCentaur, monsterIsHumanoid, monsterIsSlithy, monsterSlipsArmor, monsterWrappingAllowed } from './mondata.js';
 import { refreshInvisibleMonsters } from './hero_seeing.js';
 import { tryCallObjectType, dropInventoryObjectAtHero } from './do.js';
 import { LL_MINORAC, recordGameLogEvent } from './gamelog.js';
@@ -309,6 +309,8 @@ export async function removeWornItem(action, itemAction = false) {
 }
 // C do_wear.c:canwearobj(). Decisions precede contact and slot changes.
 const MZ_SMALL = 1;
+// Also C do_wear.c:already_wearing(): inlined in this decision as the
+// occupied-slot refusal ("You are already wearing ...").
 export function armorWearDecision(object, state = game) {
     const slot = armorSlotFor(object.otyp);
     const form = heroMonsterForm(state);
@@ -776,6 +778,10 @@ async function unremovableCurse(object, slot, state) {
 // C do_wear.c:menu_remarm(): the category and object pick lists for 'A',
 // including the combination-style class prompt and the BUC category
 // filter from pickup.c:query_category()/allow_category().
+// Also C pickup.c:add_valid_menu_class(): inlined here as the chosen
+// categories passed to matchesCategories().
+// Also C pickup.c:menu_class_present(): category membership is checked
+// directly, without a global valid_menu_classes filter.
 export async function selectBulkTakeoff(selectOff) {
     const style = game.flags.menu_style ?? MENU_FULL;
     let categories = ['all'];
@@ -833,6 +839,9 @@ function bucCategory(object) {
         return game.flags.goldX ? 'X' : 'U';
     return !object.bknown ? 'X' : object.blessed ? 'B' : object.cursed ? 'C' : 'U';
 }
+// C invent.c:count_buc(): the priest bless/curse knowledge pass and the
+// per-status tallies for the removal-category menu (query_classes in
+// pickup.ts builds the same set for pickup menus).
 function wornBucCategories(worn) {
     // Native count_buc() grants priest knowledge before applying is_worn().
     if (game.urole?.key === 'priest')
@@ -857,6 +866,8 @@ function matchesCategories(object, categories) {
         && (!statuses.length || statuses.includes(bucCategory(object)))
         && (!categories.includes('P') || !!object.pickup_prev);
 }
+// Also C pickup.c:count_categories(): inlined as the single-category skip
+// below (one class and no special filter needs no menu).
 async function categoryMenu() {
     const worn = wornInventory();
     const classes = inventoryClassOrder().filter(oclass => worn.some(object => object.oclass === oclass));
@@ -1461,12 +1472,12 @@ export function wornArmorInDestroyOrder(state = game) {
 }
 // C do_wear.c:some_armor(). Only the outer torso layer is exposed; each
 // other occupied slot has its own chance to replace the current choice.
-export function someHeroArmor(state = game) {
+export function some_armor(state = game, random = rn2) {
     let armor = equippedObject(state, 'uarmc')
         || equippedObject(state, 'uarm') || equippedObject(state, 'uarmu');
     for (const slot of ['uarmh', 'uarmg', 'uarmf', 'uarms']) {
         const candidate = equippedObject(state, slot);
-        if (candidate && (!armor || rn2(4) === 0))
+        if (candidate && (!armor || random(4) === 0))
             armor = candidate;
     }
     return armor;
@@ -2196,11 +2207,11 @@ const RING_ATTRIBUTES = new Map([
 const AMULET_OF_ESP = OBJECT_NAMES.indexOf('amulet of ESP');
 const AMULET_OF_FLYING = OBJECT_NAMES.indexOf('amulet of flying');
 const AMULET_OF_MAGICAL_BREATHING = OBJECT_NAMES.indexOf('amulet of magical breathing');
-const M1_AMPHIBIOUS = 0x00000200;
-const M1_BREATHLESS = 0x00000400;
 const RIN_INCREASE_ACCURACY = OBJECT_NAMES.indexOf('increase accuracy');
 const RIN_INCREASE_DAMAGE = OBJECT_NAMES.indexOf('increase damage');
 // C do_wear.c:stuck_ring(). Find what prevents this ring from coming off.
+// Also C do_wear.c:unchanger(): inlined here as the limb-blocking cursed
+// amulet of unchanging.
 export function ringRemovalObstacle(ring, type, state = game) {
     if (!ring || ring.otyp !== type)
         return null;
@@ -2463,7 +2474,7 @@ async function removeAmulet(object, state) {
     else if (object.otyp === AMULET_OF_MAGICAL_BREATHING) {
         // C cant_drown() tests the form, not remaining magical breathing.
         // drown() still runs for the warning and inventory water damage.
-        if (state.u.uinwater && !(heroFormFlags(state) & (M1_AMPHIBIOUS | M1_BREATHLESS))
+        if (state.u.uinwater && !(monsterIsAmphibious(heroMonsterForm(state) ?? -1) || monsterIsBreathless(heroMonsterForm(state) ?? -1))
             && !heroCanSwim(state)) {
             await plineWithContinuation(`You suddenly inhale an unhealthy amount of ${displayLiquidName('water')}!`);
             await applyHeroLiquidEffects(undefined, { entry: 'drown' });
@@ -2658,7 +2669,7 @@ export async function removeEyewear(object = null, { state = game, publish = pli
         }
     }
     else if (wasBlind) {
-        const gulp = await gulpBlindnessCheck({ state, publish });
+        const gulp = await gulp_blnd_check({ state, publish });
         if (gulp.died)
             return true;
         if (!gulp.triggered) {

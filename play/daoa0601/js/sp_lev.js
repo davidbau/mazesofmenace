@@ -16,7 +16,7 @@ import { makemon, mkclass, propagateMonsterSpecies, setMonsterMalign } from './m
 import { setWallState } from './wall_topology.js';
 import { ensureMinionData } from './minion.js';
 import { monsterAtPosition, putSaddleOnMonster } from './steed.js';
-import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SYMBOL, monsterIsGolem, monsterIsPlayerMonster, monsterIsVampireShifter } from './monster_data.js';
+import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SYMBOL } from './monster_data.js';
 import { ismnum, GRAVE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, THRONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, In_endgame, Is_waterlevel, SPACE_POS, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_NONE, AM_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, MM_NOGRP, MM_EMIN, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT, G_GONE, STRAT_WAITFORU, F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM } from './const.js';
 import { isok } from './cmd.js';
 import { changeMonsterForm, removeMonsterFromGame, shapechangerGender } from './mon.js';
@@ -52,14 +52,15 @@ import { somexy, fillBarracksRoom, fillBeehiveRoom, fillCourtRoom, fillMorgueRoo
 import { beginObjectBurn } from './timeout.js';
 import { monsterEmitsLight, vision_reset } from './vision.js';
 import { SpecialSelection, match_maptyps, mapCharacterType, specialSelectionMatch } from './selvar.js';
-import { CANDELABRUM_OF_INVOCATION, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, M2_DWARF, M2_FEMALE, M2_GNOME, M2_MALE, M2_SHAPESHIFTER, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, findMonsterNearPosition, is_hole, is_pit, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, stairway_add, topologize } from './mklev.js';
+import { CANDELABRUM_OF_INVOCATION, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, is_hole, is_pit, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, stairway_add, topologize } from './mklev.js';
+import { enexto } from './teleport.js';
 import { make_engr_at } from './engrave.js';
 import { fix_wall_spines, setLevelTerrainLit, setLevelTerrainType, vibratingSquarePoint } from './mkmaze.js';
 import { makeroguerooms } from './extralev.js';
 import { stockShopRoom } from './shknam.js';
 import { specialShrinePriest } from './priest.js';
 import { makeSpecialDrawbridge } from './dbridge.js';
-import { monsterHasStoneResistance, monsterPolymorphsWhenStoned, setMonsterSpecies } from './mondata.js';
+import { is_dwarf, is_gnome, is_male, is_shapeshifter, monsterHasStoneResistance, monsterIsFemale, monsterPolymorphsWhenStoned, setMonsterSpecies, monsterIsAmphibious, monsterIsFlyer, monsterIsSwimmer, monsterPassesWalls, monsterIsGolem, monsterIsPlayerMonster, monsterIsVampireShifter } from './mondata.js';
 import { roomForIndex, roomsAt } from './hack.js';
 export async function fillVault(room) {
     if (!room)
@@ -251,13 +252,12 @@ export async function fill_empty_maze(mappedCells) {
 }
 // C sp_lev.c:pm_to_humidity().
 function pm_to_humidity(mndx) {
-    const flags = MONSTER_FLAGS1[mndx] ?? 0;
     const symbol = MONSTER_SYMBOL[mndx];
-    let humidity = symbol === 57 || (flags & (0x00000002 | 0x00000200))
+    let humidity = symbol === 57 || (monsterIsSwimmer(mndx) || monsterIsAmphibious(mndx))
         ? WET : DRY;
-    if ((flags & 0x00000001) || symbol === 5 || symbol === 25)
+    if (monsterIsFlyer(mndx) || symbol === 5 || symbol === 25)
         humidity |= HOT | WET;
-    if ((flags & 0x00000008) || symbol === 54)
+    if (monsterPassesWalls(mndx) || symbol === 54)
         humidity |= SOLID;
     if (mndx === 30 || mndx === 110
         || mndx === PM_FIRE_ELEMENTAL || mndx === PM_SALAMANDER)
@@ -730,6 +730,8 @@ export async function flip_level_rnd(allowed, extras = false) {
         flp |= 2;
     await flip_level(flp, extras);
 }
+// C priest.c:mk_roamer()
+// The caller creates the monster; this is its aligned-minion initialization.
 export function finishSpecialRoamer(monster, alignment, peaceful) {
     const coaligned = alignment === (game.u?.ualign?.type ?? A_NEUTRAL);
     monster.ispriest = 0;
@@ -1286,6 +1288,8 @@ function noncoalignedSpecialAmask() {
     return (noncoalignment() + 2) & 0xff;
 }
 // C sp_lev.c:sp_amask_to_amask(). Resolve coaligned, noncoaligned and random masks.
+// Also C sp_lev.c:get_table_align(): inlined here (the alignment name
+// resolves to a mask in one step).
 function sp_amask_to_amask(value = 'random') {
     if (value === 'coaligned')
         return Align2amask(game.u?.ualignbase?.[1] ?? game.u?.ualign?.type ?? A_NEUTRAL);
@@ -1379,6 +1383,8 @@ function get_table_roomtype_opt(name = 'ordinary') {
 }
 // C sp_lev.c:l_push_mkroom_table(): the room table passed to a contents
 // callback; get_mkroom_name()'s reverse lookup is the names map below.
+// Also C sp_lev.c:l_push_wid_hei_table(): inlined here (the width/height
+// entries of the room table).
 export function l_push_mkroom_table(room) {
     const names = new Map([
         [OROOM, 'ordinary'], [THEMEROOM, 'themed'], [COURT, 'throne'],
@@ -1405,6 +1411,8 @@ export function l_push_mkroom_table(room) {
     });
 }
 // C sp_lev.c:lspo_region(). Light a selection, or create a rectangular/irregular room and its contents.
+// Also C sp_lev.c:sel_set_lit(): inlined here (the selection lighting
+// callback, lava excepted).
 export async function lspo_region(scope, context, state, value, lighting = 'unlit') {
     if (value instanceof SpecialSelection) {
         const lit = lighting === 'lit';
@@ -1488,6 +1496,10 @@ export async function lspo_region(scope, context, state, value, lighting = 'unli
     return room;
 }
 // C sp_lev.c:lspo_room(). Read room placement, build it, then run its nested contents.
+// Also C sp_lev.c:spo_endroom(): inlined here (the finally pops the room
+// scope).
+// Also C sp_lev.c:update_croom(): inlined here (the same restore of the
+// parent room context).
 export async function lspo_room(scope, active, state, value) {
     const options = tableOptions(value, 'integer');
     if (scope.roomFailed)
@@ -1535,6 +1547,8 @@ export async function lspo_room(scope, active, state, value) {
     return room;
 }
 // C sp_lev.c:l_create_stairway(). Both Lua bindings share placement and trap clearance.
+// Also C sp_lev.c:good_stair_loc(): inlined here (the random-spot terrain
+// filter).
 async function l_create_stairway(context, mappedCells, usingLadder, directionValue, x, y) {
     const options = directionValue instanceof LuaTable ? tableOptions(directionValue) : null;
     const direction = options ? String(options.dir ?? 'down') : String(directionValue);
@@ -1772,6 +1786,8 @@ export async function lspo_object(context, parentContainer, parentMonster, invok
     return object;
 }
 // C sp_lev.c:create_object(). Create one object and apply its level-description attributes.
+// Also C sp_lev.c:get_table_buc(): inlined here (the buc name switches
+// directly instead of decoding to a curse-state code).
 async function create_object(context, options, corpseSpecies, parentContainer, parentMonster) {
     const { point, objectClass, objectType } = options;
     const allowArtifacts = !options.name;
@@ -1937,6 +1953,12 @@ async function create_object(context, options, corpseSpecies, parentContainer, p
     return object;
 }
 // C sp_lev.c:lspo_monster(). Parse the request, create the monster, then run its custom inventory.
+// Also C sp_lev.c:get_table_monclass(): inlined here (the single-character
+// class string).
+// Also C sp_lev.c:get_table_montype(): inlined here (the id field through
+// find_montype()).
+// Also C sp_lev.c:spo_end_moninvent(): inlined here (m_dowear after the
+// inventory callback closes).
 export async function lspo_monster(context, state, inventories, id, x, y) {
     const options = id instanceof LuaTable
         ? tableOptions(id) : {};
@@ -1994,7 +2016,9 @@ export async function lspo_monster(context, state, inventories, id, x, y) {
     }
     return monster;
 }
-// C sp_lev.c:create_monster(). Resolve species and location, then apply the requested attributes.
+// C sp_lev.c:create_monster()
+// Also C priest.c:mk_roamer(): creation is inlined here; finishSpecialRoamer initializes it
+// Resolve species and location, then apply the requested attributes.
 export async function create_monster(context, options) {
     const { point, monsterClass, monsterType } = options;
     const peaceful = options.peaceful == null ? null : !!options.peaceful;
@@ -2014,7 +2038,7 @@ export async function create_monster(context, options) {
         && options.align !== 'random';
     // Named requests resolve sex before the alignment and species draws.
     const requestedFemale = monsterType !== null && options.nameFemale === null
-        && !((MONSTER_FLAGS2[monsterType] ?? 0) & (M2_MALE | M2_FEMALE)) ? !!rn2(2) : null;
+        && !(is_male(monsterType) || monsterIsFemale(monsterType)) ? !!rn2(2) : null;
     if (!explicitAlignment)
         inducedAlignment(80);
     const alignment = explicitAlignment ? Amask2align(sp_amask_to_amask(options.align)) : null;
@@ -2036,9 +2060,10 @@ export async function create_monster(context, options) {
     const inMines = dungeonName === 'The Gnomish Mines'
         || prototype === 'minefill' || prototype === 'minetn' || prototype === 'minend';
     const race = game.urace?.noun;
-    const selfMask = race === 'dwarf' ? M2_DWARF : race === 'gnome' ? M2_GNOME : 0;
-    if (species !== null && inMines && selfMask
-        && ((MONSTER_FLAGS2[species] ?? 0) & selfMask) && rn2(3))
+    const sameRace = species === null ? false
+        : race === 'dwarf' ? is_dwarf(species)
+            : race === 'gnome' && is_gnome(species);
+    if (inMines && sameRace && rn2(3))
         species = null;
     let location;
     if (species !== null) {
@@ -2058,7 +2083,7 @@ export async function create_monster(context, options) {
     let { x, y } = location;
     const level = requireGameLevel();
     if (monsterAtPosition(level, x, y)) {
-        const nearby = findMonsterNearPosition(species, x, y);
+        const nearby = enexto(species, x, y);
         if (nearby) {
             x = nearby.x;
             y = nearby.y;
@@ -2088,9 +2113,8 @@ export async function create_monster(context, options) {
     if (monster) {
         const explicitFemale = options.female === true || options.female === 1
             ? true : options.female === false || options.female === 0 ? false : null;
-        const fixedSex = monsterType == null ? 0 : MONSTER_FLAGS2[monsterType] ?? 0;
-        const requestedFemale = fixedSex & M2_FEMALE ? true
-            : fixedSex & M2_MALE ? false
+        const requestedFemale = monsterIsFemale(monsterType ?? -1) ? true
+            : is_male(monsterType ?? -1) ? false
                 : explicitFemale ?? (monsterType == null ? false : !!monster.female);
         const appearance = options.appearance;
         if (appearance && !game.u.protectionFromShapeChangers && !game.protectionFromShapeChangers
@@ -2109,7 +2133,7 @@ export async function create_monster(context, options) {
                             && monster.minvent?.some(object => object.otyp === CANDELABRUM_OF_INVOCATION)) {
                             type = base;
                         }
-                        else if ((MONSTER_FLAGS2[type] ?? 0) & M2_SHAPESHIFTER) {
+                        else if (is_shapeshifter(type)) {
                             if (!ismnum(base))
                                 throw new Error('A vampire shape needs its natural species');
                             type = base;
@@ -2206,6 +2230,10 @@ export async function create_monster(context, options) {
     return monster ?? null;
 }
 // C sp_lev.c:lspo_trap(): trap type, placement and construction options.
+// Also C sp_lev.c:get_traptype_byname(): inlined here (the TRAP_TYPES
+// lookup with the unknown-name error).
+// Also C sp_lev.c:get_table_traptype_opt(): inlined here (the type field of
+// the table form).
 export async function lspo_trap(context, type, x, y) {
     const options = type instanceof LuaTable
         ? tableOptions(type) : type == null ? {} : { type: String(type) };

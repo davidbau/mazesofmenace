@@ -10,14 +10,13 @@ import { ILLOBJ_CLASS, RING_CLASS, COIN_CLASS, VENOM_CLASS } from './objclass.js
 import { setHeroBlindnessTimeout, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './gstate.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_NAME, monsterDigests, monsterIsNonliving, monsterIsVampireShifter, monsterPassesWalls, monsterThrowsRocks } from './monster_data.js';
-import { monsterIsScaredAt } from './monmove.js';
-import { monsterHasMapPosition, monsterOccupiesPosition, monsterAtPosition } from './steed.js';
-import { AT_BOOM, AD_POLY } from './monster_attack_types.js';
-import { A_DEX, DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, GETOBJ_SUGGEST, HOLE, IS_ALTAR, IS_SINK, LOST_DROPPED, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PARANOID_AUTOALL, RLOC_NOMSG, ROOM, SORTLOOT_INVLET, TRAPDOOR, WATER, ALTAR, AM_NONE, COLNO, Align2amask, FOUNTAIN, Is_waterlevel, ROWNO, SINK, THRONE, W_ARMOR, W_ACCESSORY, W_SADDLE } from './const.js';
-import { isok, paranoidQuery, commandResultCancelled, commandResultFailed, resetOccupations } from './cmd.js';
+import { MONSTER_ATTACKS, MONSTER_NAME } from './monster_data.js';
+import { monsterHasMapPosition, monsterAtPosition } from './steed.js';
+import { AD_POLY } from './monster_attack_types.js';
+import { A_DEX, DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, GETOBJ_SUGGEST, HOLE, IS_ALTAR, IS_SINK, LOST_DROPPED, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PARANOID_AUTOALL, RLOC_NOMSG, ROOM, SORTLOOT_INVLET, TRAPDOOR, WATER, ALTAR, AM_NONE, COLNO, Align2amask, FOUNTAIN, Is_waterlevel, ROWNO, SINK, THRONE, W_ARMOR, W_ACCESSORY, W_SADDLE, } from './const.js';
+import { paranoidQuery, commandResultCancelled, commandResultFailed, resetOccupations } from './cmd.js';
 import { makeBlinded } from './potion.js';
-import { gulpBlindnessCheck } from './engulf_blindness.js';
+import { gulp_blnd_check } from './mhitu.js';
 import { heroFaceName, heroHandName, heroLegName, monsterStomachName } from './body_parts.js';
 import { BOULDER, CORPSE, CRYSKNIFE, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LEASH, LOADSTONE, MEATBALL, MEAT_RING, MEAT_STICK, OBJECT_NAMES, TIN, WORM_TOOTH } from './object_data.js';
 import { makePlural, withIndefiniteArticle, ownedObjectName, verbForSubject, objectCombatName, objectDescription, objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle, objectMonsterName, ownedObjectAction, definiteObjectAction } from './objnam.js';
@@ -29,7 +28,7 @@ import { applyFloorEffects } from './floor_effects.js';
 import { buryFloorObjectsAt, addBuriedObject } from './dig.js';
 import { canSpotMonster, newsym, docrt, consumeHallucinatedMenuObjectGlyph, OBJECT_CLASS_SYMBOLS, map_object } from './display.js';
 import { cansee, vision_note_blocker_change } from './vision.js';
-import { finishEnvironmentalMonsterDeath, wakeMonstersNearWithMessages, monsterInAir, changeMonsterForm, healMonster, sendMonsterToLimbo } from './mon.js';
+import { finishEnvironmentalMonsterDeath, wakeMonstersNearWithMessages, monsterInAir, changeMonsterForm, healMonster, sendMonsterToLimbo, moveMonsterNextToHero, setHeroGrip, } from './mon.js';
 import { formatHeardMessage } from './hero_speech.js';
 import { heroSpecies, heroFormSticks } from './polyself.js';
 import { hitMonsterWithSettlingBoulder } from './hero_ranged_attack.js';
@@ -41,18 +40,17 @@ import { impossible } from './diagnostics.js';
 import { waterbodyName } from './terrain_name.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { chooseObjectCategories } from './pickup.js';
-import { selectInventoryObject, inventoryClassOrder, lootSortMode, objectClassHeading, inventoryItemDescription, consumeInventoryItem, delobj, sortObjects } from './invent.js';
+import { selectInventoryObject, inventoryClassOrder, lootSortMode, objectClassHeading, inventoryItemDescription, consumeInventoryItem, delobj, sortObjects, chooseInventoryObject, finishInventoryRemoval, floorObjectDescription, freeInventoryObject, } from './invent.js';
 import { bypassObjectList, clearBypasses, nextUnbypassedObject } from './worn.js';
 import { objectQuantity, rejoinObjectStack, splitObjectStack, placeObject, stack_object } from './mkobj.js';
 import { getLine, tty_yn_function } from './query.js';
 import { isWeldedPrimary, setPrimaryWeapon, setQuiverObject, setSecondaryWeapon } from './wield.js';
 import { showMultiSelectWindow } from './windows.js';
 import { isBimanualObject } from './object_properties.js';
-import { freeInventoryObject, finishInventoryRemoval } from './invent.js';
 import { touchPetrifies, heroResistsStoning } from './stoning.js';
 import { holdingMonsterName } from './hero_expulsion.js';
 import { possessiveName } from './hacklib.js';
-import { heroCanReachFloor, engravingAt } from './engrave.js';
+import { heroCanReachFloor, engravingAt, make_grave } from './engrave.js';
 import { beginLevitatingArtifactDrop, finishLevitatingArtifactDrop } from './levitation_drop.js';
 import { hitFloorWithObject } from './dothrow.js';
 import { shipObject, containerImpactDamage } from './dokick.js';
@@ -65,18 +63,15 @@ import { propertyIsActive } from './properties.js';
 import { dropBall } from './ball.js';
 import { requireHeroAttributes } from './hero_types.js';
 import { objectResistsDestruction } from './zap.js';
-import { floorObjectDescription } from './invent.js';
 import { countLevelFeatures } from './mklev.js';
-import { make_grave } from './engrave.js';
-import { setHeroGrip } from './mon.js';
-import { chooseInventoryObject } from './invent.js';
 import { monsterAlignmentType } from './priest.js';
 import { createPlayerMonsters } from './mplayer.js';
 import { gainGuardianAngel } from './guardian_angel.js';
-import { findNearbyMonsterPosition } from './teleport_rules.js';
+import { randomMonsterRelocation, enexto } from './teleport.js';
 import { placeHeroOnLevel } from './hero_location.js';
-import { randomMonsterRelocation } from './teleport.js';
-import { moveMonsterNextToHero } from './mon.js';
+import { is_shapeshifter, monsterDigests, monsterIsNonliving, monsterIsVampireShifter, monsterPassesWalls, monsterThrowsRocks } from './mondata.js';
+// Also C invent.c:any_obj_ok(): inlined as the drop chooser's
+// GETOBJ_SUGGEST callback below.
 export async function dodrop() {
     const inShop = !!game.u?.ushops?.[0];
     if (inShop)
@@ -713,7 +708,6 @@ const PM_GREEN_SLIME = MONSTER_NAME.indexOf('green slime');
 const PM_WRAITH = MONSTER_NAME.indexOf('wraith');
 const PM_NURSE = MONSTER_NAME.indexOf('nurse');
 // monflag.h M2_SHAPESHIFTER; pm_to_cham() (mon.c:533-546) is this test.
-const M2_SHAPESHIFTER = 0x00004000;
 // C obj.h:318.  Sometimes eggs and tins carry special corpsenm values that
 // must not index mons[].
 function isFoodObject(object) {
@@ -723,7 +717,7 @@ function isFoodObject(object) {
 // shapeshifter or deals AD_POLY.
 function isPolymorphFood(object) {
     return isFoodObject(object) && object.corpsenm !== undefined && object.corpsenm >= 0
-        && (((MONSTER_FLAGS2[object.corpsenm] ?? 0) & M2_SHAPESHIFTER) !== 0
+        && (is_shapeshifter(object.corpsenm)
             || (MONSTER_ATTACKS[object.corpsenm] || []).some(([, damageType]) => damageType === AD_POLY));
 }
 async function engulferDigestsFood(object, { state, publish }) {
@@ -860,6 +854,9 @@ export async function objectNoLongerHeld(object, state = game) {
 // menu-driven drop pass. C do.c:menudrop_split(): splitting a counted
 // stack before dropping its share. C do.c:count_justpicked() and
 // C do.c:find_justpicked(): the justPicked drop path.
+// Also C pickup.c:add_valid_menu_class(): inlined here as the chosen
+// drop categories passed to the matcher.
+// Also C pickup.c:allow_all(): inlined here as the constant-true matcher.
 export async function dropMultipleObjects() {
     if (!game.inventory.length) {
         await pline('You have nothing to drop.');
@@ -1051,6 +1048,10 @@ async function traditionalDropCategories(combo) {
     }
     return { categories, all: response.includes('a'), menu: response.includes('m'), requireUnpaid };
 }
+// Also C invent.c:safeq_xprname(): inlined here as the full-name prompt
+// callback, with the inventory letter and no final period.
+// Also C invent.c:safeq_shortxprname(): inlined here as the short-name
+// fallback passed to objectQuestion().
 async function dropTraditionally(selection) {
     const sorted = sortObjects(game.inventory, { mode: SORTLOOT_INVLET });
     const classes = selection.categories.filter((category) => typeof category === 'number');
@@ -1161,7 +1162,7 @@ export async function resolveHeroArrivalCollision() {
         return;
     let movedHero = false;
     if (!rn2(2)) {
-        const destination = findNearbyMonsterPosition(game.u.umonnum, game.u.ux, game.u.uy);
+        const destination = enexto(game.u.umonnum, game.u.ux, game.u.uy);
         if (destination && Math.abs(destination.x - game.u.ux) <= 1
             && Math.abs(destination.y - game.u.uy) <= 1) {
             await placeHeroOnLevel(destination.x, destination.y);
@@ -1262,7 +1263,7 @@ export async function continueWipingFace(occupation, state = game) {
     if ((state.u?.blindTurns ?? 0) === 0) {
         await pline("You've got the glop off.");
         state.u.ucreamed = 0;
-        const gulp = await gulpBlindnessCheck({ state, publish: plineWithContinuation });
+        const gulp = await gulp_blnd_check({ state, publish: plineWithContinuation });
         if (!gulp.triggered && !gulp.died) {
             setHeroBlindnessTimeout(1, state);
             await makeBlinded(0, { state, publish: plineWithContinuation });
@@ -1386,9 +1387,7 @@ export async function applyBoulderPitEffects(boulder, trap, x, y, { state = game
     await newsym(x, y);
     return { finished: true, object: null, buriedFloorObjects };
 }
-const M1_WALLWALK = 0x08;
-const M2_ROCKTHROW = 0x08000000;
 function ignoresFallingBoulder(mnum) {
-    return !!monsterPassesWalls(mnum) || monsterThrowsRocks(mnum);
+    return monsterPassesWalls(mnum) || monsterThrowsRocks(mnum);
 }
 //# sourceMappingURL=do.js.map
