@@ -30,7 +30,7 @@ import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { cansee } from './vision.js';
 import { priestName } from './priest.js';
 import { shopkeeperName } from './shknam.js';
-import { monsterRank } from './botl.js';
+import { rankOf, roleSwitch } from './botl.js';
 import { possessiveName } from './hacklib.js';
 import { monsterPossessive, monsterPronounGender, monsterSubjectPronoun, monsterHasProperName, monsterIsAnimal, monsterIsHumanoid, monsterIsMindless, monsterIsPlayerMonster, monsterIsRider, } from './mondata.js';
 import { getLine } from './query.js';
@@ -39,10 +39,9 @@ import { displayMessageWindow } from './tty_topline.js';
 import { wipeoutText } from './engrave.js';
 import { LL_ARTIFACT, LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { setTwoWeaponCombat } from './wield.js';
-import { artifactByName, nameArtifact, setWieldedArtifactProperties } from './artifacts.js';
+import { artifactByName, nameArtifact, setWieldedArtifactProperties } from './artifact.js';
 import { withMapObject } from './map_object_description.js';
 import { heroFormHidesUnderObjects } from './polyself.js';
-import { rankOf } from './quest_pager.js';
 import { rn2, rn2Display } from './rng.js';
 import { monsterAtPosition } from './steed.js';
 import { showGetposTip } from './hack.js';
@@ -584,7 +583,7 @@ export function formatMonsterName(monster, state, { adjective = '', article = 't
         }
     }
     else if (monsterIsPlayerMonster(monster.mnum) && !In_endgame(state.u.uz)) {
-        name = monsterRank(monster, state).toLowerCase();
+        name = rankOf(monster.m_lev, monster.mnum, !!monster.female, state).toLowerCase();
         personal = false;
     }
     else {
@@ -895,7 +894,7 @@ async function nameFloorType(object) {
     if (heroIsHallucinating(game)) {
         const female = Upolyd(game.u) ? game.u.mfemale : game.flags.female;
         const role = female && game.urole?.name.f || game.urole?.name.m || 'Player';
-        const rank = rankOf(rn2Display(30) + 1, game);
+        const rank = rankOf(rn2Display(30) + 1, roleSwitch(game), !!game.flags.female, game);
         const bogus = randomBogusMonsterName();
         const choices = [role, rank, bogus, bogus, roguePlayerName(), 'Wibbly Wobbly'];
         const chosen = choices[rn2Display(choices.length)];

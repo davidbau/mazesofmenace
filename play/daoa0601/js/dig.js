@@ -1,9 +1,9 @@
 import { stack_object } from './invent.js';
 import { POTION_CLASS, COIN_CLASS } from './objclass.js';
 import { OBJ_NAME } from './object_data.js';
-import { wakeNearby } from './mon.js';
+import { wakeNearby, finishLiquidDeathForCurrentMover, } from './mon.js';
 import { bringLeashedFollowers, leashAttachedToMonster, releaseMonsterLeash, releaseObjectLeash } from './apply.js';
-import { publishMonsterYelp } from './ambient_sounds.js';
+import { publishMonsterYelp } from './sounds.js';
 import { objectIsHardHelmet } from './do_wear.js';
 import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attrib.js';
 import { heroFootName, heroHeadName, monsterStomachName } from './body_parts.js';
@@ -19,7 +19,7 @@ import { migrateMonsterOffLevel } from './dog.js';
 import { displayLiquidName, monsterName } from './do_name.js';
 import { canSeeMonster, feel_location, flush_screen, newsym, show_glyph_cell } from './display.js';
 import { deleteEngravingAt } from './engrave.js';
-import { explode } from './explosion.js';
+import { explode } from './explode.js';
 import { fireDamageChain, connectPits, pitsAreConjoined, convertTrapToObject, deleteTrap, feelTrap, seeTrap, trapAt, trapName, mintrap, waterDamageChain, setHeroTrap, dotrap, resetUtrap, maketrap, deleteFloorTrap, triggerBoobyTrap, } from './trap.js';
 import { breakSinkAt, dryFountainAt, gushForthFromFountain } from './fountain.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -27,9 +27,7 @@ import { CmapSymbol, cmapToGlyph } from './glyph_numbers.js';
 import { heroLiquidEffects, mayDig, spotChecks, loseHeroHp, finishDestinationSpotEffects, inTown, roomsAt, switchHeroTerrain } from './hack.js';
 import { dist2, possessiveName, upstart } from './hacklib.js';
 import { dropInventoryObjectAtHero, woundHeroLegs } from './do.js';
-import { expelHero } from './hero_expulsion.js';
 import { freeInventoryObject, objectAt } from './invent.js';
-import { finishLiquidDeathForCurrentMover } from './hero_monster_death.js';
 import { heroIsUnaware } from './senses.js';
 import { formatFeltMessage, formatHeardMessage } from './hero_speech.js';
 import { delobj } from './invent.js';
@@ -70,7 +68,7 @@ import { endObjectBurn } from './timeout.js';
 import { displayMessageWindow } from './tty_topline.js';
 import { fireDamageObject } from './trap.js';
 import { nomul, roomForRoomno } from './hack.js';
-import { artifactById } from './artifacts.js';
+import { artifactById } from './artifact.js';
 import { makeMonsterFlee } from './monmove.js';
 import { heroIsPunished } from './ball.js';
 import { IS_WATERWALL, LAVAWALL, N_DIRS_Z, TT_WEB, WEB } from './const.js';
@@ -81,6 +79,7 @@ import { prepareAppliedWeaponAttack } from './uhitm.js';
 import { MONSTER_MOVE } from './monster_data.js';
 import { confusePromptDirection } from './cmd.js';
 import { monsterDigests, monsterIsClinger, monsterIsFlyer, monsterIsWhirly, monsterPassesWalls } from './mondata.js';
+import { expelHero } from './mhitu.js';
 // dig.c owner: hero and monster digging, terrain changes, burial, and
 // wand digging.  Folded from hero_digging/digging_terrain/digging_magic/
 // digging_watch/buried_object/hole (pure move, no behavior change).

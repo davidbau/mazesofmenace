@@ -1,9 +1,8 @@
 // Object light and burn timers.
 import { SCROLL_CLASS } from './objclass.js';
 import { monsterHasMapPosition } from './steed.js';
-import { wakeMonstersNearWithMessages, finishMonsterKilled } from './mon.js';
+import { wakeMonstersNearWithMessages, finishMonsterKilled, finishHeroMonsterKillOutcome } from './mon.js';
 import { AD_BLND } from './monster_attack_types.js';
-import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { beginBallAndChainRedraw, finishBallAndChainMove } from './ball.js';
 import { definiteObjectAction, objectNameIsPlural, ownedObjectName } from './objnam.js';
 import { game } from './gstate.js';
@@ -11,7 +10,7 @@ import { plineWithContinuation } from './pline.js';
 import { beginObjectBurn, endObjectBurn, lightObjectIsGlobal, objectsInTimerGraph } from './timeout.js';
 import { monsterName } from './do_name.js';
 import { possessiveName } from './hacklib.js';
-import { artifactEmitsLight } from './artifacts.js';
+import { artifactEmitsLight } from './artifact.js';
 import { CORR, Is_rogue_level, Is_waterlevel, PLNMSG_OBJ_GLOWS } from './const.js';
 import { canSeeMonster, canSpotMonster, map_invisible } from './display.js';
 import { BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES, MAGIC_LAMP, OIL_LAMP, POT_OIL, TALLOW_CANDLE, WAX_CANDLE, } from './object_data.js';
@@ -214,7 +213,10 @@ export async function snuffLitObject(object, state = game, publish = plineWithCo
     endObjectBurn(object, state);
     return true;
 }
-// C apply.c:snuff_lit(), for the inventory enclosed by an engulfing actor.
+// The engulf loops at mhitm.c:868 and uhitm.c:4985 inline this pass: every
+// light a swallowed actor carries is snuffed with apply.c:snuff_lit()
+// semantics (snuffLitObject above is its port), the carrier's square
+// deciding visibility.
 export async function snuffMonsterInventoryLights(defender, state, publish) {
     for (const object of defender.minvent || defender.inventory || []) {
         if (!object.lamplit)

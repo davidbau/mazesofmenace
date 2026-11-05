@@ -1534,6 +1534,10 @@ export async function zapyourself(obj, ordinary, state = game) {
         note_unported('zap.c impossible');
         break;
     }
+    // Several arms above can end the game (a death ray, system shock from
+    // polyself()). C's done() never returns to learnwand(); JS marks
+    // gameover instead.
+    if (state.program_state?.gameover) return damage;
     if (learn_it) learnwand(obj, state);
     return damage;
 }
@@ -3613,7 +3617,9 @@ export async function bhitm(monster, wand, state = game,
                 more_experienced(
                     Math.min(delta, healAmount), 0, state,
                 );
-                await newexplevel(state);
+                // exper.c pluslvl() announces the new level through pline()
+                // and draws newhp()/newpw() from the core RNG.
+                await newexplevel(state, { message: ttyPline });
             }
             if (monster.mtame || monster.mpeaceful) {
                 const alignment = Math.trunc(state.u?.ualign?.type ?? 0);

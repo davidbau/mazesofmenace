@@ -8,7 +8,7 @@ import { stack_object } from './invent.js';
 import { WEAPON_CLASS } from './objclass.js';
 import { OBJ_NAME } from './object_data.js';
 import { objectSkill, ACID_VENOM, BLINDING_VENOM, CORPSE, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, ELVEN_MITHRIL_COAT, LEASH, LOADSTONE, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, RIN_POLYMORPH_CONTROL, RIN_PROTECTION_FROM_SHAPE_CHANGERS, } from './object_data.js';
-import { setHeroGrip, angerAttackedMonster, hideHeroUnder, monstersInFmonOrder, wakeMonster, validVampireShiftForm } from './mon.js';
+import { setHeroGrip, angerAttackedMonster, hideHeroUnder, monstersInFmonOrder, wakeMonster, validVampireShiftForm, finishHeroMonsterKill, finishHeroMonsterKillOutcome, } from './mon.js';
 import { formatFeltMessage } from './hero_speech.js';
 import { cansee, couldsee, monsterEmitsLight } from './vision.js';
 import { weaponDescription } from './weapon.js';
@@ -23,7 +23,7 @@ import { captureThrownObjectFlight, flyHeroThrownObject, heroThrowTrajectory } f
 import { heroBreathAttack, hitHeroWithRay, destroyFireMonsterInventory, monsterHasElementalResistance } from './zap.js';
 import { counterWereSpecies, heroCanSummonWerePack, isWereMonster, summonWerePack, wereBeastForSpecies } from './were.js';
 import { AD_BLND, AD_COLD, AD_CONF, AD_DRST, AD_ELEC, AD_FIRE, AD_HALU, AD_MAGM, AD_RBRE, AT_BREA, AT_ENGL, AT_EXPL, AT_GAZE, AT_SPIT } from './monster_attack_types.js';
-import { character_race, races } from './roles.js';
+import { character_race, races } from './role.js';
 import { reassessStatusFields } from './botl.js';
 import { heroIsUnaware, heroIsBlind, heroIsHallucinating, setHeroBlindnessTimeout, syncBlindness } from './senses.js';
 import { heroHasInvoluntaryDelay, promptDirection, yn_function } from './cmd.js';
@@ -38,12 +38,12 @@ import { levelHasCeiling, surfaceName } from './dungeon.js';
 import { heroHidingStatus } from './insight.js';
 import { game, requireInitializedGame, requirePlayingGame } from './gstate.js';
 import { d, rnd, rn1, rn2 } from './rng.js';
-import { experienceRankIndex, randomExperience } from './exper.js';
+import { randomExperience } from './exper.js';
+import { rankOf, roleSwitch } from './botl.js';
 import { LL_CONDUCT, LL_MINORAC, recordGameLogEvent } from './gamelog.js';
 import { dist2, possessiveName } from './hacklib.js';
 import { heroCanSeeInvisible } from './mcastu.js';
 import { breatheInDirection } from './breath_ray.js';
-import { finishHeroMonsterKill, finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { hitMonsterWithThrownEggPieOrVenom } from './hero_thrown_egg_pie_venom.js';
 import { hurtleHero, breakFloorObject, breakObjectAtLocation, objectBreaksOnImpact, tossObjectUp } from './dothrow.js';
 import { mksobj, placeCreatedObject } from './mkobj.js';
@@ -62,14 +62,14 @@ import { endObjectBurn, learnEggType } from './timeout.js';
 import { nameToMonster, resolveMonsterClass, speciesCanBlow, your_race, monsterIsMindless, infravision, is_dwarf, is_elf, is_gnome, is_male, is_neuter, is_orc, is_were, lays_eggs, monsterBreaksArmor, monsterCanTeleport, monsterControlsTeleport, monsterDigests, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHasNoLimbs, monsterHasProperName, monsterHidesUnder, monsterHornCount, monsterIsAmorphous, monsterIsAmphibious, monsterIsAnimal, monsterIsBat, monsterIsBreathless, monsterIsCentaur, monsterIsClinger, monsterIsDemon, monsterIsEel, monsterIsFemale, monsterIsFlyer, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindFlayer, monsterIsNonliving, monsterIsSlithy, monsterIsSwimmer, monsterIsTelepathic, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVerySmall, monsterIsWeirdNonliving, monsterIsWhirly, monsterPassesWalls, monsterPerceives, monsterSlipsArmor, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterWrappingAllowed, notake, polyok, regenerates, strongmonst, cantwield, formCanBecomeStoneGolem, touchPetrifies, } from './mondata.js';
 import { getLine, promptYesNo } from './query.js';
 import { clearHeroPetrification, heroIsPetrifying } from './stoning.js';
-import { retouchEquipment } from './artifacts.js';
+import { retouchEquipment } from './artifact.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { dropInventoryObjectAtHero } from './do.js';
 import { heroIsPunished } from './ball.js';
 import { unpunishHero } from './read.js';
 import { handleRidingAfterFormChange } from './steed.js';
-import { expelHero } from './hero_expulsion.js';
 import { golemHitPoints, isHomeElemental } from './makemon.js';
+import { expelHero } from './mhitu.js';
 const G_FREQ = 0x0007;
 const G_NOGEN = 0x0200;
 const G_HELL = 0x0400;
@@ -1116,7 +1116,7 @@ function canDropPolymorphWeapon(object) {
     }
     return !(object.otyp === LEASH && object.leashmon);
 }
-// roles.js currently stores the pre-consumed initial energy die separately
+// role.js currently stores the pre-consumed initial energy die separately
 // during startup.  These are the corresponding role.c enadv.inrnd values
 // needed when newman() rolls an entirely new level-zero power increment.
 const INITIAL_ENERGY_RANDOM = {
@@ -1275,17 +1275,15 @@ function recordRenewedHumanGender(oldGender) {
     if (Upolyd(game.u) || oldGender === newGender)
         return;
     const role = game.urole;
-    const rank = role.title[experienceRankIndex(game.u.ulevel)];
-    if (!rank)
-        throw new Error('Renewed hero has no experience rank.');
-    // C livelog_newform() tests the gender for truth, so a neuter form's
-    // poly_gender() of 2 selects the female role and rank names.
+    // C polyself.c:livelog_newform() tests the gender for truth, so a
+    // neuter form's poly_gender() of 2 selects the female role and rank
+    // names; the two ranks read rank_of(u.ulevel, Role_switch, gend).
     const oldSex = oldGender !== 0 ? 'f' : 'm';
     const newSex = newGender !== 0 ? 'f' : 'm';
     const oldRole = role.name[oldSex] || role.name.m;
     const newRole = role.name[newSex] || role.name.m;
-    const oldRank = rank[oldSex] || rank.m;
-    const newRank = rank[newSex] || rank.m;
+    const oldRank = rankOf(game.u.ulevel, roleSwitch(game), oldGender !== 0, game);
+    const newRank = rankOf(game.u.ulevel, roleSwitch(game), newGender !== 0, game);
     const description = oldRole !== newRole ? newRole
         : oldRank !== newRank ? newRank
             : `${game.flags.female ? 'female' : 'male'} ${newRank}`;

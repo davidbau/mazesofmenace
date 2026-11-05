@@ -2,7 +2,7 @@
 import { RANDOM_CLASS } from './objclass.js';
 import { is_spear } from './object_properties.js';
 import { objectSkill, objectMerge, BATTLE_AXE, BLACK_DRAGON_SCALE_MAIL, BULLWHIP, CHAIN_MAIL, CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE, CLUB, DILITHIUM_CRYSTAL, ELVEN_DAGGER, ELVEN_LEATHER_HELM, ELVEN_SHIELD, FAKE_AMULET_OF_YENDOR, GAUNTLETS_OF_POWER, GRAY_DRAGON_SCALE_MAIL, JADE, KATANA, LEATHER_GLOVES, LEVITATION_BOOTS, LOADSTONE, LONG_SWORD, LUCKSTONE, MACE, OBJECT_NAMES, ORCISH_DAGGER, QUARTERSTAFF, ROBE, SCALPEL, SHIELD_OF_REFLECTION, SHORT_SWORD, SILVER_DRAGON_SCALE_MAIL, SPEAR, TWO_HANDED_SWORD, UNICORN_HORN, WAR_HAMMER, YELLOW_DRAGON_SCALE_MAIL, } from './object_data.js';
-import { artifactById, createRandomArtifact } from './artifacts.js';
+import { artifactById, createRandomArtifact } from './artifact.js';
 import { COLNO, ROWNO, In_endgame, MM_NOMSG, RLOC_ERR, RLOC_NOMSG } from './const.js';
 import { game, requireGameLevel } from './gstate.js';
 import { makemonAt, giveMonsterStartingGold, giveMonsterStartingObject, setMonsterMalign } from './makemon.js';
@@ -11,7 +11,7 @@ import { rndClass } from './objnam.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { setMonsterGivenName } from './do_name.js';
 import { addCreatedObjectToMonsterInventory } from './steal.js';
-import { monsterRank } from './botl.js';
+import { rankOf } from './botl.js';
 import { monsterAtPosition } from './steed.js';
 import { monsterMightThrowWeapon } from './weapon.js';
 import { initializeMonsterArmor } from './monworn.js';
@@ -244,7 +244,7 @@ function namePlayerMonster(monster) {
     const name = developer === null ? (femaleKind ? 'Eve' : 'Adam')
         : femaleKind && developer !== 'Janet' ? (rn2(2) ? 'Maud' : 'Eve') : developer;
     monster.female = femaleKind || name === 'Janet';
-    setMonsterGivenName(monster, `${name} the ${monsterRank(monster)}`);
+    setMonsterGivenName(monster, `${name} the ${rankOf(monster.m_lev, monster.mnum, !!monster.female)}`);
 }
 // C mplayer.c:dev_name()
 function unusedDeveloperName() {

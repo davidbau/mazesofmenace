@@ -1,4 +1,4 @@
-// artifacts.js — Named artifact identity, existence, and hero-touch policy.
+// artifact.js — Named artifact identity, existence, and hero-touch policy.
 // C refs: artifact.c artifact_name()/artifact_exists()/touch_artifact() and
 // include/artilist.h.  Keep artifact identity separate from the base object:
 // readobjnam() first resolves the artifact to an object type, mksobj() builds
@@ -15,7 +15,7 @@ import { game, requirePlayingGame, requireLiveGame } from './gstate.js';
 import { LL_ARTIFACT, recordGameLogEvent } from './gamelog.js';
 import { insideShopRoomAt } from './shk.js';
 import { mksobj, objectWeight, objectQuantity, isContainer, uncurseObjectState } from './mkobj.js';
-import { races, roles } from './roles.js';
+import { races, roles } from './role.js';
 import { recordObjectEncounter, objectMaterial, objectTypeKnown } from './o_init.js';
 import { verbForSubject, objectName, objectNameIsPlural, definiteName, objectCombatName, observeDistantObjectForNaming, killerObjectName, ownedObjectName, simpleObjectTypeName } from './objnam.js';
 import { d, rnd, rn2, rnz } from './rng.js';
@@ -37,7 +37,7 @@ import { burnAwayHeroSlime, applyHeroLocationEffects, loseHeroHp, heroIsOnStairs
 import { formatFeltMessage } from './hero_speech.js';
 import { lightDamage } from './zap.js';
 import { lightRoom } from './light.js';
-import { healMonster, wakeMonstersNearWithMessages, migrateMonsterToLevel, setHeroGrip } from './mon.js';
+import { healMonster, wakeMonstersNearWithMessages, migrateMonsterToLevel, setHeroGrip, finishHeroMonsterKillOutcome, } from './mon.js';
 import { makeMonsterFlee } from './monmove.js';
 import { displayColorName, monsterName } from './do_name.js';
 import { destroyInventoryByElement, destroyMonsterInventoryByElement, INVENTORY_DAMAGE, flashBurn, cancelMonster, monsterResistsEffect, probeMonster } from './zap.js';
@@ -67,7 +67,6 @@ import { teleportMonsterByHero } from './teleport.js';
 import { bringLeashedFollowers } from './apply.js';
 import { showPagedPickOneMenu } from './windows.js';
 import { throwOrdinaryObject, resolveSwallowedEggPieOrVenomThrow } from './dothrow.js';
-import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { holdAnotherObject } from './invent.js';
 const M2_GIANT = 0x00002000;
 const M2_DEMON = 0x00000100;
@@ -104,7 +103,7 @@ function fuzzyArtifactName(value) {
 }
 // C ref: role.c roles[].artifact — each role's quest artifact name.
 // Computed on first use, not at module load: the role tables live in
-// roles.js, whose selection-UI imports reach this module before roles.js
+// role.js, whose selection-UI imports reach this module before role.js
 // finishes initializing.
 let questArtifactNames;
 function isQuestArtifactName(name) {
@@ -2120,4 +2119,4 @@ export function isPermanentlyPoisonedObject(object) {
         return false;
     return artifactById(object.oartifact)?.invokePower === 'fling-poison';
 }
-//# sourceMappingURL=artifacts.js.map
+//# sourceMappingURL=artifact.js.map

@@ -1,6 +1,6 @@
 // C wizard.c: Amulet effects and Wizard harassment.
 import { game } from './gstate.js';
-import { artifactById } from './artifacts.js';
+import { artifactById } from './artifact.js';
 import { displayColorName, monsterName } from './do_name.js';
 import { newsym } from './display.js';
 import { plineWithContinuation } from './pline.js';
@@ -25,12 +25,12 @@ import { definiteObjectAction, observeDistantObjectForNaming, objectDescription 
 import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { monsterAtPosition } from './steed.js';
 import { questMonsterFlags3 } from './role_monsters.js';
-import { expelHero } from './hero_expulsion.js';
 import { healMonster, monsterIndexByName, speciesWasGenocided, mnearto, wakeMonstersNearWithMessages } from './mon.js';
 import { randomMonsterRelocation, relocateMonsterTo, monsterTeleportRestricted } from './teleport.js';
-import { deliverCommonQuestInsult } from './quest_pager.js';
+import { deliverCommonQuestInsult } from './questpgr.js';
 import { shopkeeperInOwnShop } from './shk.js';
 import { cansee } from './vision.js';
+import { expelHero } from './mhitu.js';
 const WIZARD = 285;
 // C wizard.c:amulet(). Called once per global turn while carrying the Amulet.
 export async function amuletTurn(state) {

@@ -11,7 +11,7 @@ import { deleteTrap, finishSokobanIfSolved, fillPitWithBoulderAt, resetUtrap, ma
 import { roguePlayerName, setMonsterGivenName } from './do_name.js';
 import { game, requireGameLevel } from './gstate.js';
 import { makemon, mkclass, setMimicAppearance, setMonsterMalign } from './makemon.js';
-import { addFruit } from './fruit.js';
+import { addFruit } from './options.js';
 import { set_tin_variety } from './eat.js';
 import { monsterHasMapPosition, monsterAtPosition, monsterOccupiesPosition } from './steed.js';
 import { nameObjectFromTopten } from './topten.js';
@@ -52,20 +52,19 @@ import { PM_SOLDIER, antholeMonsterType, markRandomSpecialRoom, mkshop, occupied
 import { bound_digging, generateAstralLevel, generateBigRoom, generateDungeonMazeFile, generateElementalPlane, generateFakeWizardLevel, generateKnoxLevel, generateLuaQuestLevel, generateMedusaLevel, generateMinesEnd, generateMinetown, generateOracleLevel, generateRandomMaze, generateSokobanLevel, generateSpecialAndFixup, generateVladsTowerLevel, generateWizardLevel, isLuaQuestPrototype, mazeFloorPoint, mkportal, place_lregion, setLevelTerrainType, wallification } from './mkmaze.js';
 import { getbones, levelAllowsBones, restoreBonesMonsters } from './bones.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
-import { restoreLevelRegions } from './regions.js';
+import { restoreLevelRegions } from './region.js';
 import { beginObjectBurn } from './timeout.js';
 import { vision_note_blocker_change, vision_reset_new_level } from './vision.js';
 import { goodPosition, enexto, enexto_gpflags } from './teleport.js';
 import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
-import { addToContainer, check_room, create_room, dig_corridor, fill_special_room, fillVault, finishLevelTrapConstruction, medusaPetrifiable, putGeneratedMonsterInventoryInStatue } from './sp_lev.js';
-import { beginLuaThemerooms, callLuaThemerooms, load_special, themerooms_generate } from './sp_lev_lua.js';
+import { addToContainer, beginLuaThemerooms, callLuaThemerooms, check_room, create_room, dig_corridor, fill_special_room, fillVault, finishLevelTrapConstruction, load_special, medusaPetrifiable, putGeneratedMonsterInventoryInStatue, themerooms_generate } from './sp_lev.js';
 import { purgeDeadMonsters, removeMonsterFromGame, sendMonsterToLimbo } from './mon.js';
 import { switchHeroTerrain, roomsAt } from './hack.js';
 import { is_domestic } from './mondata.js';
 // mklev.js — regular level generation.
 // C ref: mklev.c — mklev, makelevel, makerooms, makecorridors,
 // generate_stairs, fill_ordinary_room, mineralize, level_finalize_topology.
-// sp_lev.c special-level construction lives in sp_lev.ts and sp_lev_lua.ts;
+// sp_lev.c special-level construction lives in sp_lev.ts;
 // mkmaze.c mazes and special-level fixups in mkmaze.ts; mkroom.c special
 // room selection and filling in mkroom.ts; bones.c in bones.ts; the Rogue
 // level (extralev.c) in extralev.ts. Level construction uses the game's

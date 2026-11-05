@@ -2,7 +2,7 @@
 import { WEAPON_CLASS, RING_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS } from './objclass.js';
 import { objectBaseDirection, POT_OIL, SCR_FIRE, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP, } from './object_data.js';
 import { monsterHasMagicResistance, burnArmorByFire, burnHeroArmorByFire, igniteItems } from './trap.js';
-import { heroHasArtifactDefense } from './artifacts.js';
+import { heroHasArtifactDefense } from './artifact.js';
 import { exerciseAttribute } from './attrib.js';
 import { A_STR, BURNING, BURNING_OIL, COLNO, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, EXPL_NOXIOUS, MON_EXPLODE, PHYS_EXPL_TYPE, ROWNO, TRAP_EXPLODE, Upolyd, PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX } from './const.js';
 import { canSeeMonster, canSpotMonster, flush_screen, map_invisible, SHIELD_STATIC, show_glyph_cell, unmap_invisible, explosionGlyph, shieldGlyph, TemporaryMapEffect } from './display.js';
@@ -11,10 +11,9 @@ import { impossible } from './diagnostics.js';
 import { finishHeroDeath } from './end.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { burnAwayHeroSlime } from './hack.js';
-import { finishHeroMonsterKillOutcome } from './hero_monster_death.js';
 import { heroFormSticks, heroSpecies, applyHeroGolemEffects, returnHeroToHumanForm } from './polyself.js';
 import { formatHeardMessage } from './hero_speech.js';
-import { angerAttackedMonster, applyMonsterGolemEffects, finishMonsterKilled, wakeMonster, revealMonsterAppearance, wakeMonstersNearWithMessages } from './mon.js';
+import { angerAttackedMonster, applyMonsterGolemEffects, finishMonsterKilled, wakeMonster, revealMonsterAppearance, wakeMonstersNearWithMessages, finishHeroMonsterKillOutcome, } from './mon.js';
 import { AD_ACID, AD_COLD, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DREN, AD_DRDX, AD_DRST, AD_ELEC, AD_ENCH, AD_FIRE, AD_MAGM, AD_PEST, AD_PHYS, AD_RBRE, AD_SPEL, AT_ENGL } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_NAME, monsterTypeName } from './monster_data.js';
 import { monsterName, randomDisplayMonsterName } from './do_name.js';
@@ -454,4 +453,4 @@ export function createPhysicalMonsterExplosion(sourceMonster, x, y, damage, opti
     const killer = `${possessiveName(monsterTypeName(sourceMonster.mnum, !!sourceMonster.female))} explosion`;
     return explode(x, y, PHYS_EXPL_TYPE, damage, MON_EXPLODE, EXPL_NOXIOUS, { ...options, killer });
 }
-//# sourceMappingURL=explosion.js.map
+//# sourceMappingURL=explode.js.map

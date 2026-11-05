@@ -2,7 +2,7 @@
 // set_levltyp, lregion/portal placement, fixup_special and the named
 // special-level fixups, makemaz and the random maze fillers, the orc-raid
 // stolen booty, and the Plane of Water/Air bubbles. sp_lev.c construction
-// lives in sp_lev.ts / sp_lev_lua.ts; regular room-and-corridor generation
+// lives in sp_lev.ts; regular room-and-corridor generation
 // stays in mklev.ts.
 import { RANDOM_CLASS, GEM_CLASS, RING_CLASS, FOOD_CLASS } from './objclass.js';
 import { game, requireGameLevel, requireInitializedGame, requirePlayingGame } from './gstate.js';
@@ -11,7 +11,7 @@ import { ACCESSIBLE, AIR, ALTAR, BLCORNER, BRCORNER, CLOUD, COLNO, CORR, CROSSWA
 import { isok } from './cmd.js';
 import { isPoolAt, isIceAt } from './dbridge.js';
 import { CORPSE, EGG, GOLD_PIECE, LEATHER_GLOVES, LEMBAS_WAFER, LONG_SWORD, ROCK, SKELETON_KEY, SLIME_MOLD, TALLOW_CANDLE, TIN, TRIPE_RATION, WAX_CANDLE, BOULDER, STATUE, OBJECT_NAMES } from './object_data.js';
-import { createPoisonGasCloud } from './regions.js';
+import { createPoisonGasCloud } from './region.js';
 import { heroIsDeaf } from './senses.js';
 import { plineWithContinuation } from './pline.js';
 import { monsterAtPosition } from './steed.js';
@@ -26,15 +26,14 @@ import { clearMonsterWormFromMap } from './worm.js';
 import { block_point, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { heroIsPunished, reserveBallAndChainPlacement, restoreBallAndChainPlacement } from './ball.js';
 import { stopLevelTimer } from './timeout.js';
-import { fill_special_room, medusaPetrifiable } from './sp_lev.js';
-import { load_special } from './sp_lev_lua.js';
+import { fill_special_room, load_special, medusaPetrifiable } from './sp_lev.js';
 import { goodPosition } from './teleport.js';
 import { mkcorpstat, createToptenObject, mkgold, mkobj, mkobj_at, mksobj, deallocateObject, objectWeight, rndmonnum, set_corpsenm, mksobj_at, updateIceObjectTimersAt } from './mkobj.js';
 import { makemon, makemonAt, setMonsterMalign } from './makemon.js';
 import { occupied } from './mkroom.js';
 import { objectProb } from './o_init.js';
 import { upstart } from './hacklib.js';
-import { addFruit } from './fruit.js';
+import { addFruit } from './options.js';
 import { MONSTER_FLAGS2, MONSTER_NAME } from './monster_data.js';
 import { randomOrcName, setMonsterGivenName } from './do_name.js';
 import { addObjectToMonsterInventory } from './steal.js';

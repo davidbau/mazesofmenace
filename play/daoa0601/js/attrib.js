@@ -4,7 +4,7 @@
 // set non-zero) and is deliberately not ported.
 import { formatFeltMessage } from './hero_speech.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { artifactById } from './artifacts.js';
+import { artifactById } from './artifact.js';
 import { plineWithContinuation } from './pline.js';
 import { see_monsters, shieldeff } from './display.js';
 import { finishHeroDeath } from './end.js';
@@ -12,12 +12,12 @@ import { MONSTER_GENO, MONSTER_NAME, MONSTER_SYMBOL, adjustErinys } from './mons
 import { monsterHasEyes, monsterHasProperName, nameToMonster } from './mondata.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import { LL_ALIGNMENT, recordGameLogEvent } from './gamelog.js';
-import { retouchEquipment } from './artifacts.js';
+import { retouchEquipment } from './artifact.js';
 import { makeConfused } from './potion.js';
 import { summonFuries } from './makemon.js';
 import { grantIntrinsicProperty, hasIntrinsicProperty, hasPermanentIntrinsicProperty, propertyIsActive, propertyTimeout, revokeIntrinsicProperty, } from './properties.js';
 import { addHeroWeaponSkillSlots, loseHeroWeaponSkillSlots } from './weapon.js';
-import { experienceRankIndex } from './exper.js';
+import { experienceRankIndex } from './botl.js';
 import { formMaximumStrength } from './polyself.js';
 import { CORNUTHAUM, DUNCE_CAP, GAUNTLETS_OF_POWER, HELM_OF_OPPOSITE_ALIGNMENT, LUCKSTONE, MUMMY_WRAPPING, } from './object_data.js';
 import { definiteName, ownedSimpleObjectName, withIndefiniteArticle } from './objnam.js';
