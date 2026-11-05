@@ -476,6 +476,14 @@ footer a { color: var(--color-text-muted); }
     table.hidden = false;
 
     const fmt = (n) => Number(n || 0).toLocaleString();
+    // Round a percentage DOWN to `digits` decimals: never report 100% while
+    // divergences remain, so 99.96% shows as 99.9% (same as the full leaderboard).
+    const pctFloor = (pct, digits) => {
+        const f = 10 ** digits;
+        let v = Math.floor(pct * f + 1e-9) / f;
+        if (pct < 100 && v >= 100) v = 100 - 1 / f;
+        return v.toFixed(digits);
+    };
 
     // Lift per-row denominators into the header. All forks score against the
     // same pool, so any team's max values are the totals.
@@ -536,12 +544,12 @@ footer a { color: var(--color-text-muted); }
                 <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                 <td class="action">${playCell}</td>
                 <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
+                <td class="pts" title="Total points: ${pctFloor(combinedPct, 2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
                     <span class="pts-pub">${fmt(pubPoints)} +</span>
                     <span class="${PCT_CLASS(heldMaxPoints > 0 ? heldPoints / heldMaxPoints * 100 : 0)}">${fmt(heldPoints)}</span>
                 </td>
-                <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
-                <td class="pct" title="Screen match across public + held-out sessions."><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
+                <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${PCT_CLASS(rngPct)}">${pctFloor(rngPct, 1)}%</span></td>
+                <td class="pct" title="Screen match across public + held-out sessions."><span class="${PCT_CLASS(scrPct)}">${pctFloor(scrPct, 1)}%</span></td>
                 <td class="pct" title="Sessions fully matched (public + held-out).">
                     <span class="pts-pub">${pub.passing || 0} +</span>
                     <span class="${PCT_CLASS(heldTotal > 0 ? heldPassing / heldTotal * 100 : 0)}">${heldPassing}</span>
