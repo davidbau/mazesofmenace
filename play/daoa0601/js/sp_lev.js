@@ -27,13 +27,13 @@ import { LuaTable, objectToLuaTable, luaTableToArray, luaCheckString, luaCheckIn
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { discardMonsterInventory } from './mkobj.js';
 import { dropSpecialMonsterObjects } from './steal.js';
-import { initializeMonsterArmor } from './monworn.js';
+import { initializeMonsterArmor } from './worn.js';
 import { make_grave } from './engrave.js';
 import { createGasCloudSelection, createPoisonGasCloud } from './region.js';
 import { mineralize } from './mklev.js';
 import { countLevelFeatures } from './mklev.js';
 import { wallification } from './mkmaze.js';
-import { createSelectionApi, unwrapSelection } from './lua/selection.js';
+import { createSelectionApi, unwrapSelection } from './lua/nhlsel.js';
 import { luaInteger, luaString, luaToInteger, luaNumberValue } from './lua/arguments.js';
 import { buryObject } from './dig.js';
 import { rn2, rnd, rn1 } from './rng.js';

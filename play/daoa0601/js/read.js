@@ -12,11 +12,10 @@ import { is_shield } from './object_properties.js';
 import { adjustArmorAttributeBonus, armorSlotFor, destroyWornArmor, disintegrateWornArmor, erodeWornArmor, objectIsHardHelmet, removeHeroAccessory, some_armor, wearHeroAccessory, wearHeroArmor, wornArmorInDestroyOrder } from './do_wear.js';
 import { explode } from './explode.js';
 import { heroIsPunished, placeBallAndChain, setBallAndChainFelt } from './ball.js';
-import { heroHandName, heroHeadName, heroLegName, monsterStomachName } from './body_parts.js';
-import { A_CON, A_STR, A_WIS, ACCESSIBLE, COLNO, D_CLOSED, D_LOCKED, DOOR, EXPL_FIERY, G_EXTINCT, G_GENOD, G_NOCORPSE, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, In_endgame, In_quest, IS_AIR, IS_OBSTRUCTED, Is_earthlevel, Is_rogue_level, Luck, M_SEEN_FIRE, MM_EDOG, MM_FEMALE, MM_MALE, MM_MINVIS, MM_NOEXCLAM, MM_NOMSG, NO_MINVENT, PLNMSG_TOWER_OF_FLAME, POLY_REVERT, ROWNO, SDOOR, SPE_LIM, TT_BURIEDBALL, Upolyd, W_ARMH, W_ART, W_ARTI, W_BALL, W_CHAIN, WT_IRON_BALL_INCR, } from './const.js';
+import { A_CON, A_STR, A_WIS, ACCESSIBLE, COLNO, D_CLOSED, D_LOCKED, DOOR, EXPL_FIERY, G_EXTINCT, G_GENOD, G_NOCORPSE, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, In_endgame, In_quest, IS_AIR, IS_OBSTRUCTED, Is_earthlevel, Is_rogue_level, Luck, M_SEEN_FIRE, MM_EDOG, MM_FEMALE, MM_MALE, MM_MINVIS, MM_NOEXCLAM, MM_NOMSG, NO_MINVENT, PLNMSG_TOWER_OF_FLAME, POLY_REVERT, ROWNO, SDOOR, SPE_LIM, TT_BURIEDBALL, Upolyd, W_ARMH, W_ART, W_ARTI, W_BALL, W_CHAIN, WT_IRON_BALL_INCR, HAND, HEAD, LEG, STOMACH, LL_CONDUCT, LL_GENOCIDE, } from './const.js';
 import { canSpotMonster, flashGlyphAt, map_invisible, newsym, shieldeff, transientMonsterGlyph } from './display.js';
 import { isok } from './cmd.js';
-import { pline as syncPline, plineWithContinuation, plineWithContinuation as pline } from './pline.js';
+import { formatFeltMessage, formatHeardMessage, pline as syncPline, plineWithContinuation, plineWithContinuation as pline, recordGameLogEvent, } from './pline.js';
 import { revealSecretDoor, detectFood, detectGold, detectTraps, mapMagicLevel } from './detect.js';
 import { impossible } from './diagnostics.js';
 import { lightDamage } from './zap.js';
@@ -24,8 +23,7 @@ import { lightRoom, objectLightRadius } from './light.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { makeConfused, finishStrangeFeeling, strangeFeeling, makeStunned } from './potion.js';
-import { feelingAfterSelfGenocide, genocideDeathOptions, heroIsUnchanging, heroMonsterForm, heroSpecies, polymorphHero, rememberPolymorphGenocide, returnHeroToHumanForm } from './polyself.js';
-import { formatFeltMessage, formatHeardMessage, heroCanChant } from './hero_speech.js';
+import { feelingAfterSelfGenocide, genocideDeathOptions, heroIsUnchanging, heroMonsterForm, heroSpecies, polymorphHero, rememberPolymorphGenocide, returnHeroToHumanForm, body_part, mbodypart } from './polyself.js';
 import { sokobanGuilt, erosionMatters } from './trap.js';
 import { consumeInventoryItem, delobj, identifyPack, inventoryItemDescription, chooseInventoryObject } from './invent.js';
 import { createCritters, mkclassAligned, rndmonstAdj, setMonsterMalign } from './makemon.js';
@@ -55,7 +53,7 @@ import { burnAwayHeroSlime, endObjectBurn } from './timeout.js';
 import { loseHeroSpellMemory, studyBook } from './spell.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { ceilingName, levelHasCeiling } from './dungeon.js';
-import { MONSTER_CLASS_SYMBOLS, monsterObjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, nameToMonster, nameToMonsterClass, resolveMonsterClass, resolveMonsterName, is_male, monsterHasProperName, monsterHidesUnder, monsterIsAmorphous, monsterIsDemon, monsterIsFemale, monsterIsHider, monsterIsHuman, monsterIsNoncorporeal, monsterIsUnsolid, monsterIsVampire, monsterIsWhirly, monsterPassesWalls, } from './mondata.js';
+import { MONSTER_CLASS_SYMBOLS, monsterObjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, nameToMonster, nameToMonsterClass, resolveMonsterClass, resolveMonsterName, is_male, monsterHasProperName, monsterHidesUnder, monsterIsAmorphous, monsterIsDemon, monsterIsFemale, monsterIsHider, monsterIsHuman, monsterIsNoncorporeal, monsterIsUnsolid, monsterIsVampire, monsterIsWhirly, monsterPassesWalls, heroCanChant, } from './mondata.js';
 import { addExperience } from './exper.js';
 import { gotoLevel as changeLevel, scheduleLevelChange } from './do.js';
 import { recordLiteracy } from './literacy.js';
@@ -65,7 +63,6 @@ import { angerMonster, changeMonsterForm, finishEnvironmentalMonsterDeath, killG
 import { monsterResistsEffect } from './zap.js';
 import { initializePet, tameMonster } from './dog.js';
 import { freeHeroFromBuriedBall } from './dig.js';
-import { LL_CONDUCT, LL_GENOCIDE, recordGameLogEvent } from './gamelog.js';
 import { landFloorObject } from './floor_effects.js';
 import { possessiveName, upstart } from './hacklib.js';
 import { displayColorName, displayLiquidName, monsterName } from './do_name.js';
@@ -785,7 +782,7 @@ async function confuseMonsterEffect(source, state) {
     const confused = (hero.confusionTurns ?? 0) > 0;
     const hiddenHands = heroIsBlind(state) || (heroIsInvisible(state)
         && !(hero.seeInvisible || (hero.seeInvisibleTurns ?? 0) > 0));
-    const hands = makePlural(heroHandName(state));
+    const hands = makePlural(body_part(HAND, state));
     if (MONSTER_SYMBOL[heroSpecies(state)] !== S_HUMAN || source.cursed) {
         if (!hero.confusionTurns)
             await plineWithContinuation(formatFeltMessage('confused.', state));
@@ -800,7 +797,7 @@ async function confuseMonsterEffect(source, state) {
         }
         else {
             const aura = hiddenHands ? 'faint buzz' : `${displayColorName('red', state)} glow`;
-            await plineWithContinuation(`A ${aura} surrounds your ${heroHeadName(state)}.`);
+            await plineWithContinuation(`A ${aura} surrounds your ${body_part(HEAD, state)}.`);
             await makeConfused(0, { state });
         }
         return;
@@ -959,7 +956,7 @@ export async function removeCurseEffect({ source = null, state = game, blessed =
         await unpunishHero(state);
     if (state.u.utrap && state.u.utraptype === TT_BURIEDBALL) {
         await freeHeroFromBuriedBall(state);
-        await publish(`The clasp on your ${heroLegName(state)} vanishes.`);
+        await publish(`The clasp on your ${body_part(LEG, state)} vanishes.`);
     }
     return changed;
 }
@@ -1164,12 +1161,12 @@ async function fireEffect(source, { state, finishHeroDeath }) {
             await shieldeff(state.u.ux, state.u.uy, state);
             monstersObserveHeroResistance(M_SEEN_FIRE, state);
             await pline(heroIsBlind(state)
-                ? formatFeltMessage(`a pleasant warmth in your ${makePlural(heroHandName(state))}.`, state)
-                : `Oh, look, what a pretty fire in your ${makePlural(heroHandName(state))}.`);
+                ? formatFeltMessage(`a pleasant warmth in your ${makePlural(body_part(HAND, state))}.`, state)
+                : `Oh, look, what a pretty fire in your ${makePlural(body_part(HAND, state))}.`);
         }
         else {
             monstersForgetHeroResistance(M_SEEN_FIRE, state);
-            await pline(`The scroll catches fire and you burn your ${makePlural(heroHandName(state))}.`);
+            await pline(`The scroll catches fire and you burn your ${makePlural(body_part(HAND, state))}.`);
             result.heroDied = !!await loseHeroHp(1, 'scroll of fire', { state, die: finishHeroDeath });
         }
         return result;
@@ -1384,10 +1381,10 @@ async function magicMappingEffect(source, state) {
         if (isScroll) {
             await plineWithContinuation('Your mind is filled with crazy lines!');
             await plineWithContinuation(heroIsHallucinating(state)
-                ? 'Wow!  Modern art.' : `Your ${heroHeadName(state)} spins in bewilderment.`);
+                ? 'Wow!  Modern art.' : `Your ${body_part(HEAD, state)} spins in bewilderment.`);
         }
         else {
-            await plineWithContinuation(`Your ${heroHeadName(state)} spins as something blocks the spell!`);
+            await plineWithContinuation(`Your ${body_part(HEAD, state)} spins as something blocks the spell!`);
         }
         await makeConfused((state.u.confusionTurns ?? 0) + rnd(30), { state, talk: false });
         return;
@@ -1569,7 +1566,7 @@ export async function dropBoulderOnMonster(x, y, { state = game, confused = fals
                 await map_invisible(x, y);
         }
         else if (swallowsHero) {
-            await hear(`something hit ${possessiveName(monsterName(monster, { state }))} ${monsterStomachName(monster.mnum)} over your ${heroHeadName(state)}!`, state);
+            await hear(`something hit ${possessiveName(monsterName(monster, { state }))} ${mbodypart(monster.mnum, STOMACH)} over your ${body_part(HEAD, state)}!`, state);
         }
         let damage = rollPhysicalWeaponDamage(object, monster) * object.quan;
         const inventory = monster.minvent ?? monster.inventory;

@@ -1347,6 +1347,9 @@ async function trapeffect_bear_trap(mtmp, trap, trflags, env) {
         );
         await losehp(Maybe_Half_Phys(dmg, state), 'bear trap', KILLED_BY_AN,
             state);
+        // C's losehp() reaches done(DIED), which does not return; the
+        // port's returns once the game is over, so stop where C stops.
+        if (state.program_state?.gameover) return Trap_Effect_Finished;
     }
     await exercise(A_DEX, false, state, random);
     return Trap_Effect_Finished;
@@ -2251,6 +2254,8 @@ export async function dofiretrap(box, rawEnv = {}) {
         await message('You are uninjured.', state, env);
     else
         await losehp(num, towerOfFlame, KILLED_BY_AN, state, env);
+    // C's losehp() reaches done(), which does not return.
+    if (state.program_state?.gameover) return;
 
     // trap.c calls burn_away_slime before the remaining fire-trap effects.
     await burn_away_slime(state, env);
@@ -2258,6 +2263,9 @@ export async function dofiretrap(box, rawEnv = {}) {
     if (await burnarmor(state.youmonst, env)
         || random.rn2(3)) {
         await destroy_items(state.youmonst, AD_FIRE, origDmg, env);
+        // An exploding potion's losehp() can reach done(), which does not
+        // return in C.
+        if (state.program_state?.gameover) return;
         await ignite_items(state.invent, env);
     }
     if (!box && await burn_floor_objects(u.ux, u.uy, seeIt, true, {
@@ -2424,6 +2432,8 @@ async function trapeffect_magic_trap(mtmp, trap, _trflags, env) {
             await losehp(
                 random.rnd(10), 'magical explosion', KILLED_BY_AN, state, env,
             );
+            // C's losehp() reaches done(), which does not return.
+            if (state.program_state?.gameover) return Trap_Effect_Finished;
             await message(
                 'Your body absorbs some of the magical energy!', state, env,
             );
@@ -2433,6 +2443,9 @@ async function trapeffect_magic_trap(mtmp, trap, _trflags, env) {
             return Trap_Effect_Finished;
         } else {
             await domagictrap(env);
+            // A fatal domagictrap() effect reaches done(), which does not
+            // return in C.
+            if (state.program_state?.gameover) return Trap_Effect_Finished;
         }
         // C line 2313 discards steedintrap()'s return. An unmounted hero
         // takes its no-op guard; a mounted hero gives the effect to its steed.
@@ -2510,6 +2523,8 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
                 state,
                 env,
             );
+            // C's losehp() reaches done(), which does not return.
+            if (state.program_state?.gameover) return Trap_Effect_Finished;
         }
 
         let drain = random.d(2, 6);
@@ -2887,24 +2902,32 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
 
             if (state.multi)
                 nomul(0, state);
-            if (await thitu(9 + (singleobj.spe || 0),
+            const hitHero = await thitu(9 + (singleobj.spe || 0),
                     Maybe_Half_Phys(dam, state),
                     singleobj, null, state, {
                         message,
-                        losehp: (d, r, k, s) => losehp(d, r, k, s),
+                        // thitu() passes losehp() its planning flag.
+                        losehp: (d, r, k, s, hpEnv) => losehp(d, r, k, s, hpEnv),
                         exercise: (a, b) => exercise(a, b, state, env.random, {
                             encumberMessage: (subject) =>
                                 encumber_msg(subject, { message }),
                         }),
                         random: env.random,
-                    }))
+                        // A planned boulder that kills the hero stops at
+                        // losehp()'s planning boundary; the live pass then
+                        // replays the death on the real state.
+                        planning,
+                    });
+            // C's done() does not return: a fatal boulder ends the game
+            // inside thitu(), before stop_occupation(). really_done() has
+            // already put the boulder on the launch_drop_spot() square for
+            // bones, so stop rolling.
+            if (state.program_state?.gameover) return 2;
+            if (hitHero) {
                 await stop_occupation(state, {
                     message,
                 });
-            // C's done() does not return: a fatal boulder ends the game
-            // inside thitu(). really_done() has already put the boulder on
-            // the launch_drop_spot() square for bones, so stop rolling.
-            if (state.program_state?.gameover) return 2;
+            }
         }
         if (style === ROLL) {
             if (down_gate(x, y, state) !== MIGR_NOWHERE
@@ -3867,6 +3890,8 @@ export async function trapeffect_landmine(mtmp, trap, trflags, rawEnv = {}) {
             state,
             env,
         );
+        // C's losehp() reaches done(), which does not return.
+        if (state.program_state?.gameover) return Trap_Effect_Finished;
         await blow_up_landmine(trap, env);
         if (steedMid && saddle && !state.u.usteed)
             keep_saddle_with_steedcorpse(

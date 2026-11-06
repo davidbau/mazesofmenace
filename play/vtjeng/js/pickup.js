@@ -106,7 +106,6 @@ import {
     ROT_CORPSE,
     REVIVE_MON,
     SHRINK_GLOB,
-    FIG_TRANSFORM,
     SORTLOOT_INVLET,
     SORTLOOT_LOOT,
     SORTLOOT_PACK,
@@ -3176,14 +3175,7 @@ async function in_container(obj, state) {
 
     // C: invent.c:freeinv_core stops a carried figurine's FIG_TRANSFORM timer
     // before pickup.c inserts it into the container.
-    await freeinv(obj, {
-        state,
-        hooks: {
-            stopFigurineTimer: (figurine, hookEnv) => stop_timer(
-                FIG_TRANSFORM, figurine, hookEnv.state ?? state, hookEnv,
-            ),
-        },
-    });
+    await freeinv(obj, { state });
     if (obj_is_burning(obj)) {
         await snuff_lit(obj, { state });
     }
@@ -3406,7 +3398,9 @@ async function out_container(obj, state) {
     }
     if (is_pick(otmp, state)) await pick_pick(otmp, state);
 
-    const result = await addinv_runtime(otmp, { state });
+    // invent.c merged() can print its comparison-discovery message here, as
+    // it does for a floor pickup.
+    const result = await addinv_runtime(otmp, pickupObjectEnv(state));
     await pickup_prinv(result, count, 'removing', state);
 
     if (is_gold) {

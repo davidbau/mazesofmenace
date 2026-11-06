@@ -1,7 +1,7 @@
 // Floor objects thrown outward by an explosion or collapsing structure.
 // C ref: explode.c:scatter() and mthrowu.c:ohitmon().
 import { RING_CLASS, POTION_CLASS, VENOM_CLASS } from './objclass.js';
-import { publishHeardMessage } from './hero_speech.js';
+import { publishHeardMessage } from './pline.js';
 import { currency, delobj, stack_object } from './invent.js';
 import { deleteTrap, petrifyMonsterFromContact } from './trap.js';
 import { DOOR, D_CLOSED, D_LOCKED, LARGEST_INT, M_AP_MONSTER, M_AP_TYPE, SHOPBASE, SINK, STATUE_TRAP, ZAP_POS } from './const.js';
@@ -24,7 +24,7 @@ import { stopHeroOccupation } from './occupation.js';
 import { unpunishHero } from './read.js';
 import { addShopObjectToBill, costlySpot } from './shk.js';
 import { MONSTER_NAME } from './monster_data.js';
-import { findMonsterArmorClass } from './monworn.js';
+import { findMonsterArmorClass } from './worn.js';
 import { ACID_VENOM, BOULDER, CREAM_PIE, EGG, GOLD_PIECE, STATUE } from './object_data.js';
 import { observeObject, objectMaterial } from './o_init.js';
 import { verbForSubject, withIndefiniteArticle, objectCombatName, objectNameIsPlural } from './objnam.js';

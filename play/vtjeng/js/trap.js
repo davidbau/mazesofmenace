@@ -900,7 +900,15 @@ function pitTerrain(x, y, env) {
             : state.level.flags?.is_cavernous_lev ? CORR : DOOR, env);
     }
 
-    if (clearFlags) location.flags = 0;
+    // C's `lev->flags = 0`. rm.h makes doormask and wall_info aliases of
+    // flags, which this port stores as separate fields, so clear them with
+    // it: a hole dug in an open doorway leaves D_NODOOR, which lets monsters
+    // and the hero move diagonally through it.
+    if (clearFlags) {
+        location.flags = 0;
+        location.doormask = 0;
+        location.wall_info = 0;
+    }
     const exposed = capability(env, 'unearthObjects')(x, y, env);
     const recompute = () => capability(env, 'recalculateBlockPoint')(x, y, env);
     if (exposed && typeof exposed.then === 'function') return exposed.then(recompute);
@@ -1691,6 +1699,9 @@ export async function lava_effects(state = game) {
                     state,
                     random,
                 });
+                // destroy_items() can kill the hero through an exploding
+                // potion, and C's done() does not return.
+                if (state.program_state?.gameover) return false;
                 const { ignite_items } = await import('./apply_catch_lit.js');
                 await ignite_items(state.invent, { state, random });
                 return false;
@@ -1785,6 +1796,9 @@ export async function lava_effects(state = game) {
                 state,
                 random,
             });
+            // destroy_items() can kill the hero through an exploding
+            // potion, and C's done() does not return.
+            if (state.program_state?.gameover) return false;
             const { ignite_items } = await import('./apply_catch_lit.js');
             await ignite_items(state.invent, { state, random });
             return false;
@@ -1816,6 +1830,9 @@ export async function lava_effects(state = game) {
         state,
         random,
     });
+    // destroy_items() can kill the hero through an exploding potion, and
+    // C's done() does not return.
+    if (state.program_state?.gameover) return false;
     const { ignite_items } = await import('./apply_catch_lit.js');
     await ignite_items(state.invent, { state, random });
     return false;
@@ -3690,6 +3707,8 @@ export async function b_trapped(item, bodypart, state = game, env = {}) {
     await wake_nearby(false, { ...env, state, random, message });
     await losehp(Maybe_Half_Phys(dmg, state), 'explosion', KILLED_BY_AN,
         state, { ...env, message });
+    // C's losehp() reaches done(), which does not return.
+    if (state.program_state?.gameover) return;
     const exerciseEnv = {
         encumberMessage: env.encumberMessage
             ?? (subject => encumber_msg(subject, { message })),

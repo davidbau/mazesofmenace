@@ -1,3 +1,8 @@
+// invent.js — the invent.c owner: inventory admission (addinv/freeinv/
+// assigninvlet/reorder), getobj selection, the 'I' reports and unpaid
+// views, look_here()/dolook(), doorganize/#adjust, and stack merging.
+// C ref: invent.c — addinv(), getobj(), ddoinv(), display_inventory(),
+// look_here(), doorganize(), dolook().
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS, } from './objclass.js';
 import { objectClassForType, objectSkill, objectMerge, objectUsesKnown, objectUnique, CRYSKNIFE, ALCHEMY_SMOCK, ARROW as FIRST_OBJECT, BAG_OF_TRICKS, EGG, FORTUNE_COOKIE, GOLD_PIECE, HAWAIIAN_SHIRT, MAGIC_MARKER, HEAVY_IRON_BALL, LOCK_PICK, CREDIT_CARD, SKELETON_KEY, OBJ_NAME, oc_level, SCR_BLANK_PAPER, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, TIN_OPENER, TOWEL, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BRASS_LANTERN, BULLWHIP, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CORPSE, CREAM_PIE, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, DWARVISH_MATTOCK, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, MAGIC_LAMP, MAGIC_WHISTLE, MEAT_RING, MIRROR, OBJECT_NAMES, OIL_LAMP, PICK_AXE, POT_OIL, SADDLE, STETHOSCOPE, TALLOW_CANDLE, TINNING_KIT, TIN_WHISTLE, UNICORN_HORN, WAX_CANDLE, WOODEN_FLUTE, MAGIC_FLUTE, TOOLED_HORN, FROST_HORN, FIRE_HORN, WOODEN_HARP, MAGIC_HARP, BUGLE, LEATHER_DRUM, ROCK, SLIME_MOLD, ARROW, LOADSTONE, LUCKSTONE, AXE, SPEAR, BOW, DART, KATANA, MACE, SCALPEL, CLUB, QUARTERSTAFF, SLING, SHORT_SWORD, LONG_SWORD, TWO_HANDED_SWORD, LANCE, YUMI, YA, BATTLE_AXE, SPLINT_MAIL, HELMET, RING_MAIL, LEATHER_ARMOR, LEATHER_JACKET, FEDORA, ROBE, SMALL_SHIELD, LEATHER_GLOVES, POT_HEALING, POT_SICKNESS, SACK, FLINT, CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE, APPLE, ORANGE, PEAR, MELON, BANANA, CARROT, SPRIG_OF_WOLFSBANE, CLOVE_OF_GARLIC, CANDY_BAR, PANCAKE, LEMBAS_WAFER, CRAM_RATION, FOOD_RATION, POT_EXTRA_HEALING, POT_WATER, SCR_MAGIC_MAPPING, SCR_PUNISHMENT, SPE_HEALING, SPE_FORCE_BOLT, SPE_CONFUSE_MONSTER, SPE_PROTECTION, SPE_DETECT_MONSTERS, SPE_EXTRA_HEALING, SPE_STONE_TO_FLESH, TOUCHSTONE, WAN_WISHING, WAN_SLEEP, OBJECT_SPELL_CATEGORY, AKLYS, DAGGER, ELVEN_DAGGER, ORCISH_DAGGER, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD, } from './object_data.js';
 import { pair_of, isMissileObject, isBimanualObject, isGrayStone, isWeaponTool, objectUsesCharges, launcherMatchesAmmo, isBlade, isPolearm, isThrowingWeapon, isLauncherAmmunition, } from './object_properties.js';
@@ -18,7 +23,7 @@ import { nhgetch } from './input.js';
 import { readchar, commandResultCancelled, commandResultFailed, cmdq_add_int, cmdq_add_key, cmdq_clear, cmdq_pop, getCount, GC_SAVEHIST, GC_ECHOFIRST, GC_CONDHIST, ynSingleKey, yn_function } from './cmd.js';
 import { ingSuffix, possessiveName } from './hacklib.js';
 import { NATIVE_COMMAND_CONSTANTS } from './command_data.js';
-import { CMDQ_INT, CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, ALTAR, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MENU_FULL, MENU_PARTIAL, MSGTYP_MASK_REP_SHOW, PICK_NONE, PICK_ONE, W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL, W_SADDLE, OBJECT_TIMER_KIND, ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, AM_SANCTUM, Amask2align, A_NONE, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN, D_NODOOR, FOUNTAIN, GRAVE, IRONBARS, SINK, THRONE, TREE, PLNMSG_ONE_ITEM_HERE, LOST_NONE, LOST_THROWN, is_pit, SORTLOOT_PACK, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_INUSE, SORTLOOT_PETRIFY, P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE, W_WEAPONS, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, CONTAINED_SYM, MGIVENNAME, } from './const.js';
+import { CMDQ_INT, CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, ALTAR, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, ICE, Is_airlevel, Is_waterlevel, MENU_TRADITIONAL, MENU_FULL, MENU_PARTIAL, MSGTYP_MASK_REP_SHOW, PICK_NONE, PICK_ONE, W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL, W_SADDLE, OBJECT_TIMER_KIND, ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, AM_SANCTUM, Amask2align, A_NONE, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN, D_NODOOR, FOUNTAIN, GRAVE, IRONBARS, SINK, THRONE, TREE, PLNMSG_ONE_ITEM_HERE, LOST_NONE, LOST_THROWN, is_pit, SORTLOOT_PACK, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_INUSE, SORTLOOT_PETRIFY, P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE, W_WEAPONS, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, CONTAINED_SYM, MGIVENNAME, HAND, FINGER, STOMACH } from './const.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { removeHeroEquipment } from './hero_equipment.js';
 import { levelPrizeKind } from './level_prize.js';
@@ -27,8 +32,7 @@ import { learnObjectType, recordObjectEncounter, recordObjectKnowledge, observeO
 import { recorderSort } from './recorder_sort.js';
 import { getLine, promptYesNoAllQuit } from './query.js';
 import { isTwoWeaponObject, isWeldedPrimary, setQuiverObject, heroCanUseTwoWeapons } from './wield.js';
-import { heroHasNoHands, heroIsVerySmall, heroSpecies, heroFormHidesUnderObjects, heroIsPolymorphed } from './polyself.js';
-import { heroFingerName, heroHandName, monsterStomachName } from './body_parts.js';
+import { heroHasNoHands, heroIsVerySmall, heroSpecies, heroFormHidesUnderObjects, heroIsPolymorphed, body_part, mbodypart } from './polyself.js';
 import { discoverArtifact, touchArtifactByHero, artifactById, deactivateArtifactProperty, setCarriedArtifactProperties } from './artifact.js';
 import { isQuestArtifact, touchQuestArtifact } from './quest.js';
 import { recordAchievement } from './insight.js';
@@ -47,7 +51,7 @@ import { heroResistsStoning, monsterIsHumanoid, monsterDigests, touchPetrifies, 
 import { iceDescriptionAt, swallowedHeroDescription } from './pager.js';
 import { impossible, panic } from './diagnostics.js';
 import { armorSimpleName, armorSlotFor } from './do_wear.js';
-import { currentShopResident, shopkeeperInOwnShop, costlySpot, chargeUnpaidUsage, deleteObject, addShopObjectToBill, stolenValue, billForObject, visitBilledShopkeepers, unpaidObjectCost, reportShopFinances, pickedContainer, } from './shk.js';
+import { currentShopResident, shopkeeperInOwnShop, costlySpot, chargeUnpaidUsage, deleteObject, addShopObjectToBill, stolenValue, billForObject, visitBilledShopkeepers, unpaidObjectCost, reportShopFinances, pickedContainer, doinvbill, } from './shk.js';
 import { endObjectBurn, learnEggType, stopObjectTimer, stopObjectTimers } from './timeout.js';
 import { objectShedsLight } from './light.js';
 import { hitFloorWithObject } from './dothrow.js';
@@ -57,7 +61,6 @@ import { heroGoldObject } from './hero_gold.js';
 import { hiddenGold } from './vault.js';
 import { nomul, heroGoldAmount, roomsAt, nearCapacity } from './hack.js';
 import { displayLiquidName, monsterName } from './do_name.js';
-import { usedUpBill, showBill } from './inventory_reports.js';
 import { NO_COLOR } from './terminal.js';
 import { maybeUnhideAt, hideHeroUnder, isReviver, } from './mon.js';
 import { propertyIsActive } from './properties.js';
@@ -1420,7 +1423,7 @@ async function reportSubset(items, inuse = true, accessoryLabel = 'Accessories')
             }
             const text = object ? await inventoryItemDescription(object, {
                 primaryHandDetail: inventoryPrimaryHandDetail(object),
-            }) : `${game.uarmg ? 'gloved' : 'bare'} ${makePlural(heroHandName(game))} (no weapon)`;
+            }) : `${game.uarmg ? 'gloved' : 'bare'} ${makePlural(body_part(HAND, game))} (no weapon)`;
             const item = { key: object?.invlet ?? '-', text };
             const last = sections.at(-1);
             if (last?.heading === row.heading)
@@ -1623,7 +1626,7 @@ async function showUnpaid(carried, floor, buried) {
 // C pickup.c:count_justpicked()/find_justpicked(): the marked stacks
 // of the previous pickup feed the 'P' selection.
 async function typeInventory() {
-    const bill = usedUpBill();
+    const bill = doinvbill(0);
     if (!game.inventory.length && !bill.length) {
         await pline("You aren't carrying anything.");
         return null;
@@ -1665,7 +1668,7 @@ async function typeInventory() {
         return null;
     if (choice === 'x' || choice === 'X' && bill.length && !statuses.has('X')) {
         if (bill.length)
-            await showBill(bill);
+            await doinvbill(1);
         else
             await pline(`No used-up objects${carried.length + floor.length + buried.length ? ' on your shopping bill' : ''}.`);
         return null;
@@ -1767,7 +1770,7 @@ export async function lookHere(objectCount = 0, { pickedSome = false, skipFeatur
     const blind = heroIsBlind();
     if (game.u.uswallow && game.u.ustuck) {
         const monster = game.u.ustuck;
-        const location = `${possessiveName(monsterName(monster))} ${monsterStomachName(monster.mnum)}`;
+        const location = `${possessiveName(monsterName(monster))} ${mbodypart(monster.mnum, STOMACH)}`;
         await plineWithContinuation(`You ${blind ? 'try' : 'look around'} to ${blind ? 'feel' : 'see'} what is lying in ${location}.`);
         const objects = monster.minvent ?? monster.inventory ?? [];
         if (!objects.length) {
@@ -1863,7 +1866,7 @@ export async function feelPetrifyingCorpse(object, { forceTouch = false, state =
         return { touched: false, died: false };
     const corpse = corpseName(object, { definite: true });
     if (formCanBecomeStoneGolem(state.u.umonnum, state))
-        await publish(`You touched ${corpse} with your bare ${makePlural(heroHandName(state))}.`);
+        await publish(`You touched ${corpse} with your bare ${makePlural(body_part(HAND, state))}.`);
     else
         await publish(`Touching ${corpse} is a fatal mistake...`);
     const result = await resolveImmediatePetrification({
@@ -2989,7 +2992,7 @@ function itemActionEntries(item, state, repairGold) {
             entries.push({ key: 'w', text: 'Wield the tin opener to easily open tins' });
         }
         else if (!alreadyWorn) {
-            entries.push({ key: 'w', text: `Wield this ${stack ? 'stack' : 'item'} in your ${makePlural(heroHandName(state))}` });
+            entries.push({ key: 'w', text: `Wield this ${stack ? 'stack' : 'item'} in your ${makePlural(body_part(HAND, state))}` });
         }
     }
     if (!alreadyWorn && item.oclass === ARMOR_CLASS) {
@@ -3087,7 +3090,7 @@ function accessoryActionText(item, state) {
     if (item.oclass === AMULET_CLASS)
         return state.uamul ? '[already wearing an amulet]' : 'Put this amulet on';
     if (item.oclass === RING_CLASS || item.otyp === MEAT_RING)
-        return state.uleft && state.uright ? `[both ring ${makePlural(heroFingerName(state))} in use]` : 'Put this ring on';
+        return state.uleft && state.uright ? `[both ring ${makePlural(body_part(FINGER, state))} in use]` : 'Put this ring on';
     if ([BLINDFOLD, TOWEL, LENSES].includes(item.otyp)) {
         if (state.ublindf)
             return '[already wearing eyewear]';
@@ -3340,11 +3343,13 @@ export async function showFloorPile(objects, pickedSome = false, featureDescript
     // C invent.c:look_here(): "display_nhwindow(WIN_MESSAGE, FALSE);"
     // acknowledges prose here. Arrival's pickup.c:check_here() owns
     // "flush_screen(1);" before "(void) look_here(ct, lhflags);".
+    // wintty.c:tty_display_nhwindow() erases the row only for a pending
+    // (TOPLINE_NEED_MORE) line; a seen line just becomes TOPLINE_EMPTY and
+    // stays visible, and tty_clear_nhwindow(WIN_MESSAGE) — the corner
+    // window below and the next command's parse() both call it — then
+    // no-ops, so the seen autodescribe text survives until a later pline.
     // Explicit inspection leaves pending map glyphs buffered.
-    const unreadMessage = !!game._pending_message;
-    await flushPendingTopline();
-    if (unreadMessage)
-        clearMessageWindow();
+    await displayMessageWindow();
     const display = requireGameDisplay();
     const pileLocation = heroIsBlind() ? 'you feel here' : 'are here';
     const descriptions = [];

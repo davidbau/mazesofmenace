@@ -1,3 +1,7 @@
+// cmd.js — Command parsing and dispatch.
+// C ref: cmd.c:rhack(); movement execution belongs to hack.ts. Also hosts
+// the top-line key prompts (win/tty/wintty.c tty_yn_function()'s prompt
+// path) that commands which pause for input render through.
 import { FOOD_CLASS, POTION_CLASS } from './objclass.js';
 import { DIRECTION_HANDLERS, INITIAL_COMMAND_BINDINGS, NATIVE_COMMAND_CONSTANTS, NATIVE_COMMAND_FLAGS, NATIVE_COMMAND_PROFILE, NATIVE_COMMANDS, NATIVE_SPECIAL_KEYS } from './command_data.js';
 import { doapply, dorub, dojump, useUnicornHorn, continueTrapSetting, resetTrapSetting } from './apply.js';
@@ -40,7 +44,7 @@ import { showTextWindow, addMenuHeading, showChoiceWindow, showMultiSelectWindow
 import { NO_COLOR } from './terminal.js';
 import { promptYesNo } from './query.js';
 import { flush_screen, docrt, canSpotMonster, glyphAt, cls } from './display.js';
-import { pline, plineWithContinuation, setTopline, pline_xy, set_msg_xy } from './pline.js';
+import { pline, plineWithContinuation, setTopline, pline_xy, set_msg_xy, truncateRawMessage, } from './pline.js';
 import { messageWindowMode, CTRL_P, redotoplin, showMessageHistoryWindow, stepHistoryBack } from './prevmsg.js';
 import { dozap } from './zap.js';
 import { docast, dovspell, dowizcast } from './spell.js';
@@ -60,7 +64,7 @@ import { doread } from './read.js';
 import { eatfood, doeat, opentin } from './eat.js';
 import { doclassdisco, dodiscovered, objectTypeKnown } from './o_init.js';
 import { doextversion, NATIVE_VERSION } from './extversion.js';
-import { dosearch } from './detect.js';
+import { dosearch, revealTerrain } from './detect.js';
 import { continueWipingFace, donull, dowipe, dodrop, dropMultipleObjects } from './do.js';
 import { setSecondaryWeapon, doready, doswapweapon, dotwoweapon, dowield } from './wield.js';
 import { LOCK_PICK, CREDIT_CARD, SADDLE, POT_OIL, SKELETON_KEY, BOULDER } from './object_data.js';
@@ -85,14 +89,8 @@ import { selection_floodfill, selection_getbounds, selection_getpoint, selection
 import { floorObjectDescription } from './invent.js';
 import { cansee, couldsee, vision_reset_new_level } from './vision.js';
 import { blockingTerrain } from './mthrowu.js';
-import { revealTerrain } from './terrain_view.js';
-import { truncateRawMessage } from './pline_text.js';
 import { monsterSpeciesHidesOnCeiling } from './mondata.js';
 import { finishHeroMonsterKill } from './mon.js';
-// cmd.js — Command parsing and dispatch.
-// C ref: cmd.c:rhack(); movement execution belongs to hack.ts. Also hosts
-// the top-line key prompts (win/tty/wintty.c tty_yn_function()'s prompt
-// path) that commands which pause for input render through.
 export { getLine, promptYesNo, promptYesNoQuit } from './query.js';
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };

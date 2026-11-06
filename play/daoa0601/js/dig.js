@@ -1,3 +1,6 @@
+// dig.c owner: hero and monster digging, terrain changes, burial, and
+// wand digging.  Folded from hero_digging/digging_terrain/digging_magic/
+// digging_watch/buried_object/hole (pure move, no behavior change).
 import { stack_object } from './invent.js';
 import { POTION_CLASS, COIN_CLASS } from './objclass.js';
 import { OBJ_NAME } from './object_data.js';
@@ -6,8 +9,7 @@ import { bringLeashedFollowers, leashAttachedToMonster, releaseMonsterLeash, rel
 import { publishMonsterYelp } from './sounds.js';
 import { objectIsHardHelmet } from './do_wear.js';
 import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attrib.js';
-import { heroFootName, heroHeadName, monsterStomachName } from './body_parts.js';
-import { A_LAWFUL, A_STR, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align, BEAR_TRAP, COLNO, CORR, COULD_SEE, DBWALL, DB_LAVA, DB_MOAT, DB_UNDER, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_ALTAR, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAILED, DIGCHECK_PASSED, DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_PASSED_PITONLY, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, EXPL_MAGICAL, FOUNTAIN, F_WARNED, HOLE, IN_SIGHT, IRONBARS, IS_ALTAR, IS_DOOR, IS_FURNITURE, IS_GRAVE, IS_OBSTRUCTED, IS_ROOM, IS_STWALL, IS_THRONE, IS_TREE, IS_WALL, Is_airlevel, Is_botlevel, Is_earthlevel, Is_stronghold, Is_waterlevel, KILLED_BY, LANDMINE, LAVAPOOL, MAGIC_PORTAL, MIGR_RANDOM, MM_NOMSG, MON_OFFMAP, MOAT, OBJECT_TIMER_KIND, PIT, POOL, RLOC_NOMSG, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, SHOP_WALL_COST, SINK, STONE, THRONE, TRAPDOOR, TRAP_EXPLODE, TT_BURIEDBALL, TT_INFLOOR, TT_PIT, Upolyd, VIBRATING_SQUARE, W_NONDIGGABLE, is_hole, is_magical_trap, is_pit, xdir, ydir } from './const.js';
+import { A_LAWFUL, A_STR, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align, BEAR_TRAP, COLNO, CORR, COULD_SEE, DBWALL, DB_LAVA, DB_MOAT, DB_UNDER, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_ALTAR, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAILED, DIGCHECK_PASSED, DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_PASSED_PITONLY, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, EXPL_MAGICAL, FOUNTAIN, F_WARNED, HOLE, IN_SIGHT, IRONBARS, IS_ALTAR, IS_DOOR, IS_FURNITURE, IS_GRAVE, IS_OBSTRUCTED, IS_ROOM, IS_STWALL, IS_THRONE, IS_TREE, IS_WALL, Is_airlevel, Is_botlevel, Is_earthlevel, Is_stronghold, Is_waterlevel, KILLED_BY, LANDMINE, LAVAPOOL, MAGIC_PORTAL, MIGR_RANDOM, MM_NOMSG, MON_OFFMAP, MOAT, OBJECT_TIMER_KIND, PIT, POOL, RLOC_NOMSG, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, SHOP_WALL_COST, SINK, STONE, THRONE, TRAPDOOR, TRAP_EXPLODE, TT_BURIEDBALL, TT_INFLOOR, TT_PIT, Upolyd, VIBRATING_SQUARE, W_NONDIGGABLE, is_hole, is_magical_trap, is_pit, xdir, ydir, FOOT, HEAD, STOMACH } from './const.js';
 import { isok } from './cmd.js';
 import { currency } from './invent.js';
 import { destroyDrawbridge, findDrawbridgeAt, isIceAt, isLavaAt, isMoatAt, isPoolAt } from './dbridge.js';
@@ -29,7 +31,6 @@ import { dist2, possessiveName, upstart } from './hacklib.js';
 import { dropInventoryObjectAtHero, woundHeroLegs } from './do.js';
 import { freeInventoryObject, objectAt } from './invent.js';
 import { heroIsUnaware } from './senses.js';
-import { formatFeltMessage, formatHeardMessage } from './hero_speech.js';
 import { delobj } from './invent.js';
 import { gotoLevel } from './do.js';
 import { makemonAt, mkclassAligned } from './makemon.js';
@@ -42,8 +43,8 @@ import { definiteName, objectName, observeObjectForNaming, ownedObjectAction, ow
 import { BEARTRAP, BOULDER, CORPSE, HEAVY_IRON_BALL, LAND_MINE, LEASH, POT_OIL, ROCK, STATUE } from './object_data.js';
 import { isAxe, isBimanualObject, isPick, objectIsOrganic } from './object_properties.js';
 import { stopHeroOccupation } from './occupation.js';
-import { pline, plineWithContinuation } from './pline.js';
-import { heroIsFlying } from './polyself.js';
+import { formatFeltMessage, formatHeardMessage, pline, plineWithContinuation } from './pline.js';
+import { heroIsFlying, body_part, mbodypart } from './polyself.js';
 import { altarWrath, desecrateAltar } from './pray.js';
 import { punishHero, unpunishHero } from './read.js';
 import { autopickupAtHero } from './pickup.js';
@@ -80,9 +81,6 @@ import { MONSTER_MOVE } from './monster_data.js';
 import { confusePromptDirection } from './cmd.js';
 import { monsterDigests, monsterIsClinger, monsterIsFlyer, monsterIsWhirly, monsterPassesWalls } from './mondata.js';
 import { expelHero } from './mhitu.js';
-// dig.c owner: hero and monster digging, terrain changes, burial, and
-// wand digging.  Folded from hero_digging/digging_terrain/digging_magic/
-// digging_watch/buried_object/hole (pure move, no behavior change).
 // ---------------------------------------------------------------------------
 // Hero pick-axe/axe digging occupation (hero_digging)
 // ---------------------------------------------------------------------------
@@ -463,8 +461,8 @@ export async function continueHeroDigging(state = game) {
                     damage = 1;
                 else if (state.uarmf || state.u?.uarmf)
                     damage = Math.trunc((damage + 1) / 2);
-                await pline(`You hit yourself in the ${heroFootName(state)}.`);
-                await loseHeroHp(maybeHalfPhysical(damage, state), `chopping off ${state.flags.female ? 'her' : 'his'} own ${heroFootName(state)}`, { state, killerFormat: KILLED_BY });
+                await pline(`You hit yourself in the ${body_part(FOOT, state)}.`);
+                await loseHeroHp(maybeHalfPhysical(damage, state), `chopping off ${state.flags.female ? 'her' : 'his'} own ${body_part(FOOT, state)}`, { state, killerFormat: KILLED_BY });
             }
             else {
                 await pline(`You destroy the bear trap with ${ownedObjectName(uwep, state, { capitalized: false, includeQuantity: true })}.`);
@@ -1495,7 +1493,7 @@ async function pierceEngulfer(monster, state) {
     const digesting = monsterDigests(monster);
     if (digesting) {
         const owner = possessiveName(monsterName(monster, { state }));
-        await plineWithContinuation(`You pierce ${owner} ${monsterStomachName(monster.mnum)} wall!`);
+        await plineWithContinuation(`You pierce ${owner} ${mbodypart(monster.mnum, STOMACH)} wall!`);
     }
     const generation = MONSTER_GENO[monster.mnum];
     if (generation === undefined)
@@ -1519,7 +1517,7 @@ async function digVertically(state, direction) {
         await plineWithContinuation(`The beam bounces off the ${stairs.isladder ? 'ladder' : 'stairs'} and hits the ${ceilingName(hero.ux, hero.uy, state)}.`);
     }
     await plineWithContinuation(`You loosen a rock from the ${ceilingName(hero.ux, hero.uy, state)}.`);
-    await plineWithContinuation(`It falls on your ${heroHeadName(state)}!`);
+    await plineWithContinuation(`It falls on your ${body_part(HEAD, state)}!`);
     const helmet = state.uarmh || hero.uarmh;
     const damage = rnd(objectIsHardHelmet(helmet) ? 2 : 6);
     const halfPhysical = hero.halfPhysicalDamage;

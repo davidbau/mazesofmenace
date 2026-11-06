@@ -1,6 +1,7 @@
 // shk.js — the shk.c owner: shop billing and pricing, payment (dopay and
-// the itemized bill), selling, theft and damage settlement, the shopkeeper
-// anger/repair lifecycle, shop entry/exit policy, chat and price quotes.
+// the itemized bill), the 'I x' used-up bill view (doinvbill), selling,
+// theft and damage settlement, the shopkeeper anger/repair lifecycle, shop
+// entry/exit policy, chat and price quotes.
 // C refs beyond shk.c: hack.c move_update()/check_special_room() in the
 // entry policy below. Lua/mklev owns room construction and initial stock
 // (shknam.ts); this module owns the live relationship among room, resident,
@@ -11,19 +12,19 @@ import { impossible } from './diagnostics.js';
 import { objectMaterial, learnObjectType, observeObject, objectTypeKnown } from './o_init.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { isRoom } from './map_types.js';
-import { pline, plineWithContinuation, verbalize } from './pline.js';
+import { formatFeltMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, verbalize, } from './pline.js';
 import { hasShopBill, hasShopkeeperData, requireShopGame } from './shop_types.js';
 import { SHOP_TYPES, saleable, shopkeeperName, shopStocksObject } from './shknam.js';
 import { hello } from './role.js';
 import { MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SOUND, MONSTER_SYMBOL } from './monster_data.js';
-import { heroSpecies, heroPolyGender, heroPassesWalls } from './polyself.js';
+import { heroSpecies, heroPolyGender, heroPassesWalls, body_part, mbodypart } from './polyself.js';
 import { monsterName } from './do_name.js';
 import { possessiveName, distmin, dist2, pointsOnline, upstart } from './hacklib.js';
 import { depth } from './dungeon.js';
 import { monsterPossessive, monsterSubjectPronoun, monsterIsHelpless, monsterObjectPronoun, is_elf, monsterHasEyes, monsterHasHead, monsterHasNoLimbs, monsterHasProperName, monsterIsDemon, monsterIsHuman, monsterIsVampire, monsterPassesWalls, } from './mondata.js';
 import { hiddenGold } from './vault.js';
 import { canSeeMonster, canSenseMonster, flush_screen, canSpotMonster, newsym, map_invisible } from './display.js';
-import { currency, mergable, addInventoryItem, countContents, finishInventoryRemoval } from './invent.js';
+import { currency, mergable, addInventoryItem, countContents, finishInventoryRemoval, pricedInventoryLine } from './invent.js';
 import { simpleObjectName, objectTypeName, objectName, objectCombatName, definiteName, observeObjectForNaming, simpleObjectNameWithArticle, objectDescription, paymentObjectDescription, } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { recordRandom } from './monster_action_types.js';
@@ -32,7 +33,7 @@ import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attr
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { propertyIsActive } from './properties.js';
 import { angerWatchGuards, removeMonsterFromGame, mnearto, resistConflict, moveMonsterNextToHero } from './mon.js';
-import { A_CHA, A_WIS, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, MMOVE_NOTHING, PL_NSIZ, ROOMOFFSET, SHOPBASE, Upolyd, MGIVENNAME, LL_ACHIEVE, G_GONE, MM_NOMSG, LOW_PM, DOOR, D_BROKEN, HUNGRY, QBUFSZ, MENU_FULL, MENU_TRADITIONAL, MIGR_APPROX_XY, IS_DOOR, SVALL, SDOOR, IS_STWALL, IS_TREE, IS_ROOM, BOLT_LIM, RLOC_NOMSG, RLOC_MSG, D_CLOSED, ZAP_POS, LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT, IS_WALL, TT_PIT, W_SWAPWEP, W_QUIVER, ACH_SHOP, } from './const.js';
+import { A_CHA, A_WIS, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, MMOVE_NOTHING, PL_NSIZ, ROOMOFFSET, SHOPBASE, Upolyd, MGIVENNAME, LL_ACHIEVE, G_GONE, MM_NOMSG, LOW_PM, DOOR, D_BROKEN, HUNGRY, QBUFSZ, MENU_FULL, MENU_TRADITIONAL, MIGR_APPROX_XY, IS_DOOR, SVALL, SDOOR, IS_STWALL, IS_TREE, IS_ROOM, BOLT_LIM, RLOC_NOMSG, RLOC_MSG, D_CLOSED, ZAP_POS, LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT, IS_WALL, TT_PIT, W_SWAPWEP, W_QUIVER, ACH_SHOP, ARM, HEAD, HAND } from './const.js';
 import { isok, commandResultCancelled, setMulti } from './cmd.js';
 import { moveSpecial, specialMoverSeesHero } from './priest.js';
 import { dropObjectAtHero } from './do.js';
@@ -44,16 +45,14 @@ import { closedDoor, performMonsterTurn } from './monmove.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { mattacku } from './mhitu.js';
 import { heroIsDisplaced } from './do_wear.js';
-import { monsterHandName, heroArmName, monsterHeadName } from './body_parts.js';
 import { diggingTimeToHole } from './dig.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { dropHeroInventoryForBones } from './bones.js';
-import { recordGameLogEvent } from './gamelog.js';
 import { releaseAllMonsterLeashes, releaseObjectLeash, umDist } from './apply.js';
 import { makemonAt } from './makemon.js';
 import { enexto } from './teleport.js';
 import { cansee, vision_note_blocker_change } from './vision.js';
-import { showDisclosureOverlay, showMultiSelectWindow } from './windows.js';
+import { showDisclosureOverlay, showMultiSelectWindow, showTextMenuOverlay } from './windows.js';
 import { intrinsic_possible } from './eat.js';
 import { artifactById } from './artifact.js';
 import { bot } from './botl.js';
@@ -64,7 +63,6 @@ import { heroIsPunished, unplaceBallAndChain, placeBallAndChain } from './ball.j
 import { migrateMonsterOffLevel } from './dog.js';
 import { deleteEngravingAt } from './engrave.js';
 import { removeWornHeroItem, removeHeroEquipment } from './hero_equipment.js';
-import { publishHeardMessage, formatFeltMessage } from './hero_speech.js';
 import { pickingAt, maybeResetPick } from './lock.js';
 import { stopHeroOccupation } from './occupation.js';
 import { dropSpecialMonsterObjects, addObjectToMonsterInventory } from './steal.js';
@@ -2556,7 +2554,7 @@ async function inheritHeroInventory(keeper, count, options) {
     if (count > 1) {
         if (cansee(keeper.mx, keeper.my) && croaked && !silent) {
             const shake = monsterHasHead(keeper) && !random(2)
-                ? `, shakes ${monsterPossessive(keeper, { noIt: true, random })} ${monsterHeadName(keeper.mnum)},`
+                ? `, shakes ${monsterPossessive(keeper, { noIt: true, random })} ${mbodypart(keeper.mnum, HEAD)},`
                 : '';
             await publish(`${shopkeeperName(keeper, { capitalized: true })} ${monsterIsHelpless(keeper) ? 'wakes up, ' : ''}looks at your corpse${shake} and ${shopkeeperInOwnShop(keeper) ? 'sighs' : 'disappears'}.`);
         }
@@ -2635,6 +2633,12 @@ function completeShopSettlement(keeper, taken) {
         game._shopRepossession = { shopkeeper: keeper, location };
     }
     return taken;
+}
+// C shk.c:bp_to_obj(): find a bill entry's object by o_id — used-up entries
+// sit on the bill list, the rest on any list find_oid() (the port's timer
+// graph) walks, so the merged scan below covers both arms.
+function bpToObj(entry, objects) {
+    return objects.find(object => object.o_id === entry.bo_id) ?? null;
 }
 function heroRepositoryPosition() {
     return { x: game.u.ux || game.u.ux0, y: game.u.ux ? game.u.uy : game.u.uy0 };
@@ -2769,7 +2773,7 @@ export async function chatWithShopkeeper(monster, state = game) {
             return;
         }
         message = speaking ? `"${hello(monster, state)} ${state.plname}!  Didn't you forget to pay?"`
-            : `${name()} taps you on the ${heroArmName(state)}.`;
+            : `${name()} taps you on the ${body_part(ARM, state)}.`;
     }
     else if (shop.billct) {
         const total = addUpBill(monster) + (shop.debit ?? 0);
@@ -4385,6 +4389,38 @@ export async function sellHeroDroppedObject(object, x, y, state = game, { publis
     removeObjectAndContentsFromBill(object, state);
     return { sold: false };
 }
+export function doinvbill(mode) {
+    const keeper = currentShopResident();
+    if (!keeper || !shopkeeperInOwnShop(keeper))
+        return mode === 0 ? [] : Promise.resolve();
+    const objects = [...objectsInTimerGraph(), ...game.billObjects ?? []];
+    const lines = [];
+    for (const entry of keeper.eshk.bill ?? []) {
+        const object = bpToObj(entry, objects);
+        if (object && (entry.useup || object.quan < entry.bquan)) {
+            const quantity = entry.useup ? entry.bquan : entry.bquan - object.quan;
+            lines.push({ object, quantity, price: quantity * entry.price });
+        }
+    }
+    if (keeper.eshk.debit)
+        lines.push({ object: null, quantity: 0, price: keeper.eshk.debit });
+    if (mode === 0)
+        return lines;
+    return (async () => {
+        const view = ['Unpaid articles already used up:', ''];
+        let total = 0;
+        for (const line of lines) {
+            if (!line.object && total)
+                view.push('');
+            view.push(await pricedInventoryLine(line.object, line.object ? 'x' : '$', line.price, line.object ? null : 'usage charges and/or other fees', { quantity: line.quantity, useInvlet: false, distant: false }));
+            total += line.price;
+        }
+        view.push('', await pricedInventoryLine(null, '*', total, 'Total:'));
+        // C shk.c:4229 fills the bill window with putstr(), which never reaches
+        // add_menu()'s menucoloring.
+        await showTextMenuOverlay(view, { viaPutstr: true });
+    })();
+}
 // C shk.c:shk_move(): return 1: moved  0: didn't  -1: let m_move do it.
 // Chooses a goal before move_special() selects a square.
 export async function moveShopkeeper(monster, state, random, rollDice, rollOne, calls) {
@@ -4436,7 +4472,7 @@ export async function moveShopkeeper(monster, state, random, rollDice, rollOne, 
                     await plineWithContinuation(`"${hello(monster, state)}, ${state.plname}!  Didn't you forget to pay?"`);
                 }
                 else {
-                    await plineWithContinuation(`${shopkeeperName(monster, { state, capitalized: true })} holds out ${monsterPossessive(monster, { state, random, noIt: true })} upturned ${monsterHandName(monster.mnum)}.`);
+                    await plineWithContinuation(`${shopkeeperName(monster, { state, capitalized: true })} holds out ${monsterPossessive(monster, { state, random, noIt: true })} upturned ${mbodypart(monster.mnum, HAND)}.`);
                 }
                 state._shopFollowMessageTurn = state.moves;
                 if (!recordRandom(random, calls, 9)) {

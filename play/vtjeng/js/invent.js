@@ -164,6 +164,7 @@ import {
     WIN_ERR,
     WC_PERM_INVENT,
     ALL_FINISHED,
+    FIG_TRANSFORM,
 } from './const.js';
 import {
     ART_MJOLLNIR, confers_luck, discover_artifact, set_artifact_intrinsic,
@@ -184,7 +185,12 @@ import {
 } from './monsters.js';
 import { discover_object, observe_object } from './o_init.js';
 import { body_part, mbodypart } from './polyself.js';
-import { learn_egg_type, obj_stop_timers } from './timeout.js';
+import {
+    attach_fig_transform_timeout,
+    learn_egg_type,
+    obj_stop_timers,
+    stop_timer,
+} from './timeout.js';
 import {
     displayPendingTtyMessageWindow,
     ttyPline,
@@ -210,7 +216,12 @@ import {
     S_vodbridge,
     S_vodoor,
 } from './symbols.js';
-import { hides_under, poly_when_stoned, touch_petrifies } from './mondata.js';
+import {
+    dead_species,
+    hides_under,
+    poly_when_stoned,
+    touch_petrifies,
+} from './mondata.js';
 import { hideunder, maybe_unhide_at } from './mon.js';
 import { newsym, obj_to_glyph, mon_to_glyph } from './display.js';
 import { livelog_printf } from './pline.js';
@@ -351,7 +362,10 @@ import {
 } from './objnam.js';
 import { hliquid, mon_nam, noit_Monnam } from './do_name.js';
 import { in_rooms } from './rooms.js';
-import { ILLOBJ_CLASS, LENSES, MAXOCLASSES } from './objects.js';
+import {
+    BALL_CLASS, CHAIN_CLASS, ILLOBJ_CLASS, LENSES, MAXOCLASSES, ROCK_CLASS,
+    WAND_CLASS,
+} from './objects.js';
 import { is_quest_artifact } from './questpgr.js';
 import { artitouch } from './quest.js';
 import { note_unported } from './unported.js';
@@ -593,7 +607,13 @@ function assignInuseRating(sort_item, rating, altclass) {
 // C ref: invent.c loot_classify() (149-305). Writes class, subclass,
 // discovery and in-use ordering fields into a Loot item.
 const ARMCAT = [7, 4, 1, 2, 3, 5, 6, 8];
-const DEF_SRT_ORDER = '\x0B\x04\x05\x06\x08\x09\x0A\x0C\x07\x0D\x02\x03\x0F\x10\x11';
+// loot_classify()'s static def_srt_order[], used when 'sortpack' is off:
+// like inv_order but with the items most likely to be picked up first.
+const DEF_SRT_ORDER = Object.freeze([
+    COIN_CLASS, AMULET_CLASS, RING_CLASS, WAND_CLASS, POTION_CLASS,
+    SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS, TOOL_CLASS,
+    WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
+]);
 
 function loot_classify(sort_item, obj, state = game) {
     const objects = state.objects;
@@ -2688,15 +2708,13 @@ function requiredHook(env, name, obj) {
 // whenever the branch can be preflighted.
 //
 // Predicates: artifactConfersLuck(obj, env), isReviver(species, env),
-// samePrice(obj, target, env), isDeadSpecies(species, includeGone, env).
+// samePrice(obj, target, env).
 // consume_obj_charge's optional call-site checkUnpaid(obj, state) adapter
 // intercepts only invent.c's discarded void billing call; absent it, the
 // existing check_unpaid implementation remains in effect.
 // Inventory effects: removeSpecialInventoryEffects(obj, env),
 // archeologistDeciphersScroll(obj, env), recordAchievement(id, env),
 // updateInventory(state).
-// attachFigurineTimer(obj, env) and stopFigurineTimer(obj, env) own both the
-// external timer queue and obj.timed, as NetHack's timer subsystem does.
 // Ownership/lifetime: objectNoLongerHeld(obj, env), stopObjectTimers(obj, env),
 // deleteObjectLightSource(obj, env), unleashObject(obj, env),
 // resetPick(obj, env). obfreeShopBill(obj, merge, env) returns 'retained' when
@@ -3177,9 +3195,6 @@ function preflightFreeinvCore(obj, env) {
     // artifact.c:confers_luck() is pure; use its source implementation while
     // preflighting the later C freeinv_core() branch.
     const confersLuck = confers_luck(obj, env.state);
-    if (!confersLuck && obj.otyp === FIGURINE && obj.timed) {
-        requiredHook(env, 'stopFigurineTimer', obj);
-    }
     return { confersLuck };
 }
 
@@ -3231,9 +3246,7 @@ function* freeinv_core_steps(obj, env, facts) {
         state.disp ??= {};
         state.disp.botl = true;
     } else if (obj.otyp === FIGURINE && obj.timed) {
-        requiredHook(env, 'stopFigurineTimer', obj)(obj, env);
-        if (obj.timed)
-            throw new Error('stopFigurineTimer must clear obj.timed');
+        stop_timer(FIG_TRANSFORM, obj, state, env);
     }
 
     if (state.context?.tin?.tin === obj) {
@@ -4307,11 +4320,7 @@ export function replace_inventory_core(obj, replacement, env = {}) {
 }
 
 function runCarryObjEffects(obj, env, shouldAttachFigurineTimer) {
-    if (shouldAttachFigurineTimer) {
-        requiredHook(env, 'attachFigurineTimer', obj)(obj, env);
-        if (obj.timed !== 1)
-            throw new Error('attachFigurineTimer must leave one object timer');
-    }
+    if (shouldAttachFigurineTimer) attach_fig_transform_timeout(obj, env);
 }
 
 // Dependency-only half of invent.c:carry_obj_effects(). Object-transfer
@@ -4323,13 +4332,11 @@ export function preflight_carry_obj_effects(obj, env = {}) {
     if (obj.otyp === FIGURINE
         && obj.cursed
         && obj.corpsenm !== NON_PM) {
-        shouldAttachFigurineTimer = !requiredHook(
+        shouldAttachFigurineTimer = !dead_species(
+            obj.corpsenm,
+            true,
             normalized,
-            'isDeadSpecies',
-            obj,
-        )(obj.corpsenm, true, normalized);
-        if (shouldAttachFigurineTimer)
-            requiredHook(normalized, 'attachFigurineTimer', obj);
+        );
     }
     return { normalized, shouldAttachFigurineTimer };
 }

@@ -6,15 +6,14 @@
 //         feeds blengr(); invent.c getobj()'s "write with" flow is called
 //         from doengrave().
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, VENOM_CLASS, } from './objclass.js';
-import { formatSeenMessage } from './hero_speech.js';
 import { is_boots } from './object_properties.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { exerciseWisdom, exerciseAttribute } from './attrib.js';
-import { heroFormSticks, heroHidesOnCeiling, heroIsFlying, heroMonsterForm, heroSpecies } from './polyself.js';
+import { heroFormSticks, heroHidesOnCeiling, heroIsFlying, heroMonsterForm, heroSpecies, body_part } from './polyself.js';
 import { heroTeetersAtPit, heroEscapedShaft } from './trap.js';
 import { MONSTER_ATTACKS, MONSTER_SIZE, MONSTER_SYMBOL } from './monster_data.js';
 import { AT_HUGS } from './monster_attack_types.js';
-import { P_RIDING, BUFSZ, BURN, COLNO, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, MARK, N_ENGRAVE, ROWNO, A_WIS, ACCESSIBLE, ALTAR, CLOUD, DRAWBRIDGE_UP, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GRAVE, IS_AIR, IS_FOUNTAIN, NO_MM_FLAGS, ROOM, WAND_BACKFIRE_CHANCE, } from './const.js';
+import { P_RIDING, BUFSZ, BURN, COLNO, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, MARK, N_ENGRAVE, ROWNO, A_WIS, ACCESSIBLE, ALTAR, CLOUD, DRAWBRIDGE_UP, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GRAVE, IS_AIR, IS_FOUNTAIN, NO_MM_FLAGS, ROOM, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, LL_CONDUCT, } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { newsym } from './display.js';
 import { surfaceName, ceilingName } from './dungeon.js';
@@ -26,13 +25,12 @@ import { TOWEL, MAGIC_MARKER, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WA
 import { isBimanualObject, isBlade, isWetTowel } from './object_properties.js';
 import { willWeld, isWeldedPrimary } from './wield.js';
 import { commandResultCancelled, commandResultFailed, setMulti } from './cmd.js';
-import { plineWithContinuation as pline, plineWithContinuation } from './pline.js';
+import { plineWithContinuation as pline, plineWithContinuation, formatSeenMessage, recordGameLogEvent, } from './pline.js';
 import { getLine, promptYesNoQuit } from './query.js';
 import { getobj, inventoryItemDescription, useUpInventoryStack } from './invent.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { makeBlinded } from './potion.js';
 import { heroResistsBlindingLight } from './blinding_attack.js';
-import { heroFingerTipName, heroHandName } from './body_parts.js';
 import { learnWand, zappable, zapWithoutDirection } from './zap.js';
 import { explodeWand } from './read.js';
 import { chargeUnpaidUsage } from './shk.js';
@@ -41,7 +39,6 @@ import { dryTowel } from './weapon.js';
 import { holdAnotherObject } from './invent.js';
 import { objectName, objectNameIsPlural, observeObjectForNaming, ownedObjectAction, ownedObjectName, } from './objnam.js';
 import { addExperience } from './exper.js';
-import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { altarWrath } from './pray.js';
 import { getRandomTextLine, getRumor } from './mklev.js';
 import { monsterName } from './do_name.js';
@@ -523,7 +520,7 @@ function stylusClass(object) {
 // stylus_ok(NULL) is GETOBJ_SUGGEST, so '-' leads the displayed choices.
 async function chooseStylus(state) {
     const selection = await getobj('write with', stylusClass, {
-        forcePrompt: true, hands: GETOBJ_SUGGEST, handsText: `your ${heroFingerTipName(state)}`,
+        forcePrompt: true, hands: GETOBJ_SUGGEST, handsText: `your ${body_part(FINGERTIP, state)}`,
     });
     return selection.none ? 'hands' : selection.object;
 }
@@ -740,13 +737,13 @@ export async function doengrave(state = game) {
     if (object)
         observeObjectForNaming(object, { state });
     const writer = stylus === 'hands'
-        ? `your ${heroFingerTipName(state)}`
+        ? `your ${body_part(FINGERTIP, state)}`
         : ownedObjectName(stylus, state, { capitalized: false });
     // There's no reason you should be able to write with a wand while both
     // your hands are tied up.
     const wielded = state.uwep || state.u.uwep;
     if (!heroHasFreeHand(state) && stylus !== wielded && !(object && object.owornmask)) {
-        await pline(`You have no free ${heroHandName(state)} to write with!`);
+        await pline(`You have no free ${body_part(HAND, state)} to write with!`);
         await exit();
         return;
     }
@@ -1073,7 +1070,7 @@ export async function doengrave(state = game) {
         await pline(`You ${everb} the ${eloc} with ${setup.type === ENGRAVE && quantity > 1 ? '1 of ' : ''}${await inventoryItemDescription(object)}.`);
     }
     else {
-        await pline(`You ${everb} the ${eloc} with your ${heroFingerTipName(state)}.`);
+        await pline(`You ${everb} the ${eloc} with your ${body_part(FINGERTIP, state)}.`);
     }
     // Prompt for the engraving text.
     const line = await getLine(`What do you want to ${everb} the ${eloc} here?`, (_ch, key) => key >= 32 && key <= 255 && key !== 127);

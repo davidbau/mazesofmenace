@@ -12,9 +12,8 @@ import { applyArtifactHit, artifactById, artifactEmitsLight, findArtifact, isPer
 import { getmattk } from './attack_selection.js';
 import { heroIsPunished } from './ball.js';
 import { applyMonsterBlindness, heroBlindingObjectHitMessage, heroCanBeBlindedByContact, monsterCanBeBlindedByObject, monsterResistsBlindingLight } from './blinding_attack.js';
-import { heroHandName, heroLegName, heroStomachName, monsterLegName } from './body_parts.js';
 import { heroHasInvoluntaryDelay } from './cmd.js';
-import { A_CON, A_DEX, A_INT, A_LAWFUL, A_STR, A_WIS, D_CLOSED, D_LOCKED, DIED, DISMOUNT_KNOCKED, DISMOUNT_POLY, DOOR, DROWNING, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, FAINTED, G_NOCORPSE, IRONBARS, Is_airlevel, IS_OBSTRUCTED, IS_TREE, Is_waterlevel, KILLED_BY, KILLED_BY_AN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_SLEEP, MGIVENNAME, MM_IGNORELAVA, MM_IGNOREWATER, MMOVE_DIED, MON_EXPLODE, MSLOW, Luck, NEW_MOON, NON_PM, P_BARE_HANDED_COMBAT, P_BASIC, P_ISRESTRICTED, P_KNIFE, P_LANCE, P_NONE, P_SKILLED, P_TWO_WEAPON_COMBAT, P_UNSKILLED, P_WHIP, PARANOID_HIT, POOL, RLOC_MSG, RLOC_NOMSG, SHOPBASE, STONING, STRAT_WAITFORU, STRAT_WAITMASK, TT_PIT, Upolyd, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMU, W_RINGL, W_RINGR, W_SADDLE, W_WEP, WATER, W_ARMS, } from './const.js';
+import { A_CON, A_DEX, A_INT, A_LAWFUL, A_STR, A_WIS, D_CLOSED, D_LOCKED, DIED, DISMOUNT_KNOCKED, DISMOUNT_POLY, DOOR, DROWNING, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, FAINTED, G_NOCORPSE, IRONBARS, Is_airlevel, IS_OBSTRUCTED, IS_TREE, Is_waterlevel, KILLED_BY, KILLED_BY_AN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_SLEEP, MGIVENNAME, MM_IGNORELAVA, MM_IGNOREWATER, MMOVE_DIED, MON_EXPLODE, MSLOW, Luck, NEW_MOON, NON_PM, P_BARE_HANDED_COMBAT, P_BASIC, P_ISRESTRICTED, P_KNIFE, P_LANCE, P_NONE, P_SKILLED, P_TWO_WEAPON_COMBAT, P_UNSKILLED, P_WHIP, PARANOID_HIT, POOL, RLOC_MSG, RLOC_NOMSG, SHOPBASE, STONING, STRAT_WAITFORU, STRAT_WAITMASK, TT_PIT, Upolyd, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMU, W_RINGL, W_RINGR, W_SADDLE, W_WEP, WATER, W_ARMS, HAND, LEG, STOMACH, LL_CONDUCT, } from './const.js';
 import { isok } from './cmd.js';
 import { specialContactDamage } from './contact_damage.js';
 import { isPoolAt } from './dbridge.js';
@@ -30,7 +29,6 @@ import { wipeHeroEngraving } from './engrave.js';
 import { loseHeroExperience } from './exper.js';
 import { explode } from './explode.js';
 import { floorObjectDescription } from './invent.js';
-import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { game, requireGameLevel, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { checkHeroAttackOverexertion, doorlessDoor, exceedsActionCapacity, heroTestMove, nearCapacity, nomul, roomForRoomno, roomsAt, stopRun } from './hack.js';
 import { dist2, ordinalSuffix, possessiveName, upstart } from './hacklib.js';
@@ -43,7 +41,6 @@ import { holdAnotherObject } from './invent.js';
 import { freeInventoryObject } from './invent.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { retouchEquipment } from './artifact.js';
-import { formatFeltMessage, formatHeardMessage, publishHeardMessage } from './hero_speech.js';
 import { requireInitializedHero } from './hero_types.js';
 import { consumeInventoryItem, inventoryItemDescription, mergable } from './invent.js';
 import { snuffMonsterInventoryLights } from './light.js';
@@ -61,7 +58,7 @@ import { beginMonsterMove, makeMonsterFlee, presentMonsterMoveMessage, presentMo
 import { recordRandom } from './monster_action_types.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DRDX, AD_DREN, AD_DRIN, AD_DRLI, AD_DRST, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY, AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPC1, AD_SPC2, AD_SPEL, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TENT, AT_TUCH, AT_WEAP } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SYMBOL, PM_GREEN_SLIME, monsterTypeName, requireMonsterData, } from './monster_data.js';
-import { destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory } from './monworn.js';
+import { destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory } from './worn.js';
 import { munslime, munstone } from './muse.js';
 import { objectMaterial, observeObject, objectTypeKnown } from './o_init.js';
 import { isAxe, isBimanualObject, isBlade, isBluntWeapon, isFlimsyObject, isLauncherAmmunition, isMissileObject, isPoisonableObject, isPolearm, isWeaponTool, launcherMatchesAmmo, is_launcher } from './object_properties.js';
@@ -69,8 +66,8 @@ import { corpseName, makePlural, minimalObjectName, objectCombatName, objectHasP
 import { stopHeroOccupation } from './occupation.js';
 import { objectAtMonsterDescription } from './pager.js';
 import { petFoodNutrition } from './pet_eating.js';
-import { pline, plineWithContinuation } from './pline.js';
-import { applyHeroGolemEffects, heroFormSticks, heroHasNoHands, heroHasProtectionFromShapeChangers, heroHatesSilver, heroIsFlaming, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, heroMonsterForm, heroPassesWalls, heroSpecies, polymonHero, polymorphHero, releaseHeroGrip, returnHeroToHumanForm } from './polyself.js';
+import { formatFeltMessage, formatHeardMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, } from './pline.js';
+import { applyHeroGolemEffects, heroFormSticks, heroHasNoHands, heroHasProtectionFromShapeChangers, heroHatesSilver, heroIsFlaming, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, heroMonsterForm, heroPassesWalls, heroSpecies, polymonHero, polymorphHero, releaseHeroGrip, returnHeroToHumanForm, body_part, mbodypart } from './polyself.js';
 import { cureHeroSickness, heroIsSick, heroIsSliming, hitMonsterWithSupportedPotion, makeBlinded, makeConfused, makeStunned, setHeroSlimingTimeout, splitMonster, } from './potion.js';
 import { ghodHitsu } from './priest.js';
 import { hasWornProperty, propertyIsActive } from './properties.js';
@@ -494,7 +491,7 @@ export async function do_attack(monster, x, y, { safeMonster = false, permission
                 else if (!monsterHasNoHands(heroSpecies(game)) && !monsterIsVerySmall(heroSpecies(game))) {
                     const action = game.urole?.key === 'monk' ? 'striking' : 'bashing';
                     const covered = game.uarmg || game.u.uarmg ? 'gloved' : 'bare';
-                    await pline(`You begin ${action} monsters with your ${covered} ${makePlural(heroHandName(game))}.`);
+                    await pline(`You begin ${action} monsters with your ${covered} ${makePlural(body_part(HAND, game))}.`);
                 }
             }
         }
@@ -2155,7 +2152,7 @@ export async function mhitmAdLegs(call) {
         /* mhitu: a xan pricks the hero's leg */
         const { state, attacker, publish, random, rollOne, calls } = call.context;
         const side = recordRandom(random, calls, 2) ? 'right' : 'left';
-        const leg = heroLegName(state);
+        const leg = body_part(LEG, state);
         const subject = monsterName(attacker, { capitalized: true });
         let damage = call.context.damage;
         // This case is too obvious to ignore, but Nethack is not in
@@ -3143,7 +3140,7 @@ async function wrapMonster(monster, context) {
     if (state.flags.verbose) {
         const name = monsterName(monster, { state });
         const targetName = coils && !tailMiss ? name
-            : `${possessiveName(name)} ${tailMiss ? 'tail' : monsterLegName(monster.mnum)}`;
+            : `${possessiveName(name)} ${tailMiss ? 'tail' : mbodypart(monster.mnum, LEG)}`;
         await publish(`You brush against ${targetName}.`);
     }
     return 0;
@@ -3191,7 +3188,7 @@ export async function resolveMonsterWrapping(monster, attack, state, publish, ra
     if (hero.ustuck !== monster) {
         attack.damage = 0;
         if (state.flags.verbose) {
-            await publish(`${monsterName(monster, { state, capitalized: true })} brushes against ${coils ? 'you' : `your ${heroLegName(state)}`}.`);
+            await publish(`${monsterName(monster, { state, capitalized: true })} brushes against ${coils ? 'you' : `your ${body_part(LEG, state)}`}.`);
         }
         return;
     }
@@ -4333,7 +4330,7 @@ async function digestDefender(defender, species, state, { publish, random, rollD
         if (death.heroDied)
             return { nativeResult: M_ATTK_DEF_DIED, heroDied: true };
         if (!death.killed) {
-            await publish(`You hurriedly regurgitate the sizzling in your ${heroStomachName(state)}.`);
+            await publish(`You hurriedly regurgitate the sizzling in your ${body_part(STOMACH, state)}.`);
             return { nativeResult: M_ATTK_DEF_DIED, heroDied: false };
         }
         const [weight, nutrition] = requireMonsterData(MONSTER_BODY_META, species);
@@ -5839,7 +5836,7 @@ export async function confuseTouchedMonster(monster, { state = game } = {}) {
     requirePlayingGame(state);
     if (!state.u.umconf || monster.mconf)
         return;
-    const hands = makePlural(heroHandName(state));
+    const hands = makePlural(body_part(HAND, state));
     const unseen = heroIsBlind(state)
         || heroIsInvisible(state) && !propertyIsActive('seeInvisible', state);
     let message;

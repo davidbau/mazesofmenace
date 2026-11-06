@@ -9,26 +9,23 @@ import { mimicHitMessage } from './mon.js';
 import { OBJ_NAME } from './object_data.js';
 import { objectMaterial, learnObjectType, observeObject, objectTypeKnown } from './o_init.js';
 import { convertSecretDoor, findit, revealSecretDoor, showMapSpot } from './detect.js';
-import { formatFeltMessage, publishHeardMessage } from './hero_speech.js';
-import { heroFaceName, heroFootName, heroHeadName } from './body_parts.js';
 import { monsterHasMapPosition, monsterAtPosition } from './steed.js';
 import { chooseInventoryObject, stack_object } from './invent.js';
-import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, PLNMSG_ENVELOPED_IN_GAS, ZAP_POS, ANTI_MAGIC, CORR, DBWALL, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_DOWN, ENGRAVE, EXPL_MAGICAL, HEADSTONE, HOLE, IS_FURNITURE, Is_airlevel, Invocation_lev, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, POLY_TRAP, SCORR, TELEP_TRAP, TRAPDOOR, TRAP_EXPLODE, VIBRATING_SQUARE, A_CON, A_CHA, W_ARMH, A_WIS, W_ARMG, A_DEX, A_STR, A_INT, W_RING, W_ARMOR, G_GENOD, MAX_OIL_IN_FLASK, MAX_SPELL_STUDY, MM_NOMSG, NO_MINVENT, W_AMUL, W_ART, W_ARTI, W_QUIVER, W_RINGL, W_RINGR, W_SWAPWEP, W_TOOL, W_WEP, COLNO, DB_FLOOR, DB_ICE, DB_UNDER, DRAWBRIDGE_UP, FOUNTAIN, SHOP_BARS_COST, SHOP_DOOR_COST, D_BROKEN, D_NODOOR, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_WALL, IS_WATERWALL, Is_rogue_level, Is_waterlevel, ismnum, LAVAWALL, PIT, POOL, ROOM, ROWNO, SDOOR, TT_INFLOOR, TT_LAVA, Upolyd, VWALL, WEB, W_NONDIGGABLE, SHOPBASE, BOLT_LIM, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND } from './const.js';
+import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, PLNMSG_ENVELOPED_IN_GAS, ZAP_POS, ANTI_MAGIC, CORR, DBWALL, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_DOWN, ENGRAVE, EXPL_MAGICAL, HEADSTONE, HOLE, IS_FURNITURE, Is_airlevel, Invocation_lev, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, POLY_TRAP, SCORR, TELEP_TRAP, TRAPDOOR, TRAP_EXPLODE, VIBRATING_SQUARE, A_CON, A_CHA, W_ARMH, A_WIS, W_ARMG, A_DEX, A_STR, A_INT, W_RING, W_ARMOR, G_GENOD, MAX_OIL_IN_FLASK, MAX_SPELL_STUDY, MM_NOMSG, NO_MINVENT, W_AMUL, W_ART, W_ARTI, W_QUIVER, W_RINGL, W_RINGR, W_SWAPWEP, W_TOOL, W_WEP, COLNO, DB_FLOOR, DB_ICE, DB_UNDER, DRAWBRIDGE_UP, FOUNTAIN, SHOP_BARS_COST, SHOP_DOOR_COST, D_BROKEN, D_NODOOR, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_WALL, IS_WATERWALL, Is_rogue_level, Is_waterlevel, ismnum, LAVAWALL, PIT, POOL, ROOM, ROWNO, SDOOR, TT_INFLOOR, TT_LAVA, Upolyd, VWALL, WEB, W_NONDIGGABLE, SHOPBASE, BOLT_LIM, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, HEAD, FACE, FOOT, ARM, EYE, LL_CONDUCT, LL_ARTIFACT, LL_WISH, } from './const.js';
 import { isok } from './cmd.js';
 import { isIceAt, isLavaAt, isMoatAt, isPoolAt, closeDrawbridge, destroyDrawbridge, findDrawbridgeAt, openDrawbridge, drawbridgeUnderlyingType } from './dbridge.js';
 import { heroHasArtifactDefense, heroHasCarriedArtifactFlag, artifactById } from './artifact.js';
 import { adjustHeroAlignment, exerciseAttribute, exerciseWisdom, currentAttribute, poisonHero } from './attrib.js';
 import { canSeeMonster, consumeHallucinatedMenuObjectGlyph, docrt, glyphAt, newsym, shieldeff, unmap_invisible } from './display.js';
-import { pline, plineWithContinuation, set_msg_dir } from './pline.js';
+import { formatFeltMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, set_msg_dir, } from './pline.js';
 import { formatDraftMessage } from './draft_message.js';
 import { waterbodyName } from './pager.js';
 import { resetPick, changeDoorByMagic } from './lock.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { monsterHasFireResistance, monsterHasShockResistance, monsterHasSeductionAttack, monsterResistanceBits, carnivorous, monsterDigests, monsterHasEyes, monsterHasNoHands, monsterHasProperName, monsterIsDemon, monsterIsGolem, monsterIsMindless, monsterIsNonliving, monsterIsPlayerMonster, monsterIsRider, monsterIsSwimmer, monsterIsUndead, monsterIsVampireShifter, monsterIsWhirly, monsterYoungerForm, heroResistsStoning, touchPetrifies, } from './mondata.js';
+import { monsterHasFireResistance, monsterHasShockResistance, monsterHasSeductionAttack, monsterResistanceBits, carnivorous, monsterDigests, monsterHasEyes, monsterHasNoHands, monsterHasProperName, monsterIsDemon, monsterIsGolem, monsterIsMindless, monsterIsNonliving, monsterIsPlayerMonster, monsterIsRider, monsterIsSwimmer, monsterIsUndead, monsterIsVampireShifter, monsterIsWhirly, monsterYoungerForm, heroResistsStoning, touchPetrifies, eyecount } from './mondata.js';
 import { setHeroTrap, dotrap, mintrap, objectIsVulnerableToErosion, deleteTrap, trapName, closeHoldingTrap, openFallingTrap, openHoldingTrap, erosionMatters, sokobanGuilt, igniteItems, resetUtrap, maketrap, deleteFloorTrap, meltIceTrap, activateStatueTrapAt, animateStatue, } from './trap.js';
 import { displayColorName, displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { possessiveName, mungWishSpaces } from './hacklib.js';
-import { destroyObjectFromMonsterInventory, checkMonsterGearNextTurn } from './monworn.js';
 import { commandResultCancelled } from './cmd.js';
 import { removeHeroAccessory, wearHeroAccessory, objectIsHardHelmet, applyArmorOnEffects, armorSlotFor, wearHeroArmor, isEyewear, wearEyewear } from './do_wear.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
@@ -46,7 +43,7 @@ import { objectQuantity, splitObjectStack, mksobj, unblessObjectState, uncurseOb
 import { MONSTER_BODY_META, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MAGIC_RESISTANCE, MONSTER_NAME, MONSTER_SYMBOL, requireMonsterData, } from './monster_data.js';
 import { scheduleLevelTimer, stopLevelTimer, objectsInTimerGraph, objectTimers, scheduleObjectTimer, stopObjectTimer, stopObjectTimers } from './timeout.js';
 import { applySupportedPotionVapor } from './potion.js';
-import { heroHasNoHands, heroFormHidesUnderObjects } from './polyself.js';
+import { heroHasNoHands, heroFormHidesUnderObjects, body_part } from './polyself.js';
 import { createPoisonGasCloud } from './region.js';
 import { dryFountainAt } from './fountain.js';
 import { stopHeroOccupation } from './occupation.js';
@@ -54,13 +51,13 @@ import { d, rn1, rn2, rnd } from './rng.js';
 import { promptDirection } from './cmd.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { chargeUnpaidUsage, addShopDamage, payForShopDamage, chargeAlteredUnpaidObject, addShopObjectToBill, costlySpot, stolenValue, hotPursuitShopkeeper, makeAngryShopkeeper, deleteObjectContents, shopkeeperInOwnShop, containedBuyCost } from './shk.js';
-import { hasWornProperty } from './properties.js';
-import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
+import { hasIntrinsicProperty, hasTimedProperty, hasWornProperty } from './properties.js';
+import { heroDetectsMonsters, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, AD_DRST, AD_ACID, AD_SPC1, AD_SPC2 } from './monster_attack_types.js';
 import { showInventoryWindow } from './windows.js';
 import { useUpFloorObject } from './invent.js';
-import { changeMonsterForm, copyPetData, normalizeMonsterShape, wakeMonster, maybeUnhideAt, revealMonsterAppearance } from './mon.js';
-import { setMonsterPermanentInvisibility, bypassObjectList, nextUnbypassedObject, bypassObject, adjustMonsterSpeed, monsterSpeedMessage } from './worn.js';
+import { changeMonsterForm, copyPetData, normalizeMonsterShape, wakeMonster, maybeUnhideAt, revealMonsterAppearance, checkMonsterGearNextTurn, } from './mon.js';
+import { setMonsterPermanentInvisibility, bypassObjectList, nextUnbypassedObject, bypassObject, adjustMonsterSpeed, monsterSpeedMessage, destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory, } from './worn.js';
 import { redrawMonsterWormSegments } from './worm.js';
 import { monsterHasMagicResistance } from './trap.js';
 import { finishHeroMonsterKill, finishHeroLiquidMonsterDeath } from './mon.js';
@@ -80,7 +77,6 @@ import { isWeaponTool, isBimanualObject, isPoisonableObject, objectIsMetallic } 
 import { hatchableEggSpecies, eggSpeciesIsDead } from './mon.js';
 import { setPrimaryWeapon, setQuiverObject, setSecondaryWeapon, setTwoWeaponCombat } from './wield.js';
 import { releaseObjectLeash } from './apply.js';
-import { LL_CONDUCT, recordGameLogEvent } from './gamelog.js';
 import { vegetarianCorpse } from './food_traits.js';
 import { updateInventoryPresentation } from './invent.js';
 import { changeBoxLockByMagic } from './box_magic.js';
@@ -89,7 +85,6 @@ import { roomsAt, loseHeroHp, exceedsActionCapacity } from './hack.js';
 import { setArtifactOrigin } from './artifact.js';
 import { heroIsPunished } from './ball.js';
 import { heroResistsBlindingLight, monsterResistsBlindingLight } from './blinding_attack.js';
-import { heroArmName, heroEyeCount, heroEyeName } from './body_parts.js';
 import { dropBoulderIntoLiquid } from './do.js';
 import { xyToDirection } from './cmd.js';
 import { DIED, EXPL_FIERY, GRAVE, IS_ROOM, In_mines, Luck, MOAT, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_SLEEP, NHW_MENU, NON_PM, PICK_ONE, PLNMSG_OBJ_GLOWS, P_BASIC, P_EXPERT, P_SKILLED, STONE, STRAT_WAITMASK, W_ARM, W_ARMC, W_ARMS, W_ARMU } from './const.js';
@@ -101,7 +96,6 @@ import { finishMonsterEating } from './dogmove.js';
 import { attachEggHatchTimer } from './timeout.js';
 import { encumber_msg } from './pickup.js';
 import { loseHeroExperience } from './exper.js';
-import { LL_ARTIFACT, LL_WISH } from './gamelog.js';
 import { requireGameLevel } from './gstate.js';
 import { applyHeroLocationEffects, burnAwayHeroSlime, nomul } from './hack.js';
 import { releaseHeroFromMonster } from './mon.js';
@@ -119,7 +113,6 @@ import { wornMonsterLifeSaver } from './mon.js';
 import { closedDoor, makeMonsterFlee, dissolveBars } from './monmove.js';
 import { AD_RBRE, AT_BREA } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, monsterTypeName } from './monster_data.js';
-import { findMonsterArmorClass } from './monworn.js';
 import { discoverHeroReflectionSource, ureflects, heroReflectsRay, mon_reflects, monsterReflectsRay } from './muse.js';
 import { corpseName, distantObjectName, minimalObjectName, readObjectName, singularObjectName } from './objnam.js';
 import { applyHeroGolemEffects, heroFormSticks, heroIsUnchanging, heroMonsterForm, heroSpecies, polymonHero, polymorphHero, returnHeroToHumanForm } from './polyself.js';
@@ -147,9 +140,8 @@ import { MAP_SYMBOLS } from './map_symbols.js';
 import { revealMimicIdentity } from './uhitm.js';
 import { respondToImmediateMagic, wakeAttackedMonster } from './mon.js';
 import { MONSTER_SIZE } from './monster_data.js';
-import { hurtleMonster } from './dothrow.js';
+import { hurtleMonster, hitMonsterWithThrownObject } from './dothrow.js';
 import { teleportMonsterByHero } from './teleport.js';
-import { removeObjectFromMonsterInventory } from './monworn.js';
 import { setMimicAppearance } from './makemon.js';
 import { landFloorObject } from './floor_effects.js';
 import { monsterHasDrainResistance } from './mondata.js';
@@ -169,7 +161,6 @@ import { cleanupTransientLight, showTransientLight } from './transient_light.js'
 import { seeMonsterCloseup } from './mon.js';
 import { SINK, xdir, ydir } from './const.js';
 import { hitHeroWithObject } from './hero_object_hit.js';
-import { hitMonsterWithThrownObject } from './hero_ranged_attack.js';
 import { wakeMonstersNearWithMessages } from './mon.js';
 import { snuffThrownCandle } from './thrown_object.js';
 import { CLR_BROWN } from './terminal.js';
@@ -520,19 +511,29 @@ export async function hitMonsterWithWand(monster, wand, { state = game, x = mons
         learnWand(wand, { state });
     return result;
 }
-// The make-invisible wand against a monster. C zap.c:bhitm().
+// C display.h:_knowninvisible(): minvis && ((cansee(mx,my)
+// && (See_invisible || Detect_monsters)) || (!Blind
+// && (HTelepat & ~INTRINSIC) && mdistu(mon) <= BOLT_LIM * BOLT_LIM)).
+// prop.h INTRINSIC = FROMOUTSIDE|FROMRACE|FROMEXPER, so HTelepat & ~INTRINSIC
+// keeps the polymorphed form's telepathy (polyself.c PROPSET(TELEPAT,
+// telepathic(mdat))) and a #wizintrinsic timeout (TIMEOUT bits; timeout.c
+// notes TELEPAT only times out that way); worn extrinsic telepathy (ETelepat:
+// helm of telepathy, amulet of ESP) and plain gained intrinsics do not
+// qualify.
 function knownInvisible(monster, state = game) {
     if (!monster.minvis)
         return false;
     const hero = state.u;
-    if (cansee(monster.mx, monster.my) && (hero.seeInvisible
-        || (hero.seeInvisibleTurns ?? 0) > 0
-        || hero.detectMonsters || state.detectMonsters))
+    if (cansee(monster.mx, monster.my)
+        && (hero.seeInvisible || (hero.seeInvisibleTurns ?? 0) > 0
+            || heroDetectsMonsters(state)))
         return true;
-    const hasSightedTelepathy = (hero.unblind_telepat_range ?? -1) >= 0
-        || state.uarmh?.otyp === 100 || state.uamul?.otyp === 201;
+    const inRangeTelepathy = hasTimedProperty('telepathy', state)
+        || hasIntrinsicProperty('telepathy', 'form', state);
+    if (heroIsBlind(state) || !inRangeTelepathy)
+        return false;
     const distance = (monster.mx - hero.ux) ** 2 + (monster.my - hero.uy) ** 2;
-    return !heroIsBlind(state) && hasSightedTelepathy && distance <= BOLT_LIM ** 2;
+    return distance <= BOLT_LIM ** 2;
 }
 export async function makeMonsterInvisible(monster) {
     const wasInvisible = !!monster.minvis;
@@ -2959,7 +2960,7 @@ async function strikeOrLockVertically(source, x, y, trap, state) {
     }
     if (striking && dz < 0 && rn2(3) && !Is_airlevel(state.u.uz)
         && !Is_waterlevel(state.u.uz) && !(state.underwater || state.u.uinwater) && !onQuestStart(state)) {
-        await plineWithContinuation(`A rock is dislodged from the ${ceilingName(x, y, state)} and falls on your ${heroHeadName(state)}.`);
+        await plineWithContinuation(`A rock is dislodged from the ${ceilingName(x, y, state)} and falls on your ${body_part(HEAD, state)}.`);
         let damage = rnd(objectIsHardHelmet(state.uarmh || state.u.uarmh) ? 2 : 6);
         if (state.u.halfPhysicalDamage)
             damage = Math.ceil(damage / 2);
@@ -3008,12 +3009,12 @@ async function fleshOnTerrain(x, y, state) {
         || (onQuestStart(state) && dz < 0))
         await plineWithContinuation('Nothing happens.');
     else if (dz < 0)
-        await plineWithContinuation(`Blood drips on your ${heroFaceName(state)}.`);
+        await plineWithContinuation(`Blood drips on your ${body_part(FACE, state)}.`);
     else if (!state.level.objects[x]?.[y]?.length && engravingAt(x, y)?.engr_type !== ENGRAVE) {
         if (isPoolAt(x, y, state) || isIceAt(x, y, state))
             await plineWithContinuation('Nothing happens.');
         else
-            await plineWithContinuation(`Blood ${isLavaAt(x, y, state) ? 'boils' : 'pools'} ${state.u.levitating ? 'beneath' : 'at'} your ${makePlural(heroFootName(state))}.`);
+            await plineWithContinuation(`Blood ${isLavaAt(x, y, state) ? 'boils' : 'pools'} ${state.u.levitating ? 'beneath' : 'at'} your ${makePlural(body_part(FOOT, state))}.`);
     }
 }
 async function probeVertically(source, x, y, state) {
@@ -4611,7 +4612,7 @@ async function hitHeroOnRay(x, y, rayDx, rayDy, context) {
         await publish(`${raySubject(context.displayName())} whizzes by you!`);
     }
     else if (damageType === AD_ELEC) {
-        await publish(`Your ${heroArmName(state)} tingles.`);
+        await publish(`Your ${body_part(ARM, state)} tingles.`);
     }
     if (!heroDied) {
         if (damageType === AD_ELEC)
@@ -4639,8 +4640,8 @@ async function finishMonsterRayHit(monster, hit, { state, displayName, finishMon
             await publish(rayHitMessage(displayName(), monster, { x, y, state }));
             await publish(`${nameTarget()} disintegrates.`);
             // zap.c:dobuzz() names one eye for a one-eyed hero form.
-            const eye = heroEyeName(state);
-            const eyes = heroEyeCount(state) === 1 ? eye : makePlural(eye);
+            const eye = body_part(EYE, state);
+            const eyes = eyecount(heroSpecies(state)) === 1 ? eye : makePlural(eye);
             await publish(`${possessiveName(nameTarget())} body reintegrates before your ${eyes}!`);
             await publish(`${nameTarget()} resurrects!`);
         }

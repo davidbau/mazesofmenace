@@ -16,15 +16,14 @@ import { ILLOBJ_CLASS, RING_CLASS, COIN_CLASS, VENOM_CLASS } from './objclass.js
 import { OBJ_NAME } from './object_data.js';
 import { setHeroBlindnessTimeout, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './gstate.js';
-import { pline, plineWithContinuation } from './pline.js';
+import { formatHeardMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, } from './pline.js';
 import { MONSTER_ATTACKS, MONSTER_NAME, MONSTER_MOVE } from './monster_data.js';
 import { monsterHasMapPosition, monsterAtPosition, dismountHero, stuckSteed } from './steed.js';
 import { AD_POLY } from './monster_attack_types.js';
-import { A_DEX, DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, GETOBJ_SUGGEST, HOLE, IS_ALTAR, IS_SINK, LOST_DROPPED, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PARANOID_AUTOALL, RLOC_NOMSG, ROOM, SORTLOOT_INVLET, TRAPDOOR, WATER, ALTAR, AM_NONE, COLNO, Align2amask, FOUNTAIN, Is_waterlevel, ROWNO, SINK, THRONE, W_ARMOR, W_ACCESSORY, W_SADDLE, DISMOUNT_FELL, MAGIC_PORTAL, In_endgame, In_quest, In_hell, Is_valley, Is_airlevel, Is_astralevel, ACH_ENDG, ACH_ASTR, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, TT_BURIEDBALL, PIT, SPIKED_PIT, TT_PIT, VIBRATING_SQUARE, STAIRS, } from './const.js';
+import { A_DEX, DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, GETOBJ_SUGGEST, HOLE, IS_ALTAR, IS_SINK, LOST_DROPPED, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PARANOID_AUTOALL, RLOC_NOMSG, ROOM, SORTLOOT_INVLET, TRAPDOOR, WATER, ALTAR, AM_NONE, COLNO, Align2amask, FOUNTAIN, Is_waterlevel, ROWNO, SINK, THRONE, W_ARMOR, W_ACCESSORY, W_SADDLE, DISMOUNT_FELL, MAGIC_PORTAL, In_endgame, In_quest, In_hell, Is_valley, Is_airlevel, Is_astralevel, ACH_ENDG, ACH_ASTR, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, TT_BURIEDBALL, PIT, SPIKED_PIT, TT_PIT, VIBRATING_SQUARE, STAIRS, HAND, FACE, LEG, STOMACH } from './const.js';
 import { paranoidQuery, commandResultCancelled, commandResultFailed, resetOccupations } from './cmd.js';
 import { makeBlinded } from './potion.js';
 import { gulp_blnd_check, holdingMonsterName, } from './mhitu.js';
-import { heroFaceName, heroHandName, heroLegName, monsterStomachName } from './body_parts.js';
 import { BOULDER, CORPSE, CRYSKNIFE, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LEASH, LOADSTONE, MEATBALL, MEAT_RING, MEAT_STICK, TIN, WORM_TOOTH } from './object_data.js';
 import { makePlural, withIndefiniteArticle, ownedObjectName, verbForSubject, objectCombatName, objectDescription, objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle, objectMonsterName, ownedObjectAction, definiteObjectAction } from './objnam.js';
 import { objectTypeKnown, oinit } from './o_init.js';
@@ -37,9 +36,7 @@ import { buryFloorObjectsAt, addBuriedObject, buriedBallToPunishment, applyPickA
 import { canSpotMonster, newsym, docrt, consumeHallucinatedMenuObjectGlyph, OBJECT_CLASS_SYMBOLS, map_object, flush_screen, reglyphSymbolSet, } from './display.js';
 import { cansee, vision_note_blocker_change, vision_recalc, vision_reset, vision_reset_new_level } from './vision.js';
 import { finishEnvironmentalMonsterDeath, wakeMonstersNearWithMessages, monsterInAir, changeMonsterForm, healMonster, sendMonsterToLimbo, moveMonsterNextToHero, setHeroGrip, monsterDeathCount, killGenocidedMonsters, purgeDeadMonsters, restoreMonsterShape, finishHeroMonsterKill, isRider, zombieForm, } from './mon.js';
-import { formatHeardMessage, publishHeardMessage } from './hero_speech.js';
-import { heroSpecies, heroFormSticks, heroHasOlfaction, heroIsPolymorphed } from './polyself.js';
-import { hitMonsterWithSettlingBoulder } from './hero_ranged_attack.js';
+import { heroSpecies, heroFormSticks, heroHasOlfaction, heroIsPolymorphed, body_part, mbodypart } from './polyself.js';
 import { rollPhysicalWeaponDamage } from './weapon.js';
 import { useUpFloorObject, stack_object } from './invent.js';
 import { deleteFloorTrap, resetUtrap, petrifyMonsterImmediately, seeTrap, deleteTrap, climbOutOfPit, dotrapAt, selfTouchPetrifyingWeapons, } from './trap.js';
@@ -79,22 +76,21 @@ import { resetTrapSetting, bringLeashedFollowers } from './apply.js';
 import { maybeResetPick } from './lock.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { runDueTimers, restoreLevelTimers, objectTimers, scheduleObjectTimer } from './timeout.js';
-import { restoreLevelChains } from './level_restore.js';
-import { restoreLevelPetHistory, restoreObjectPetHistory, restoreMonsterCover, hideMonsterOnRestore, restoreMonsterWormHeads, } from './save.js';
+import { restoreLevelChains, restoreMonsterCover, hideMonsterOnRestore, restoreMonsterWormHeads } from './restore.js';
+import { restoreLevelPetHistory, restoreObjectPetHistory } from './save.js';
 import { restoreLevelLightSources } from './light.js';
 import { finishLivingGame } from './end.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { bot, checkGoldSymbol } from './botl.js';
 import { restoreLevelRegions, updateHeroRegions } from './region.js';
 import { fumaroles, movebubbles, restore_waterlevel } from './mkmaze.js';
-import { recordGameLogEvent } from './gamelog.js';
 import { recordAchievement, recordDungeonEntryAchievements } from './insight.js';
 import { displayPreparedQuestArrival, prepareQuestArrival, prepareMainQuestPortalCall, onQuestStart, okToQuest, } from './quest.js';
 import { resurrectWizard } from './wizard.js';
 import { deliverMigratingMonsters, discardMigrations, updateMonsterLastMove, catchUpMonster, collectLevelFollowers, } from './dog.js';
 import { deliverSpecialLevelMessages } from './level_change.js';
 import { descendFromLevitation } from './levitation_commands.js';
-import { do_attack } from './uhitm.js';
+import { do_attack, hitMonsterWithHeroObject } from './uhitm.js';
 import { monsterSpeciesHidesOnCeiling, monsterIsDisplacer } from './mondata.js';
 import { LL_ACHIEVE, LL_DEBUG, G_GENOD, OBJECT_TIMER_KIND } from './const.js';
 import { rotCorpse } from './corpse_rot.js';
@@ -532,7 +528,7 @@ export async function canLetGo(object, verb = '', state = game) {
     if (isWeldedPrimary(object, state)) {
         object.bknown = true;
         if (verb) {
-            let hand = heroHandName(state);
+            let hand = body_part(HAND, state);
             if (isBimanualObject(object))
                 hand = makePlural(hand);
             await plineWithContinuation(`You cannot ${verb} something welded to your ${hand}.`, { noRepeat: true });
@@ -552,7 +548,7 @@ export async function canLetGo(object, verb = '', state = game) {
     }
     if (object.otyp === LEASH && object.leashmon) {
         if (verb)
-            await plineWithContinuation(`The leash is tied around your ${heroHandName(state)}.`);
+            await plineWithContinuation(`The leash is tied around your ${body_part(HAND, state)}.`);
         return false;
     }
     if ((object.owornmask ?? 0) & W_SADDLE) {
@@ -589,7 +585,7 @@ export async function dropHeroObject(object, { state = game, publish = plineWith
         if (state.flags?.verbose !== false) {
             const swallowerName = holdingMonsterName(hero.ustuck, state);
             const into = monsterDigests(hero.ustuck)
-                ? `${possessiveName(swallowerName)} ${monsterStomachName(hero.ustuck.mnum)}`
+                ? `${possessiveName(swallowerName)} ${mbodypart(hero.ustuck.mnum, STOMACH)}`
                 : swallowerName;
             // C drop() uses yobjnam() for unpaid objects and doname() otherwise.
             observeObjectForNaming(object, { state });
@@ -814,7 +810,7 @@ async function betterNotTryToDropThat(object, state) {
     const species = objectMonsterName(object);
     // C paranoid_ynq(TRUE, buf, FALSE) != 'y'; the source prompt is
     // "Drop the %s corpse without %s protection on?" with body_part(HAND)
-    const confirmed = await paranoidQuery(true, `Drop the ${species} corpse without ${heroHandName(state)} protection on?`);
+    const confirmed = await paranoidQuery(true, `Drop the ${species} corpse without ${body_part(HAND, state)} protection on?`);
     return !confirmed;
 }
 // C do.c obj_no_longer_held(): leaving direct hero/monster possession.
@@ -2185,7 +2181,7 @@ export async function continueWipingFace(occupation, state = game) {
         state._occupation = null;
     }
     else if ((state.u?.ucreamed ?? 0) === 0) {
-        await pline(`Your ${heroFaceName(state)} feels clean now.`);
+        await pline(`Your ${body_part(FACE, state)} feels clean now.`);
         state._occupation = null;
     }
     else if (occupation.remaining <= 0) {
@@ -2201,12 +2197,12 @@ export async function dowipe(state = game) {
         state._occupation = {
             key: 'wipe-face',
             remaining: 1,
-            text: `wiping off your ${heroFaceName(state)}`,
+            text: `wiping off your ${body_part(FACE, state)}`,
         };
         state.context.move = 1;
         return;
     }
-    await pline(`Your ${heroFaceName(state)} is already clean.`);
+    await pline(`Your ${body_part(FACE, state)} is already clean.`);
     state.context.move = 1;
 }
 export async function woundHeroLegs(side, turns, state = game, { publish = plineWithContinuation, } = {}) {
@@ -2231,7 +2227,7 @@ export async function healHeroLegs(state = game, { cause = 'healing', publish = 
         temporary.a[A_DEX]++;
     if (!hero.usteed && cause !== 'petrification') {
         const both = hero._woundedLegSide === 'both';
-        const leg = heroLegName(state);
+        const leg = body_part(LEG, state);
         await publish(`Your ${both ? makePlural(leg) : leg} ${both ? 'feel' : 'feels'} better.`);
     }
     hero._woundedLegTurns = 0;
@@ -2315,6 +2311,15 @@ export async function applyBoulderPitEffects(boulder, trap, x, y, { state = game
     const buriedFloorObjects = await buryFloorObjectsAt(x, y, state, { publish });
     await newsym(x, y);
     return { finished: true, object: null, buriedFloorObjects };
+}
+// C do.c:flooreffects() calls hmon(HMON_THROWN, 1) on a boulder settling
+// into a pit, without thitmonst()'s accuracy, Dexterity exercise, missile
+// mulch, or thrown-object passive work.
+export async function hitMonsterWithSettlingBoulder(monster, boulder, { state = game, publish = plineWithContinuation, } = {}) {
+    const hit = await hitMonsterWithHeroObject(monster, boulder, {
+        state, publish, mode: 'thrown', dieRoll: 1,
+    });
+    return { heroDied: hit.heroDied };
 }
 function ignoresFallingBoulder(mnum) {
     return monsterPassesWalls(mnum) || monsterThrowsRocks(mnum);

@@ -6250,7 +6250,9 @@ function _statusFieldEnabled(field, state) {
 // compare_blstats(prev, curr) against the other bank, and `expired` is the
 // hilite_reset_needed() timer reset; either one, or gu.update_all, makes C
 // pass the field to status_update(). This reads the banks without changing
-// them.
+// them. The timer is compared with gb.bl_hilite_moves, the svm.moves value
+// status_eval_next_unhilite() last recorded, not with the current turn: a
+// bot() during the monsters' part of a turn still sees the previous one.
 function _statusFieldNotice(gb, fld, data, updateAll) {
     const value = data.value ?? null;
     const compareValue = data.compareValue ?? value;
@@ -6259,7 +6261,7 @@ function _statusFieldNotice(gb, fld, data, updateAll) {
         || gb.status_hilite_text[1][fld] !== (data.text ?? null);
     const until = gb.status_hilite_times?.[0]?.[fld] ?? 0;
     const expired = !updateAll && !game.multi && until > 0
-        && until < (game.moves ?? 0)
+        && until < (gb.bl_hilite_moves ?? 0)
         && gb.status_hilite_rule[1][fld]?.behavior === 'changed';
     return { changed, expired };
 }
@@ -6323,8 +6325,10 @@ function _deliverStatusCapacity(capacity) {
 // C ref: bot_via_windowport() plus evaluate_and_notify_windowport(). Collect
 // every enabled typed field once per bot notification; status painting only
 // consumes these delivered banks. `onlyField` is the timebot fast path.
+// Returns whether this pass marked tty_status[NOW][BL_TITLE] dirty.
 function _collectStatusHilites(layouts, onlyField = null) {
     const gb = game.gb ??= {};
+    let titleDirty = false;
     const size = Math.max(...STATUS_FIELDS.map(row => row.fld)) + 1;
     for (const name of ['status_hilite_rule', 'status_hilite_value',
         'status_hilite_compare_value', 'status_hilite_percent',
@@ -6450,6 +6454,21 @@ function _collectStatusHilites(layouts, onlyField = null) {
             // both banks only when it notifies the field, including on
             // stat_update_time(). An unchanged field keeps its prior rule.
             gb.status_hilite_rule[1][fld] = selected;
+            // C ref: wintty.c tty_status_update(). tty_status[NOW][BL_TITLE]
+            // .color and .attr, which render_status() draws the hitpointbar
+            // with, are written by both the BL_TITLE update (the title's own
+            // highlight) and, with 'hitpointbar' on, the BL_HP update (HP's
+            // color with HL_INVERSE). The later status_update() of the two
+            // wins; within one pass BL_HP follows BL_TITLE in initblstats[].
+            // Either update also sets tty_status[NOW][BL_TITLE].dirty.
+            if (field.key === 'title') {
+                game._statusTitleBarSource = 'title';
+                titleDirty = true;
+            } else if (field.key === 'hitpoints'
+                && game.iflags?.wc2_hitpointbar) {
+                game._statusTitleBarSource = 'hitpoints';
+                titleDirty = true;
+            }
         }
         gb.status_hilite_value[0][fld] = value;
         gb.status_hilite_compare_value[0][fld] = compareValue;
@@ -6458,6 +6477,7 @@ function _collectStatusHilites(layouts, onlyField = null) {
         gb.status_hilite_type[0][fld] = field.type;
         if (notification) _setStatusHiliteChange(gb, fld, true);
     }
+    return titleDirty;
 }
 
 // C ref: botl.c status_eval_next_unhilite(), called once after each hero
@@ -6471,6 +6491,8 @@ export function status_eval_next_unhilite(state = game) {
     gb.status_hilite_times[1] ??= Array(size).fill(0);
     _statusHiliteChangeBanks(gb, size);
     const moves = state.moves ?? 0;
+    // C ref: botl.c gb.bl_hilite_moves (decl.c starts it at 0; not saved).
+    gb.bl_hilite_moves = moves;
     const multi = state.multi ?? 0;
     const duration = state.iflags?.hilite_delta ?? 0;
     for (const field of STATUS_FIELDS) {
@@ -6628,6 +6650,18 @@ function _statusOwnerStyle(owner) {
         return _statusConditionStyle(owner.option);
     }
     if (owner.kind === 'hitpoint-bar') {
+        // See _collectStatusHilites(): a BL_TITLE update after the last BL_HP
+        // one leaves the title's color and attributes on the bar. Begin_Attr()
+        // there is not gated on iflags.hilite_delta; the color is.
+        if (game._statusTitleBarSource === 'title') {
+            const titleRule = game.gb?.status_hilite_rule?.[0]?.[
+                STATUS_FIELDS.find(row => row.key === 'title').fld];
+            return {
+                color: game.iflags?.hilite_delta
+                    ? titleRule?.style?.color ?? NO_COLOR : NO_COLOR,
+                attrib: titleRule?.style?.attrib ?? HL_UNDEF,
+            };
+        }
         const hpStyle = _statusFieldStyle('hitpoints');
         return {
             color: hpStyle?.color ?? NO_COLOR,
@@ -6817,7 +6851,7 @@ function writeStatusRows(
     display,
     layouts = statusLayouts(),
     styles = null,
-    { forced = false } = {},
+    { forced = false, titleDirty = false } = {},
 ) {
     if (!display?.grid) return;
     styles ??= layouts.map(({ owners }) => owners.map(
@@ -6835,6 +6869,7 @@ function writeStatusRows(
             layouts[index],
             styles[index],
             forced || previous?.layouts?.length !== layouts.length,
+            titleDirty,
         );
         display.clearRow(screenRow);
         const { text } = layouts[index];
@@ -6907,6 +6942,7 @@ function _statusFieldGroups(layout, rowIndex) {
 
 function _clearRedrawnStatusOverlay(
     screenRow, rowIndex, oldLayout, oldStyles, newLayout, newStyles, forced,
+    titleDirty = false,
 ) {
     const overlay = game._statusMapOverlay;
     if (!overlay?.size) return;
@@ -6914,6 +6950,13 @@ function _clearRedrawnStatusOverlay(
     const oldText = oldLayout?.text ?? '';
     const redraw = new Set();
     const keys = _statusFieldGroups(newLayout, rowIndex);
+    // C ref: wintty.c check_fields(). A dirty field whose color and attribute
+    // are unchanged is skipped only when status_vals[] matches cw->data[]
+    // from the field's first column. The hitpointbar title's data begins
+    // with its '[' while status_vals[BL_TITLE] holds the bare title, so the
+    // comparison fails and a dirty title is always redrawn.
+    if (titleDirty && rowIndex === 0 && game.iflags?.wc2_hitpointbar)
+        redraw.add('title');
     if (!forced) {
         const sameStyle = (a, b) => (a?.color ?? NO_COLOR)
             === (b?.color ?? NO_COLOR)
@@ -7329,7 +7372,7 @@ export async function bot({ initialTtyRefresh = false } = {}) {
     });
     game._statusOptionalFieldSnapshot = optionalSnapshot;
     game._renderedStatusLayouts = layouts;
-    _collectStatusHilites(layouts);
+    const titleDirty = _collectStatusHilites(layouts);
     const styles = game.iflags?.status_updates === false
         ? layouts.map(() => []) : _statusStyleRows(layouts);
     game._renderedStatusStyles = styles;
@@ -7342,7 +7385,7 @@ export async function bot({ initialTtyRefresh = false } = {}) {
     const forcedRedraw = Boolean(game.disp?.botlx);
     try {
         writeStatusRows(game?.nhDisplay, layouts, styles,
-            { forced: forcedRedraw });
+            { forced: forcedRedraw, titleDirty });
         const display = game?.nhDisplay;
         if (forcedRedraw && display?.grid && layouts.length) {
             display.setCursor(
