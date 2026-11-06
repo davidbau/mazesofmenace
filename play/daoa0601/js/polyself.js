@@ -18,7 +18,8 @@ import { corpseName, verbForSubject, makePlural, withIndefiniteArticle, minimalO
 import { learnObjectType, observeObject } from './o_init.js';
 import { formatFeltMessage, plineWithContinuation, recordGameLogEvent } from './pline.js';
 import { finishHeroDeath } from './end.js';
-import { captureThrownObjectFlight, flyHeroThrownObject, heroThrowTrajectory } from './thrown_object.js';
+import { flyHeroThrownObject, heroThrowTrajectory } from './thrown_object.js';
+import { monsterProjectileDisplay } from './mthrowu.js';
 import { heroBreathAttack, hitHeroWithRay, destroyFireMonsterInventory, monsterHasElementalResistance } from './zap.js';
 import { counterWereSpecies, heroCanSummonWerePack, isWereMonster, summonWerePack, wereBeastForSpecies } from './were.js';
 import { AD_BLND, AD_COLD, AD_CONF, AD_DRST, AD_ELEC, AD_FIRE, AD_HALU, AD_MAGM, AD_RBRE, AT_BREA, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_SPIT } from './monster_attack_types.js';
@@ -56,7 +57,7 @@ import { grantIntrinsicProperty, refreshMovementProperties, refreshProperty, rev
 import { heroIsInvisible, syncHeroInvisibility } from './hero_invisibility.js';
 import { adjustObjectLightAfterBlessing as adjustObjectLight, objectLightRadius } from './light.js';
 import { endObjectBurn, learnEggType } from './timeout.js';
-import { nameToMonster, resolveMonsterClass, speciesCanBlow, your_race, monsterIsMindless, infravision, is_dwarf, is_elf, is_gnome, is_male, is_neuter, is_orc, is_were, lays_eggs, monsterBreaksArmor, monsterCanTeleport, monsterControlsTeleport, monsterDigests, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHasNoLimbs, monsterHasProperName, monsterHidesUnder, monsterHornCount, monsterIsAmorphous, monsterIsAmphibious, monsterIsAnimal, monsterIsBat, monsterIsBreathless, monsterIsCentaur, monsterIsClinger, monsterIsDemon, monsterIsEel, monsterIsFemale, monsterIsFlyer, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindFlayer, monsterIsNonliving, monsterIsSlithy, monsterIsSwimmer, monsterIsTelepathic, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVerySmall, monsterIsWeirdNonliving, monsterIsWhirly, monsterPassesWalls, monsterPerceives, monsterSlipsArmor, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterWrappingAllowed, notake, polyok, regenerates, strongmonst, cantwield, formCanBecomeStoneGolem, touchPetrifies, PM_STONE_GOLEM, } from './mondata.js';
+import { nameToMonster, resolveMonsterClass, heroCanBeStrangled, your_race, monsterIsMindless, infravision, is_dwarf, is_elf, is_gnome, is_male, is_neuter, is_orc, is_were, lays_eggs, monsterBreaksArmor, monsterCanTeleport, monsterControlsTeleport, monsterDigests, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHasNoLimbs, monsterHasProperName, monsterHidesUnder, monsterHornCount, monsterIsAmorphous, monsterIsAmphibious, monsterIsAnimal, monsterIsBat, monsterIsBreathless, monsterIsCentaur, monsterIsClinger, monsterIsDemon, monsterIsEel, monsterIsFemale, monsterIsFlyer, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindFlayer, monsterIsNonliving, monsterIsSlithy, monsterIsSwimmer, monsterIsTelepathic, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVerySmall, monsterIsWeirdNonliving, monsterIsWhirly, monsterPassesWalls, monsterPerceives, monsterSlipsArmor, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterWrappingAllowed, notake, polyok, regenerates, strongmonst, cantwield, formCanBecomeStoneGolem, touchPetrifies, PM_STONE_GOLEM, } from './mondata.js';
 import { getLine, promptYesNo } from './query.js';
 import { clearHeroPetrification, heroIsPetrifying } from './stoning.js';
 import { retouchEquipment } from './artifact.js';
@@ -91,17 +92,6 @@ const PM_VAMPIRE_LEADER = MONSTER_NAME.indexOf('vampire leader');
 const S_LICH = MONSTER_SYMBOL[MONSTER_NAME.indexOf('lich')];
 const PLACEHOLDER_MONSTERS = new Set(['orc', 'giant', 'elf', 'human']
     .map(name => MONSTER_NAME.indexOf(name)));
-const OLFACTIONLESS_SYMBOLS = new Set([
-    2, // S_BLOB
-    5, // S_EYE
-    10, // S_JELLY
-    22, // S_VORTEX
-    25, // S_LIGHT
-    31, // S_ELEMENTAL
-    32, // S_FUNGUS
-    42, // S_PUDDING
-    55, // S_GOLEM
-]);
 function wornPropertyObject(state, otyp, slots) {
     return slots.some(slot => {
         const object = state[slot] || state.u?.[slot];
@@ -190,25 +180,6 @@ export function heroHasNoLimbs(state = game) {
 export function heroIsVerySmall(state = game) {
     const form = heroMonsterForm(state);
     return form !== null && monsterIsVerySmall(form);
-}
-// C mondata.c:olfaction().  This is a current-form sensory capability, not
-// a blindness check: molds and several other body classes can sense smoke
-// but cannot smell it, while an ordinary blind humanoid still has olfaction.
-export function heroHasOlfaction(state = game) {
-    const form = heroMonsterForm(state);
-    if (form === null)
-        return true;
-    const symbol = MONSTER_SYMBOL[form];
-    return symbol === undefined || !OLFACTIONLESS_SYMBOLS.has(symbol);
-}
-const PM_FIRE_ELEMENTAL = MONSTER_NAME.indexOf('fire elemental');
-const PM_SALAMANDER = MONSTER_NAME.indexOf('salamander');
-// C mondata.c:can_blow(). Silent or buzzing bodies need enough size, a
-// head, and breath; bodies which can make other sounds can blow too.
-export function heroCanBlow(state = game) {
-    if (state.u.strangled || (state.u.strangledTurns ?? 0) > 0)
-        return false;
-    return speciesCanBlow(heroSpecies(state));
 }
 const RESISTANCE_BITS = [
     ['fireResistance', 0x01],
@@ -384,6 +355,8 @@ export function heroIsAmphibious(state = game) {
 export function heroPassesWalls(state = game) {
     return !!state.u.passesWalls || monsterPassesWalls(heroSpecies(state));
 }
+const PM_FIRE_ELEMENTAL = MONSTER_NAME.indexOf('fire elemental');
+const PM_SALAMANDER = MONSTER_NAME.indexOf('salamander');
 export function heroLikesLava(state = game) {
     const hero = state.u;
     if (!Upolyd(hero))
@@ -408,15 +381,6 @@ export function heroIsSlimeproof(state = game) {
     return heroIsGreenSlime(state)
         || heroIsFlaming(state)
         || heroIsNoncorporeal(state);
-}
-// C mondata.c:can_be_strangled(): headless bodies have no neck to squeeze,
-// and a mindless body that does not breathe is not strangled by pressure.
-export function heroCanBeStrangled(state = game) {
-    if (heroHasNoHead(state))
-        return false;
-    const form = state.u.umonnum;
-    const mindless = monsterIsMindless(form ?? -1);
-    return !mindless || !heroIsBreathless(state);
 }
 // C polyself.c:check_strangling(), turning the amulet's grip off and on.
 export async function stopStrangulationInImmuneForm(state = game, publish = plineWithContinuation) {
@@ -1640,7 +1604,7 @@ async function hitMonsterWithVenom({ monster, target, venom, state, publish, ran
     });
     return impact;
 }
-async function spitHorizontally({ venom, direction, state, publish, random, rollOne, captureFlight, recoilHero, finishMonsterKill, }) {
+async function spitHorizontally({ venom, direction, state, publish, random, rollOne, recoilHero, finishMonsterKill, }) {
     if (state.u?.uswallow && state.u?.ustuck) {
         const impact = await hitMonsterWithVenom({
             monster: state.u.ustuck, venom, state, publish, random, rollOne,
@@ -1653,11 +1617,12 @@ async function spitHorizontally({ venom, direction, state, publish, random, roll
     const trajectory = underwater
         ? { range: 1, recoil: 0 }
         : heroThrowTrajectory(venom, state);
+    requirePlayingGame(state);
     const flight = await flyHeroThrownObject({
         state, object: venom,
         dx: direction.dx, dy: direction.dy,
         range: trajectory.range,
-        captureFlight, publish, random,
+        display: monsterProjectileDisplay(venom, state), publish, random,
     });
     if (trajectory.recoil) {
         await recoilHero(-direction.dx, -direction.dy, trajectory.recoil, { verbose: true });
@@ -1684,7 +1649,7 @@ async function spitHorizontally({ venom, direction, state, publish, random, roll
     return { ...flight, destroyed: broken.destroyed };
 }
 // C polyself.c:dospit().
-export async function useHeroSpit({ state = game, attack = heroSpitAttack(state), readDirection = promptDirection, publish = plineWithContinuation, random = rn2, rollOne = rnd, captureFlight = captureThrownObjectFlight, recoilHero = hurtleHero, finishMonsterKill = finishHeroMonsterKillOutcome, } = {}) {
+export async function useHeroSpit({ state = game, attack = heroSpitAttack(state), readDirection = promptDirection, publish = plineWithContinuation, random = rn2, rollOne = rnd, recoilHero = hurtleHero, finishMonsterKill = finishHeroMonsterKillOutcome, } = {}) {
     if (!attack)
         return { used: false, spentTime: false, reason: 'no-spit' };
     const direction = await readDirection();
@@ -1702,7 +1667,7 @@ export async function useHeroSpit({ state = game, attack = heroSpitAttack(state)
     if (state.u?.uswallow) {
         result = await spitHorizontally({
             venom, direction, state, publish, random, rollOne,
-            captureFlight, recoilHero, finishMonsterKill,
+            recoilHero, finishMonsterKill,
         });
     }
     else if (direction.dz < 0) {
@@ -1715,7 +1680,7 @@ export async function useHeroSpit({ state = game, attack = heroSpitAttack(state)
     else {
         result = await spitHorizontally({
             venom, direction, state, publish, random, rollOne,
-            captureFlight, recoilHero, finishMonsterKill,
+            recoilHero, finishMonsterKill,
         });
     }
     return { ...result, venom, used: true, spentTime: true };

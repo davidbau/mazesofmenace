@@ -19,7 +19,7 @@ import { splitMonster } from './potion.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM, monsterClassSymbol, monsterTypeName, requireMonsterData } from './monster_data.js';
 import { displayLiquidName, formatMonsterName, monsterName, namelessMonsterName, setMonsterGivenName } from './do_name.js';
 import { possessiveName, dist2, ordinalSuffix, pointsOnline } from './hacklib.js';
-import { monsterHasFireResistance, monsterHasSeductionAttack, monsterHasStoneResistance, monsterCorrodesBars, monsterPassesBars, monsterLocomotion, monsterFireDescription, monsterPolymorphsWhenStoned, nameToMonster, resolveMonsterClass, monsterHasPoisonResistance, setMonsterSpecies, monsterKnowsTrap, acidic, cant_drown, is_male, is_minion, is_neuter, is_orc, is_shapeshifter, lays_eggs, metallivorous, monsterCanTeleport, is_dwarf, is_elf, monsterIsAnimal, monsterIsFemale, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsSlithy, monsterIsSwimmer, monsterPerceives, needspick, notake, polyok, regenerates, strongmonst, tunnels, monsterCanEngulf, monsterDigests, monsterGrowthFamilyMatch, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsCovetous, monsterIsDisplacer, monsterIsEel, monsterIsFloater, monsterIsFlyer, monsterIsGolem, monsterIsHuman, monsterIsKop, monsterIsNoncorporeal, monsterIsNonliving, monsterIsAlwaysHostile, monsterIsPlainHuman, monsterIsQuestGuardian, monsterIsPlayerMonster, monsterIsRider, monsterIsSlimeproof, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterOlderForm, monsterPassesWalls, monsterSpeciesSticks, monsterThrowsRocks, monsterYoungerForm, speciesEatsCorpses, heroResistsStoning, touchPetrifies, fleshPetrifies, } from './mondata.js';
+import { monsterHasFireResistance, monsterHasSeductionAttack, monsterHasStoneResistance, monsterCorrodesBars, monsterPassesBars, monsterLocomotion, monsterFireDescription, monsterPolymorphsWhenStoned, nameToMonster, resolveMonsterClass, monsterHasPoisonResistance, setMonsterSpecies, monsterKnowsTrap, acidic, cant_drown, is_male, is_minion, is_neuter, is_orc, is_shapeshifter, lays_eggs, metallivorous, monsterCanTeleport, is_dwarf, is_elf, monsterIsAnimal, monsterIsFemale, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsSlithy, monsterIsSwimmer, monsterPerceives, needspick, notake, polyok, regenerates, strongmonst, tunnels, monsterCanEngulf, monsterDigests, monsterGrowthFamilyMatch, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsCovetous, monsterIsDisplacer, monsterIsEel, monsterIsFloater, monsterIsFlyer, monsterIsGolem, monsterIsHuman, monsterIsKop, monsterIsNoncorporeal, monsterIsNonliving, monsterIsAlwaysHostile, monsterIsPlainHuman, monsterIsQuestGuardian, monsterIsPlayerMonster, monsterIsRider, monsterIsSlimeproof, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterOlderForm, monsterPassesWalls, monsterSpeciesSticks, monsterThrowsRocks, monsterYoungerForm, speciesEatsCorpses, heroResistsStoning, touchPetrifies, fleshPetrifies, resistConflict, heroHasOlfaction, } from './mondata.js';
 import { killEgg, objectsInTimerGraph, stopObjectTimer } from './timeout.js';
 import { d, rn2, rnd, rn1, rnl } from './rng.js';
 import { randomMonsterRelocation, relocateMonsterTo, reportMonsterTeleportRestriction, monsterTeleportRestricted, enexto, goodPosition } from './teleport.js';
@@ -39,7 +39,7 @@ import { beginMonsterMealMimicry, finishMonsterEating, monsterCouldReachItem } f
 import { splitObjectStack, mkcorpstat, mkgold, mksobj, mkobj, discardMonsterInventory, unlinkMonsterObject, unlinkObject, addObjectToContainer, objectWeight, placeObject, placeCreatedObject, meldNearbyFloorGlobs } from './mkobj.js';
 import { unpunishHero } from './read.js';
 import { capitalizedDefiniteName } from './objnam.js';
-import { heroSpecies, heroFormSticks, heroIsAmphibious, dragonFormForArmor, heroHasOlfaction, heroMonsterForm, pickFormFromClass, body_part } from './polyself.js';
+import { heroSpecies, heroFormSticks, heroIsAmphibious, dragonFormForArmor, heroMonsterForm, pickFormFromClass, body_part } from './polyself.js';
 import { cansee, couldsee, hasLightSources, monsterHasLineOfSightToHero, vision_recalc, monsterEmitsLight, vision_note_blocker_change } from './vision.js';
 import { monsterSentenceSubject, publishMonsterGrowl } from './sounds.js';
 import { adjustHeroAlignment, changeHeroLuck, currentAttribute } from './attrib.js';
@@ -84,7 +84,7 @@ import { recordHeroKillConduct } from './end.js';
 import { createPhysicalMonsterExplosion } from './explode.js';
 import { stopHeroOccupation } from './occupation.js';
 import { resolveMonsterGaze, expelHero, } from './mhitu.js';
-import { monsterCanBeLeashed, releaseMonsterLeash, releaseMonsterLeashWithFeedback } from './apply.js';
+import { monsterCanBeLeashed, releaseMonsterLeash } from './apply.js';
 import { wormKnown } from './display.js';
 import { controlMonsterTeleport, requireLevel } from './teleport.js';
 import { heroIsUnaware } from './senses.js';
@@ -636,18 +636,6 @@ function monsterAggressionFlags(attacker, defender, state) {
         zombiePairIsAggressive(defender, attacker, state)
         ? ALLOW_M | ALLOW_TM
         : 0;
-}
-// C mondata.c:resist_conflict(). High-charisma heroes convince monsters
-// bound by the ring of conflict's charm more easily; there is always a
-// small chance at 19.
-export function resistConflict(monster, state, rollOne, calls) {
-    const charisma = currentAttribute(A_CHA, state);
-    const monsterLevel = monster?.m_lev ?? MONSTER_LEVEL[monster?.mnum] ?? 0;
-    const heroLevel = state?.u?.ulevel ?? 1;
-    const resistChance = Math.min(19, charisma - monsterLevel + heroLevel);
-    const roll = rollOne(20);
-    calls.push('rnd(20)');
-    return roll > resistChance;
 }
 // Native mon.c:mon_allowflags(). Conflict resistance belongs to the moving
 // caller (monAllowFlags below); these helpers compute the body-based bits.
@@ -2340,7 +2328,7 @@ export async function removeMonsterFromGame(monster) {
     const dropped = await dropSpecialMonsterObjects(monster);
     const discarded = await discardMonsterInventory(monster, false);
     if (monster.mleashed)
-        releaseMonsterLeash(monster);
+        await releaseMonsterLeash(monster, false);
     if (x > 0 && monsterEmitsLight(monster.mnum))
         game.vision_full_recalc = 1;
     await detachMonsterFromLevel(monster);
@@ -3038,7 +3026,7 @@ export async function detachDeadMonster(monster, state, random, publish, rollOne
     if (state === game)
         await unmap_invisible(x, y, false);
     if (monster.mleashed)
-        releaseMonsterLeash(monster, state);
+        await releaseMonsterLeash(monster, false, { state });
     // m_detach removes the light of the form which died, before its true
     // species and empty map square are projected by mon_leaving_level.
     monster.lightRemoved = true;
@@ -4553,7 +4541,7 @@ export async function changeMonsterForm(monster, forcedTargetMnum = null, state 
     let leashReleaseVisible = false;
     if (monster.mleashed && !monsterCanBeLeashed(monster)) {
         leashReleaseVisible = canSeeMonster(monster);
-        await releaseMonsterLeashWithFeedback(monster, { state, publish });
+        await releaseMonsterLeash(monster, true, { state, publish });
         leashReleased = true;
     }
     if (monsterEmitsLight(oldMnum) !== monsterEmitsLight(targetMnum))

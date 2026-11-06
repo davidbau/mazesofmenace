@@ -23,7 +23,7 @@ import { snapshotMenuUnderlay, restoreMenuUnderlay } from './wintty.js';
 import { takeQueuedInventoryChoice } from './invent.js';
 import { promptYesNoQuit, getLine, promptChoice, tty_yn_function } from './query.js';
 import { useUpFloorObject } from './invent.js';
-import { heroCanReachFloor, heroHasFreeHand, floorReachProblem } from './engrave.js';
+import { heroCanReachFloor, heroHasFreeHand } from './engrave.js';
 import { hideHeroUnder, finishEnvironmentalMonsterDeath, finishHeroMonsterKill, finishHeroMonsterKillOutcome, isRider, } from './mon.js';
 import { addShopObjectToBill, billedPickupQuote, chargeUnpaidUsage, costlySpot, removeObjectAndContentsFromBill, remoteBurglary, setSellDisposition, SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, currentShopResident, stolenValue, sellHeroDroppedObject, warnAboutRemovedPick, deleteObject } from './shk.js';
 import { pickupLocationProblem } from './pickup_location.js';
@@ -63,6 +63,7 @@ import { makemonAt } from './makemon.js';
 export function pickupClassOrder() {
     return [...inventoryClassOrder(), VENOM_CLASS, RANDOM_CLASS].map(objectClassHeading);
 }
+// Part of C hack.c:dopickup(): command adapter combining location checks with pickup.c:pickup().
 // The #pickup command: C hack.c:dopickup() runs the location checks and
 // then pickup.c:pickup() over what remains, or loots the swallower's
 // stomach when it holds the engulfer's inventory.
@@ -711,6 +712,7 @@ function weightAddedByLift(object, count, container, state) {
         : objectWeight(withQuantity(object, count));
     return added - removed;
 }
+// Part of C pickup.c:carry_count(): the maximum stack count that fits the carrying limit.
 // Also C hack.c:max_capacity(): inlined here as the current carrying limit.
 function maximumLiftedCount(object, requested, container, state) {
     const current = invWeight(state) - 2 * weightCapacity(state);
@@ -932,8 +934,7 @@ async function do_loot_cont(container, containerIndex, containerCount, resetJust
 export async function ableToLoot(x, y, looting) {
     const verb = looting ? 'loot' : 'tip';
     const trap = requireGameLevel().traps.find(trap => trap.tx === x && trap.ty === y);
-    const reach = floorReachProblem(game, { checkPit: !!trap && is_pit(trap.ttyp) });
-    if (reach) {
+    if (!heroCanReachFloor(game, { checkPit: !!trap && is_pit(trap.ttyp) })) {
         if (game.u.usteed && (game.u.weaponSkills?.[P_RIDING]?.skill ?? 0) < P_BASIC) {
             await plineWithContinuation(riderCannotReachMessage());
         }

@@ -13,7 +13,7 @@ import { currentAttribute } from './attrib.js';
 import { useBagOfTricks } from './bag_of_tricks.js';
 import { bot } from './botl.js';
 import { dropBoulderIntoLiquid, dropInventoryObjectAtHero, woundHeroLegs, reviveCorpseImmediately, gotoLevel, objectNoLongerHeld, } from './do.js';
-import { commandResultCancelled, commandResultFailed, commandResultSpentTime, cmdq_add_ec, cmdq_add_key, setMulti, isok, paranoidQuery, confusePromptDirection, promptDirection, readDirectionKey, } from './cmd.js';
+import { commandResultCancelled, commandResultFailed, commandResultSpentTime, cmdq_add_ec, cmdq_add_key, setMulti, isok, paranoidQuery, confusePromptDirection, promptDirection, } from './cmd.js';
 import { A_CHA, A_CON, A_DEX, A_NONE, A_STR, ACCESSIBLE, AIR, BEAR_TRAP, CLOUD, COLNO, CORR, CQ_CANNED, D_CLOSED, D_ISOPEN, D_LOCKED, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAILED, DOOR, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HOLE, HOMEMADE_TIN, ICE, IS_AIR, Is_airlevel, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, Is_stronghold, IS_STWALL, IS_WALL, Is_waterlevel, KILLED_BY, LANDMINE, LEVEL_TIMER_KIND, LUCKMIN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MAXULEV, MM_NOMSG, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, NO_KILLER_PREFIX, NO_MINVENT, OBJECT_TIMER_KIND, P_BASIC, P_RIDING, P_SKILLED, P_TWO_WEAPON_COMBAT, PARANOID_BREAKWAND, PIT, PLNMSG_enum, RLOC_MSG, RLOC_NONE, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SICK_ALL, SICK_NONVOMITABLE, STATUE_TRAP, STONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WEAK, xdir, ydir, IS_WATERWALL, LAVAWALL, HAND, FACE, FINGER, LEG, FOOT, HEAD, STOMACH, NOSE } from './const.js';
 import { use_container, pickupFloorObject } from './pickup.js';
 import { useCrystalBall, convertSecretDoor, findit, openit } from './detect.js';
@@ -36,12 +36,12 @@ import { possessiveName } from './hacklib.js';
 import { applyCaitiffPenalty, prepareAppliedWeaponAttack, do_attack } from './uhitm.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { setHeroGrip, paralyzeMonster, revealMonsterAppearance, wakeMonstersNearWithMessages, monsterInAir, moveMonsterNextToHero, finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath, isRider, } from './mon.js';
-import { makeDeaf, startHeroSickness, makeConfused, makeHallucinated, makeStunned, releaseDjinni, setSlipperyHands, makeBlinded, cureHeroSickness, cureHeroVomiting, heroIsVomiting, startHeroVomiting, } from './potion.js';
+import { makeDeaf, startHeroSickness, makeConfused, makeHallucinated, makeStunned, releaseDjinni, setSlipperyHands, makeBlinded, cureHeroSickness, heroIsVomiting, makeHeroVomiting, } from './potion.js';
 import { hurtleHero, hurtleJumpTo, hitMonsterWithAppliedWeapon, walkPathCells } from './dothrow.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { stumbleOntoMimic } from './uhitm.js';
 import { heroIsUnaware, blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, setHeroBlindnessTimeout, } from './senses.js';
-import { heroCanBlow, heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands, body_part, mbodypart } from './polyself.js';
+import { heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands, body_part, mbodypart } from './polyself.js';
 import { heroStatusLine, monsterStatusLine } from './insight.js';
 import { dotrap, fillPitWithBoulderAt, deleteTrap, feelTrap, trapName, mintrap, resolveImmediatePetrification, resetUtrap, maketrap, activateStatueTrapAt, fireDamageObject, } from './trap.js';
 import { requireInitializedHero } from './hero_types.js';
@@ -54,10 +54,10 @@ import { makemonAt, mkclassAligned } from './makemon.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { canDigDown } from './mklev.js';
 import { mksobj, objectQuantity, rejoinObjectStack, splitObjectStack, unblessObjectState, unlinkObject, objectWeight, isContainer, useHornOfPlenty, unlinkMonsterObject, placeObject, remove_object, } from './mkobj.js';
-import { is_male, is_neuter, monsterIsClinger, monsterIsFemale, monsterIsSlithy, monsterPossessive, monsterSubjectPronoun, monsterHasHead, monsterHasNoLimbs, monsterIsUnsolid, strongmonst, monsterDigests, monsterHasEyes, monsterHasProperName, monsterIsBig, monsterIsBreathless, monsterIsDemon, monsterIsHumanoid, monsterIsUnicorn, monsterIsVampire, monsterIsVampireShifter, monsterIsWhirly, monsterPerceives, monsterThrowsRocks, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, } from './mondata.js';
+import { is_male, is_neuter, monsterIsClinger, monsterIsFemale, monsterIsSlithy, monsterPossessive, monsterSubjectPronoun, monsterHasHead, monsterHasNoLimbs, monsterIsUnsolid, strongmonst, monsterDigests, monsterHasEyes, monsterHasProperName, monsterIsBig, monsterIsBreathless, monsterIsDemon, monsterIsHumanoid, monsterIsUnicorn, monsterIsVampire, monsterIsVampireShifter, monsterIsWhirly, monsterPerceives, monsterThrowsRocks, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, canBlnd, heroCanBlow, } from './mondata.js';
 import { wakeAttackedMonster } from './mon.js';
 import { makeMonsterFlee, isAccessibleAt } from './monmove.js';
-import { AD_BLND, AT_ENGL } from './monster_attack_types.js';
+import { AD_BLND, AT_ENGL, AT_WEAP } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
 import { PLAYABLE_INSTRUMENTS, playInstrument } from './music.js';
 import { isAxe, isFlimsyObject, isGrayStone, isPick, isPolearm, isWetTowel, isBimanualObject, } from './object_properties.js';
@@ -316,6 +316,7 @@ async function hear(sound) {
     if (message)
         await pline(message);
 }
+// Part of C apply.c:use_stethoscope(): the monster-revelation and status-report branch.
 // Also C mkobj.c:init_dummyobj(): inlined here (the name-formatting dummy
 // object literal with the slime-mold fruit id).
 async function diagnoseMonster(monster, x, y) {
@@ -585,25 +586,23 @@ export function releaseObjectLeash(leash, state = game) {
     leash.leashmon = 0;
 }
 // C apply.c:m_unleash().
-export function releaseMonsterLeash(monster, state = game) {
+export async function releaseMonsterLeash(monster, feedback, { state = game, publish = plineWithContinuation, } = {}) {
+    if (feedback) {
+        requireLiveGame(state);
+        if (canSeeMonster(monster)) {
+            const name = monsterName(monster, { capitalized: true, state });
+            const possessive = monsterPossessive(monster, { state });
+            await publish(`${name} pulls free of ${possessive} leash!`);
+        }
+        else {
+            await publish('Your leash falls slack.');
+        }
+    }
     const leash = leashAttachedToMonster(monster, state);
     if (leash)
         leash.leashmon = 0;
     monster.mleashed = 0;
     return leash;
-}
-// C apply.c:m_unleash() with feedback.
-export async function releaseMonsterLeashWithFeedback(monster, { state = game, publish = plineWithContinuation, } = {}) {
-    requireLiveGame(state);
-    if (canSeeMonster(monster)) {
-        const name = monsterName(monster, { capitalized: true, state });
-        const possessive = monsterPossessive(monster, { state });
-        await publish(`${name} pulls free of ${possessive} leash!`);
-    }
-    else {
-        await publish('Your leash falls slack.');
-    }
-    return releaseMonsterLeash(monster, state);
 }
 // C apply.c:unleash_all().
 export function releaseAllMonsterLeashes(state = game) {
@@ -733,7 +732,7 @@ export async function checkHeroLeashes(oldX, oldY) {
         }
         else if (separation > 5) {
             await pline(`${possessiveName(monsterName(monster, { capitalized: true }))} leash snaps loose!`);
-            releaseMonsterLeash(monster);
+            await releaseMonsterLeash(monster, false);
         }
         else {
             await pline('You pull on the leash.');
@@ -751,7 +750,9 @@ export async function checkHeroLeashes(oldX, oldY) {
             return;
     }
 }
-// C apply.c:next_to_u().
+// Part of C apply.c:next_to_u(): the distance-only half allmain.c:313 uses
+// after involuntary teleportation, where the ported moveloop does not run the
+// mleashed_next2u relocation (bringLeashedFollowers below owns that half).
 export function heroNextToLeashedFollowers() {
     const level = game.level;
     if (level?.monsters.some(monster => monster.mleashed
@@ -787,7 +788,7 @@ export async function bringLeashedFollowers(state = game, random = rn2) {
         const leash = leashAttachedToMonster(monster, state);
         if (!leash || leash.cursed)
             return false;
-        releaseMonsterLeash(monster, state);
+        await releaseMonsterLeash(monster, false, { state });
         // C apply.c:number_leashed(): a/the from the remaining leash count.
         const leashedCount = requireGameLevel(state).monsters.filter(candidate => candidate.mleashed).length;
         await plineWithContinuation(formatFeltMessage(`${leashedCount > 1 ? 'a' : 'the'} leash go slack.`, state));
@@ -1378,6 +1379,7 @@ async function rubRoyalJelly(jelly) {
     game.context.move = used ? 1 : 0;
     return used;
 }
+// Part of C apply.c:dorub(): the rub command; light.ts:transformMagicLampToOilLamp() contains the extracted conversion.
 // C refs: apply.c:dorub(), invent.c:getobj(), wield.c:wield_tool(), and
 // cmd.c:CQ_CANNED.  Selecting an unwielded lamp does not rub it immediately:
 // wield_tool() installs it, consumes one action, and queues dorub plus the
@@ -1753,6 +1755,7 @@ export async function useTinningKit(kit) {
 function tinnable(corpse) {
     return corpse.otyp === CORPSE && !corpse.oeaten && !!MONSTER_NUTRITION[corpse.corpsenm ?? -1];
 }
+// Part of C apply.c:use_tinning_kit(): the corpse chooser through eat.c:floorfood() and tin_ok().
 // Also C eat.c:tin_ok(): inlined as the tinning-kit chooser callback at the
 // end (food-class corpses that can still be tinned).
 async function chooseTinningCorpse() {
@@ -1840,9 +1843,7 @@ async function cureHornTrouble(trouble, state, publish) {
         return;
     }
     if (trouble === VOMITING) {
-        cureHeroVomiting(state);
-        if (talk)
-            await publish(formatFeltMessage('much less nauseated now.', state));
+        await makeHeroVomiting(0, { state, talk, publish });
         return;
     }
     if (trouble === CONFUSED) {
@@ -1894,7 +1895,7 @@ async function causeHornTrouble(object, state, publish, random, rollDice) {
             await vomit({ state, publish, random, rollDice });
         }
         else {
-            startHeroVomiting({ state, turns: 14 });
+            await makeHeroVomiting(14, { state });
         }
         return VOMITING;
     }
@@ -2718,7 +2719,7 @@ function calcPoleRange(weapon, { state = game } = {}) {
         max = level === P_SKILLED ? 5 : 8;
     return { min: 4, max };
 }
-// C apply.c get_valid_polearm_position().
+// C apply.c:get_valid_polearm_position()
 function validPolearmPosition(x, y, min, max, state) {
     if (!isok(x, y))
         return false;
@@ -2727,7 +2728,8 @@ function validPolearmPosition(x, y, min, max, state) {
         distance <= max &&
         (cansee(x, y) || (couldsee(x, y) && poleableGlyph(glyphAt(x, y, state)))));
 }
-// C apply.c find_poleable_mon(): the single auto-target candidate, if any.
+// C apply.c:find_poleable_mon()
+// The single auto-target candidate, if any.
 // More than one candidate leaves the cursor on the hero, like C returning
 // FALSE without touching the out parameter.
 function findPoleableSpot(state, min, max) {
@@ -2769,7 +2771,8 @@ function rememberPolearmTarget(monster, state) {
         state.context.polearm = { hitmonId: null };
     state.context.polearm.hitmonId = monster ? monster.m_id : null;
 }
-// C apply.c could_pole_mon(): the dofire fireassist predicate.
+// C apply.c:could_pole_mon()
+// The dofire fireassist predicate.
 export function couldPoleMonster(weapon, { state = game } = {}) {
     if (!weapon || !isPolearm(weapon))
         return false;
@@ -2816,6 +2819,7 @@ async function choosePolearmTarget(start, state, min, max) {
         isValidLocation: valid,
     });
 }
+// C apply.c:use_pole()
 // Also C apply.c:snickersnee_used_dist_attk(): inlined here.
 export async function usePolearm(object, { state = game, ensureWielded, autohit = false } = {}) {
     if (state.u?.uswallow || state.uswallow) {
@@ -2947,7 +2951,7 @@ export async function usePolearm(object, { state = game, ensureWielded, autohit 
     return { spentTime: !freehit };
 }
 async function pickAxeDirection(prompt) {
-    return promptDirection((_message, retry) => readDirectionKey(`${prompt} `, retry));
+    return promptDirection(`${prompt} `);
 }
 async function applyPickAxe(item) {
     const result = await usePickAxe(item, {
@@ -3024,7 +3028,7 @@ export async function useCreamPie(stack) {
         const target = several ? `one of ${makePlural(name)}` : name;
         await syncPline(`You immerse your ${body_part(FACE)} in ${target}.`);
     }
-    if (monsterHasEyes(heroSpecies(game)) && !blindfolded(game)) {
+    if (canBlnd(null, { youmonst: true }, AT_WEAP, pie, game)) {
         const blindIncrement = rnd(25);
         game.u.ucreamed = (game.u.ucreamed ?? 0) + blindIncrement;
         await makeBlinded((game.u.blindTurns ?? 0) + blindIncrement, { talk: false });

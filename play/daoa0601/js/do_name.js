@@ -124,8 +124,9 @@ export async function playerName(prompt) {
     return input.replace(/^[ \t]+|[ \t]+$/g, '').replace(/[ \t]+/g, ' ')
         .slice(0, PL_PSIZ - 1);
 }
+// C do_name.c:christen_monst()
 // Given-name storage shared by monster creation, revival, and bones.
-// C do_name.c:christen_monst(). No presentation imports: these setters also
+// No presentation imports: these setters also
 // run while a new monster is still being constructed.
 export function setMonsterGivenName(monster, value) {
     // Names supplied by level files retain their whitespace. Only player
@@ -187,13 +188,6 @@ export function randomDisplayMonsterIdentity() {
 }
 export function randomDisplayMonsterName() {
     return randomDisplayMonsterIdentity().name;
-}
-// C do_name.c:Monnam() requests ARTICLE_THE, except personal bogus-monster
-// names suppress the article before the result is sentence-capitalized.
-export function randomDisplayMonsterSubject(forceThe = false) {
-    const { name, personal } = randomDisplayMonsterIdentity();
-    const subject = personal && !forceThe ? name : `the ${name}`;
-    return subject.charAt(0).toUpperCase() + subject.slice(1);
 }
 // C do_name.c:roguename().
 export function roguePlayerName() {
@@ -494,8 +488,8 @@ export function distantMonsterName(monster, { state = game, article = 'none', } 
         article, called: true, suppressSaddle: false,
     });
 }
-// C do_name.c:noname_monnam(monster, ARTICLE_NONE).
-// C do_name.c:l_monnam(): leash messages retain the species of a named creature.
+// C do_name.c:l_monnam(): keeps the species with "called", so leash
+// messages retain the species of a named creature.
 export function monsterLeashName(monster, state = game) {
     requireLiveGame(state);
     return formatMonsterName(monster, state, {
@@ -597,7 +591,10 @@ export function formatMonsterName(monster, state, { adjective = '', article = 't
         return withIndefiniteArticle(description);
     return (article === 'none' ? '' : `${article} `) + description;
 }
-// C do_name.c:Monnam().
+// C do_name.c:Monnam(): mon_nam() with the first letter upper-cased for use
+// at the start of a sentence.  Hallucinated subjects (rndmonnam(); personal
+// bogus-monster names suppress the article) are chosen inside mon_nam()'s
+// port, so callers must not branch on hallucination before calling this.
 export function visibleMonsterSubject(monster) {
     return monsterName(monster, { capitalized: true });
 }
@@ -614,8 +611,8 @@ export function monsterReflexiveAction(monster, name, verb, otherText = '', { st
     }
     return `${name} ${action}${otherText ? ` ${otherText}` : ''} ${reflexive}`;
 }
+// C do_name.c:do_oname()
 // Player inscriptions and artifact naming.
-// C do_name.c:do_oname().
 export async function nameIndividualObject(object) {
     if (object.otyp === SPE_NOVEL) {
         await plineWithContinuation(`${objectOwnershipPrefix(object)}${simpleObjectName(object)} already has a published name.`);
@@ -742,7 +739,8 @@ function restrictedArtifactName(object, artifact) {
     const [low, high] = appearanceRange(object);
     return description === other || artifact.baseType >= low && artifact.baseType <= high;
 }
-// o_init.c:obj_shuffle_range(), including its fixed-description exceptions.
+// C o_init.c:obj_shuffle_range()
+// Includes the fixed-description exceptions.
 function appearanceRange(object) {
     const type = object.otyp;
     const armorRanges = [

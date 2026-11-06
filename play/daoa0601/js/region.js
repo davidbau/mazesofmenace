@@ -179,8 +179,9 @@ export function updateHeroRegions(state = game, x = state.u.ux, y = state.u.uy) 
     for (const region of requireGameLevel(state).regions)
         region.heroInside = regionContains(region, x, y);
 }
-// C m_in_out_region()/update_monster_region(). Membership changes at the
-// movement boundary; swapping with the hero does not cross this boundary.
+// C region.c:update_monster_region()
+// Membership changes at the movement boundary (m_in_out_region());
+// swapping with the hero does not cross this boundary.
 // C region.c:mon_in_region(): membership test against the id list.
 // C region.c:add_mon_to_reg(): join the list once; C's impossible()
 // duplicate report is the index test.
@@ -311,7 +312,9 @@ function halfHeroGasDamage(damage, state) {
 async function wakeNearGas(x, y, state, publish, wake) {
     await wake(x, y, 2, state, publish);
 }
-// C region.c:inside_gas_cloud(), hero branch: fog-cloud maintenance, eyes
+// Part of C region.c:inside_gas_cloud(): the hero branch (C indicates the
+// hero with a Null monster pointer; the TS hero is not a Monster, so the
+// hero and monster halves stay separate functions): fog-cloud maintenance, eyes
 // that sting and blind, and the cough plus poison damage for a breather.
 async function affectHeroWithGas(region, state, { publish, rollOne, wake, die }) {
     if (!region.heroInside)
@@ -345,7 +348,7 @@ async function affectHeroWithGas(region, state, { publish, rollOne, wake, die })
         monstersForgetHeroResistance(M_SEEN_POISON, state);
     return event;
 }
-// C region.c:inside_gas_cloud(), monster branch: the cough, anger at the
+// Part of C region.c:inside_gas_cloud(), monster branch: the cough, anger at the
 // hero's cloud, blindness, and the poison that can kill.
 async function affectMonsterWithGas(region, monster, state, { publish, rollOne, wake, onAnger, onMonsterDeath }) {
     maintainCloudForFog(region, monster.mnum);

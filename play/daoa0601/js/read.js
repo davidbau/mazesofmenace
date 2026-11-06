@@ -24,14 +24,14 @@ import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } fro
 import { heroIsInvisible } from './hero_invisibility.js';
 import { makeConfused, finishStrangeFeeling, strangeFeeling, makeStunned } from './potion.js';
 import { feelingAfterSelfGenocide, genocideDeathOptions, heroIsUnchanging, heroMonsterForm, heroSpecies, polymorphHero, rememberPolymorphGenocide, returnHeroToHumanForm, body_part, mbodypart } from './polyself.js';
-import { sokobanGuilt, erosionMatters } from './trap.js';
+import { sokobanGuilt } from './trap.js';
 import { consumeInventoryItem, delobj, identifyPack, inventoryItemDescription, chooseInventoryObject } from './invent.js';
 import { createCritters, mkclassAligned, rndmonstAdj, setMonsterMalign } from './makemon.js';
 import { withMonsterNoticesBlocked, showGetposTip, loseHeroHp, exceedsActionCapacity } from './hack.js';
 import { MONSTER_GENO, MONSTER_NAME, MONSTER_SYMBOL, monsterTypeName, requireMonsterData } from './monster_data.js';
 import { makeMonsterFlee } from './monmove.js';
 import { monsterAtPosition, monsterSaddle, putSaddleOnMonster } from './steed.js';
-import { makePlural, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, withIndefiniteArticle } from './objnam.js';
+import { makePlural, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, withIndefiniteArticle, erosionMatters } from './objnam.js';
 import { learnObjectType, observeObject, objectTypeKnown } from './o_init.js';
 import { tryCallObjectType } from './do.js';
 import { blessObjectState, curseObject, curseObjectState, mkobj, objectWeight, uncurseObjectState, mksobj } from './mkobj.js';
@@ -1289,6 +1289,7 @@ function canCenterCloud(x, y, state) {
         || isPoolAt(x, y, state) || isLavaAt(x, y, state))
         && cansee(x, y) && (x - state.u.ux) ** 2 + (y - state.u.uy) ** 2 < 32;
 }
+// Part of C read.c:do_stinking_cloud(): the target-selection adapter with valid-position highlights.
 // Also C read.c:display_stinking_cloud_positions(): inlined as the valid-
 // position highlights below (the hero's own square is not highlighted).
 async function chooseCenter(question, state) {
@@ -1956,6 +1957,7 @@ async function genocideInput(kind, attempt) {
 function declinedGenocide(response) {
     return response.startsWith('\u001b') || ['none', "'none'", 'nothing'].includes(response.toLowerCase());
 }
+// Part of C read.c:do_genocide(): the quest-role-specific immunity message predicate.
 // Also C questpgr.c:quest_info(): leader, nemesis, and guardian fields are read inline here
 function canAnnounceImmuneSpecies(species) {
     const role = requireInitializedGame().urole;

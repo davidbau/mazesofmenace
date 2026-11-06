@@ -33,8 +33,7 @@ import { askKeepRestoredSave } from './save.js';
 import { finishScheduledLevelChange } from './do.js';
 import { monsterName, randomDisplayMonsterName } from './do_name.js';
 import { possessiveName, dist2 } from './hacklib.js';
-import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion, monsterIsAnimal, monsterIsNonliving } from './mondata.js';
-import { mhitm_knockback, resolveMonsterContactEffect } from './uhitm.js';
+import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage, monsterLocomotion, monsterIsAnimal, monsterIsNonliving, heroHasOlfaction } from './mondata.js';
 import { MONSTER_GENO, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
 import { monsterAtPosition } from './steed.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, } from './end.js';
@@ -42,7 +41,7 @@ import { restoreMonsterCover, finishInUseInventory } from './restore.js';
 import { releaseObjectLeash, checkHeroLeashes, heroNextToLeashedFollowers } from './apply.js';
 import { ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, } from './object_data.js';
 import { heroIsUnaware } from './senses.js';
-import { heroSpecies, setHeroSpecies, feelingAfterSelfGenocide, heroHasBeenGenocided, heroHasOlfaction, heroIsUnchanging, polymorphHero, returnHeroToHumanForm } from './polyself.js';
+import { heroSpecies, setHeroSpecies, feelingAfterSelfGenocide, heroHasBeenGenocided, heroIsUnchanging, polymorphHero, returnHeroToHumanForm } from './polyself.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { openHoldingTrap, igniteItems, petrifyMonsterImmediately, burnHeroArmorByFire, sinkHeroIntoLava, activateStatueTrapAt, } from './trap.js';
 import { AD_COLD, AD_DGST, AD_DRST, AD_FIRE, AD_MAGM, AD_SEDU, AD_SITM, AD_SSEX, AD_STCK } from './monster_attack_types.js';
@@ -209,7 +208,9 @@ async function showInlineMore(message) {
     await plineWithContinuation(message);
     await flushPendingTopline();
 }
-// C ref: calendar.c phase_of_the_moon(), friday_13th(), both from getlt().
+// C calendar.c:phase_of_the_moon()
+// Also C calendar.c:friday_13th(): both checks share the same local date.
+// C reads getlt(); the port reads the recording's local date.
 export function fixedCalendar(datetime) {
     const date = recorderLocalDate(datetime);
     if (!date)
@@ -241,6 +242,7 @@ async function applyCalendarMessages() {
         game.u.uluck = Math.max(LUCKMIN, (game.u.uluck || 0) - 1);
     }
 }
+// Part of C restore.c:dorecover(): restore/startup adapter that also runs allmain.c:moveloop_preamble().
 // C refs: restore.c dorecover(), allmain.c moveloop_preamble(resuming=TRUE).
 // Restoring skips new-game RNG setup but reinitializes the Lua alignment
 // shuffle, presents the saved map, and applies real-world calendar effects.
@@ -329,6 +331,7 @@ async function askTutorial() {
         return answer.key === 'y'.charCodeAt(0);
     }
 }
+// Part of C allmain.c:maybe_do_tutorial(): tutorial-entry adapter combining Lua state transfer and do.c:goto_level() arrival.
 // C/Lua refs: allmain.c maybe_do_tutorial(), do.c goto_level(),
 // nhcore.lua tutorial_enter(), and nhlua.c nhl_gamestate().  Destination
 // construction and arrival precede the entry pager, but that pager still
@@ -477,7 +480,8 @@ async function finishMoveloopPreamble() {
     game.context.move = 0;
     game._moveloopStarted = true;
 }
-// C ref: allmain.c:interrupt_multi().  Count-prefixed ordinary commands use
+// C allmain.c:interrupt_multi()
+// Count-prefixed ordinary commands use
 // positive `multi`; full HP or power recovery cancels that voluntary repeat,
 // but must not stop independent occupations such as eating, lock-picking, or
 // spellbook study.  This port represents both kinds in `_occupation`, so keep
@@ -491,6 +495,7 @@ async function interruptCountedActivity(message) {
         await plineWithContinuation(message);
     }
 }
+// Part of C allmain.c:moveloop_core(): the once-per-hero-action status and clairvoyance tail.
 // C ref: allmain.c's `once-per-hero-took-time` tail, after the movement-ration
 // loop has allocated as many global turns as the hero needs.  Burden can make
 // one action span two allocations; seer_turn is checked only after the last
@@ -543,6 +548,7 @@ async function finishInitialTurnMaintenanceAfterIntervention(sourceTurn) {
         }
     }
 }
+// Part of C allmain.c:moveloop_core(): the Amulet, engraving, and demigod-intervention maintenance.
 // State-derived subset of the once-per-turn maintenance in allmain.c.
 // This covers the first quiet turn: monster movement allotments, random
 // monster generation, ambient feature sounds, hunger, and engraving wear.
@@ -597,6 +603,7 @@ async function finishInitialTurnMaintenanceAfterAutomaticSearch({ sourceTurn, })
         return { kind: 'complete' };
     return finishInitialTurnMaintenanceAfterAmbient({ sourceTurn });
 }
+// Part of C allmain.c:moveloop_core(): recovery, teleportitis, shape changes, and automatic search.
 // Also C allmain.c:regen_pw(): inlined here (the power-recovery block
 // before teleportitis and shape changes).
 async function finishInitialTurnMaintenanceAfterRegions({ sourceTurn, capacity, }) {
@@ -898,7 +905,8 @@ async function settleHeroLiquidAfterAction() {
         return null;
     return applyHeroLiquidEffects(plineWithContinuation, { entry: 'turn' });
 }
-// Native hack.c:unmul(). The after-handler is cleared before invocation so
+// C hack.c:unmul()
+// The after-handler is cleared before invocation so
 // recovery can start another delay without inheriting the old completion.
 // Also C steal.c:unstolenarm(): the 'unstolen-armor' case below.
 export async function finishHeroHelplessness(messageOverride, state = game, publish = plineWithContinuation) {
@@ -953,12 +961,13 @@ export async function finishHeroHelplessness(messageOverride, state = game, publ
             break;
     }
 }
-// allmain.c:u_calc_moveamt() clamps a negative movement balance after every
+// Part of C allmain.c:u_calc_moveamt(): clamps a negative movement balance after every
 // global allocation.  Without this, a slow polymorph can carry the action
 // debit across zero-speed turns and require an extra monster/global round.
 function addHeroMovementRation(state, amount) {
     state.u.umovement = Math.max(0, (state.u.umovement ?? 0) + amount);
 }
+// Part of C allmain.c:newgame(): entry adapter around initializeNewGame() and startup monster notices.
 // C ref: allmain.c newgame()
 export async function newgame() {
     await withMonsterNoticesBlocked(game, () => initializeNewGame());
@@ -1068,6 +1077,7 @@ function markMultiStepStatusDirty(g) {
         g.context.botl = true;
     }
 }
+// Part of C allmain.c:moveloop_core(): the main turn driver; world-turn maintenance is extracted into advanceWorldTurn().
 // C ref: allmain.c moveloop_core()
 export async function runMoveloopCore() {
     const g = requireInitializedGame();
@@ -1258,7 +1268,7 @@ export async function runMoveloopCore() {
     }
     await currentLuaLifecycle().runCallbacks(g, 'end_turn');
 }
-// C ref: allmain.c moveloop()
+// C allmain.c:moveloop()
 export async function moveloop(resuming) {
     const game = requireInitializedGame();
     await docrt();

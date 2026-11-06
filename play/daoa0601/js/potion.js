@@ -197,9 +197,10 @@ export async function setHeroSlimingTimeout(turns, { state = game, message = nul
 export function heroIsSliming(state = game) {
     return (state.u?.slimedTurns ?? 0) > 0 || !!state.u?.slimed;
 }
-// Starting the sliming countdown.
-// C end.c:delayed_killer(): the slime death defers its killer string until
-// the timeout fires; dropHeroSliming() in timeout.ts deallocates it.
+// Part of C potion.c:make_slimed(): starting the sliming countdown (the
+// timeout).  Also inlines C end.c:delayed_killer(): the slime death
+// defers its killer string until the timeout fires; dropHeroSliming()
+// in timeout.ts deallocates it.
 export function startHeroSliming({ state = game, turns = 10, killer = '', } = {}) {
     const hero = state.u;
     if (!heroCanBeSlimed(state))
@@ -228,24 +229,16 @@ export function resetHeroSlimingCountdown(state = game, turns = 10) {
 export function heroIsVomiting(state = game) {
     return !!state.u?.vomiting || (state.u?.vomitingTurns ?? 0) > 0;
 }
-// C potion.c:make_vomiting()
-// Sets the timeout; callers own any recovery message.
-export function startHeroVomiting({ state = game, turns } = {}) {
+// C potion.c:make_vomiting().
+export async function makeHeroVomiting(turns, { state = game, talk = false, publish = plineWithContinuation, } = {}) {
     const hero = state.u;
-    hero.vomitingTurns = Math.max(0, turns ?? 0);
+    const wasVomiting = heroIsVomiting(state);
+    hero.vomitingTurns = Math.max(0, turns);
     hero.vomiting = hero.vomitingTurns > 0;
     state.context.botl = true;
-    return hero.vomiting;
-}
-// C potion.c:make_vomiting()
-// Clears the timeout; callers own the talk and Unaware checks.
-export function cureHeroVomiting(state = game) {
-    const hero = state.u;
-    const cured = heroIsVomiting(state);
-    hero.vomiting = false;
-    hero.vomitingTurns = 0;
-    state.context.botl = true;
-    return cured;
+    if (!turns && wasVomiting && talk && !heroIsUnaware(state))
+        await publish(formatFeltMessage('much less nauseated now.', state));
+    return wasVomiting;
 }
 // C potion.c:make_stoned()
 // Also C end.c:dealloc_killer(): delayed petrification fields are removed inline here
@@ -397,7 +390,8 @@ export async function makeHallucinated(turns, { state = game, talk = true, publi
     }
     return changed;
 }
-// Native potion.c:make_deaf(). Commit the timeout before publishing its change.
+// C potion.c:make_deaf()
+// Commit the timeout before publishing its change.
 export async function makeDeaf(turns, { state = game, talk = true, publish = plineWithContinuation, } = {}) {
     requireLiveGame(state);
     const old = state.u.deafTurns || 0;
@@ -1253,8 +1247,7 @@ export async function healHero(amount, extraMaximum, { state = game, cureSicknes
         await makeDeaf(0, { state });
     }
     if (cureSickness) {
-        if (cureHeroVomiting(state) && !heroIsUnaware(state))
-            await plineWithContinuation(formatFeltMessage('much less nauseated now.', state));
+        await makeHeroVomiting(0, { state, talk: true });
         await cureHeroSicknessWithMessages(state);
     }
     state.context.botl = true;
@@ -1344,8 +1337,9 @@ const HALLUCINATED_BOTTLE_NAMES = [
     'teapot', 'keg', 'bucket', 'thermos', 'amphora', 'wineskin', 'parcel',
     'bowl', 'ampoule',
 ];
-// potion.c:bottlename() is shared by hero- and monster-thrown impacts.  The
-// selector callback lets source-turn planners retain their own RNG ledger.
+// C potion.c:bottlename()
+// Shared by hero- and monster-thrown impacts.  The selector callback lets
+// source-turn planners retain their own RNG ledger.
 export function randomBottleName(state = game, select = rn2) {
     const names = heroIsHallucinating(state)
         ? HALLUCINATED_BOTTLE_NAMES : ORDINARY_BOTTLE_NAMES;
@@ -1584,8 +1578,9 @@ function sicknessCannotHarmMonster(monster) {
     return monsterHasPoisonResistance(monster)
         || MONSTER_ATTACKS[monster?.mnum]?.some(attack => attack[1] === AD_DISE || attack[1] === AD_PEST);
 }
-// Potion impacts use zap.c:resist() with attack level 6 and the target's runtime level.
-// NOTELL suppresses shield presentation but the resistance draw still occurs.
+// Part of C zap.c:resist() as potion.c:potionhit() calls it: attack
+// level 6 and the target's runtime level.  NOTELL suppresses shield
+// presentation but the resistance draw still occurs.
 function monsterResistsPotion(monster, state = game) {
     const mnum = monster?.mnum;
     let defenseLevel = monster?.m_lev
@@ -1607,10 +1602,11 @@ function monsterHasSleepDefense(monster) {
 function monsterIsWere(monster) {
     return is_were(monster?.mnum);
 }
-// potion.c:potionhit() shares this exact pain/wake transaction between holy
-// water and acid.  Silence selects writhing and suppresses wake_nearto(); an
-// audible species wakes the level-scaled radius before any damage die.
-// Monnam() also names sensed monsters and the hero's engulfer without sight.
+// Part of C potion.c:potionhit(): it shares this exact pain/wake
+// transaction between holy water and acid.  Silence selects writhing and
+// suppresses wake_nearto(); an audible species wakes the level-scaled
+// radius before any damage die.  Monnam() also names sensed monsters and
+// the hero's engulfer without sight.
 async function publishPotionPainAndWakeRadius({ monster, wakeNearby, effectName, publish = plineWithContinuation, }) {
     const silent = (MONSTER_SOUND[monster.mnum] ?? 0) === 0;
     await publish(`${sentenceSubject(monster)} ${silent ? 'writhes' : 'shrieks'} in pain!`);
@@ -2963,8 +2959,10 @@ export async function releaseDjinni(source, state) {
             break;
     }
 }
-// C potion.c:split_mon() for a monster.  The heat source is named before
-// cloning, and a spotted monster announces the division.
+// Part of C potion.c:split_mon(): the monster branch. C takes one monster
+// pointer that may be &gy.youmonst; the hero port is not a Monster, so the
+// hero and monster halves stay separate functions.  The heat source is
+// named before cloning, and a spotted monster announces the division.
 export async function splitMonster(monster, state = game, { heatSource = null, publish = plineWithContinuation, ...options } = {}) {
     if (!monster)
         return null;
@@ -2982,7 +2980,8 @@ export async function splitMonster(monster, state = game, { heatSource = null, p
         await publish(`${monsterName(monster, { state, capitalized: true })} multiplies${reason}!`);
     return clone;
 }
-// C potion.c:split_mon() halves maximum HP after cloneu() divides current HP.
+// Part of C potion.c:split_mon(): the &gy.youmonst branch. Halves maximum
+// HP after cloneu() divides current HP.
 export async function splitHeroMonsterForm(state = game) {
     const maximum = state.u.mhmax;
     if (maximum === undefined)
@@ -3028,9 +3027,9 @@ export async function finishStrangeFeeling(source, { state = game, } = {}) {
         await consumeInventoryItem(source, state);
     return { known: false, consumed: !!source, heroDied: !!state.program_state.gameover };
 }
-// C potion.c:strange_feeling(), message half, as detect.c's detectors call
-// it; the trycall/useup half stays with the callers' effectResult handling.
-// The owning full port is strangeFeeling() above.
+// Part of C potion.c:strange_feeling(): the message half, kept separate
+// because detect.c's detectors own their trycall/useup handling outside
+// the call. The owning full port is strangeFeeling() above.
 export async function strangeFeelingMessage(message, state, forceMessage = false) {
     await plineWithContinuation(state.flags.beginner && !forceMessage
         ? `You have a ${heroIsHallucinating(state) ? 'normal' : 'strange'} feeling for a moment, then it passes.`

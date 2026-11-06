@@ -24,7 +24,8 @@ import { useHeroSkill } from './weapon.js';
 import { admitHeroKick, kickCanReachTarget } from './kick_admission.js';
 import { monsterAtPosition } from './steed.js';
 import { game, requireGameLevel, requireInitializedGame, requirePlayingGame, requireLiveGame } from './gstate.js';
-import { captureThrownObjectFlight, flyKickedObject, snuffThrownCandle } from './thrown_object.js';
+import { flyKickedObject, snuffThrownCandle } from './thrown_object.js';
+import { monsterProjectileDisplay } from './mthrowu.js';
 import { killerObjectName, objectNameIsPlural, observeObjectForNaming, corpseName, objectCombatName, objectDescription, makePlural, rndClass, withIndefiniteArticle } from './objnam.js';
 import { mksobj, mkgold, unlinkObject, splitObjectStack, objectWeight, placeCreatedObject, placeObject, remove_object, isContainer } from './mkobj.js';
 import { vision_recalc, vision_reset, cansee, couldsee, vision_note_blocker_change } from './vision.js';
@@ -167,6 +168,7 @@ function applyKickPassive(monster, hit) {
         weapon: game.uarmf || game.u?.uarmf || null,
     });
 }
+// Part of C dokick.c:kick_monster(): the live-target path, using maybe_kick_monster() admission and kickdmg() effects.
 // C refs: dokick.c:maybe_kick_monster(), kick_monster(), kickdmg().
 // Form-specific attacks share the command admission rules. Projection affects only the
 // target noun: dokick() still targets m_at(x,y) when the actor is invisible.
@@ -474,7 +476,6 @@ export async function dokick() {
             dx: game.u.dx,
             dy: game.u.dy,
             publish: plineWithContinuation,
-            captureFlight: captureThrownObjectFlight,
         });
         if (game.program_state.gameover)
             return;
@@ -627,6 +628,7 @@ export async function kickDoor(x, y, average, responses) {
         await witnessDoorKick(x, y, false);
     }
 }
+// Part of C dokick.c:dokick(): the watchman response to door damage.
 // Also C mon.c:get_iter_mons_xy(): inlined here for the first watchman witness.
 // Also C dokick.c:watchman_thief_arrest(): inlined here for a broken door.
 // Also C dokick.c:watchman_door_damage(): inlined here as the D_WARNED
@@ -1010,6 +1012,7 @@ export async function tryKickReel(monster, dx, dy, { martial = false, state = ga
 // container may lose fragile contents.  Callers own placement and pass the
 // object's PRE-impact coordinates for shop-room attribution.
 const GLASS = 19;
+// Part of C dokick.c:container_impact_dmg(): the charge for each destroyed item.
 // dokick.c:443-450 per-item adapter: mark no_charge for the hero's own
 // contents, then charge the item at its pre-destruction value.  Called by
 // the container-impact owner immediately before each deletion.
@@ -1022,6 +1025,7 @@ export async function chargeDestroyedShopContent(object, x, y, fromInventory, { 
         object.no_charge = true;
     return stolenValue(object, x, y, !!spot.resident.mpeaceful, { silent: true, publish, state });
 }
+// Part of C dokick.c:container_impact_dmg(): the shop-debt and anger summary after destruction.
 // dokick.c:476-484 summary: insider debt or outsider damage and anger.
 export async function settleDestroyedShopCharges({ loss, x, y, publish = plineWithContinuation, state = game }) {
     requireLiveGame(state);
@@ -1107,6 +1111,7 @@ function unitWeight(object) {
         return objectWeight(object);
     return objectWeight({ ...object, quan: 1, quantity: 1 });
 }
+// Part of C dokick.c:really_kick_object(): the object-range and sliding calculation.
 // Also C artifact.c:is_art(): inlined here as the oartifact name test that
 // pins Mjollnir's kick range to 1.
 function kickRange(object, state, dx, dy, martial, rollOne) {
@@ -1144,7 +1149,7 @@ function kickRange(object, state, dx, dy, martial, rollOne) {
 // C dokick.c:really_kick_object().
 // Also C dokick.c:kick_object(): inlined here as the top-of-pile selection
 // and the object name used if the kick hurts the hero.
-export async function kickFloorObject(x, y, { state = game, dx = state.u?.dx ?? 0, dy = state.u?.dy ?? 0, publish = plineWithContinuation, random = rn2, rollOne = rnd, captureFlight = null, } = {}) {
+export async function kickFloorObject(x, y, { state = game, dx = state.u?.dx ?? 0, dy = state.u?.dy ?? 0, publish = plineWithContinuation, random = rn2, rollOne = rnd, } = {}) {
     const object = state.level?.objects?.[x]?.[y]?.[0];
     if (!object)
         return false;
@@ -1291,13 +1296,14 @@ export async function kickFloorObject(x, y, { state = game, dx = state.u?.dx ?? 
     try {
         await snuffThrownCandle(moving, state, publish);
         await newsym(x, y);
+        requirePlayingGame(state);
         const flight = await flyKickedObject({
             state,
             object: moving,
             dx,
             dy,
             range,
-            captureFlight,
+            display: monsterProjectileDisplay(moving, state),
             publish,
             random,
         });
@@ -1372,7 +1378,7 @@ function inEndgame(state) {
 function onStronghold(state) {
     return sameLevel(state.u?.uz, state.stronghold_level);
 }
-// Also C dokick.c:drop_to(): the MIGR_RANDOM case — stronghold drops go to
+// Part of C dokick.c:drop_to(): the MIGR_RANDOM case — stronghold drops go to
 // the valley, endgame and bottom levels go nowhere.
 function trapDestination(state) {
     if (onStronghold(state))

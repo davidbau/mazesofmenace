@@ -13,8 +13,10 @@
 //   tty_nhgetch()/tty_nh_poskey() -> input.ts (the browser input seam)
 //   tty_init_nhwindows()/tty_askname() -> jsmain.ts (the browser entry)
 //   tty_display_file() -> pager.ts displayHelpFile (imports the cmd map)
-//   process_text_window() -> the paging drivers in windows.ts plus
-//                            paintMenuPage's putstr-rows branch below
+//   process_text_window() pages putstr()-filled NHW_MENU windows below;
+//                            the NHW_TEXT window and its incremental
+//                            tty_putstr() page flush live in windows.ts
+//                            (showTextWindow/readTextPage)
 import { game } from './gstate.js';
 import { clipToplineToColumn, clearMessageWindow, decodeMixedTopline, flushPendingTopline, pageTopline, updateTopline } from './tty_topline.js';
 import { plineWithContinuation, rawPrint } from './pline.js';
@@ -433,6 +435,41 @@ function groupAccelerators(rows, how) {
     return new Set(rows.filter(row => row.group && (row.group !== row.key || row.group === '$')
         && (how === PICK_ANY || counts.get(row.group) === 1)).map(row => row.group));
 }
+// C wintty.c:process_text_window()
+// A window tty_putstr() filled and display_nhwindow() showed without
+// tty_end_menu() has no menu items, so wintty.c:1943-1946 renders it here
+// instead of through process_menu_window(). It pages one terminal screen
+// at a time: every full page ends in dmore() on the bottom row, a quitchar
+// clears the screen and continues, and only ESC (morc == '\033') sets
+// WIN_CANCELLED and drops the remaining lines (wintty.c:1777-1850). The
+// pager accepts nothing but xwaitforspace()'s quitchars; menu commands,
+// digits and page jumps just ring the bell.
+async function process_text_window(d, layout) {
+    // decl.c:96 quitchars[] = " \r\n\033"; strchr() also matches the
+    // string's terminating NUL, and xwaitforspace() (getline.c:230-256)
+    // always accepts CR and LF before that test.
+    const quitchar = (key) => key === 0 || key === 10 || key === 13 || key === 27 || key === 32;
+    // cw->offy is always 0 for these windows, so a page holds one row less
+    // than the terminal (wintty.c:1779).
+    const pageSize = d.rows - 1;
+    for (let first = 0;; first += pageSize) {
+        const pageRows = layout.rows.slice(first, first + pageSize);
+        paintMenuPage(d, layout, 0, pageRows, null);
+        if (first + pageSize < layout.rows.length) {
+            // A full page: cl_end() of the bottom row, then dmore() one
+            // column past the origin (offset 2, NHW_MENU) and
+            // term_clear_screen() before the next page (wintty.c:1780-1793).
+            const key = await dmore(d, layout.boundary + 1, d.rows - 1, layout.endMarker, quitchar);
+            if (key === 27)
+                return { cancelled: true, key, selections: [] };
+            continue;
+        }
+        // Final pager one row past the last line; ESC leaves the window
+        // WIN_CANCELLED for a later redisplay (wintty.c:1844-1849).
+        const key = await dmore(d, layout.boundary + 1, pageRows.length, layout.endMarker, quitchar);
+        return { cancelled: key === 27, key, selections: [] };
+    }
+}
 function menuSearchMatches(query, text) {
     // strutil.c:pmatchi() uses lowc(), which changes only ASCII A..Z.
     const lowerAscii = (value) => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
@@ -445,7 +482,11 @@ export function paintMenuPage(d, menu, page, rows, underlay, previousPageLines =
     if (boundary === 0)
         d.clearScreen();
     else {
-        clearRect(boundary, 0, d.cols, maxRows);
+        // process_menu_window() cl_end()s its rows plus the spare lines down
+        // to maxrow-1; process_text_window() cl_end()s every row and the
+        // pager row before dmore() (wintty.c:1834-1838, 1892-1894), so a
+        // putstr window erases one row beyond its measured line count.
+        clearRect(boundary, 0, d.cols, menu.putstrMeasured ? maxRows + 1 : maxRows);
         // A shorter corner page exposes the map again below two blank rows.
         // Keep those cells from the already-painted map, like docorner().
         const firstRestoredRow = Math.min(rows.length + 3, maxRows - 1);
@@ -500,7 +541,13 @@ export async function tty_display_nhwindow(window, how = PICK_NONE) {
         window.underlay = snapshotMenuUnderlay();
     window.offx = layout.boundary;
     window.active = true;
-    const result = await process_menu_window(d, window.entries, layout, how, window.underlay);
+    // C wintty.c:tty_display_nhwindow(): a window whose rows came from
+    // putstr() (or an empty one) renders through process_text_window();
+    // only tty_start_menu()/add_menu() contents reach
+    // process_menu_window() (wintty.c:1943-1946).
+    const result = measured.putstrMeasured
+        ? await process_text_window(d, layout)
+        : await process_menu_window(d, window.entries, layout, how, window.underlay);
     window.cancelled = result.cancelled;
     return result;
 }
@@ -609,7 +656,12 @@ export function menuLayout(rows, columns, terminalRows, putstrMeasured = false) 
     // putstr() measures a line as strlen + 1; tty_end_menu() re-measures its
     // own rows, and every stored line, as strlen + 2.
     const width = clippedRows.reduce((widest, row) => Math.max(widest, row.text.length + (putstrMeasured ? 1 : 2)), putstrMeasured ? 0 : Math.min(columns, pager.length));
-    const maxRows = (pageCount > 1 ? pageSize : rows.length) + 1;
+    // tty_end_menu() sizes maxrow as the page height or item count plus the
+    // pager row (wintty.c:2826-2828); a window filled only with putstr()
+    // never runs it, so its maxrow stays the raw line count and the pager
+    // row does not grow the window (wintty.c:2465-2466).
+    const maxRows = putstrMeasured ? rows.length
+        : (pageCount > 1 ? pageSize : rows.length) + 1;
     return { rows: clippedRows, pageSize, pageCount, maxRows, width, endMarker, putstrMeasured };
 }
 export function tty_end_menu(window, prompt = null, putstrMeasured = false) {
@@ -888,8 +940,9 @@ export function writeMapCell(display, x, y, loc, frameColor) {
     const byteGlyph = !loc.disp_decgfx && ROGUE_SYMSETS[name]?.ibm === true;
     display.setMapCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0, frameColor, byteGlyph);
 }
-// C wintty.c:tty_clear_nhwindow(WIN_MAP): clear the map rows of the
-// physical screen.
+// Part of C win/tty/wintty.c:tty_clear_nhwindow(): the NHW_MAP/NHW_BASE
+// term_clear_screen() case, which just clears the map rows of the physical
+// screen and flags the bottom lines for redraw.
 export function clearMapDisplay() {
     for (let row = 1; row <= ROWNO; row++)
         game.nhDisplay?.clearRow(row);
@@ -1038,6 +1091,7 @@ export function renderStatusLine2(fields, columns, capacityBlank = false, levelP
         levelPrefixChanged: prefixChanged,
     };
 }
+// Part of C wintty.c:render_status(): the BL_TITLE hitpoint-bar text.
 // ── wintty.c:render_status() BL_TITLE branch — the hitpoint bar ──
 // wintty.c:render_status()'s BL_TITLE branch.  The tty draws the bar's
 // colour and attribute from the title cell's stored style
@@ -1049,9 +1103,9 @@ export function hitpointBar(title, critical) {
         : title.slice(0, 30).padEnd(30);
     return `[${text}]`;
 }
+// C wintty.c:condattr()
 // ── wintty.c:condattr()/condcolor() ──
-// C wintty.c:condattr().
-// C wintty.c:condcolor().
+// Also C wintty.c:condcolor(): inlined with the condition attributes.
 export function conditionStyle(mask, masks) {
     let color = NO_COLOR, attr = 0;
     for (let index = 0; index < CLR_MAX; index++) {

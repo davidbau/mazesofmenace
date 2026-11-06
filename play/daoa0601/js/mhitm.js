@@ -11,9 +11,8 @@ import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_
 import { canSeeMonster, canSenseMonster, canSpotMonster, flush_screen, map_invisible, newsym, } from './display.js';
 import { formatHeardMessage, plineWithContinuation } from './pline.js';
 import { artifactById } from './artifact.js';
-import { monsterResistsBlindingLight } from './blinding_attack.js';
 import { M_AP_TYPE, PLNMSG_HIDE_UNDER, DOOR, D_CLOSED, D_LOCKED, IRONBARS, IS_OBSTRUCTED, IS_TREE, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, MM_IGNOREWATER, NEED_HTH_WEAPON, NEED_WEAPON, ismnum, M_AP_MONSTER, STRAT_WAITMASK, W_ARMG, NORMAL_SPEED, PIT, SPIKED_PIT, W_ARMC, W_ARMF, W_ARMH, } from './const.js';
-import { monsterIsHelpless, is_elf, is_orc, monsterHasEyes, monsterDigests, monsterEnfolds, monsterHatesSilver, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsRider, monsterIsShade, monsterIsSlimeproof, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterPassesWalls, monsterPerceives, touchPetrifies, isHeroDefender, } from './mondata.js';
+import { monsterIsHelpless, is_elf, is_orc, monsterHasEyes, monsterDigests, monsterEnfolds, monsterHatesSilver, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsRider, monsterIsShade, monsterIsSlimeproof, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterPassesWalls, monsterPerceives, touchPetrifies, isHeroDefender, resistConflict, resistsBlnd, } from './mondata.js';
 import { heroIsUnaware } from './senses.js';
 import { heroIsDeaf } from './senses.js';
 import { findMonsterArmorClass } from './worn.js';
@@ -22,7 +21,7 @@ import { cloneMonster, finishMonsterGrowth, growMonster } from './makemon.js';
 import { splitMonster } from './potion.js';
 import { createElementalMonsterExplosion } from './explode.js';
 import { cansee } from './vision.js';
-import { applyMonsterGolemEffects, changeMonsterForm, finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, grantMonsterCorpseIntrinsic, healMonster, monstersInFmonOrder, paralyzeMonster, prepareMonsterPetrification, resistConflict, resolveMonsterLiquid, finishMonsterPetrification, monsterSubject, turnGolemToStone, } from './mon.js';
+import { applyMonsterGolemEffects, changeMonsterForm, finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, grantMonsterCorpseIntrinsic, healMonster, monstersInFmonOrder, paralyzeMonster, prepareMonsterPetrification, resolveMonsterLiquid, finishMonsterPetrification, monsterSubject, turnGolemToStone, } from './mon.js';
 import { staggerVerb } from './dothrow.js';
 import { displayLiquidName, monsterName, monsterName as canonicalMonsterName, namelessMonsterName } from './do_name.js';
 import { possessiveName, dist2, distmin } from './hacklib.js';
@@ -35,7 +34,7 @@ import { weaponHitValue } from './weapon.js';
 import { getmattk } from './attack_selection.js';
 import { resolveMonsterCombatBreath, resolveMonsterCombatSpit, resolveMonsterCombatThrow } from './mthrowu.js';
 import { trapAt, mintrap, damageObjectWithAcid, erodeObject } from './trap.js';
-import { applyMonsterCombatBlindness, applyMonsterDigestionEffect, applyMonsterDrainEffect, applyMonsterElementEffect, applyMonsterStatusEffect, applyMonsterTheftEffect, applyMonsterTransformEffect, mhitmAdBlnd, mhitmAdDrli, mhitmAdEnch, mhitmAdLegs, mhitmAdStun, passiveAttack, passiveDamage, petrifyMonsterDefender, poisonMonsterFromAttack, rejectMonsterShadeContact, mhitm_ad_phys, mhitm_knockback, applyMonsterCombatEffect, effectResult, erodeArmor, } from './uhitm.js';
+import { applyMonsterCombatBlindness, mhitm_adtyping, passiveAttack, passiveDamage, rejectMonsterShadeContact, mhitm_ad_phys, mhitm_knockback, effectResult, erodeArmor, } from './uhitm.js';
 import { mon_reflects } from './muse.js';
 import { finishMonsterEating } from './dogmove.js';
 import { clearMonsterWormFromMap, placeMonsterWormTailRandomly } from './worm.js';
@@ -107,8 +106,8 @@ async function revealAttackingMonsters(aggressor, defender, visible) {
             await newsym(monster.mx, monster.my);
     }
 }
+// C mhitm.c:missmm()
 // Feedback for when a monster-versus-monster attack misses.
-// C mhitm.c:missmm().
 export async function showMonsterCombatMiss(aggressor, defender, attack, { state = game, visible, publish = plineWithContinuation }) {
     await revealAttackingMonsters(aggressor, defender, visible);
     if (!visible) {
@@ -119,16 +118,19 @@ export async function showMonsterCombatMiss(aggressor, defender, attack, { state
     const friendly = !aggressor.mcan && could_seduce(aggressor, defender, attack, state);
     await publish(`${subject} ${friendly ? 'pretends to be friendly to' : 'misses'} ${combatTargetName(defender, aggressor, state)}.`);
 }
-// C mhitm.c:mattackm(): "Set up the visibility of action".
+// Part of C mhitm.c:mattackm(): "Set up the visibility of action" (gv.vis).
+// Kept as its own export because the combat tests verify the visibility
+// rule independently.
 export function canSeeMonsterCombat(attacker, defender) {
     return (cansee(attacker.mx, attacker.my)
         && canSpotMonster(attacker))
         || (cansee(defender.mx, defender.my)
             && canSpotMonster(defender));
 }
-// Admission exposes a concealed defender before visibility and hit chances
-// are finalized. A disguise is instead revealed by the individual hit/miss.
-// C mhitm.c:mattackm(), the attacked-mundetected-monster block.
+// Part of C mhitm.c:mattackm(): its attacked-mundetected-monster block.
+// Admission exposes a concealed defender before visibility and hit
+// chances are finalized; a disguise is instead revealed by the
+// individual hit/miss.
 export async function revealMonsterCombatDefender(defender, state = game) {
     if (!defender.mundetected)
         return;
@@ -153,20 +155,6 @@ export async function revealMonsterCombatDefender(defender, state = game) {
     else {
         await plineWithContinuation(`Suddenly, you notice ${monsterName(defender, { state, article: 'a' })}.`);
     }
-}
-// C mhitm.c:mattackm() handles an AT_WEAP slot before its to-hit roll.
-// An unarmed weapon attacker first calls mon_wield_item(); selecting a new
-// carried weapon consumes the complete counterattack action.
-async function monsterVersusMonsterWieldAction(aggressor, defender, attack, state) {
-    if (attack?.attackType !== AT_WEAP)
-        return null;
-    const currentWeapon = monsterWieldedWeapon(aggressor);
-    if (aggressor.weaponCheck !== NEED_WEAPON && currentWeapon)
-        return null;
-    aggressor.weaponCheck = NEED_HTH_WEAPON;
-    return await wieldMonsterWeapon(aggressor, state)
-        ? { kind: 'monster-wield', aggressor, defender }
-        : null;
 }
 // C mhitm.c:mattackm(). Callers establish bhitpos independently of notonhead;
 // subsequent slots read the live values left by rays and projectile flight.
@@ -326,9 +314,16 @@ export async function attackMonsterWithMonster(aggressor, defender, { state, ran
             const isHug = attack.attackType === AT_HUGS;
             if (!isHug && distmin(aggressor.mx, aggressor.my, defender.mx, defender.my) > 1)
                 continue;
-            const wield = await monsterVersusMonsterWieldAction(aggressor, defender, attack, state);
-            if (wield)
-                return wield;
+            // mattackm() handles an AT_WEAP slot before its to-hit roll: an
+            // unarmed weapon attacker first calls mon_wield_item(), and
+            // selecting a new carried weapon consumes the complete
+            // counterattack action.
+            if (attack.attackType === AT_WEAP
+                && (aggressor.weaponCheck === NEED_WEAPON || !monsterWieldedWeapon(aggressor))) {
+                aggressor.weaponCheck = NEED_HTH_WEAPON;
+                if (await wieldMonsterWeapon(aggressor, state))
+                    return { kind: 'monster-wield', aggressor, defender };
+            }
             if (attack.attackType === AT_WEAP)
                 await updateMonsterWeaponAfterPolymorph(aggressor, state);
             weapon = attack.attackType === AT_WEAP ? monsterWieldedWeapon(aggressor) ?? null : null;
@@ -557,7 +552,7 @@ export async function resolveMonsterCombatGaze(attacker, defender, attack, { sta
         await publish(`${subject} gazes ${blindedArchon ? 'toward' : 'at'} ${target}...`);
     }
     if (attacker.mcan || !defender.mcansee
-        || (archon ? monsterResistsBlindingLight(defender, state) : !attacker.mcansee)
+        || (archon ? resistsBlnd({ monster: defender }, state) : !attacker.mcansee)
         || attacker.minvis && !perceivesInvisible(defender) || defender.msleeping) {
         if (visible && canSpotMonster(defender))
             await publish('but nothing happens.');
@@ -949,7 +944,7 @@ export async function resolveMonsterCombatDamage(attacker, defender, attack, { s
             await publish('You have a peculiarly sad feeling for a moment, then it passes.');
         return result(effectResult(0, stone.survived ? M_ATTK_HIT : M_ATTK_AGR_DIED));
     }
-    const effect = await applyMonsterCombatEffect(attacker, defender, context);
+    const effect = await mhitm_adtyping({ adtyp: attack[1], attacker, defender, context });
     if (effect.heroDied)
         return result(effect);
     // Even an effect that set done or zero damage reaches native knockback.

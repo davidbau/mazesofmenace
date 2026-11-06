@@ -64,7 +64,7 @@ import { objectResistsDestruction } from './zap.js';
 import { costlySpot, stolenValue, makeAngryShopkeeper, insideShopRoomAt, containedGold, donateGold, objectIsUnpaid, removeObjectAndContentsFromBill, sellHeroDroppedObject, shopResident, chargeUnpaidObjectAsDebt, } from './shk.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { exceedsActionCapacity, checkSpecialRoom, finishDestinationSpotEffects, heroBadRock, heroLiquidEffects, heroTightDiagonalReason, loseHeroHp, nomul, switchHeroTerrain, roomsAt, } from './hack.js';
-import { heroCanBeBlindedByObject } from './blinding_attack.js';
+import { AT_WEAP } from './monster_attack_types.js';
 import { propertyIsActive } from './properties.js';
 import { monsterProjectileDisplay } from './mthrowu.js';
 import { finishHeroDeath } from './end.js';
@@ -72,7 +72,7 @@ import { hitHeroWithFallingArtifact } from './falling_artifact.js';
 import { hitHeroWithThrownPotion } from './hero_potion_hit.js';
 import { levelHasCeiling, placeHeroOnLevel, surfaceName, ceilingName } from './dungeon.js';
 import { beginBallAndChainMove, finishBallAndChainMove, heroIsPunished } from './ball.js';
-import { monsterObjectPronoun, monsterDigests, monsterHasNoLimbs, monsterHatesBlessings, monsterIsAmorphous, monsterIsBig, monsterIsFlyer, monsterIsSlithy, monsterIsThickSkinned, monsterIsWhirly, monsterPassesWalls, monsterThrowsRocks, passes_rocks, monsterIsAnimal, monsterIsUnicorn, heroResistsStoning, touchPetrifies, formCanBecomeStoneGolem, eyecount, befriendWithObj, is_domestic, is_elf, is_orc, your_race, } from './mondata.js';
+import { monsterObjectPronoun, monsterDigests, monsterHasNoLimbs, monsterHatesBlessings, monsterIsAmorphous, monsterIsFlyer, monsterIsSlithy, monsterIsWhirly, monsterPassesWalls, monsterThrowsRocks, passes_rocks, monsterIsAnimal, monsterIsUnicorn, heroResistsStoning, touchPetrifies, formCanBecomeStoneGolem, eyecount, befriendWithObj, is_domestic, is_elf, is_orc, your_race, canBlnd, } from './mondata.js';
 import { detachHeroGold, heroGoldObject } from './hero_gold.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { requireShopGame } from './shop_types.js';
@@ -93,8 +93,9 @@ function multishotClassBonus(role, item, launcher, skill) {
         return item.otyp === YA && launcher?.otyp === YUMI ? 1 : 0;
     return 0;
 }
-// throw_obj()'s weakmultishot local (dothrow.c:170-174): these roles, poor
-// dexterity, or fumbling hold the volley back to its smaller bonuses.
+// Part of C dothrow.c:throw_obj(): the weakmultishot local (dothrow.c:170-174)
+// — these roles, poor dexterity, or fumbling hold the volley back to its
+// smaller bonuses.
 function weakMultishot(role, skill, state) {
     return role === 'wizard' || role === 'priest'
         || (role === 'healer' && skill !== P_KNIFE)
@@ -102,9 +103,9 @@ function weakMultishot(role, skill, state) {
         || state.u?.fumbling || (state.u?.fumblingTurns ?? 0) > 0
         || currentAttribute(A_DEX, state) <= 6;
 }
-// throw_obj()'s race bonus switch (dothrow.c:193-214): the racial bows and
-// the gnome crossbow.  The quest-artifact launcher's extra shot follows in
-// the caller.
+// Part of C dothrow.c:throw_obj(): the race bonus switch (dothrow.c:193-214)
+// — the racial bows and the gnome crossbow.  The quest-artifact launcher's
+// extra shot follows in the caller.
 function raceBonus(race, item, launcher, skill) {
     if (race === 'elf') {
         return item.otyp === ELVEN_ARROW && launcher?.otyp === ELVEN_BOW
@@ -116,9 +117,10 @@ function raceBonus(race, item, launcher, skill) {
     }
     return race === 'gnome' && skill === -P_CROSSBOW ? 1 : 0;
 }
-// throw_obj()'s multishot calculation (dothrow.c:158-238): the skill,
-// role, race and quest-artifact bonuses, the crossbow strength cap, then
-// the rnd() roll and the quantity and shotlimit clamps.
+// Part of C dothrow.c:throw_obj(): the multishot calculation
+// (dothrow.c:158-238) — the skill, role, race and quest-artifact bonuses,
+// the crossbow strength cap, then the rnd() roll and the quantity and
+// shotlimit clamps.
 export function chooseHeroVolleyCount(item, { state = game, shotLimit = 0, random = rnd, } = {}) {
     requirePlayingGame(state);
     const quantity = Math.max(1, item?.quan ?? item?.quantity ?? 1);
@@ -504,7 +506,6 @@ async function throwCommand(selectedItem = null, capabilityChecked = false, supp
             state: game,
             gold: item,
             dx, dy, dz,
-            captureFlight: captureThrownObjectFlight,
             wakeMonster: wakeAttackedMonster,
             angerMonster: angerAttackedMonster,
         });
@@ -592,7 +593,6 @@ async function throwSelectedUnit(item, dx, dy, volley) {
             state: game,
             gold: item,
             dx, dy, dz: game.u.dz ?? 0,
-            captureFlight: captureThrownObjectFlight,
             wakeMonster: wakeAttackedMonster,
         });
         return false;
@@ -654,7 +654,6 @@ async function throwSelectedUnit(item, dx, dy, volley) {
         selectedQuantity,
         dx,
         dy,
-        captureFlight: captureThrownObjectFlight,
         wakeMonster: wakeAttackedMonster,
         wakeNearby: wakeMonstersNearWithMessages,
         finishKill: finishOrdinaryMapPotionKill,
@@ -709,7 +708,7 @@ function hitMonsterWithThrownPotion({ state, monster, potion, wakeMonster, wakeN
         distance: distanceFromHero(state, monster.mx, monster.my),
     });
 }
-export async function resolveMapPotionThrow({ state = game, item, objectClass, selectedQuantity, splitObjectId = null, dx, dy, captureFlight = null, wakeMonster = null, wakeNearby = null, finishKill = null, publish = plineWithContinuation, }) {
+export async function resolveMapPotionThrow({ state = game, item, objectClass, selectedQuantity, splitObjectId = null, dx, dy, wakeMonster = null, wakeNearby = null, finishKill = null, publish = plineWithContinuation, }) {
     if (!canResolveMapPotionThrow({
         state, item, objectClass, selectedQuantity, dx, dy,
     }))
@@ -754,13 +753,14 @@ export async function resolveMapPotionThrow({ state = game, item, objectClass, s
         const trajectory = underwater
             ? { range: 1, recoil: 0 }
             : heroThrowTrajectory(thrown, state);
+        requirePlayingGame(state);
         const flight = await flyHeroThrownObject({
             state,
             object: thrown,
             dx: actualDx,
             dy: actualDy,
             range: trajectory.range,
-            captureFlight,
+            display: monsterProjectileDisplay(thrown, state),
             publish,
         });
         if (trajectory.recoil) {
@@ -1018,31 +1018,6 @@ export function willMonsterHurtle(monster, state, x, y, random = rn2) {
         state, gpflags: MM_IGNOREWATER | MM_IGNORELAVA, random,
     });
 }
-// C uhitm.c:hmon_hitmon_stagger()
-export async function tryUnarmedStagger(monster, { skill, damage, dx, dy, state = game, announce = async () => { }, nameMonster = target => monsterName(target, { state, capitalized: true }), wakeMonster = async () => {
-    monster.msleeping = 0;
-}, finishLiquidDeath, finishMonsterDeath, }) {
-    if (rnd(100) >= skill)
-        return { staggered: false };
-    if (monsterIsBig(monster.mnum)
-        || monsterIsThickSkinned({ mnum: monster.mnum })) {
-        return { staggered: false };
-    }
-    if (canSpotMonster(monster)) {
-        await announce(`${nameMonster(monster)} ${staggerVerb(monster.mnum)} from your powerful strike!`);
-    }
-    if (damage >= (monster.mhp ?? 1))
-        return { staggered: true };
-    const hurtle = await hurtleMonster(monster, dx, dy, 1, {
-        state,
-        announce,
-        nameMonster,
-        wakeMonster,
-        finishLiquidDeath,
-        finishMonsterDeath,
-    });
-    return { staggered: true, ...hurtle };
-}
 // C dothrow.c:gem_accept(), reached from thitmonst()'s unicorn catch
 // (dothrow.c:2087-2099).  Null means ordinary combat; false means caught
 // or missed but still free.
@@ -1130,9 +1105,10 @@ export function rangedTargetHitBonus(object, defender, { state = game, defenderN
     }
     return bonus;
 }
-// thitmonst()'s base target number (dothrow.c:2027-2076): Dexterity replaces
-// Strength, distance and target size apply through omon_adj(), and a
-// guaranteed hit while swallowed adds the +1000 that no roll can beat.
+// Part of C dothrow.c:thitmonst(): the base target number
+// (dothrow.c:2027-2076) keys off C's Upolyd; Dexterity replaces Strength,
+// distance and target size apply through omon_adj(), and a guaranteed hit
+// while swallowed adds the +1000 that no roll can beat.
 function heroIsPolymorphed(state) {
     return Upolyd(state.u);
 }
@@ -1218,9 +1194,10 @@ function rangedObjectUsesWeaponHit(object) {
     return objectClass === WEAPON_CLASS || objectClass === GEM_CLASS
         || (objectClass === TOOL_CLASS && skill !== 0);
 }
-// thitmonst()'s shared miss tail: reportHeroThrownMiss() [tmiss()] with its
-// maybe_wakeup roll, plus the weapon arm's extra wakeup() for applied
-// polearms (dothrow.c:2196-2198, 2235-2238).
+// Part of C dothrow.c:thitmonst(): the shared miss tail —
+// reportHeroThrownMiss() [tmiss()] with its maybe_wakeup roll, plus the
+// weapon arm's extra wakeup() for applied polearms (dothrow.c:2196-2198,
+// 2235-2238).
 async function missRangedObject(monster, object, state, target, applied, volley, publish, random) {
     await reportHeroThrownMiss(monster, object, {
         state, target, publish, ...(volley ? { volley } : {}),
@@ -1695,9 +1672,9 @@ export async function releaseCameraDemon(object, x, y, { state = game, publish =
     setMonsterMalign(monster, state);
     return monster;
 }
-// ---------------------------------------------------------------------------
-// C dothrow.c:check_shop_obj(). Broken objects settle through the hero's
-// current shop. Intact returns remove bills or offer a sale before stacking.
+// C dothrow.c:check_shop_obj()
+// Broken objects settle through the hero's current shop. Intact returns
+// remove bills or offer a sale before stacking.
 // ---------------------------------------------------------------------------
 export async function settleThrownShopObject(object, x, y, state = game, publish = plineWithContinuation, { broken = false } = {}) {
     requireLiveGame(state);
@@ -1762,8 +1739,8 @@ function obstacleReason(location, openDoorFrame) {
         return 'bumping into a closed door';
     return 'bumping into a wall';
 }
-// hurtle_step()'s losehp(..., why, KILLED_BY) (dothrow.c:836): "killed by
-// bumping into a wall".
+// Part of C dothrow.c:hurtle_step(): its losehp(..., why, KILLED_BY)
+// (dothrow.c:836) — "killed by bumping into a wall".
 async function loseImpactHitPoints(amount, killer) {
     if (game.u.halfPhysicalDamage)
         amount = Math.trunc((amount + 1) / 2);
@@ -2170,7 +2147,9 @@ export async function tossObjectUp(object, { state = game, publish = plineWithCo
     const helmet = state.uarmh || hero.uarmh || null;
     if (objectBreaksOnImpact(object, random)) {
         // C dothrow.c passes &gy.youmonst as both magr and mdef here.
-        const blindIncrement = heroCanBeBlindedByObject(object.otyp, state, { thrownByHero: true }) ? rollOne(25) : 0;
+        const blindIncrement = (object.otyp === CREAM_PIE || object.otyp === BLINDING_VENOM)
+            && canBlnd({ youmonst: true }, { youmonst: true }, AT_WEAP, object, state)
+            ? rollOne(25) : 0;
         const broken = await breakObject();
         if (state.program_state.gameover)
             return null;
@@ -2293,17 +2272,18 @@ export function isAutoReturningThrow(object, weaponMask, state) {
         && (object.otyp === AKLYS || artifactById(object.oartifact, state)?.name === 'Mjollnir'
             && state.urole?.key === 'valkyrie');
 }
-// throwit()'s impaired local (dothrow.c:1520-1523): Confusion, Stunned,
-// Blind, Hallucination, or Fumbling spoil the catch of a returning weapon.
+// Part of C dothrow.c:throwit(): the impaired local (dothrow.c:1520-1523)
+// — Confusion, Stunned, Blind, Hallucination, or Fumbling spoil the catch
+// of a returning weapon.
 export function throwerIsImpaired(state) {
     return heroIsBlind(state) || heroIsHallucinating(state)
         || state.u.confused || propertyIsActive('confusion', state)
         || state.u.stunned || propertyIsActive('stunned', state)
         || state.u.fumbling || propertyIsActive('fumbling', state);
 }
-// throwit()'s throw-and-return outcome (dothrow.c:1710-1777), shared by
-// the map and the engulfed weapon arm.  A failed return still needs
-// throwit()'s landing at the target square.
+// Part of C dothrow.c:throwit(): the throw-and-return outcome
+// (dothrow.c:1710-1777), shared by the map and the engulfed weapon arm.
+// A failed return still needs throwit()'s landing at the target square.
 export async function finishReturningThrow({ state, object, impact, impaired, twoWeapons, oldSlot, tetherDisplay, }) {
     requirePlayingGame(state);
     if (rn2(100) === 0) {
@@ -2438,9 +2418,9 @@ function swallowedPotionEligibility(state, item, objectClass, selectedQuantity) 
     }
     return engulfer;
 }
-// throwit()'s u.uswallow arm for a weapon-like missile (dothrow.c:1569-1578):
-// the guaranteed thitmonst() hit, then the returning-weapon roll or
-// swallowit()'s transfer to the engulfer.
+// Part of C dothrow.c:throwit(): the u.uswallow arm for a weapon-like
+// missile (dothrow.c:1569-1578) — the guaranteed thitmonst() hit, then
+// the returning-weapon roll or swallowit()'s transfer to the engulfer.
 export async function resolveSwallowedWeaponThrow({ state = game, item, objectClass, selectedQuantity, splitObjectId = null, finishKill, volley, }) {
     const engulfer = swallowedWeaponTarget(state, item, objectClass);
     if (!engulfer)
@@ -2525,8 +2505,8 @@ export async function resolveSwallowedWeaponThrow({ state = game, item, objectCl
             state._thrownObject = null;
     }
 }
-// thitmonst()'s guaranteed-hit egg/pie/venom arm (dothrow.c:2256-2260):
-// hmon() uses the projectile up.
+// Part of C dothrow.c:thitmonst(): the guaranteed-hit egg/pie/venom arm
+// (dothrow.c:2256-2260) — hmon() uses the projectile up.
 export async function resolveSwallowedEggPieOrVenomThrow({ state = game, item, selectedQuantity, splitObjectId = null, finishKill, }) {
     const engulfer = state.u?.uswallow ? state.u?.ustuck : null;
     if (!engulfer || !isHeroThrownEggPieOrVenom(item))
@@ -2552,8 +2532,9 @@ export async function resolveSwallowedEggPieOrVenomThrow({ state = game, item, s
             state._thrownObject = null;
     }
 }
-// thitmonst()'s guaranteed-hit potion arm (dothrow.c:2262-2265): potionhit()
-// resolves the vapor inside the engulfer.
+// Part of C dothrow.c:thitmonst(): the guaranteed-hit potion arm
+// (dothrow.c:2262-2265) — potionhit() resolves the vapor inside the
+// engulfer.
 export async function resolveSwallowedPotionThrow({ state = game, item, objectClass, selectedQuantity, splitObjectId = null, wakeMonster, wakeNearby, finishKill, }) {
     const engulfer = swallowedPotionEligibility(state, item, objectClass, selectedQuantity);
     if (!engulfer)
@@ -2589,8 +2570,8 @@ export async function resolveSwallowedPotionThrow({ state = game, item, objectCl
             state._thrownObject = null;
     }
 }
-// thitmonst()'s taming/food arm while swallowed (dothrow.c:2267-2275 and the
-// guaranteed-hit vanish of 2276-2298).
+// Part of C dothrow.c:thitmonst(): the taming/food arm while swallowed
+// (dothrow.c:2267-2275 and the guaranteed-hit vanish of 2276-2298).
 export async function resolveSwallowedFoodThrow({ state = game, item, objectClass, selectedQuantity, splitObjectId = null, wakeMonster, }) {
     const engulfer = state.u.uswallow ? state.u.ustuck : null;
     if (!engulfer || objectClass !== FOOD_CLASS || isHeroThrownEggPieOrVenom(item))
@@ -2666,8 +2647,9 @@ export async function resolveSwallowedFoodThrow({ state = game, item, objectClas
             state._thrownObject = null;
     }
 }
-// thitmonst()'s remaining guaranteed-hit arm (dothrow.c:2276-2298): the
-// projectile vanishes into the engulfer's entrails or currents.
+// Part of C dothrow.c:thitmonst(): the remaining guaranteed-hit arm
+// (dothrow.c:2276-2298) — the projectile vanishes into the engulfer's
+// entrails or currents.
 export async function resolveGenericSwallowedThrow({ state = game, item, objectClass, selectedQuantity, splitObjectId = null, wakeMonster, }) {
     const engulfer = genericSwallowedEligibility(state, item, objectClass);
     if (!engulfer)
@@ -2774,8 +2756,7 @@ export async function throwOrdinaryObject({ state = game, item, quantity, splitO
                 dx: actualDx,
                 dy: actualDy,
                 range,
-                ...(tetherDisplay ? { display: tetherDisplay }
-                    : { captureFlight: captureThrownObjectFlight }),
+                display: tetherDisplay ?? monsterProjectileDisplay(thrown, state),
             });
         if ('heroDied' in flight && flight.heroDied)
             return { heroDied: true };
@@ -2921,7 +2902,7 @@ async function resolveQuiveredGoldMonsterContact({ state, monster, gold, swallow
         await wakeMonster?.(monster);
     return false;
 }
-export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz = 0, captureFlight = null, wakeMonster = null, angerMonster = null, }) {
+export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz = 0, wakeMonster = null, angerMonster = null, }) {
     if (!gold || gold.oclass !== COIN_CLASS || !state.inventory.includes(gold))
         return false;
     await freeInventoryObject(gold, state);
@@ -2958,9 +2939,11 @@ export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz =
         await settleGoldOnFloor(state, gold, state.u.ux, state.u.uy);
         return true;
     }
+    requirePlayingGame(state);
     const range = heroDirectGoldThrowRange(gold, state);
     const { x, y, contact } = await flyHeroThrownObject({
-        state, object: gold, dx, dy, range, captureFlight,
+        state, object: gold, dx, dy, range,
+        display: monsterProjectileDisplay(gold, state),
     });
     if (contact) {
         const caught = await resolveGoldMonsterContact({
@@ -2978,7 +2961,7 @@ export async function resolveDirectGoldThrow({ state, gold, dx = 0, dy = 0, dz =
     await settleGoldOnFloor(state, gold, x, y);
     return true;
 }
-export async function resolveQuiveredGoldThrow({ state, gold, dx = 0, dy = 0, dz = 0, captureFlight = null, wakeMonster = null, }) {
+export async function resolveQuiveredGoldThrow({ state, gold, dx = 0, dy = 0, dz = 0, wakeMonster = null, }) {
     if (!gold || gold !== heroGoldObject(state) || gold !== state.uquiver)
         return false;
     gold = detachHeroGold(state, 1);
@@ -3011,9 +2994,11 @@ export async function resolveQuiveredGoldThrow({ state, gold, dx = 0, dy = 0, dz
     }
     const underwater = !!(state.underwater || state.u?.uinwater);
     const trajectory = heroThrowTrajectory(gold, state);
+    requirePlayingGame(state);
     const range = underwater ? 1 : trajectory.range;
     const { x, y, contact } = await flyHeroThrownObject({
-        state, object: gold, dx, dy, range, captureFlight,
+        state, object: gold, dx, dy, range,
+        display: monsterProjectileDisplay(gold, state),
     });
     // throwit() recoils after bhit(), before resolving the monster contact.
     if (trajectory.recoil) {

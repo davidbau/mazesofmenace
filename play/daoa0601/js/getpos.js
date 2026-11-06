@@ -50,6 +50,7 @@ export function isGetposFeatureSymbol(ch, symset = '') {
     return /^DECgraphics$/i.test(symset ?? '')
         && DEC_GETPOS_FEATURE_SYMBOLS.has(ch);
 }
+// Part of C getpos.c:gather_locs_interesting(): the door and interesting-terrain predicates used by #lookaround.
 // A diagonal which crosses a map edge loses the same amount of movement on
 // its other axis.  Clamping each axis separately would slide along the edge.
 // C getpos.c:gather_locs_interesting().  #lookaround forces GFILTER_VIEW
@@ -332,11 +333,12 @@ export async function getposHelpUntilDismissed(goal, { hasValidLocations = false
     game._pending_message = '';
     return await showDisclosureOverlay(lines, { restoreUnderlay: true });
 }
-// C getpos.c:auto_describe(): the cursor is described with pager.c
-// do_screen_description() — unreconnoitered pre-checks, symbol matching,
-// and look_at() detail — regardless of which command asked for the spot.
-// Every caller shares this description; detection browsing only sets
-// iflags.terrainmode beforehand, like detect.c:browse_map().
+// Part of C getpos.c:auto_describe(): the description assembly — pager.c
+// do_screen_description() (unreconnoitered pre-checks, symbol matching,
+// and look_at() detail), coord_desc(), and the invalid-target /
+// no-travel-path suffixes — shared by autoDescribePosition() and the
+// getpos() cursor loop; detection browsing only sets iflags.terrainmode
+// beforehand, like detect.c:browse_map().
 async function describeSelectedPosition(describe, cursor, isValidLocation) {
     const description = describe ? await describe(cursor.x, cursor.y)
         : await describeGetposLocation(cursor.x, cursor.y);
@@ -395,9 +397,9 @@ export async function autoDescribePosition(x, y) {
     showUnrememberedTopline(description, { flushPending: true });
     game.nhDisplay?.setCursor(x - 1, y + 1);
 }
+// C getpos.c:getpos_getvalids_selection()
 // selection_force_newsyms() redraws by column, then row. Hallucinated glyphs
 // consume display randomness in that order, independently of target cycling.
-// C getpos.c:getpos_getvalids_selection().
 function validMapSquares(isValidLocation) {
     const spots = [];
     for (let x = 1; x < COLNO; x++) {
@@ -430,10 +432,13 @@ function gatherValidLocations(isValidLocation, state = game) {
     });
     return spots;
 }
+// C getpos.c:gloc_filter_init()
 // C gloc_filter_init()/gloc_filter_floodfill(): target areas follow known
 // terrain classes. From a doorway, use the side of the last movement.
 // Also C getpos.c:gloc_filter_floodfill_matcharea(): inlined here (a
 // square matches when its class equals the seed's, and it has been seen).
+// Also C getpos.c:gloc_filter_floodfill(): the area flood fill is inlined here.
+// Also C getpos.c:gloc_filter_classify_glyph(): inlined as the terrain-class predicate.
 function getposArea(state) {
     const area = new Set();
     if (state.iflags.getloc_filter !== 2)

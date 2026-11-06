@@ -4,7 +4,7 @@
 import { WEAPON_CLASS } from './objclass.js';
 import { hallucinatedDeityName } from './pray.js';
 import { ANY_SHOP, BARRACKS, BEEHIVE, COURT, Is_astralevel, MON_FLOOR, MORGUE, ROOMOFFSET, TEMPLE, VAULT, ZOO, IS_WALL, SDOOR, STRAT_WAITMASK, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, In_endgame, PLNMSG_GROWL, Upolyd, NECK, HEAD, HAIR, BLOOD } from './const.js';
-import { isok, commandResultCancelled, promptDirection, readDirectionKey } from './cmd.js';
+import { isok, commandResultCancelled, promptDirection } from './cmd.js';
 import { canSeeMonster, canSpotMonster, glyphAt, map_invisible } from './display.js';
 import { plineWithContinuation, plineWithContinuation as pline, publishHeardMessage } from './pline.js';
 import { game, requireLiveGame, requirePlayingGame, requireInitializedGame } from './gstate.js';
@@ -30,7 +30,7 @@ import { roles } from './role.js';
 import { chatWithQuestCharacter } from './quest.js';
 import { questMonsterSound } from './role_monsters.js';
 import { consultOracle } from './rumors.js';
-import { demandDemonBribe } from './demon_talk.js';
+import { demandDemonBribe } from './minion.js';
 import { DEATH_QUOTES } from './death_quotes.js';
 import { doseduce } from './mhitu.js';
 import { selectTributePassage } from './novel_tribute.js';
@@ -268,7 +268,7 @@ export async function dochat() {
         game.context.move = 1;
         return;
     }
-    const direction = await promptDirection((_message, retry) => readDirectionKey('Talk to whom? (in what direction) ', retry));
+    const direction = await promptDirection('Talk to whom? (in what direction) ');
     if (!direction) {
         commandResultCancelled(); // sounds.c:dochat() returns ECMD_CANCEL.
         return;
@@ -909,6 +909,7 @@ function vampireReply(monster, state) {
     const target = Upolyd(state.u) ? monsterTypeName(heroSpecies(state), !!state.flags.female) : race;
     return `I vill come after ${withIndefiniteArticle(target)} without regret!`;
 }
+// Part of C sounds.c:domonnoise(): Death's novel and tribute replies.
 // Death's reply; invent.c:u_have_novel() is the tribute-novel lookup.
 function deathReply(state) {
     const book = state.context.deathNotice ? undefined : state.inventory.find(object => object.otyp === SPE_NOVEL);

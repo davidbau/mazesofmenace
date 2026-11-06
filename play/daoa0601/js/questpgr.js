@@ -83,6 +83,7 @@ export async function prepareQuestText(messageId, state = game, common = false) 
     return await prepareSection(state.urole?.filecode ?? '', messageId, state)
         ?? await prepareSection('common', messageId, state);
 }
+// Part of C questpgr.c:com_pager_core(): the prepared-text delivery adapter.
 // Also C questpgr.c:deliver_by_pline(): inlined here after prepareSection converts lines
 // Also C questpgr.c:deliver_by_window(): inlined here after prepareSection converts lines
 export async function displayQuestText(text, state = game) {
@@ -112,16 +113,14 @@ export async function displayQuestText(text, state = game) {
         putMessageHistory(text.synopsis);
     return true;
 }
+// C questpgr.c:qt_pager(): the role section with its common fallback.
 export async function qtPager(messageId, state = game) {
     return displayQuestText(await prepareQuestText(messageId, state), state);
 }
+// C questpgr.c:com_pager(): the shared "common" section wizard.c and the
+// quest flow cuss from.
 export async function comPager(messageId, state = game) {
     return displayQuestText(await prepareQuestText(messageId, state, true), state);
-}
-// C questpgr.c:com_pager_core(). Each insult opens a fresh quest.lua state,
-// so nhlib's initialization precedes selection and message delivery.
-export async function deliverCommonQuestInsult(messageId, state = game) {
-    await comPager(messageId, state);
 }
 // C questpgr.c:ldrname()/neminame() use the role's named species directly
 // when its name is a proper name, and with a "the" prefix otherwise.

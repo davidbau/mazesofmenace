@@ -10,7 +10,7 @@ import { encumber_msg } from './pickup.js';
 import { cureHeroSickness } from './potion.js';
 import { removeIntrinsicProperty, setPropertyTimeout } from './properties.js';
 import { endmultishot } from './dothrow.js';
-import { BUFSZ, MGIVENNAME, M_AP_MONSTER, M_AP_TYPE, PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE, ismnum, A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, GENOCIDED, PANICKED, QUIT, STARVING, STONING, TRICKED, In_endgame, In_quest, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, TT_LAVA, Upolyd, LL_CONDUCT, } from './const.js';
+import { BUFSZ, MGIVENNAME, M_AP_MONSTER, M_AP_TYPE, PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE, ismnum, A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, GENOCIDED, PANICKED, PICK_ONE, QUIT, STARVING, STONING, TRICKED, In_endgame, In_quest, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, TT_LAVA, Upolyd, LL_CONDUCT, } from './const.js';
 import { isok, setMulti, paranoidQuery } from './cmd.js';
 import { PanicTermination } from './panic_termination.js';
 import { endVoluntaryMultiTurn, heroGoldAmount } from './hack.js';
@@ -27,7 +27,7 @@ import { clearMessageWindow, displayMessageWindow, flushPendingTopline, resetTop
 import { vision_recalc } from './vision.js';
 import { shopkeeperKillerName, finishShopkeeperRepossession, settleShopkeepersOnExit, deleteObject } from './shk.js';
 import { formatFeltMessage, plineWithContinuation, recordGameLogEvent } from './pline.js';
-import { consumeInventoryItem, identifyObjectForDisclosure, showIdentifiedInventory, lootSortMode, sortObjects, currency, stack_object } from './invent.js';
+import { consumeInventoryItem, identifyObjectForDisclosure, selectInventoryObject, lootSortMode, sortObjects, currency, stack_object } from './invent.js';
 import { showDisclosureOverlay, showTextPages, showTextWindow } from './windows.js';
 import { artifactById } from './artifact.js';
 import { MONSTER_GENO, MONSTER_NAME, monsterTypeName } from './monster_data.js';
@@ -101,8 +101,9 @@ export async function completeHeroLifeSaving(transaction, { deathType = null } =
     game._lifeSavedCount = (game._lifeSavedCount || 0) + 1;
     return true;
 }
-// C ref: end.c:savelife().  Wizard/explore refusal and amulet life saving
-// share this viability repair after their distinct prompt/item transactions.
+// C end.c:savelife()
+// Wizard/explore refusal and amulet life saving share this viability
+// repair after their distinct prompt/item transactions.
 export async function restoreHeroAfterDeath({ deathType = null } = {}) {
     requireInitializedHero(game.u);
     const constitution = currentAttribute(A_CON);
@@ -227,8 +228,8 @@ export function recordHeroKillConduct(state = game) {
     if (firstKill)
         recordGameLogEvent('killed for the first time', { state, flags: LL_CONDUCT });
 }
-// The final disclosure's overview lines, through dungeon.ts's
-// dungeonOverviewDisclosure() (dungeon.c show_overview() with why > 0);
+// Part of C dungeon.c:show_overview(): the final disclosure's overview
+// lines, through dungeon.ts's dungeonOverviewDisclosure() (why > 0);
 // only real deaths (final == 2) list the hero's own resting place.
 function overviewLines(killer, deathVerb = 'killed', deathCause = null, ending = null) {
     const cause = deathCause || killerDeathCause(killer, deathVerb);
@@ -368,7 +369,9 @@ function deathSummaryLines(killer, { gold, score, moves }, endtime, { deathVerb 
         '',
     ];
 }
-// C hacklib.c plur(): the summary lines in end.c pluralize every count.
+// C hack.h:plur()
+// The include/hack.h macro (not hacklib.c, as an earlier revision of
+// this comment said): the summary lines in end.c pluralize every count.
 function plur(count) {
     return count === 1 ? '' : 's';
 }
@@ -400,12 +403,11 @@ function scoreIdentity() {
         align,
     };
 }
-// C svk.killer.name/format (decl.c) are assigned by each fatal caller and
-// expanded by topten.c:formatkiller() with killed_by_prefix[how] and an()
-// for the KILLED_BY formats. The port composes that expansion once where
-// the killer is assigned and threads the resulting cause string through
-// the ending; topten.ts:formatKiller() owns the shared tail every C call
-// site adds: sanitization, the caller's buffer bound and the
+// Part of C topten.c:formatkiller(): the killed_by_prefix[how] and an()
+// expansion of the KILLED_BY formats, composed here once where the
+// killer is assigned (C svk.killer.name/format live in decl.c) instead
+// of at read time.  topten.ts:formatKiller() owns the shared tail every
+// C call site adds: sanitization, the caller's buffer bound and the
 // incl_helpless suffix.
 export function killerDeathCause(killer, deathVerb = 'died', deathType = null, killerFormat = KILLED_BY_AN) {
     const raw = String(killer || 'unknown cause');
@@ -417,11 +419,11 @@ export function killerDeathCause(killer, deathVerb = 'died', deathType = null, k
     const name = killerFormat === KILLED_BY ? raw : withIndefiniteArticle(raw);
     return `${prefix ?? 'killed by '}${name}`;
 }
-// The topten.c:topten() record phase — this game's entry (C lines 668-700),
-// composed from the killer plumbing end.c's done() callers own. Stays in
-// end.ts: moving it to topten.ts would need killerDeathCause(),
-// scoreIdentity() and currentDungeonName() from here, an end.ts <->
-// topten.ts import cycle.
+// Part of C topten.c:topten(): the record phase — this game's entry
+// (C lines 668-700), composed from the killer plumbing end.c's done()
+// callers own.  Stays in end.ts: moving it to topten.ts would need
+// killerDeathCause(), scoreIdentity() and currentDungeonName() from
+// here, an end.ts <-> topten.ts import cycle.
 function currentScoreRecord(summary, { outcome = 'died', killer = '', deathVerb = 'died', deathCause = null, deathType = null, } = {}) {
     let cause = deathCause || (outcome === 'quit' ? 'quit'
         : killerDeathCause(killer, deathVerb));
@@ -449,10 +451,11 @@ function currentScoreRecord(summary, { outcome = 'died', killer = '', deathVerb 
         death: formatKiller(cause, DTHSZ + 1, true),
     };
 }
-// The topten.c:topten() record update — pointsmin, the insertion rank,
-// PERSMAX per role and ENTRYMAX (C lines 756-816). Stays beside
-// currentScoreRecord() for the same end.ts <-> topten.ts import cycle;
-// the display half of topten() is topten.ts scoreListLines().
+// Part of C topten.c:topten(): the record update — pointsmin, the
+// insertion rank, PERSMAX per role and ENTRYMAX (C lines 756-816).
+// Stays beside currentScoreRecord() for the same end.ts <-> topten.ts
+// import cycle; the display half of topten() is topten.ts
+// scoreListLines().
 function updateScoreRecord(current) {
     const prior = loadScoreRecords();
     if (game.flags.debug || game.flags.explore || game.discover) {
@@ -657,7 +660,12 @@ async function discloseGame({ killer = '', deathVerb = 'died', deathCause = null
         }
         if (possessionAnswer === 'y') {
             game.flags.force_invmenu = false;
-            await showIdentifiedInventory();
+            // C display_inventory((char *) 0, TRUE): disclose() requests a
+            // reply so an inventory letter closes the menu; it ignores the
+            // selected object and continues with the next question.
+            // really_done()'s discovery loop above already identified every
+            // carried object.
+            await selectInventoryObject({ headingAttr: 0, pickMode: PICK_ONE });
             await containerContents(game.inventory, true, true, false);
         }
         if (possessionAnswer === 'q')
@@ -899,9 +907,9 @@ export async function doquit() {
     }
     await finishOrdinaryQuit();
 }
-// C refs: end.c done(QUIT)/really_done().  QUIT skips the tombstone,
-// but otherwise owns disclosures, a role-aware summary text window, and the
-// score-list handoff as one terminal transaction.
+// Part of C end.c:done(QUIT) and really_done(): QUIT skips the
+// tombstone, but otherwise owns disclosures, a role-aware summary text
+// window, and the score-list handoff as one terminal transaction.
 export async function finishOrdinaryQuit() {
     requireInitializedHero(game.u);
     await bot();
@@ -979,14 +987,14 @@ function objectBaseValue(type) {
         throw new RangeError(`No base value for object type ${type}`);
     return value;
 }
-// The final-disclosure inventory walk.
-// C end.c:get_valuables(): amulets and non-artifact gems, glass merged
-// into one slot, recursing through containers.
-// C end.c:sort_valuables(): most copies first within each of gems and
-// amulets (the listing prints the gems before the amulets).
-// C end.c:artifact_score(): the counting pass — artifacts and the three
-// invocation items add five-halves their value as points; artiname() is
-// the artifact's own name from the record.
+// C end.c:get_valuables()
+// The final-disclosure inventory walk: amulets and non-artifact gems,
+// glass merged into one slot, recursing through containers.
+// Also C end.c:sort_valuables(): most copies first within each of gems
+// and amulets (the listing prints the gems before the amulets).
+// Also C end.c:artifact_score(): the counting pass — artifacts and the
+// three invocation items add five-halves their value as points;
+// artiname() is the artifact's own name from the record.
 function collectFinalPossessions() {
     const artifacts = [];
     const valuables = new Map();

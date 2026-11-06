@@ -24,7 +24,7 @@ import { costlySpot, shopkeeperCatch } from './shk.js';
 import { removeWornHeroItem } from './hero_equipment.js';
 import { finishInventoryRemoval } from './invent.js';
 import { endObjectBurn } from './timeout.js';
-import { objectShedsLight } from './light.js';
+import { cleanupTransientLight, objectShedsLight, showTransientLight } from './light.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { distantObjectName, objectName, ownedObjectName, withIndefiniteArticle } from './objnam.js';
 import { isPick, isLauncherAmmunition, launcherMatchesAmmo } from './object_properties.js';
@@ -39,7 +39,6 @@ import { heroIsBlind, heroIsDeaf } from './senses.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt } from './dbridge.js';
 import { objectNoLongerHeld } from './do.js';
 import { cansee } from './vision.js';
-import { cleanupTransientLight, showTransientLight } from './transient_light.js';
 import { rockSkipRange } from './zap.js';
 function objectClass(object) {
     return object?.oclass || objectClassForType(object?.otyp);
@@ -155,8 +154,9 @@ export async function snuffThrownCandle(object, state = game, publish = plineWit
         endObjectBurn(object, state);
     }
 }
-// dothrow.c throwit(): the landing sound, before flooreffects() can
-// consume the object. Shared by thrown and fired objects.
+// Part of C dothrow.c:throwit(): the landing sound, before
+// flooreffects() can consume the object.  Shared by thrown and fired
+// objects.
 export async function announceThrownObjectLiquidImpact(object, x, y, { state = game, publish = plineWithContinuation, } = {}) {
     if (!heroIsDeaf(state) && !state.underwater && !state.u.uinwater
         && (isPoolAt(x, y, state)
@@ -241,7 +241,7 @@ export async function finishHeroThrownObjectLanding({ state = game, object, x, y
         state.vision_full_recalc = 1;
     return landed;
 }
-async function flyPhysicalObject({ state = game, object, dx, dy, range, startX, startY, kicked = false, captureFlight = null, publish = plineWithContinuation, random = rn2, display, }) {
+async function flyPhysicalObject({ state = game, object, dx, dy, range, startX, startY, kicked = false, publish = plineWithContinuation, random = rn2, display, }) {
     let x = startX;
     let y = startY;
     const path = [];
@@ -252,10 +252,8 @@ async function flyPhysicalObject({ state = game, object, dx, dy, range, startX, 
     const steps = kicked ? Math.max(0, range - 1) : range;
     let skip = !kicked && object.otyp === ROCK ? rockSkipRange(range) : null;
     const allowSkip = skip !== null && random(3) === 0;
-    const glyph = display?.glyph ?? transientObjectGlyph(object);
     let skipping = false;
     let skips = 0;
-    let capturedCell = null;
     // zap.c bhit() opens every physical flight with tmp_at(DISP_FLASH or
     // DISP_TETHER), whose init calls flush_screen(0) (display.c).  Pending
     // map glyphs and a pending botl status update — a freed coin purse
@@ -388,16 +386,13 @@ async function flyPhysicalObject({ state = game, object, dx, dy, range, startX, 
                 await newsym(x, y);
             }
             path.push({ x, y });
-            if (display)
-                await display.show({ x, y });
-            if (movingLight && captureFlight) {
-                // bhit() keeps DISP_FLASH open across the next light recalc.
-                // Erase the previous projectile only when drawing this step.
-                if (capturedCell)
-                    await newsym(capturedCell.x, capturedCell.y);
-                capturedCell = cansee(x, y) ? { x, y } : null;
-                await captureFlight(object, [{ x, y }], state, glyph, true);
-            }
+            // zap.c bhit(): tmp_at(x, y) shows the missile on this square
+            // and flushes it (display.c:1291-1292); nh_delay_output()
+            // follows. The effect stays open while the next square's
+            // impact handling plines (hit_bars(), a web, rock skips), so
+            // those messages page with the last flight square still on
+            // the terminal, exactly as bhit() interleaves them.
+            await display?.show({ x, y });
             if (kicked && isPoolOrLavaAt(x, y, state)) {
                 stoppedBy = 'liquid';
                 break;
@@ -438,12 +433,16 @@ async function flyPhysicalObject({ state = game, object, dx, dy, range, startX, 
                 }
             }
         }
-        if (!movingLight && captureFlight)
-            await captureFlight(object, path, state, glyph);
     }
     finally {
-        if (capturedCell)
-            await newsym(capturedCell.x, capturedCell.y);
+        // zap.c bhit(): tmp_at(DISP_END, 0) closes the flight — after the
+        // loop, and at the monster and keeper stops — restoring the last
+        // painted square through newsym() without a flush (display.c:
+        // 1241-1244); the terminal keeps the missile until its next
+        // flush. A tethered weapon's display stays open for the caller's
+        // return roll instead (bhit:4125-4127).
+        if (display && !display.tethered)
+            await display.clear();
         await cleanupTransientLight(state);
     }
     return { x, y, path, contact, stoppedBy, destroyed, migrated };

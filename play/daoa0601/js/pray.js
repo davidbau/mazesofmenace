@@ -176,7 +176,7 @@ function prayerOutcome(alignment, trouble) {
         outcome = 'moloch';
     else if ((hero.ublesscnt || 0) > (trouble > 0 ? 200 : trouble < 0 ? 100 : 0))
         outcome = 'too-soon';
-    else if (luck() < 0 || hero.ugangr || record < 0)
+    else if (Luck(game.u) < 0 || hero.ugangr || record < 0)
         outcome = 'angry';
     else
         outcome = currentAltar() && hero.ualign.type !== alignment ? 'other-god' : 'pleased';
@@ -274,7 +274,7 @@ async function pleaseGod(alignment) {
     let favor = !trouble && hero.ualign.record >= 14 && game._prayerTrouble === 0;
     if (trouble || hero.ualign.record < 14) {
         const altar = currentAltar();
-        let action = rn1(Math.max(luck(), -1) + (altar ? 3 + Number(!!(altar.flags & AM_SHRINE)) : 2), 1);
+        let action = rn1(Math.max(Luck(game.u), -1) + (altar ? 3 + Number(!!(altar.flags & AM_SHRINE)) : 2), 1);
         if (!altar)
             action = Math.min(action, 3);
         if (hero.ualign.record < STRIDENT)
@@ -306,7 +306,7 @@ async function pleaseGod(alignment) {
     if (game.program_state.gameover)
         return;
     if (favor)
-        await grantPrayerFavor(rn2((luck() + 6) >> 1), alignment);
+        await grantPrayerFavor(rn2((Luck(game.u) + 6) >> 1), alignment);
     hero.ublesscnt = rnz(350);
     const extra = Number(!!hero.uevent?.udemigod) + Number(!!hero.uevent?.uhand_of_elbereth);
     if (extra)
@@ -360,11 +360,6 @@ function currentAltar() {
 function inHell(state = game) {
     const dnum = state.u?.uz?.dnum ?? -1;
     return !!state.dungeons?.[dnum]?.flags?.hellish;
-}
-// C you.h:Luck; the local alias keeps the recorded rng-callsites argument
-// text (pleaseGod rn1/rn2) stable while reading the shared accessor.
-function luck() {
-    return Luck(game.u);
 }
 // C pray.c's maybe_turn_mon_iter() class ladder: the xlev bonus each monster
 // class adds over the base of 6 (lichs are intentionally tougher than
@@ -1032,7 +1027,9 @@ export async function angryGods(alignment, state = game) {
     if (!state.program_state.gameover)
         hero.ublesscnt = Math.max(hero.ublesscnt || 0, rnz(300));
 }
-// Also C pray.c:gods_angry(): the fixed godVoice message is inlined here
+// Part of C pray.c:angrygods() (the citation owner is angryGods()
+// above): the godVoice + glow + curse tail, with C pray.c:gods_angry()'s
+// fixed message inlined.
 async function curseHero(alignment, state) {
     await godVoice(alignment, 'Thou hast angered me.', state);
     if (!heroIsBlind(state) && !state.u.antimagic) {
@@ -1552,8 +1549,9 @@ export async function dosacrifice() {
     // dosacrifice() returns ECMD_TIME even after savelife() clears move.
     game.context.move = 1;
 }
-// Also C eat.c:offer_ok(): inlined as the sacrifice chooser callback at the
-// end (corpses, and amulets of Yendor only; astral downplays the mismatch).
+// Part of C pray.c:dosacrifice(): its sacrifice chooser; also inlines
+// C eat.c:offer_ok() as the chooser callback at the end (corpses, and
+// amulets of Yendor only; astral downplays the mismatch).
 async function chooseOffering() {
     const game = requireInitializedGame();
     const hero = game.u;

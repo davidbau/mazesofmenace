@@ -9,7 +9,7 @@ import { OBJ_NAME } from './object_data.js';
 import { objectSkill, ACID_VENOM, BLINDING_VENOM, BOULDER, CORPSE, CREAM_PIE, CREDIT_CARD, EGG, ELVEN_ARROW, ELVEN_BOW, ENORMOUS_MEATBALL, HEAVY_IRON_BALL, LENSES, LOCK_PICK, MAGIC_WHISTLE, MEAT_STICK, OBJECT_NAMES, POT_ACID, SKELETON_KEY, STATUE, TALLOW_CANDLE, TIN_WHISTLE, WAR_HAMMER, WAX_CANDLE, WAN_STRIKING, } from './object_data.js';
 import { currentAttribute, currentStrength, poisonHero } from './attrib.js';
 import { artifactToHitBonus, applyArtifactHit } from './artifact.js';
-import { applyMonsterBlindness, monsterCanBeBlindedByObject, prepareHeroThrownBlindness, finishHeroThrownBlindness, } from './blinding_attack.js';
+import { applyMonsterBlindness, prepareHeroThrownBlindness, finishHeroThrownBlindness, } from './blinding_attack.js';
 import { breatheFromMonster, breathWeaponName } from './breath_ray.js';
 import { endVoluntaryMultiTurn, calcCapacity } from './hack.js';
 import { isPolearm, isLauncherAmmunition, launcherMatchesAmmo, isPoisonableObject } from './object_properties.js';
@@ -35,14 +35,14 @@ import { hitHeroWithThrownPotion } from './hero_potion_hit.js';
 import { heroSpecies, heroHasNoHands, body_part, mbodypart } from './polyself.js';
 import { objectShedsLight } from './light.js';
 import { revealMonsterAppearance, wakeMonstersNearWithMessages, angerAttackedMonster, finishEnvironmentalMonsterDeath, finishMonsterKilled, finishHeroMonsterKillOutcome, } from './mon.js';
-import { AD_ACID, AD_BLND, AD_DRST, AD_MAGM, AD_PHYS, AD_RBRE, AD_SLEE, AD_SPC2 } from './monster_attack_types.js';
+import { AD_ACID, AD_BLND, AD_DRST, AD_MAGM, AD_PHYS, AD_RBRE, AD_SLEE, AD_SPC2, AT_SPIT, AT_WEAP } from './monster_attack_types.js';
 import { finishHeroDeathAfterMonsterMessage } from './end.js';
 import { recordRandom } from './monster_action_types.js';
 import { petrifyMonsterFromContact } from './trap.js';
 import { MONSTER_NAME, MONSTER_SIZE, requireMonsterData } from './monster_data.js';
 import { displayLiquidName, monsterName } from './do_name.js';
 import { monsterAtPosition } from './steed.js';
-import { monsterObjectPronoun, monsterPossessive, seenResistanceForDamage, monsterHasAcidResistance, monsterHasPoisonResistance, monsterHasStoneResistance, is_elf, is_gnome, is_lord, is_orc, is_prince, monsterHatesSilver, monsterIsAmorphous, monsterIsBig, monsterIsNoncorporeal, monsterIsNonliving, monsterIsPlayerMonster, monsterIsUnicorn, monsterIsVampireShifter, monsterThrowsRocks, passes_rocks, touchPetrifies, } from './mondata.js';
+import { monsterObjectPronoun, monsterPossessive, seenResistanceForDamage, monsterHasAcidResistance, monsterHasPoisonResistance, monsterHasStoneResistance, is_elf, is_gnome, is_lord, is_orc, is_prince, monsterHatesSilver, monsterIsAmorphous, monsterIsBig, monsterIsNoncorporeal, monsterIsNonliving, monsterIsPlayerMonster, monsterIsUnicorn, monsterIsVampireShifter, monsterThrowsRocks, passes_rocks, touchPetrifies, canBlnd, } from './mondata.js';
 import { monsterSentenceSubject } from './sounds.js';
 import { delobj } from './invent.js';
 import { deleteObject } from './shk.js';
@@ -165,8 +165,9 @@ async function dropMonsterProjectile(shot, hit, point, context) {
     if (state._thrownObject === object)
         state._thrownObject = null;
 }
-// C mthrowu.c:monmulti(). Role and launcher multipliers decide how many
-// missiles leave the source's hands in one volley.
+// Part of C mthrowu.c:monmulti(): the multishot_class_bonus() step.  The
+// hero-side volley uses dothrow.ts' multishotClassBonus() over role keys;
+// C passes one pm index to both.
 function monsterClassVolleyBonus(monster, missile, launcher) {
     const skill = objectSkill(missile.otyp);
     if (monster.mnum === PM_CAVE_DWELLER)
@@ -417,7 +418,7 @@ async function hitMonsterWithProjectile(defender, shot, remaining, context) {
         }
     }
     shot.targetDied = defender.mhp <= 0;
-    if (!shot.targetDied && monsterCanBeBlindedByObject(defender, object.otyp, { state })) {
+    if (!shot.targetDied && canBlnd(null, { monster: defender }, object.otyp === BLINDING_VENOM ? AT_SPIT : AT_WEAP, object, state)) {
         if (visible && defender.mcansee) {
             const cause = object.oclass === VENOM_CLASS ? 'venom' : object.otyp === CREAM_PIE ? 'pie' : objectCombatName(object, { state });
             await publish(`${monsterName(defender, { state, capitalized: true })} is blinded by the ${cause}.`);
@@ -501,6 +502,7 @@ export function monsterProjectileDisplay(object, state, { tethered = false, } = 
     };
     return {
         glyph,
+        tethered,
         start: begin,
         async show(position) {
             if (!isok(position.x, position.y))
@@ -526,27 +528,6 @@ export function monsterProjectileDisplay(object, state, { tethered = false, } = 
         clear,
     };
 }
-// C mthrowu.c:m_throw(). Detaches one missile from the thrower and flies it
-// along its line; each projectile completes its visible flight and world
-// effects before the next is detached.
-async function detachMissile(source, object, state, publish) {
-    if (object.quan > 1) {
-        const split = splitObjectStack(object, 1, state);
-        if (!split)
-            throw new Error(`Cannot detach projectile from object ${object.o_id}`);
-        return unlinkObject(split, state);
-    }
-    if (monsterWieldedWeapon(source) === object)
-        await unwieldMonsterWeapon(source, state, { weapon: object, publish });
-    if (object.where === 'minvent')
-        unlinkMonsterObject(source, object);
-    if (object.where !== 'free')
-        throw new Error('A monster projectile must be free or carried by its source');
-    object.owornmask = 0;
-    object.worn = false;
-    object.wielded = false;
-    return object;
-}
 async function flightBlocked(object, dx, dy, forceHit, { state, publish, random, }) {
     const { x, y } = state.bhitpos;
     const nextX = x + dx, nextY = y + dy;
@@ -563,11 +544,34 @@ async function flightBlocked(object, dx, dy, forceHit, { state, publish, random,
     });
     return bars.blocked || bars.heroDied;
 }
+// C mthrowu.c:m_throw(): flies one detached missile along its line; each
+// projectile completes its visible flight and world effects before the
+// next is detached.
 export async function throwMonsterProjectile(source, object, { state = game, dx, dy, range, target = null, archer = null, random = rn2, rollOne = rnd, rollDice = d, publish = plineWithContinuation, volley, }) {
     requirePlayingGame(state);
     const tethered = object === monsterWieldedWeapon(source) && returningWeaponRangeSquared(object) !== null;
     const launched = launcherMatchesAmmo(object, monsterWieldedWeapon(source));
-    const missile = await detachMissile(source, object, state, publish);
+    // m_throw() detaches one missile from the thrower: a stack loses one
+    // piece, a wielded single weapon is unwielded, a carried one unlinked.
+    let missile;
+    if (object.quan > 1) {
+        const split = splitObjectStack(object, 1, state);
+        if (!split)
+            throw new Error(`Cannot detach projectile from object ${object.o_id}`);
+        missile = unlinkObject(split, state);
+    }
+    else {
+        if (monsterWieldedWeapon(source) === object)
+            await unwieldMonsterWeapon(source, state, { weapon: object, publish });
+        if (object.where === 'minvent')
+            unlinkMonsterObject(source, object);
+        if (object.where !== 'free')
+            throw new Error('A monster projectile must be free or carried by its source');
+        object.owornmask = 0;
+        object.worn = false;
+        object.wielded = false;
+        missile = object;
+    }
     state._thrownObject = missile;
     state.bhitpos = { x: source.mx, y: source.my };
     state.notonhead = false;
@@ -797,9 +801,10 @@ export async function returnMonsterWeapon(monster, weapon, impactX, impactY, { s
     if (cansee(x, y))
         await newsym(x, y);
 }
-// C mthrowu.c:thrwmm() and thrwmu() open with the same weapon_check swap.
-// Switching to a launcher consumes this action. If no launcher is needed,
-// or the correct launcher is already wielded, the monster may shoot now.
+// Part of C mthrowu.c:thrwmm() and thrwmu(): both open with the same
+// weapon_check swap.  Switching to a launcher consumes this action. If no
+// launcher is needed, or the correct launcher is already wielded, the
+// monster may shoot now.
 export async function readyRangedMonsterWeapon(monster, state = game) {
     const current = monsterWieldedWeapon(monster);
     if (monster?.weaponCheck !== NEED_WEAPON && current)
@@ -823,7 +828,8 @@ export async function throwMonsterWeaponAtMonster(source, target, state, options
         return null;
     return { ...await launchVolley(source, weapon, target, state, options), targetKind: 'monster', aimedAt: target };
 }
-// C mthrowu.c:thrwmm(). A weapon change spends the slot without a hit.
+// Part of C mhitm.c:mattackm(): its AT_WEAP slot calls thrwmm(); a weapon
+// change spends the slot without a hit.
 export async function resolveMonsterCombatThrow(source, target, { state, random, rollOne, publish, }) {
     const volley = await throwMonsterWeaponAtMonster(source, target, state, {
         ...(random ? { random } : {}), ...(rollOne ? { rollOne } : {}), ...(publish ? { publish } : {}),
@@ -1085,7 +1091,7 @@ export async function attackHeroWithPolearm(monster, weapon, state = game, { pub
     if (!result.died)
         await stopHeroOccupation(state, publish);
 }
-// C mthrowu.c:m_throw() and thrwmu() end in a throw at the hero.
+// Part of C mthrowu.c:thrwmu(): thrwmu ends in a hero-targeted monshoot().
 export async function throwMonsterWeaponAtHero(source, state, weapon, options = {}) {
     requirePlayingGame(state);
     return { ...await launchVolley(source, weapon, null, state, options), targetKind: 'hero', aimedAt: null };

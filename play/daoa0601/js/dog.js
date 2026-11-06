@@ -9,7 +9,7 @@ import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './g
 import { withIndefiniteArticle, corpseName, objectName, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { publishMonsterYelp, publishMonsterGrowl, sessionIsNight } from './sounds.js';
-import { releaseMonsterLeashWithFeedback, releaseMonsterLeash } from './apply.js';
+import { releaseMonsterLeash } from './apply.js';
 import { finishMonsterEating } from './dogmove.js';
 import { monsterName } from './do_name.js';
 import { dismountHero, monsterHasMapPosition, placeMonsterOnMap } from './steed.js';
@@ -18,7 +18,6 @@ import { MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterTypeName, } from './
 import { CORPSE, CREDIT_CARD, DWARVISH_MATTOCK, LOCK_PICK, PICK_AXE, RIN_AGGRAVATE_MONSTER, SKELETON_KEY, UNICORN_HORN, } from './object_data.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { initializeUnplacedMonsterWormBody, redrawMonsterWorm, removeMonsterWormBody } from './worm.js';
-import { makeMonsterFlee } from './monmove.js';
 import { setMonsterMalign } from './makemon.js';
 import { levelFollower, carnivorous, herbivorous, is_domestic, monsterHasEyes, monsterIsAnimal, monsterIsDemon, monsterIsCovetous, monsterIsHuman, monsterIsHumanoid, monsterIsMindless, needspick, regenerates, tunnels, cantwield, speciesHasWeaponAttack, } from './mondata.js';
 import { wakeMonstersNearWithMessages, releaseHeroFromMonster, detachMonsterFromLevel, healMonster, restoreMonsterShape, sendMonsterToLimbo } from './mon.js';
@@ -126,7 +125,7 @@ export async function abusePet(monster, state = game) {
         pet.abuse++;
     }
     if (!monster.mtame && monster.mleashed)
-        await releaseMonsterLeashWithFeedback(monster, { state });
+        await releaseMonsterLeash(monster, true, { state });
     if (monster.mx !== 0) {
         if (monster.mtame > 0 && rn2(monster.mtame) !== 0) {
             await publishMonsterYelp(monster);
@@ -141,16 +140,6 @@ export async function abusePet(monster, state = game) {
         }
     }
     return true;
-}
-// C uhitm.c:hmon_hitmon_pet()
-export async function abusePetAfterHeroHit(monster, damage, state = game) {
-    if (damage <= 0 || !await abusePet(monster, state))
-        return { heroDied: false };
-    if ((monster.mtame ?? 0) > 0 && monster.mhp > 0) {
-        const turns = 10 * rnd(damage);
-        return makeMonsterFlee(monster, { state, turns, announce: false });
-    }
-    return { heroDied: false };
 }
 // C dog.c:initedog(). Existing pet history survives renewed taming.
 export function initializePet(monster, { state = game, everything = true } = {}) {
@@ -234,7 +223,7 @@ export async function makePetWary(monster, { wasDead = true, state = game, rando
         }
         await repaint(monster.mx, monster.my);
         if (monster.mleashed)
-            await releaseMonsterLeashWithFeedback(monster, { state, publish });
+            await releaseMonsterLeash(monster, true, { state, publish });
         if (state.u.usteed === monster)
             await dismountHero(DISMOUNT_THROWN, { state, announce: publish });
         return;
@@ -467,7 +456,7 @@ export async function migrateMonsterOffLevel(monster, state, trap, { kind = 'lev
     if (monster.mleashed) {
         monster.mtame = (monster.mtame ?? 0) - 1;
         monster.pet = monster.mtame > 0;
-        await releaseMonsterLeashWithFeedback(monster, { state });
+        await releaseMonsterLeash(monster, true, { state });
     }
     await prepareMonsterDeparture(monster, state);
     await detachMonsterFromLevel(monster, state);
@@ -508,7 +497,7 @@ export function updateMonsterLastMove(state = game) {
         monster.mlstmv = state.moves;
     }
 }
-// C dog.c mon_catchup_elapsed_time().
+// C dog.c:mon_catchup_elapsed_time()
 export async function catchUpMonster(monster, moves, state) {
     if (moves < 0)
         throw new RangeError('Monster catch-up cannot start in the future.');
@@ -562,7 +551,7 @@ export async function catchUpMonster(monster, moves, state) {
     }
     monster.pet = (monster.mtame ?? 0) > 0;
     if (!monster.mtame && monster.mleashed)
-        releaseMonsterLeash(monster, state);
+        await releaseMonsterLeash(monster, false, { state });
     const healing = regenerates(monster.mnum)
         ? imv : Math.trunc(imv / 20);
     healMonster(monster, healing);
@@ -599,7 +588,8 @@ function wanderLocale(state, x, y, wander) {
         y: rn1(highY - lowY, lowY),
     };
 }
-// C dog.c mon_arrive(); returns false when no placement was possible.
+// C dog.c:mon_arrive()
+// Returns false when no placement was possible.
 export async function monsterArrive(monster, when, state) {
     const level = requireGameLevel(state);
     const queue = migrationQueue(state);
@@ -793,9 +783,12 @@ export function discardMigrations(state = game) {
 }
 // C dog.c:keepdogs(), keep_mon_accessible(), and mondata.c:levl_follower().
 const PM_GRID_BUG = MONSTER_NAME.indexOf('grid bug');
-// The caller skips this entire transaction when iflags.nofollowers is set.
-// Returned monsters are detached from the old level in native mydogs order.
-// C dog.c:keepdogs().
+// C dog.c:keepdogs()
+// The caller skips this entire transaction when iflags.nofollowers is
+// set.  Returned monsters are detached from the old level in native
+// mydogs order.
+// Also C dog.c:keep_mon_accessible(): merged here.
+// Also C mondata.c:levl_follower(): merged here.
 export async function collectLevelFollowers(state = game, petsOnly = false) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -846,7 +839,7 @@ export async function collectLevelFollowers(state = game, petsOnly = false) {
         else if (monster.mleashed) {
             const name = monsterName(monster, { capitalized: true, state });
             await plineWithContinuation(`${possessiveName(name)} leash goes slack.`);
-            releaseMonsterLeash(monster, state);
+            await releaseMonsterLeash(monster, false, { state });
         }
     }
     return followers;
@@ -878,7 +871,7 @@ async function staysBehind(monster, state) {
         const whose = monsterIsHumanoid(monster.mnum)
             ? monster.female ? 'Her' : 'His' : 'Its';
         await plineWithContinuation(`${whose} leash suddenly comes loose.`);
-        releaseMonsterLeash(monster, state);
+        await releaseMonsterLeash(monster, false, { state });
     }
     return true;
 }

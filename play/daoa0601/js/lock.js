@@ -15,7 +15,7 @@ import { game, requireGameLevel, requirePlayingGame, requireLiveGame } from './g
 import { doloot } from './pickup.js';
 import { flushPendingTopline } from './tty_topline.js';
 import { feel_location, feel_newsym, newsym, canSeeMonster, glyphAt, canSpotMonster, map_invisible } from './display.js';
-import { promptDirection, readDirectionKey } from './cmd.js';
+import { promptDirection } from './cmd.js';
 import { vision_note_blocker_change, cansee, vision_recalc } from './vision.js';
 import { findDrawbridgeAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { recordMappedOverviewState, surfaceName } from './dungeon.js';
@@ -324,9 +324,11 @@ export async function breakChestLock(box, destroyIt, state) {
     }
     await delobj(box, state);
 }
-// C refs: lock.c doclose(); cmd.c getdir()/help_dir().  Invalid direction
-// help is a modal text window: bytes typed before a real More dismissal must
-// not leak back into the top-level command dispatcher.
+// C lock.c:doclose()
+// Its direction assistance is cmd.c getdir()/help_dir(): invalid
+// direction help is a modal text window, so bytes typed before a real
+// More dismissal must not leak back into the top-level command
+// dispatcher.
 export async function doclose() {
     if (heroHasNoHands(game)) {
         await pline("You can't close anything -- you have no hands!");
@@ -417,9 +419,10 @@ export async function doclose() {
     }
     game.context.move = 1;
 }
-// C refs: lock.c doopen(); cmd.c get_adjacent_loc()/getdir().  Direction
-// validation is owned by the same modal assistance transaction as close;
-// the door mutation happens only after that transaction returns a direction.
+// C lock.c:doopen()
+// Its direction validation is cmd.c get_adjacent_loc()/getdir(), owned
+// by the same modal assistance transaction as close; the door mutation
+// happens only after that transaction returns a direction.
 export async function doopen(x = 0, y = 0) {
     if (heroHasNoHands(game)) {
         await pline("You can't open anything -- you have no hands!");
@@ -431,7 +434,7 @@ export async function doopen(x = 0, y = 0) {
         const inPitWithContainer = game.u.utrap && game.u.utraptype === TT_PIT
             && boxes.some(object => isContainer(object));
         const direction = await promptDirection(inPitWithContainer
-            ? (_message, retry) => readDirectionKey('Open where? [.>] ', retry) : readDirectionKey);
+            ? 'Open where? [.>] ' : 'In what direction? ');
         if (!direction) {
             await pline('Never mind.');
             game.context.move = 0;
@@ -525,8 +528,9 @@ export async function doopen(x = 0, y = 0) {
         return;
     game.context.move = 1;
 }
-// lock.c:doopen_indir() announces opening before the explosion. The door
-// remains closed across that message pause and any fatal explosion.
+// C lock.c:doopen_indir()
+// Announces opening before the explosion.  The door remains closed
+// across that message pause and any fatal explosion.
 async function openClosedDoor(door, x, y) {
     await plineWithContinuation('The door opens.');
     if (door.doormask & D_TRAPPED) {
@@ -582,7 +586,9 @@ export function maybeResetPick(container, state = game) {
     if (container ? attempt?.container === container : attempt?.container?.where !== 'inventory')
         resetPick(state);
 }
-// Applying keys, picks and cards. C lock.c:pick_lock(), picklock(), autokey().
+// Part of C options.c:optfn_autounlock(): its do_set parsing of the
+// autounlock setting into the AUTOUNLOCK_* bits that lock.c:pick_lock(),
+// picklock() and autokey() apply (keys, picks and cards).
 export function autoUnlockFlags(state = game) {
     const setting = state.flags.autounlock;
     if (setting === undefined || setting === true)

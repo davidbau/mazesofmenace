@@ -28,7 +28,6 @@ import { displayColorName, monsterName } from './do_name.js';
 import { CLR_BRIGHT_GREEN, CLR_GRAY, NO_COLOR } from './terminal.js';
 import { visibleRegionAt } from './region.js';
 import { openFallingTrap, openHoldingTrap, trapName, triggerBoobyTrap, activateStatueTrapAt } from './trap.js';
-import { heroResistsBlindingLight } from './blinding_attack.js';
 import { cmapToGlyph, CmapSymbol, GlyphOffset } from './glyph_numbers.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { propertyIsActive } from './properties.js';
@@ -38,7 +37,7 @@ import { findDrawbridgeAt, openDrawbridge } from './dbridge.js';
 import { consumeObjectCharge, currency, useUpInventoryStack } from './invent.js';
 import { getObjectLocation } from './zap.js';
 import { isQuantumBox } from './quantum_cat.js';
-import { MONSTER_CLASS_SYMBOLS, monsterDigests, monsterHidesUnder, monsterIsHider } from './mondata.js';
+import { MONSTER_CLASS_SYMBOLS, monsterDigests, monsterHidesUnder, monsterIsHider, resistsBlnd } from './mondata.js';
 import { expelHero } from './mhitu.js';
 import { body_part, heroPolyGender } from './polyself.js';
 const HERE = 1, ELSEWHERE = 2;
@@ -226,6 +225,7 @@ async function clearStaleObjects(objectClass, material, state) {
     }
     return changed;
 }
+// C detect.c:gold_detect()
 // Also C steal.c:findgold(): inlined as the GOLD_PIECE membership tests
 // (monsters' gold and the golem special case) below.
 export async function detectGold(source, { state = game } = {}) {
@@ -600,10 +600,12 @@ async function senseDetectedTrap(trap) {
         corpsenm: species, ox: trap.tx, oy: trap.ty };
     await map_object(image, true, false);
 }
-// C detect.c:detect_obj_traps(): detection and optional map display.
-async function detectContainerTraps(objects, shown, cursed, state) {
+// C detect.c:detect_obj_traps(): check one object list for trapped
+// containers; ft is the findone() search coordinate, whose count of found
+// traps accumulates in ft.numTraps.
+async function detectContainerTraps(objects, shown, cursed, state, ft) {
     let result = 0;
-    for (const object of objects) {
+    for (const object of objects || []) {
         const trapped = (object.otyp === CHEST || object.otyp === LARGE_BOX) && object.otrapped;
         const contents = object.contents || [];
         if (!trapped && !contents.length)
@@ -612,35 +614,28 @@ async function detectContainerTraps(objects, shown, cursed, state) {
         if (!position || !isok(position.x, position.y))
             continue;
         const { x, y } = position;
+        if (ft && (x !== ft.x || y !== ft.y))
+            continue;
         if (trapped) {
             object.tknown = true;
             observeObject(object, state);
             result |= atHero(x, y, state) ? HERE : ELSEWHERE;
-            if (shown)
-                await senseTrap({ tx: x, ty: y, ttyp: TRAPPED_CHEST }, shown, cursed, state);
+            const trap = { tx: x, ty: y, ttyp: TRAPPED_CHEST };
+            if (ft) {
+                const glyph = transientTrapGlyph(trap);
+                await flashGlyphAt(x, y, glyph, 6);
+                await senseDetectedTrap(trap);
+                await showFoundFeature(x, y, glyph);
+                ft.numTraps++;
+            }
+            else if (shown) {
+                await senseTrap(trap, shown, cursed, state);
+            }
         }
         if (contents.length)
-            result |= await detectContainerTraps(contents, shown, cursed, state);
+            result |= await detectContainerTraps(contents, shown, cursed, state, ft);
     }
     return result;
-}
-// C detect.c:detect_obj_traps(): trapped-container reporting during magical searching.
-async function revealTrappedContainers(objects, x, y) {
-    let found = 0;
-    for (const object of objects || []) {
-        if ([LARGE_BOX, CHEST].includes(object.otyp) && object.otrapped) {
-            object.tknown = true;
-            observeObject(object, game);
-            const trap = { ttyp: TRAPPED_CHEST, tx: x, ty: y };
-            const glyph = transientTrapGlyph(trap);
-            await flashGlyphAt(x, y, glyph, 6);
-            await senseDetectedTrap(trap);
-            await showFoundFeature(x, y, glyph);
-            found++;
-        }
-        found += await revealTrappedContainers(object.contents, x, y);
-    }
-    return found;
 }
 async function displayTrapMap(cursed, state) {
     await clearDetectionMap(state);
@@ -803,7 +798,7 @@ export async function useCrystalBall(object) {
                 break;
             }
             case 3:
-                if (heroResistsBlindingLight()) {
+                if (resistsBlnd({ youmonst: true })) {
                     const name = definiteName(objectCombatName(object));
                     await plineWithContinuation(`${name.charAt(0).toUpperCase()}${name.slice(1)} ${verbForSubject(name, 'assault')} your vision.`);
                     await plineWithContinuation('You are unaffected!');
@@ -1222,15 +1217,18 @@ export async function findit() {
             await showFoundFeature(x, y, glyph);
             found.traps++;
         }
-        let trappedContainers = await revealTrappedContainers(game.level.buriedObjects?.filter(object => object.ox === x && object.oy === y), x, y);
-        trappedContainers += await revealTrappedContainers(game.level.objects?.[x]?.[y], x, y);
+        // C detect.c:findone() scans every container list at the search
+        // coordinate; the trap count comes back through the ft accumulator.
+        const cellFind = { x, y, numTraps: 0 };
+        await detectContainerTraps(game.level.buriedObjects, null, false, game, cellFind);
+        await detectContainerTraps(game.level.objects?.[x]?.[y], null, false, game, cellFind);
         if (monster) {
-            trappedContainers += await revealTrappedContainers(monster.minvent || monster.inventory, x, y);
+            await detectContainerTraps(monster.minvent || monster.inventory, null, false, game, cellFind);
         }
         if (game.u.ux === x && game.u.uy === y)
-            trappedContainers += await revealTrappedContainers(game.inventory, x, y);
-        if (trappedContainers) {
-            found.traps += trappedContainers;
+            await detectContainerTraps(game.inventory, null, false, game, cellFind);
+        if (cellFind.numTraps) {
+            found.traps += cellFind.numTraps;
         }
         if (monster && (!canSpotMonster(monster)
             || monster.mundetected || M_AP_TYPE(monster))) {
@@ -1448,12 +1446,14 @@ async function findHiddenMonster(monster, viaWarning) {
     }
     return 1;
 }
-// C ref: detect.c:dosearch0().  Coordinate order is x-major, then y; each
-// secret square owns its Luck-adjusted roll before later neighbours are
-// examined.  Finding one cancels an active count-prefixed occupation via
-// nomul(0), but the successful search still consumes the current action.
-// Also C artifact.c:spec_ability(): inlined here; the SPFX_SEARCH check on
-// the wielded artifact's flags stands in for uwep->spe as search bonus.
+// C detect.c:dosearch0()
+// Coordinate order is x-major, then y; each secret square owns its
+// Luck-adjusted roll before later neighbours are examined.  Finding one
+// cancels an active count-prefixed occupation via nomul(0), but the
+// successful search still consumes the current action.
+// Also C artifact.c:spec_ability(): inlined here; the SPFX_SEARCH check
+// on the wielded artifact's flags stands in for uwep->spe as search
+// bonus.
 async function searchAdjacentSecrets(automatic = false) {
     const u = game.u;
     const weapon = game.uwep;
@@ -1583,9 +1583,10 @@ export async function revealWarnedMonsters() {
         }
     }
 }
-// C ref: detect.c premap_detect().  Sokoban's Lua `premapped` flag maps the
-// finalized background, boulders, and traps before deferred room filling.
-// C detect.c:skip_premap_detect().
+// C detect.c:premap_detect()
+// Sokoban's Lua `premapped` flag maps the finalized background,
+// boulders, and traps before deferred room filling.
+// Also C detect.c:skip_premap_detect(): merged here.
 export async function premap_detect() {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {

@@ -10,7 +10,7 @@ import { bypassObjectList, clearBypasses, nextUnbypassedObject, setnotworn, setw
 import { game, requireGameDisplay, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { hideUnhideMessageTypes } from './message_types.js';
 import { encyclopediaEntries } from './encyclopedia.js';
-import { killerObjectName, objectBlessingDescription, objectDescription, primaryHandDescriptionDetail, makePlural, withIndefiniteArticle, corpseName, ownedObjectName, distantObjectName, wishedObjectPresentation, definiteName, objectCombatName, objectLooksUnique, objectName, objectNameIsPlural, objectNeedsFullIdentification, observeObjectForNaming, simpleObjectName, singularObjectName, } from './objnam.js';
+import { killerObjectName, objectBlessingDescription, objectDescription, primaryHandDescriptionDetail, makePlural, withIndefiniteArticle, corpseName, ownedObjectName, distantObjectName, wishedObjectPresentation, definiteName, objectCombatName, objectLooksUnique, objectName, objectNameIsPlural, objectNeedsFullIdentification, observeObjectForNaming, simpleObjectName, singularObjectName, erosionMatters, } from './objnam.js';
 import { rejoinObjectStack, splitObjectStack, objectQuantity, curseObjectState, unlinkObject, absorbGlob, placeObject, objectWeight, isContainer, announceGlobMerge, } from './mkobj.js';
 import { ATTRIBUTE_DISPLAY_ORDER, setMoreLuck } from './attrib.js';
 import { consumeHallucinatedMenuObjectGlyph, transientMonsterGlyph, flush_screen, newsym, OBJECT_CLASS_SYMBOLS } from './display.js';
@@ -46,7 +46,7 @@ import { deityName } from './pray.js';
 import { isIceAt, isLavaAt, isPoolAt, findDrawbridgeAt, drawbridgeUnderlyingType } from './dbridge.js';
 import { forceDescribeDecor, pickupBurden, encumber_msg } from './pickup.js';
 import { visibleRegionAt } from './region.js';
-import { resolveImmediatePetrification, trapName, objectIsVulnerableToErosion, erosionMatters } from './trap.js';
+import { resolveImmediatePetrification, trapName, objectIsVulnerableToErosion } from './trap.js';
 import { heroResistsStoning, monsterIsHumanoid, monsterDigests, touchPetrifies, formCanBecomeStoneGolem, } from './mondata.js';
 import { iceDescriptionAt, swallowedHeroDescription } from './pager.js';
 import { impossible, panic } from './diagnostics.js';
@@ -2873,6 +2873,7 @@ export async function inventoryActionForObject(item) {
     const key = await showItemActionMenu(item);
     return key === 0 ? null : { key: inventoryActionKey(key), item };
 }
+// Part of C iactions.c:itemactions(): the contextual action-menu rows.
 // Also C iactions.c:item_naming_classification(): inlined here
 // Also C iactions.c:ia_addmenu(): keyed action rows are built inline here
 // Also C worn.c:armcat_to_wornmask(): inlined here as armorSlotFor(),
@@ -3163,17 +3164,6 @@ function inventoryActionKey(code) {
             throw new RangeError(`Unexpected inventory action key ${code}`);
     }
 }
-// C end.c:really_done() discovers every carried type and marks all of the
-// object's knowledge bits before disclose() calls display_inventory().
-// Keep that state transition separate from the ordinary `i` command, whose
-// descriptions are still constrained by what the hero learned in play.
-export async function showIdentifiedInventory() {
-    for (const item of game.inventory)
-        identifyObjectForDisclosure(item, true);
-    // disclose() requests a reply so an inventory letter closes the menu;
-    // it ignores the selected object and continues with the next question.
-    return selectInventoryObject({ headingAttr: 0, pickMode: PICK_ONE });
-}
 export function identifyObjectForDisclosure(item, identifyTinContents = false) {
     recordObjectEncounter(item.otyp);
     recordObjectKnowledge(item.otyp);
@@ -3444,9 +3434,9 @@ export function lootSortMode({ inventoryLetters = false, state = game } = {}) {
         ? SORTLOOT_LOOT : inventoryLetters ? SORTLOOT_INVLET : 0)
         | (state.flags.sortpack !== false ? SORTLOOT_PACK : 0);
 }
+// C invent.c:sortloot()
 // Returns a new order without rewriting the inventory or container chain.
 // Observation is the native sort boundary; name normalization uses a view.
-// C invent.c:sortloot().
 export function sortObjects(objects, { mode = 0, state = game, filter = null, } = {}) {
     const keepPetrifying = !!(mode & SORTLOOT_PETRIFY);
     mode &= ~SORTLOOT_PETRIFY;
