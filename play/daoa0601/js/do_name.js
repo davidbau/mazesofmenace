@@ -34,7 +34,7 @@ import { rankOf, roleSwitch } from './botl.js';
 import { possessiveName } from './hacklib.js';
 import { monsterPossessive, monsterPronounGender, monsterSubjectPronoun, monsterHasProperName, monsterIsAnimal, monsterIsHumanoid, monsterIsMindless, monsterIsPlayerMonster, monsterIsRider, } from './mondata.js';
 import { getLine } from './query.js';
-import { displayMessageWindow } from './tty_topline.js';
+import { displayMessageWindow } from './topl.js';
 import { wipeoutText } from './engrave.js';
 import { setTwoWeaponCombat } from './wield.js';
 import { artifactByName, nameArtifact, setWieldedArtifactProperties } from './artifact.js';
@@ -165,7 +165,11 @@ export function randomGhostName(state = game) {
 }
 const G_NOGEN = 0x0200;
 const BOGUSMONSIZE = 100;
-// C do_name.c:bogusmon(), for descriptions that require a fictitious species.
+// Name-only view of C do_name.c:bogusmon() for descriptions that require a
+// fictitious species; the port lives in display.ts
+// (randomBogusMonsterIdentity) because its get_rnd_line() call goes to
+// rumors.ts, which imports this module for mon_nam() the way C's
+// do_name.c and rumors.c call each other.
 export function randomBogusMonsterName() {
     return randomBogusMonsterIdentity().name;
 }

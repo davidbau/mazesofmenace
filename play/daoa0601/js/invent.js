@@ -15,7 +15,7 @@ import { rejoinObjectStack, splitObjectStack, objectQuantity, curseObjectState, 
 import { ATTRIBUTE_DISPLAY_ORDER, setMoreLuck } from './attrib.js';
 import { consumeHallucinatedMenuObjectGlyph, transientMonsterGlyph, flush_screen, newsym, OBJECT_CLASS_SYMBOLS } from './display.js';
 import { formatStrength } from './botl.js';
-import { clearMessageWindow, displayMessageWindow, flushPendingTopline, putMessageHistory, renderKeyPrompt } from './tty_topline.js';
+import { clearMessageWindow, displayMessageWindow, flushPendingTopline, putMessageHistory, renderKeyPrompt } from './topl.js';
 import { showMessageMenu, snapshotMenuUnderlay, restoreMenuUnderlay, windowOrigin } from './wintty.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { showChoiceWindow, showDisclosureOverlay, showInventoryWindow, showMultiSelectWindow, showTextMenuOverlay } from './windows.js';
@@ -41,7 +41,7 @@ import { eggHasMonsterSpecies } from './egg_impact.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { heroCanReachFloor, readEngravingAt } from './engrave.js';
 import { surfaceName } from './dungeon.js';
-import { stairwayDescription } from './mklev.js';
+import { stairwayDescription } from './stairs.js';
 import { deityName } from './pray.js';
 import { isIceAt, isLavaAt, isPoolAt, findDrawbridgeAt, drawbridgeUnderlyingType } from './dbridge.js';
 import { forceDescribeDecor, pickupBurden, encumber_msg } from './pickup.js';
@@ -57,7 +57,7 @@ import { objectShedsLight } from './light.js';
 import { hitFloorWithObject } from './dothrow.js';
 import { assertCreatedObject, dropInventoryObjectAtHero, dropObjectAtHero } from './do.js';
 import { attachCursedFigurineTimer } from './figurine_timer.js';
-import { heroGoldObject } from './hero_gold.js';
+import { heroGoldObject } from './sit.js';
 import { hiddenGold } from './vault.js';
 import { nomul, heroGoldAmount, roomsAt, nearCapacity } from './hack.js';
 import { displayLiquidName, monsterName } from './do_name.js';
@@ -2380,6 +2380,18 @@ async function doorganizeCore(object, splitting, inventory) {
         await plineWithContinuation(`Moving: ${bumped.invlet} - ${await inventoryItemDescription(bumped)}.`);
     game.context.move = 0;
 }
+// Part of C pickup.c:query_objlist(): its INCLUDE_HERO branch — an
+// engulfer's loot menu closes after the last class group with an
+// "Engulfed Creatures" heading ("Swallowed" when the engulfer digests)
+// and a fake hero entry selectable through CONTAINED_SYM and described
+// by an(self_lookat()).
+export function engulfedHeroMenuSection(monster) {
+    // query_objlist() attaches a monster glyph even though tty only shows text.
+    transientMonsterGlyph({ mnum: heroSpecies(game),
+        female: !!(heroIsPolymorphed(game) ? game.u.mfemale : game.flags.female) });
+    return { heading: `${monsterDigests(monster) ? 'Swallowed' : 'Engulfed'} Creatures`,
+        items: [{ key: CONTAINED_SYM, text: withIndefiniteArticle(swallowedHeroDescription()) }] };
+}
 // C invent.c:display_minventory(). The swallowed inventory view includes the hero.
 async function displayMonsterInventory(monster, objects, location, blind) {
     // display_minventory() builds its default title even when look_here()
@@ -2404,11 +2416,7 @@ async function displayMonsterInventory(monster, objects, location, blind) {
         }
         sections.push({ heading: objectClassHeading(oclass), items });
     }
-    // query_objlist() attaches a monster glyph even though tty only shows text.
-    transientMonsterGlyph({ mnum: heroSpecies(game),
-        female: !!(heroIsPolymorphed(game) ? game.u.mfemale : game.flags.female) });
-    sections.push({ heading: `${monsterDigests(monster) ? 'Swallowed' : 'Engulfed'} Creatures`,
-        items: [{ key: CONTAINED_SYM, text: withIndefiniteArticle(swallowedHeroDescription()) }] });
+    sections.push(engulfedHeroMenuSection(monster));
     await showInventoryWindow(sections, { title: blind ? 'You feel:'
             : `Contents of ${location}:` });
 }

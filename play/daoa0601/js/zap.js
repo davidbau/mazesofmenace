@@ -11,30 +11,29 @@ import { objectMaterial, learnObjectType, observeObject, objectTypeKnown } from 
 import { convertSecretDoor, findit, revealSecretDoor, showMapSpot } from './detect.js';
 import { monsterHasMapPosition, monsterAtPosition } from './steed.js';
 import { chooseInventoryObject, stack_object } from './invent.js';
-import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, PLNMSG_ENVELOPED_IN_GAS, ZAP_POS, ANTI_MAGIC, CORR, DBWALL, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_DOWN, ENGRAVE, EXPL_MAGICAL, HEADSTONE, HOLE, IS_FURNITURE, Is_airlevel, Invocation_lev, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, POLY_TRAP, SCORR, TELEP_TRAP, TRAPDOOR, TRAP_EXPLODE, VIBRATING_SQUARE, A_CON, A_CHA, W_ARMH, A_WIS, W_ARMG, A_DEX, A_STR, A_INT, W_RING, W_ARMOR, G_GENOD, MAX_OIL_IN_FLASK, MAX_SPELL_STUDY, MM_NOMSG, NO_MINVENT, W_AMUL, W_ART, W_ARTI, W_QUIVER, W_RINGL, W_RINGR, W_SWAPWEP, W_TOOL, W_WEP, COLNO, DB_FLOOR, DB_ICE, DB_UNDER, DRAWBRIDGE_UP, FOUNTAIN, SHOP_BARS_COST, SHOP_DOOR_COST, D_BROKEN, D_NODOOR, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_WALL, IS_WATERWALL, Is_rogue_level, Is_waterlevel, ismnum, LAVAWALL, PIT, POOL, ROOM, ROWNO, SDOOR, TT_INFLOOR, TT_LAVA, Upolyd, VWALL, WEB, W_NONDIGGABLE, SHOPBASE, BOLT_LIM, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, HEAD, FACE, FOOT, ARM, EYE, LL_CONDUCT, LL_ARTIFACT, LL_WISH, } from './const.js';
+import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, PLNMSG_ENVELOPED_IN_GAS, ZAP_POS, ANTI_MAGIC, CORR, DBWALL, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_DOWN, ENGRAVE, ENL_GAMEINPROGRESS, EXPL_MAGICAL, HEADSTONE, HOLE, IS_FURNITURE, Is_airlevel, Invocation_lev, LEVEL_TELEP, MAGICENLIGHTENMENT, MAGIC_PORTAL, MAGIC_TRAP, POLY_TRAP, SCORR, TELEP_TRAP, TRAPDOOR, TRAP_EXPLODE, VIBRATING_SQUARE, A_CON, A_CHA, W_ARMH, A_WIS, W_ARMG, A_DEX, A_STR, A_INT, W_RING, W_ARMOR, G_GENOD, MAX_OIL_IN_FLASK, MAX_SPELL_STUDY, MM_NOMSG, NO_MINVENT, W_AMUL, W_ART, W_ARTI, W_QUIVER, W_RINGL, W_RINGR, W_SWAPWEP, W_TOOL, W_WEP, COLNO, DB_FLOOR, DB_ICE, DB_UNDER, DRAWBRIDGE_UP, FOUNTAIN, SHOP_BARS_COST, SHOP_DOOR_COST, D_BROKEN, D_NODOOR, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_WALL, IS_WATERWALL, Is_rogue_level, Is_waterlevel, ismnum, LAVAWALL, PIT, POOL, ROOM, ROWNO, SDOOR, TT_INFLOOR, TT_LAVA, Upolyd, VWALL, WEB, W_NONDIGGABLE, SHOPBASE, BOLT_LIM, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, HEAD, FACE, FOOT, ARM, EYE, LL_CONDUCT, LL_ARTIFACT, LL_WISH, } from './const.js';
 import { isok } from './cmd.js';
 import { isIceAt, isLavaAt, isMoatAt, isPoolAt, closeDrawbridge, destroyDrawbridge, findDrawbridgeAt, openDrawbridge, drawbridgeUnderlyingType } from './dbridge.js';
 import { heroHasArtifactDefense, heroHasCarriedArtifactFlag, artifactById } from './artifact.js';
 import { adjustHeroAlignment, exerciseAttribute, exerciseWisdom, currentAttribute, poisonHero } from './attrib.js';
 import { canSeeMonster, consumeHallucinatedMenuObjectGlyph, docrt, glyphAt, newsym, shieldeff, unmap_invisible } from './display.js';
 import { formatFeltMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, set_msg_dir, } from './pline.js';
-import { formatDraftMessage } from './draft_message.js';
 import { waterbodyName } from './pager.js';
 import { resetPick, changeDoorByMagic } from './lock.js';
 import { game, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { monsterHasFireResistance, monsterHasShockResistance, monsterHasSeductionAttack, monsterResistanceBits, carnivorous, monsterDigests, monsterHasEyes, monsterHasNoHands, monsterHasProperName, monsterIsDemon, monsterIsGolem, monsterIsMindless, monsterIsNonliving, monsterIsPlayerMonster, monsterIsRider, monsterIsSwimmer, monsterIsUndead, monsterIsVampireShifter, monsterIsWhirly, monsterYoungerForm, heroResistsStoning, touchPetrifies, eyecount, resistsBlnd } from './mondata.js';
 import { setHeroTrap, dotrap, mintrap, objectIsVulnerableToErosion, deleteTrap, trapName, closeHoldingTrap, openFallingTrap, openHoldingTrap, sokobanGuilt, igniteItems, resetUtrap, maketrap, deleteFloorTrap, meltIceTrap, activateStatueTrapAt, animateStatue, } from './trap.js';
 import { displayColorName, displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
-import { possessiveName, mungWishSpaces } from './hacklib.js';
+import { possessiveName, mungSpaces } from './hacklib.js';
 import { commandResultCancelled } from './cmd.js';
 import { removeHeroAccessory, wearHeroAccessory, objectIsHardHelmet, applyArmorOnEffects, armorSlotFor, wearHeroArmor, isEyewear, wearEyewear } from './do_wear.js';
 import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
 import { rechargeRing, unpunishHero } from './read.js';
 import { finishHeroDeath } from './end.js';
 import { consumeInventoryItem, inventoryItemDescription, delobj, inventoryClassOrder, lootSortMode, objectClassHeading, sortObjects } from './invent.js';
-import { useUpInventoryStack, prepareInventoryAddition, finishInventoryAddition, finishInventoryRemoval, displayBuriedInventory, probedContentsTitle } from './invent.js';
+import { useUpInventoryStack, prepareInventoryAddition, finishInventoryAddition, finishInventoryRemoval, displayBuriedInventory, probedContentsTitle, engulfedHeroMenuSection } from './invent.js';
 import { cleanupTransientLight, lightRoom, showTransientLight } from './light.js';
-import { buryFloorObjectsAt, zapDigWithObject } from './dig.js';
+import { buryFloorObjectsAt, formatDraftMessage, zapDigWithObject } from './dig.js';
 import { CANDELABRUM_OF_INVOCATION } from './mklev.js';
 import { randomEngraving } from './engrave.js';
 import { fix_wall_spines } from './mkmaze.js';
@@ -68,7 +67,7 @@ import { forceDescribeDecor } from './pickup.js';
 import { deleteEngravingAt, engravingAt, makeEngravingAt, wipeEngravingAt, relocateEngraving } from './engrave.js';
 import { addExperience } from './exper.js';
 import { explode } from './explode.js';
-import { monsterStatusLine, showEnlightenment } from './insight.js';
+import { monsterStatusLine, enlightenment } from './insight.js';
 import { gotoLevel } from './do.js';
 import { okToQuest, onQuestStart } from './quest.js';
 import { askTeleportDestination, heroControlsTeleport, teleportHero } from './teleport.js';
@@ -125,7 +124,7 @@ import { relocateObjectRandomly } from './teleport.js';
 import { putHeroToSleep } from './timeout.js';
 import { burnArmorByFire, burnHeroArmorByFire, damageObjectWithAcid, fillPitWithBoulderAt } from './trap.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './wintty.js';
-import { flushPendingTopline } from './tty_topline.js';
+import { flushPendingTopline } from './topl.js';
 import { monsterHasLineOfSightToHero, vision_recalc } from './vision.js';
 import { monsterWieldedWeapon } from './weapon.js';
 import { showTextWindow } from './windows.js';
@@ -886,13 +885,18 @@ export async function probeMonster(monster, { state = game, onHead = true, x = m
     // inventory through query_objlist() with INVORDER_SORT: entries group
     // by class in inv_order under class headings, the tty layer generates
     // the selector letters, and only a leading gold stack keeps its own
-    // '$' selector (pickup.c:1129-1139).
+    // '$' selector (pickup.c:1129-1139). display_minventory(MINV_ALL)
+    // adds INCLUDE_HERO when engulfing_u(mon) holds, so the menu closes
+    // with the engulfer's fake hero row (pickup.c:1146-1164).
     const name = monsterName(monster, { state, capitalized: true, article: 'your', suppressIt: true });
-    await showProbedObjectInventory(inventory, `${possessiveName(name)} possessions:`, { state });
+    const engulfer = state.u.uswallow && state.u.ustuck === monster ? monster : null;
+    await showProbedObjectInventory(inventory, `${possessiveName(name)} possessions:`, { state, engulfer });
 }
 // C query_objlist(): PICK_NONE still gives each object a menu identifier,
 // so tty assigns letters. INVORDER_SORT adds headings even for one item.
-export async function showProbedObjectInventory(objects, title, { state = game, groupByClass = true, } = {}) {
+// An engulfer's list closes with query_objlist(INCLUDE_HERO)'s fake hero
+// row (pickup.c:1146-1164).
+export async function showProbedObjectInventory(objects, title, { state = game, groupByClass = true, engulfer = null, } = {}) {
     const sorted = sortObjects(objects, { mode: lootSortMode({ state }), state });
     const sections = [];
     const classes = groupByClass ? inventoryClassOrder(state) : [null];
@@ -913,6 +917,8 @@ export async function showProbedObjectInventory(objects, title, { state = game, 
         }
         sections.push({ heading: oclass === null ? null : objectClassHeading(oclass), items });
     }
+    if (engulfer)
+        sections.push(engulfedHeroMenuSection(engulfer));
     await showInventoryWindow(sections, { title });
 }
 // C zap.c:get_obj_location().
@@ -2342,7 +2348,7 @@ export async function doEnlightenmentEffect() {
     await pline(formatFeltMessage('self-knowledgeable...'));
     // zap.c displays WIN_MESSAGE before opening the enlightenment menu.
     await flushPendingTopline();
-    await showEnlightenment({ basic: false, magic: true });
+    await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
     await pline('The feeling subsides.');
     await exerciseAttribute(A_WIS, true);
 }
@@ -5520,7 +5526,7 @@ export async function makeWish() {
             : await getLine(`For what do you wish${assistance}?`, (_ch, key) => key >= 32 && key < 127);
         // zap.c:makewish() mungspaces() the typed line before comparing it,
         // parsing it, recording it in the history, and livelogging it.
-        value = mungWishSpaces(value ?? '');
+        value = new TextDecoder().decode(mungSpaces(new TextEncoder().encode(value ?? '')));
         if ((value ?? '').trim().toLowerCase() === 'help') {
             await showWishHelp(5 - failedAttempts);
             continue;

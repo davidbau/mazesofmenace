@@ -4,8 +4,8 @@
 // sp_lev.c special-level construction lives in sp_lev.ts;
 // mkmaze.c mazes and special-level fixups in mkmaze.ts; mkroom.c special
 // room selection and filling in mkroom.ts; bones.c in bones.ts; the Rogue
-// level (extralev.c) in extralev.ts. Level construction uses the game's
-// main random-number stream.
+// level (extralev.c) in extralev.ts; stairs.c stairway management in
+// stairs.ts. Level construction uses the game's main random-number stream.
 import { stack_object } from './invent.js';
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS, SPBOOK_no_NOVEL, } from './objclass.js';
 import { recorderLocalEpochSeconds, recorderTimestamp } from './calendar.js';
@@ -28,7 +28,6 @@ import { randomMonsterRelocation } from './teleport.js';
 import { pickNastyShape } from './wizard.js';
 import { restoreLevelChains, restoreMonsterWormHeads, validMonsterWormBodies } from './restore.js';
 import { restoreLevelPetHistory } from './save.js';
-import { exerciseWisdom } from './attrib.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { impossible, panic } from './diagnostics.js';
 import { PanicTermination } from './panic_termination.js';
@@ -52,7 +51,6 @@ import { nhgetch } from './input.js';
 import { flush_screen, newsym, back_to_glyph, canOverwriteTerrain, set_wall_state } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
 import { premap_detect, convertSecretDoor } from './detect.js';
-import { TRUE_RUMORS, FALSE_RUMORS } from './random_text_data.js';
 import { deleteEngravingAt, makeEngravingAt, make_grave, randomEngraving, make_engr_at, restoreEngravings, sanitizeEngravings, wipeEngravingAt } from './engrave.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { insideShopRoomAt, addShopDamage, fixShopDamage, deleteObject } from './shk.js';
@@ -68,7 +66,8 @@ import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { addToContainer, beginLuaThemerooms, callLuaThemerooms, check_room, create_room, dig_corridor, fill_special_room, fillVault, finishLevelTrapConstruction, load_special, medusaPetrifiable, putGeneratedMonsterInventoryInStatue, themerooms_generate } from './sp_lev.js';
 import { finishHeroLiquidMonsterDeath, finishMonsterLiquidDeath, purgeDeadMonsters, removeMonsterFromGame, resolveMonsterLiquid, revealMonsterAppearance, sendMonsterToLimbo } from './mon.js';
 import { fractureRock } from './zap.js';
-import { flushPendingTopline } from './tty_topline.js';
+import { flushPendingTopline } from './topl.js';
+import { stairway_add, stairway_free_all } from './stairs.js';
 import { switchHeroTerrain, roomsAt } from './hack.js';
 import { is_domestic } from './mondata.js';
 export const G_NOGEN = 0x0200;
@@ -141,74 +140,8 @@ const TRAPPED_DOOR = 24;
 const TRAPPED_CHEST = 25;
 export function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 export function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
-// Stairway list management
-export function stairway_add(x, y, up, isladder, dest) {
-    const node = {
-        sx: x, sy: y, up, isladder, tolev: { ...dest },
-        u_traversed: false,
-        next: game.stairs,
-    };
-    game.stairs = node;
-}
-// ── Stairway lookup ──
-export function stairway_find_dir(up) {
-    for (let s = game.stairs; s; s = s.next)
-        if (s.up === up)
-            return s;
-    return null;
-}
-function stairway_find_special_dir(up) {
-    for (let s = game.stairs; s; s = s.next)
-        if (s.tolev.dnum !== (game.u?.uz?.dnum ?? 0) && s.up !== up)
-            return s;
-    return null;
-}
-// C stairs.c:stairway_at(). Walks the per-game stairway chain; callers that
-// only need the square test wrap this in a truthiness check (On_stairs()).
-export function stairwayAt(state, x, y) {
-    for (let stair = state.stairs; stair; stair = stair.next) {
-        if (stair.sx === x && stair.sy === y)
-            return stair;
-    }
-    return null;
-}
-function sameLevel(left, right) {
-    return !!right && left.dnum === right.dnum && left.dlevel === right.dlevel;
-}
-// C stairs.c:stairs_description().
-// Also C stairs.c:known_branch_stairs(): inlined here (the traversed
-// cross-branch destination test).
-export function stairwayDescription(stairway, state) {
-    const noun = stairway.isladder ? 'ladder' : 'staircase';
-    const direction = stairway.up ? 'up' : 'down';
-    const here = state.u.uz;
-    if (!here)
-        throw new Error('Stair description requires the hero dungeon position');
-    const destination = stairway.tolev;
-    if (destination.dnum === here.dnum || !stairway.u_traversed) {
-        if (!stairway.u_traversed)
-            return `${noun} ${direction}`;
-        const localDepth = destination.dnum === state.quest_dnum
-            || sameLevel(destination, state.knox_level);
-        const depth = localDepth ? destination.dlevel
-            : dungeonDepth(destination.dnum, destination.dlevel, state.dungeons);
-        return `${noun} ${direction} to level ${depth}`;
-    }
-    if (here.dnum === 0 && here.dlevel === 1 && stairway.up) {
-        if (!state.u.uhave?.amulet)
-            return `${noun} up out of the dungeon`;
-        const elemental = [state.earth_level, state.air_level, state.fire_level, state.water_level]
-            .some(level => sameLevel(destination, level));
-        return `branch ${noun} up to ${elemental ? 'the Elemental Planes' : 'the end game'}`;
-    }
-    const descriptor = state.dungeons[destination.dnum];
-    if (!descriptor)
-        throw new Error(`Stair destination dungeon ${destination.dnum} does not exist`);
-    const dungeon = descriptor.dname.replace(/^The /, 'the ');
-    return `branch ${noun} ${direction} to ${dungeon}`;
-}
 // C dungeon.c:Can_dig_down()
-// ── Hero placement (C ref: stairs.c, mkmaze.c) ──
+// ── Hero digging/falling predicates (C ref: dungeon.c) ──
 // C refs: dungeon.c Can_dig_down()/Can_fall_thru().  A level's hard-floor
 // flag is only one of the gates: bottom levels and the invocation level also
 // reject holes, while the Castle is an explicit exception because its
@@ -224,40 +157,6 @@ export function canDigDown(uz = game.u.uz) {
 }
 export function canFallThrough(uz = game.u.uz) {
     return canDigDown(uz) || (uz !== undefined && Is_stronghold(uz));
-}
-// C stairs.c:u_on_sstairs()
-// place the hero on the special (branch)
-// staircase, falling back to a random arrival spot.
-export async function u_on_sstairs(upflag) {
-    const stway = stairway_find_special_dir(!!(upflag & 1));
-    if (stway) {
-        await placeHeroOnLevel(stway.sx, stway.sy);
-        return;
-    }
-    await u_on_rndspot(!!(upflag & 1)
-        ? game.level?.upTeleportRegion : game.level?.downTeleportRegion, !!(upflag & 1));
-}
-// C stairs.c:u_on_upstairs()
-// place you on upstairs (or special
-// equivalent).
-export async function u_on_upstairs() {
-    const stway = stairway_find_dir(true);
-    if (stway) {
-        await placeHeroOnLevel(stway.sx, stway.sy);
-        return;
-    }
-    await u_on_sstairs(0); /* destination upstairs implies moving down */
-}
-// C stairs.c:u_on_dnstairs()
-// place you on dnstairs (or special
-// equivalent).
-export async function u_on_downstairs() {
-    const stway = stairway_find_dir(false);
-    if (stway) {
-        await placeHeroOnLevel(stway.sx, stway.sy);
-        return;
-    }
-    await u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
 // C mhitu.c:cloneu()
 // The actor is a fresh makemon birth rather than a copy of youmonst: it owns
@@ -488,52 +387,6 @@ export async function runClaimedObjectRotTimer(claimed, state = game) {
         await deleteObject(object, state);
     return { kind, object, where, x, y };
 }
-// C rumors.c:get_rnd_line()
-// makedefs pads each source line to a
-// minimum of 59 text bytes plus its newline.  Selection deliberately seeks
-// into one line and returns the following line.
-export function getRandomTextLine(lines) {
-    if (!lines.length)
-        throw new Error('Random text needs at least one source line');
-    const sizes = lines.map(line => Math.max(line.length, 59) + 1);
-    const fileSize = sizes.reduce((sum, size) => sum + size, 0);
-    let picked = 0;
-    for (let tries = 10; tries > 0; tries--) {
-        let offset = rn2(fileSize);
-        picked = 0;
-        let size = sizes[picked];
-        if (size === undefined)
-            throw new Error('Random text is missing its first line size');
-        while (offset >= size) {
-            offset -= size;
-            size = sizes[++picked];
-            if (size === undefined)
-                throw new Error('Random text offset exceeds its source text');
-        }
-        const remainder = size - offset;
-        if (remainder <= 61)
-            break;
-    }
-    const line = lines[(picked + 1) % lines.length];
-    if (line === undefined)
-        throw new Error('Random text selection is missing its source line');
-    return line;
-}
-export function getRumor(excludeCookie, truth = 0) {
-    let rumor = '';
-    let count = 0;
-    let trueRumor = false;
-    do {
-        trueRumor = truth + rn2(2) > 0;
-        rumor = getRandomTextLine(trueRumor
-            ? TRUE_RUMORS : FALSE_RUMORS);
-    } while (count++ < 50 && excludeCookie && rumor.startsWith('[cookie] '));
-    if (count < 50 && !game.in_mklev)
-        exerciseWisdom(trueRumor);
-    if (!excludeCookie && rumor.startsWith('[cookie] '))
-        rumor = rumor.slice('[cookie] '.length);
-    return rumor;
-}
 // Part of C nhlua.c:l_nhcore_init(): entry adapter; LuaLifecycle.startCore() initializes the core.
 export async function l_nhcore_init() {
     await currentLuaLifecycle().startCore(game);
@@ -574,7 +427,7 @@ export function countLevelFeatures(state = game) {
 // C mklev.c:clear_level_structures()
 // Also C region.c:clear_regions(): a fresh GameMap owns no regions.
 // Also C dungeon.c:free_exclusions(): a fresh GameMap owns no exclusion zones.
-// Also C stairs.c:stairway_free_all(): inlined here as the stairway-chain reset.
+// C stairs.c:stairway_free_all() drops the freed chain below.
 function clear_level_structures() {
     const g = game;
     g.fmon = null;
@@ -587,7 +440,7 @@ function clear_level_structures() {
     g.smeq = Array.from({ length: MAXNROFROOMS + 1 }, () => 0);
     g.level.doorindex = 0;
     g.level.doors = [];
-    g.stairs = null;
+    stairway_free_all();
     g.vault_x = -1;
     const lf = g.level.flags;
     lf.nfountains = 0;

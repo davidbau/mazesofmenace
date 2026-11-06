@@ -23,7 +23,7 @@ import { canSenseMonster, swallowed, canSeeMonster, canSpotMonster, newsym } fro
 import { d, rn2, rnd, rnl } from './rng.js';
 import { game, requireInitializedGame, requireLiveGame, requireGameLevel } from './gstate.js';
 import { searches_for_item, find_offensive, use_offensive, find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
-import { monsterHasMagicKey, artifactEmitsLight, artifactById, retouchEquipment } from './artifact.js';
+import { hasMagicKey, artifactEmitsLight, artifactById, retouchEquipment } from './artifact.js';
 import { isLevelPrize } from './level_prize.js';
 import { ACCFOOD, MANFOOD, dogFood } from './pet_food.js';
 import { canTrack, monsterCorrodesBars, speciesHasWeaponAttack, monsterLocomotion, seenResistanceForDamage, monsterHasFireResistance, monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap, monsterPossessive, monsterIsHelpless, monsterResistsSleep, is_mercenary, is_minion, is_wanderer, likes_gems, likes_gold, likes_magic, likes_objs, metallivorous, monsterIsClinger, monsterPassesWalls, needspick, tunnels, monsterCanTeleport, monsterHasNoLimbs, monsterHidesUnder, monsterIsAmorphous, monsterIsAnimal, monsterIsCovetous, monsterIsDemon, monsterIsEel, monsterIsHider, monsterIsMindFlayer, monsterIsMindless, monsterIsNoncorporeal, monsterIsRider, monsterIsSlithy, monsterIsTelepathic, monsterIsThickSkinned, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterPerceives, monsterThrowsRocks, speciesEatsCorpses, monsterHasNoAttacks, touchPetrifies, resistConflict, } from './mondata.js';
@@ -34,7 +34,7 @@ import { billDummyObject, costlySpot, afterShopkeeperMove, moveShopkeeper, shopk
 import { monsterAlignmentType, inHeroSanctuary, priestIsInOwnTemple, movePriest } from './priest.js';
 import { engravingAt, hasCompletedEngraving, wipeEngravingAt } from './engrave.js';
 import { ownedObjectName, simpleObjectNameWithArticle, observeDistantObjectForNaming, makePlural, verbForSubject } from './objnam.js';
-import { displayMessageWindow } from './tty_topline.js';
+import { displayMessageWindow } from './topl.js';
 import { splitObjectStack, mksobj, placeCreatedObject, placeObjectSynchronously, isContainer } from './mkobj.js';
 import { dropMonsterObject } from './steal.js';
 import { removeObjectFromMonsterInventory, findMonsterArmorClass } from './worn.js';
@@ -60,7 +60,7 @@ import { heroIsInvisible } from './hero_invisibility.js';
 import { monsterName as canonicalMonsterName, monsterName, visibleMonsterSubject } from './do_name.js';
 import { dist2, distmin } from './hacklib.js';
 import { shopkeeperName } from './shknam.js';
-import { heroGoldObject } from './hero_gold.js';
+import { heroGoldObject } from './sit.js';
 import { canLetGo } from './do.js';
 import { canFallThrough } from './mklev.js';
 import { getTrack, hasTrack } from './track.js';
@@ -595,7 +595,7 @@ export async function resolveMonsterDoorPassage(monster, state, { canOpen, canUn
     if (location.typ !== DOOR || monsterPassesWalls(monster.mnum) || canTunnel)
         return { status: 'continue', heroDied: false };
     let trapped = !!(location.doormask & D_TRAPPED);
-    if (trapped && monsterHasMagicKey(monster, state)) {
+    if (trapped && hasMagicKey({ monster }, state)) {
         location.doormask &= ~D_TRAPPED;
         trapped = false;
     }
@@ -729,28 +729,6 @@ function monsterHasAvailableDistanceAttack(monster, random) {
             return true;
     }
     return false;
-}
-// C monmove.c:dochug() phase two.  A close weapon attacker may spend its
-// whole action readying carried equipment before phase-three movement.  This
-// transition is deliberately RNG-free but changes every later actor's stream.
-async function readyCloseMonsterWeapon(monster, state, range) {
-    if ((monster.mpeaceful && !heroHasConflict(state)) ||
-        !range.inRange ||
-        !speciesHasWeaponAttack(monster.mnum) ||
-        monster.weaponCheck !== NEED_WEAPON)
-        return null;
-    const apparentX = isFiniteNumber(monster.mux) ? monster.mux : state?.u?.ux;
-    const apparentY = isFiniteNumber(monster.muy) ? monster.muy : state?.u?.uy;
-    if (!isFiniteNumber(apparentX) ||
-        !isFiniteNumber(apparentY) ||
-        dist2(monster.mx, monster.my, apparentX, apparentY) > 8)
-        return null;
-    const weapon = monsterWieldedWeapon(monster);
-    if ((range.scared && weapon && isPick(weapon))
-        || (monster.mtrapped && !range.nearby && selectMonsterRangedWeapon(monster, state)))
-        return null;
-    monster.weaponCheck = NEED_HTH_WEAPON;
-    return wieldMonsterWeapon(monster, state);
 }
 async function createFogEveryturnRegion(state, x, y, random = rn2) {
     const cell = state.level.at(x, y);
@@ -1985,7 +1963,8 @@ export async function beginMonsterMove(monster, state = requireInitializedGame()
     const turn = await moveMonsterAfterTrap(monster, state, random, rollDice, rollOne, DISCARDED_CALL_LOG, undefined, null);
     return { monster, ...turn };
 }
-// C monmove.c:dochug() "Demonic Blackmail!" block. The adjacent branch calls
+// Part of C monmove.c:dochug(): the "Demonic Blackmail!" phase-two block
+// (whispers at thin air, angering, or the bribe), which ends by calling C
 // minion.c:demon_talk() (demandDemonBribe in minion.ts).
 export async function talkToDemon(monster, state, random = rn2, rollOne = rnd) {
     if (monster.mux !== state.u.ux || monster.muy !== state.u.uy) {
@@ -2005,7 +1984,9 @@ export async function talkToDemon(monster, state, random = rn2, rollOne = rnd) {
     }
     return demandDemonBribe(monster, state, random, rollOne);
 }
-// First non-combat slice of monmove.c:dochug(), m_move(), and dog_move().
+// Part of monmove.c:dochug()'s phases two and three — distfleeck, defensive
+// and misc items, demon blackmail, watch duty, mind blast, weapon readying,
+// movement and its status switch — shared with m_move() and dog_move().
 // distfleeck() always draws the brave-gremlin roll; ordinary starting actors
 // then choose and own a live adjacent destination before the post-move draw.
 export async function takeMonsterTurn(monster, state, random = rn2, rollDice = d, rollOne = rnd) {
@@ -2208,7 +2189,30 @@ export async function takeMonsterTurn(monster, state, random = rn2, rollDice = d
         range = await checkMonsterHeroRange(monster, { state, random, rollOne });
         dochugContext.range = range;
     }
-    if (await readyCloseMonsterWeapon(monster, state, range)) {
+    // If monster is nearby you, and has to wield a weapon, do so. This
+    // costs the monster a move (C monmove.c:dochug() phase two). The scared
+    // check keeps a fleeing pick-carrier from toggling between pick-axe and
+    // weapon; a monster stuck in a trap prefers its ranged weapon (wielding
+    // happens in thrwmu). The transition is deliberately RNG-free but
+    // changes every later actor's stream.
+    let readiedCloseWeapon = false;
+    if (!(monster.mpeaceful && !heroHasConflict(state)) && range.inRange
+        && speciesHasWeaponAttack(monster.mnum)
+        && monster.weaponCheck === NEED_WEAPON) {
+        const apparentX = isFiniteNumber(monster.mux) ? monster.mux : state?.u?.ux;
+        const apparentY = isFiniteNumber(monster.muy) ? monster.muy : state?.u?.uy;
+        if (isFiniteNumber(apparentX) && isFiniteNumber(apparentY)
+            && dist2(monster.mx, monster.my, apparentX, apparentY) <= 8) {
+            const weapon = monsterWieldedWeapon(monster);
+            if (!((range.scared && weapon && isPick(weapon))
+                || (monster.mtrapped && !range.nearby
+                    && selectMonsterRangedWeapon(monster, state)))) {
+                monster.weaponCheck = NEED_HTH_WEAPON;
+                readiedCloseWeapon = !!await wieldMonsterWeapon(monster, state);
+            }
+        }
+    }
+    if (readiedCloseWeapon) {
         return {
             calls,
             dochugContext,
@@ -2454,9 +2458,12 @@ export async function runMonsterAction(monster, state, random = rn2, rollDice = 
     }
     return beginMonsterDochug(monster, state, random, rollDice, rollOne);
 }
-// C monmove.c:dochug(), without movemon_singlemon()'s hiding and Conflict checks.
-// Direct callers such as shop entry do not spend a scheduled movement ration.
-// C monmove.c:m_arrival().
+// C monmove.c:dochug(): the phase-one entry (arrival, wait masks, quest
+// status, frozen and sleeping rejection), then the phase-two/three
+// continuation in takeMonsterTurn() below. This is the port of the whole C
+// function without movemon_singlemon()'s hiding and Conflict checks, so
+// direct callers such as shop entry do not spend a scheduled movement
+// ration. m_arrival() is inlined (C monmove.c:m_arrival()).
 export async function beginMonsterDochug(monster, state, random = rn2, rollDice = d, rollOne = rnd) {
     const calls = DISCARDED_CALL_LOG;
     const nextToHero = distmin(monster.mx, monster.my, state.u.ux, state.u.uy) <= 1;
@@ -2639,8 +2646,10 @@ export async function presentMonsterAction(action, game) {
     await presentMonsterMoveMessage(action, game);
     return 'check-occupation';
 }
-// C monmove.c:dochug(). Shop entry gives its keeper an immediate action,
-// including resumed messages and attacks, without movemon()'s per-turn work.
+// Part of C monmove.c:dochug(): the direct-call composition. Shop entry
+// (C shk.c:914 calls dochug(shkp) synchronously) gives its keeper an
+// immediate action, including resumed messages and attacks, without
+// movemon()'s per-turn work.
 export async function performMonsterTurn(monster, state = requireInitializedGame()) {
     const previousDeferral = state._deferVisibleMonsterContact;
     try {

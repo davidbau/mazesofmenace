@@ -28,7 +28,7 @@ import { nameToMonster } from './mondata.js';
 import { OBJECT_NAMES, getObjectClassBounds } from './object_data.js';
 import { bot, checkGoldSymbol, reassessStatusFields } from './botl.js';
 import { currentBoulderSymbol, docrt, flush_screen, reglyph_darkroom, reglyphBoulderSymbols, reglyphSymbolSet, } from './display.js';
-import { clearMessageWindow, displayMessageWindow } from './tty_topline.js';
+import { clearMessageWindow, displayMessageWindow } from './topl.js';
 import { plineWithContinuation } from './pline.js';
 import { vision_recalc } from './vision.js';
 import { getLine } from './query.js';
@@ -39,10 +39,11 @@ import { restoreMenuUnderlay, snapshotMenuUnderlay } from './wintty.js';
 import { NO_COLOR } from './terminal.js';
 import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP } from './const.js';
 import { OBJECT_CLASS_SYMBOLS } from './display.js';
+import { mungSpaces } from './hacklib.js';
 import { DISCLOSURE_CATEGORIES, parseDisclosureSettings } from './end.js';
 import { setVanqOrder, vanquishedOptionValue } from './insight.js';
 import { C_ATR_INVERSE, C_ATR_NONE } from './color_attr.js';
-import { attributeName, colorName, cutConfigBytes, fuzzyMatch, matchAttributeName, matchColorName, queryAttributeMenu, queryColorMenu } from './color_query.js';
+import { attributeName, colorAttrToString, colorName, cutConfigBytes, fuzzyMatch, matchAttributeName, matchColorName, parseColorAttr, parseMenuColoring, queryAttributeMenu, queryColorMenu } from './coloratt.js';
 import { BUFSZ, CLR_MAX, COLNO, Is_rogue_level, MENU_FULL, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PICK_NONE, PICK_ONE, PL_PSIZ, PARANOID_AUTOALL, PARANOID_BONES, PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT, PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP, PARANOID_WERECHANGE, STONE, } from './const.js';
 // C include/optlist.h, recorder build: every option table entry in file
 // order — [name, alias, isBool, negateok, valok, dupeok, prefix].  The
@@ -340,35 +341,6 @@ function serializeDisclosureSlots(slots) {
     }
     return parts.length ? parts.join(' ') : undefined;
 }
-// C options.c:parseoptions()'s match loop: option names in table order at
-// their minimum length, then aliases at full length.  Returns null when no
-// entry matches, which parseoptions() reports as "Unknown option".
-function matchOptionElement(element) {
-    const nameLength = lengthWithoutValue(element);
-    for (const entry of OPTION_ENTRIES) {
-        if (entry.pfx) {
-            // str_start_is() on the whole element; a hit wins immediately.
-            if (entry.name.length <= element.length
-                && asciiNameEqual(entry.name, element, entry.name.length)) {
-                return { ...entry, viaAlias: false };
-            }
-        }
-        // match_optname() at the entry's minimum length also serves the
-        // prefix entries, so "cond" reaches pfxfn_cond_ like "cond_x".
-        if (nameLength >= entry.minmatch
-            && asciiNameEqual(entry.name, element, nameLength)) {
-            return { ...entry, viaAlias: false };
-        }
-    }
-    for (const entry of OPTION_ENTRIES) {
-        const { alias } = entry;
-        if (alias !== null && nameLength === alias.length
-            && asciiNameEqual(alias, element, nameLength)) {
-            return { ...entry, viaAlias: true };
-        }
-    }
-    return null;
-}
 // options.c:default_menu_cmd_info[] — the menu_* names that bind a key to
 // a menu paging command rather than configuring a compound option.
 export const MENU_KEY_OPTIONS = {
@@ -607,80 +579,6 @@ function parseScoreOption(value, negated) {
     }
     return choices;
 }
-// C coloratt.c:add_menu_coloring(). The compiled pattern is kept on the
-// rule like C's ->match regex_t; the first matching rule (newest first)
-// colors the menu entry at the add_menu() seam.
-export function parseMenuColoring(valueText, addError) {
-    // coloratt.c copies the statement into str[BUFSZ] before parsing, so a
-    // '=' past byte 255 is invisible and the line looks malformed.
-    const value = cutConfigBytes(valueText, BUFSZ - 1);
-    const equals = value.indexOf('=');
-    if (equals < 0) {
-        addError('Malformed MENUCOLOR');
-        return null;
-    }
-    let tail = value.slice(equals + 1).replace(/[ \t]+/g, ' ').trim();
-    const ampersand = tail.indexOf('&');
-    if (ampersand >= 0)
-        tail = tail.slice(0, ampersand);
-    const color = matchColorName(tail, addError);
-    if (color >= CLR_MAX)
-        return null;
-    let attr = 0;
-    if (ampersand >= 0) {
-        const attribute = value.slice(equals + 1)
-            .replace(/[ \t]+/g, ' ').trim().slice(ampersand + 1);
-        attr = matchAttributeName(attribute, addError);
-        if (attr === -1)
-            return null;
-    }
-    // The regexp portion is not condensed by mungspaces(); a matching pair
-    // of quotes around it is stripped.
-    let pattern = value.slice(0, equals);
-    const quote = pattern.charAt(0);
-    if (quote === '"' || quote === '\'') {
-        let end = pattern.length - 1;
-        while (end >= 0 && /[ \t]/.test(pattern.charAt(end)))
-            end--;
-        if (pattern.charAt(end) === quote)
-            pattern = pattern.slice(1, end);
-    }
-    let regex;
-    try {
-        regex = new PosixRegex(pattern);
-    }
-    catch (error) {
-        if (!(error instanceof SyntaxError))
-            throw error;
-        addError(`Menucolor regex error: ${error.message}`);
-        return null;
-    }
-    return { origstr: pattern, color, attr, regex };
-}
-// C coloratt.c:color_attr_parse_str(): "color&attr", "color", or "attr"
-// (a lone name is tried as an attribute first). Returns null on failure;
-// matchColorName()/matchAttributeName() emit C's diagnostics.
-function parseColorAttr(text, addError) {
-    const ampersand = text.indexOf('&');
-    if (ampersand >= 0) {
-        const left = text.slice(0, ampersand);
-        const right = text.slice(ampersand + 1);
-        let color = matchColorName(left, addError);
-        let attr = matchAttributeName(right, addError);
-        if (color >= CLR_MAX && attr === -1) {
-            color = matchColorName(right, addError);
-            attr = matchAttributeName(left, addError);
-        }
-        if (color >= CLR_MAX || attr === -1)
-            return null;
-        return { attr, color };
-    }
-    const attr = matchAttributeName(text, null);
-    if (attr !== -1)
-        return { attr, color: NO_COLOR };
-    const color = matchColorName(text, addError);
-    return color >= CLR_MAX ? null : { attr: C_ATR_NONE, color };
-}
 // C options.c:add_autopickup_exception(): sscanf() forms `"<%s`, `">%s`, or
 // `"%s`, each with an optional whitespace + '#' comment after the closing
 // quote. Valid patterns join the exception list (newest first, like
@@ -756,11 +654,40 @@ export function parseOptions(optionList, result, state, fromFile, addError, addR
             negated = !negated;
         }
         // parseoptions() matches each element against the option table
-        // before any handler runs; an element matching nothing is an
-        // unknown option, apart from the S_name:c symbol forms that
-        // parsesymbols() accepts (the symbol tables are not ported, so
-        // they are accepted without validation).
-        const optionMatch = matchOptionElement(stripped);
+        // before any handler runs: option names in table order at their
+        // minimum length (str_start_is() for the prefix entries, where a
+        // hit wins immediately, and match_optname() at the entry's minimum
+        // length, which also serves the prefix entries so "cond" reaches
+        // pfxfn_cond_ like "cond_x"), then aliases at full length. An
+        // element matching nothing is an unknown option, apart from the
+        // S_name:c symbol forms that parsesymbols() accepts (the symbol
+        // tables are not ported, so they are accepted without validation).
+        const nameLength = lengthWithoutValue(stripped);
+        let optionMatch = null;
+        for (const entry of OPTION_ENTRIES) {
+            if (entry.pfx) {
+                if (entry.name.length <= stripped.length
+                    && asciiNameEqual(entry.name, stripped, entry.name.length)) {
+                    optionMatch = { ...entry, viaAlias: false };
+                    break;
+                }
+            }
+            if (nameLength >= entry.minmatch
+                && asciiNameEqual(entry.name, stripped, nameLength)) {
+                optionMatch = { ...entry, viaAlias: false };
+                break;
+            }
+        }
+        if (!optionMatch) {
+            for (const entry of OPTION_ENTRIES) {
+                const { alias } = entry;
+                if (alias !== null && nameLength === alias.length
+                    && asciiNameEqual(alias, stripped, nameLength)) {
+                    optionMatch = { ...entry, viaAlias: true };
+                    break;
+                }
+            }
+        }
         if (!optionMatch) {
             if (!stripped.startsWith('S_'))
                 addError(`Unknown option '${stripped}'`);
@@ -1630,26 +1557,6 @@ function configurationOptions(bytes) {
     }
     return options.reverse();
 }
-// C hacklib.c:mungspaces(): tabs become spaces, runs of spaces collapse to
-// one, and leading/trailing spaces vanish. The statement parser in
-// cfgfiles.ts and the interactive autopickup-exception reader share it;
-// line framing already trimmed the statement, so an all-space result
-// cannot reach the statement path.
-export function mungSpaces(bytes) {
-    const out = [];
-    let pendingSpace = false;
-    for (const byte of bytes) {
-        if (byte === 32 || byte === 9) {
-            pendingSpace = out.length > 0;
-            continue;
-        }
-        if (pendingSpace && out.length)
-            out.push(32);
-        pendingSpace = false;
-        out.push(byte);
-    }
-    return new Uint8Array(out);
-}
 function trimConfigurationOption(bytes) {
     // C parseoptions() uses isspace() on individual bytes before parsing.
     const whitespace = (byte) => byte === 32
@@ -1697,6 +1604,40 @@ function configuredPetName(value, eightBitInput) {
     // The tty consumes individual characters, even when these bytes no
     // longer form UTF-8 after sanitizing or reaching the name limit.
     return String.fromCharCode(...nameBytes);
+}
+// C options.c:escapes()
+// Byte-oriented control, numeric, and meta escapes.
+export function decodeOptionEscapes(value) {
+    const bytes = String.fromCharCode(...new TextEncoder().encode(value));
+    let decoded = '';
+    let index = 0;
+    while (index < bytes.length) {
+        let meta = 0;
+        if (/^\\[mM]./.test(bytes.slice(index))) {
+            meta = 128;
+            index += 2;
+        }
+        const character = bytes.charAt(index++);
+        let code = character.charCodeAt(0);
+        if (character === '^' && index < bytes.length)
+            code = bytes.charCodeAt(index++) & 31;
+        else if (character === '\\' && index < bytes.length) {
+            const rest = bytes.slice(index);
+            const numeric = rest.match(/^(\d{1,3})|^[oO]([0-7]{1,3})|^[xX]([0-9a-fA-F]{1,2})/);
+            if (numeric) {
+                const number = numeric[1] ?? numeric[2] ?? numeric[3] ?? '0';
+                code = parseInt(number, numeric[1] ? 10 : numeric[2] ? 8 : 16);
+                index += numeric[0].length;
+            }
+            else {
+                const escaped = bytes.charAt(index++);
+                code = escaped === 'n' ? 10 : escaped === 't' ? 9 : escaped === 'b' ? 8
+                    : escaped === 'r' ? 13 : escaped.charCodeAt(0);
+            }
+        }
+        decoded += String.fromCharCode((code | meta) & 255);
+    }
+    return decoded;
 }
 const NUMBER_PAD_CHOICES = [
     ' 0 (off)', ' 1 (on)', ' 2 (on, MSDOS compatible)',
@@ -2074,7 +2015,7 @@ function rogueSymsetMenuValue() {
 // strNsubst() turning each blank into '-'.
 function menuHeadingsValue() {
     const style = game.iflags.menu_headings ?? { attr: C_ATR_INVERSE, color: NO_COLOR };
-    return `${colorName(style.color)}&${attributeName(style.attr)}`.replace(/ /g, '-');
+    return colorAttrToString(style).replace(/ /g, '-');
 }
 // options.c:optfn_statushilites() get_val.
 function statusHilitesValue() {
@@ -2453,7 +2394,7 @@ async function editAutopickupExceptions() {
         }
     }
 }
-// options.c:handler_menu_colors() and coloratt.c:query_color()/query_attr().
+// options.c:handler_menu_colors().
 async function editMenuColors() {
     for (;;) {
         const colorings = game.iflags.menuColorings ?? [];
@@ -2928,17 +2869,21 @@ async function editSortLoot() {
     if (isLootSortMode(mode))
         game.flags.sortloot = mode;
 }
-// C options.c:optfn_fruit(): the goodfruit normalization — mungspaces, the
-// PL_FSIZ copy, sanitize_name, and the "slime mold" fallback.
+// Part of C options.c:optfn_fruit(): the goodfruit normalization — mungspaces,
+// the PL_FSIZ copy (nmcpy) and per-byte sanitize_name (sanitizeFruitCopy
+// below), and the "slime mold" fallback — shared with the config-parse and
+// initoptions paths; changePreferredFruit() below is the optfn_fruit() port.
 export function normalizePreferredFruitName(name, state = game) {
     const firstLine = String(name).split('\n', 1)[0] ?? '';
     const spaced = firstLine.replace(/\t/g, ' ')
         .replace(/ +/g, ' ').replace(/^ | $/g, '');
-    return sanitizedFruitName(spaced.split(',', 1)[0] ?? '', state) || 'slime mold';
+    // nmcpy(svp.pl_fruit, op, PL_FSIZ) caps the copy at PL_FSIZ-1 bytes
+    // before sanitize_name() runs.
+    return sanitizeFruitCopy(spaced.split(',', 1)[0] ?? '', state.iflags) || 'slime mold';
 }
-// C options.c:optfn_fruit(). Runtime option changes can rename an unused
-// current entry. Once an object or mimic represents it, its existing identity
-// remains part of the history.
+// C options.c:optfn_fruit(): the do_set path outside opt_initial. Runtime
+// option changes can rename an unused current entry. Once an object or mimic
+// represents it, its existing identity remains part of the history.
 export function changePreferredFruit(name, state = game) {
     const value = (String(name).split('\n', 1)[0] ?? '').replace(/\t/g, ' ')
         .replace(/ +/g, ' ').replace(/^ | $/g, '');
@@ -2997,7 +2942,7 @@ export function addFruit(name, { preferred = false, initial = false, replacement
     }
     else {
         // Not user-specified, so assumed to be from bones (or orc gang).
-        value = sanitizedFruitName(name, state);
+        value = sanitizeFruitCopy(name, state.iflags);
         state.flags.made_fruit = true;
     }
     const existing = fruitFromName(value, { state });
@@ -3015,14 +2960,20 @@ export function addFruit(name, { preferred = false, initial = false, replacement
         state.context.current_fruit = fruit.fid;
     return fruit.fid;
 }
-// C bones.c:sanitize_name(): strip text that could disrupt display.
-function sanitizedFruitName(name, state) {
-    const bytes = new TextEncoder().encode(String(name)).slice(0, FRUIT_NAME_BYTES);
+// C copynchars(altname, str, PL_FSIZ - 1) followed by sanitize_name():
+// optfn_fruit() (above) and fruitadd() (below) both cap the bytes and then
+// run bones.c:sanitize_name() over each byte of the native buffer — control
+// bytes become '.', and a high byte is masked to '_' unless the tty accepts
+// eight-bit input, which keeps the byte itself. The port's bones names are
+// decoded strings (sanitizeName in bones_name.ts masks those per character);
+// the fruit option still sees the raw UTF-8 bytes here.
+function sanitizeFruitCopy(name, iflags) {
+    const bytes = new TextEncoder().encode(name).subarray(0, FRUIT_NAME_BYTES);
     return [...bytes].map(byte => {
         const low = byte & 127;
         if (low < 32 || low === 127)
             return '.';
-        return byte > 127 && !state.iflags?.wc_eight_bit_input ? '_' : String.fromCharCode(byte);
+        return byte > 127 && !iflags?.wc_eight_bit_input ? '_' : String.fromCharCode(byte);
     }).join('');
 }
 // fruitadd()'s highest_fruit_id and fruit_from_name()'s out-parameter share
