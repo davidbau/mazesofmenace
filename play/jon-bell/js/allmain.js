@@ -3768,6 +3768,7 @@ async function moveloop_core_faithful() {
              * once-per-input redraw tail; hallucinating, it is a run of DISPLAY-
              * stream draws (see_monsters/see_objects/see_traps) after EVERY study
              * turn, not once after the whole study (cf. the engrave driver). */
+            find_ac(); // C allmain.c:453, every moveloop_core invocation
             faithful_input_redraw();
             // C allmain.c:471-472: update visibility before the occupation
             // callback and monster_nearby(), including after moving bubbles.

@@ -9,6 +9,7 @@ import { OBJ_NAME } from './object_data.js';
 import { objectSkill, ACID_VENOM, BLINDING_VENOM, BOULDER, CORPSE, CREAM_PIE, CREDIT_CARD, EGG, ELVEN_ARROW, ELVEN_BOW, ENORMOUS_MEATBALL, HEAVY_IRON_BALL, LENSES, LOCK_PICK, MAGIC_WHISTLE, MEAT_STICK, OBJECT_NAMES, POT_ACID, SKELETON_KEY, STATUE, TALLOW_CANDLE, TIN_WHISTLE, WAR_HAMMER, WAX_CANDLE, WAN_STRIKING, } from './object_data.js';
 import { currentAttribute, currentStrength, poisonHero } from './attrib.js';
 import { artifactToHitBonus, applyArtifactHit } from './artifact.js';
+import { snuffCandle } from './apply.js';
 import { applyMonsterBlindness, prepareHeroThrownBlindness, finishHeroThrownBlindness, } from './blinding_attack.js';
 import { breatheFromMonster, breathWeaponName } from './breath_ray.js';
 import { endVoluntaryMultiTurn, calcCapacity } from './hack.js';
@@ -25,11 +26,11 @@ import { A_DEX, A_STR, BOLT_LIM, COULD_SEE, D_CLOSED, D_LOCKED, IRONBARS, IS_DOO
 import { isok } from './cmd.js';
 import { impossible } from './diagnostics.js';
 import { canSeeMonster, canSpotMonster, newsym, flush_screen, lastDirtyMapCursor, transientObjectGlyph, TemporaryMapEffect, } from './display.js';
-import { applyFloorEffects, landFloorObject } from './floor_effects.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame, requireGameLevel } from './gstate.js';
 import { dist2, distmin, possessiveName } from './hacklib.js';
 import { holdAnotherObject, stack_object } from './invent.js';
-import { rejectMonsterShadeContact, applyMonsterPassiveToObject, captureHeroProjectileName } from './uhitm.js';
+import { rejectMonsterShadeContact, applyMonsterPassiveToObject } from './uhitm.js';
+import { captureHeroProjectileName } from './objnam.js';
 import { hitHeroWithObject } from './hero_object_hit.js';
 import { hitHeroWithThrownPotion } from './hero_potion_hit.js';
 import { heroSpecies, heroHasNoHands, body_part, mbodypart } from './polyself.js';
@@ -46,7 +47,7 @@ import { monsterObjectPronoun, monsterPossessive, seenResistanceForDamage, monst
 import { monsterSentenceSubject } from './sounds.js';
 import { delobj } from './invent.js';
 import { deleteObject } from './shk.js';
-import { dropObjectAtHero } from './do.js';
+import { dropObjectAtHero, applyFloorEffects, landFloorObject } from './do.js';
 import { makePlural, withIndefiniteArticle, verbForSubject, definiteName, definiteObjectAction, killerObjectName, objectCombatName, objectHasPersonalName, observeObjectForNaming, simpleObjectName, } from './objnam.js';
 import { learnObjectType, observeObject, objectMaterial } from './o_init.js';
 import { shipObject } from './dokick.js';
@@ -60,7 +61,6 @@ import { d, rn2, rnd } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { hitByPetrifyingEgg } from './stoning.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
-import { snuffThrownCandle } from './thrown_object.js';
 import { formatHeardMessage, plineWithContinuation, publishHeardMessage, set_msg_xy } from './pline.js';
 import { requirePerceivedHero, dissolveBars } from './monmove.js';
 // Port only: finite-number type guard for decoded projectile options.
@@ -787,7 +787,7 @@ export async function returnMonsterWeapon(monster, weapon, impactX, impactY, { s
         await publishHeardMessage('a loud snap!', publish, state);
     }
     const options = { state: requireInitializedGame(state), publish, random };
-    await snuffThrownCandle(weapon, state, publish);
+    await snuffCandle(weapon, state, publish);
     if (!await shipObject(weapon, x, y, options)) {
         const landed = await landFloorObject(weapon, x, y, { ...options, verb: 'drop' });
         if (!landed) {
@@ -848,11 +848,14 @@ export async function resolveMonsterCombatThrow(source, target, { state, random,
 export function resolveMonsterCombatSpit(source, target, attack, options) {
     return spitAtTarget(source, target, attack, options);
 }
-// Part of C mthrowu.c:spitmu(): dispatch for the hero target.
+// C mthrowu.c:spitmu(): C spitmu() is spitmm() with &gy.youmonst as the
+// target, so the dispatch is the whole function.
 export function resolveMonsterSpitAtHero(source, attack, options) {
     return spitAtTarget(source, null, attack, options);
 }
-// Part of C mthrowu.c:spitmm(), spitmu(): the shared spit body.
+// C mthrowu.c:spitmm(): the body — mcan dry rattle, line-up, venom type,
+// hit roll, "spits venom!", the projectile, and pet hunger. A null target
+// is C's utarg (&gy.youmonst) case, which reads mux/muy as the target.
 async function spitAtTarget(source, target, attack, { state, random = rn2, rollOne = rnd, publish = plineWithContinuation, }) {
     requireLiveGame(state);
     if (source.mcan) {

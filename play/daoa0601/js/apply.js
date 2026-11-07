@@ -1,21 +1,21 @@
 // apply.js — Apply/use-tool command and the apply.c tool ports.
 // C ref: apply.c doapply(), dorub(), dojump(), do_break_wand(), use_trap(),
-// use_whip(), the use_*() tool functions, snuff_lit()/snuff_candle() and
-// unfixable_trouble_count(). The splash/catch helpers stay in light.ts with
-// the burning-object owners; the apply.ts <-> light.ts import cycle is
-// function-body-only.
+// use_whip(), the use_*() tool functions, snuff_lit()/snuff_candle(),
+// splash_lit(), catch_lit() and unfixable_trouble_count(). The catch helper
+// stays in light.ts with the burning-object owners; the apply.ts <-> light.ts
+// import cycle is function-body-only.
 import { WEAPON_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, } from './objclass.js';
 import { objectClassForType, objectBaseCost, objectSkill, objectMagic, AMULET_OF_YENDOR, BAG_OF_TRICKS, BANANA, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN, BULLWHIP, CAN_OF_GREASE, CANDELABRUM_OF_INVOCATION, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, EGG, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FIGURINE, GRAPPLING_HOOK, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MIRROR, OIL_LAMP, POT_OIL, SADDLE, SKELETON_KEY, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_JUMPING, SPE_NOVEL, STATUE, STETHOSCOPE, TALLOW_CANDLE, TIN, TIN_OPENER, TIN_WHISTLE, TINNING_KIT, TOUCHSTONE, TOWEL, UNICORN_HORN, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAX_CANDLE, } from './object_data.js';
 import { publishMonsterGrowl, publishMonsterWhimper, publishMonsterYelp } from './sounds.js';
 import { OBJ_DESCR, objectTypeColor, learnObjectType, objectMaterial, objectTypeKnown } from './o_init.js';
-import { armorSimpleName, armorSlotFor, fingersOrGloves, heroHasFreeAction, applyEyewear, removeEyewear, heroHasSlipperyHands, heroIsStrangled, } from './do_wear.js';
+import { armorSimpleName, armorSlotFor, fingersOrGloves, heroHasFreeAction, applyEyewear, removeEyewear, heroHasSlipperyHands, heroIsStrangled, heroHasWaterWalking, } from './do_wear.js';
 import { artifactById, speakArtifact, retouchHeroObject } from './artifact.js';
 import { currentAttribute } from './attrib.js';
 import { bot } from './botl.js';
 import { dropBoulderIntoLiquid, dropInventoryObjectAtHero, woundHeroLegs, reviveCorpseImmediately, gotoLevel, objectNoLongerHeld, } from './do.js';
 import { commandResultCancelled, commandResultFailed, commandResultSpentTime, cmdq_add_ec, cmdq_add_key, setMulti, isok, paranoidQuery, confusePromptDirection, promptDirection, } from './cmd.js';
 import { A_CHA, A_CON, A_DEX, A_NONE, A_STR, ACCESSIBLE, AIR, BEAR_TRAP, CLOUD, COLNO, CORR, CQ_CANNED, D_CLOSED, D_ISOPEN, D_LOCKED, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAILED, DOOR, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HOLE, HOMEMADE_TIN, ICE, IS_AIR, Is_airlevel, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, Is_stronghold, IS_STWALL, IS_WALL, Is_waterlevel, KILLED_BY, LANDMINE, LEVEL_TIMER_KIND, LUCKMIN, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, MAXULEV, MM_NOMSG, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, NO_KILLER_PREFIX, NO_MINVENT, OBJECT_TIMER_KIND, P_BASIC, P_RIDING, P_SKILLED, P_TWO_WEAPON_COMBAT, PARANOID_BREAKWAND, PIT, PLNMSG_enum, RLOC_MSG, RLOC_NONE, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SICK_ALL, SICK_NONVOMITABLE, STATUE_TRAP, STONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, WEAK, xdir, ydir, IS_WATERWALL, LAVAWALL, HAND, FACE, FINGER, LEG, FOOT, HEAD, STOMACH, NOSE } from './const.js';
-import { use_container, pickupFloorObject } from './pickup.js';
+import { use_container, pickupFloorObject, handlesPetrifyingCorpseBareHanded } from './pickup.js';
 import { useCrystalBall, convertSecretDoor, findit, openit } from './detect.js';
 import { impossible } from './diagnostics.js';
 import { digActualHole, digCheck, liquidFlow, liquidForHole, watchDigging, freeHeroFromBuriedBall, usePickAxe, } from './dig.js';
@@ -35,25 +35,24 @@ import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './g
 import { endVoluntaryMultiTurn, heroMayDisplaceMonster, nomul, shouldShowGetposTip, showGetposTip, loseHeroHp, checkHeroAttackOverexertion, heroIsOnStairs, isInvocationPosition, finishDestinationSpotEffects, roomsAt, exceedsActionCapacity, nearCapacity, distu } from './hack.js';
 import { possessiveName } from './hacklib.js';
 import { applyCaitiffPenalty, prepareAppliedWeaponAttack, do_attack } from './uhitm.js';
-import { setHeroGrip, revealMonsterAppearance, wakeMonstersNearWithMessages, monsterInAir, moveMonsterNextToHero, finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath, } from './mon.js';
+import { setHeroGrip, revealMonsterAppearance, wakeMonstersNearWithMessages, monsterInAir, moveMonsterNextToHero, monsterFliesOrFloats, finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath, } from './mon.js';
 import { makeDeaf, startHeroSickness, makeConfused, makeHallucinated, makeStunned, releaseDjinni, setSlipperyHands, makeBlinded, cureHeroSickness, heroIsVomiting, makeHeroVomiting, heroIsSick, heroIsSliming, } from './potion.js';
 import { hurtleHero, hurtleJumpTo, hitMonsterWithAppliedWeapon, walkPathCells } from './dothrow.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { stumbleOntoMimic } from './uhitm.js';
 import { heroIsUnaware, blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, setHeroBlindnessTimeout, } from './senses.js';
-import { heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands, body_part, mbodypart } from './polyself.js';
+import { heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands, heroIsFlying, body_part, mbodypart } from './polyself.js';
 import { heroStatusLine, monsterStatusLine } from './insight.js';
 import { dotrap, fillPitWithBoulderAt, deleteTrap, feelTrap, trapName, mintrap, resolveImmediatePetrification, resetUtrap, maketrap, activateStatueTrapAt, fireDamageObject, } from './trap.js';
 import { requireInitializedHero } from './hero_types.js';
 import { morehungry, vomit, set_tin_variety, use_tin_opener } from './eat.js';
 import { stack_object } from './invent.js';
-import { CANDLE_TYPES, LIGHT_TYPES, transformMagicLampToOilLamp } from './light.js';
+import { CANDLE_TYPES, LIGHT_TYPES, TIMED_LIGHT_TYPES, transformMagicLampToOilLamp } from './light.js';
 import { lightRoom } from './read.js';
 import { finishTeleportArrival, askTeleportDestination, distanceToHero, enexto, goodPosition, heroTeleportRestricted, monsterTeleportRestricted, teleds, randomMonsterRelocation, relocateMonsterTo, teleportHeroToRandomPet, } from './teleport.js';
 import { pickLock } from './lock.js';
 import { makemonAt, mkclassAligned, useBagOfTricks } from './makemon.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
-import { canDigDown } from './mklev.js';
 import { billDummyObject, mksobj, objectQuantity, rejoinObjectStack, splitObjectStack, unblessObjectState, unlinkObject, objectWeight, isContainer, useHornOfPlenty, unlinkMonsterObject, placeObject, remove_object, } from './mkobj.js';
 import { is_male, is_neuter, monsterIsClinger, monsterIsFemale, monsterIsSlithy, monsterPossessive, monsterSubjectPronoun, monsterHasHead, monsterHasNoLimbs, monsterIsUnsolid, strongmonst, monsterDigests, monsterHasEyes, monsterHasProperName, monsterIsBig, monsterIsBreathless, monsterIsDemon, monsterIsHumanoid, monsterIsRider, monsterIsUnicorn, monsterIsVampire, monsterIsVampireShifter, monsterIsWhirly, monsterPerceives, monsterThrowsRocks, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, canBlnd, heroCanBlow, } from './mondata.js';
 import { wakeAttackedMonster } from './mon.js';
@@ -74,8 +73,8 @@ import { ensureHeroSkills, uwepSkillType, dryTowel, heroStrengthDamageBonus, mon
 import { castSpell, knownSpell } from './spell.js';
 import { addObjectToMonsterInventory, removeWornHeroItem } from './steal.js';
 import { monsterAtPosition, stuckSteed, useSaddle, strikeSteed } from './steed.js';
-import { handlesPetrifyingCorpseBareHanded, heroIsPetrifying, petrifyFromCorpseContact } from './stoning.js';
-import { ceilingName, surfaceName } from './dungeon.js';
+import { heroIsPetrifying, petrifyFromCorpseContact } from './stoning.js';
+import { ceilingName, surfaceName, canDigDown } from './dungeon.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt } from './dbridge.js';
 import { summonUndead } from './undead_summoning.js';
 import { summonVaultGuardSoon } from './vault.js';
@@ -1365,25 +1364,170 @@ export async function useCandle(object, { state = game } = {}) {
     candelabrum.owt = objectWeight(candelabrum);
     return result(remainder, state);
 }
-// C apply.c:snuff_lit()/snuff_candle(). Callers keep the object in its
-// native ownership phase: in_container() has already removed it from inventory.
-export async function snuffLitObject(object, state = game, publish = plineWithContinuation) {
-    if (!object.lamplit || !LIGHT_TYPES.has(object.otyp))
+// C apply.c:catch_lit()
+// One object catches fire from an external source: the ignitable() and
+// get_obj_location() gate, the out-of-fuel and cursed-lamp refusals, the
+// Yname2() catch report (visibility is the caller's ignite_items()
+// context: OBJ_INVENT or cansee(x,y)), the potion-of-oil discovery, the
+// unpaid-use bill, then begin_burn().
+export async function catchLit(object, { state = game, publish = async () => { }, random = rn2, visible = true } = {}) {
+    if (!getObjectLocation(object, state))
         return false;
+    if (!catchesFire(object, random))
+        return false;
+    const plural = (object.quan ?? object.quantity ?? 1) > 1;
+    const blind = heroIsBlind(state);
+    if (visible) {
+        const name = lightSourceName(object, state);
+        // C catch_lit() names the source with Yname2(): shop, carrier, or your/the.
+        const prefix = objectOwnershipPrefix(object, state);
+        await publish(blind
+            ? `${prefix}${name} ${plural ? 'feel' : 'feels'} warm.`
+            : `${prefix}${name} ${plural ? 'catch' : 'catches'} light!`);
+    }
+    // C catch_lit() credits discovery even when the fire is unseen.
+    if (object.otyp === POT_OIL)
+        learnObjectType(POT_OIL, state);
+    // C catch_lit(): an unpaid source that catches while carried is billed
+    // for its use on top of its price.
+    if (object.where === 'inventory' && object.unpaid
+        && costlySpot(state.u.ux, state.u.uy, state)) {
+        await chargeUnpaidUsage(object, { state });
+        await publish(`"That's in addition to the cost of ${ownedObjectName(object, state, { capitalized: false })} ${plural ? 'themselves' : 'itself'}, of course."`);
+        await billDummyObject(object, state);
+    }
+    return beginObjectBurn(object, state, state.moves ?? 0);
+}
+// Part of C apply.c:catch_lit(): decide whether an object can catch light.
+function catchesFire(object, random) {
+    if (!object || object.lamplit || object.in_use
+        || !LIGHT_TYPES.has(object.otyp)
+        || object.otyp === BRASS_LANTERN)
+        return false;
+    if ((object.otyp === MAGIC_LAMP
+        || object.otyp === CANDELABRUM_OF_INVOCATION)
+        && (object.spe ?? 0) <= 0)
+        return false;
+    if (TIMED_LIGHT_TYPES.has(object.otyp) && (object.age ?? 0) <= 0)
+        return false;
+    if (object.otyp === CANDELABRUM_OF_INVOCATION && object.cursed)
+        return false;
+    return !([OIL_LAMP, MAGIC_LAMP].includes(object.otyp)
+        && object.cursed && random(2) === 0);
+}
+// Part of C apply.c:catch_lit(): name the ignited light source.
+function lightSourceName(object, state) {
+    observeObjectForNaming(object, { state });
+    const name = objectName(object, state);
+    const quantity = object.quan ?? object.quantity ?? 1;
+    return quantity > 1 ? makePlural(name) : name;
+}
+// C apply.c:snuff_candle()
+// Extinguish a lit candle or candelabrum: Shk_Your()'s owner prefix
+// (carriedObjectOwner()), the OBJ_MINVENT cansee() visibility rule, then
+// end_burn(). snuff_lit()'s candle tail and the drop/throw/kick/put-in-box
+// callers land here.
+export async function snuffCandle(object, state = game, publish = plineWithContinuation) {
+    const candle = object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
+    if ((!candle && object.otyp !== CANDELABRUM_OF_INVOCATION) || !object.lamplit)
+        return false;
+    const many = candle ? object.quan > 1 : object.spe > 1;
     const location = getObjectLocation(object, state);
     const visible = object.where === 'minvent'
         ? !!location && cansee(location.x, location.y) : !heroIsBlind(state);
     if (visible) {
-        if (CANDLE_TYPES.has(object.otyp)) {
-            const candelabrum = object.otyp === CANDELABRUM_OF_INVOCATION;
-            const many = candelabrum ? object.spe > 1 : object.quan > 1;
-            await publish(`${carriedObjectOwner(object, state)} ${candelabrum ? "candelabrum's " : ''}candle${many ? "s' flames are" : "'s flame is"} extinguished.`);
-        }
-        else {
-            await publish(`${ownedObjectName(object, state)} ${objectNameIsPlural(object, state) ? 'go' : 'goes'} out!`);
-        }
+        await publish(`${carriedObjectOwner(object, state)} ${candle ? '' : "candelabrum's "}candle${many ? "s' flames are" : "'s flame is"} extinguished.`);
     }
     endObjectBurn(object, state);
+    return true;
+}
+// C apply.c:snuff_lit()
+// Also C apply.c:snuff_candle(): the candle tail calls it. Callers keep the
+// object in its native ownership phase: in_container() has already removed
+// it from inventory.
+export async function snuffLitObject(object, state = game, publish = plineWithContinuation) {
+    if (!object.lamplit || !LIGHT_TYPES.has(object.otyp))
+        return false;
+    if (CANDLE_TYPES.has(object.otyp))
+        return snuffCandle(object, state, publish);
+    const location = getObjectLocation(object, state);
+    const visible = object.where === 'minvent'
+        ? !!location && cansee(location.x, location.y) : !heroIsBlind(state);
+    if (visible) {
+        await publish(`${ownedObjectName(object, state)} ${objectNameIsPlural(object, state) ? 'go' : 'goes'} out!`);
+    }
+    endObjectBurn(object, state);
+    return true;
+}
+// Part of C apply.c:splash_lit(): decide whether the hero's lantern is submerged.
+function heroLanternIsDunked(state) {
+    if (!isPoolAt(state.u.ux, state.u.uy, state))
+        return false;
+    return Is_waterlevel(state.u.uz)
+        || !(state.u?.levitating || state.levitating
+            || heroIsFlying(state) || heroHasWaterWalking(state));
+}
+// C apply.c:splash_lit()
+// Also C apply.c:snuff_lit(): snuff the splashed light source.
+// Each message precedes end_burn, so the darkened view waits for the next
+// flush instead of preceding the message.
+export async function splashLitObject(object, publish, state = game) {
+    if (!object?.lamplit)
+        return false;
+    // snuff_lit() handles flames and lanterns, not magical light sources.
+    if (![OIL_LAMP, MAGIC_LAMP, BRASS_LANTERN, POT_OIL,
+        TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION].includes(object.otyp))
+        return false;
+    const carried = (state.inventory || []).includes(object);
+    let dunkedLantern = false;
+    if (object.otyp === BRASS_LANTERN) {
+        let visible = false, audible = false, snuff = true;
+        if (carried) {
+            visible = !heroIsBlind(state);
+            audible = !heroIsDeaf(state);
+            dunkedLantern = heroLanternIsDunked(state);
+            snuff = false;
+        }
+        else if (object.where === 'minvent' && object.ocarry
+            && monsterIsHumanoid(object.ocarry.mnum)) {
+            const carrier = object.ocarry;
+            const position = getObjectLocation(object, state);
+            visible = !!position && cansee(position.x, position.y);
+            audible = couldsee(carrier.mx, carrier.my)
+                && (carrier.mx - state.u.ux) ** 2 + (carrier.my - state.u.uy) ** 2 < 25;
+            dunkedLantern = isPoolAt(carrier.mx, carrier.my, state)
+                && (!monsterFliesOrFloats(carrier) || Is_waterlevel(state.u.uz));
+            snuff = false;
+        }
+        if (visible || audible) {
+            const action = audible && visible
+                ? 'crackles and flickers'
+                : audible ? 'crackles' : 'flickers';
+            await publish(`${ownedObjectName(object, state)} ${action}.`);
+        }
+        if (!dunkedLantern && !snuff)
+            return false;
+    }
+    const position = getObjectLocation(object, state);
+    const visible = object.where === 'minvent'
+        ? !!position && cansee(position.x, position.y) : !heroIsBlind(state);
+    if (visible) {
+        const candle = object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
+        if (candle || object.otyp === CANDELABRUM_OF_INVOCATION) {
+            const many = candle ? object.quan > 1 : object.spe > 1;
+            await publish(`${objectOwnershipPrefix(object, state, { capitalized: true })}${candle ? '' : "candelabrum's "}candle${many ? "s' flames are" : "'s flame is"} extinguished.`);
+        }
+        else {
+            const plural = objectNameIsPlural(object, state);
+            await publish(`${ownedObjectName(object, state)} ${plural ? 'go' : 'goes'} out!`);
+        }
+    }
+    if (!endObjectBurn(object, state, state.moves ?? 0))
+        object.lamplit = false;
+    if (dunkedLantern) {
+        const age = object.age ?? 0;
+        object.age = age - (age > 200 ? 100 : Math.trunc(age / 2));
+    }
     return true;
 }
 // C apply.c:light_cocktail()
@@ -2891,12 +3035,18 @@ export function couldPoleMonster(weapon, { state = game } = {}) {
     const distance = distu(remembered.mx, remembered.my, state);
     return distance <= max && distance >= min;
 }
-// Part of C apply.c:snickersnee_used_dist_attk(): the ART_SNICKERSNEE
-// test.
-// C obj.h u_wield_art(ART_SNICKERSNEE), via the same id lookup
-// object_properties.js uses for is_pole().
+// C obj.h u_wield_art(ART_SNICKERSNEE): the artifact id lookup
+// snickersnee_used_dist_attk() and use_pole() share.
 function isArtifactSnickersnee(object) {
     return artifactById(object?.oartifact)?.name === 'Snickersnee';
+}
+// C apply.c:snickersnee_used_dist_attk()
+// Was Snickersnee used to attack at distance this turn already?
+function snickersneeUsedDistanceAttack(object, state) {
+    return !!object
+        && object === (state.uwep || state.u?.uwep)
+        && isArtifactSnickersnee(object)
+        && state.context?.snickersneeTurn === (state.moves ?? 0);
 }
 // Part of C apply.c:use_pole(): the obstacle wording of the
 // "uselessly attack" message.
@@ -3002,8 +3152,7 @@ export async function usePolearm(object, { state = game, ensureWielded, autohit 
         rememberPolearmTarget(monster, state);
         // C apply.c:snickersnee_used_dist_attk(): the wielded Snickersnee
         // already spent its distant strike this turn.
-        if (isArtifactSnickersnee(object) &&
-            state.context?.snickersneeTurn === (state.moves ?? 0)) {
+        if (snickersneeUsedDistanceAttack(object, state)) {
             await syncPline("The blade doesn't reach there!");
             return { spentTime: false, failure: true };
         }

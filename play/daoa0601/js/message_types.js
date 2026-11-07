@@ -40,13 +40,13 @@ import { restoreMenuUnderlay, snapshotMenuUnderlay } from './wintty.js';
 import { NO_COLOR } from './terminal.js';
 import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP, WARNCOUNT } from './const.js';
 import { OBJECT_CLASS_SYMBOLS } from './display.js';
-import { mungSpaces, fuzzyMatch, asciiLower, asciiNameEqual, ciPrefixOf } from './hacklib.js';
+import { mungSpaces, fuzzyMatch, asciiLower, asciiNameEqual, ciPrefixOf, visibleCommandKey } from './hacklib.js';
 import { DISCLOSURE_CATEGORIES } from './end.js';
 import { setVanqOrder, vanquishedOptionValue } from './insight.js';
 import { C_ATR_INVERSE, C_ATR_NONE } from './color_attr.js';
-import { attributeName, colorAttrToString, colorName, cutConfigBytes, matchAttributeName, matchColorName, parseColorAttr, parseMenuColoring, queryAttributeMenu, queryColorMenu } from './coloratt.js';
+import { attributeName, colorAttrToString, colorName, cutConfigBytes, matchAttributeName, matchColorName, parseColorAttr, parseMenuColoring, queryAttr, queryColorMenu } from './coloratt.js';
 import { BUFSZ, CLR_MAX, COLNO, Is_rogue_level, MENU_FULL, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PICK_NONE, PICK_ONE, PL_PSIZ, PARANOID_AUTOALL, PARANOID_BONES, PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT, PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP, PARANOID_WERECHANGE, def_warnsyms, STONE, } from './const.js';
-import { visctrl, editSymset } from './options.js';
+import { editSymset } from './options.js';
 // C options.c:ask_do_tutorial(). Empty acceptance rebuilds the menu with
 // an explanation; a selected answer or Escape ends the question.
 export async function askTutorial() {
@@ -895,8 +895,14 @@ export function parseOptions(optionList, result, state, fromFile, addError, addR
         }
         if (canonical === 'packorder') {
             // optfn_packorder(): an empty value is a silent error.
-            if (optionValue)
-                result.flags.inv_order = changeInventoryOrder(optionValue, result).order;
+            // change_inv_order() logs each bad entry through
+            // config_error_add() while keeping the valid ones.
+            if (optionValue) {
+                const change = changeInventoryOrder(optionValue, result);
+                for (const error of change.errors)
+                    addError(error);
+                result.flags.inv_order = change.order;
+            }
             continue;
         }
         if (canonical === 'sortvanquished') {
@@ -2050,8 +2056,8 @@ async function editMenuHeadings() {
     const color = await queryColorMenu(prompt, current.color);
     if (color === null)
         return;
-    const attr = await queryAttributeMenu(prompt, current.attr);
-    if (attr === null)
+    const attr = await queryAttr(prompt, current.attr);
+    if (attr === -1)
         return;
     game.iflags.menu_headings = { attr, color };
 }
@@ -2161,8 +2167,8 @@ async function editPickupTypes(preserveStatus = false) {
 // options.c:handler_petattr() commits and requests a redraw even when
 // the accepted attribute equals the current one. Escape changes nothing.
 async function editPetAttribute() {
-    const attr = await queryAttributeMenu('Select pet highlight attribute', game.iflags.wc2_petattr ?? C_ATR_INVERSE);
-    if (attr === null)
+    const attr = await queryAttr('Select pet highlight attribute', game.iflags.wc2_petattr ?? C_ATR_INVERSE);
+    if (attr === -1)
         return false;
     game.iflags.wc2_petattr = attr;
     game.flags.hilite_pet = attr !== C_ATR_NONE;
@@ -2257,8 +2263,8 @@ async function editMenuColors() {
                 if (regex) {
                     const color = await queryColorMenu('Pick a color', NO_COLOR);
                     if (color !== null) {
-                        const attr = await queryAttributeMenu('Pick an attribute', 0);
-                        if (attr !== null) {
+                        const attr = await queryAttr('Pick an attribute', 0);
+                        if (attr !== -1) {
                             (game.iflags.menuColorings ??= []).unshift({ origstr: pattern, color, attr, regex });
                             game.flags.menucolors = true;
                         }
@@ -2673,10 +2679,10 @@ export function menuCommandKeyError(key) {
     const letter = (key >= 65 && key <= 90) || (key >= 97 && key <= 122);
     if (key === 0 || key === 13 || key === 10 || key === 27 || key === 32
         || (key >= 48 && key <= 57) || (letter && key !== 64)) {
-        return `Reserved menu command key '${visctrl(key)}'`;
+        return `Reserved menu command key '${visibleCommandKey(key)}'`;
     }
     if (OBJECT_CLASS_SYMBOLS.slice(1).includes(character)) {
-        return `Menu command key '${visctrl(key)}' is an object class`;
+        return `Menu command key '${visibleCommandKey(key)}' is an object class`;
     }
     return null;
 }

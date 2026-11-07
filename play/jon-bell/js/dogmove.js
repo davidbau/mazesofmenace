@@ -1679,35 +1679,6 @@ function add_to_minv_dm(mon, obj) {
     mon.minvent = obj;
 }
 
-function splitobj_dm(obj, num) {
-    /* otmp = newobj(); *otmp = *obj; — copy the whole structure. */
-    const otmp = newobj(obj);
-    otmp.oextra = null;
-    /* C mkobj.c:470 otmp->o_id = nextoid(obj, otmp) — the price-adjustment
-     * search, `context.ident = oid`, and the (void) next_ident() that fires
-     * the single rnd(2) @ mkobj.c:522 all live in that body. */
-    otmp.o_id = nextoid(obj, otmp);
-    otmp.timed = 0;
-    otmp.lamplit = 0;
-    otmp.owornmask = 0;
-    /* C mkobj.c:474-477: each portion needs its own cached weight; later
-     * kicks and inventory operations read owt rather than recomputing it. */
-    obj.quan = (((obj.quan ?? 1) | 0) - num) | 0;
-    obj.owt = obj_weight(obj);
-    otmp.quan = num | 0;
-    otmp.owt = obj_weight(otmp);
-    otmp.where = OBJ_FLOOR;
-    otmp.nobj = obj.nobj ?? null;
-    obj.nobj = otmp;
-    otmp.nexthere = obj.nexthere ?? null;
-    obj.nexthere = otmp;
-    /* C mkobj.c:497-498 — `if (obj->timed) obj_split_timers(obj, otmp);` */
-    if (obj.timed)
-        obj_split_timers(obj, otmp);
-    if (obj.lamplit) /* obj_sheds_light(obj): mkobj.c:500 */
-        obj_split_light_source(obj, otmp);
-    return otmp;
-}
 
 function dog_goal(mtmp, edog, after, udist, whappr) {
     if (mtmp === game.u?.usteed)
@@ -3412,6 +3383,9 @@ export async function mondied_dm(mdef, mondead_only = false) {
     /* C mon.c:3100-3101 — a pet killed out of sight (monkilled's else arm). */
     if (be_sad)
         await You('have a sad feeling for a moment, then it passes.');
+    /* C mon.c:3103-3104: the dead monster still occupies the grid while
+     * add_region() repaints its cloud, until mon_leaving_level removes it. */
+    mdef._dyingInGrid = true;
     /* C mon.c:3103-3104 mondead(): steam vortex leaves a harmless cloud */
     if ((mdef.mnum ?? mdef.mndx) === PM_STEAM_VORTEX)
         create_gas_cloud_dm(mdef.mx, mdef.my, rn2(10) + 5, 0);
@@ -3425,6 +3399,7 @@ export async function mondied_dm(mdef, mondead_only = false) {
          * onmap == FALSE (mon.c:2698), so there is no remove/newsym/relobj
          * show for him; only unstuck() and the died++ remain. */
         if (!disposed || (mdef.mx | 0) === 0) {
+            mdef._dyingInGrid = false;
             if (disposed) {
                 mdef.mtrapped = 0;
                 await unstuck_dm(mdef);
@@ -3480,7 +3455,6 @@ export async function mondied_dm(mdef, mondead_only = false) {
      * svl.level.monsters still holds this monster — `_dyingInGrid` keeps the
      * fmon-walking m_at/MON_AT family answering "occupied" for its square
      * through kop_revival()'s makemon() → enexto_core() → goodpos(). */
-    mdef._dyingInGrid = true;
     {
         const g = game;
         const mndx_dead = (mdef.mndx ?? mdef.mnum ?? -1) | 0;
@@ -3517,12 +3491,12 @@ export async function mondied_dm(mdef, mondead_only = false) {
     game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
     /* C mon.c:2709-2710 mon_leaving_level(): a long worm takes its whole tail
      * off the map (remove_worm, newsym per segment) before the head newsym. */
+    mdef._dyingInGrid = false; /* remove_monster precedes newsym */
     if (mdef.wormno)
         remove_worm(mdef);
     /* C mon.c:2722 mon_leaving_level(): newsym only `if (onmap)`; a steed is never
      * placed on the map (mon.c:2534), so the hero's square is not repainted here. */
     if (mdef !== game.u?.usteed) newsym(deadMx, deadMy);
-    mdef._dyingInGrid = false; /* mon_leaving_level vacated C's grid */
 
     if (mdef.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mdef);

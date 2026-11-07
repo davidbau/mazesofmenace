@@ -13,7 +13,7 @@ import { heroSpecies, heroHasNoHands, heroIsVerySmall, body_part } from './polys
 import { makePlural, minimalObjectName, objectNameIsPlural, observeObjectForNaming, objectHasPersonalName, objectName, ownedObjectAction, corpseName, killerObjectName, objectCombatName, verbForSubject, ownedObjectName, withIndefiniteArticle } from './objnam.js';
 import { clearSplitObjects, rejoinObjectStack, splitObjectStack, uncurseObjectState, objectWeight } from './mkobj.js';
 import { learnObjectType } from './o_init.js';
-import { inventoryItemDescription, addInventoryItem, freeInventoryObject, getobj, useUpInventoryStack } from './invent.js';
+import { inventoryItemDescription, addInventoryItem, freeInventoryObject, getobj, useUpInventoryStack, splittable } from './invent.js';
 import { isBimanualObject, is_elven_weapon, isWeaponTool, isWetTowel, is_launcher, isLauncherAmmunition, isMissileObject, isPolearm, pair_of } from './object_properties.js';
 import { resetBulkTakeoff } from './do_wear.js';
 import { readySuggestion } from './quiver.js';
@@ -31,9 +31,8 @@ import { setnotworn, setworn } from './worn.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
 import { strangeFeeling } from './potion.js';
 import { displayColorName } from './do_name.js';
-import { dropInventoryObjectAtHero, dropObjectAtHero } from './do.js';
+import { dropInventoryObjectAtHero, dropObjectAtHero, landObjectOnAltar } from './do.js';
 import { shipObject } from './dokick.js';
-import { landObjectOnAltar } from './altar_object.js';
 import { encumber_msg } from './pickup.js';
 import { monsterIsHumanoid, could_twoweap, heroResistsStoning, touchPetrifies } from './mondata.js';
 // Part of C wield.c:dotwoweapon(): adapt the command's time result to the engine.
@@ -158,7 +157,7 @@ export async function dowield() {
     if (object === game.uquiver) {
         const quantity = object.quan;
         let confirmation;
-        if (quantity > 1 && hasFreeBasicInventoryLetter() && splittableForQuiver(object)) {
+        if (quantity > 1 && hasFreeBasicInventoryLetter() && splittable(object)) {
             const names = makePlural(minimalObjectName(object, game));
             const answer = await promptYesNoQuit(`You have ${quantity} ${names} readied.  Wield one?`);
             if (answer === 'q') {
@@ -246,11 +245,6 @@ async function finishSplittingCarriedStack(object) {
     await addInventoryItem(object, null, false);
     object.nomerge = nomerge;
 }
-// Part of C invent.c:splittable(): reject cursed loadstones and welded weapons for quiver counts.
-function splittableForQuiver(item) {
-    return !(item?.otyp === LOADSTONE && item.cursed)
-        && !isWeldedPrimary(item);
-}
 // Part of C wield.c:doquiver_core(): check for a spare inventory letter before offering a split.
 function hasFreeBasicInventoryLetter() {
     return game.inventory.filter(item => item.oclass !== COIN_CLASS).length < 52;
@@ -314,7 +308,7 @@ export async function doquiverCore(verb) {
         item.corpsenm = requestedCount;
     if (item === game.uquiver) {
         // C getobj() splits before doquiver_core() notices the readied parent.
-        if (partialCount && splittableForQuiver(item)) {
+        if (partialCount && splittable(item)) {
             const split = splitCarriedStack(item, requestedCount);
             await rejoinObjectStack(item, split, game);
         }
@@ -332,7 +326,7 @@ export async function doquiverCore(verb) {
         return { item: null, spentTime: false, cancelled: false };
     }
     if (requestedCount !== null && requestedCount < initialQuantity
-        && splittableForQuiver(item)) {
+        && splittable(item)) {
         item = await splitStackForQuiver(item, requestedCount);
     }
     const incompatibleMask = W_ARMOR | W_ACCESSORY | W_SADDLE;
@@ -357,7 +351,7 @@ export async function doquiverCore(verb) {
             : `${usePlural ? 'Those are' : 'That is'} your ${wasTwoweap ? 'second' : 'alternate'} weapon.  Ready ${usePlural ? 'them' : 'it'} instead?`;
         let readyAll = true;
         if (quantity > 1 && hasFreeBasicInventoryLetter()
-            && splittableForQuiver(item)) {
+            && splittable(item)) {
             const slotDescription = primary
                 ? `You are wielding ${quantity} ${names}.`
                 : `${wasTwoweap ? 'You are dual wielding'
@@ -764,22 +758,6 @@ export async function stopTwoWeaponCombat(state = game) {
         return;
     await plineWithContinuation('You can no longer wield two weapons at once.');
     setTwoWeaponCombat(false, state);
-}
-// C wield.c:drop_uswapwep() and do.c:dropx(): announce before extraction,
-// then handle shipping and altar contact before placing the dropped weapon.
-export async function dropCursedAlternateWeapon(object, state) {
-    await plineWithContinuation(`Your left ${body_part(HAND, state)} spasms and drops ${ownedObjectName(object, state, { capitalized: false, includeQuantity: true })}!`);
-    await freeInventoryObject(object, state);
-    if (!state.u.uswallow) {
-        const initialized = requireInitializedGame(state);
-        if (await shipObject(object, state.u.ux, state.u.uy, {
-            state: initialized, publish: plineWithContinuation,
-        }))
-            return;
-        if (state.level?.at(state.u.ux, state.u.uy)?.typ === ALTAR)
-            await landObjectOnAltar(object, { state });
-    }
-    await dropObjectAtHero(object, { state });
 }
 // ── Weapon enchantment (folded from enchant_weapon.js) ──
 // C wield.c:chwepon(). Returns true when the wielded weapon was processed,

@@ -19,7 +19,8 @@ import { formatFeltMessage, formatHeardMessage, pline as syncPline, plineWithCon
 import { revealSecretDoor, detectFood, detectGold, detectTraps, mapMagicLevel } from './detect.js';
 import { impossible } from './diagnostics.js';
 import { lightDamage } from './zap.js';
-import { lightHitsGremlin, objectLightRadius, snuffLightSource } from './light.js';
+import { objectLightRadius, snuffLightSource } from './light.js';
+import { lightHitsGremlin } from './uhitm.js';
 import { snuffLitObject } from './apply.js';
 import { impactArtifactLight } from './potion.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
@@ -62,15 +63,15 @@ import { recordLiteracy } from './literacy.js';
 import { promptYesNo } from './query.js';
 import { getLine } from './windows.js';
 import { readOrdinaryObject } from './readable_objects.js';
-import { angerMonster, changeMonsterForm, finishEnvironmentalMonsterDeath, killGenocidedMonsters, removeMonsterFromGame, wakeMonster, wakeMonstersNearWithMessages, finishHeroMonsterKillOutcome, } from './mon.js';
+import { angerMonster, changeMonsterForm, finishEnvironmentalMonsterDeath, killGenocidedMonsters, removeMonsterFromGame, wakeMonster, wakeMonstersNearWithMessages, finishHeroMonsterKillOutcome, flashCreatedMonster, } from './mon.js';
 import { monsterResistsEffect } from './zap.js';
 import { initializePet, tameMonster } from './dog.js';
 import { freeHeroFromBuriedBall } from './dig.js';
-import { landFloorObject } from './floor_effects.js';
+import { landFloorObject } from './do.js';
 import { possessiveName, upstart } from './hacklib.js';
 import { displayColorName, displayLiquidName, monsterName } from './do_name.js';
 import { makemonNear } from './mklev.js';
-import { isWeaponTool } from './object_properties.js';
+import { greatestErosion, isWeaponTool } from './object_properties.js';
 import { questMonsterSound } from './role_monsters.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { drainHeroWeaponSkills, rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero } from './weapon.js';
@@ -2390,24 +2391,6 @@ function canHideCreatedMonster(monster) {
         || monsterHidesUnder(monster.mnum) && !!game.level?.objects[monster.mx]?.[monster.my]?.length
         || symbol === 57 && isPoolAt(monster.mx, monster.my);
 }
-// C mon.c:flash_mon().
-async function flashCreatedMonster(monster) {
-    let count = couldsee(monster.mx, monster.my) ? 8 : 4;
-    if (game.flags.sparkle === false)
-        count /= 2;
-    const row = game.viz_array?.[monster.my];
-    const saved = row?.[monster.mx];
-    if (!row || saved === undefined)
-        throw new Error('A created monster needs its visibility cell');
-    row[monster.mx] = saved | 3;
-    try {
-        await flashGlyphAt(monster.mx, monster.my, transientMonsterGlyph(monster), count);
-    }
-    finally {
-        row[monster.mx] = saved;
-        await newsym(monster.mx, monster.my);
-    }
-}
 // ---------------------------------------------------------------------------
 // Readable garment and wrapper text. C refs: read.c tshirt_text(),
 // apron_text(), hawaiian_motif(), hawaiian_design(), candy_wrapper_text(),
@@ -2416,18 +2399,22 @@ async function flashCreatedMonster(monster) {
 const T_SHIRT = OBJECT_NAMES.indexOf('T-shirt');
 // C read.c:tshirt_text() and read.c:apron_text(). Erosion wears the
 // lettering away deterministically from the hero's birth date.
-// Also C read.c:erode_obj_text(): inlined as the erosion-proportional
-// wipeoutText below.
 export function garmentInscription(object, state = game) {
     if (object.otyp !== T_SHIRT && object.otyp !== ALCHEMY_SMOCK)
         throw new Error('Only T-shirts and alchemy smocks have garment inscriptions.');
     const messages = object.otyp === T_SHIRT ? SHIRT_MESSAGES : APRON_MESSAGES;
     const id = object.o_id ?? 0;
     const text = inscriptionAt(messages, id % messages.length);
-    const erosion = Math.max(object.oeroded || 0, object.oeroded2 || 0);
+    return erodeObjectText(text, object, state);
+}
+// C read.c:erode_obj_text(): wipe out an erosion-proportional part of a
+// garment's inscription (2 * MAX_ERODE = 6), seeded by the object id and
+// the hero's birth date.
+function erodeObjectText(text, object, state) {
+    const erosion = greatestErosion(object);
     if (!erosion)
         return text;
-    return wipeoutText(text, Math.trunc(text.length * erosion / 6), (id ^ heroBirthday(state)) >>> 0);
+    return wipeoutText(text, Math.trunc(text.length * erosion / 6), ((object.o_id ?? 0) ^ heroBirthday(state)) >>> 0);
 }
 // C read.c:candy_wrapper_text().
 export function candyWrapperText(object) {

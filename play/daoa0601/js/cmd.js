@@ -27,7 +27,7 @@ import { wizTimeoutQueue } from './timeout.js';
 import { continueSpellbookStudy } from './spell.js';
 import { CTRL_P, clearMessageWindow, flushPendingTopline, messageWindowMode, putMessageHistory, redotoplin, renderKeyPrompt, showMessageHistoryWindow, stepHistoryBack } from './topl.js';
 import { game, requireGameLevel, requirePlayingGame } from './gstate.js';
-import { doquickwhatis, dohelp, dowhatis, identifyTrap, lookatDescription, whatDoesCommand, displayHelpFile, describeMapLocation, farlookLocationDescription, screenDescription } from './pager.js';
+import { doquickwhatis, dohelp, dowhatis, identifyTrap, lookatDescription, whatDoesCommand, displayHelpFile, describeMapLocation } from './pager.js';
 import { monsterAtPosition, doride, monsterSaddle, monsterCanBeSaddled } from './steed.js';
 import { withIndefiniteArticle, observeObjectForNaming } from './objnam.js';
 import { TRAVEL_DIRECTIONS, heroTestMove, domove, threateningMonsterNearby, arriveTravel, captureRunmodeDelay, stopRun, showGetposTip, shouldShowGetposTip, checkSpecialRoom } from './hack.js';
@@ -38,7 +38,7 @@ import { isContainer, unlinkObject, deallocateObject } from './mkobj.js';
 import { doOptions, toggleBooleanOptionPrefix } from './message_types.js';
 import { extFuncTabFromFunc } from './command_bindings.js';
 import { stopHeroOccupation } from './allmain.js';
-import { resetBulkTakeoff, dowear, doputon, removeWornItem, continueBulkTakeoff, takeOffAll } from './do_wear.js';
+import { resetBulkTakeoff, dowear, doputon, removeWornItem, continueBulkTakeoff, takeOffAll, remarmSwapwep } from './do_wear.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { autoDescribePosition, selectTravelMenuPosition, showGetposInstructions, selectMapPosition, gatherLocsInteresting, glyphToCmapSymbol, knownVibratingSquareAt } from './getpos.js';
 import { completeExtendedCommand, promptChoice } from './query.js';
@@ -860,7 +860,7 @@ function enqueueInventoryAction(action) {
         cmdq_add_ec(CQ_CANNED, item === game.uwep ? 'dowield'
             : item === game.uswapwep ? 'remarm_swapwep'
                 : item === game.uquiver ? 'dowieldquiver' : 'donull');
-        cmdq_add_key(CQ_CANNED, HANDS_ITEM_KEY);
+        cmdq_add_key(CQ_CANNED, '-'.charCodeAt(0));
         return;
     }
     let extraKey = null;
@@ -1272,14 +1272,9 @@ export async function selectContextMenu(x, y, click) {
         await selfEntries(add, x, y);
     else if (adjacent)
         adjacentEntries(add, x, y, click);
-    else if (click === CLICK_1) {
-        if (canThrowToward(x, y)
-            && dx * dx + dy * dy < 18 * 18)
-            add('throw', 'Throw something');
-        add('travel', 'Travel here');
-    }
-    if ((click === CLICK_1 || click === CLICK_2) && (!self || unusualHeroGlyph()))
-        add('look-at', 'Look at map symbol');
+    else
+        farEntries(add, x, y, click);
+    commonEntries(add, x, y, click);
     if (!entries.length) {
         // getdir's ordinary keyboard direction has no click modifier. With
         // no contextual action, native queues movement or travel directly.
@@ -1299,24 +1294,30 @@ export async function selectContextMenu(x, y, click) {
     const action = result.selections[0]?.identifier;
     return action ? { action, x, y } : null;
 }
-// Part of C cmd.c:there_cmd_menu_far(): the linedup() eligibility for
-// the throw entry.
-// C linedup(..., 1): boulders do not obstruct an explicitly chosen throw.
-function canThrowToward(x, y) {
+// C cmd.c:there_cmd_menu_far(): the far-click entries.  linedup(..., 1):
+// boulders do not obstruct an explicitly chosen throw, so the walk toward
+// the target only rejects other blocking terrain.
+function farEntries(add, x, y, click) {
+    if (click !== CLICK_1)
+        return;
     requirePlayingGame(game);
     const dx = game.u.ux - x, dy = game.u.uy - y;
-    if (dx && dy && Math.abs(dx) !== Math.abs(dy)
-        || Math.max(Math.abs(dx), Math.abs(dy)) >= BOLT_LIM)
-        return false;
-    if (couldsee(x, y))
-        return true;
-    do {
-        x += Math.sign(dx);
-        y += Math.sign(dy);
-        if (blockingTerrain(game, x, y))
-            return false;
-    } while (x !== game.u.ux || y !== game.u.uy);
-    return true;
+    let linedUp = !(dx && dy && Math.abs(dx) !== Math.abs(dy)
+        || Math.max(Math.abs(dx), Math.abs(dy)) >= BOLT_LIM);
+    if (linedUp && !couldsee(x, y)) {
+        let tx = x, ty = y;
+        do {
+            tx += Math.sign(dx);
+            ty += Math.sign(dy);
+            if (blockingTerrain(game, tx, ty)) {
+                linedUp = false;
+                break;
+            }
+        } while (tx !== game.u.ux || ty !== game.u.uy);
+    }
+    if (linedUp && dx * dx + dy * dy < 18 * 18)
+        add('throw', 'Throw something');
+    add('travel', 'Travel here');
 }
 // C cmd.c:there_cmd_menu_self().
 async function selfEntries(add, x, y) {
@@ -1413,17 +1414,29 @@ function adjacentEntries(add, x, y, click) {
     if (monster && !(monster.mpeaceful || monster.mtame) || glyphAt(x, y)?.glyph === GlyphOffset.invisible)
         add('attack', `Attack ${monster ? monsterName(monster, { article: 'the' }) : 'unseen creature'}`);
 }
-// Part of C cmd.c:there_cmd_menu_common(): the unusual-hero-glyph test
-// for the self "look" entry.
-function unusualHeroGlyph() {
+// C cmd.c:there_cmd_menu_common(): the "Look at map symbol" entry shared
+// by every click (iflags.clicklook is ignored here); on the hero's own
+// square it appears only when the shown glyph is not the ordinary hero
+// symbol (steed, invisible without see invisible, polymorphed).
+function commonEntries(add, x, y, click) {
+    if (click !== CLICK_1 && click !== CLICK_2)
+        return;
     const hero = game.u;
-    if (Upolyd(hero))
-        return true;
-    const species = game.flags.showrace ? game.urace?.mnum : hero.umonnum;
-    if (species === undefined)
-        throw new Error('A contextual hero menu requires an initialized species');
-    const glyph = monnumToGlyph(species, game.flags.female ? FEMALE : MALE);
-    return glyphAt(hero.ux, hero.uy)?.glyph !== glyph;
+    if (x === hero.ux && y === hero.uy) {
+        // hero_glyph: the ordinary hero symbol, or the race symbol while
+        // showrace is on.
+        let unusual = Upolyd(hero);
+        if (!unusual) {
+            const species = game.flags.showrace ? game.urace?.mnum : hero.umonnum;
+            if (species === undefined)
+                throw new Error('A contextual hero menu requires an initialized species');
+            const glyph = monnumToGlyph(species, game.flags.female ? FEMALE : MALE);
+            unusual = glyphAt(hero.ux, hero.uy)?.glyph !== glyph;
+        }
+        if (!unusual)
+            return;
+    }
+    add('look-at', 'Look at map symbol');
 }
 // ── #lookaround (C cmd.c:dolookaround() and its selection helpers) ─────
 // C cmd.c:dolookaround_floodfill_findroom(): the room flood-fill boundary.
@@ -1569,28 +1582,6 @@ export async function dolookaround() {
             game.flags.accessiblemsg = savedAccessible;
     }
     game.context.move = 0;
-}
-// C do_wear.c:remarm_swapwep(). The one cmdq_pop() — CQ_REPEAT during a
-// do-again replay, CQ_CANNED otherwise — must yield the '-' item-action
-// key (do_wear.c:3067-3080). Every other popped entry, or an empty queue,
-// fails ECMD_FAIL; rhack() then clears both queues for that result. The
-// success path resets a pending 'A', unwields uswapwep, and reports.
-const HANDS_ITEM_KEY = '-'.charCodeAt(0);
-// C do_wear.c:remarm_swapwep()
-async function remarmSwapwep() {
-    const cmdq = cmdq_pop();
-    const key = cmdq?.typ === CMDQ_KEY ? cmdq.key : undefined;
-    if (key !== HANDS_ITEM_KEY || !game.uswapwep) {
-        commandResultFailed();
-        game.context.move = 0;
-        return;
-    }
-    resetBulkTakeoff();
-    const twoweap = game.u.twoweap;
-    await setSecondaryWeapon(null, game);
-    await plineWithContinuation(twoweap ? 'You are no longer wielding two weapons at once.'
-        : 'You no longer have a second weapon readied.');
-    game.context.move = 1;
 }
 // C cmd.c:enter_explore_mode(). The pinned build's sysconf ships
 // EXPLORERS=*, so authorize_explore_mode() always grants access; the
@@ -2095,7 +2086,7 @@ async function editExtendedCommand() {
         game.context.move = 0;
         return null;
     }
-    const selected = availableExtendedCommands().find(entry => entry.name === normalizedCommand);
+    const selected = extcmdsMatch(normalizedCommand, { ignoreAutocomplete: true, exactMatch: true })[0];
     if (!selected)
         await pline(`${initiator}${normalizedCommand.slice(0, 60)}: unknown extended command.`);
     return selected ?? null;
@@ -2155,13 +2146,31 @@ export async function changeCommandAutocompletions() {
             setCommandAutocomplete(command.name, selected.has(command));
     }
 }
-// Part of C cmd.c:extcmds_match(): inlined here (the CMD_NOT_AVAILABLE and
-// WIZMODECMD eligibility filter of the window-port matcher; the prefix
-// match half is completeExtendedCommand()).
+export function extcmdsMatch(findstr, options = {}) {
+    const { ignoreAutocomplete = false, exactMatch = false, noOneCharCommand = false } = options;
+    const needle = findstr?.toLowerCase();
+    return NATIVE_COMMANDS.filter(command => {
+        const name = command.name;
+        if (name === null
+            || (command.flags & (NATIVE_COMMAND_FLAGS.CMD_NOT_AVAILABLE | NATIVE_COMMAND_FLAGS.INTERNALCMD)) !== 0)
+            return false;
+        if (!game.flags.debug && (command.flags & NATIVE_COMMAND_FLAGS.WIZMODECMD) !== 0)
+            return false;
+        if (!ignoreAutocomplete && !commandAutocompletes(command))
+            return false;
+        if (noOneCharCommand && name.length === 1)
+            return false;
+        if (needle === undefined)
+            return true;
+        const haystack = name.toLowerCase();
+        return exactMatch ? haystack === needle : haystack.startsWith(needle);
+    });
+}
+// Part of C cmd.c:extcmds_match(): the findstr == NULL, ECM_IGNOREAC case:
+// every flag-eligible entry, shared by the extended-command editor, list,
+// and menu.
 export function availableExtendedCommands() {
-    return NATIVE_COMMANDS.filter(command => command.name !== null
-        && !(command.flags & (NATIVE_COMMAND_FLAGS.CMD_NOT_AVAILABLE | NATIVE_COMMAND_FLAGS.INTERNALCMD))
-        && (game.flags.debug || !(command.flags & NATIVE_COMMAND_FLAGS.WIZMODECMD)));
+    return extcmdsMatch(null, { ignoreAutocomplete: true });
 }
 // Port only: the ext_func_tab description text keyed by command name.
 export function commandDescription(command) {
@@ -2775,24 +2784,30 @@ export function heroHasInvoluntaryDelay(state = game) {
     return currentMulti(state) < 0;
 }
 // ── Command counts (C cmd.c:get_count(), parse()) ─────────────────────────
-// Part of C cmd.c:rhack(): reading the command key and its count prefix.
+// C cmd.c:parse(): read the command key and its count prefix; C's rhack()
+// runs this whenever the command queue has no queued input.
 export async function readCommandInput() {
     game._commandCount = 0;
     setMulti(0);
     await flush_screen(1);
+    // parse() runs get_count() in command input state.
+    const readCount = async () => {
+        const { key, count } = await getCount(0, BigInt(NATIVE_COMMAND_CONSTANTS.LARGEST_INT), GC_NOFLAGS, 'command');
+        return { key, count: Number(count) };
+    };
     let result;
     if (game.commandBindings.numberPad) {
         const key = await readchar('command');
         result = (key & 255) === game.commandBindings.specialKey('count')
-            ? await readCommandCount() : { key, count: 0 };
+            ? await readCount() : { key, count: 0 };
     }
     else {
-        result = await readCommandCount();
+        result = await readCount();
     }
     game._commandCount = result.count;
     setMulti(Math.max(0, result.count - 1));
     game._commandKey = result.key;
-    // C parse() clears WIN_MESSAGE after reading the command key.
+    // C parse() clears WIN_MESSAGE after reading command key.
     if (game._pending_message || game._retained_message || game._promptOwnsTopline)
         clearMessageWindow();
     return result;
@@ -2869,12 +2884,6 @@ export async function getCount(inkey, maxcount, gcFlags, inputState = 'other') {
     if (historicmsg || (conditionalmsg && accepted !== first))
         putMessageHistory(`Count: ${accepted} ${keyText(key)}`);
     return { key, count: accepted };
-}
-// Part of C cmd.c:parse(): its get_count((char *) 0, '\0', LARGEST_INT,
-// &gc.command_count, GC_NOFLAGS) call, run in command input state.
-async function readCommandCount() {
-    const { key, count } = await getCount(0, BigInt(NATIVE_COMMAND_CONSTANTS.LARGEST_INT), GC_NOFLAGS, 'command');
-    return { key, count: Number(count) };
 }
 // ── Named command keys (C cmd.c:cmd_from_ecname(), cmd_from_func()) ──────
 const DEFAULT_COMMAND_KEYS = new Map([

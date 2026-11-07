@@ -38,7 +38,7 @@ import { luaInteger, luaString, luaToInteger, luaNumberValue } from './lua/argum
 import { buryObject } from './dig.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, inducedAlignment, level_difficulty } from './dungeon.js';
+import { depth as depth_of_level, inducedAlignment, level_difficulty, canDigDown, canFallThrough } from './dungeon.js';
 import { flood_fill_rm, litstate_rnd, mkmap } from './mkmap.js';
 import { create_maze, walkfrom } from './mkmaze.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
@@ -52,7 +52,7 @@ import { somexy, fillBarracksRoom, fillBeehiveRoom, fillCourtRoom, fillMorgueRoo
 import { beginObjectBurn, scheduleLevelTimer, stopLevelTimer } from './timeout.js';
 import { monsterEmitsLight, vision_reset } from './vision.js';
 import { SpecialSelection, match_maptyps, mapCharacterType, specialSelectionMatch } from './selvar.js';
-import { CANDELABRUM_OF_INVOCATION, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, topologize } from './mklev.js';
+import { CANDELABRUM_OF_INVOCATION, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, topologize } from './mklev.js';
 import { stairway_add } from './stairs.js';
 import { enexto } from './teleport.js';
 import { make_engr_at } from './engrave.js';
@@ -3728,6 +3728,9 @@ function sp_level_coder_init() {
                     throw new NethackLuaError('level_difficulty should not have any args');
                 return level_difficulty();
             },
+            // C nhlua.c:nhl_timer_start_at(): register a level timer at a
+            // map position; only melt-ice is a position timer
+            // (timer_is_pos()).
             start_timer_at: (...args) => {
                 // nhl_get_timertype() takes luaL_checkoption over every
                 // timeout_funcs entry at stack index -2, so a bad name is

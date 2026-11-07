@@ -18,15 +18,15 @@ import { isWeldedPrimary, setQuiverObject, setPrimaryWeapon, setSecondaryWeapon,
 import { GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, A_DEX, A_STR, STR19, IS_WATERWALL, MM_IGNORELAVA, MM_IGNOREWATER, W_ARM, W_ARMC, W_ARMU, IS_SOFT, IS_ALTAR, CQ_CANNED, HOLE, PIT, SPIKED_PIT, TRAPDOOR, MM_NOMSG, M_AP_MONSTER, M_AP_TYPE, D_CLOSED, D_ISOPEN, D_LOCKED, DOOR, FIRE_TRAP, IRONBARS, IS_OBSTRUCTED, IS_STWALL, Is_airlevel, Is_waterlevel, KILLED_BY, LOST_THROWN, MAGIC_PORTAL, STONING, TREE, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, W_NONPASSWALL, WT_TO_DMG, ZAP_POS, is_hole, is_pit, SHOPBASE, P_BOW, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_KNIFE, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, STRAT_WAITMASK, Luck, W_QUIVER, W_WEP, W_SWAPWEP, AKLYS_LIM, RLOC_MSG, HAND, EYE, HEAD, FACE, FOOT, ARM, } from './const.js';
 import { weaponHitValue, weaponSkillHitBonus, dryTowel, rollPhysicalWeaponDamageAgainstHero, ensureHeroSkills, skillName, weaponDescription, } from './weapon.js';
 import { quiverObjectClass } from './quiver.js';
-import { corpseName, killerObjectName, objectCombatName, objectName, observeObjectForNaming, singularObjectName, makePlural, verbForSubject, objectDescription, objectNameIsPlural, simpleObjectName, withIndefiniteArticle, definiteObjectAction, definiteName } from './objnam.js';
+import { corpseName, killerObjectName, objectCombatName, objectName, observeObjectForNaming, singularObjectName, makePlural, verbForSubject, objectDescription, objectNameIsPlural, simpleObjectName, withIndefiniteArticle, definiteObjectAction, definiteName, simpleArmorName } from './objnam.js';
 import { inventoryItemDescription, delobj, chooseInventoryObject, freeInventoryObject, addInventoryItemBefore, stack_object, fullyIdentifyObject, addInventoryItem, } from './invent.js';
 import { objectMaterial, objectTypeKnown } from './o_init.js';
 import { rejoinObjectStack, linkObjectToMonsterInventory, placeObjectSynchronously } from './mkobj.js';
-import { applyPolearm, applyTool, couldPoleMonster } from './apply.js';
+import { applyPolearm, applyTool, couldPoleMonster, snuffCandle } from './apply.js';
 import { snapshotMenuUnderlay } from './wintty.js';
-import { captureThrownObjectFlight, detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget, heroDirectGoldThrowRange, snuffThrownCandle } from './thrown_object.js';
+import { captureThrownObjectFlight, detachThrownUnit, finishHeroThrownObjectLanding, flyHeroThrownObject, heroThrowTrajectory, prepareHeroThrownTarget, heroDirectGoldThrowRange } from './thrown_object.js';
 import { wakeMonstersNearWithMessages, angerAttackedMonster, wakeAttackedMonster, finishEnvironmentalMonsterDeath, monsterWearsTorsoArmor, resolveMonsterLiquid, wakeMonster as awakenMonster, angerMonster, finishHeroMonsterKillOutcome } from './mon.js';
-import { canLetGo, dropObjectAtHero } from './do.js';
+import { canLetGo, dropObjectAtHero, landObjectOnAltar, applyFloorEffects } from './do.js';
 import { wipeHeroEngraving } from './engrave.js';
 import { finishQuest, isQuestLeader } from './quest.js';
 import { isQuestArtifact } from './questpgr.js';
@@ -35,8 +35,8 @@ import { encumber_msg } from './pickup.js';
 import { hitMonsterWithSupportedPotion, SUPPORTED_MONSTER_POTION_TYPES, applySupportedPotionVapor, heroPotionVaporProfile, makeBlinded } from './potion.js';
 import { dist2, possessiveName } from './hacklib.js';
 import { resolveGoldMonsterContact, shipObject } from './dokick.js';
-import { landObjectOnAltar } from './altar_object.js';
-import { captureHeroProjectileName, hitMonsterWithHeroObject, applyCaitiffPenalty, applyMonsterPassiveToObject, } from './uhitm.js';
+import { hitMonsterWithHeroObject, applyCaitiffPenalty, applyMonsterPassiveToObject, } from './uhitm.js';
+import { captureHeroProjectileName } from './objnam.js';
 import { capitalizedDefiniteName } from './objnam.js';
 import { rayMissMessage } from './zap.js';
 import { applyLowStaminaThrow, applyThrowSlip } from './throw_state.js';
@@ -57,7 +57,7 @@ import { setMonsterApparentHeroPosition } from './monmove.js';
 import { monsterSentenceSubject } from './sounds.js';
 import { displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
 import { isPoolAt, isLavaAt, isMoatAt, isWaterwallAt } from './dbridge.js';
-import { armorSimpleName, heroHasWaterWalking, objectIsHardHelmet, simpleArmorName } from './do_wear.js';
+import { armorSimpleName, heroHasWaterWalking, objectIsHardHelmet } from './do_wear.js';
 import { setMonsterMalign, makemonAt } from './makemon.js';
 import { applyHeroEggLuckPenalty, explodePyroliskEggAt, isPyroliskEgg } from './egg_impact.js';
 import { explodeLitOilPotion } from './fire_explosion.js';
@@ -77,7 +77,6 @@ import { monsterObjectPronoun, monsterDigests, monsterHasNoLimbs, monsterHatesBl
 import { detachHeroGold, heroGoldObject } from './sit.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { requireShopGame } from './shop_types.js';
-import { applyFloorEffects } from './floor_effects.js';
 // C dothrow.c:multishot_class_bonus(): the role-specific volley bonuses.
 // PM_NINJA shares PM_SAMURAI's YUMI+YA case through C's fallthrough; the
 // port's role keys have no ninja.
@@ -2712,7 +2711,7 @@ export async function resolveGenericSwallowedThrow({ state = game, item, objectC
         await applyLowStaminaThrow({ state, object: thrown });
         // throwit_mon_hit() runs snuff_candle() before thitmonst() consumes
         // its d20 targeting roll (dothrow.c:1490-1492, 2152).
-        await snuffThrownCandle(thrown, state);
+        await snuffCandle(thrown, state);
         rnd(20);
         const wake = await wakeMonster(engulfer);
         if (wake.heroDied)
@@ -2834,7 +2833,7 @@ export async function throwOrdinaryObject({ state = game, item, quantity, splitO
             if (flight.contact.isshk && thrown.where === 'minvent'
                 && thrown.ocarry === flight.contact)
                 return { ...flight, consumed: true };
-            await snuffThrownCandle(thrown, state);
+            await snuffCandle(thrown, state);
             const contact = await hitMonsterWithThrownObject(flight.contact, thrown, {
                 state, target: { x: flight.x, y: flight.y },
                 ...(volley ? { volley } : {}),

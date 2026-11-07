@@ -56,7 +56,8 @@ import { GameMap, newobj } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, rnl as rnl_mc, d as d_ml, pushRngLogEntry } from './rng.js';
 import { put_saddle_on_mon, place_monster, poly_steed } from './steed.js';
 import { minimal_monnam } from './do_name.js';
-import { rndmonstAdj, rndmonnumAdj, newMonHp, assignMakemonFemale, isArmedMndx, mInitweap, mInitinv, makemonDomesticSaddle, levelDifficulty, Inhell, mkclass, mkclassAligned, peaceMinded, monGeno, permonstTemplate, dmgtype_fromattack, splitobj as splitobj_real, m_in_air, newmextra, is_ndemon, is_dprince, propagate, olfaction, set_mon_data, grow_up } from './makemon.js';
+import { rndmonstAdj, rndmonnumAdj, newMonHp, assignMakemonFemale, isArmedMndx, mInitweap, mInitinv, makemonDomesticSaddle, levelDifficulty, Inhell, mkclass, mkclassAligned, peaceMinded, monGeno, permonstTemplate, dmgtype_fromattack, m_in_air, newmextra, is_ndemon, is_dprince, propagate, olfaction, set_mon_data, grow_up } from './makemon.js';
+import { splitobj } from './mkobj.js'; // C mkobj.c:458
 import { noteleport_level } from './teleport.js';
 import { mon_set_minvis } from './worn.js';
 import { more_experienced } from './exper.js';
@@ -9240,9 +9241,8 @@ function safe_oname(otmp) {
 
 
 
-/* mkobj.c:458-503 — use the canonical object-chain implementation from
- * makemon.js, which already owns the complete split bookkeeping. */
-async function splitobj(otmp, num) { return await splitobj_real(otmp, num); }
+/* mkobj.c:458-503 splitobj — imported from js/mkobj.js (line 61); the 
+ * mklev.js export list above re-exports it. */
 
 /* Stub: vegan — not yet ported (macro) */
 /* C mondata.h:231-238 — #define vegan(ptr).  C's `(ptr) != &mons[PM_X]` tests

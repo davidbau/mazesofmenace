@@ -567,9 +567,9 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
      * killed fire elemental stops lighting its surroundings. */
     if (_dx > 0 && emits_light(priorData))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    mtmp._dyingInGrid = false; /* C mon.c:2711: remove_monster precedes newsym */
     if (_dx > 0)
         newsym(_dx, _dy);
-    mtmp._dyingInGrid = false; /* mon_leaving_level vacated C's grid */
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
     /* C mon.c:2708 mon_leaving_level(): a killed long worm's body leaves the grid. */

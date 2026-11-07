@@ -7,13 +7,13 @@ import { game, requireGameLevel, requireLiveGame, requireInitializedGame } from 
 import { isRoom } from './map_types.js';
 import { getLine } from './windows.js';
 import { deleteEngravingAt, make_grave } from './engrave.js';
-import { newsym, canSpotMonster, map_invisible, map_location, monsterVisible, xy_set_wall_state } from './display.js';
+import { newsym, canSpotMonster, map_invisible, map_location, monsterVisible, xy_set_wall_state, unset_seenv } from './display.js';
 import { formatSeenMessage, plineWithContinuation, plineWithContinuation as pline, publishHeardMessage, } from './pline.js';
 import { displayMessageWindow } from './topl.js';
 import { ROOM, ROOMOFFSET, DOOR, D_NODOOR, VAULT, IS_WALL, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, MM_NOMSG, M_AP_OBJECT, M_AP_TYPE, NEED_HTH_WEAPON, LEVEL_TIMER_KIND, RLOC_MSG, CORR, IS_OBSTRUCTED, IS_STWALL, STONE, Upolyd, ACCESSIBLE, COLNO, COULD_SEE, GD_DESTROYGOLD, GD_EATGOLD, IN_SIGHT, IS_POOL, IS_ROOM, MMOVE_DIED, MMOVE_MOVED, MMOVE_NOTHING, RLOC_ERR, RLOC_NOMSG, ROWNO, SCORR } from './const.js';
 import { isok, heroHasInvoluntaryDelay } from './cmd.js';
 import { makemonAt, setMonsterMalign } from './makemon.js';
-import { vision_note_blocker_change, cansee, couldsee, monsterHasLineOfSightToHero, unset_seenv } from './vision.js';
+import { vision_note_blocker_change, cansee, couldsee, monsterHasLineOfSightToHero } from './vision.js';
 import { stopLevelTimer } from './timeout.js';
 import { containedGold, deleteObject } from './shk.js';
 import { reset_faint } from './eat.js';
@@ -28,7 +28,7 @@ import { BOULDER, GOLD_PIECE, ROCK, TIN_WHISTLE } from './object_data.js';
 import { simpleObjectTypeName } from './objnam.js';
 import { fractureRock } from './zap.js';
 import { rn2 } from './rng.js';
-import { angerMonster, removeMonsterFromGame, sendMonsterToLimbo, moveMonsterNextToHero } from './mon.js';
+import { angerMonster, removeMonsterFromGame, sendMonsterToLimbo, moveMonsterNextToHero, pickGoldAtGuard } from './mon.js';
 import { releaseMonsterInventory } from './steal.js';
 import { monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt } from './steed.js';
 import { randomMonsterRelocation, teleportHero, askTeleportDestination } from './teleport.js';
@@ -866,18 +866,8 @@ function nextCorridorSquare(guard, state) {
 }
 // C invent.c:g_at()
 // The gold stack on a square, if any; C invent.c:g_at() inline.
-function goldAt(x, y, state) {
+export function goldAt(x, y, state) {
     return requireGameLevel(state).objects[x]?.[y]?.find(object => object.otyp === GOLD_PIECE);
-}
-// Part of C mon.c:mpickgold(): transfer the guard's floor gold to its inventory.
-async function pickGoldAtGuard(guard, state) {
-    const gold = goldAt(guard.mx, guard.my, state);
-    if (!gold)
-        return;
-    unlinkObject(gold, state);
-    await linkObjectToMonsterInventory(guard, gold, { state });
-    if (cansee(guard.mx, guard.my))
-        await newsym(guard.mx, guard.my);
 }
 // C vault.c:gd_pick_corridor_gold()
 async function pickCorridorGold(guard, x, y, state, random) {

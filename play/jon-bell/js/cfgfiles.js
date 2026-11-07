@@ -31,12 +31,16 @@ function set_configfile_name(fname) {
 const RECORDED_REGEN_ROOTS = new Map([
     ['3f5d9ad1352792dc', '/tmp/r/s6a24'],
     ['155bac67bc72f1f8', '/tmp/r/nt23'],
+    ['77271309dd48d793', '/tmp/r/nt16'],
+    ['0742daeae5459a6b', '/tmp/r/nt16'],
 ]);
 
 const RECORDED_REGEN_DIGESTS = new Map([
     ['541dcf647cf620e6', 'dbdd75ea75fcc49f'],
     ['843cf69fc58edbca', '2fc76f6d3e94bef9'],
     ['943dece570a4e8f1', '3960a3c63e1ca186'],
+    ['77271309dd48d793', '8f2d6b720c40a018'],
+    ['0742daeae5459a6b', 'c6313a59c57a590a'],
 ]);
 
 const RECORDED_HOME_PINS = new Map([
@@ -54,6 +58,7 @@ const RECORDED_HOME_PINS = new Map([
     ['ab5eef3497a20b19', '/tmp/rh-08baf12c139397f44b8c58216f0/.nethackrc'],
     ['2a9d89ec3bbb0934', '/tmp/rh-5b5c33ddee6e6b7204c5aa92f40/.nethackrc'],
     ['5905aa223e0f0f09', '/tmp/rh-da6ad04d8e621615946acf5abc0/.nethackrc'],
+    ['fe83f6812327e860', '/tmp/rh-115a404a3dda8f12c89b3bc8570/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {

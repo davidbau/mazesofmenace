@@ -355,6 +355,10 @@ export async function bot() {
         /* C botl.c:259-271: only an enabled status paint replaces the blank
          * rows left by cls().  In particular, self-genocide while polymorphed
          * leaves u.uhp == -1, so bot() clears its flags without painting. */
+        /* wintty.c:1061-1068 tty_clear_nhwindow(NHW_STATUS) blanks the physical
+         * rows (cl_end + data[][] = ' '), so the next render_status starts from
+         * an empty row: no stale cells survive from before the cls. */
+        if (game._statusBlankAfterDocrt && game._st3) { game._st3.row = ''; game._st3.signature = undefined; }
         game._statusBlankAfterDocrt = false;
         game._statusCornerClips = null; /* botlx's BL_RESET restores every field */
         game._getobj_menu_win = null; // the clipped status rows were repainted
@@ -622,12 +626,19 @@ async function query_arrayvalue(querystr, arr, preserveStatus) {
 /* C botl.c:4170-4300 status_hilite_menu_add, BL_TH_TEXTMATCH arm for BL_TITLE.
  * The rolelist, the color/attribute retries and the " or " split into two rules
  * follow C; other text fields are not ported. */
+const TEXTMATCH_MENU_FLDS = ['title', 'hunger', 'alignment', 'carrying-capacity'];
 async function status_hilite_add_title_textmatch(fld, preserveStatus) {
     const name = INITBLSTATS[fld][0];
     const ranks = ROLE_RANKS[role_index_by_name(game.urole?.name?.m || game.urole?.name?.f || '')].rank;
     const female = !!game.flags?.female;
     const rolelist = [];
-    for (let i = 0; i < 9; i++) {
+    /* botl.c:4148-4158 BL_HUNGER: hutxt[] minus its null gap (query_arrayvalue skips it) */
+    const fixed = name === 'hunger' ? ['Satiated', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved']
+        : name === 'alignment' ? ['chaotic', 'neutral', 'lawful']
+        : name === 'carrying-capacity' ? ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded']
+        : null;
+    if (fixed) rolelist.push(...fixed);
+    else for (let i = 0; i < 9; i++) {
         const mbuf = `"${ranks[i][0]}"`;
         let fbuf = '', obuf = '';
         if (ranks[i][1]) {
@@ -644,7 +655,7 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus) {
             if (obuf) rolelist.push(obuf);
         }
     }
-    rolelist.push('"none of the above (polymorphed)"');
+    if (!fixed) rolelist.push('"none of the above (polymorphed)"');
     for (;;) {
         const rv = await query_arrayvalue(`Choose ${name} text value to match:`, rolelist, preserveStatus);
         if (rv < 0) return false;
@@ -780,21 +791,23 @@ export async function status_hilite_menu(preserveStatus = false) {
                     : await status_hilite_menu_fld_current(fld, name);
                 adding = true;
             }
-            if (beh === 104 && INITBLSTATS[fld][0] === 'title') {
-                beh = await status_hilite_add_title_textmatch(fld, flushed)
-                    ? await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]) : 0;
+            if (beh === 104 && TEXTMATCH_MENU_FLDS.includes(INITBLSTATS[fld][0])) {
+                const added = await status_hilite_add_title_textmatch(fld, flushed || adding);
+                /* C botl.c:4445-4447: once adding, each add re-offers the behavior menu */
+                beh = !added ? 0 : adding ? await status_hilite_menu_choose_behavior(fld, true)
+                    : await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]);
+                if (added) adding = true;
             }
             /* C botl.c:3943-4070 choose_value for BL_TH_VAL_ABSOLUTE/PERCENTAGE:
              * the getlin prompt, its rejection arms, the up/down/both menu for a
              * bare number, then choose_color (botl.c:4232-4300). */
             for (let retry = 0; beh === 100 || beh === 101;) {
-                if (retry++ > 5) { await pline("That's enough tries."); beh = 0; break; }
+                if (retry++ > 5) { await pline("That's enough tries."); await drainTopline(); beh = 0; break; }
                 const percent = beh === 100;
                 const name = INITBLSTATS[fld][0];
                 const inbuf = mungspaces(await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${name} threshold:`));
                 if (inbuf === '' || inbuf[0] === '\x1b') {
                     beh = await status_hilite_menu_choose_behavior(fld, true);
-                    retry = 0;
                     continue;
                 }
                 let k = 0, lt = -1; /* NO_LTEQGT */
@@ -812,8 +825,8 @@ export async function status_hilite_menu(preserveStatus = false) {
                 if (inbuf[k] === '%') {
                     if (!percent) {
                         await pline('Not expecting a percentage.');
+                        await drainTopline();
                         beh = await status_hilite_menu_choose_behavior(fld, true);
-                        retry = 0;
                         continue;
                     }
                     strbuf = strbuf.slice(0, k); /* strip '%' [this accepts trailing junk!] */
@@ -841,6 +854,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                         continue;
                     }
                     numstart += '%';
+                    strbuf += '%'; /* Strcat(numstart, "%") also restores inbuf (botl.c:4033) */
                 } else if (val < ((dt === 'I' && isAC) ? -128 : lt === 4 ? -1 : lt === 1 ? 1 : 0)) {
                     await pline('%s', `hilite_status threshold '${op}${val}' is out of range`);
                     continue;
@@ -848,16 +862,16 @@ export async function status_hilite_menu(preserveStatus = false) {
                 if (lt === -1) {
                     const ltok = dt === 'I' ? (val > 0 || isAC) : val > 0;
                     const gtok = !percent || val < 100;
-                    lt = await status_hilite_menu_choose_updownboth(fld, strbuf, ltok, gtok, flushed);
+                    lt = await status_hilite_menu_choose_updownboth(fld, strbuf, ltok, gtok, true);
                     if (lt === -1) continue;
                 }
                 const rel = (lt === 1) ? 'less than ' : (lt === 4) ? 'more than ' : '';
                 const tail = (lt === 2) ? ' or less' : (lt === 3) ? ' or more' : '';
                 let clr = -1;
                 for (;;) { /* choose_color */
-                    clr = await query_color(`Choose a color for when ${name} is ${rel}${numstart}${tail}:`, 8, flushed);
+                    clr = await query_color(`Choose a color for when ${name} is ${rel}${numstart}${tail}:`, 8, true);
                     if (clr === -1) break;
-                    const atr = await query_attr_one(`Choose attribute for when ${name} is ${rel}${numstart}${tail}:`, 0, flushed);
+                    const atr = await query_attr_one(`Choose attribute for when ${name} is ${rel}${numstart}${tail}:`, 0, true);
                     if (atr === -1) continue;
                     const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
                     const behave = `${['=', '<', '<=', '>=', '>'][lt]}${val}${percent ? '%' : ''}`;
@@ -877,7 +891,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                 retry = 0;
             }
             if (!(beh === 105 || beh === 102 || beh === 100 || beh === 101
-                  || (beh === 104 && INITBLSTATS[fld][0] === 'title'))) break;
+                  || (beh === 104 && TEXTMATCH_MENU_FLDS.includes(INITBLSTATS[fld][0])))) break;
         }
         if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
         preserveStatus = true;

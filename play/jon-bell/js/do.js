@@ -1,5 +1,5 @@
 // do.js — C ref: do.c.
-import { monster_nearby as monster_nearby_real } from './allmain.js';
+import { monster_nearby } from './allmain.js'; // C hack.c:4106
 import { ART_NONARTIFACT, C_ATTR_TO_DISP, arti_inv_prop, exercise, get_artifact } from './attrib.js';
 import { ballfall, ballrelease, drop_ball, placebc, unplacebc } from './ball.js';
 import { bones_include_name } from './bones.js';
@@ -1218,9 +1218,12 @@ export async function doddrop() {
     /* C wintty.c:1927 — `!iflags.menu_overlay` drops the NHW_MENU to offx 0 and
      * clears the whole screen: one-space margin, "(end) " footer. */
     const ddFullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0
-        || windowLines.length >= 24; /* wintty.c:1927 maxrow >= rows */
+        || windowLines.length >= 24 /* wintty.c:1927 maxrow >= rows */
+        /* wintty.c:1917 offx < 0 -> 0, then process_menu_window (:1407) clears the
+         * screen for any offx == 0 menu: maxcol = longest + 2, offx = 79 - maxcol. */
+        || windowLines.some((ln) => String(ln).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').length >= 78);
     const ddBuild = (lines) => ddFullScreen
-        ? Array.from({ length: 24 }, (_, i) => (i < lines.length && lines[i] !== '' ? ` ${lines[i]}` : '')).join('\n')
+        ? Array.from({ length: 24 }, (_, i) => (i < lines.length && lines[i] !== '' ? ` ${lines[i]}`.slice(0, 79) : '')).join('\n')
         : build_window_screen(lines, WIN_COL, uac);
     const endCursorCol = ddFullScreen ? 1 + '(end) '.length : WIN_COL + 5 + 1;
     /* C ref: do.c:994 select_menu(win, PICK_ANY, ...) -> win/tty/wintty.c
@@ -3728,19 +3731,7 @@ export function cmd_safety_prevention(ucverb, cmddesc, act, flagcounterRef) {
 // onscary() is applied (C hack.c:4123 `&& !onscary(u.ux, u.uy, mtmp)`) via the
 // real port js/makemon.js onscary (monmove.c:241). Omitting it made a hostile
 // monster standing next to a hero on a scare monster scroll (or Elbereth) read
-function monster_nearby() {
-    /* C hack.c:4106-4127 — share the occupation check and retain C's int result. */
-    return Number(
-            /* C: !isok(x,y) || u_at(x,y) → skip.  isok: 1<=x<COLNO, 0<=y<ROWNO. */
-            /* C: (Hallucination || (!mpeaceful && !noattacks(mtmp->data))) */
-            /* C: (!is_hider(mtmp->data) || !mtmp->mundetected) */
-            /* C: !helpless(mtmp) */
-            /* C hack.c:4123: !onscary(u.ux, u.uy, mtmp) — a monster scared by the
-             * hero's square (Elbereth, scare monster scroll) does not interrupt.
-             * The real port is js/makemon.js onscary (monmove.c:241). */
-            /* C: canspotmon(mtmp) */
-            monster_nearby_real());
-}
+// The one port is js/allmain.js monster_nearby (imported at the top of this file).
 
 // C ref: do.c:2337-2342 danger_uprops() — "return TRUE if hero properties are
 // dangerous to hero":

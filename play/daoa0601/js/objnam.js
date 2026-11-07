@@ -18,12 +18,12 @@ import { CORPSTAT_GENDER, MV_KNOWS_EGG, P_BOW, W_AMUL, W_ARMOR, W_BALL, W_CHAIN,
 import { mkobj, mksobj, set_corpsenm, unlinkObject, objectWeight, objectIsFlammable, objectIsRottable, isContainer, placeCreatedObject, } from './mkobj.js';
 import { plineWithContinuation } from './pline.js';
 import { MONSTER_BODY_META, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, monsterClassSymbol, monsterTypeName } from './monster_data.js';
-import { possessiveName } from './hacklib.js';
+import { ordinalSuffix, possessiveName } from './hacklib.js';
 import { tin_variety_txt, set_tin_variety, tin_details, consume_oeaten, obj_nutrition } from './eat.js';
 import { isBimanualObject, is_boots, is_gloves, isLauncherAmmunition, isMissileObject, isPoisonableObject, isWeaponTool, is_damageable, objectIsRustprone, objectIsCorrodeable, objectIsCrackable } from './object_properties.js';
 import { promptYesNo } from './query.js';
 import { heroIsBlind } from './senses.js';
-import { isBeingTakenOff, pendingArmorAction, armorSimpleName } from './do_wear.js';
+import { isBeingDoffed, isBeingDonned, armorSimpleName, objectIsHardHelmet } from './do_wear.js';
 import { equipmentLightDescription } from './light.js';
 import { beginObjectBurn, scheduleObjectTimer, stopLevelTimer } from './timeout.js';
 import { OBJECT_CLASS_SYMBOLS, docrt, feel_newsym, canOverwriteTerrain } from './display.js';
@@ -35,7 +35,8 @@ import { applyHeroLiquidEffects, switchHeroTerrain } from './hack.js';
 import { iceDescriptionAt, waterbodyName } from './pager.js';
 import { deleteEngravingAt, make_grave } from './engrave.js';
 import { fireDamageChain, deleteTrap, trapName, waterDamageObject, objectIsVulnerableToErosion, resetUtrap, maketrap } from './trap.js';
-import { canFallThrough, countLevelFeatures } from './mklev.js';
+import { countLevelFeatures } from './mklev.js';
+import { canFallThrough } from './dungeon.js';
 import { fix_wall_spines } from './mkmaze.js';
 import { propertyIsActive } from './properties.js';
 import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
@@ -162,7 +163,7 @@ export function preferredFruitName(state) {
         throw new Error('Preferred fruit has not been initialized');
     return state.fruitName;
 }
-// C objnam.c:xname()
+// C objnam.c:xname_flags(), entered through its xname() wrapper:
 // The visible name without inventory annotations.  Unlike doname(),
 // this omits quantity, beatitude, enchantment, and article.
 // Also C objnam.c:xcalled(): inlined as the "<class> called <name>"
@@ -293,6 +294,13 @@ export function objectCombatName(object, { state = game, includeCorpseSpecies = 
     if ((object.quan ?? object.quantity ?? 1) !== 1)
         name = pluralizeObjectNoun(object, name);
     return name.replace(/^the /iu, '');
+}
+// C objnam.c:mshot_xname(): xname() output augmented for multishot missile
+// feedback — "the Nth arrow" when this object is part of a volley.
+export function captureHeroProjectileName(object, state = game, volley) {
+    const name = objectCombatName(object, { state, includeCorpseSpecies: false });
+    return volley && volley.count > 1 && volley.objectType === object.otyp
+        ? `the ${volley.index}${ordinalSuffix(volley.index)} ${name}` : name;
 }
 // C objnam.c:killer_xname()/bare_artifactname(). Death causes describe the
 // actual object without teaching the living hero or changing its user names.
@@ -1805,7 +1813,7 @@ function parseWishClass(search, state) {
     }
     return null;
 }
-// Part of C objnam.c:readobjnam_postparse2(): the class ranges,
+// C objnam.c:readobjnam_postparse2(): the class ranges,
 // " stone"/" gem", and the "glass" family before a general name search;
 // C's postparse2 is also the armor retry target, even with a class
 // selected.
@@ -2960,11 +2968,11 @@ export function primaryHandDescriptionDetail(item, state = game) {
 // Part of C objnam.c:doname_base(): the armor wearing, doffing, and
 // embedded states.
 function wornArmorDescription(item, state) {
-    const pending = pendingArmorAction(state);
-    const dressing = pending?.object === item ? pending.kind : null;
+    // C objnam.c checks doffing() before donning() because donning()
+    // returns True for both cases.
     let description = item === (state.uskin || state.u.uskin) ? 'embedded in your skin'
-        : dressing === 'remove' || isBeingTakenOff(item, state) ? 'being doffed'
-            : dressing === 'wear' ? 'being donned' : 'being worn';
+        : isBeingDoffed(item, state) ? 'being doffed'
+            : isBeingDonned(item, state) ? 'being donned' : 'being worn';
     description = ` (${description})`;
     // Native Concat(bp, 1, ...) uses strncat(), which still appends after the
     // closing parenthesis it meant to replace; the light text uses snprintf()
@@ -3050,6 +3058,57 @@ export async function paymentObjectDescription(object, quantity, { state = game,
             delete state.iflags.suppress_price;
         else
             state.iflags.suppress_price = suppress_price;
+    }
+}
+// C objnam.c:doname() displays charges for wands and charged non-weapon tools.
+export function objectUsesCharges(object) {
+    if (!object)
+        return false;
+    const oclass = object.oclass ?? objectClassForType(object.otyp);
+    return oclass === WAND_CLASS
+        || (oclass === TOOL_CLASS && !isWeaponTool(object)
+            && !!objectCharged(object.otyp));
+}
+// C objnam.c:suit_simple_name(), objnam.c:cloak_simple_name(),
+// objnam.c:helm_simple_name(), objnam.c:gloves_simple_name(),
+// objnam.c:boots_simple_name(), objnam.c:shield_simple_name(),
+// objnam.c:shirt_simple_name().
+export function simpleArmorName(armor, slot, state) {
+    const name = OBJ_NAME(armor.otyp);
+    if (!name)
+        throw new RangeError(`Missing name for armor type ${armor.otyp}`);
+    const appearance = OBJ_DESCR(armor.otyp, state)
+        || name;
+    const known = objectTypeKnown(armor, state);
+    switch (slot) {
+        case 'uarm':
+            if (name.endsWith('dragon scale mail'))
+                return 'dragon mail';
+            if (name.endsWith('dragon scales'))
+                return 'dragon scales';
+            if (name.endsWith(' mail'))
+                return 'mail';
+            return name.endsWith(' jacket') ? 'jacket' : 'suit';
+        case 'uarmc':
+            if (name === 'robe')
+                return 'robe';
+            if (name === 'mummy wrapping')
+                return 'wrapping';
+            if (name === 'alchemy smock')
+                return known && armor.dknown ? 'smock' : 'apron';
+            return 'cloak';
+        case 'uarmh': return objectIsHardHelmet(armor) ? 'helm' : 'hat';
+        case 'uarmu': return 'shirt';
+        case 'uarmg':
+            return armor.dknown && (known ? name : appearance).includes('gauntlets')
+                ? 'gauntlets' : 'gloves';
+        case 'uarmf':
+            return armor.dknown && (appearance.includes('shoes') || known && name.includes('shoes'))
+                ? 'shoes' : 'boots';
+        case 'uarms':
+            if (armor.otyp === objects.SHIELD_OF_REFLECTION)
+                return armor.dknown ? 'silver shield' : 'smooth shield';
+            return 'shield';
     }
 }
 // C objnam.c:doname_base(). Inventory and floor feedback share the same

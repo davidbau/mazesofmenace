@@ -1298,6 +1298,9 @@ export async function panic(_msg) {
      * finds it.  Marker only: the error save is never restored. */
     if (game.program_state.something_worth_saving)
         vfsWriteFile(savefile_name(String(game.plname || '').split('-')[0].replace(/,/g, ' ')) + '.e', '1');
+    game._preNhgetchHook = null;
+    for (;;)
+        await nhgetch();   /* ends when the replay's key queue empties (throws) */
     /* The process is gone (end.c:467 NH_abort / really_done). */
     if (hangup) throw hangup;
     const { nh_terminate } = await import('./end.js');

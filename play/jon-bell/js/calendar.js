@@ -6,9 +6,19 @@ import { game } from './gstate.js';
 // tm_yday (0-based), tm_wday (0=Sun), tm_hour, tm_min, tm_sec, tm_mday}
 // or null when unset/invalid
 // (C then uses wall-clock time(), which is non-deterministic and therefore never
+function isoInstant(s) {
+    if (typeof s !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(s))
+        return null;
+    const ms = Date.parse(s);
+    return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
 function fixedDatetimeTm() {
     const g = game;
     const s = g?.env?.NETHACK_FIXED_DATETIME;
+    const iso = isoInstant(s);
+    if (iso !== null)
+        return recorder_localtime(iso);
     if (typeof s !== 'string' || s.length !== 14)
         return null;
     const year = parseInt(s.slice(0, 4), 10);
@@ -67,6 +77,9 @@ export function time_from_yyyymmddhhmmss(buf) {
 }
 
 export function getnow() {
+    const iso = isoInstant(game?.env?.NETHACK_FIXED_DATETIME);
+    if (iso !== null)
+        return iso;
     const lt = fixedDatetimeTm();
     if (!lt)
         return 0;

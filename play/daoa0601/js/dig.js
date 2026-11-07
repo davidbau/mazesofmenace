@@ -21,7 +21,7 @@ import { displayLiquidName, monsterName } from './do_name.js';
 import { canSeeMonster, feel_location, flush_screen, newsym, show_glyph_cell } from './display.js';
 import { deleteEngravingAt } from './engrave.js';
 import { explode } from './explode.js';
-import { fireDamageChain, connectPits, pitsAreConjoined, convertTrapToObject, deleteTrap, feelTrap, seeTrap, trapAt, trapName, mintrap, waterDamageChain, setHeroTrap, dotrap, resetUtrap, maketrap, deleteFloorTrap, triggerBoobyTrap, } from './trap.js';
+import { fireDamageChain, pitDirection, pitsAreConjoined, convertTrapToObject, deleteTrap, feelTrap, seeTrap, trapAt, trapName, mintrap, waterDamageChain, setHeroTrap, dotrap, resetUtrap, maketrap, deleteFloorTrap, triggerBoobyTrap, } from './trap.js';
 import { breakSinkAt, dryFountainAt, gushForthFromFountain } from './fountain.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { CmapSymbol, cmapToGlyph } from './glyph_numbers.js';
@@ -33,7 +33,6 @@ import { heroIsUnaware } from './senses.js';
 import { delobj } from './invent.js';
 import { gotoLevel } from './do.js';
 import { makemonAt, mkclassAligned } from './makemon.js';
-import { canDigDown } from './mklev.js';
 import { On_ladder, On_stairs, stairwayAt } from './stairs.js';
 import { createToptenObject, mksobj, placeTreeFruit, unlinkObject, placeCreatedObject, placeObject, remove_object, updateIceObjectTimersAt, placeObjectSynchronously } from './mkobj.js';
 import { angerWatchGuards, maybeUnhideAt, monsterSubject, resolveMonsterLiquid, wakeMonstersNearWithMessages, monsterFliesOrFloats } from './mon.js';
@@ -45,7 +44,7 @@ import { greatestErosion, isAxe, isBimanualObject, isPick, objectIsOrganic } fro
 import { stopHeroOccupation } from './allmain.js';
 import { formatFeltMessage, formatHeardMessage, pline, plineWithContinuation } from './pline.js';
 import { heroIsFlying, body_part, mbodypart } from './polyself.js';
-import { altarWrath, desecrateAltar } from './pray.js';
+import { altarWrath, altarmaskAt, desecrateAltar } from './pray.js';
 import { punishHero, unpunishHero } from './read.js';
 import { autopickupAtHero } from './pickup.js';
 import { angerTemplePriest } from './priest.js';
@@ -56,7 +55,7 @@ import { shopkeeperName } from './shknam.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { monsterHasMapPosition } from './steed.js';
 import { randomMonsterRelocation, teleportPetVictim } from './teleport.js';
-import { Is_botlevel, ceilingName, depth, levelHasCeiling, levelAtDepth, surfaceName } from './dungeon.js';
+import { Is_botlevel, ceilingName, depth, levelHasCeiling, levelAtDepth, surfaceName, canDigDown } from './dungeon.js';
 import { CLR_WHITE } from './terminal.js';
 import { scheduleObjectTimer, stopObjectTimer } from './timeout.js';
 import { cansee, monsterHasLineOfSightToHero, unblock_point, vision_note_blocker_change } from './vision.js';
@@ -702,7 +701,7 @@ export function digCheck(madeBy, x, y, state = game) {
     }
     else if (IS_ALTAR(location.typ)
         && (madeBy !== 'object'
-            || ((location.flags ?? 0) & AM_SANCTUM) !== 0)) {
+            || (altarmaskAt(x, y, state) & AM_SANCTUM) !== 0)) {
         return DIGCHECK_FAIL_ALTAR;
     }
     else if (Is_airlevel(state.u?.uz)) {
@@ -2070,6 +2069,20 @@ async function strikeUndiggable(tool, x, y, state) {
             await plineWithContinuation(`You swing ${ownedObjectName(tool, state, { capitalized: false })} through thin air.`);
         }
     }
+}
+// Part of C dig.c:use_pick_axe() and dig.c:digactualhole(): the reciprocal
+// conjoined-bit connection between adjacent pits (dig.c:1264-1265 and
+// dig.c:1656-1657); C trap.c:join_adjacent_pits() is #if 0 dead code.
+export function connectPits(first, second) {
+    const direction = pitDirection(first, second);
+    if (direction < 0)
+        return false;
+    const opposite = (direction + 4) % 8;
+    const changed = !((first.conjoined ?? 0) & (1 << direction))
+        || !((second.conjoined ?? 0) & (1 << opposite));
+    first.conjoined = (first.conjoined || 0) | (1 << direction);
+    second.conjoined = (second.conjoined || 0) | (1 << opposite);
+    return changed;
 }
 // C dig.c:use_pick_axe().
 export async function usePickAxe(tool, { state = game, ensureWielded, readDirection, attackMonster, payShopkeeper }) {

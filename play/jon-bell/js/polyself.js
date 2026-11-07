@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { There as There_real, pline_The } from './pline.js';
+import { There, pline_The } from './pline.js';
 // polyself.c — hero polymorph (poly_self / polyself / polymon / newman / set_uasmon).
 // C ref: nethack-c/src/polyself.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
@@ -1141,10 +1141,6 @@ function golemhp(type) {
     }
 }
 
-// C hack.c:4515 rounddiv(long x, int y) — signed round-to-nearest division.
-function rounddiv(x, y) {
-    return cmdNS.rounddiv(x, y);
-}
 
 // C polyself.c:272 change_sex() — flip hero gender (RNG-free).  Called from
 // newman when sex_change_ok && !rn2(10).  The is_male/is_female/is_neuter test
@@ -1248,8 +1244,19 @@ async function polyman(msg) {
      * RNG-free; make_blinded's only pline on this arm is "You can see
      * again." (js/zap.js:472). */
     if (was_blind && !Blind_vis()) {
-        set_HBlinded(1);
-        make_blinded(0, true);
+        /* HBlinded=1 is stored with no SET_BOTL, so the "You can see again."
+         * pline's flush_screen() (and the --More-- it pages over the "You
+         * return to human form!" line) leaves the status window as the
+         * urgent_pline's bot() painted it: no Blind.  toggle_blindness flags
+         * the repaint afterwards. */
+        const heldPaint = g._botlPaintHeld;
+        g._botlPaintHeld = true;
+        try {
+            set_HBlinded(1);
+            make_blinded(0, true);
+        } finally {
+            g._botlPaintHeld = heldPaint;
+        }
     }
     // C polyself.c:261 check_strangling(TRUE).  Reversion can expose a
     // strangulation amulet which was harmless in a breathless form.
@@ -1454,20 +1461,20 @@ export async function newman() {
     if (!u.uhpinc) u.uhpinc = new Array(MAXULEV).fill(0);
     let hpmax = u.uhpmax | 0;
     for (let i = 0; i < oldlvl; i++) hpmax -= (u.uhpinc[i] | 0);
-    hpmax = rounddiv(hpmax * rn1(4, 8), 10);
+    hpmax = cmdNS.rounddiv(hpmax * rn1(4, 8), 10);
     for (let i = 0; (u.ulevel = i) < newlvl; i++) hpmax += newhp();
     if (hpmax < (u.ulevel | 0)) hpmax = u.ulevel | 0;
-    u.uhp = rounddiv((u.uhp | 0) * hpmax, (u.uhpmax | 0));
+    u.uhp = cmdNS.rounddiv((u.uhp | 0) * hpmax, (u.uhpmax | 0));
     setuhpmax(hpmax, true); /* might reduce u.uhp */
 
     // Same for spell power.
     if (!u.ueninc) u.ueninc = new Array(MAXULEV).fill(0);
     let enmax = u.uenmax | 0;
     for (let i = 0; i < oldlvl; i++) enmax -= (u.ueninc[i] | 0);
-    enmax = rounddiv(enmax * rn1(4, 8), 10);
+    enmax = cmdNS.rounddiv(enmax * rn1(4, 8), 10);
     for (let i = 0; (u.ulevel = i) < newlvl; i++) enmax += newpw();
     if (enmax < (u.ulevel | 0)) enmax = u.ulevel | 0;
-    u.uen = rounddiv((u.uen | 0) * enmax, ((u.uenmax | 0) < 1 ? 1 : (u.uenmax | 0)));
+    u.uen = cmdNS.rounddiv((u.uen | 0) * enmax, ((u.uenmax | 0) < 1 ? 1 : (u.uenmax | 0)));
     u.uenmax = enmax;
 
     u.uhunger = rn1(500, 500);
@@ -2575,10 +2582,6 @@ export async function dohide() {
 }
 
 // ── stubs for unported dohide helpers ──
-function There(msg, ...args) {
-    /* C pline.c:429 prefixes the formatted message with "There ". */
-    return There_real(msg, ...args);
-}
 async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
 function plur(x) { return (x === 1) ? "" : "s"; }
 

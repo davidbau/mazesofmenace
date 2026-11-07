@@ -28,7 +28,7 @@ import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGloba
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { sym_val_real, apply_pending_s_utf8 } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
-import { add_menu_coloring, match_str2clr, attr2attrname } from './coloratt.js';
+import { add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './windows.js';
 import { mungspaces } from './hacklib.js';
@@ -245,11 +245,37 @@ export function hilite_status_config_error(op) {
         }
         if (f === 'characteristics')
             return null;
+        const e = check_behavior(f);
+        if (e) return e;
+        /* botl.c:3036-3063 parse_status_hl2(): each rule's "how" is a
+         * '+'/'&' list of attributes and at most one colour; match_str2clr()
+         * complains (coloratt.c:367), then "bad color '%d %d'". */
+        for (let k = 2; k < hsbuf.length; k += 2) {
+            const how = hsbuf[k] || '';
+            if (!how) break;
+            let coloridx = -1;
+            for (const sf of how.split(/[+&]/)) {
+                const nrm = x => x.replace(/[ \-_]/g, '');
+                if (attrnames.some(a => a.name && nrm(a.name) === nrm(sf))) continue;
+                const c = match_str2clr(sf, true);
+                if (c >= 16 || coloridx !== -1)
+                    return c >= 16 ? ["Unknown color '%s'", sf, "bad color '%s'", `${c} ${coloridx}`]
+                        : ["bad color '%s'", `${c} ${coloridx}`];
+                coloridx = c;
+            }
+        }
+        return null;
+    };
+    const check_behavior = f => {
         const t = hsbuf[1] || '';
         const next = hsbuf[2] || '';
         if (!next || t === 'always' || t === 'up' || t === 'down' || t === 'changed'
             || (f === 'hitpoints' && t === 'criticalhp'))
             return null;
+        if (/^[<>]?=?[-+]?[0-9]+%$/.test(t) && !BL_STRFLDS.has(f)
+            && !['power', 'experience-level', 'hitpoints', 'experience'].includes(f))
+            /* botl.c:2999 initblstats[fld].idxmax < 0 (only INIT_BLSTATP fields have one) */
+            return ["Cannot use percent with '%s'", f];
         if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) || BL_STRFLDS.has(f))
             return null;
         if (f === 'carrying-capacity' || f === 'hunger')
@@ -345,6 +371,21 @@ const MATCH_SYM_ALTERNATES = { s_armour: 's_armor', s_explode1: 's_expl_tl',
     s_explode2: 's_expl_tc', s_explode3: 's_expl_tr', s_explode4: 's_expl_ml',
     s_explode5: 's_expl_mc', s_explode6: 's_expl_mr', s_explode7: 's_expl_bl',
     s_explode8: 's_expl_bc', s_explode9: 's_expl_br' };
+
+/* C symbols.c:782-807 parsesymbols(): the entry list is split at the first
+ * UNQUOTED comma (not one after a backslash, nor one between quotes), and the
+ * remainder is applied first.  So `S_upstair:\\,S_dnstair:x` is ONE entry. */
+function parsesymbols_entries(opts) {
+    for (let i = 1; i < opts.length; ++i) {
+        const post = opts[i + 1], pre = opts[i - 1];
+        if (post === undefined)
+            break;
+        if (opts[i] !== ',' || (pre === "'" && post === "'") || pre === '\\')
+            continue;
+        return [...parsesymbols_entries(opts.slice(i + 1)), opts.slice(0, i)];
+    }
+    return [opts];
+}
 
 /* C symbols.c:773-849 parsesymbols(): success is decided by the name lookup
  * alone (the value only feeds the symset overrides); G_ names need
@@ -774,7 +815,7 @@ export function parseNethackrc(rc) {
                     config_error_add("Error in SYMBOLS definition '%s'", bufp);
                 }
             }
-            for (const entry of symbolsMatch[1].split(',')) {
+            for (const entry of parsesymbols_entries(symbolsMatch[1])) {
                 /* symbols.c parsesymbols(): a G_ glyph reference goes through
                  * glyphrep_to_custom_map_entries() (glyphs.c:111) */
                 if (/^\s*G_/.test(entry))
@@ -848,11 +889,11 @@ export function parseNethackrc(rc) {
             const hlop = hlMatch[2].trim();
             const hlerr = hilite_status_config_error(hlop);
             if (hlerr)
-                config_error_add(hlerr[0], hlerr[1]);
+                { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
             else if (hlop.includes('/') && status_fieldname(hlop.split('/')[0]) === 'condition')
                 (game.status_condition_hilites ||= []).push(hlop);
             else if (hlop.includes('/'))
-                (game.status_field_hilites ||= []).push(hlop);
+                push_status_field_hilite(hlop);
             else
                 store_status_hilite(hlop);
             // C botl.c:2643-2645: accepting a rule enables highlighting.
@@ -917,7 +958,7 @@ export function parseNethackrc(rc) {
                 continue;
             }
             // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
-            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window'].includes(r.name)
+            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window', 'menu_headings'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
             if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
             // C options.c:2559 optfn_name -> string_for_opt(:6665): a
@@ -1124,7 +1165,7 @@ export function parseNethackrc(rc) {
                 && !menunegated && menusep >= 0) {
                 const hlerr = hilite_status_config_error(menuopts.slice(menusep + 1));
                 if (hlerr) {
-                    config_error_add(hlerr[0], hlerr[1]);
+                    { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
                     continue;
                 }
                 /* C botl.c:2637 -> parse_status_hl2(): store each accepted
@@ -1133,14 +1174,25 @@ export function parseNethackrc(rc) {
                 store_status_hilite(hlop);
                 if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             }
-            /* C options.c:3446-3460 optfn_player_selection(do_set) */
-            if (menuname.length >= 3 && 'player_selection'.startsWith(menuname)
-                && !menunegated && menusep >= 0) {
-                const psv = menuopts.slice(menusep + 1).trim();
-                if (psv && !/^dialog/i.test(psv) && !/^prompt/i.test(psv)) {
-                    config_error_add("Unknown %s parameter '%s'", 'player_selection', psv);
+            /* C options.c:620-628 checks duplicates and forbidden negation
+             * before optfn_player_selection(:3446-3460) requires a value. */
+            const playerSelection = option_state().allopt.find(r => r.name === 'player_selection');
+            if (menuname.length >= playerSelection.minmatch && playerSelection.name.startsWith(menuname)) {
+                compoundDuplicate(playerSelection.name);
+                if (menunegated) {
+                    config_error_add('The %s option may not both have a value and be negated.', playerSelection.name);
                     continue;
                 }
+                const psv = menuval;
+                if (!psv)
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                else if (/^dialog/i.test(psv))
+                    result.iflags.wc_player_selection = 0; // VIA_DIALOG
+                else if (/^prompt/i.test(psv))
+                    result.iflags.wc_player_selection = 1; // VIA_PROMPTS
+                else
+                    config_error_add("Unknown %s parameter '%s'", 'player_selection', psv);
+                continue;
             }
             if (/^font_(map|menu|message|status|text|size_(map|menu|message|status|text))$/.test(menuname)) {
                 const fsize = menuname.startsWith('font_size_');
@@ -1211,20 +1263,31 @@ export function parseNethackrc(rc) {
             if (menuname.length >= 6 && 'menu_headings'.startsWith(menuname)) {
                 const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
                 const ATTRS = { none: 0, bold: 1, dim: 2, italic: 3, underline: 4, blink: 5, inverse: 7, normal: 0, uline: 4, reverse: 7 };
-                const attrOf = (t) => ATTRS[t.trim().toLowerCase()] ?? -1;
+                const attrOf = (t, cmp = false) => {
+                    const a = ATTRS[t.trim().toLowerCase().replace(/[ \-_]/g, '')] ?? -1;
+                    if (a === -1 && cmp) config_error_add("Unknown text attribute '%s'", t.trim());
+                    return a;
+                };
+                const clrOf = (t, sup = false) => {
+                    const c = match_str2clr(t, true);
+                    if (c >= 16 && !sup) config_error_add("Unknown color '%s'", t.trim());
+                    return c;
+                };
                 if (!op) {
                     result.iflags.menu_headings = { color: 8 /* NO_COLOR */, attr: menunegated ? 0 : 7 };
-                } else if (!menunegated) {
+                } else if (menunegated) {
+                    config_error_add('The %s option may not both have a value and be negated.', 'menu_headings');
+                } else {
                     let c = 8, a = 0, ok = true;
                     const amp = op.indexOf('&');
                     if (amp >= 0) {
                         const l = op.slice(0, amp), r = op.slice(amp + 1);
-                        c = match_str2clr(l, false); a = attrOf(r);
-                        if (c >= 16 && a === -1) { c = match_str2clr(r, false); a = attrOf(l); }
+                        c = clrOf(l, false); a = attrOf(r, true);
+                        if (c >= 16 && a === -1) { c = clrOf(r, false); a = attrOf(l, true); }
                         ok = !(c >= 16 || a === -1);
                     } else {
-                        const t = attrOf(op);
-                        if (t === -1) { c = match_str2clr(op, false); ok = c < 16; }
+                        const t = attrOf(op, false);
+                        if (t === -1) { c = clrOf(op, false); ok = c < 16; }
                         else a = t;
                     }
                     if (ok) result.iflags.menu_headings = { color: c, attr: a };
@@ -1396,12 +1459,20 @@ export function parseNethackrc(rc) {
                     case 'c': case 'f': result.preferred_pet = 'c'; break;
                     case 'h': case 'q': result.preferred_pet = 'h'; break;
                     case 'n': result.preferred_pet = 'n'; break;
+                    case 'r': case '*': result.preferred_pet = '\0'; break;
+                    default: config_error_add("Unrecognized pet type '%s'.", val); break;
                     }
                 }
                 /* C options.c optfn_roguesymset -> load_symset(ROGUESET): the Rogue
                  * IBM sets (dat/symbols "Handling: IBM", "Color: Yes") are the only
                  * ones HAS_ROGUE_IBM_GRAPHICS (display.c:2582) accepts. */
                 else if (key === 'roguesymset') {
+                    /* options.c:3560 optfn_roguesymset: read_sym_file fails for a name
+                     * dat/symbols does not define. */
+                    if (val && !SYMSET_LIST.some(e => e[0] === val)) {
+                        config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
+                        continue;
+                    }
                     if (val && gs.symset && gs.symset[1]) {
                         gs.symset[1].name = val;
                         gs.symset[1].handling = /^Rogue(Epyx|IBM|Windows)$/.test(val) ? 1 : 0;
@@ -1509,6 +1580,34 @@ export function parseNethackrc(rc) {
                     const itmp = negated ? 2 : (val ? (parseInt(val, 10) || 0) : 0);
                     if (!negated && itmp >= 2 && itmp <= 3)
                         result.iflags.wc2_statuslines = itmp;
+                }
+                /* C options.c:4905-4916 optfn_windowcolors(do_set) with
+                 * wc_set_window_colors (:10023-10112), parse/error arms only
+                 * (colours are not displayed by the replay terminal). */
+                else if (key === 'windowcolors') {
+                    if (val) {
+                        const wcn = ['menu', 'message', 'status', 'text'];
+                        const wcs = ['mnu', 'msg', 'sts', 'txt'];
+                        const seen = [0, 0, 0, 0];
+                        let rest = val.replace(/ +/g, ' ').replace(/^ | $/g, '');
+                        let ok = true;
+                        while (rest.length) {
+                            const m = /^(\S+) ([^/ ]*\/) ?(\S+) ?/.exec(rest);
+                            if (!m) { ok = false; break; }
+                            const wn = m[1].toLowerCase();
+                            let j = wcn.indexOf(wn);
+                            if (j < 0) j = wcs.indexOf(wn);
+                            if (j >= 0) {
+                                if (seen[j])
+                                    config_error_add("windowcolors for %s windows specified multiple times", wcn[j]);
+                                seen[j]++;
+                            } else
+                                config_error_add("windowcolors for unrecognized window type: %s", m[1]);
+                            rest = rest.slice(m[0].length);
+                        }
+                        if (!ok)
+                            config_error_add("Could not set %s '%s'", 'windowcolors', val);
+                    }
                 }
                 /* C options.c:2396-2425 optfn_mouse_support(do_set), the rc arm:
                  * atoi(op) must be 0..2 (and a zero must be spelled '0'), else
@@ -2160,7 +2259,18 @@ function store_status_hilite(op) {
     if (status_fieldname(op.split('/')[0]) === 'condition')
         (game.status_condition_hilites ||= []).push(op);
     else
+        push_status_field_hilite(op);
+}
+/* C botl.c:2846-2856 parse_status_hl2(): "characteristics" is parsed again
+ * once per field from BL_STR through BL_CH, each with its own rule chain. */
+function push_status_field_hilite(op) {
+    const parts = op.split('/');
+    if (status_fieldname(parts[0]) !== 'characteristics') {
         (game.status_field_hilites ||= []).push(op);
+        return;
+    }
+    for (const f of ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'])
+        (game.status_field_hilites ||= []).push([f, ...parts.slice(1)].join('/'));
 }
 
 /* C options.c:1861-1876 optfn_hilite_status(do_set) reached from doset()'s

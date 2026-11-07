@@ -1256,9 +1256,12 @@ function _pmname(mdat, mgender) {
 async function _done(how, opts) {
     const g = game;
     const u = g.u;
+    /* C end.c:1043-1046 forces a full status redraw before HP is zeroed
+     * (pline's flush already painted the preceding message with pre-death HP). */
+    if (g.disp) g.disp.botlx = true;
     /* C end.c:1041-1046 bot() runs before the HP is forced to zero (pline's own
      * flush_screen has already painted the preceding message with pre-death HP). */
-    if (g.disp) g.disp.botl = true;
+    if (g.disp) g.disp.botlx = true; /* "otherwise force full status update" */
     bot();
     /* C end.c:1068-1078 */
     if ((how | 0) < PANICKED) {

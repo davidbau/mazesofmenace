@@ -57,7 +57,7 @@ import { races, roles } from './role.js';
 import { relocateMonsterTo, enexto } from './teleport.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { roomForRoomno } from './hack.js';
-import { likes_gold, likes_gems, likes_objs, likes_magic, monsterHidesUnder, monsterIsUndead } from './mondata.js';
+import { likes_gold, likes_gems, likes_objs, likes_magic, monsterHidesUnder, monsterIsUndead, giveHeroResistancesToMonster } from './mondata.js';
 // C bones.c:can_make_bones()/no_bones_level(). Dungeon topology owns which
 // levels can leave bones; the depth trial still runs in wizard and explore mode.
 export function canMakeBones(state = game, random = rn2) {
@@ -360,16 +360,6 @@ function sanitizeMonsterName(monster) {
     const sanitized = sanitizeName(name);
     setMonsterGivenName(monster, sanitized);
 }
-const HERO_RESISTANCES = Object.freeze([
-    ['fireResistance', 0x01],
-    ['coldResistance', 0x02],
-    ['sleepResistance', 0x04],
-    ['disintegrationResistance', 0x08],
-    ['shockResistance', 0x10],
-    ['poisonResistance', 0x20],
-    ['acidResistance', 0x40],
-    ['stoneResistance', 0x80],
-]);
 // Part of C bones.c:savebones(): the EBONES role index lookup.
 function roleIndex(state) {
     const index = roles.findIndex(role => role.key === state.urole?.key);
@@ -379,16 +369,6 @@ function roleIndex(state) {
 function raceIndex(state) {
     const index = races.findIndex(race => race.noun === state.urace?.noun);
     return index < 0 ? 0 : index;
-}
-// C mondata.c:give_u_to_m_resistances()
-export function giveHeroResistancesToMonster(monster, state = game) {
-    let inherited = 0;
-    for (const [property, bit] of HERO_RESISTANCES) {
-        if (hasPermanentIntrinsicProperty(property, state))
-            inherited |= bit;
-    }
-    monster.mintrinsics = (monster.mintrinsics ?? 0) | inherited;
-    return inherited;
 }
 // Part of C bones.c:savebones(): the new monster block — level, HP,
 // gender, sleep, and the EBONES record.
@@ -689,6 +669,12 @@ function repairContainedObjects(container) {
         repairContainedObjects(object);
     }
 }
+// C restore.c:reset_oattached_mids(): walk the restored object graph and
+// remap each ghostly omid (and the port's leashmon), zeroing any omonst —
+// a dead owner's pet is no longer peaceful or tame.
+function resetObjectAttachedMonsterIds(level, monsterIds) {
+    eachObjectInBonesGraph(level, object => repairObjectMonsterIds(object, monsterIds));
+}
 // Part of C restore.c:reset_oattached_mids(): ghostly omonst zeroing and
 // omid remap; the port also remaps leashmon.
 function repairObjectMonsterIds(object, monsterIds) {
@@ -795,7 +781,7 @@ async function renewBonesIdentities(level, fruits) {
         }
         restoreMonsterInventoryOwnership(monster);
     }
-    eachObjectInBonesGraph(level, object => repairObjectMonsterIds(object, monsterIds));
+    resetObjectAttachedMonsterIds(level, monsterIds);
     eachTopLevelBonesObject(level, repairContainedObjects);
     for (const region of level.regions) {
         region.heroFault = false;

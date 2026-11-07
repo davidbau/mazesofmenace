@@ -29,14 +29,13 @@ import { isPolearm, objectIsMetallic } from './object_properties.js';
 import { heroPassesWalls, heroSpecies, body_part } from './polyself.js';
 import { wormCrossesBetween } from './worm.js';
 import { shopkeeperBlockingDoor, shopkeeperBlockingEntry } from './shk.js';
-import { heroKnowsLavaWalking, heroKnowsWaterWalking } from './do_wear.js';
 import { rn1, rn2, rnd, rnl } from './rng.js';
 import { useHeroSkill } from './weapon.js';
 import { teleds, randomMonsterRelocation, relocateMonsterTo, enexto } from './teleport.js';
 import { promptYesNo } from './query.js';
 import { healHeroLegs, woundHeroLegs } from './do.js';
 import { heroIsBlind, heroIsHallucinating } from './senses.js';
-import { blocksDiagonalDoor, badRock, heroCanPassWallAt, heroTightDiagonalReason, applyHeroLocationEffects, heroLocomotion, loseHeroHp, nearCapacity, SLT_ENCUMBER, heroCouldMoveOntoBoulder, finishDestinationSpotEffects } from './hack.js';
+import { blocksDiagonalDoor, badRock, heroCanPassWallAt, heroTightDiagonalReason, applyHeroLocationEffects, heroLocomotion, loseHeroHp, nearCapacity, SLT_ENCUMBER, heroCouldMoveOntoBoulder, finishDestinationSpotEffects, heroKnowsWaterWalking, heroKnowsLavaWalking } from './hack.js';
 import { levelHasCeiling, surfaceName } from './dungeon.js';
 import { isAccessibleAt, heroCanOoze } from './monmove.js';
 import { isLavaAt, isPoolAt, isWaterwallAt } from './dbridge.js';
@@ -144,15 +143,22 @@ export async function ridingPreventsMovement() {
     await plineWithContinuation(`${name} won't move!`);
     return true;
 }
-// Part of C hack.c:domove_core(): the steed-position update and steed.c:exercise_steed() training.
+// Part of C hack.c:domove_core(): the steed-position update; hack.c calls
+// exercise_steed() right after moving the steed with the hero.
 // C hack.c moves the steed with the hero before resolving displacement.
-// C steed.c:exercise_steed().
 export async function moveSteedWithHero() {
     const hero = game.u;
     if (!hero.usteed)
         return;
     hero.usteed.mx = hero.ux;
     hero.usteed.my = hero.uy;
+    await exerciseSteed();
+}
+// C steed.c:exercise_steed(): many turns of riding train the riding skill.
+async function exerciseSteed() {
+    const hero = game.u;
+    if (!hero.usteed)
+        return;
     hero.urideturns = (hero.urideturns || 0) + 1;
     if (hero.urideturns >= 100) {
         hero.urideturns = 0;

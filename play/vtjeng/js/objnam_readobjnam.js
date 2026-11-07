@@ -41,7 +41,7 @@ import {
     curse, is_ammo, isBox, isCandle, isCorrodeable, isCrackable, isDamageable, is_flammable, is_missile, isMultigen, is_rottable, isRustprone, is_weptool, mkobj, mksobj, objectType, place_object, rnd_class, set_corpsenm, weight, } from './obj.js';
 import { erosion_matters } from './objnam.js';
 import { is_quest_artifact } from './questpgr.js';
-import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
+import { coreRandom } from './rng.js';
 import {
     Flying, Levitation, maketrap, reset_utrap, trapname } from './trap.js';
 import { begin_burn, start_timer } from './timeout.js';
@@ -413,7 +413,7 @@ function wishEnv(env = {}) {
 }
 
 function wishRandom(env) {
-    return env.random ?? { d, rn1, rn2, rnd, rne, rnz };
+    return env.random ?? coreRandom;
 }
 
 // What C's origbp reads: the text bp has passed over, followed by what is left
@@ -1095,7 +1095,7 @@ export function shiny_obj(oclass, env = {}) {
 export function readobjnam_preparse(d, state, randomSource = null) {
     let res = 1;
     let saveBp = null;
-    const random = randomSource ?? { rn2, rnd };
+    const random = randomSource ?? coreRandom;
 
     for (;;) {
         let l;
@@ -1677,7 +1677,7 @@ export function readobjnam_postparse1(d, env) {
             } else if (d.trapped === 1 || zp !== '') {
                 // objnam.c:4653-4658 goes to wiztrap:, where wizterrainwish()
                 // builds a trap rather than an object.
-                d.bp = trapname(beartrap ? BEAR_TRAP : LANDMINE, true);
+                d.bp = trapname(beartrap ? BEAR_TRAP : LANDMINE, true, state);
                 return 5; /*goto wiztrap;*/
             }
             /* [no prefix or suffix; we're going to end up matching

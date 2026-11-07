@@ -1608,7 +1608,7 @@ export async function sellobj(obj, x, y) {
             let qbuf = Sprintf("Will you accept %ld %s in credit for ", tmpcr,
                                 currency(tmpcr));
             record_price_quote(obj.otyp, Math.trunc(tmpcr / obj.quan), false);
-            qbuf = (await safe_qbuf(qbuf, qbuf, "?", obj, doname, thesimpleoname,
+            qbuf = (await safe_qbuf(qbuf, qbuf, "?", obj, doname_pay, thesimpleoname,
                              (obj.quan === 1) ? "that" : "those"));
             c = await yn_function_shk(qbuf, 'ynaq', 'y');
             /* C topl.c:536-548 — the answered prompt stays painted until the

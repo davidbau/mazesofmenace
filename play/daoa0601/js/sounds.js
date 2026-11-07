@@ -26,7 +26,7 @@ import { heroIsInvisible } from './hero_invisibility.js';
 import { isAccessibleAt } from './monmove.js';
 import { couldsee } from './vision.js';
 import { searchSpecial } from './mkroom.js';
-import { wakeMonstersNearWithMessages } from './mon.js';
+import { wakeMonstersNearWithMessages, livingResidents } from './mon.js';
 import { priestIsInOwnTemple, monsterAlignmentType } from './priest.js';
 import { findVaultGuard } from './vault.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -40,12 +40,13 @@ import { demandDemonBribe } from './minion.js';
 import { DEATH_QUOTES } from './death_quotes.js';
 import { doseduce } from './mhitu.js';
 import { selectTributePassage } from './novel_tribute.js';
-import { could_seduce } from './seduction_compatibility.js';
-import { talkToPriest } from './priest_talk.js';
+import { could_seduce } from './mhitu.js';
+import { talkToPriest } from './priest.js';
 import { aggravateMonsters, publishMonsterCuss } from './wizard.js';
 import { AT_TUCH, AD_SSEX } from './monster_attack_types.js';
 import { shopkeeperInOwnShop, quoteShopGoods, chatWithShopkeeper } from './shk.js';
 import { cansee } from './vision.js';
+import { playerMonsterReply } from './mplayer.js';
 const S_ANT = 1;
 const MS_ANIMAL = 17;
 // C sounds.c:dosounds()
@@ -228,12 +229,6 @@ async function templePriestSound(priest, state, hallu) {
         message = message.replace('%s', hallucinatedDeityName(shrine.shralign, state));
     await hear(state, message);
     return true;
-}
-// Part of C mon.c:get_iter_mons(): enumerate living floor monsters for ambient sounds.
-function livingResidents(state) {
-    // C get_iter_mons() tests mstate, not square occupancy: a mounted steed
-    // remains on fmon with MON_FLOOR even though the hero shares its square.
-    return [...state.level.monsters].reverse().filter(monster => !monster.dead && monster.mhp > 0 && (monster.mstate ?? MON_FLOOR) === MON_FLOOR);
 }
 // C sounds.c:mon_in_room()
 function monInRoom(monster, type, state) {
@@ -996,14 +991,6 @@ function nurseReply(state) {
         return state.urole.key === 'healer' ? "Doc, I can't help you unless you cooperate."
             : 'Please undress so I can examine you.';
     return state.uarmu || hero.uarmu ? 'Take off your shirt, please.' : "Relax, this won't hurt a bit.";
-}
-// C mplayer.c:mplayer_talk()
-function playerMonsterReply(monster, state) {
-    const sameRole = monster.mnum === MONSTER_NAME.indexOf('archeologist') + state.urole.mnum;
-    return `Talk? -- ${select(sameRole ? [
-        "I can't win, and neither will you!", "You don't deserve to win!",
-        'Mine should be the honor, not yours!',
-    ] : ['The low-life wants to talk, eh?', 'Fight, scum!', 'Here is what I have to say!'])}`;
 }
 // Part of C sounds.c:domonnoise(): vampire conversation by attitude, form and time.
 function vampireReply(monster, state) {

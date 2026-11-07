@@ -111,6 +111,10 @@ export async function nhgetch() {
     game._topl_suppress_once = false;
     if (game._pending_message)
         game._toplEmptyAfterSuppress = _suppressHist;
+    /* C topl.c:189 remember_topl()/:441 a newly shown line restarts the ^P walk
+     * at gt.toplines (cw->maxcol = cw->maxrow); a recall itself does not. */
+    if (game._pending_message && game._pending_message !== game._topl_history_recall)
+        game._prevmsg_next = null;
     if (game._pending_message && !_suppressHist) {
         let text = String(game._pending_message);
         if (text.endsWith('--More--'))
@@ -118,7 +122,7 @@ export async function nhgetch() {
         /* C topl.c:538-539 tty_yn_function rewrites gt.toplines as prompt + answer. */
         if (game._topl_answered && game._topl_answered.startsWith(text))
             text = game._topl_answered;
-        if (text.length > 0 && text !== game._topl_history_recall) {
+        if (text.length > 0 && text !== game._topl_history_recall && text !== game._topl_prompt_filed?.trimEnd()) {
             if (!game._msg_history)
                 game._msg_history = [];
             const h = game._msg_history;
@@ -128,6 +132,7 @@ export async function nhgetch() {
     }
     game._topl_history_recall = null;
     game._topl_answered = null;
+    game._topl_prompt_filed = null;
     /* Direct prompt writers also replace any EMPTY-window residue. */
     if (game._pending_message) game._topl_empty_sticky = null;
     if (game._pending_message)

@@ -29,7 +29,6 @@ import { deadhero, do_death_sequence } from './end.js'; // relocate-fns
 import { You_hear } from './pline.js'; // relocate-fns
 import { PM_ELF, PM_VALKYRIE, PM_WIZARD } from './pm.generated.js'; // relocate-fns
 import { rehumanize } from './polyself.js'; // relocate-fns
-import { obj_to_any as pointer_to_any } from './cmd.js'; // relocate-fns
 import { newsym } from './display.js'; // relocate-fns
 import { place_object, remove_object } from './mklev.js'; // relocate-fns
 import { Soundeffect, maybe_unhide_at } from './mon.js'; // relocate-fns
@@ -734,9 +733,7 @@ async function maybe_wail() {
  * UNION, so a_monst and a_obj are the same pointer.  del_light_source()'s
  * `curr->id.a_obj == id->a_obj` comparison relies on exactly that, which is
  * why both fields are filled here rather than one. */
-export function monst_to_any(mtmp) { return pointer_to_any(mtmp); }
-
-export function obj_to_any(obj) { return pointer_to_any(obj); }
+export { monst_to_any, obj_to_any } from './cmd.js';
 
 // movobj(obj, ox, oy) — hack.c:824-833.
 export function movobj(obj, ox, oy) {

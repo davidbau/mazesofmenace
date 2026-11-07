@@ -262,7 +262,8 @@ export async function fastforward_post_mklev(initrole = -1) {
     /* C ref: allmain.c:57-68 — moveloop_preamble's moon/Friday-13th plines run BEFORE
      * rnd(9000)/rnd(30); a --More-- raised by one blocks ahead of both draws. */
     const preambleMoonMsg = phase_of_the_moon() === 0 || phase_of_the_moon() === 4 || friday_13th();
-    if (game.a11y?.glyph_updates || game.flags?.mention_map || game.u?.uroleplay?.reroll || preambleMoonMsg) {
+    if (game.a11y?.glyph_updates || game.flags?.mention_map || game.u?.uroleplay?.reroll || preambleMoonMsg
+        || game.flags?.legacy !== false) { /* com_pager("legacy") blocks on a key before the draws (allmain.c:911 vs 72) */
         /* reroll: newgame()'s reroll_menu loop (allmain.c:820) also runs before
          * moveloop_preamble, so the two draws follow the last reroll. */
         game._ff_preamble_rng_deferred = true;

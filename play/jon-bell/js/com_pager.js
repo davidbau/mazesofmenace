@@ -517,6 +517,9 @@ export function prompt_spilled_onto_row1() {
      * whose row_refresh repaints the map row. */
     return !!(rows && rows[0] && rows[1]
         && rows[0].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').length >= 78
+        /* topl.c:218-240: a more() confined to row 0 never overwrites the
+         * map. Different ANSI encodings of the same map row are not a spill. */
+        && !rows[0].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd().endsWith('--More--')
         && !rows[1].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd().endsWith('--More--')
         && rows[1] !== render_map_row_clipped(0, COLNO - 1).str);
 }
@@ -770,7 +773,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 /* wintty.c:3703-3714: docorner()'s row_refresh() then reprints the
                  * gbuf cells of map y=20 (screen row 21 under statuslines:3)
                  * right of the clip; only bot() paints status over them. */
-                if (rows3 && screenRow === 21 && statusClipCol > 0) {
+                if (rows3 && screenRow === 21 && (statusClipCol > 0 || (statusClipCol === 0 && game._statusBlankAfterDocrt === true))) {
                     let col = 0, tail = '';
                     for (const t of render_map_row_clipped(ROWNO - 1, COLNO - 1).str
                              .match(/\x1b\[[0-9;]*[A-Za-z]|[\s\S]/g) || []) {
@@ -1148,7 +1151,19 @@ export async function topl_more_page(msg, uacAtCapture) {
         }
     }
     // Row 22: status line 1
-    if (_threeStatusLines()) {
+    if (g._status_blanked || g._statusBlankAfterDocrt === true) {
+        /* restore.c:944 docrt() -> cls() clears every status row; botl.c:259
+         * declines the welcome pline's status paint while u.uhp == -1.
+         * wintty.c:4289-4298 puts three-row status at rows 21/22/23.
+         * Keep docrt's map row 20 where tty_print_glyph did not clip it
+         * (wintty.c:3870); it can still occupy the blank first status row. */
+        if (_threeStatusLines()) {
+            const clipped = g._ttyClipYmax !== undefined && ROWNO - 1 >= g._ttyClipYmax;
+            if (!g._statusBlankAfterDocrt || clipped)
+                output = output.replace(/[^\n]*\n$/, '') + '\n';
+        }
+        output += '\n';
+    } else if (_threeStatusLines()) {
         /* wintty.c:4289-4298: three status rows at 21/22/23; map row 21 gone */
         const st3 = _statusRows3();
         /* display.c:2236-2256: the preceding flush can leave map writes over
@@ -1168,6 +1183,7 @@ export async function topl_more_page(msg, uacAtCapture) {
          * welcome pline's flush could not repaint them: botl.c:259 declines
          * while u.uhp == -1 (a self-genocided polymorphed hero). */
         output += '\n';
+        output = output.replace(/[^\n]*\n$/, '') + row1 + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
     } else {
         output += _statusLine1() + '\n';
         // Row 23: status line 2 (with uac = actual post-find_ac value)

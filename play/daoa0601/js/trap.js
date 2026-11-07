@@ -36,9 +36,10 @@ import { plineWithContinuation, pline, set_msg_xy, formatSeenMessage, formatFelt
 import { requireInitializedHero } from './hero_types.js';
 import { AD_PHYS, AD_CORR, AD_FIRE, AD_RUST, AD_MAGM, AD_RBRE, AT_BREA, AT_MAGC } from './monster_attack_types.js';
 import { removeObjectFromMonsterInventory, destroyObjectFromMonsterInventory, findMonsterArmorClass, wornInSlot, applyMonsterEquipmentProperties, initializeMonsterArmor, } from './worn.js';
-import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap, monsterResistsSleep, monsterHasFireResistance, monsterHasStoneResistance, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterIsHelpless, monsterPassesWalls, acidic, extra_nasty, is_neuter, likes_gems, metallivorous, monsterDigests, monsterHasNoLimbs, monsterIsAmorphous, monsterIsAnimal, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsFloater, monsterIsFlyer, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsNonliving, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterThrowsRocks, strongmonst, monsterObjectPronoun, grounded, passes_rocks, monsterIsGolem, touchPetrifies, heroResistsStoning, formCanBecomeStoneGolem, PM_STONE_GOLEM, cant_drown, monsterIsAmphibious, monsterStagger, isHeroDefender, resistsBlnd, } from './mondata.js';
+import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap, monsterResistsSleep, monsterHasFireResistance, monsterHasMagicResistance, monsterHasStoneResistance, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterIsHelpless, monsterPassesWalls, acidic, extra_nasty, is_neuter, likes_gems, metallivorous, monsterDigests, monsterHasNoLimbs, monsterIsAmorphous, monsterIsAnimal, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsFloater, monsterIsFlyer, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsNonliving, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterThrowsRocks, strongmonst, monsterObjectPronoun, grounded, passes_rocks, monsterIsGolem, touchPetrifies, heroResistsStoning, formCanBecomeStoneGolem, PM_STONE_GOLEM, cant_drown, monsterIsAmphibious, monsterStagger, isHeroDefender, resistsBlnd, } from './mondata.js';
 import { teleportMonsterFromTrap, mlevel_tele_trap, clearFixedTeleportDestination, heroTeleportDestinationOk, heroTeleportTrapBlock, teleds, teleportHero, activateMagicPortal, askTeleportDestination, triggerLevelTeleportTrap, relocateObjectRandomly, heroCanTeleport, heroControlsTeleport, safe_teleds, teleportHeroAtWill, heroTeleportRestricted, finishTeleportArrival, randomTeleportDepth, } from './teleport.js';
-import { canFallThrough, countLevelFeatures, makemonNear } from './mklev.js';
+import { countLevelFeatures, makemonNear } from './mklev.js';
+import { canFallThrough } from './dungeon.js';
 import { displayColorName, displayLiquidName, monsterName, monsterName as canonicalMonsterName, monsterName as perceivedMonsterName, objectMonsterName, randomDisplayMonsterName, setMonsterGivenName, randomColorName, } from './do_name.js';
 import { munstone } from './muse.js';
 import { adjustMonsterSpeed, monsterSpeedMessage, removeHeroEquipment } from './worn.js';
@@ -47,10 +48,9 @@ import { loseHeroExperience, addExperience, checkExperienceLevel } from './exper
 import { billDummyObject, mksobj, objectWeight, unlinkObject, mkcorpstat, rndmonnumAdj, objectIsFlammable, objectIsRottable, placeCreatedObject, placeObject, placeObjectSynchronously, remove_object, splitObjectStack, updateIceObjectTimersAt, } from './mkobj.js';
 import { buryObject, buryFloorObjectsAt, buriedBallNear, buriedBallToPunishment, unearthFloorObjectsAt, liquidForHole, } from './dig.js';
 import { monsterAtPosition, monsterHasMapPosition, dismountHero, steedIsGrounded, monsterOccupiesPosition } from './steed.js';
-import { gotoLevel, scheduleLevelChange, woundHeroLegs, dropBoulderIntoLiquid } from './do.js';
-import { hasCarriedProperty, hasWornProperty, refreshMovementProperties, existingPropertyRecord, propertySourceIsActive, propertyIsBlocked, propertyIsActive, clearLevitationMasks, levitationAtWill, grantIntrinsicProperty, hasIntrinsicProperty, hasInvokedProperty, removeIntrinsicProperty, setPropertyTimeout, } from './properties.js';
+import { gotoLevel, scheduleLevelChange, woundHeroLegs, dropBoulderIntoLiquid, applyFloorEffects } from './do.js';
+import { hasCarriedProperty, hasWornProperty, refreshMovementProperties, existingPropertyRecord, propertySourceIsActive, propertyIsBlocked, propertyIsActive, clearLevitationMasks, levitationAtWill, grantIntrinsicProperty, hasIntrinsicProperty, hasInvokedProperty, removeIntrinsicProperty, } from './properties.js';
 import { ordinalSuffix, possessiveName, dist2, distmin } from './hacklib.js';
-import { applyFloorEffects } from './floor_effects.js';
 import { heroHasArtifactDefense, artifactById, hasMagicKey, heroHasCarriedArtifactFlag } from './artifact.js';
 import { burnAwayHeroSlime, loseHeroHp, blocksDiagonalDoor, blocksMove, badRock, roomsAt, finishDestinationSpotEffects, EXT_ENCUMBER, HVY_ENCUMBER, calcCapacity, inventoryWeight, nearCapacity, applyHeroLiquidEffects, endVoluntaryMultiTurn, heroLocomotion, applyHeroLocationEffects, heroCanSwim, moveObject, dropEmergencyObject, pickEmergencyDrop, heroResistsFire as heroResistsFireWithoutArtifactDefense, UNENCUMBERED, SLT_ENCUMBER, nomul, setHeroInWater, crawlDestinationAllowed, spotChecks, finishHeroHelplessness, } from './hack.js';
 import { adjustAttribute, adjustHeroAlignment, attributeChangeMessage, changeHeroLuck, currentAttribute, exerciseAttribute, minHeroMaxHitPoints, poisonHero } from './attrib.js';
@@ -58,13 +58,13 @@ import { displayMessageWindow } from './topl.js';
 import { abusePet, tameMonster, makePetWary } from './dog.js';
 import { heroCanReachFloor, deleteEngravingAt } from './engrave.js';
 import { beginBallAndChainMove, finishBallAndChainMove, fallWithIronBall, heroIsPunished, placeBallAndChain, unplaceBallAndChain } from './ball.js';
-import { checkHeroLeashes, bringLeashedFollowers, releaseAllMonsterLeashes } from './apply.js';
+import { catchLit, checkHeroLeashes, bringLeashedFollowers, releaseAllMonsterLeashes, splashLitObject } from './apply.js';
 import { isDoorMimic, isObjectOrFurnitureMimic, revealMimic, applyMonsterPassiveToObject } from './uhitm.js';
 import { setMonsterMalign, makemon, makemonAt } from './makemon.js';
 import { promptYesNoQuit } from './query.js';
 import { isWeldedPrimary, uswapwepgone, uwepgone } from './wield.js';
 import { hitHeroWithObject } from './hero_object_hit.js';
-import { splitHeroMonsterForm, heroIsSliming, makeBlinded, makeDeaf, showInvisibilityMessage, splitMonster, makeHallucinated, makeStunned, } from './potion.js';
+import { splitHeroMonsterForm, heroIsSliming, makeBlinded, makeDeaf, showInvisibilityMessage, splitMonster, makeHallucinated, makeStunned, setPropertyTimeout, } from './potion.js';
 import { searchSpecial, somexyspace } from './mkroom.js';
 import { impactDrop, shipObject } from './dokick.js';
 import { setTrack } from './track.js';
@@ -989,23 +989,6 @@ function monsterWeapon(monster) {
     return (monster?.mw ||
         monsterInventory(monster).find((object) => object?.wielded || (object?.owornmask ?? 0) & W_WEP));
 }
-// Part of C mondata.c:resists_magm(): combine monster species and equipment magic resistance.
-export function monsterHasMagicResistance(monster) {
-    if (monster?.mnum === PM_BABY_GRAY_DRAGON ||
-        (MONSTER_ATTACKS[monster?.mnum] || []).some(([, damageType]) => damageType === AD_MAGM || damageType === AD_RBRE)) {
-        return true;
-    }
-    const weapon = monsterWeapon(monster);
-    if (artifactById(weapon?.oartifact)?.defense === 'magic')
-        return true;
-    return monsterInventory(monster).some((object) => {
-        const artifact = artifactById(object?.oartifact);
-        if (artifact?.carriedDefense === 'magic')
-            return true;
-        return (MAGIC_RESISTANCE_ARMOR.has(object?.otyp) &&
-            !!((object?.owornmask ?? 0) & (W_ARMOR | W_ACCESSORY | W_WEP)));
-    });
-}
 // C trap.c:trapeffect_arrow_trap(): the monster branch — the missile's
 // to-hit and material message against the trapped monster.
 // C trap.c:trapeffect_dart_trap(): the same flow with a 1-in-6 poisoned
@@ -1508,77 +1491,6 @@ async function trapeffectRustTrap(mtmp, trap, { state = game, movement, roll = r
 function carriedByHero(object, state) {
     return (state.inventory || []).includes(object);
 }
-// Part of C apply.c:splash_lit(): decide whether the hero's lantern is submerged.
-function heroLanternIsDunked(state) {
-    if (!isPoolAt(state.u.ux, state.u.uy, state))
-        return false;
-    return Is_waterlevel(state.u.uz)
-        || !(state.u?.levitating || state.levitating
-            || heroIsFlying(state) || heroHasWaterWalking(state));
-}
-// C apply.c:splash_lit()
-// Also C apply.c:snuff_lit(): snuff the splashed light source.
-// Each message precedes end_burn, so the darkened view waits for the next
-// flush instead of preceding the message.
-export async function splashLitObject(object, publish, state = game) {
-    if (!object?.lamplit)
-        return false;
-    // snuff_lit() handles flames and lanterns, not magical light sources.
-    if (![OIL_LAMP, MAGIC_LAMP, BRASS_LANTERN, POT_OIL,
-        TALLOW_CANDLE, WAX_CANDLE, CANDELABRUM_OF_INVOCATION].includes(object.otyp))
-        return false;
-    const carried = carriedByHero(object, state);
-    let dunkedLantern = false;
-    if (object.otyp === BRASS_LANTERN) {
-        let visible = false, audible = false, snuff = true;
-        if (carried) {
-            visible = !heroIsBlind(state);
-            audible = !heroIsDeaf(state);
-            dunkedLantern = heroLanternIsDunked(state);
-            snuff = false;
-        }
-        else if (object.where === 'minvent' && object.ocarry
-            && monsterIsHumanoid(object.ocarry.mnum)) {
-            const carrier = object.ocarry;
-            const position = getObjectLocation(object, state);
-            visible = !!position && cansee(position.x, position.y);
-            audible = couldsee(carrier.mx, carrier.my)
-                && (carrier.mx - state.u.ux) ** 2 + (carrier.my - state.u.uy) ** 2 < 25;
-            dunkedLantern = isPoolAt(carrier.mx, carrier.my, state)
-                && (!monsterFliesOrFloats(carrier) || Is_waterlevel(state.u.uz));
-            snuff = false;
-        }
-        if (visible || audible) {
-            const action = audible && visible
-                ? 'crackles and flickers'
-                : audible ? 'crackles' : 'flickers';
-            await publish(`${ownedObjectName(object, state)} ${action}.`);
-        }
-        if (!dunkedLantern && !snuff)
-            return false;
-    }
-    const position = getObjectLocation(object, state);
-    const visible = object.where === 'minvent'
-        ? !!position && cansee(position.x, position.y) : !heroIsBlind(state);
-    if (visible) {
-        const candle = object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
-        if (candle || object.otyp === CANDELABRUM_OF_INVOCATION) {
-            const many = candle ? object.quan > 1 : object.spe > 1;
-            await publish(`${objectOwnershipPrefix(object, state, { capitalized: true })}${candle ? '' : "candelabrum's "}candle${many ? "s' flames are" : "'s flame is"} extinguished.`);
-        }
-        else {
-            const plural = objectNameIsPlural(object, state);
-            await publish(`${ownedObjectName(object, state)} ${plural ? 'go' : 'goes'} out!`);
-        }
-    }
-    if (!endObjectBurn(object, state, state.moves ?? 0))
-        object.lamplit = false;
-    if (dunkedLantern) {
-        const age = object.age ?? 0;
-        object.age = age - (age > 200 ? 100 : Math.trunc(age / 2));
-    }
-    return true;
-}
 // Port only: resolve a hero equipment slot across runtime aliases.
 function heroObject(slot) {
     return game[slot] || game.u?.[slot] || null;
@@ -1955,6 +1867,9 @@ function heroIronShoes() {
 // C trap.c:trapeffect_telep_trap(): the hero branch — reveal the trap and
 // jump; the monster branch is the TELEP_TRAP case of triggerMonsterTrap.
 // Also C teleport.c:vault_tele(): inlined here for one-use teleport traps.
+// Also C teleport.c:tele_trap(): the whole body after seeTrap() — the
+// in_tele_trap guard, the endgame/antimagic/noteleport refusals,
+// next_to_u(), the once/fixed-destination/random dispatch and teleds().
 async function triggerTeleportTrap(trap, finishTeleport) {
     await seeTrap(trap);
     if (game._inTeleportTrap)
@@ -2538,12 +2453,6 @@ export function drainHeroEnergy(state, amount, { maximumAlreadyDrained = false, 
     state.context.botl = true;
     return formatFeltMessage(`your magical energy drain away${punctuation}`, state);
 }
-const PM_BABY_GRAY_DRAGON = MONSTER_NAME.indexOf('baby gray dragon');
-const MAGIC_RESISTANCE_ARMOR = new Set([
-    CLOAK_OF_MAGIC_RESISTANCE,
-    GRAY_DRAGON_SCALE_MAIL,
-    GRAY_DRAGON_SCALES,
-]);
 // Part of C trap.c:trapeffect_anti_magic(): the hero branch (the monster
 // branch applyMonsterAntiMagicTrap() holds the citation) —
 // positively-enchanted iron shoes shed the drain onto their enchantment;
@@ -3444,6 +3353,11 @@ function isclearpath(trap, x, y, dx, dy, length, level) {
     return true;
 }
 const MZ_HUGE = 4;
+// C trap.c:m_easy_escape_pit(): pit fiends and MZ_HUGE bodies climb out of
+// pits without a struggle; C tests monsters and &gy.youmonst alike.
+function escapesPitEasily(mnum) {
+    return mnum === PM_PIT_FIEND || (MONSTER_SIZE[mnum ?? -1] ?? 0) >= MZ_HUGE;
+}
 // C trap.c:mintrap().  m_move()'s trapped actor takes its escape roll here,
 // and postmov() calls this after a monster steps onto a trap square; source
 // effects (dig, kick, throw, zap, polymorph splits) call the same entry with
@@ -3484,8 +3398,7 @@ export async function mintrap(monster, state = requireInitializedGame(), { force
             && (pit || [BEAR_TRAP, HOLE, WEB].includes(trap.ttyp))) {
             await seeTrap(trap, state);
         }
-        const climbsEasily = (MONSTER_SIZE[monster.mnum] ?? 0) >= MZ_HUGE
-            || MONSTER_NAME[monster.mnum] === 'pit fiend';
+        const climbsEasily = escapesPitEasily(monster.mnum);
         if (random(40) === 0 || (pit && climbsEasily)) {
             const boulder = pit && (level.objects[x]?.[y] || [])
                 .some(object => object.otyp === BOULDER);
@@ -4880,7 +4793,7 @@ export async function climbOutOfPit() {
         game.vision_full_recalc = 1;
         return;
     }
-    if (reduceHeroTrapDuration() <= 0 || heroEscapesPitEasily()) {
+    if (reduceHeroTrapDuration() <= 0 || escapesPitEasily(heroMonsterForm())) {
         await resetUtrap(false);
         const locomotion = game.level.flags.sokoban_rules && hero.levitating
             ? 'struggle against the air currents and float' : hero.usteed ? 'ride' : 'crawl';
@@ -4915,11 +4828,6 @@ export function reduceHeroTrapDuration() {
 // Part of C trap.c:climb_pit(): fill the hero's vacated pit.
 async function fillHeroPitWithBoulder() {
     await fillPitWithBoulderAt(game.u.ux, game.u.uy);
-}
-// Part of C trap.c:m_easy_escape_pit(): apply easy pit escape to the hero form.
-function heroEscapesPitEasily() {
-    const form = heroMonsterForm();
-    return form === PM_PIT_FIEND || (MONSTER_SIZE[form] ?? 2) >= MZ_HUGE;
 }
 // C trap.c:dofiretrap(): the flame effect shared by floor fire traps and
 // trapped containers — steam under water, the tower of flame, resistance,
@@ -7181,7 +7089,7 @@ export function pitsAreConjoined(first, second) {
 // Part of C trap.c:conjoined_pits(): the pit offset it derives with sgn()
 // and xytodir(); Math.sign() and the xdir/ydir table lookup are those two
 // callees inlined here.
-function pitDirection(from, to) {
+export function pitDirection(from, to) {
     const dx = Math.sign(to.tx - from.tx);
     const dy = Math.sign(to.ty - from.ty);
     return xdir.findIndex((x, i) => i < 8 && x === dx && ydir[i] === dy);
@@ -7732,66 +7640,21 @@ export function trapName(type, { ignoreHallucination = false, state = game } = {
     return name;
 }
 // C trap.c:ignite_items()
-// Also C apply.c:catch_lit(): ignite each object and bill unpaid fuel.
+// Also C apply.c:catch_lit(): each ignitable object catches fire through
+// apply.ts:catchLit(), which owns C's catch_lit() body; the loop owns only
+// the chain walk and the visibility the caller observed.
 export async function igniteItems(objects, { state = game, publish = async () => { }, random = rn2, visible = true, } = {}) {
     const ignited = [];
     for (const object of objects || []) {
         // catch_lit() requires a current location, even during floor effects.
-        if (!getObjectLocation(object, state))
-            continue;
-        if (!catchesFire(object, random))
-            continue;
-        const plural = (object.quan ?? object.quantity ?? 1) > 1;
-        const blind = heroIsBlind(state);
-        if (visible) {
-            const name = lightSourceName(object, state);
-            // C catch_lit() names the source with Yname2(): shop, carrier, or your/the.
-            const prefix = objectOwnershipPrefix(object, state);
-            await publish(blind
-                ? `${prefix}${name} ${plural ? 'feel' : 'feels'} warm.`
-                : `${prefix}${name} ${plural ? 'catch' : 'catches'} light!`);
-        }
-        // C apply.c:catch_lit() credits discovery even when the fire is unseen.
-        if (object.otyp === POT_OIL)
-            learnObjectType(POT_OIL, state);
-        // C catch_lit(): an unpaid source that catches while carried is billed
-        // for its use on top of its price.
-        if (object.where === 'inventory' && object.unpaid
-            && costlySpot(state.u.ux, state.u.uy, state)) {
-            await chargeUnpaidUsage(object, { state });
-            await publish(`"That's in addition to the cost of ${ownedObjectName(object, state, { capitalized: false })} ${plural ? 'themselves' : 'itself'}, of course."`);
-            await billDummyObject(object, state);
-        }
-        if (beginObjectBurn(object, state, state.moves ?? 0))
+        if (await catchLit(object, { state, publish, random, visible }))
             ignited.push(object);
     }
     return ignited;
 }
-// Part of C apply.c:catch_lit(): decide whether an object can catch light.
-function catchesFire(object, random) {
-    if (!object || object.lamplit || object.in_use
-        || !LIGHT_TYPES.has(object.otyp)
-        || object.otyp === BRASS_LANTERN)
-        return false;
-    if ((object.otyp === MAGIC_LAMP
-        || object.otyp === CANDELABRUM_OF_INVOCATION)
-        && (object.spe ?? 0) <= 0)
-        return false;
-    if (TIMED_LIGHT_TYPES.has(object.otyp) && (object.age ?? 0) <= 0)
-        return false;
-    if (object.otyp === CANDELABRUM_OF_INVOCATION && object.cursed)
-        return false;
-    return !([OIL_LAMP, MAGIC_LAMP].includes(object.otyp)
-        && object.cursed && random(2) === 0);
-}
-// Part of C apply.c:catch_lit(): name the ignited light source.
-function lightSourceName(object, state) {
-    observeObjectForNaming(object, { state });
-    const name = objectName(object, state);
-    const quantity = object.quan ?? object.quantity ?? 1;
-    return quantity > 1 ? makePlural(name) : name;
-}
-// Part of C trap.c:trap_ice_effects(): melt the ice beneath a trap.
+// C trap.c:trap_ice_effects(): melting ice frees a trapped monster and
+// removes the trap beneath it — a landmine or bear trap sinks as its
+// object; MAGIC_PORTAL and VIBRATING_SQUARE (undestroyable_trap) survive.
 export async function meltIceTrap(x, y) {
     const trap = requireGameLevel(game).traps.find(candidate => candidate.tx === x && candidate.ty === y);
     if (!trap)
@@ -7833,18 +7696,6 @@ const EROSION = {
     corrosion: { field: 'oeroded2', verb: 'corrode', past: 'corroded', cause: 'corrosion' },
     crack: { field: 'oeroded', verb: 'crack', past: 'cracked', cause: 'impact' },
 };
-// Part of C trap.c:join_adjacent_pits(): set reciprocal connections between adjacent pits.
-export function connectPits(first, second) {
-    const direction = pitDirection(first, second);
-    if (direction < 0)
-        return false;
-    const opposite = (direction + 4) % 8;
-    const changed = !((first.conjoined ?? 0) & (1 << direction))
-        || !((second.conjoined ?? 0) & (1 << opposite));
-    first.conjoined = (first.conjoined || 0) | (1 << direction);
-    second.conjoined = (second.conjoined || 0) | (1 << opposite);
-    return changed;
-}
 // Port only: route liquid deaths through the shared death boundary.
 export async function finishLiquidDeath(options) {
     // The liquid effect has usually announced the death already. done() still

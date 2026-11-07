@@ -5639,7 +5639,7 @@ async function diseasemu_gu(mdat) {
     /* C youprop.h:69 Sick_resistance: intrinsic || extrinsic || defended(&youmonst, AD_DISE) */
     if ((sickRes?.intrinsic | 0) || (sickRes?.extrinsic | 0)
         || defended_mu(game.youmonst, AD_DISE_MK)) {
-        await pline('You feel a slight illness.');
+        await You_feel_mu('a slight illness.');
         return false;
     }
     const sick = u.uprops?.[17]; /* SICK, prop.h (const.js:2364); [11] was another property */

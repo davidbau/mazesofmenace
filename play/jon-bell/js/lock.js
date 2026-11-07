@@ -1246,31 +1246,6 @@ export async function breakchestlock(box, destroyit) {
     await delobj(box);
 }
 
-/* C ref: mkobj.c obj_extract_self for a contained object (box->cobj chain). */
-function _extract_from_box(box, obj) {
-    if (box.cobj === obj) box.cobj = obj.nobj ?? null;
-    else { let p = box.cobj; while (p && p.nobj !== obj) p = p.nobj; if (p) p.nobj = obj.nobj ?? null; }
-    obj.nobj = null;
-    obj.ocontainer = null;
-    obj.where = 0 /* OBJ_FREE */;
-}
-
-function _delobj(box, x, y) {
-    /* C invent.c:1446 — if (!force && obj_resists(obj, 0, 0)) return; */
-    if (obj_resists(box, 0, 0)) return;
-    const lvlObjs = g_levelObjects();
-    if (lvlObjs && lvlObjs[x]) {
-        let head = lvlObjs[x][y] ?? null;
-        if (head === box) lvlObjs[x][y] = box.nexthere ?? null;
-        else { let p = head; while (p && p.nexthere !== box) p = p.nexthere; if (p) p.nexthere = box.nexthere ?? null; }
-    }
-    /* also unlink from the global fobj chain. */
-    if (game.fobj === box) game.fobj = box.nobj ?? null;
-    else { let p = game.fobj; while (p && p.nobj !== box) p = p.nobj; if (p) p.nobj = box.nobj ?? null; }
-    box.where = 0 /* OBJ_FREE */;
-}
-function g_levelObjects() { return game.level?.levelObjects ?? null; }
-
 /* C ref: lock.c:1268 chest_shatter_msg(otmp) — shatter/breathe a scattered item. */
 async function chest_shatter_msg(otmp) {
     if ((otmp.oclass | 0) === POTION_CLASS_OC) {

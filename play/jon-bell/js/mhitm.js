@@ -1328,39 +1328,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
  * RNG: rn2_on_display_rng(SIZE(hcolors)) if Hallucination or !colorpref
  * ---------------------------------------------------------------------------
  */
-export function hcolor(colorpref) {
-    const hcolors = [
-        "ultraviolet", "infrared", "bluish-orange", "reddish-green", "dark white",
-        "light black", "sky blue-pink", "pinkish-cyan", "indigo-chartreuse",
-        "salty", "sweet", "sour", "bitter", "umami", /* basic tastes */
-        "striped", "spiral", "swirly", "plaid", "checkered", "argyle", "paisley",
-        "blotchy", "guernsey-spotted", "polka-dotted", "square", "round",
-        "triangular", "cabernet", "sangria", "fuchsia", "wisteria", "lemon-lime",
-        "strawberry-banana", "peppermint", "romantic", "incandescent",
-        "octarine", /* Discworld: the Colour of Magic */
-        "excitingly dull", "mauve", "electric",
-        "neon", "fluorescent", "phosphorescent", "translucent", "opaque",
-        "psychedelic", "iridescent", "rainbow-colored", "polychromatic",
-        "colorless", "colorless green",
-        "dancing", "singing", "loving", "loudy", "noisy", "clattery", "silent",
-        "apocyan", "infra-pink", "opalescent", "violant", "tuneless",
-        "viridian", "aureolin", "cinnabar", "purpurin", "gamboge", "madder",
-        "bistre", "ecru", "fulvous", "tekhelet", "selective yellow",
-    ];
-
-    // Check Hallucination: HHallucination && !Halluc_resistance
-    const HHallucination = game.u?.uprops?.[HALLUC]?.intrinsic || 0;
-    const HHalluc_resistance = game.u?.uprops?.[HALLUC_RES]?.intrinsic || 0;
-    const EHalluc_resistance = game.u?.uprops?.[HALLUC_RES]?.extrinsic || 0;
-    const Halluc_resistance = HHalluc_resistance || EHalluc_resistance;
-    const Hallucination = HHallucination && !Halluc_resistance;
-
-    // C do_name.c:1463 tests the pointer; an empty string is still non-null.
-    if (Hallucination || colorpref == null) {
-        return hcolors[rn2_on_display_rng(hcolors.length)];
-    }
-    return colorpref;
-}
+import { hcolor } from './do_name.js'; // C do_name.c:1461; single body lives in do_name.js
+export { hcolor };
 
 
 

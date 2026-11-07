@@ -384,7 +384,7 @@ import {
     UnsupportedWieldError,
     cantwield,
 } from './wield.js';
-import { rn1, rn2, rnd } from './rng.js';
+import { coreRandom, rn1, rn2, rnd } from './rng.js';
 import { aggravate } from './wizard.js';
 import { dotalk, UnsupportedChatError } from './sounds.js';
 import {
@@ -1933,7 +1933,7 @@ export async function end_of_input(state = game) {
         state.program_state.something_worth_saving = 0;
     if (state.program_state.something_worth_saving
         && !state.program_state.done_hup_saved) {
-        dosave0(state);
+        await dosave0(state);
         state.program_state.done_hup_saved = true;
     }
     await nh_terminate(state);
@@ -3315,7 +3315,7 @@ async function runEngraveCommand(key, state) {
         message: ttyPline,
         redraw: newsym,
         setOccupation: set_occupation,
-        random: { rn2, rnd },
+        random: coreRandom,
         randomEngraving: ({ state: engravingState, random }) =>
             random_engraving({ state: engravingState, random }),
         yesNo: yn_function,
@@ -3677,7 +3677,7 @@ export async function domonability(state = game) {
                 'Unfortunately sound does not carry well through rock.',
                 state,
             );
-        else aggravate(state, { rn2 });
+        else aggravate(state, coreRandom);
     } else if (is_vampire(uptr) || is_vampshifter(state.youmonst)) {
         return dopoly(state);
     } else if (state.u.usteed && can_breathe(state.u.usteed?.data)) {
@@ -6257,7 +6257,9 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             // own continuation, and ECMD_TIME for the shot itself. The
             // ECMD_OK arm is why the reset below must be told not to clear
             // the queue -- it is the one that leaves [doswapweapon, dofire]
-            // standing for the next two rhack() calls.
+            // standing for the next two rhack() calls. That arm returns
+            // ECMD_TIME instead when doquiver_core() unwielded the stack it
+            // readied, and the queued commands then wait for the turn.
             //
             // extcmdlist[]'s "fire" row carries no flags at all, so neither
             // the prefix test at 3693-3695 nor the MOVEMENTCMD and

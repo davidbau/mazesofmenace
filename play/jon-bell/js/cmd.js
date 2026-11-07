@@ -2183,8 +2183,12 @@ export async function inventory_menu_legacy(opts) {
             // C wintty.c:1383-1390: conditional glyphs require no headers.
             const showGlyph = (g.iflags?.use_menu_glyphs ?? true)
                 && !(((g.iflags?.menuobjsyms ?? 4) | 0) & 4 && (opts?.title || special));
+            // C invent.c:3320-3330: format and release the same obuf even
+            // without class headings; later names can read its retained bytes.
+            const formatted = await doname(obj);
             windowLines.push(`${String.fromCharCode(obj.invlet | 0)} ${showGlyph ? symTxt : '-'} `
-                             + menucolor_text((await doname_body(obj, hand)).slice(0, 78 - 4))); /* tty_end_menu:2728 cut-off */
+                             + menucolor_text(formatted.slice(0, 78 - 4))); /* tty_end_menu:2728 cut-off */
+            maybereleaseobuf(formatted);
             lineItems.push(obj);
         }
     }
@@ -4443,31 +4447,6 @@ function _hidesUnder_useupf(ptr) {
     return !!(ptr && ((ptr.mflags1 | 0) & M1_CONCEAL) !== 0);
 }
 
-async function _splitobj_useupf(obj, num) {
-    const otmp = newobj(obj);
-    otmp.oextra = null;
-    otmp.o_id = nextoid(obj, otmp);   /* C mkobj.c:470 */
-    otmp.timed = 0;
-    otmp.lamplit = 0;
-    otmp.owornmask = 0;
-    obj.quan = (obj.quan | 0) - num;
-    obj.owt = weight(obj);
-    otmp.quan = num;
-    otmp.owt = weight(otmp);
-    otmp.pickup_prev = 0;
-    game.context = game.context || {};
-    game.context.objsplit = { parent_oid: obj.o_id, child_oid: otmp.o_id };
-    obj.nobj = otmp;
-    if ((obj.where | 0) === 1)
-        obj.nexthere = otmp;
-    if ((otmp.where | 0) === 8 /* OBJ_LUAFREE */)
-        otmp.where = 0 /* OBJ_FREE */;
-    if (obj.unpaid)
-        await splitbill_real(obj, otmp);
-    await copy_oextra(otmp, obj);
-    if (otmp.oextra?.omid) free_omid(otmp);
-    return otmp;
-}
 
 /* nextoid / next_ident / oid_price_adjustment used to be re-derived HERE as
  * `_nextoid_useupf` / `_nextIdent_useupf` / `_oidPriceAdjustment_useupf`, and
@@ -5173,16 +5152,7 @@ function flooreffects_is_plural(o) {
             && !flooreffects_undiscovered_artifact(o.oartifact));
 }
 // C ref: dbridge.c:61-71 is_lava(x,y).
-function flooreffects_is_lava(x, y) {
-    if (!isok(x, y)) return false;
-    const loc = _levlAt(x, y);
-    if (!loc) return false;
-    const ltyp = loc.typ | 0;
-    if (ltyp === LAVAPOOL || ltyp === LAVAWALL
-        || (ltyp === DRAWBRIDGE_UP && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_LAVA))
-        return true;
-    return false;
-}
+function flooreffects_is_lava(x, y) { return is_lava(x, y); }
 // C ref: rm.h is_pool(x,y).
 function flooreffects_is_pool(x, y) {
     return is_pool(x, y);
@@ -5563,14 +5533,13 @@ export function invletter_value(c) {
         : c === 36 ? 1 : c === 35 ? 1 + invlet_basic + 1 : 1 + invlet_basic + 1 + 1;
 }
 function sortloot_invlet_chain(head) {
-    const OCLASS_COIN_SL = 12; /* objclass.h COIN_CLASS */
     const invletValue = invletter_value;
     const out = [];
     for (let o = head; o; o = o.nobj)
         out.push(o);
     return out.sort((a, b) => {
-        const ka = invletValue(((a.oclass | 0) === OCLASS_COIN_SL) ? 36 : (a.invlet | 0));
-        const kb = invletValue(((b.oclass | 0) === OCLASS_COIN_SL) ? 36 : (b.invlet | 0));
+        const ka = invletValue(a.invlet | 0);
+        const kb = invletValue(b.invlet | 0);
         return ka - kb;
     });
 }
@@ -10892,6 +10861,9 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
             msort(pack);
         }
     }
+    /* getobj's putmsghistory (invent.c:1895) already retired any standing line;
+     * a line pline'd while the entries are formatted is a fresh one (below). */
+    const pendingAtBuild = g._pending_message;
     const items = [];
     for (let o = g.invent; o; o = o.nobj) {
         if (allowedLets != null
@@ -10901,7 +10873,10 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
     }
     /* invent.c:3140-3143 — n==0 → pline("Not carrying anything.") and return 0. */
     if (items.length === 0 && !xtraChoice) {
-        await force_more('Not carrying anything.');
+        /* Under iflags.force_invmenu getobj never calls yn_function
+         * (invent.c:1922-1930), so no prompt stands: a plain pline. */
+        if (g.iflags?.force_invmenu) await pline('Not carrying anything.');
+        else await force_more('Not carrying anything.');
         return 0;
     }
     /* flags.inv_order / let_to_name tables — module scope (see their
@@ -10987,7 +10962,13 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
          * subclass, discovery and name (sortloot_cmp, invent.c:449-546). */
         if (g.flags?.sortloot === 'f')
             group = _sortloot_within_class(group, oclass);
-        windowLines.push(menu_heading_text(PICKINV_CLASS_HEADER[oclass]));
+        /* C invent.c:3291-3294 let_to_name(let, FALSE, withsym), withsym = want_reply
+         * && menu_head_objsym; invbuf_sympadding 8 (invent.c:4800,4825-4833). */
+        let hdr = PICKINV_CLASS_HEADER[oclass];
+        if (g.iflags?.menu_head_objsym)
+            hdr += ' '.repeat(Math.max(0, 8 - hdr.length - 1))
+                + `  ('${def_oc_syms_chars[oclass]}')`;
+        windowLines.push(menu_heading_text(hdr));
         lineItems.push(null);
         for (const obj of group) {
             windowLines.push((await _pickinv_item_text(obj, hand)));
@@ -11006,10 +10987,18 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
     }
     windowLines.push('(end)');
     lineItems.push(null);
+    /* C wintty.c:1921-1922 acknowledges WIN_MESSAGE before drawing the menu.
+     * Naming its entries can itself have emitted plines (objnam.c:1656). */
+    if (g._pending_message)
+        await force_more_pages(g._pending_message, true, true);
     /* C wintty.c:1938-1941 tty_display_nhwindow(NHW_MENU): the overlay arm runs
      * tty_clear_nhwindow(WIN_MESSAGE) (the full-screen arm clears the screen and
      * sets toplin EMPTY), so a standing pline such as dofire's "You have no
      * ammunition readied." (dothrow.c:527) is gone before the menu paints. */
+    /* wintty.c:1921-1922: a line left NEED_MORE by a pline raised while display_pickinv
+     * formatted the entries (doname -> impossible) is more()'d before the clear. */
+    if (g._pending_message && g._pending_message !== pendingAtBuild)
+        await force_more_pages(g._pending_message);
     g._pending_message = '';
     g._topl_sticky = '';
     const uac = u.uac ?? 0;
@@ -12988,36 +12977,6 @@ async function use_royal_jelly(obj) {
 }
 
 /* ── Stubs / helpers for use_royal_jelly ─────────────────────────────────── */
-async function _splitobj_royal(obj, num) {
-    /* C ref: mkobj.c splitobj — split num off obj, return new object */
-    const g = game;
-    const otmp = newobj(obj);
-    /* C mkobj.c:468-470 — *otmp = *obj; otmp->oextra = 0;
-     * otmp->o_id = nextoid(obj, otmp).  This used to call the file-local
-     * `_nextoid_useupf`, whose price-adjustment search was inert and whose
-     * oid_price_adjustment helper threw on every undiscovered item; see the
-     * note where those three helpers were deleted. */
-    otmp.oextra = null;
-    otmp.o_id = nextoid(obj, otmp);
-    otmp.quan = num;
-    otmp.owt = weight(otmp);
-    otmp.owornmask = 0;
-    otmp.timed = 0;
-    otmp.lamplit = 0;
-    otmp.pickup_prev = 0;
-    obj.quan = (obj.quan | 0) - num;
-    obj.owt = weight(obj);
-    g.context = g.context || {};
-    g.context.objsplit = { parent_oid: obj.o_id, child_oid: otmp.o_id };
-    obj.nobj = otmp;
-    if ((obj.where | 0) === 1)
-        obj.nexthere = otmp;
-    if ((otmp.where | 0) === 8 /* OBJ_LUAFREE */)
-        otmp.where = 0 /* OBJ_FREE */;
-    if (obj.unpaid)
-        await splitbill_real(obj, otmp);
-    return otmp;
-}
 function _unsplitobj_royal(obj) {
     /* C ref: mkobj.c unsplitobj — merge the split object back */
     const g = game;
@@ -25543,8 +25502,21 @@ function _c_qsort(a, cmp) {
 }
 
 function _c_small_qsort(arr, cmp) {
-    if (arr.length >= 7)
-        return _c_qsort(arr, cmp);
+    if (arr.length >= 7) {
+        const ms = (v) => {
+            if (v.length < 2) return v;
+            const mid = v.length >> 1;
+            const l = ms(v.slice(0, mid)), r = ms(v.slice(mid));
+            const out = [];
+            let i = 0, j = 0;
+            while (i < l.length && j < r.length)
+                out.push(cmp(l[i], r[j]) <= 0 ? l[i++] : r[j++]);
+            return out.concat(l.slice(i), r.slice(j));
+        };
+        const res = ms(arr);
+        for (let k = 0; k < arr.length; k++) arr[k] = res[k];
+        return arr;
+    }
     for (let i = 1; i < arr.length; i++)
         for (let j = i; j > 0 && cmp(arr[j - 1], arr[j]) > 0; j--)
             [arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
@@ -30113,8 +30085,12 @@ async function _do_look_lookat(x, y) {
         /* C pager.c:1444-1509 class scan matches the painted char against every
          * defsym ('`' is also the boulder symbol), then pager.c:1607-1612 builds
          * " (engraving" and add_quoted_engraving() appends the text clause. */
+        /* C compares glyphinfo.ttychar (the symset's raw byte, e.g. IBMgraphics
+         * S_engroom \xee), not the high-bit-stripped paint char 'n'. */
+        const _engrSym = dglyph.symbol
+            ?? pager_showsyms()?.[((_levlAt(x, y)?.typ | 0) === CORR) ? S_engrcorr : S_engroom];
         const classes = collectScreenDescriptionClasses({
-            ch: dglyph.ch, symbol: dglyph.symbol, dec: !!dglyph.dec, showsyms: pager_showsyms(),
+            ch: dglyph.ch, symbol: _engrSym, dec: !!dglyph.dec, showsyms: pager_showsyms(),
             terrainmode: g.iflags?.terrainmode, decMode: dec_mode(),
             rogueMode: Is_rogue_level(u.uz), glyphKind: 'engraving',
             boulderSymbol: pager_boulder_symbol(),
@@ -31121,8 +31097,6 @@ async function look_at_object(x, y, painted = _glyph_at(x, y), hidden = false, m
              * known enchantment, BUC, quantity, and shop-price formatting. */
             buf = await _fw_distant_name(obj, _fw_fmt);
             _namedByDonameBase = true;
-        } else if (!obj.dknown && (obj.oclass | 0) === OCLASS_POTION) {
-            buf = 'a potion';
         } else if ((obj.oclass | 0) === OCLASS_POTION) {
             /* dknown potion: pager.c:390 distant_name(otmp, doname_vague_quan);
              * the real doname_base supplies bknown's "uncursed "/"cursed "

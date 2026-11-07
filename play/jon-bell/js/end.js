@@ -1028,6 +1028,7 @@ export async function do_death_sequence(opts) {
     // Skipped when the killing site already delivered C's own death line (the
     // wand-of-death self-zap, zap.c:2899): there is no done_in_by on that path,
     // and the "You die." it plined was already paged by the force_more above.
+    let _youDieFiled = false;
     if (!pd.alreadySaidYouDie && !pd.noDeathLine) {
         if (_winStopHere) {
             /* C pline.c:266-274 vpline(): the swallowed "You die..." still recalcs
@@ -1057,6 +1058,7 @@ export async function do_death_sequence(opts) {
                  * tty_yn_function, which therefore raises no more(). */
                 g._topl_win_stop_buf = 'You die...';
                 putmsghistory('You die...');
+                _youDieFiled = true; /* gt.toplines is now "You die..." (topl.c:289-290): filed once, here */
             }
         } else {
             /* end.c:195 You("die...") flushes the map before putmesg
@@ -1092,7 +1094,7 @@ export async function do_death_sequence(opts) {
          * remember_topl()s the line still standing in gt.toplines first: the
          * owner an ESC'd page left drawn (topl.c:300) still reaches ^P history. */
         const _stand = String(g._pending_message || '');
-        if (_stand && g._msg_history?.at(-1) !== _stand)
+        if (_stand && !_youDieFiled && g._msg_history?.at(-1) !== _stand)
             putmsghistory(_stand);
         g._pending_message = '';
     }

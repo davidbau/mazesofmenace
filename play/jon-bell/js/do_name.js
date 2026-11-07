@@ -34,7 +34,6 @@ import { cansee } from './vision.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
 import { x_monnam, xm_has_mgivenname } from './mhitm.js';
 import { SUPPRESS_SADDLE } from './const.js';
-import { hcolor as hcolor_real } from './mhitm.js'; // relocate-fns
 import { NH_BLACK, NH_BLUE, NH_GOLDEN, NH_PURPLE, NH_RED, NH_SILVER } from './read.js'; // relocate-fns
 import { NON_PM } from './const.js'; // relocate-fns
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js'; // relocate-fns
@@ -796,12 +795,31 @@ export function mon_nam(mtmp) {
 export function pmname(pm, mgender) { return monPmname(pm.pmidx, mgender); }
 
 /* C do_name.c:2432 hcolor(colorstr): identity unless hallucinating, in which
- * case mhitm.js hcolor draws from rn2_on_display_rng.  The table maps this
+ * case it draws from rn2_on_display_rng (the sole body; mhitm.js re-exports).  The table maps this
  * file's numeric NH_* tokens to the C c_color_names strings (decl.c:16-19).
- * Any other input is C's plain colorpref arm — hcolor_real returns it as-is
+ * Any other input is C's plain colorpref arm, returned as-is
  * (or draws when hallucinating / null) — never the "" this used to collapse
  * to, which skipped the hallucination draw entirely. */
 const NH_AMBER = 'amber';
+
+const hcolors = [
+    "ultraviolet", "infrared", "bluish-orange", "reddish-green", "dark white",
+    "light black", "sky blue-pink", "pinkish-cyan", "indigo-chartreuse",
+    "salty", "sweet", "sour", "bitter", "umami", /* basic tastes */
+    "striped", "spiral", "swirly", "plaid", "checkered", "argyle", "paisley",
+    "blotchy", "guernsey-spotted", "polka-dotted", "square", "round",
+    "triangular", "cabernet", "sangria", "fuchsia", "wisteria", "lemon-lime",
+    "strawberry-banana", "peppermint", "romantic", "incandescent",
+    "octarine", /* Discworld: the Colour of Magic */
+    "excitingly dull", "mauve", "electric",
+    "neon", "fluorescent", "phosphorescent", "translucent", "opaque",
+    "psychedelic", "iridescent", "rainbow-colored", "polychromatic",
+    "colorless", "colorless green",
+    "dancing", "singing", "loving", "loudy", "noisy", "clattery", "silent",
+    "apocyan", "infra-pink", "opalescent", "violant", "tuneless",
+    "viridian", "aureolin", "cinnabar", "purpurin", "gamboge", "madder",
+    "bistre", "ecru", "fulvous", "tekhelet", "selective yellow",
+];
 
 export function hcolor(color) {
     const name = color === NH_BLUE ? "blue"
@@ -812,7 +830,15 @@ export function hcolor(color) {
         : color === NH_GOLDEN ? "golden"
         : (color === NH_AMBER || color === "amber") ? "amber"
         : "";
-    return name ? hcolor_real(name) : hcolor_real(color);
+    const colorpref = name || color;
+    const HHallucination = game.u?.uprops?.[HALLUC]?.intrinsic || 0;
+    const Halluc_resistance = (game.u?.uprops?.[HALLUC_RES]?.intrinsic || 0)
+        || (game.u?.uprops?.[HALLUC_RES]?.extrinsic || 0);
+    const Hallucination = HHallucination && !Halluc_resistance;
+    /* C do_name.c:1463 tests the pointer; an empty string is still non-null. */
+    return (Hallucination || colorpref == null)
+        ? hcolors[rn2_on_display_rng(hcolors.length)]
+        : colorpref;
 }
 
 /* C do_name.c:1254-1287; permonst templates represent mons[] entries,
