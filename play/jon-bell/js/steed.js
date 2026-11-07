@@ -86,7 +86,7 @@ export function stucksteed(checkfeeding) {
 }
 
 /* C steed.c:897-933 place_monster */
-export function place_monster(mon, x, y) {
+export function place_monster(mon, x, y, selfInGrid) {
     let buf = "";
     /* normal map bounds are <1..COLNO-1,0..ROWNO-1> but sometimes
        vault guards (either living or dead) are parked at <0,0> */
@@ -112,6 +112,9 @@ export function place_monster(mon, x, y) {
      * at its own coordinates and takes the impossible() arm, whose
      * minimal_monnam() stub throws and aborts the replay. */
     let othermon = m_at(x, y, mon);
+    /* caller knows the grid cell still holds `mon` itself (e.g. mon_leave after
+     * wormgone removed only the stale head-segment square). */
+    if (!othermon && selfInGrid) othermon = mon;
     if (othermon) {
         buf = describe_level_buf(0);
         let monnm = minimal_monnam(mon, false);

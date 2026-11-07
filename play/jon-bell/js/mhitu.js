@@ -1,8 +1,8 @@
 import { urgent_pline, pline_The, You, Your } from './pline.js';
-import { pline_mon as pline_mon_real } from './pline.js';
+import { pline_mon } from './pline.js';
 import { Monnam as Monnam_real } from './uhitm.js';
 import { Mgender } from './do_name.js';
-import { u_carried_gloves, set_msg_xy as set_msg_xy_mu, reset_occupations } from './cmd.js';
+import { u_carried_gloves, set_msg_xy as set_msg_xy_mu, reset_occupations, rounddiv } from './cmd.js';
 import { registerStaticReset } from './statics.js';
 import { yyyymmdd } from './calendar.js';
 import { attacktype_fordmg } from './makemon.js';
@@ -223,7 +223,7 @@ import { LAST_REAL_GEM, LAST_GLASS_GEM, CANDELABRUM_OF_INVOCATION, BELL_OF_OPENI
 /* C objnam.c:2424 simpleonames(obj) — minimal_xname made plural for quan>1.
  * RNG-free; C evaluates it twice in the u_catch_thrown_obj call, once per
  * argument, so calling it once and reusing the string is faithful. */
-import { simpleonames as simpleonames_mu, is_quest_artifact } from './objnam.js';
+import { simpleonames as simpleonames_mu, is_quest_artifact, doname } from './objnam.js';
 import { obj_resists as obj_resists_mu } from './dogmove.js';
 import { monkilled_trap as monkilled_mu, openholdingtrap as openholdingtrap_mu } from './trap.js';
 import { thitu as thitu_mu } from './mthrowu.js';
@@ -236,6 +236,7 @@ import { place_monster as place_monster_mu } from './steed.js';
 import { unstuck as unstuck_mu, attacktype as attacktype_mu, sticks as sticks_mu } from './dog.js';
 import { dismount_steed as dismount_steed_mu, number_leashed as number_leashed_mu } from './cmd.js';
 import { DISMOUNT_ENGULFED } from './const.js';
+import { _movemon_page_frames_reset as _movemon_page_frames_reset_mu } from './display.js';
 import { swallowed as swallowed_mu, docrt_flags as docrt_flags_mu, topl_force_break_now as topl_force_break_now_mu, capture_flushed_cells as capture_flushed_cells_mu } from './display.js';
 import { acurr as acurr_raw_mu } from './attrib.js';
 import { arti_defn_adtyp as arti_defn_adtyp_u } from './attrib.js';
@@ -466,10 +467,6 @@ export async function ignite_items(objchn) {
             await catch_lit_mu(obj);
         obj = next;
     }
-}
-/* C pline.c:132-146 pline_mon(): set_msg_xy() hero (0,0) / monster square, then pline(). */
-function pline_mon(mon, ...args) {
-    return pline_mon_real(mon, ...args);
 }
 function Your1(_msg) { pline("Your " + _msg); }
 /* C you.h:324 mhis(mtmp) — use the canonical pronoun implementation below,
@@ -2506,7 +2503,7 @@ export async function stealarm_mu() {
                     await subfrombill_real(otmp, shops.length ? shop_keeper_real(shops[0]) : null);
                 }
                 freeinv_mu(otmp);
-                await pline(`${Monnam(mtmp)} steals ${await doname_mu(otmp)}!`);
+                await pline(`${Monnam(mtmp)} steals ${await doname(otmp)}!`);
                 await mpickobj_mu(mtmp, otmp);
                 await monflee(mtmp, 0, false, false);
                 if (!tele_restrict_mu(mtmp))
@@ -4286,12 +4283,8 @@ function is_mplayer_mu(ptr) {
 function is_elf_mu(ptr) { return (_mf2(ptr) & M2_ELF_MU) !== 0; }
 function is_orc_mu(ptr) { return (_mf2(ptr) & M2_ORC_MU) !== 0; }
 function is_gnome_mu(ptr) { return (_mf2(ptr) & M2_GNOME_MU) !== 0; }
-/* C hacklib.c rounddiv(x, y) — divide, rounding to nearest. */
-function rounddiv_mu(x, y) {
-    if (y === 0) return 0;
-    const r = Math.trunc(x / y), m = x % y;
-    return (Math.abs(m) * 2 >= Math.abs(y)) ? r + Math.sign(x / y) : r;
-}
+/* C hack.c:4551 rounddiv(x, y) — one port, js/cmd.js rounddiv. */
+function rounddiv_mu(x, y) { return rounddiv(x, y); }
 const ELVEN_ARROW_MU = 19, ORCISH_ARROW_MU = 20, CROSSBOW_BOLT_MU = 23,
       ELVEN_BOW_MU = 84, ORCISH_BOW_MU = 85, CROSSBOW_MU = 88;
 /* C ref: dothrow.c:39-83 multishot_class_bonus(pm, ammo, launcher) — pm is the
@@ -4787,7 +4780,7 @@ function mhim_mu(mon) {
 /* C mon.c:3253 mondied's caller-side "is it still alive" test is
  * DEADMONSTER(mon) == mon->mhp < 1 (monst.h:214); written inline above. */
 function mon_moving_mu() {
-    return !!(game._inMovemonBlock || game.context?.mon_moving);
+    return !!game.context?.mon_moving;
 }
 
 /* C ref: mthrowu.c:582 m_throw(mon, x, y, dx, dy, range, obj) — fly a monster's
@@ -5594,6 +5587,9 @@ export async function expels_gu(mtmp, mndx, message) {
             game.vision_full_recalc = 0;
             await force_more_pages_mu(_line);
             game.vision_full_recalc = _vfr;
+            /* Those pages were frozen by movemon's overflow log; this docrt()
+             * repaints the map, so the next overflowing pline logs its own. */
+            _movemon_page_frames_reset_mu();
             /* This more() comes from cls()'s display_nhwindow(WIN_MESSAGE) (a
              * flush), not from update_topl, so topl.c:232-235's WIN_STOP is live
              * for the very next pline -- there is no incoming owner message that
@@ -5858,7 +5854,7 @@ async function gulpmu(mtmp, mattk) {
         if (!(mtmp.mcan | 0) && rn2(2)) {
             if (Cold_resistance_gu()) {
                 shieldeff(u.ux | 0, u.uy | 0);
-                pline('You feel mildly chilly.');
+                await You_feel_mu('mildly chilly.');
                 monstseesu(M_SEEN_COLD);
                 ugolemeffects(AD_COLD_GU, tmp);
                 tmp = 0;
@@ -5873,7 +5869,7 @@ async function gulpmu(mtmp, mattk) {
         if (!(mtmp.mcan | 0) && rn2(2)) {
             if (Fire_resistance_gu()) {
                 shieldeff(u.ux | 0, u.uy | 0);
-                pline('You feel mildly hot.');
+                await You_feel_mu('mildly hot.');
                 monstseesu(M_SEEN_FIRE);
                 ugolemeffects(AD_FIRE_GU, tmp);
                 tmp = 0;

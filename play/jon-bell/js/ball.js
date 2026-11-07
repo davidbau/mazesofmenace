@@ -19,6 +19,7 @@
 //     hero (see the Blind import below): the gap was invisible to its author.
 
 import { game } from './gstate.js';
+import { is_pool } from './dbridge.js';
 import { dist2, distmin } from './hacklib.js';
 import { near_capacity } from './hack.js';
 import { nomul } from './allmain.js';
@@ -72,9 +73,8 @@ function ball_Maybe_Half_Phys(dmg) {
 }
 
 /* miss: LOCAL throwing stub DELETED — use zap.js's canonical body below. */
-// C pline.c:387-400 You_feel(line) — preserve the feedback when dragging a
-// punished ball through a pool/hole while levitating.
-function You_feel(msg) { return pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + msg); }
+// C pline.c:388 You_feel — canonical port in js/pline.js.
+import { You_feel } from './pline.js';
 // BCPOS_* — ball.c:107-109.
 const BCPOS_DIFFER = 0; // ball & chain at different positions
 const BCPOS_CHAIN = 1;  // chain on top of ball
@@ -280,7 +280,7 @@ export function set_bc(already_blind) {
             place_object(uchain, uchain.ox, uchain.oy);
             place_object(uball, uball.ox, uball.oy);
         }
-        newsym(uball.ox, uball.oy);
+        newsym(uchain.ox, uchain.oy); // ball.c:421
     }
 }
 
@@ -594,22 +594,6 @@ function findBallChain() {
     return { uball, uchain };
 }
 
-// is_pool(x,y) — rm.h: POOL/MOAT/WATER/DRAWBRIDGE_UP. The project-wide
-// js/pickup.js export is an unconditional "not yet ported: is_pool
-// (dbridge.c)" throw stub; reproduced locally instead, exactly as
-// js/dokick.js's non-exported is_pool and js/cmd.js's pooleffects_is_pool
-// already do for the same reason.
-function is_pool(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    const t = loc.typ | 0;
-    if (t === POOL || t === MOAT || t === WATER) return true;
-    // dbridge.c:is_moat(): an opened drawbridge counts as a moat only
-    // when its under-terrain is DB_MOAT (and not on Juiblex's level).
-    return t === DRAWBRIDGE_UP
-        && !Is_juiblex_level(game.u?.uz)
-        && (((loc.drawbridgemask ?? loc.flags ?? 0) | 0) & DB_UNDER) === DB_MOAT;
-}
 const is_pool_here = is_pool;
 
 // Levitation macro — youprop.h: (HLevitation|ELevitation) set and not

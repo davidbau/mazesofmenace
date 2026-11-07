@@ -1733,7 +1733,7 @@ import { cmd_from_func, reset_commands, update_rest_on_space, visctrl } from './
 import { number_pad_value } from './cmd_config.js'; // relocate-fns
 import { clr2colorname } from './coloratt.js'; // relocate-fns
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js'; // relocate-fns
-import { ECMD_OK, Is_rogue_level, MENU_COMBINATION, MENU_TRADITIONAL } from './const.js'; // relocate-fns
+import { PL_FSIZ, ECMD_OK, Is_rogue_level, MENU_COMBINATION, MENU_TRADITIONAL } from './const.js'; // relocate-fns
 import { OPTMENUHELP, dlb_file_lines } from './dispfile.js'; // relocate-fns
 import { dec_mode, docrt, flush_screen, force_more, new_status_window, newclipping, status_reassess } from './display.js'; // relocate-fns
 import { DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME, term_for_boolean } from './doset_data.js'; // relocate-fns
@@ -1746,7 +1746,7 @@ import { choose_disco_sort } from './o_init.js'; // relocate-fns
 import './options_runtime.js'; // relocate-fns
 import { drainTopline, handler_change_autocompletions, handler_rebind_keys, query_attr_one, query_color, set_cursor } from './optmenu.js';
 import { status_hilite_menu } from './botl.js'; // relocate-fns
-import { assign_graphics, load_primary_symset_from_file } from './symbols.js'; // relocate-fns
+import { assign_graphics, load_primary_symset_from_file, clear_symsetentry } from './symbols.js'; // relocate-fns
 import { classifyTerrain } from './terrain-status.js'; // relocate-fns
 import { menu_heading_sgr, menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { vision_recalc } from './vision.js'; // relocate-fns
@@ -1992,7 +1992,7 @@ function fruit_from_name(fname) {
  * is used exactly as C uses it. */
 function _fruit_name_rewrite(nameIn, initial = false) {
     /* C options.c:8194 — nmcpy(svp.pl_fruit, makesingular(str), PL_FSIZ). */
-    let plf = makesingular(String(nameIn));
+    let plf = makesingular(String(nameIn)).slice(0, PL_FSIZ - 1); /* nmcpy truncation */
     /* C options.c:8199-8203 — globs may carry a size prefix that has to be
      * skipped before the object-name comparison. */
     const globpfx = (plf.startsWith('small ') || plf.startsWith('large ')) ? 6
@@ -2041,7 +2041,7 @@ function _fruit_name_rewrite(nameIn, initial = false) {
         || ((_endsWith(plf, ' corpse') || _endsWith(plf, ' egg'))
             && ismnum(name_to_mon(plf, null).mntmp))) {
         /* C options.c:8237-8239 — Strcpy(buf, pl_fruit); "candied " + buf. */
-        plf = 'candied ' + plf;
+        plf = 'candied ' + plf.slice(0, PL_FSIZ - 9); /* nmcpy(pl_fruit + 8, buf, PL_FSIZ - 8) */
     }
     return plf;
 }
@@ -3762,6 +3762,7 @@ export async function handler_symset(preserveStatus = false, rogueflag = false) 
         const sl = sets[chosen];
         if (!sl) return true;
         const wasDec = dec_mode();
+        clear_symsetentry(rogueflag ? 1 : 0, true); // C symbols.c:1028
         cur.name = sl[0];
         cur.handling = sl[1];
         /* rows still physically drawn under the old DEC shift until a window
@@ -3775,8 +3776,7 @@ export async function handler_symset(preserveStatus = false, rogueflag = false) 
          * (see _remap_remembered_ibm / _terrain_glyph_base ROOM). */
         game._symsetDarkroomPending = true;
     } else if (chosen === -1) {
-        cur.name = null;
-        cur.handling = 0;
+        clear_symsetentry(rogueflag ? 1 : 0, true); // C symbols.c:1037
     }
     /* C symbols.c:1065-1098 do_symset: reload the chosen primary table,
      * including defaults, then make it the active showsyms table. */

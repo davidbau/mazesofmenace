@@ -1,43 +1,27 @@
 // drawing.c — def_char_to_monclass (convert character to monster class).
 // @ts-nocheck — js sibling imports.
 
-/**
- * Convert a character into a monster class. This returns the _first_
- * match made. If there are no matches, return MAXMCLASSES.
+/* def_monsyms[].sym — C drawing.c def_monsyms[MAXMCLASSES], built from
+ * defsym.h MONSYM(idx, ch, ...) rows 1..60.  Row 0 is C's own
+ * { '\0', "", "" } entry (no class 0); def_char_to_monclass never tests it. */
+const MAXMCLASSES = 61; /* C sym.h enum mon_syms MAXMCLASSES (defsym.h MONSYM rows 1..60) */
+const def_monsyms_sym = '\0abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]';
+
+/*
+ * Convert a character into a monster class.  This returns the _first_
+ * match made.  If there are no matches, return MAXMCLASSES.
  * Used in detect.c, drawing.c, mondata.c, options.c, pickup.c,
  * sp_lev.c, and windows.c.
  *
- * C ref: nethack-c/src/drawing.c:107
+ * C ref: nethack-c-v5/upstream/src/drawing.c:107-116.  'ch' is a char CODE.
  */
 export function def_char_to_monclass(ch) {
-    // def_monsyms indexed by monster symbol enum (from defsym.h MONSYMS_DRAWING)
-    // Index: Character (from defsym.h MONSYM lines)
-    // [0]: placeholder (not used, indexed from 1)
-    // [1-26]: a-z (ANT through ZRUTY)
-    // [27-52]: A-Z (ANGEL through ZOMBIE)
-    // [53-60]: @, space, ', &, ;, :, ~, ]
-    // MAXMCLASSES = 61
-    const MAXMCLASSES = 61;
-    const def_monsyms_chars = [
-        undefined,  // 0: placeholder
-        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',  // 1-10
-        'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',  // 11-20
-        'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D',  // 21-30
-        'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',  // 31-40
-        'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',  // 41-50
-        'Y', 'Z', '@', ' ', "'", '&', ';', ':', '~', ']'   // 51-60
-    ];
+    let i;
 
-    // Convert ch (ASCII code) to character for comparison
-    const chChar = String.fromCharCode(ch);
-
-    // Iterate and compare character at each position
-    for (let i = 1; i < MAXMCLASSES; i++) {
-        if (chChar === def_monsyms_chars[i]) {
-            return i;
-        }
-    }
-    return MAXMCLASSES;
+    for (i = 1; i < MAXMCLASSES; i++)
+        if (ch === def_monsyms_sym.charCodeAt(i))
+            break;
+    return i;
 }
 
 /**

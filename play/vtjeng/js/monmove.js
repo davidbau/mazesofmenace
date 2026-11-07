@@ -177,7 +177,13 @@ import { isok } from './cmd_isok.js';
 import { artifactTouchable, artifact_light, has_magic_key } from './artifacts.js';
 import { acurr } from './attrib.js';
 import { bury_an_obj, obj_resists } from './bury.js';
-import { newsym, swallowed, vobj_at } from './display.js';
+import {
+    newsym,
+    newsymOffMapImpossible,
+    newsymReportsOffMap,
+    swallowed,
+    vobj_at,
+} from './display.js';
 import {
     Adjmonnam,
     Amonnam,
@@ -217,7 +223,6 @@ import { m_next2u, ranged_attk_available } from './mhitu.js';
 import {
     heroDeaf,
     heroUnaware,
-    impossible,
     youHear,
     youSee,
     verbalize,
@@ -501,9 +506,8 @@ function propertyActive(state, property, blockedMatters = false) {
 }
 
 function doorMask(location) {
-    // rm.doormask aliases flags in C. doormask remains a compatibility input
-    // for focused fixtures and older persisted state.
-    return location?.flags || location?.doormask || 0;
+    // rm.h's doormask is struct rm's `flags`.
+    return location?.flags ?? 0;
 }
 
 function drawbridgeMask(location) {
@@ -1130,9 +1134,16 @@ export async function m_break_boulder(mtmp, x, y, env = {}) {
 // whether the hero is picking a lock or digging, and warns or arrests.
 // picking_lock() and is_digging() are occupation predicates from lock.c and
 // dig.c; watch_dig() owns the digging warning and arrest branch in dig.c.
-async function watch_on_duty(mtmp, env = {}) {
-    const state = env.state ?? game;
-    const random = env.random ?? { rn2 };
+//
+// dochug() passes no message operation, so this one picks the live TTY or,
+// on a planning clone, a silent one; mon_yells() and stop_occupation() both
+// print through it.
+async function watch_on_duty(mtmp, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { rn2 };
+    const message = rawEnv.message
+        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const env = { ...rawEnv, state, message };
     if (mtmp.mpeaceful
         && in_town(state.u.ux + (state.u.dx ?? 0),
             state.u.uy + (state.u.dy ?? 0), state)
@@ -1144,7 +1155,9 @@ async function watch_on_duty(mtmp, env = {}) {
             if (IS_DOOR(here?.typ)
                 && (doorMask(here) & D_LOCKED)) {
                 if (couldsee(mtmp.mx, mtmp.my, state)) {
-                    if ((here.looted ?? 0) & D_WARNED) {
+                    // rm.h: looted overlays flags, and D_WARNED equals
+                    // D_TRAPPED, so the warning also traps the door.
+                    if (here.flags & D_WARNED) {
                         await mon_yells(
                             mtmp,
                             "Halt, thief!  You're under arrest!",
@@ -1157,7 +1170,7 @@ async function watch_on_duty(mtmp, env = {}) {
                             'Hey, stop picking that lock!',
                             env,
                         );
-                        here.looted = (here.looted ?? 0) | D_WARNED;
+                        here.flags |= D_WARNED;
                     }
                     // stop_occupation() lives in allmain.js which
                     // imports from monmove.js; a lazy import avoids the
@@ -1458,7 +1471,7 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
                 if (IS_WATERWALL(nextType) && !is_swimmer(species)) continue;
                 if (nextType === IRONBARS
                     && (!(flags & ALLOW_BARS)
-                        || (((location.wall_info ?? 0) & W_NONDIGGABLE)
+                        || (((location.flags ?? 0) & W_NONDIGGABLE)
                             && (dmgtype(species, AD_RUST)
                                 || dmgtype(species, AD_CORR))))) {
                     continue;
@@ -2068,7 +2081,10 @@ export async function monflee(
     if (monster.mhp < 1) return;
 
     const state = env.state ?? game;
-    const random = env.random ?? { rn2 };
+    // monflee() draws rn2() itself, and its release_hero() continuation
+    // reaches mon.c unstuck()'s rnd(2) cooldown and mhitu.c expels(); a
+    // caller that supplies no source gets the whole core set C calls.
+    const random = env.random ?? { d, rn1, rn2, rnd, rne, rnl, rnz };
     const couldSee = env.couldSee ?? ((x, y) => couldsee(x, y, state));
     const checksFleeingLight = env.fleesLight ?? fleesLight;
     // C's `first` means "only establish fear if not already fleeing"; false
@@ -3294,10 +3310,8 @@ export async function postmov(
     // C ref: monmove.c:1526-1536, the UnblockDoor macro.  canseeit is the
     // caller's local there, so this returns the value the macro recomputes.
     const unblockDoor = (where, who, what) => {
-        // detect.c cvt_sdoor_to_door() sets both spellings of struct rm's
-        // shared mask field; every reader in the port accepts either.
+        // where->doormask = what; rm.h's doormask is `flags`.
         where.flags = what;
-        where.doormask = what;
         redraw(who.mx, who.my);
         recalcBlockPoint(who.mx, who.my, state);
         visionRecalc(0);
@@ -3373,7 +3387,6 @@ export async function postmov(
             if (btrapped && has_magic_key(monster, state)) {
                 const untrapped = doorMask(here) & ~D_TRAPPED;
                 here.flags = untrapped;
-                here.doormask = untrapped;
                 btrapped = false;
             }
             const currentMask = () => doorMask(here);
@@ -3511,7 +3524,7 @@ export async function postmov(
             }
         } else if (here?.typ === IRONBARS) {
             // C ref: monmove.c:1624-1641, iron bars handling.
-            if (!(state.level.at(monster.mx, monster.my).wall_info & W_NONDIGGABLE)
+            if (!(state.level.at(monster.mx, monster.my).flags & W_NONDIGGABLE)
                 && (dmgtype(species, AD_RUST) || dmgtype(species, AD_CORR)
                     || metallivorous(species))) {
                 if (canseemon(monster, state)) {
@@ -3582,22 +3595,14 @@ export async function postmov(
                 note_unported('display.c swallowed clone redraw');
             }
         } else {
-            // C display.c newsym():929-935 reports a column-0 square through
-            // impossible() and draws nothing. gd_move() returns 1 after
-            // gd_move_cleanup() parks a vault guard at <0,0>, so C reaches
-            // this report with mx == 0. The port's newsym() is synchronous
-            // and cannot await the messages, so its caller raises them here.
-            if (!isok(monster.mx, monster.my)) {
-                await impossible(
-                    `newsym: attempting screen update for <${monster.mx},${monster.my}>`,
-                    state,
-                    {
-                        ...env,
-                        message,
-                        urgentMessage: env.planning
-                            ? message : rawEnv.urgentMessage,
-                    },
-                );
+            // gd_move() returns 1 after gd_move_cleanup() parks a vault
+            // guard at <0,0>, so C's newsym() reports this square.
+            if (newsymReportsOffMap(monster.mx, monster.my)) {
+                await newsymOffMapImpossible(monster.mx, monster.my, state, {
+                    ...env,
+                    message,
+                    urgentMessage: rawEnv.urgentMessage,
+                });
             } else {
                 redraw(monster.mx, monster.my);
             }
@@ -4398,7 +4403,6 @@ export async function dissolve_bars(x, y, state = game, rawEnv = {}) {
             ? ROOM
             : CORR;
     loc.flags = 0; /* doormask = D_NODOOR */
-    loc.doormask = 0;
     redraw(x, y, state);
     if (x === state.u.ux && y === state.u.uy) /* u_at(x, y) */
         await switch_terrain(state);

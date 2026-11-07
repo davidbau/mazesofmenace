@@ -77,6 +77,7 @@ import {
     SVALL,
     WM_MASK,
     u_at,
+    vision_clears,
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { SPFX_SEARCH } from './artifacts.js';
@@ -241,6 +242,7 @@ import {
 import { GLYPH_SWALLOW_OFF, GLYPH_UNEXPLORED_OFF } from './glyph_offsets.js';
 import { NO_COLOR } from './terminal.js';
 import { canspotmon, sensemon } from './display.js';
+import { detect_wsegs } from './worm.js';
 
 /** An explicit-search branch whose effects are still unported. */
 export class UnsupportedSearchError extends Error {
@@ -456,12 +458,16 @@ export async function browse_map(
 // and it must not replace remembered map glyphs. The display producer handles
 // pet highlighting and the display-RNG hallucination branch just as the C
 // mon_to_glyph()/pet_to_glyph() macros do.
-function map_monst(monster, state = game, env = {}) {
-    const showMonster = env.mapMonster ?? ((subject) => show_glyph_cell(
-        subject.mx,
-        subject.my,
-        map_monster_glyph_info(subject, state),
-    ));
+function map_monst(monster, showtail, state = game, env = {}) {
+    const showMonster = env.mapMonster ?? ((subject) => {
+        show_glyph_cell(
+            subject.mx,
+            subject.my,
+            map_monster_glyph_info(subject, state),
+        );
+        if (showtail && subject.data?.pmidx === PM_LONG_WORM)
+            detect_wsegs(subject, false, state);
+    });
     showMonster(monster, state);
 }
 
@@ -1096,7 +1102,7 @@ export async function monster_detect(
         if (!mclass || monster.data?.mlet === mclass
             || (monster.data?.pmidx === PM_LONG_WORM
                 && mclass === S_WORM_TAIL)) {
-            map_monst(monster, state, env);
+            map_monst(monster, true, state, env);
         }
         if (otmp?.cursed && helpless(monster)) {
             monster.msleeping = 0;
@@ -1226,7 +1232,7 @@ async function display_trap_map(cursedSource, state = game) {
     for (let index = 0; index < (state.level?.doorindex ?? 0); ++index) {
         const door = state.level.doors[index];
         if (state.level.at(door.x, door.y).typ === SDOOR) continue;
-        if (state.level.at(door.x, door.y).doormask & D_TRAPPED) {
+        if (state.level.at(door.x, door.y).flags & D_TRAPPED) {
             show_sense_trap({ tx: door.x, ty: door.y, ttyp: TRAPPED_DOOR },
                 door.x, door.y, cursedSource, state);
         }
@@ -1291,7 +1297,7 @@ export async function trap_detect(sobj = null, state = game) {
         const door = state.level.doors[index];
         const location = state.level.at(door.x, door.y);
         if (location.typ === SDOOR) continue;
-        if (location.doormask & D_TRAPPED) {
+        if (location.flags & D_TRAPPED) {
             if (door.x !== state.u.ux || door.y !== state.u.uy) {
                 await display_trap_map(cursedSource, state);
                 return 0;
@@ -1451,7 +1457,7 @@ export async function use_crystal_ball(optr, state = game) {
                     & TIMEOUT;
                 await make_blinded(blindTimeout + impairment, false, state);
                 if (!heroBlind(state))
-                    await ttyPline('Your vision clears.', state);
+                    await ttyPline(`Your ${vision_clears}`, state);
             } else {
                 await ttyPline(
                     `${Tobjnam(obj, 'assault', state)} your vision.`, state,
@@ -1572,7 +1578,12 @@ export async function use_crystal_ball(optr, state = game) {
         // calls makeknown before consuming the ball's charge.
         discover_object(CRYSTAL_BALL, true, true, true, state);
         await consume_obj_charge(obj, true, { state });
-        if (ch === ']') ch = DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_M + S_MIMIC];
+        // C turns DEF_MIMIC_DEF (']') into DEF_MIMIC, the character 'm'.
+        if (ch === ']') {
+            ch = String.fromCharCode(
+                DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_M + S_MIMIC],
+            );
+        }
         if (def_char_is_furniture(ch) >= 0) {
             detected = await furniture_detect(state);
         } else {
@@ -1825,7 +1836,7 @@ export async function do_vicinity_map(sobj, state = game, env = {}) {
                     && !glyph_is_monster(oldGlyph)) {
                     map_invisible(x, y, state);
                 } else {
-                    map_monst(monster, state, env);
+                    map_monst(monster, false, state, env);
                 }
                 const newGlyph = glyph_at(x, y, state);
                 if (extended && newGlyph !== oldGlyph
@@ -2437,13 +2448,12 @@ function searchFund(state) {
     return Math.min(fund, 5);
 }
 
-// C ref: detect.c cvt_sdoor_to_door(). `flags` is struct rm's canonical
-// union slot; doormask is updated with it for older JS state fixtures.
+// C ref: detect.c cvt_sdoor_to_door(). rm.h's doormask is `flags`.
 export function cvt_sdoor_to_door(location, state = game) {
     if (!location || location.typ !== SDOOR) {
         throw new TypeError('cvt_sdoor_to_door requires a secret door');
     }
-    const oldmask = location.flags || location.doormask || 0;
+    const oldmask = location.flags;
     let newmask = oldmask & ~WM_MASK;
     if (on_level(state.u?.uz, state.rogue_level)) {
         newmask = D_NODOOR;
@@ -2452,7 +2462,6 @@ export function cvt_sdoor_to_door(location, state = game) {
     }
     location.typ = DOOR;
     location.flags = newmask;
-    location.doormask = newmask;
     location.candig = false;
     return location;
 }
@@ -2486,7 +2495,7 @@ export function trapped_door_at(ttyp, x, y, state = game) {
     if (ttyp !== TRAPPED_DOOR || (heroHallucinating(state) && rn2(20))) return false;
     const location = state.level?.at(x, y);
     if (location?.typ !== DOOR) return false;
-    const mask = location.flags || location.doormask || 0;
+    const mask = location.flags;
     if (mask & (D_NODOOR | D_BROKEN | D_ISOPEN)
         && trapped_chest_at(ttyp, x, y, state)) {
         return false;
@@ -2550,7 +2559,7 @@ export async function findone(x, y, found, state) {
         found.num_traps++;
     }
     if (closed_door(x, y, state)
-        && ((location.flags || location.doormask || 0) & D_TRAPPED)) {
+        && (location.flags & D_TRAPPED)) {
         const dummyTrap = { ttyp: TRAPPED_DOOR, tx: x, ty: y, tseen: true };
         const glyph = trap_to_glyph(dummyTrap, state);
         await flash_glyph_at(x, y, glyph, FOUND_FLASH_COUNT, state);
@@ -2626,10 +2635,10 @@ export async function openone(x, y, counter, state) {
 
     if (location.typ === SDOOR
         || (location.typ === DOOR
-            && ((location.flags ?? location.doormask ?? 0)
+            && (location.flags
                 & (D_CLOSED | D_LOCKED)))) {
         if (location.typ === SDOOR) cvt_sdoor_to_door(location, state);
-        if ((location.flags ?? location.doormask ?? 0) & D_TRAPPED) {
+        if (location.flags & D_TRAPPED) {
             if (dist2(x, y, state.u.ux, state.u.uy) < 3) {
                 await b_trapped('door', NO_PART, state);
             } else {
@@ -2644,10 +2653,8 @@ export async function openone(x, y, counter, state) {
             }
             await wake_nearto(x, y, 11 * 11, { state });
             location.flags = D_NODOOR;
-            location.doormask = D_NODOOR;
         } else {
             location.flags = D_ISOPEN;
-            location.doormask = D_ISOPEN;
         }
         unblock_point(x, y, state);
         newsym(x, y, state);

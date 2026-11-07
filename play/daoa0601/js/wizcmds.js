@@ -6,20 +6,21 @@ import { ACH_MINE_PRIZE, ACH_SOKO_PRIZE, A_WIS, COLNO, COULD_SEE, CORR, DIED, G_
 import { AD_PHYS } from './monster_attack_types.js';
 import { game, requireGameLevel, requirePlayingGame, requireInitializedGame } from './gstate.js';
 import { requireInitializedHero } from './hero_types.js';
-import { ATR_INVERSE, addMenuHeading, showDisclosureOverlay, showTextMenuOverlay, showMultiSelectWindow, showTextWindow } from './windows.js';
+import { getLine, ATR_INVERSE, addMenuHeading, showDisclosureOverlay, showTextMenuOverlay, showMultiSelectWindow, showTextWindow } from './windows.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './wintty.js';
 import { canSpotMonster, consumeHallucinatedMenuObjectGlyph, docrt, map_engraving, map_trap, unmap_invisible, OBJECT_CLASS_SYMBOLS, cmapSymbolByte, objectClassSymbol, rogueColorsActive, cls, flush_screen, glyphAt, map_invisible, customizedGlyphs } from './display.js';
 import { bot } from './botl.js';
 import { pline, plineWithContinuation } from './pline.js';
-import { getLine, promptYesNoQuit, promptChoice, promptYesNo } from './query.js';
+import { promptYesNoQuit, promptChoice, promptYesNo } from './query.js';
 import { paranoidQuery, yn_function } from './cmd.js';
 import { promptDirection } from './cmd.js';
-import { visibleCommandKey, setMulti, makemapPrepost } from './cmd.js';
+import { visibleCommandKey } from './hacklib.js';
+import { setMulti, makemapPrepost } from './cmd.js';
 import { inventoryCommandLetter, fullyIdentifyObject, identifyPack, inventoryItemDescription, inventoryPrimaryHandDetail, inventorySortMode, objectClassHeading, sortObjects, } from './invent.js';
 import { askTeleportDestination } from './teleport.js';
 import { selectMapPosition } from './getpos.js';
 import { makeWish } from './zap.js';
-import { polymorphHero, heroSpecies, body_part } from './polyself.js';
+import { polymorphHero, heroSpecies, body_part, floatVsFlight } from './polyself.js';
 import { createParticularMonster } from './read.js';
 import { findit, mapMagicLevel } from './detect.js';
 import { monsterName } from './do_name.js';
@@ -57,7 +58,7 @@ import { MAP_SYMBOLS } from './map_symbols.js';
 import { CmapSymbol } from './glyph_numbers.js';
 import { displayMessageWindow } from './topl.js';
 import { NO_COLOR } from './terminal.js';
-import { symsetMenuValue } from './options.js';
+import { symsetMenuValue } from './message_types.js';
 import { rumorCheck } from './rumors.js';
 import { resetUtrap } from './trap.js';
 import { monsterIsNonliving, heroHasOlfaction } from './mondata.js';
@@ -986,8 +987,10 @@ async function increaseIntrinsic({ name, property }, amount, state) {
         state.context.botl = true;
         await plineWithContinuation(`Timeout for ${name} ${oldTimeout ? 'increased by' : 'set to'} ${amount}.`);
     }
+    // C wizcmds.c:1081-1082 — the timeout change ends with
+    // float_vs_flight() for levitation and flying.
     if (property === 'levitation' || property === 'flying')
-        refreshMovementProperties(state);
+        floatVsFlight(state);
     else if (property === 'protectionFromShapeChangers')
         await restoreNaturalMonsterShapes(state);
     if ((property === 'waterWalking' || property === 'levitation' || property === 'flying') &&

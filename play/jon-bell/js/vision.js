@@ -1170,12 +1170,62 @@ function _fill_point(row, col) {
         for (i = col; i <= right[col + 1]; i++) left[i] = left[col - 1];
     }
 }
+// C vision.c:960-1043 dig_point: incremental left/right pointer update when a
+// blocked location becomes clear (C's end-case quirks included).
+function _dig_point(row, col) {
+    const clear = viz_clear[row], left = left_ptrs[row], right = right_ptrs[row];
+    let i;
+    if (clear[col]) return; /* already done */
+    clear[col] = 1;
+    if (col === 0) {
+        if (clear[1]) {
+            right[0] = right[1];
+        } else {
+            right[0] = 1;
+            for (i = 1; i <= right[1]; i++) left[i] = 1;
+        }
+    } else if (col === COLNO - 1) {
+        if (clear[COLNO - 2]) {
+            left[COLNO - 1] = left[COLNO - 2];
+        } else {
+            left[COLNO - 1] = COLNO - 2;
+            for (i = left[COLNO - 2]; i < COLNO - 1; i++) right[i] = COLNO - 2;
+        }
+    } else if (clear[col - 1] && clear[col + 1]) {
+        for (i = left[col - 1]; i <= col; i++) {
+            if (!clear[i]) continue;
+            right[i] = right[col + 1];
+        }
+        for (i = col; i <= right[col + 1]; i++) {
+            if (!clear[i]) continue;
+            left[i] = left[col - 1];
+        }
+    } else if (clear[col - 1]) {
+        for (i = col + 1; i <= right[col + 1]; i++) left[i] = col + 1;
+        for (i = left[col - 1]; i <= col; i++) {
+            if (!clear[i]) continue;
+            right[i] = col + 1;
+        }
+        left[col] = left[col - 1];
+    } else if (clear[col + 1]) {
+        for (i = left[col - 1]; i < col; i++) right[i] = col - 1;
+        for (i = col; i <= right[col + 1]; i++) {
+            if (!clear[i]) continue;
+            left[i] = col - 1;
+        }
+        right[col] = right[col + 1];
+    } else {
+        for (i = left[col - 1]; i < col; i++) right[i] = col - 1;
+        for (i = col + 1; i <= right[col + 1]; i++) left[i] = col + 1;
+        left[col] = col - 1;
+        right[col] = col + 1;
+    }
+}
 function _block_or_unblock(x, y, blocked) {
     if (game.level && y >= 0 && y < ROWNO && blocked)
         _fill_point(y, x);
     else if (game.level && y >= 0 && y < ROWNO)
-        _vision_rebuild_row(game.level, y,
-                            (cx) => (cx === x ? blocked : !viz_clear[y][cx]));
+        _dig_point(y, x);
     if (game.viz_array?.[y]?.[x]) {
         game.vision_full_recalc = 1;
         if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {

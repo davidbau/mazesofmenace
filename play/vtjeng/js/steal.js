@@ -404,11 +404,11 @@ export async function remove_worn_item(obj, unchain_ball, state = game, env = {}
             else if (obj === state.uarmc)
                 await Cloak_off(state, { ...env, state });
             else if (obj === state.uarmf)
-                await Boots_off(state);
+                await Boots_off(state, env);
             else if (obj === state.uarmg)
                 await Gloves_off(state, env);
             else if (obj === state.uarmh)
-                await Helmet_off(state);
+                await Helmet_off(state, env);
             else if (obj === state.uarms)
                 await Shield_off(state);
             else if (obj === state.uarmu)
@@ -567,10 +567,11 @@ async function worn_item_removal(mon, obj, state = game, env = {}) {
     // Massage the object description: strip article and replace with "your".
     const stripMatch = /^(?:the |an |a )/.exec(objbuf);
     if (stripMatch) {
-        // When removing attached iron ball, caller passes uchain; use "the"
-        // instead of "your" for that case. Not ported: the uchain path is
-        // blocked above.
-        objbuf = 'your ' + objbuf.slice(stripMatch[0].length);
+        // When removing attached iron ball, caller passes uchain; formatted,
+        // it is "an iron chain (attached to you)", so C changes the article
+        // to "the" rather than to "your" in that situation.
+        objbuf = (obj === state.uchain ? 'the ' : 'your ')
+            + objbuf.slice(stripMatch[0].length);
     }
 
     // Strip "(being worn)" and "(alternate weapon; not wielded)".

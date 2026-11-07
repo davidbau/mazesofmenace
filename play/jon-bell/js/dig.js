@@ -57,7 +57,7 @@ import { yobjnam, Yobjnam2, an, An, simpleonames } from './objnam.js';
 import { IS_STWALL } from './const.js';
 import { trapname } from './makemon.js';
 import { is_pool } from './look.js';
-import { closed_door as closed_door_real } from './monmove.js';
+import { closed_door } from './monmove.js';
 import { may_dig } from './hack.js';
 import { dotrap } from './trap.js';
 import { FORCEBUNGLE } from './const.js';
@@ -2132,10 +2132,6 @@ function is_axe(obj) {
     return (MKOBJ_OC_SKILL[obj.otyp | 0] | 0) === P_AXE_DG;
 }
 
-// C ref: closed_door(x,y): IS_DOOR(levl[x][y].typ) && (doormask & (D_LOCKED | D_CLOSED))
-function closed_door(x, y) {
-    return closed_door_real(x, y);
-}
 
 // C dig.c enum dig_types: DIGTYP_UNDIGGABLE=0, DIGTYP_ROCK=1, DIGTYP_STATUE=2,
 // DIGTYP_BOULDER=3, DIGTYP_DOOR=4, DIGTYP_TREE=5
@@ -2761,6 +2757,12 @@ export async function mkcavearea(rockit) {
     }
     if (game._pending_message)
         await force_more(game._pending_message); // WIN_MESSAGE, TRUE
+    /* wintty.c:1871-1873: ESC at that more() sets WIN_STOP, which stays live
+       (tty_clear_nhwindow leaves it) and swallows later plines. */
+    if (game._topl_win_stop_armed) {
+        game._topl_win_stop_armed = false;
+        game._topl_win_stop = true;
+    }
 
     for (let dist = 1; dist <= 2; ++dist) {
         --xmin;

@@ -198,6 +198,9 @@ export const NOT_SAVED = [
     // C utf8map.c glyphmap_u / reset_customsymbols() state is process-local
     // (apply_customizations at startup from the rc); save.c never writes it.
     '_gm_customsymbols',
+    // C decl.h gp.primary_syms / glyphs' UTF-8 table are process-local too: a restored
+    // process keeps the Unicode map its own rc built, not the saving process's.
+    'gp',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',
     // C save.c:265-333 omits the physical tty frame held by more()

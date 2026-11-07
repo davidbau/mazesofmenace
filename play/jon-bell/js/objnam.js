@@ -5242,6 +5242,11 @@ async function doname_base(obj, doname_flags) {
     // C objnam.c:1706-1749: final bounds and one-time diagnostics per process.
     // Write before truncation too: bytes beyond the NUL remain in C's pool.
     obufWrite(bufptr + bpoff, bp);
+    // C objnam.c:127-130: strprepend's over-long-prefix impossible() is a
+    // real pline (#wizidentify of a 1000-dart stack: 81 chars).  strprepend
+    // is sync; this caller is async, so the message is raised here.
+    if (prefix.length > PREFIX)
+        await naming_impossible('PREFIX too short (for %d).', prefix.length);
     bp = strprepend(bp, prefix);
     if (prefix.length <= PREFIX) bpoff -= prefix.length;
     obufWrite(bufptr + bpoff, bp);

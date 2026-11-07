@@ -29,6 +29,7 @@
 // #fire shares the source's autoquiver, launcher-selection, polearm and whip
 // helpers. The command-queue tail remains owned by js/cmd.js.
 
+import { rm_doormask } from './game.js';
 import { ghitm } from './dokick.js';
 import {
     ARTICLE_A,
@@ -174,6 +175,7 @@ import {
     engulfing_u,
     helpless,
     Upolyd,
+    vision_clears,
 } from './const.js';
 import {
     is_pool,
@@ -591,8 +593,10 @@ export async function hurtle(
     } = {},
 ) {
     const u = state.u;
+    // A planning copy of a monster's knockback must print nothing live.
+    const message = planning ? async () => {} : ttyPline;
     if (Punished(state) && state.uball?.where !== OBJ_INVENT) {
-        await ttyPline('You feel a tug from the iron ball.', state);
+        await message('You feel a tug from the iron ball.', state);
         nomul(0, state);
         return;
     }
@@ -604,7 +608,7 @@ export async function hurtle(
                     ? surface(u.ux, u.uy, state)
                     : u.utraptype === TT_BURIEDBALL
                         ? 'buried ball' : 'trap';
-        await ttyPline(`You are anchored by the ${anchor}.`, state);
+        await message(`You are anchored by the ${anchor}.`, state);
         nomul(0, state);
         return;
     }
@@ -618,7 +622,7 @@ export async function hurtle(
     state.multi_reason = 'moving through the air';
     state.nomovemsg = '';
     if (verbose) {
-        await ttyPline(
+        await message(
             `You ${range > 1 ? 'hurtle' : 'float'} in the opposite direction.`,
             state,
         );
@@ -901,7 +905,9 @@ export async function mhurtle(monster, dx, dy, range, rawEnv = {}) {
                 mhurtleTrapEnvironment(movementEnv, state),
             );
         } else {
-            await minliquid(monster, movementEnv);
+            // A caller's minLiquid owner carries the elapsed-turn or planning
+            // seams for relocation and output, as dochug()'s own call does.
+            await (movementEnv.minLiquid ?? minliquid)(monster, movementEnv);
         }
     }
 }
@@ -937,7 +943,7 @@ export async function hurtle_step(arg, x, y) {
         let why = null;
         const diagonal = state.u.ux !== x && state.u.uy !== y;
         const openDoor = IS_DOOR(ltyp)
-            && ((lev.doormask ?? lev.flags ?? 0) & D_ISOPEN) !== 0;
+            && (rm_doormask(lev) & D_ISOPEN) !== 0;
         const openDoorDiagonal = openDoor && diagonal;
         if (IS_OBSTRUCTED(ltyp) || closed_door(x, y, state)
             || openDoorDiagonal) {
@@ -1194,8 +1200,10 @@ export function should_mulch_missile(obj, state = game, env = {}) {
 export async function hitfloor(obj, verbosely = true, state = game, rawEnv = {}) {
     const { ux, uy } = state.u;
     const location = state.level.at(ux, uy);
+    // dropy() and dropz() end in the newsym() and encumber_msg() that
+    // dropCommandEnv() supplies (do.c:840-842).
     if (IS_SOFT(location.typ) || state.u.uinwater || state.u.uswallow) {
-        await dropy(obj, { ...rawEnv, state });
+        await dropy(obj, dropCommandEnv(state, rawEnv));
         return;
     }
 
@@ -1231,7 +1239,7 @@ export async function hitfloor(obj, verbosely = true, state = game, rawEnv = {})
     if (await hero_breaks(obj, ux, uy, BRK_FROM_INV,
         { ...rawEnv, state })) return;
     if (await ship_object(obj, ux, uy, false, { ...rawEnv, state })) return;
-    await dropz(obj, true, { ...rawEnv, state });
+    await dropz(obj, true, dropCommandEnv(state, rawEnv));
 }
 
 // C ref: dothrow.c toss_up() (1256-1431). A vertically thrown object either
@@ -1341,7 +1349,7 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
             await make_blinded(blindedTimeout + blindinc, false, state,
                 rawEnv);
             if (!heroIsBlind(state))
-                await message('Your vision clears.', state, rawEnv);
+                await message(`Your ${vision_clears}`, state, rawEnv);
         }
 
         if (!obj) return false;

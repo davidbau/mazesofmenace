@@ -2,9 +2,10 @@
 // C ref: allmain.c — newgame, moveloop, moveloop_core, stop_occupation().
 import { ceilingName, dungeonBuildsUp, dungeonDepth, initOverviewRecord, printLevelAnnotation, u_on_rndspot } from './dungeon.js';
 import { noticeAllMonsters, withMonsterNoticesBlocked, applyHeroLiquidEffects, continueRun, endVoluntaryMultiTurn, nomul, overexertHeroHp, finishDestinationSpotEffects, stopRun, captureRunmodeDelay, isTeleportRunmode, nearCapacity, checkSpecialRoom, finishHeroHelplessness } from './hack.js';
-import { recorderLocalEpochSeconds, fixedCalendar } from './calendar.js';
+import { recorderLocalEpochSeconds, fixedCalendar, sessionIsNight } from './calendar.js';
 import { pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent } from './pline.js';
-import { cmdq_clear, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, getLine, promptYesNo, rhack, dolookaround } from './cmd.js';
+import { cmdq_clear, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, promptYesNo, rhack, dolookaround } from './cmd.js';
+import { getLine } from './windows.js';
 import { doStorms } from './timeout.js';
 import { rewindEngravingsForSave, engravingAt, wipeEngravingAt, readEngravingAt, wipeHeroEngraving } from './engrave.js';
 import { angerMonster, finishEnvironmentalMonsterDeath, finishMonsterHideUnder, finishMonsterKilled, finishMonsterLiquidDeath, mcalcmove, purgeDeadMonsters, restoreMonsterShape, seeNearbyMonsters, monsterDistressEvents, monstersInFmonOrder, moveMonsters, resolveMonsterLiquid, monsterCanCarryObject, monsterFliesOrFloats, wakeMonstersNearWithMessages, finishHeroLiquidMonsterDeath, finishHeroMonsterKill, } from './mon.js';
@@ -21,9 +22,9 @@ import { clearSplitObjects, unlinkObject } from './mkobj.js';
 import { tryCallObjectType } from './do.js';
 import { observeBucForNaming, verbForSubject, observeDistantObjectForNaming, observeObjectForNaming, ownedObjectName } from './objnam.js';
 import { observeObject, recordObjectEncounter, learnObjectType } from './o_init.js';
-import { A_CURRENT, A_ORIGINAL, CQ_CANNED, CQ_REPEAT, ESCAPED, G_NOCORPSE, In_endgame, In_hell, MON_FLOOR, PLNMSG_MON_TAKES_OFF_ITEM, RLOC_NOMSG, WATER, RLOC_MSG, LOST_STOLEN, MMOVE_DIED, NORMAL_SPEED, A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_ARMOR, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, LUCKMIN, LUCKMAX, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN, LL_ACHIEVE, } from './const.js';
+import { A_CURRENT, A_ORIGINAL, CQ_CANNED, CQ_REPEAT, ESCAPED, G_NOCORPSE, In_endgame, In_hell, MON_FLOOR, PLNMSG_MON_TAKES_OFF_ITEM, RLOC_NOMSG, WATER, RLOC_MSG, LOST_STOLEN, MMOVE_DIED, NORMAL_SPEED, A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, STONE, ZAP_POS, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, W_ARMG, UNENCUMBERED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, W_ACCESSORY, W_ARMOR, W_WEAPONS, ismnum, Upolyd, Is_airlevel, Is_waterlevel, TT_BURIEDBALL, TT_LAVA, KILLED_BY_AN, LL_ACHIEVE, } from './const.js';
 import { pendingArmorAction, heroHasFreeAction, heroIsDisplaced, stopDonning, applyStartingArmorEffects, findArmorClass, erodeWornArmor, isBeingTakenOff, heroHasSlipperyHands, slipFromSlipperyHands } from './do_wear.js';
-import { dosounds, sessionIsNight } from './sounds.js';
+import { dosounds } from './sounds.js';
 import { warnWithMasterKey, applyArtifactHit, findArtifact } from './artifact.js';
 import { isPoolAt } from './dbridge.js';
 import { consumeMonsterItem } from './mthrowu.js';
@@ -58,7 +59,7 @@ import { makemonAt, finishMonsterGrowth } from './makemon.js';
 import { performQuestExpulsion, ensureQuestStatus, talkQuestCharacter } from './quest.js';
 import { amuletTurn, intervene, publishMonsterCuss } from './wizard.js';
 import { grantAmuletWish } from './wish.js';
-import { checkAttributeExercise, currentAttribute, exerciseAttribute, exerciseWisdom, loseHeroStrength, periodicTurnExercise } from './attrib.js';
+import { changeHeroLuck, checkAttributeExercise, currentAttribute, exerciseAttribute, exerciseWisdom, loseHeroStrength, periodicTurnExercise } from './attrib.js';
 import { encumber_msg } from './pickup.js';
 import { rndcurse } from './throne.js';
 import { resolveMonsterGaze, completeHeroAttackSlot, mattacku, missmu, resolveMonsterSelfExplosion } from './mhitu.js';
@@ -76,7 +77,7 @@ import { initializeSourceStartup } from './startup.js';
 import { fumaroles } from './mkmaze.js';
 import { commitPetPickup } from './dogmove.js';
 import { monsterWieldedWeapon } from './weapon.js';
-import { askTutorial } from './options.js';
+import { askTutorial } from './message_types.js';
 import { applyHeroWereChange, presentWereChange } from './were.js';
 import { reportMonsterTeleportRestriction } from './teleport.js';
 import { clearHeroSliming } from './potion.js';
@@ -225,14 +226,14 @@ async function applyCalendarMessages() {
     // Native luck changes follow the message, including any input it needs.
     if (calendar.moonphase === 4) {
         await plineWithContinuation('You are lucky!  Full moon tonight.');
-        game.u.uluck = Math.min(LUCKMAX, (game.u.uluck || 0) + 1);
+        changeHeroLuck(1);
     }
     else if (calendar.moonphase === 0) {
         await plineWithContinuation('Be careful!  New moon tonight.');
     }
     if (calendar.friday13) {
         await plineWithContinuation('Watch out!  Bad things can happen on Friday the 13th.');
-        game.u.uluck = Math.max(LUCKMIN, (game.u.uluck || 0) - 1);
+        changeHeroLuck(-1);
     }
 }
 // Part of C restore.c:dorecover(): restore/startup adapter that also runs allmain.c:moveloop_preamble().

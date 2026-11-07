@@ -32,7 +32,7 @@ import { rehumanize } from './polyself.js'; // relocate-fns
 import { obj_to_any as pointer_to_any } from './cmd.js'; // relocate-fns
 import { newsym } from './display.js'; // relocate-fns
 import { place_object, remove_object } from './mklev.js'; // relocate-fns
-import { maybe_unhide_at } from './mon.js'; // relocate-fns
+import { Soundeffect, maybe_unhide_at } from './mon.js'; // relocate-fns
 import { You_cant } from './pline.js'; // relocate-fns
 import { ceiling, check_special_room, pooleffects, switch_terrain } from './cmd.js'; // relocate-fns
 import { ARTICLE_A, FAILEDUNTRAP, HALF_PHDAM, IS_SINK, I_SPECIAL, MAX_TYPE, MELT_ICE_AWAY, RLOC_NOMSG, TIMEOUT, is_pit } from './const.js'; // relocate-fns
@@ -493,6 +493,8 @@ const MZ_HUMAN = 2; /* == MZ_MEDIUM */
 const S_NYMPH = 14;
 
 const M2_STRONG = 0x04000000;
+const M1_FLY = 0x00000001; /* monflag.h */
+const COIN_CLASS = 12; /* objclass.h */
 
 export function weight_cap() {
     const u = game.u;
@@ -532,13 +534,12 @@ export function weight_cap() {
      * C youprop.h:240: Levitation = ((HLevitation || ELevitation) && !BLevitation).
      * Read the conferred property (e.g. ring of levitation just worn → ELevitation
      * set by setworn); this gives the hero MAX carrying capacity, dropping the
-     * encumbrance state.  weight_cap also masks BLevitation&I_SPECIAL (hack.c:4273)
+     * encumbrance state.  weight_cap also masks BLevitation&I_SPECIAL (hack.c:4309)
      * — the I_SPECIAL bit is cleared for the capacity check. */
-    const I_SPECIAL_BIT = 0x20000000;
     const levProp = (u.uprops && u.uprops[LEVITATION]) ? u.uprops[LEVITATION] : null;
     const HLevitation = levProp ? (levProp.intrinsic | 0) : 0;
     const ELevitation = levProp ? (levProp.extrinsic | 0) : 0;
-    const BLevitation = levProp ? ((levProp.blocked | 0) & ~I_SPECIAL_BIT) : 0;
+    const BLevitation = levProp ? ((levProp.blocked | 0) & ~I_SPECIAL) : 0;
     const Levitation = (HLevitation || ELevitation) && !BLevitation;
     const Is_airlevel_wc = Is_airlevel(game.u?.uz);
     /* C hack.c:4326 `u.usteed && strongmonst(u.usteed->data)` */
@@ -552,7 +553,7 @@ export function weight_cap() {
         // C hack.c:4330 / youprop.h:253: flight includes a flying steed.
         const flight = u.uprops?.[FLYING];
         const Flying = !!((flight?.intrinsic | 0) || (flight?.extrinsic | 0)
-            || ((u.usteed?.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */))
+            || ((u.usteed?.data?.mflags1 | 0) & M1_FLY))
             && !(flight?.blocked | 0);
         if (!Flying) {
             /* hack.c:4293-4296 — EWounded_legs & LEFT_SIDE / RIGHT_SIDE. */
@@ -574,7 +575,7 @@ export function weight_cap() {
         levPropW.extrinsic = save_ELev;
         float_vs_flight();
     }
-    if (levProp && ((levProp.blocked | 0) & I_SPECIAL_BIT)) float_vs_flight();
+    if (levProp && ((levProp.blocked | 0) & I_SPECIAL)) float_vs_flight();
 
     return Math.max(carrcap, 1); /* never return 0 */
 }
@@ -682,6 +683,9 @@ export async function losehp(n, knam, k_format) {
  * powers[] list and the >= 4 threshold are C's, verbatim; the intrinsic test is
  * `u.uprops[powers[i]].intrinsic & INTRINSIC` (youprop.h), the same uprops
  * spelling js/ writes elsewhere (see the note in js/const.js). */
+/* seffects.h enum sound_effect_entries (se_zero_invalid = 0 first) */
+const se_wailing_of_the_banshee = 193;
+
 const _WAIL_POWERS = [TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES,
                       FIRE_RES, SLEEP_RES, DISINT_RES, TELEPORT_CONTROL,
                       STEALTH, FAST, INVIS];
@@ -718,11 +722,9 @@ async function maybe_wail() {
         }
         return;
     }
-    /* C hack.c:4238-4241 — You_hear(...), the whole call.  The guard and both
-     * prefixes used to be hand-inlined here; the copy read u.uprops[DEAF] (a
-     * slot nothing in js/ writes, so its guard could never fire) and hardcoded
-     * `unaware = false` because "unconscious()/is_fainted() are not ported
-     * here".  Both ARE ported and js/display.js's You_hear calls them. */
+    /* C hack.c:4239-4241 — Soundeffect() then You_hear(); js/pline.js's
+     * You_hear carries the Deaf/unaware guard and both prefixes. */
+    Soundeffect(se_wailing_of_the_banshee, 75);
     const what = (u.uhp | 0) === 1 ? 'the wailing of the Banshee...'
                                    : 'the howling of the CwnAnnwn...';
     await You_hear(what);
@@ -745,10 +747,10 @@ export function movobj(obj, ox, oy) {
     newsym(ox, oy);
 }
 
-/** C ref: hack.c:4478 money_cnt — walk invent chain, return COIN_CLASS (12) obj quan. */
+/** C ref: hack.c:4514 money_cnt — walk invent chain, return COIN_CLASS obj quan. */
 export function money_cnt(otmp) {
     for (; otmp; otmp = otmp.nobj) {
-        if ((otmp.oclass | 0) === 12 /* COIN_CLASS */)
+        if ((otmp.oclass | 0) === COIN_CLASS)
             return otmp.quan;
     }
     return 0;
@@ -972,10 +974,6 @@ export function in_rooms(x, y, typewanted) {
     return buf;
 }
 
-function _gp_doorless_door(x, y) {
-    return doorless_door(x, y);
-}
-
 function _gp_Passes_walls() { return _gp_uprop_he(PASSES_WALLS); }
 
 /* ---------------------------------------------------------------------------
@@ -1003,7 +1001,7 @@ export function crawl_destination(x, y) {
     if (_gp_Passes_walls())
         return true; /* or a xorn... */
     /* pool could be next to a door, conceivably even inside a shop */
-    if (IS_DOOR(lev_typ(x, y)) && (!_gp_doorless_door(x, y) || block_door(x, y)))
+    if (IS_DOOR(lev_typ(x, y)) && (!doorless_door(x, y) || block_door(x, y)))
         return false;
     /* finally, are we trying to squeeze through a too-narrow gap? */
     return !(bad_rock(game.youmonst?.data, u.ux, y)

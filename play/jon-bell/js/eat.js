@@ -13,10 +13,11 @@ import { PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_PYROLISK,
 import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, monflee } from './makemon.js';
 import { mon_set_minvis } from './worn.js';
 import { same_race, defended } from './mondata.js';
-import { monstone as monstone_real } from './dogmove.js';
+import { monstone } from './dogmove.js';
 import { game, wizard, discover } from './gstate.js';
 import { paranoid_query } from './paranoid.js';
-import { BUFSZ, PARANOID_EATING, PARANOID_DIE } from './const.js';
+import { BUFSZ, PARANOID_EATING, PARANOID_DIE, LL_LIFESAVE } from './const.js';
+import { formatkiller } from './topten.js';
 import { obj_stop_timers, fall_asleep } from './timeout.js';
 import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from './const.js';
 /* objects.h BEARTRAP (tool object ordinal). */
@@ -25,7 +26,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS, eaten_stat as food_eaten_stat, obj_nutrition } from './food_props.js';
 import { is_rottable } from './mklev.js';
-import { inv_cnt, reorder_invent } from './cmd.js';
+import { inv_cnt, reorder_invent, rounddiv } from './cmd.js';
 import { set_itimeout } from './potion.js';
 import { pline_The } from './pline.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
@@ -60,7 +61,7 @@ import { yn_function } from './cmd.js';
  * same safety argument as the js/end.js edge above). Not async: it does not
  * await its own float_up()/You() calls, matching this file's un-awaited
  * call site. */
-import { reset_utrap, selftouch, t_at, deltrap as deltrap_real } from './trap.js';
+import { reset_utrap, selftouch, t_at, deltrap } from './trap.js';
 /* C hack.h on_level(l1,l2) macro — real body in js/dungeon.js. Both operands
  * used at eat.js's one call site (context.digging.level, u.uz) carry the
  * same {dnum, dlevel} shape this expects (js/dig.js:115, js/allmain.js:332,
@@ -106,7 +107,7 @@ import { attrcurse } from './sit.js';
 import { A_DEX, A_CON, A_CHA, GLIB, Is_astralevel } from './const.js';
 import { acurrstr } from './dokick.js';
 import { makeplural, the, yobjnam, otense,
-         doname as doname_real, thesimpleoname, ansimpleoname,
+         doname, thesimpleoname, ansimpleoname,
          killer_xname } from './objnam.js';
 import { the_unique_pm } from './makemon.js';
 import { rndmonnam } from './do_name.js';
@@ -127,7 +128,7 @@ import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_s
  * tail rather than at module scope). */
 import { set_occupation, instapetrify as instapetrify_eat, useup as useup_eat, verbalize, pooleffects_breathless, surface } from './cmd.js';
 import { welded } from './wield.js';
-import { dropx, dropy as dropy_real, heal_legs } from './do.js';
+import { dropx, dropy, heal_legs } from './do.js';
 import { weight, encumber_msg as encumber_msg_real } from './weight.js';
 import { near_capacity } from './hack.js';
 import { obj_here } from './cmd.js';
@@ -650,7 +651,7 @@ export async function doeat() {
                 if (otmp.owornmask)
                     await remove_worn_item(otmp, false);
                 await _eat_freeinv(otmp);
-                await dropy_real(otmp);
+                await dropy(otmp);
             }
             await stackobj(otmp);
         }
@@ -1292,6 +1293,9 @@ async function _done(how, opts) {
         adjattrib(A_CON, -1, 1);
         g._botlHeldEat = false;
         await savelife(how, true);
+        /* C end.c:1096-1100 — non-GENOCIDED lifesaving livelogs the killer. */
+        if ((how | 0) !== GENOCIDED)
+            livelog_printf(LL_LIFESAVE, 'averted death (%s)', formatkiller('', BUFSZ, how, false));
         if (g.svk && g.svk.killer) {
             g.svk.killer.name = '';
             g.svk.killer.format = KILLED_BY_AN;
@@ -1465,8 +1469,7 @@ async function maybe_cannibal(pm, allowmsg) {
     change_luck(-rn1(4, 2));
     return true;
 }
-/* C mon.c:3274-3359 — shared monster stoning implementation. */
-async function monstone(mtmp) { return await monstone_real(mtmp); }
+/* C mon.c:3274-3359 monstone — canonical port imported from js/dogmove.js */
 
 /* C eat.c:603-755 — eat_brains: mind flayer brain-eating attack.
  * Use the live pline stream for every message: update_topl() must honor
@@ -1865,7 +1868,7 @@ async function touchfood(otmp) {
             * a dangling object pointer. */
             sellobj_state(SELL_DONTSELL);
             try {
-                await dropy_real(otmp);
+                await dropy(otmp);
             } finally {
                 /* Preserve C's unconditional straight-line restoration even
                  * when a JS diagnostic/test boundary throws. */
@@ -1879,14 +1882,8 @@ async function touchfood(otmp) {
     }
     return otmp;
 }
-/* C hack.c:4515 rounddiv(x, y). */
-function _rounddiv(x, y) {
-    if (y === 0) return 0;
-    let r;
-    if (x >= 0) r = Math.trunc((x + (y >> 1)) / y);
-    else r = -Math.trunc((-x + (y >> 1)) / y);
-    return r;
-}
+/* C hack.c:4551 rounddiv(x, y) — one port, js/cmd.js rounddiv. */
+function _rounddiv(x, y) { return rounddiv(x, y); }
 /* C obj.h consume_oeaten(o, n): n<0 → oeaten -= -n; n>0 → oeaten >>= n. */
 function _consume_oeaten(o, n) {
     if (!_obj_nutrition(o)) {
@@ -4381,6 +4378,12 @@ export async function cpostfx(pm) {
             newsym(u.ux, u.uy);
             await flush_screen(1); /* curs_on_u() is flush_screen(1) (display.c:1726); the sync wrapper left it un-awaited */
             await flush_screen(1);
+            /* topl.c:257-300: ESC at the page done_eating's pline raised (over the
+             * folded-in flavor line) set WIN_STOP, but that pline sampled skip
+             * before more(), so it is drawn and stays on the topline; only this
+             * arm's own You_cant() is swallowed.  The occupation loop re-reads
+             * that owner from _pending_message and must commit it, not hide it. */
+            const _stopOwner = game._topl_win_stop ? (game._pending_message || null) : null;
             /* topl.c more(): ESC at the page sets WIN_STOP on the message window */
             if (await force_more(_mimicTopl) === 27) {
                 game._topl_win_stop = true;
@@ -4393,6 +4396,8 @@ export async function cpostfx(pm) {
              * blank page would eat the key that ends the 20-turn pretend. */
             if (game._eatMimicForceMore)
                 await force_more(game._pending_message || undefined);
+            game._eatMimicStopOwner = (_stopOwner && game._topl_win_stop
+                && game._pending_message === _stopOwner) ? _stopOwner : null;
             game._eatMimicAcked = true;
             curs_on_u();
             /* display_nhwindow(WIN_MAP, TRUE) (eat.c:1224) more()s the topline.  Inside the
@@ -4565,9 +4570,7 @@ export async function ynq(prompt) {
     /* C hack.h: #define ynq(query) yn_function(query, ynqchars, 'q', TRUE) */
     return await yn_function(prompt, "ynq", 'q', true);
 }
-export async function doname(obj) {
-    return await doname_real(obj);
-}
+export { doname };
 export { thesimpleoname };
 
 export async function floorfood(verb, corpsecheck) {
@@ -4736,14 +4739,13 @@ export async function floorfood(verb, corpsecheck) {
     return otmp;
 }
 
-async function dropy(obj) { return await dropy_real(obj); }
+/* (dropy forwarded directly to canonical dropy from ./do.js) */
 /* C ref: dbridge.c:46-83 is_pool_or_lava — real body imported above from
  * js/look.js, which this file already imports from (end_running). */
 const M1_CLING_E = 0x00000010;
 function is_clinger(uptr) {
     return (((uptr && uptr.mflags1) >>> 0) & M1_CLING_E) !== 0;
 }
-function deltrap(ttmp) { return deltrap_real(ttmp); }
 /* C ref: eat.c:3517 eat_ok(obj) — getobj's callback for the 'eat' command.
  *
  *     if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;

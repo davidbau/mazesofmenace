@@ -132,6 +132,7 @@ import { the } from './objnam.js'; // relocate-fns
 import { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor } from './pickup_container.js'; // relocate-fns
 export { yn_function } from './cmd.js'; // relocate-fns
 export { _yn_prompt }; // relocate-fns
+export { ynq };
 
 const BAG_OF_TRICKS = 220;
 const POT_RESTORE_ABILITY = 298;
@@ -1086,8 +1087,15 @@ export async function do_death_sequence(opts) {
      * including the WIN_STOP case where acknowledgement is suppressed.
      * Clear that state before dropping WIN_STOP so the shared reader cannot
      * page the same suppressed death message a second time. */
-    if (g._topl_win_stop)
+    if (g._topl_win_stop) {
+        /* The prompt goes out with ATR_NOHISTORY, so tty_putstr (wintty.c:2290-2295)
+         * remember_topl()s the line still standing in gt.toplines first: the
+         * owner an ESC'd page left drawn (topl.c:300) still reaches ^P history. */
+        const _stand = String(g._pending_message || '');
+        if (_stand && g._msg_history?.at(-1) !== _stand)
+            putmsghistory(_stand);
         g._pending_message = '';
+    }
     g._topl_unacknowledged = false;
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
@@ -1343,7 +1351,15 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
              * modes show the history window once and re-add the prompt with
              * no swallow (topl.c:435-442). */
             if (key === 16) {
-                const { doprev_message } = await import('./cmd.js');
+                const { doprev_message: doprev_message_inread } = await import('./cmd.js');
+                /* topl.c:436-439: tty_doprev_message() runs with ttyDisplay->inread
+                 * zeroed, so bot() is live while the history window is up/erased. */
+                const doprev_message = async () => {
+                    const sav = g._topl_prompt_echo;
+                    g._topl_prompt_echo = false;
+                    try { return await doprev_message_inread(); }
+                    finally { g._topl_prompt_echo = sav; }
+                };
                 if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
                     /* topl.c:438-442: tty_doprev_message() (blocking window),
                      * then tty_clear_nhwindow(WIN_MESSAGE) + addtopl(prompt);

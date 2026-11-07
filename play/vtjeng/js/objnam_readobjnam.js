@@ -27,7 +27,7 @@ import { game } from './gstate.js';
 import {
     digit, fuzzymatch, lcase, lowc, mungspaces, str_start_is, strstri, strsubst, upstart, } from './hacklib.js';
 import {
-    consume_oeaten, eaten_stat, obj_nutrition, set_tin_variety, tin_variety_txt, } from './eat.js';
+    consume_oeaten, obj_nutrition, set_tin_variety, tin_variety_txt, } from './eat.js';
 import {
     delete_contents, hands_obj, obj_extract_self, obfree, } from './invent.js';
 import { def_char_to_objclass } from './drawing.js';
@@ -424,7 +424,7 @@ function origbp(d) {
 }
 
 // C ref: objnam.c set_wallprop_from_str() (3539-3550). The strstr() checks
-// are case-sensitive, and wall_info keeps its existing bits.
+// are case-sensitive, and wall_info (rm.flags) keeps its existing bits.
 export function set_wallprop_from_str(bp, state = game) {
     let wallProp = 0;
     if (bp.includes('undiggable ') || bp.includes('nondiggable '))
@@ -433,7 +433,7 @@ export function set_wallprop_from_str(bp, state = game) {
         wallProp |= W_NONPASSWALL;
     if (wallProp) {
         const location = state.level.at(state.u.ux, state.u.uy);
-        location.wall_info = (location.wall_info ?? 0) | wallProp;
+        location.flags = (location.flags ?? 0) | wallProp;
     }
 }
 
@@ -720,41 +720,37 @@ async function apply_wizterrainwish(d, rawEnv = {}) {
         if (lev.typ === DOOR || lev.typ === SDOOR
             || (IS_WALL(lev.typ) && lev.typ !== DBWALL)
             || lev.typ === IRONBARS) {
-            const oldWallInfo = lev.typ !== DOOR
-                ? (lev.wall_info ?? 0) : 0;
+            const oldWallInfo = lev.typ !== DOOR ? lev.flags : 0;
             lev.typ = secret ? SDOOR : DOOR;
-            lev.wall_info = 0;
+            lev.flags = 0; /* wall_info overlays 'flags' */
             if (state.rogue_level
                 && state.u.uz?.dnum === state.rogue_level.dnum
                 && state.u.uz?.dlevel === state.rogue_level.dlevel) {
                 d.doorless = 1;
                 d.locked = d.closed = d.open = d.broken = 0;
             }
-            lev.doormask = d.locked ? D_LOCKED
+            lev.flags = d.locked ? D_LOCKED
                 : (d.doorless || secret) ? D_NODOOR
                     : d.open ? D_ISOPEN
                         : d.broken ? D_BROKEN : D_CLOSED;
-            if (secret) lev.doormask |= oldWallInfo & WM_MASK;
+            if (secret) lev.flags |= oldWallInfo & WM_MASK;
             if (d.trapped === 2
-                || ((lev.doormask & (D_LOCKED | D_CLOSED)) === 0
+                || ((lev.flags & (D_LOCKED | D_CLOSED)) === 0
                     && !secret)) {
                 d.trapped = 0;
             }
-            if (d.trapped) lev.doormask |= D_TRAPPED;
-            // C rm.h aliases doormask and wall_info to flags. Keep the
-            // shared value current before redraw and vision read flags.
-            lev.flags = lev.wall_info = lev.doormask;
+            if (d.trapped) lev.flags |= D_TRAPPED;
 
             let doorDescription = '';
-            if (lev.doormask & D_TRAPPED) doorDescription += 'trapped ';
-            if (lev.doormask & D_LOCKED) doorDescription += 'locked ';
+            if (lev.flags & D_TRAPPED) doorDescription += 'trapped ';
+            if (lev.flags & D_LOCKED) doorDescription += 'locked ';
             if (lev.typ === SDOOR) {
                 doorDescription += 'secret door';
             } else {
-                if (lev.doormask & D_CLOSED) doorDescription += 'closed ';
-                if (lev.doormask & D_ISOPEN) doorDescription += 'open ';
-                if (lev.doormask & D_BROKEN) doorDescription += 'broken ';
-                if ((lev.doormask & ~D_TRAPPED) === D_NODOOR)
+                if (lev.flags & D_CLOSED) doorDescription += 'closed ';
+                if (lev.flags & D_ISOPEN) doorDescription += 'open ';
+                if (lev.flags & D_BROKEN) doorDescription += 'broken ';
+                if ((lev.flags & ~D_TRAPPED) === D_NODOOR)
                     doorDescription += 'doorless doorway';
                 else
                     doorDescription += 'door';
@@ -1937,13 +1933,6 @@ export function readobjnam_postparse3(d, env) {
 export function readobjnam(bp, no_wish, env = {}) {
     const normalized = wishEnv(env);
     const { state } = normalized;
-    normalized.hooks = {
-        ...normalized.hooks,
-        // objnam.c finishes a partly-eaten wished food with weight(), whose
-        // eaten_stat callback is the direct return-valued eat.c dependency.
-        eatenStat: normalized.hooks.eatenStat
-            ?? ((base, obj, objectEnv) => eaten_stat(base, obj, objectEnv)),
-    };
     const random = wishRandom(normalized);
     const d = readobjnam_init(bp, state);
 

@@ -51,7 +51,7 @@ import { menu_heading_text, ATR_NONE } from './tty_menu.js';
 import { menucolor_row } from './coloratt.js';
 import { nhgetch } from './input.js';
 import { weight } from './weight.js';
-import { doname, doname_with_price, simpleonames, cxname, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
+import { doname, doname_with_price, simpleonames, thesimpleoname, minimal_xname, cxname, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
 import { freeinv, snuff_lit, loot_xname as _loot_xname, useup, useupf, obj_here, obj_extract_self_general, obj_extract_self_general as obj_extract_self, getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
@@ -293,7 +293,7 @@ function _yname_box(o, simple = false) {
     // Preserve the existing carried-chain fallback until every acquisition
     // path maintains where; shop ownership takes precedence over "your".
     if (prefix === 'the ' && _carried_box(o)) prefix = 'your ';
-    return prefix + (simple ? _box_xname(o) : name);
+    return prefix + (simple ? minimal_xname(o) : name); /* C objnam.c:2396 */
 }
 function _Yname_box(o, simple = false) {
     if (simple) return Ysimple_name2(o);
@@ -367,7 +367,7 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * menu over it.  This is observable after ':' reports an empty container. */
     if (g._pending_message)
         await force_more(g._pending_message);
-    const boxname = _box_xname(box);
+    const boxname = thesimpleoname(box); /* C pickup.c:3420,3448 */
     /* Menu lines mirror C in_or_out_menu add_menu order: ':', then (outokay) 'o',
      * (inokay) 'i', (outokay) 'b', (inokay) 'r'+'s', blank, (more) 'n', 'q'. */
     const lines = [];
@@ -385,14 +385,14 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
         lines.push(`${sel[idx]} ${selected ? '*' : '-'} ${text}`);
         items.push({ disp: sel[idx], canon: LOOTCHARS[idx] });
     };
-    additem(1, `Look inside the ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
+    additem(1, `Look inside ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     /* C pickup.c:3423-3428: if (outokay) add_menu(..., ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE) */
     if (outokay) additem(2, 'take something out', false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     if (inokay)  additem(3, 'put something in', false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     if (outokay) additem(4, `${inokay ? 'both; ' : ''}take out, then put in`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     if (inokay) {
         additem(5, `${outokay ? 'both reversed; ' : ''}put in, then take out`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
-        additem(6, `stash one item into the ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
+        additem(6, `stash one item into ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     }
     lines.push('');
     /* C pickup.c:3453-3457 preselects 'n' when another container remains. */
@@ -771,6 +771,8 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
             await docrt();
             status_r1_menu_docrt();
             game._statusBlankAfterDocrt = true;
+            game._pending_message = '';
+            await flush_screen(1);
         } else if (_lastPickGeom.col > 0) {
             docorner_blank_utf8_captures(_lastPickGeom.col - 1, _lastPickGeom.rows + 1);
             /* wintty.c:3715-3719 docorner(): a corner reaching the status rows
@@ -780,7 +782,9 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
                 game.disp.botlx = 1;
         }
         game._pending_message = '';
-        await flush_screen(1);
+        /* No flush_screen() after a corner menu: docorner() (wintty.c:982)
+         * repaints only rows 0..maxrow, and menu_loot (pickup.c:3286-3340)
+         * opens the next menu with the rest of gbuf still unflushed. */
         return cancelled;
     } finally {
         game._bot_disabled = savedBotDisabled;

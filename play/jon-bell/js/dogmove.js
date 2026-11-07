@@ -1,4 +1,4 @@
-import { pline_mon as pline_mon_real, You_feel } from './pline.js';
+import { pline_mon, You_feel } from './pline.js';
 import { shkgone, unpaid_cost, currency, obfree, costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { is_mines_prize, is_soko_prize } from './cmd.js';
@@ -12,7 +12,7 @@ import { COST_DEGRD, COST_CONTENTS } from './const.js';
 import { Amonnam, shade_miss as shade_miss_hm } from './mhitm.js';
 import { rloc_to } from './teleport.js';
 import { expels_gu, digests_gu } from './mhitu.js';
-import { SUPPRESS_HALLUCINATION } from './const.js';
+import { SUPPRESS_HALLUCINATION, LOW_PM } from './const.js';
 import { quest_monster_died } from './quest.js';
 import { PM_MAIL_DAEMON } from './pm.generated.js';
 import { G_GENOD } from './const.js';
@@ -107,11 +107,6 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { remove_worm, wormgone as wormgone_real,
          place_worm_tail_randomly } from './worm.js';
 
-/* C pline.c:132-146 pline_mon(): set_msg_xy() to the hero (0,0) or the
- * monster's square, then pline() — the accessiblemsg "(dir): " prefix reads it. */
-function pline_mon(mon, line, ...args) {
-    return pline_mon_real(mon, line, ...args);
-}
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import { oc_delay, oc_nutrition, mons_cnutrit, eaten_stat } from './food_props.js';
@@ -136,7 +131,7 @@ import { mfndpos, make_corpse, zombie_form } from './mon.js';
 import { isok, is_pit, ARTICLE_A, ARTICLE_NONE, MON_DETACH, CORPSTAT_NONE, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_HISTORIC, G_GONE, CONFLICT as CONFLICT_DM, engulfing_u as engulfing_u_const, MAGIC_PORTAL } from './const.js';
 import { thiefdead } from './steal.js';
 import { otrapped_of } from './const.js';   /* obj.h:139 #define opoisoned otrapped */
-import { should_displace, undesirable_disp, _can_open_mv, _passes_bars_mv, m_avoid_soko_push_loc, m_avoid_kicked_loc as m_avoid_kicked_loc_real, mon_allowflags, m_digweapon_check } from './monmove.js';
+import { should_displace, undesirable_disp, _can_open_mv, _passes_bars_mv, m_avoid_soko_push_loc, m_avoid_kicked_loc, mon_allowflags, m_digweapon_check } from './monmove.js';
 import { enexto_out, rloc as rloc_tp, tele_restrict as tele_restrict_tp, vamprises } from './teleport.js';
 import { stop_occupation as stop_occupation_dm } from './allmain.js';
 import { grddead } from './vault.js';
@@ -2074,15 +2069,8 @@ function distu(x, y) {
     return dist2(x | 0, y | 0, u.ux | 0, u.uy | 0);
 }
 
-/* C ref: monmove.c:1322-1334 m_avoid_kicked_loc(mtmp, nx, ny).
- * A peaceful/tame, seeing, unconfused/unstunned monster avoids (skips as a
- * movement candidate) the square the hero just kicked (gk.kickedloc), provided
- * the square is next2u (distu <= 2). The shared predicate checks Conflict.
- * isok(0,0) is false
- * (x>=1 fails), so the default/cleared kickedloc=(0,0) makes this inert. */
-function m_avoid_kicked_loc(mtmp, nx, ny) {
-    return m_avoid_kicked_loc_real(mtmp, nx, ny);
-}
+/* m_avoid_kicked_loc (C monmove.c:1322-1334) is defined once, in
+ * js/monmove.js, and imported at the top of this file. */
 
 /* m_avoid_soko_push_loc (C monmove.c:1337-1349) is defined once, in
  * js/monmove.js, mirroring C's own file layout (defined in monmove.c, called
@@ -3531,7 +3519,9 @@ export async function mondied_dm(mdef, mondead_only = false) {
      * off the map (remove_worm, newsym per segment) before the head newsym. */
     if (mdef.wormno)
         remove_worm(mdef);
-    newsym(deadMx, deadMy);
+    /* C mon.c:2722 mon_leaving_level(): newsym only `if (onmap)`; a steed is never
+     * placed on the map (mon.c:2534), so the hero's square is not repainted here. */
+    if (mdef !== game.u?.usteed) newsym(deadMx, deadMy);
     mdef._dyingInGrid = false; /* mon_leaving_level vacated C's grid */
 
     if (mdef.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
@@ -4748,11 +4738,12 @@ export async function mon_to_stone(mtmp) {
     } else await polystone_impossible("Can't polystone %s!", x_monnam(mtmp, ARTICLE_A, null, _has_mgivenname_dm(mtmp) ? SUPPRESS_SADDLE_DM : 0, false));
 }
 
+const MR_STONE_DM = 0x80; /* C monflag.h MR_STONE */
 /* C mon.c:3766-3830: shapechangers can escape petrification by reverting. */
 export async function vamp_stone(mtmp) {
     const mndx = mtmp.cham | 0, vamp = [PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER].includes(mndx);
-    if (vamp ? !(mndx >= 0 && mndx !== mtmp.data.pmidx && !((game.mvitals?.[mndx]?.mvflags | 0) & G_GENOD))
-             : !(ismnum_js(mndx) && (permonstTemplate(mndx).mresists & 0x80 /* MR_STONE */))) return true;
+    if (vamp ? !(mndx >= LOW_PM && mndx !== mtmp.data.pmidx && !((game.mvitals?.[mndx]?.mvflags | 0) & G_GENOD))
+             : !(ismnum_js(mndx) && (permonstTemplate(mndx).mresists & MR_STONE_DM))) return true;
     const amorph = !!(mtmp.data.mflags1 & M1_AMORPHOUS_DM);
     const buf = vamp ? `The lapidifying ${x_monnam(mtmp, ARTICLE_NONE, null,
         SUPPRESS_SADDLE_DM | SUPPRESS_HALLUCINATION | SUPPRESS_INVISIBLE | SUPPRESS_IT, false)} `

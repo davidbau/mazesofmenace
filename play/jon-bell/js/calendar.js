@@ -1,5 +1,5 @@
 // calendar.js — C ref: calendar.c.
-import { recorder_localtime } from './display.js';
+import { recorder_localtime, recorder_time_from_yyyymmddhhmmss } from './display.js';
 import { game } from './gstate.js';
 
 // Parse NETHACK_FIXED_DATETIME → {tm_year (years since 1900), tm_mon (0-based),
@@ -63,14 +63,7 @@ const RECORDER_UTC_OFFSET_SEC = -4 * 3600;
 /* C calendar.c:120-175, patch 001: mktime retains the recording moment's
  * tm_isdst, including when restore.c:617 parses a saved winter birthday. */
 export function time_from_yyyymmddhhmmss(buf) {
-    if (typeof buf !== 'string' || buf.length !== 14)
-        return 0;
-    const number = (start, end) => parseInt(buf.slice(start, end), 10) || 0;
-    const d = new Date(0);
-    d.setUTCFullYear(number(0, 4), number(4, 6) - 1, number(6, 8));
-    d.setUTCHours(number(8, 10), number(10, 12), number(12, 14), 0);
-    const result = d.getTime() / 1000 - RECORDER_UTC_OFFSET_SEC;
-    return Number.isFinite(result) && result !== -1 ? result : 0;
+    return recorder_time_from_yyyymmddhhmmss(buf);
 }
 
 export function getnow() {
@@ -141,7 +134,8 @@ export function yyyymmdd(date) {
 }
 
 /* C calendar.c:95-116: savegamestate writes birthdays as local date text,
- * rather than preserving the epoch value through the save/restore boundary. */
+ * rather than preserving the epoch value through the save/restore boundary.
+ * Use localtime's date-specific offset, just as C does for a nonzero date. */
 export function yyyymmddhhmmss(date) {
     const lt = recorder_localtime(date || getnow());
     const year = lt.tm_year + (lt.tm_year < 70 ? 2000 : 1900);

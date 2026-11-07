@@ -11,7 +11,7 @@ import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { menucolor_row } from './coloratt.js';
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js';
 import { money_cnt } from './hack.js';
-import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
+import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
 import { is_pick, use_pick_axe2 } from './dig.js';
 import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint } from './display.js';
 import { check_gold_symbol } from './botl.js';
@@ -56,10 +56,10 @@ import { oinit } from './o_init.js';
 import { an, deliver_splev_message, doname, otense, vtense, yobjnam } from './objnam.js';
 import { PARANOID_CONFIRMATION_DEFAULT_BITS } from './options.js';
 import { paranoid_ynq } from './paranoid.js';
-import { add_valid_menu_class, allow_category, pickup as pickup_c, u_safe_from_fatal_corpse } from './pickup.js';
+import { add_valid_menu_class, allow_category, pickup as pickup_c, st_all, u_safe_from_fatal_corpse } from './pickup.js';
 import { uescaped_shaft, uteetering_at_seen_pit } from './trap.js';
 import { impossible as real_impossible } from './pline.js';
-import { PM_GREEN_SLIME, PM_MANES, PM_ROGUE, PM_TOURIST, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_WRAITH, PM_ARCHEOLOGIST as _FL_PM_ARCHEOLOGIST, PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js';
+import { PM_GREEN_SLIME, PM_MANES, PM_NURSE, PM_ROGUE, PM_TOURIST, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_WRAITH, PM_ARCHEOLOGIST as _FL_PM_ARCHEOLOGIST, PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js';
 import { com_pager } from './questpgr.js';
 import { rank_of } from './rank_data.js';
 import { in_out_region } from './region.js';
@@ -84,6 +84,8 @@ import { weight } from './weight.js';
 import { near_capacity, weight_cap } from './hack.js';
 import { setnotworn } from './worn.js';
 import { BlindedTimeout, HBlinded, incr_HBlinded, make_blinded, obj_resists, set_HBlinded } from './zap.js';
+
+const CORPSE = 265, MEAT_RING = 270;
 
 /* C ref: pline.c:435-452 You_hear — this WAS the tree's only faithful copy of
  * the guard, and it is now the shared body in js/display.js, which is where
@@ -245,7 +247,7 @@ async function flooreffects_useupf(obj, numused) { return await useupf(obj, numu
 export async function flooreffects(obj, x, y, verb) {
     let res = false;
 
-    if ((obj.where | 0) !== 0 /* OBJ_FREE */)
+    if ((obj.where | 0) !== OBJ_FREE)
         flooreffects_panic('flooreffects: obj not free');
 
     /* make sure things like await water_damage() have no pointers to follow */
@@ -364,7 +366,7 @@ export async function flooreffects(obj, x, y, verb) {
         let otmp;
         while (globbyobj && (otmp = (await flooreffects_obj_nexto_xy(globbyobj, x, y, true))) != null) {
             await flooreffects_pudding_merge_message(globbyobj, otmp);
-            /* do.c:310 ignores the return; obj_absorb NULLs *obj1 only when
+            /* do.c:312 ignores the return; obj_absorb NULLs *obj1 only when
              * globbyobj itself was the absorbed glob. */
             const survivor = await flooreffects_obj_meld(globbyobj, otmp);
             globbyobj = (survivor === globbyobj) ? survivor : null;
@@ -478,10 +480,9 @@ export async function dropz(obj, with_impact) {
         /* C do.c:817-825 — hero has dropped an item while inside an
          * engulfer.  mpickobj is do.c:824 (void) mpickobj(u.ustuck, obj) —
          * ported at js/mklev.js:15151.  is_unpaid/stolen_value are the
-         * shop-billing pair already imported/stubbed above (shk_is_unpaid,
-         * stolen_value); stolen_value is a named RNG gap (js/cmd.js:6623)
-         * left as a no-op rather than faked, exactly as every other caller
-         * of it in this file already does. */
+         * shop-billing pair already imported above (shk_is_unpaid,
+         * stolen_value); stolen_value forwards to dokick_stolen_value
+         * (the shared bill/robbed accounting). */
         if (obj !== u.uball) { /* mon doesn't pick up ball */
             if (shk_is_unpaid(obj))
                 await stolen_value(obj, u.ux | 0, u.uy | 0, true, false);
@@ -491,7 +492,7 @@ export async function dropz(obj, with_impact) {
     } else {
         if (await flooreffects(obj, u.ux | 0, u.uy | 0, 'drop'))
             return;
-        obj.where = 0;
+        obj.where = OBJ_FREE;
         /* C mkobj.c:2330 place_object() opens with obj_no_longer_held(); this
          * port's place_object is synchronous, so the crysknife reversion
          * (rn2(10) for an erodeproof one) is run here at the drop site. */
@@ -515,8 +516,8 @@ export async function dropz(obj, with_impact) {
 /* C ref: do.c:848-888 engulfer_digests_food(obj) — called only from dropz's
  * swallowed branch; effects precede deletion, without feeding intrinsics. */
 async function engulfer_digests_food(obj) {
-    const CORPSE = 265, MEATBALL = 267, MEAT_STICK = 268,
-          ENORMOUS_MEATBALL = 269, MEAT_RING = 270;
+    const MEATBALL = 267, MEAT_STICK = 268,
+          ENORMOUS_MEATBALL = 269, GLOB_OF_GREEN_SLIME = 273;
     const otyp = obj.otyp | 0;
     const isFoodLike = otyp === CORPSE || !!obj.globby || otyp === MEATBALL
         || otyp === ENORMOUS_MEATBALL || otyp === MEAT_RING
@@ -525,7 +526,7 @@ async function engulfer_digests_food(obj) {
     const engulfer = game.u?.ustuck;
     if (!isFoodLike || !engulfer || !_digests(engulfer.data))
         return false;
-    const corpse = otyp === CORPSE, could_slime = otyp === 273 /* GLOB_OF_GREEN_SLIME */;
+    const corpse = otyp === CORPSE, could_slime = otyp === GLOB_OF_GREEN_SLIME;
     const could_poly = corpse && polyfood(obj);
     const could_petrify = corpse && _mh_touch_petrifies(permonstTemplate(obj.corpsenm));
     await pline('%s instantly digested!', Tobjnam(obj, 'are'));
@@ -535,7 +536,7 @@ async function engulfer_digests_food(obj) {
         await minstapetrify(engulfer, true);
     else if (corpse && obj.corpsenm === PM_WRAITH)
         await grow_up(engulfer, null);
-    else if (corpse && obj.corpsenm === 279 /* PM_NURSE */) {
+    else if (corpse && obj.corpsenm === PM_NURSE) {
         healmon(engulfer, engulfer.mhpmax, 0);
         if (!engulfer.mcansee) { // C mcureblindness(engulfer, FALSE)
             engulfer.mcansee = 1;
@@ -548,7 +549,7 @@ async function engulfer_digests_food(obj) {
 
 // C do.c:947-962 — require explicit consent to drop a fatal corpse bare-handed.
 async function better_not_try_to_drop_that(obj) {
-    if (obj.otyp === 265 /* CORPSE */ && !u_safe_from_fatal_corpse(obj, 0x0f /* st_all */)) {
+    if (obj.otyp === CORPSE && !u_safe_from_fatal_corpse(obj, st_all)) {
         const prompt = `Drop the ${obj_pmname(obj)} corpse without ${body_part(HAND)} protection on?`;
         return (await paranoid_ynq(true, prompt, false)) !== 'y';
     }
@@ -590,7 +591,7 @@ async function drop(obj) {
         return false;            /* ECMD_FAIL — getobj cancelled */
     if (!canletgo(obj, 'drop'))
         return false;            /* ECMD_FAIL — no turn, no RNG */
-    if (obj.otyp === 265 /* CORPSE */ && await better_not_try_to_drop_that(obj))
+    if (obj.otyp === CORPSE && await better_not_try_to_drop_that(obj))
         return false;            /* C do.c:720-721 ECMD_FAIL */
     if (_wt_sameObj(obj, u.uwep || null)) {
         if (welded(u.uwep)) {
@@ -612,7 +613,7 @@ async function drop(obj) {
         }
     }
     /* C ref: do.c:746-749 — a ring (or meat ring) dropped over a sink. */
-    if (!u.uswallow && ((obj.oclass | 0) === _RING_CLASS || (obj.otyp | 0) === 270)) {
+    if (!u.uswallow && ((obj.oclass | 0) === _RING_CLASS || (obj.otyp | 0) === MEAT_RING)) {
         const _sl = _levlAt(u.ux | 0, u.uy | 0);
         if (_sl && IS_SINK(_sl.typ)) {
             await _fl_dosinkring(obj);
@@ -629,13 +630,6 @@ async function drop(obj) {
         await hitfloor(obj, true);
         if (levhack)
             await float_down(I_SPECIAL | TIMEOUT, W_ARTI_FW | W_ART);
-        return true;             /* ECMD_TIME */
-    }
-    if (!u.uswallow && !can_reach_floor(true)) {
-        if (g.flags && g.flags.verbose)
-            await pline(`You drop ${await doname(obj)}.`);
-        await freeinv(obj);
-        await hitfloor(obj, true);
         return true;             /* ECMD_TIME */
     }
     if (!u.uswallow) {
@@ -661,7 +655,7 @@ async function drop(obj) {
      * legitimately lag near_capacity() — a pickup during a free command (^V
      * arrival pickup) burdens the hero without calling encumber_msg(), so a
      * drop that unburdens again is silent in C (0 -> 0). */
-    obj.how_lost = 2;            /* LOST_DROPPED (obj.h) */
+    obj.how_lost = LOST_DROPPED;
     await dropx(obj);
     /* C ref: do.c:779 return ECMD_TIME — the drop consumes a turn. */
     return true;
@@ -2376,7 +2370,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const msg = _prevTopl
             ? _topl_merge_result(_prevTopl, _arrivalMsg, _topl_joins_snapshot(_prevTopl) || [])
             : _arrivalMsg;
-        /* The page here IS C's cls() inside drag_down (ball.c:1010): cls()
+        g._pending_message = msg;
+    }
+    const _pageArrival = async () => {
+        if (!_arrivalPaged) return;
+        const msg = g._pending_message;
+        /* C's cls() inside drag_down (ball.c:1004) or docrt() (do.c:1840)
          * more()s an unacknowledged topline BEFORE clearing, which is why the
          * recorded "You fall down the stairs.--More--" frame still shows the
          * OLD level's map — exactly what _oldPaint holds. */
@@ -2403,7 +2402,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             g._pending_message = '';
             g._status_blanked = false;
         }
-    }
+    };
+    /* C ball.c:1004: only drag_down() clears the old screen before
+     * losedogs(). Other arrivals page in docrt() (do.c:1840), after the
+     * arriving monsters and any collision have been resolved. */
+    const _dragArrivalPage = _fellDownstairs && _st_Punished();
+    if (_dragArrivalPage) await _pageArrival();
     // C do.c:1813-1814 `if (Punished) placebc();` — put the ball and chain back
     // down under the hero at her arrival square on the new level.  Pairs with
     // the unplacebc() above; both halves are required or the pair leaks.
@@ -2552,6 +2556,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
      * not reset mspotted for monsters accompanying the hero. */
     g.a11y ??= {};
     g.a11y.mon_notices_blocked = (g.a11y.mon_notices_blocked || 0) + 1;
+    if (!_dragArrivalPage) await _pageArrival();
     if (_arrivalPaged) {
         // C ref: do.c:1854-1855 — after the arrival more() releases, docrt() does a
         // full vision recalc + redraw of the NEW level, then flush_screen(-1)
@@ -3041,26 +3046,26 @@ export function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {
         g._dfr_post_msg = post_msg;
 }
 
-// C ref: do.c:2094 deferred_goto() — execute a scheduled level change.
+// C ref: do.c:2075 deferred_goto() — execute a scheduled level change.
 // Called from allmain after rhack() when u.utotype is set.
-// Mirrors do.c:2094-2123 exactly: if not already on utolev, call goto_level,
+// Mirrors do.c:2075-2104 exactly: if not already on utolev, call goto_level,
 // then (if post_msg) pline it if we actually moved, then clear u.utotype.
 // Exported so allmain.js can call it in the faithful moveloop_core.
 export async function deferred_goto() {
     const g = game;
     const u = g.u || (g.u = {});
-    // C do.c:2096 — if (!on_level(&u.uz, &u.utolev))
+    // C do.c:2077 — if (!on_level(&u.uz, &u.utolev))
     const dest = u.utolev;
     const uz = u.uz;
     if (dest && uz && (uz.dnum !== dest.dnum || uz.dlevel !== dest.dlevel)) {
         const typmask = u.utotype | 0; // save it; goto_level zeroes u.utotype via assign
         const oldlev = { dnum: uz.dnum, dlevel: uz.dlevel };
-        // C do.c:2102-2103 — pline dfr_pre_msg if present
+        // C do.c:2083-2084 — pline dfr_pre_msg if present
         if (g._dfr_pre_msg) {
             await pline(g._dfr_pre_msg);
             g._dfr_pre_msg = null;
         }
-        // C do.c:2104-2106 — goto_level(dest, at_stairs, falling, portal)
+        // C do.c:2085-2087 — goto_level(dest, at_stairs, falling, portal)
         await goto_level(
             { dnum: dest.dnum, dlevel: dest.dlevel },
             !!(typmask & UTOTYPE_ATSTAIRS),
@@ -3076,7 +3081,7 @@ export async function deferred_goto() {
                 newsym(u.ux, u.uy);
             }
         }
-        // C do.c:2115 — if (dfr_post_msg && !on_level(uz, oldlev)) pline it
+        // C do.c:2096 — if (dfr_post_msg && !on_level(uz, oldlev)) pline it
         if (g._dfr_post_msg) {
             const newuz = g.u?.uz;
             if (!newuz || newuz.dnum !== oldlev.dnum || newuz.dlevel !== oldlev.dlevel) {
@@ -3085,7 +3090,7 @@ export async function deferred_goto() {
             g._dfr_post_msg = null;
         }
     }
-    // C do.c:2118 — u.utotype = UTOTYPE_NONE
+    // C do.c:2099 — u.utotype = UTOTYPE_NONE
     u.utotype = UTOTYPE_NONE;
     // Clear any leftover messages
     if (g._dfr_pre_msg)  { g._dfr_pre_msg  = null; }
@@ -3695,6 +3700,9 @@ export function cmd_safety_prevention(ucverb, cmddesc, act, flagcounterRef) {
         }
 
         if (monster_nearby()) {
+            /* C: Norep("%s%s", act, buf) — print act + assist suffix, suppressing
+             * an immediate consecutive repeat (Norep == "no repeat"). The message
+             * is emitted through _norep(), which wraps C Norep()/vpline(PLINE_NOREPEAT). */
             _norep(`${act}${buf}`);
             return true;
         } else if (danger_uprops()) {

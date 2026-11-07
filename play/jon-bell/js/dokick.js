@@ -65,7 +65,7 @@ import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD
  * pm.generated.js (a 3.7-vs-5.0 role-swap name, see js/mhitu.js's own
  * PM_AMOROUS_DEMON_MU local const for the identical reason) so it is a local
  * constant here too, matching mnum 290 used consistently elsewhere in js/. */
-import { hcolor, hliquid, You, noit_mon_nam } from './mhitm.js';
+import { hcolor, hliquid, You } from './mhitm.js';
 const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
 import { MONS_CWT, wipe_engr_at, place_object, makemon, mkgold } from './mklev.js';
@@ -92,7 +92,7 @@ import { enexto_out } from './teleport.js';
 // rather than re-implemented so there is no second body to drift.
 import { obfree, is_unpaid, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, hot_pursuit as shk_hot_pursuit, stolen_value, subfrombill, contained_gold, donate_gold, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs, picked_container as shk_picked_container } from './shk.js';
 import { in_rooms } from './hack.js';
-import { Shknam as shk_Shknam } from './shknam.js';
+import { shkname, Shknam } from "./shknam.js";
 import { make_happy_shk, make_angry_shk } from './shk.js';
 import { costly_gold } from "./shk.js";
 import { shkcatch } from './shk.js';
@@ -199,9 +199,7 @@ import { MAY_HITMON, MAY_HITYOU, MAY_HIT, MAY_DESTROY, MAY_FRACTURE, VIS_EFFECTS
 /* C const.js u_at(x,y) — the hero-at-square predicate. */
 import { u_at, HALF_PHDAM } from './const.js';
 /* C mon.c hideunder(mtmp) — the one body lives in js/mklev.js. */
-import { shkname_halluc_pick } from './mklev.js';
 import { inside_shop } from './shk.js';
-import { letter } from './hacklib.js';
 import { hideunder } from './mon.js';
 /* C allmain.c nomul(nval) / stop_occupation() — the one bodies. */
 import { nomul, stop_occupation } from './allmain.js';
@@ -2262,7 +2260,7 @@ export function free_oname(otmp) {
     if (Object.prototype.hasOwnProperty.call(otmp, 'oname'))
         otmp.oname = null;
 }
-export function Shknam(shkp) { return shk_Shknam(shkp); }
+export { Shknam }; // C shknam.c:843 — canonical body lives in js/shknam.js
 /* add_to_migration (C mkobj.c:2697-2717) and mksobj_migr_to_species
  * (C mkobj.c:252-266) live in js/mklev.js, this port's mkobj.c host — next to
  * mksobj(), which they are built out of.  They used to be throwing stubs HERE
@@ -2273,10 +2271,8 @@ export function Shknam(shkp) { return shk_Shknam(shkp); }
 export { add_to_migration, mksobj_migr_to_species };
 /* mon.c:5710 angry_guards */
 export { angry_guards };
-export function costly_spot(x, y) {
-    return shk_costly_spot(x, y);
-}
-export function hot_pursuit(shkp) { return shk_hot_pursuit(shkp); }
+export const costly_spot = shk_costly_spot;
+export const hot_pursuit = shk_hot_pursuit;
 /* is_unpaid (C shk.c:1166) and maybe_unhide_at (C mon.c:4687) are re-exported
  * at the top of this file from js/shk.js and js/mklev.js respectively, which
  * hold the single real ports.  The throwing stubs that used to sit here were
@@ -2356,44 +2352,8 @@ export async function otransit_msg(otmp, nodrop, chainthere, num) {
  * have halted the replay instead of leaving the level. */
 /* C ref: shk.c:3085 picked_container(obj) — forward to canonical port in js/shk.js. */
 export const picked_container = shk_picked_container;
-/* C ref: shknam.c:855-897 shkname(mtmp) — the shopkeeper's own name from
- * ESHK(mtmp)->shknam, with any non-letter prefix character stripped (the
- * leading '-'/'+'/'=' markers that flag a player-name-derived shk name).
- * Hallucination picks a random shop type, then a name from its list. */
-export function shkname(mtmp) {
-    /* C shknam.c:861-864: the name buffer comes from noit_mon_nam(), with
-     * isshk cleared so mon_nam() cannot recurse back here. Under Hallucination
-     * that call draws rndmonnam() (do_name.c:952) on the DISPLAY stream and the
-     * result is then overwritten below, so the draws are a pure side effect. */
-    let nam;
-    if (mtmp) {
-        const save_isshk = mtmp.isshk;
-        mtmp.isshk = 0;
-        nam = noit_mon_nam(mtmp);
-        mtmp.isshk = save_isshk;
-    }
-    /* C shknam.c:866-869: validate before the Hallucination RNG calls. */
-    if (!mtmp.isshk) {
-        impossible_sync('shkname: "%s" is not a shopkeeper.', nam);
-        return nam;
-    }
-    if (!mtmp.mextra?.eshk)
-        throw new Error(`panic: shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
-    /* C shknam.c:874-890: Hallucination (HHallucination && !Halluc_resistance)
-     * and not gameover picks a random shop type, then a random name from its
-     * list (two rn2 draws, js/mklev.js shkname_halluc_pick). */
-    const hp = game.u?.uprops?.[HALLUC];
-    const hr = game.u?.uprops?.[24]; /* HALLUC_RES */
-    let shknm = mtmp?.mextra?.eshk?.shknam;
-    if (hp && (hp.intrinsic | 0) && !((hr?.intrinsic | 0) || (hr?.extrinsic | 0))
-        && !game.program_state?.gameover) {
-        const pick = shkname_halluc_pick();
-        if (pick)
-            shknm = pick;
-    }
-    /* C shknam.c:892-893; hacklib.c:69 letter() also includes '@'. */
-    return letter(shknm.charAt(0)) ? shknm : shknm.slice(1);
-}
+/* C ref: shknam.c:855-897 shkname(mtmp) — forward to canonical port in js/shknam.js. */
+export { shkname };
 /* C shk.c:3753-3877: share the full billing and message implementation,
  * including breakobj()'s non-silent charge (dothrow.c:2559). */
 export { stolen_value };

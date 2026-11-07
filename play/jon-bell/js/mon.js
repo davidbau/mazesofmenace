@@ -40,15 +40,15 @@ import { nxtobj, sobj_at } from './invent.js';
 import { sengr_at } from './engrave.js';
 import { neweshk } from './shknam.js';
 import { level_difficulty } from './dungeon.js';
-import { mungspaces, online2, upstart } from './hacklib.js';
+import { mungspaces, online2, upstart, strncmpi } from './hacklib.js';
 import { save_mtraits } from './mkobj.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { can_fog, mon_allowflags as mon_allowflags_mv, mon_track_clear, set_apparxy } from './monmove.js';
+import { can_fog, mon_track_clear, set_apparxy } from './monmove.js';
 import { discover_object as lifesave_discover_object, objdescr_is } from './o_init.js';
 import { The as The_rc, ansimpleoname, distant_name as distant_name_nc, doname as doname_nc, is_quest_artifact, makeplural, oname, quest_info, vtense, xname } from './objnam.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { impossible as lifecycle_impossible } from './pline.js';
-import { PM_SCORPIUS, PM_SCORPION, PM_AIR_ELEMENTAL, PM_ASMODEUS, PM_BABY_PURPLE_WORM, PM_BALROG, PM_BARBARIAN, PM_BLACK_UNICORN, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC, PM_CAVEMAN, PM_CHICKATRICE, PM_COCKATRICE, PM_DISPATER, PM_DWARF, PM_ELF, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GIANT, PM_GNOME, PM_GRAY_DRAGON, PM_GRAY_OOZE as PM_GRAY_OOZE_MK, PM_GRAY_UNICORN, PM_GREEN_SLIME, PM_GREMLIN as PM_GREMLIN_ML, PM_GRID_BUG, PM_HEZROU, PM_HORNED_DEVIL, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_IRON_GOLEM as PM_IRON_GOLEM_ML, PM_JELLYFISH, PM_KOBOLD, PM_LONG_WORM, PM_MAIL_DAEMON, PM_MANES, PM_MINOTAUR, PM_NEANDERTHAL, PM_NURSE, PM_ORC, PM_ORCUS, PM_OWLBEAR, PM_PONY, PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_PYROLISK, PM_ROTHE, PM_SALAMANDER, PM_SHRIEKER, PM_STEAM_VORTEX, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VIOLET_FUNGUS, PM_VLAD_THE_IMPALER, PM_VROCK, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_UNICORN, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_YEENOGHU, PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC } from './pm.generated.js';
+import { PM_SCORPIUS, PM_SCORPION, PM_AIR_ELEMENTAL, PM_ASMODEUS, PM_BABY_PURPLE_WORM, PM_BALROG, PM_BARBARIAN, PM_BLACK_UNICORN, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC, PM_CAVEMAN, PM_CHICKATRICE, PM_COCKATRICE, PM_DISPATER, PM_DWARF, PM_ELF, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_FOG_CLOUD, PM_GELATINOUS_CUBE, PM_GIANT, PM_GNOME, PM_GRAY_DRAGON, PM_GRAY_OOZE as PM_GRAY_OOZE_MK, PM_GRAY_UNICORN, PM_GREEN_SLIME, PM_GREMLIN as PM_GREMLIN_ML, PM_GRID_BUG, PM_HEZROU, PM_HORNED_DEVIL, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_IRON_GOLEM as PM_IRON_GOLEM_ML, PM_JELLYFISH, PM_KOBOLD, PM_LONG_WORM, PM_MAIL_DAEMON, PM_MANES, PM_MINOTAUR, PM_NEANDERTHAL, PM_NURSE, PM_ORC, PM_ORCUS, PM_OWLBEAR, PM_PONY, PM_PURPLE_WORM as PM_PURPLE_WORM_MK, PM_PYROLISK, PM_ROTHE, PM_SALAMANDER, PM_SHRIEKER, PM_STEAM_VORTEX, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VAMPIRE_LORD, PM_VIOLET_FUNGUS, PM_VLAD_THE_IMPALER, PM_VROCK, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_UNICORN, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_WOLF, PM_YEENOGHU, PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC } from './pm.generated.js';
 import { healup } from './potion.js';
 import { dryup as dryup_ml } from './fountain.js';
 import { in_your_sanctuary, newepri, p_coaligned } from './priest.js';
@@ -86,7 +86,6 @@ import monPmnamesPackAt from './makemon_pmnames.json' with { type: 'json' }; // 
 import { COULD_SEE, IN_SIGHT } from './const.js'; // relocate-fns
 import { _sparkle_on, flash_glyph_at, mon_to_glyph } from './display.js'; // relocate-fns
 import { MONS, NORMAL_SPEED } from './fastforward.js'; // relocate-fns
-import { killed as killed_real } from './mhitm.js'; // relocate-fns
 import { dealloc_monst } from './dog.js'; // relocate-fns
 import { describe_level_buf } from './dungeon.js'; // relocate-fns
 import { impossible } from './pline.js'; // relocate-fns
@@ -728,10 +727,6 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
 // Check if a vampire (base) can shift to a given form.
 export function valid_vampshiftform(base, form) {
     if ((base | 0) >= LOW_PM && (MONS_ROWS[base | 0]?.[0] | 0) === S_VAMPIRE) {
-        const PM_VAMPIRE_BAT = 129;
-        const PM_FOG_CLOUD = 106;
-        const PM_WOLF = 20;
-        const PM_VAMPIRE = 226;
         if ((form | 0) === PM_VAMPIRE_BAT || (form | 0) === PM_FOG_CLOUD
             || ((form | 0) === PM_WOLF && (base | 0) !== PM_VAMPIRE))
             return true;
@@ -2549,6 +2544,9 @@ export async function usmellmon(mdat) {
     if (!mdat || !olfaction(game.youmonst?.data))
         return false;
 
+    const PM_CAVE_DWELLER = PM_CAVEMAN;
+    const S_DOG = 4, S_DRAGON = 30, S_FUNGUS = 32, S_UNICORN = 21, S_EEL = 57;
+
     const mndx = (mdat.pmidx ?? mdat.mndx ?? mdat.mnum ?? -1) | 0;
     let nonspecific = false;
     switch (mndx) {
@@ -2556,7 +2554,7 @@ export async function usmellmon(mdat) {
     case PM_MINOTAUR:
         await pline('You notice a bovine smell.');
         return true;
-    case PM_CAVEMAN: /* C PM_CAVE_DWELLER */
+    case PM_CAVE_DWELLER:
     case PM_BARBARIAN:
     case PM_NEANDERTHAL:
         await pline('You smell body odor.');
@@ -2599,26 +2597,26 @@ export async function usmellmon(mdat) {
 
     if (nonspecific) {
         switch (mdat.mlet | 0) {
-        case 4: /* S_DOG */
+        case S_DOG:
             await pline('You notice a dog smell.');
             return true;
-        case 30: /* S_DRAGON */
+        case S_DRAGON:
             await pline('You smell a dragon!');
             return true;
-        case 32: /* S_FUNGUS */
+        case S_FUNGUS:
             await pline('Something smells moldy.');
             return true;
-        case 21: /* S_UNICORN */
+        case S_UNICORN:
             await pline('You detect a%s odor reminiscent of a stable.',
                   mndx === PM_PONY ? 'n' : ' strong');
             return true;
-        case 52: /* S_ZOMBIE */
+        case S_ZOMBIE:
             await pline('You smell rotting flesh.');
             return true;
-        case 57: /* S_EEL */
+        case S_EEL:
             await pline('You smell fish.');
             return true;
-        case 15: { /* S_ORC */
+        case S_ORC: {
             const M2_ORC = 0x00000080;
             const currentFormIsOrc = !!((game.youmonst?.data?.mflags2 | 0)
                                          & M2_ORC);
@@ -3436,12 +3434,7 @@ function cant_squeeze_thru_mv(mon) {
 const can_fog_mv = can_fog;
 
 // C ref: worm.c:898 worm_cross(x1,y1,x2,y2) — REAL now (js/worm.js:466,
-// state in js/worm.js and the full port has lived there since the long-worm
-// work.  mon.c:2253's arm ("mustn't pass between adjacent long worm segments,
-// but can attack that way") drops a diagonal candidate square, and every
-// mfndpos `continue` is RNG-load-bearing: cnt is the argument of m_move's
-// mtrack draw rn2(4 * (cnt - j)) at monmove.c:1963.
-const worm_cross_mv = worm_cross;
+// exported). C mon.c:2249 mfndpos calls worm_cross directly.
 
 // C ref: include/trap.h:125
 //   #define fixed_tele_trap(t) ((t)->ttyp == TELEP_TRAP \
@@ -3645,7 +3638,7 @@ export function mfndpos(mon, data, flag) {
                         || (IS_DOOR(nowtyp) && (((nowloc ? nowloc.doormask : 0) | 0) & ~D_BROKEN))
                         || (IS_DOOR(ntyp) && (((nloc ? nloc.doormask : 0) | 0) & ~D_BROKEN))
                         || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp)) && Is_rogue_level(game.u?.uz))
-                        || (m_at(x, ny) && m_at(nx, y) && worm_cross_mv(x, y, nx, ny)
+                        || (m_at(x, ny) && m_at(nx, y) && worm_cross(x, y, nx, ny)
                             && !m_at(nx, ny) && (nx !== game.u.ux || ny !== game.u.uy)))) {
                     traceReject(nx, ny, 'diagonal');
                     continue;
@@ -3897,12 +3890,8 @@ export function iter_mons(fn) {
     }
 }
 
-/* C ref: mon.c:2064-2124 mon_allowflags() — one port, js/monmove.js (the body
- * dog_move, m_move and priest movement already call); this was a second,
- * divergent copy with no live caller. */
-export function mon_allowflags(mtmp) {
-    return mon_allowflags_mv(mtmp);
-}
+/* C ref: mon.c:2064-2124 mon_allowflags() — re-export canonical body from js/monmove.js */
+export { mon_allowflags } from './monmove.js';
 
 /* C monflag.h MS_* — only the values this tail actually tests. */
 const MS_SILENT_SM = 0, MS_HUMANOID_SM = 25, MS_ARREST_SM = 26,
@@ -4086,7 +4075,7 @@ async function peacefuls_respond(mtmp) {
                 if (!Deaf && !rn2(5)) {
                     const gasp = maybe_gasp_sm(mon);
                     if (gasp) {
-                        if (gasp.slice(0, 4).toLowerCase() === 'gasp') {
+                        if (!strncmpi(gasp, 'gasp', 4)) {
                             buf = Monnam(mon) + " gasps";
                             needpunct = true;
                         } else {
@@ -4304,6 +4293,26 @@ export function adj_erinys(abuse) {
      * [2]=difficulty. */
     pm[1] = Math.min(7 + ab, 50);
     pm[2] = Math.min(10 + Math.trunc(ab / 3), 25);
+
+    /* C mon.c:5924-5964 mutates the permonst shared by every erinys.
+     * permonstTemplate() copies scalar fields, so update existing instances
+     * too. Stored levels retain monsters in memory instead of restmon()'s
+     * fresh pointers into mons[]; restored saves also copy the attack array. */
+    const heads = [game.fmon, game.migrating_mons, game.mydogs,
+                   game.youmonst, game.u?.usteed, game.u?.ustuck];
+    for (const snap of game.levelStore?.values() ?? [])
+        heads.push(snap.fmon);
+    const seen = new Set();
+    for (const head of heads) {
+        for (let mon = head; mon && !seen.has(mon); mon = mon.nmon) {
+            seen.add(mon);
+            const data = mon.data;
+            if (data?.pmidx !== mndx) continue;
+            data.mflags1 = pm[6] >>> 0;
+            data.mlevel = pm[1];
+            data.mattk = mattk;
+        }
+    }
 }
 
 /* C mon.c:6077 flash_mon + display.c:1305 flash_glyph_at.  Temporarily grant
@@ -4371,8 +4380,8 @@ export function mcalcmove(mon, m_moving = true) {
     return mmove;
 }
 
-/* C mon.c:3469 killed() — use the canonical async xkilled sequence. */
-export async function killed(mon) { return await killed_real(mon); }
+/* C mon.c:3469 killed() — re-export canonical body from js/mhitm.js */
+export { killed } from './mhitm.js';
 
 // C ref: mon.c:2472-2511 dmonsfree() — purge dead (non-guard) monsters from
 // the fmon chain, then reconcile the freed count against mon.c:2796's

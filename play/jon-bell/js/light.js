@@ -443,7 +443,7 @@ export async function obj_adjust_light_radius(obj, new_radius) {
 export function arti_light_radius(obj) {
     let res;
 
-    /* C light.c:892 sanity check (upstream comment: "simplifies usage by bless()/curse()/&c") */
+    /* C light.c:892 sanity check [eases usage by bless()/curse()/&c] */
     if (!obj?.lamplit || !artifact_light(obj))
         return 0;
 

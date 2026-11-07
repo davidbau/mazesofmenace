@@ -355,10 +355,7 @@ import {
 import { nhgetch } from './input.js';
 import { doride, Punished } from './steed.js';
 import { done2, nh_terminate, UnsupportedEndOfGameError } from './end.js';
-import {
-    exercise_nonphysical,
-    UnsupportedAbilityChangeError,
-} from './attrib.js';
+import { UnsupportedAbilityChangeError } from './attrib.js';
 import { UnsupportedExperienceChangeError } from './exper.js';
 import {
     doread,
@@ -399,6 +396,7 @@ import {
 import { tty_wait_synch } from './tty_rawprint.js';
 import { do_write_config_file } from './cfgfiles.js';
 import { note_unported } from './unported.js';
+import { impossible } from './pline.js';
 import { dosh } from './unixunix.js';
 import {
     selection_floodfill,
@@ -836,6 +834,9 @@ async function yn_function_menu(query, resp, def, state = game) {
 // set, tty_yn_function() returns only a character of `resp` or `def`, and both
 // ported callers pass a `def` that is in their set, so the paniclog() and
 // impossible() inside it stay unreachable.
+// include/flag.h enum debug_fuzzer_states: fuzzer_impossible_continue.
+const FUZZER_IMPOSSIBLE_CONTINUE = 2;
+
 export async function yn_function(query, resp, def, addcmdq, state = game) {
     state.iflags ??= {};
     // "most recent pline is clobbered". Nothing in the port reads last_msg
@@ -881,6 +882,27 @@ export async function yn_function(query, resp, def, addcmdq, state = game) {
     }
     // The queue keeps the key code that the port's other producers push.
     if (addcmdq && !fromQueue) cmdq_add_key(CQ_REPEAT, res.charCodeAt(0), state);
+    // cmd.c:5545-5570. An answer outside 'resp' is replaced by the default,
+    // or by ESC without one. A queued non-key node reaches this with ESC,
+    // for instance when a counted move meets a second locked door prompt
+    // while the first canned kick is still queued. paniclog() writes only
+    // the panic log file, which the port does not keep. C's TEMP code sets
+    // iflags.debug_fuzzer to fuzzer_impossible_continue around the report,
+    // so tty more() returns at once and the three lines show no --More--.
+    if (resp && res && res !== '\0' && !resp.includes(res)) {
+        const altres = def && def !== '\0' ? def : '\x1b';
+        if (!state.in_doagain || state.wizard) {
+            const fuzzing = state.iflags.debug_fuzzer;
+            state.iflags.debug_fuzzer = FUZZER_IMPOSSIBLE_CONTINUE;
+            try {
+                await impossible(`yn_function() returned '${visctrl(res)}'; `
+                    + `using '${visctrl(altres)}' instead`, state);
+            } finally {
+                state.iflags.debug_fuzzer = fuzzing;
+            }
+        }
+        res = altres;
+    }
     // "in case we're called via getdir() which sets input_state".
     state.program_state.input_state = 'other';
     return res;
@@ -3004,14 +3026,11 @@ export function failClosedCommandRefusals() {
         // and dryup() raise this for the fountain-effect arms this port
         // leaves unported.
         UnsupportedFountainError,
-        // Two paths raise this. invent.c hold_another_object(), which
-        // makewish() calls unguarded, raises it from its drop, artifact,
-        // Fumbling and autoquiver arms. A wish heavy or numerous enough to
-        // push near_capacity() past flags.pickup_burden reaches the drop arm:
-        // a boulder does it on any hero. dothrow.c throwit() raises it from
-        // the weight() call that picks Splash! or Plop!, for a food the hero
-        // has bitten, because js/dothrow.js cannot supply the eatenStat hook
-        // without an import cycle. js/allmain.js
+        // invent.c hold_another_object(), which makewish() calls unguarded,
+        // raises it from its drop, artifact, Fumbling and autoquiver arms. A
+        // wish heavy or numerous enough to push near_capacity() past
+        // flags.pickup_burden reaches the drop arm: a boulder does it on any
+        // hero. js/allmain.js
         // elapsedTurnPlanningRefusals() already lists the class, and the note
         // above says a class several paths can reach belongs in each.
         UnsupportedObjectOperationError,
@@ -3297,17 +3316,8 @@ async function runEngraveCommand(key, state) {
         redraw: newsym,
         setOccupation: set_occupation,
         random: { rn2, rnd },
-        // random_engraving() reaches getrumor(), whose C implementation
-        // exercises WIS.  The callback stays at the command caller so the
-        // synchronous helper receives doengrave's exact state and RNG.
         randomEngraving: ({ state: engravingState, random }) =>
-            random_engraving({
-                state: engravingState,
-                random,
-                exercise: (attribute, increase) => exercise_nonphysical(
-                    attribute, increase, engravingState, random,
-                ),
-            }),
+            random_engraving({ state: engravingState, random }),
         yesNo: yn_function,
         monName: mon_nam,
         // engrave.c engrave() hands the dulled dagger split off a stack to
@@ -4544,9 +4554,9 @@ function terrainAt(x, y, state) {
 
 function doorMaskAt(x, y, state) {
     const tile = tileAt(x, y, state);
-    // C rm.doormask aliases flags; ordinary generated doors populate flags.
+    // rm.h's doormask is struct rm's `flags`.
     return typeof tile === 'object'
-        ? tile?.flags || tile?.doormask || 0 : 0;
+        ? tile?.flags ?? 0 : 0;
 }
 
 function objectAt(x, y, state) {

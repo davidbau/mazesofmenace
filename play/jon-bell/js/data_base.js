@@ -151,14 +151,14 @@ export function dbase_entry_lines(dbase_str) {
 function mangle_dbase_str(inp) {
     let s = String(inp).toLowerCase(); /* C ref: pager.c:867 lcase(dbase_str) */
     let offset = 0; /* dbase_str's position within C's newstr buffer */
-    const drop = (pfx) => {
+    const drop_pfx = (pfx) => {
         if (s.startsWith(pfx)) { s = s.slice(pfx.length); offset += pfx.length; return true; }
         return false;
     };
     const digit = (c) => c >= '0' && c <= '9';
 
-    drop('interior of ');
-    if (!drop('a ') && !drop('an ') && !drop('the ') && !drop('some ')
+    drop_pfx('interior of ');
+    if (!drop_pfx('a ') && !drop_pfx('an ') && !drop_pfx('the ') && !drop_pfx('some ')
         && s.length && digit(s[0])) {
         /* remove count prefix ("2 ya") which can come from looking at map */
         let i = 0;
@@ -167,13 +167,13 @@ function mangle_dbase_str(inp) {
         s = s.slice(i);
         offset += i;
     }
-    drop('pair of ');
-    if (!drop('tame ')) drop('peaceful ');
-    drop('invisible ');
-    drop('saddled ');
-    if (!drop('blessed ') && !drop('uncursed ')) drop('cursed ');
-    drop('empty ');
-    if (!drop('partly used ')) drop('partly eaten ');
+    drop_pfx('pair of ');
+    if (!drop_pfx('tame ')) drop_pfx('peaceful ');
+    drop_pfx('invisible ');
+    drop_pfx('saddled ');
+    if (!drop_pfx('blessed ') && !drop_pfx('uncursed ')) drop_pfx('cursed ');
+    drop_pfx('empty ');
+    if (!drop_pfx('partly used ')) drop_pfx('partly eaten ');
     if (s.startsWith('statue of '))
         s = s.slice(0, 6);          /* dbase_str[6] = '\0' => "statue" */
     else if (s.startsWith('figurine of '))

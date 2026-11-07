@@ -46,7 +46,7 @@ import { g_at, um_dist, set_msg_xy } from './cmd.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { freeinv as freeinv_real } from './cmd.js';
 import { add_to_minv, obfree } from './dokick.js';
-import { mnexto as mnexto_real, rloc, enexto_out, tele } from './teleport.js';
+import { mnexto, rloc, enexto_out, tele } from './teleport.js';
 import { m_at, mon_wield_item } from './uhitm.js';
 import { place_monster } from './steed.js';
 import { del_engr_at } from './mklev.js';
@@ -714,7 +714,8 @@ import { assign_level } from './dungeon.js'; // relocate-fns
 export { Your };
 export { currency } from './cmd.js';
 export function freeinv(obj) { return freeinv_real(obj); }
-export async function mnexto(mon, flags) { return await mnexto_real(mon, flags); }
+/* C mon.c:3955 mnexto — re-export canonical body from js/teleport.js */
+export { mnexto };
 /* mongone's real body is js/mklev.js (C home mon.c:3253).  This file's
  * throw-stub of the same name shadowed it for gd_sound()'s own call above.
  * It is now IMPORTED at the top as well: `export ... from` is a re-export and

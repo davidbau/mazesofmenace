@@ -12,7 +12,7 @@ import { pline, livelog_printf } from './pline.js';
 import { adjabil, minuhpmax, setuhpmax, acurr, newhp } from './attrib.js';
 import { Goodbye } from './roles.js';
 import { monhp_per_lvl } from './makemon.js';
-import { KILLED_BY, DIED, LL_MINORAC, Upolyd, DRAIN_RES } from './const.js';
+import { KILLED_BY, DIED, LL_MINORAC, Upolyd, DRAIN_RES, A_WIS } from './const.js';
 /* C exper.c:358-360 — pluslvl records the rank achievement.  Both helpers live
  * in insight.c; this port hosts the insight.c block in js/cmd.js. */
 import { achieve_rank, record_achievement, count_achievements } from './cmd.js';
@@ -174,7 +174,7 @@ export function newpw() {
     }
     /* C exper.c:56: enrnd = (int) ACURR(A_WIS) / 2 (A_WIS=2); acurr adds
      * abon/atemp (worn items, e.g. helm of brilliance). */
-    enrnd = Math.trunc(acurr(u, 2) / 2);
+    enrnd = Math.trunc(acurr(u, A_WIS) / 2);
     if ((u.ulevel | 0) < xlev) {
         /* C exper.c:57-59: lower range */
         enrnd += ((re ? re.lornd : 0) | 0) + ((rr ? rr.lornd : 0) | 0);

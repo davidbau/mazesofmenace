@@ -30,6 +30,7 @@
 // swallowed arms await insight.c mstatusline(); both reachability branches
 // call the corresponding engrave.c cant_reach_floor() helper.
 
+import { rm_doormask } from './game.js';
 import {
     ACCESSIBLE,
     ARTICLE_A,
@@ -578,6 +579,7 @@ import { mpickobj } from './steal.js';
 import {
     _doWearInternals,
     Blindf_off,
+    cursed,
     fingers_or_gloves,
     inaccessible_equipment,
     setwornEnv,
@@ -2784,7 +2786,6 @@ async function use_stethoscope(obj, state = game) {
         if (heard) await ttyPline(heard, state);
         lev.typ = CORR;
         lev.flags = 0;
-        lev.doormask = 0;
         unblock_point(rx, ry, state);
         feel_newsym(rx, ry, state);
         return res;
@@ -2871,7 +2872,7 @@ export function check_jump(trajectory, x, y, state = game) {
     if (IS_STWALL(location.typ)) return false;
     if (IS_DOOR(location.typ)) {
         if (closed_door(x, y, state)) return false;
-        const mask = location.doormask ?? 0;
+        const mask = rm_doormask(location);
         if ((mask & D_ISOPEN) !== 0 && trajectory !== JUMP_ANY
             && (trajectory === JUMP_DIAG
                 || (((trajectory & JUMP_HORZ) !== 0)
@@ -2921,7 +2922,7 @@ export async function is_valid_jump_pos(x, y, magic, showmsg, state = game) {
 
     const source = state.level.at(state.u.ux, state.u.uy);
     if (diagonal === JUMP_DIAG && IS_DOOR(source.typ)
-        && (source.doormask & D_ISOPEN) !== 0
+        && (source.flags & D_ISOPEN) !== 0
         && (trajectory === JUMP_DIAG
             || (((trajectory & JUMP_HORZ) !== 0)
                 === Boolean(source.horizontal)))) {
@@ -3051,10 +3052,14 @@ export async function jump(magic = 0, state = game, env = {}) {
             return ECMD_TIME;
         }
         if (magic) {
-            await ttyPline('You writhe a little in the grasp of your captor!', state);
+            await ttyPline(
+                `You writhe a little in the grasp of ${mon_nam(captor, state)}!`,
+                state,
+            );
             return ECMD_TIME;
         }
-        await ttyPline('You cannot escape from your captor!', state);
+        await ttyPline(`You cannot escape from ${mon_nam(captor, state)}!`,
+            state);
         return ECMD_OK;
     }
     if (jumpPropertyActive(state, LEVITATION)
@@ -4318,7 +4323,6 @@ export async function use_mirror(obj, state = game, env = {}) {
         await setnotworn(obj, { ...env, state });
         await freeinv(obj, { ...env, state });
         mpickobj(mtmp, obj, { ...env, state });
-        await monflee(mtmp, 0, false, false, { ...env, state, random });
         if (!await tele_restrict(mtmp, state, env)) {
             await rloc(mtmp, RLOC_MSG, {
                 ...env,
@@ -5012,7 +5016,7 @@ export async function doapply(state = game, env = {}) {
     case BLINDFOLD:
     case LENSES:
         if (obj === state.ublindf) {
-            if (!obj.cursed)
+            if (!(await cursed(obj, state)))
                 await Blindf_off(obj, state);
         } else if (!state.ublindf) {
             await _doWearInternals.Blindf_on(obj, state);

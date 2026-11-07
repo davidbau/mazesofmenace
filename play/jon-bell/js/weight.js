@@ -52,68 +52,8 @@ const CANDELABRUM_OF_INVOCATION = 262;
 const TALLOW_CANDLE = 224;
 const CORPSE = 265;
 
-/* C mkobj.c:1889 weight(obj) — full weight of one object incl. container
- * contents.
- *
- * Unlike C's inv_weight(), which reads the cached otmp->owt, we recompute
- * weight() from objects[].oc_weight because the replay-reconstructed hero
- * inventory carries a placeholder owt (=1), not the live cached value. */
-export function weight(obj) {
-    if (!obj) return 0;
-    const otyp = obj.otyp | 0;
-    let wt = (otyp >= 0 && otyp < OC_WEIGHT.length) ? (OC_WEIGHT[otyp] | 0) : 0;
-
-    /* C mkobj.c:1892,1958,1968: quan stays long through the validity test,
-     * corpse product, and coin division; only the coin quotient is cast. */
-    if (obj.quan != null && obj.quan < 1) {
-        impossible_sync('Calculating weight of %ld %s?', obj.quan, simpleonames(obj));
-        return 0; /* C impossible() path */
-    }
-    /* C: globby → return owt as-is (glob weight managed elsewhere). */
-    if (obj.globby) return obj.owt | 0;
-
-    const isContainer = (otyp >= OTYP_LARGE_BOX && otyp <= OTYP_BAG_OF_TRICKS);
-    if (isContainer || otyp === OTYP_STATUE) {
-        if (otyp === OTYP_STATUE && _ismnum_cwt(obj.corpsenm)) {
-            const msize = monMsizePack.msize[obj.corpsenm];
-            const minwt = (msize + msize + 1) * 100;
-            wt = Math.trunc(3 * _cwt(obj.corpsenm) / 2);
-            if (wt < minwt) wt = minwt;
-            wt = Math.imul(wt, obj.quan | 0);
-        }
-        let cwt = 0;
-        for (let c = obj.cobj; c; c = c.nobj)
-            cwt = (cwt + weight(c)) | 0;
-        if (otyp === OTYP_BAG_OF_HOLDING) {
-            cwt = obj.cursed ? Math.imul(cwt, 2)
-                  : obj.blessed ? Math.trunc(((cwt + 3) | 0) / 4)
-                    : Math.trunc(((cwt + 1) | 0) / 2);
-        }
-        return (wt + cwt) | 0;
-    }
-    if (otyp === CORPSE && _ismnum_cwt(obj.corpsenm)) {
-        const long_wt = obj.quan * _cwt(obj.corpsenm | 0);
-        let cwt = (long_wt > LARGEST_INT) ? LARGEST_INT : long_wt;
-        if (obj.oeaten | 0)
-            cwt = eaten_stat(cwt, obj);
-        return cwt;
-    }
-    if ((obj.oclass | 0) === FOOD_CLASS && (obj.oeaten | 0))
-        return eaten_stat(Math.imul(obj.quan, wt), obj);
-    if ((obj.oclass | 0) === COIN_CLASS) {
-        const cw = Math.trunc((obj.quan + 50) / 100) | 0;
-        return Math.max(cw, 1);
-    }
-    if (otyp === HEAVY_IRON_BALL && (obj.owt | 0) !== 0) {
-        return obj.owt | 0;
-    }
-    if (otyp === CANDELABRUM_OF_INVOCATION && (obj.spe | 0)) {
-        return wt + (obj.spe | 0) * (OC_WEIGHT[TALLOW_CANDLE] | 0);
-    }
-    const quan = obj.quan | 0;
-    return wt ? Math.imul(wt, quan) : ((quan + 1) >> 1);
-}
-
+export { weight } from './mkobj.js';
+import { weight } from './mkobj.js';
 
 /* C hack.c:4315 inv_weight() — total carried object weight (no wc subtraction).
  * For COIN_CLASS uses (quan+50)/100; else otmp->owt (the cached object weight).

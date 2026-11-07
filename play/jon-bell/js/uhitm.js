@@ -1,8 +1,8 @@
 import { Your, pline_The, verbalize } from './pline.js';
 import { Mgender } from './do_name.js';
-import { pline_mon as pline_mon_uh } from './pline.js';
+import { pline_mon } from './pline.js';
 import { quest_monster_died } from './quest.js';
-import { find_mac as find_mac_worn } from './worn.js';
+import { find_mac } from './worn.js';
 import { artifact_exists } from './artifact.js';
 import { safe_oname } from './do_name.js';
 import { create_gas_cloud } from './region.js';
@@ -14,7 +14,7 @@ import { There } from './pline.js';
 import { glyph_cmap_at } from './display.js';
 import { green_mon } from './muse.js';
 import { wipe_engr_at, set_corpsenm } from './mklev.js';
-import { lifesaved_monster, mlifesaver as mlifesaver_real } from './mon.js';
+import { lifesaved_monster, mlifesaver } from './mon.js';
 import { add_to_minv, record_death_achievement } from './mklev.js';
 import { pm_to_cham } from './mon.js';
 import { addinv } from './invent.js';
@@ -124,7 +124,7 @@ import { DEFSYM_EXPLANATION } from './defsym_data.js';
 /* C mon.c:2744's m_detach light-source teardown (light.c:98, hack.c:97). */
 import { del_light_source, artifact_light, arti_light_description } from './light.js';
 import { monst_to_any } from './hack.js';
-import { end_burn, begin_burn, fall_asleep as fall_asleep_real } from './timeout.js';
+import { end_burn, begin_burn, fall_asleep } from './timeout.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { hold_another_object } from './invent.js';
 import { extract_from_minvent, obj_extract_self, mselftouch_nc } from './mklev.js';
@@ -1867,12 +1867,12 @@ export async function overexert_hp() {
         (game.disp ||= {}).botl = 1;
     }
     else {
-        /* C hack.c:3043-3045: message, exercise, then the canonical timeout
-         * helper.  The helper awaits stop_occupation(), which is synchronous
-         * in C but can complete an async meal in this port. */
-        pline('You pass out from exertion!');
+        /* C hack.c:3043-3045: You(), exercise, then fall_asleep().  It
+         * awaits stop_occupation(), which is synchronous in C but can
+         * complete an async meal in this port. */
+        await You("pass out from exertion!");
         exercise(A_CON, false);
-        await fall_asleep_real(-10, false);
+        await fall_asleep(-10, false);
     }
 }
 
@@ -2144,7 +2144,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
     const _find_roll_to_hit = () => {
     _armorpenalty = 0; /* C uhitm.c:374 *role_roll_penalty = 0 */
     mndx = (mtmp.mndx ?? mtmp.mnum) | 0;
-    const monAC = find_mac_full_uh(mtmp);
+    const monAC = find_mac(mtmp);
     const abon_val = abon();
     /* luck bonus: sgn(Luck) * ((abs(Luck)+2)/3) — C ref: uhitm.c:378 */
     const luck = u ? (((u.uluck | 0) + (u.moreluck | 0)) | 0) : 0; /* C Luck = u.uluck + u.moreluck */
@@ -2747,8 +2747,10 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
      *                        -> find_roll_to_hit(NULL weapon)/dieroll/damageum().
      *   AT_EXPL           -> explum().  AT_ENGL -> gulpum() (own dieroll,
      *                        no `|| u.uswallow` override -- uhitm.c:5744).
-     *   AT_HUGS/AT_MAGC/AT_BREA/AT_SPIT/AT_GAZE/AT_NONE/AT_BOOM -> NAMED GAP,
-     *   see the per-branch comments below for exactly what each skips.
+     *   AT_HUGS (uhitm.c:5671-5757), AT_MAGC (use_weapon for S_KOBOLD/
+     *   S_ORC/S_GNOME forms, else skipped), AT_BREA/AT_SPIT/AT_GAZE (dhit=0,
+     *   passive tail) and AT_NONE/AT_BOOM (continue) -- each has its own
+     *   arm below.
      * `attknum`/`armorpenalty` (find_roll_to_hit's silver/shop-item checks)
      * and failed_grab feedback remain incomplete; the weaponless bonus
      * damage and silver-ring feedback follow weapon.c:360-468. */
@@ -2950,9 +2952,9 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                  *         break;
                  * explum(mon, mattk) [uhitm.c:4890-4928] — its OWN first
                  * draw, unconditional (tmp = d(damn,damd) before the switch).
-                 * NAMED GAP: the AD_* switch, u.mh=-1 and rehumanize() are
-                 * not ported (rehumanize() is already a no-op stub above),
-                 * and so is the You("explode!") topline.
+                 * explum()'s AD_* switch, the You("explode!") topline and
+                 * the u.mh=-1/rehumanize() tail (uhitm.c:5822-5823) are all
+                 * ported below.
                  * explum() RETURNS M_ATTK_DEF_DIED at uhitm.c:4920 (the
                  * AD_COLD/AD_FIRE/AD_ELEC arm, when the named target died in
                  * explode()) and M_ATTK_HIT at uhitm.c:4927 on EVERY other
@@ -2961,9 +2963,8 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                  * M_ATTK_MISS, so this row's sum[i] is never the loop-top
                  * default and passive()'s mhitb argument here is never FALSE.
                  * This call site passed a hardcoded `false` for it.
-                 * explode() is a named gap in this port, so the DEF_DIED arm
-                 * is unreachable here and M_ATTK_HIT is what C returns on
-                 * every path this port models.
+                 * explode_uh() runs the AD_COLD/AD_FIRE/AD_ELEC arm and the
+                 * DEF_DIED return follows DEADMONSTER(mtmp) as C does.
                  * The wakeup(mon, TRUE) at uhitm.c:5764 was absent; it runs
                  * BEFORE explum()'s die, so it has to go first.  wakeup()
                  * (mon.c:4332-4363) is RNG-free for an already-awake hostile
@@ -2975,7 +2976,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                 await You('explode!'); /* C uhitm.c:5765 */
                 /* explum() [uhitm.c:4890-4928]: tmp = d(damn,damd) first;
                  * AD_COLD/AD_FIRE/AD_ELEC run explode() centred on the hero
-                 * (the AD_BLND/AD_HALU flash arms stay a NAMED GAP); then
+                 * AD_BLND/AD_HALU are the flash arms (uhitm.c:4896-4909); then
                  * wake_nearto(u.ux, u.uy, 7*7). */
                 const _explTmp = d(row.damn | 0, row.damd | 0);
                 let _sumIExpl = M_ATTK_HIT; /* C uhitm.c:4927 */
@@ -3038,9 +3039,9 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                         || _englAdtyp === 26 /* AD_DGST */);
                 /* C uhitm.c:5424 `int sum[NATTK]` / 5462 `sum[i] = 0`
                  * (M_ATTK_MISS).  gulpum() [uhitm.c:4957-5195] returns:
-                 *   M_ATTK_MISS     4981  !engulf_target()      — NAMED GAP
+                 *   M_ATTK_MISS     4981  !engulf_target()      — ported below
                  *   M_ATTK_HIT      5007  vampshifter reverts
-                 *   M_ATTK_MISS     5044  Rider, hero lifesaved — NAMED GAP
+                 *   M_ATTK_MISS     5044  Rider, hero lifesaved — ported below
                  *   M_ATTK_DEF_DIED 5106  the AD_DGST digest tail
                  *   M_ATTK_DEF_DIED 5185  non-digest kill, defender not lifesaved
                  *   M_ATTK_MISS     5194  defender survived and was expelled
@@ -3139,7 +3140,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                          * monster must be DEADMONSTER for passive()'s `malive`
                          * test (uhitm.c:6019 rn2(3)). */
                         const _pmi = mtmp.data && mtmp.data.pmidx != null ? mtmp.data.pmidx | 0 : -1; /* C pd = mdef->data, taken before mondead's new_were() */
-                        const lifesaver = mlifesaver_real(mtmp);
+                        const lifesaver = mlifesaver(mtmp);
                         if (lifesaver) await m_useup(mtmp, lifesaver);
                         await newuhs(false);
                         (game.gm ||= {}).mswallower = game.youmonst;
@@ -3430,6 +3431,15 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                 tmp += await weapon_hit_bonus(null);
             mon_maybe_unparalyze(mtmp);
             const dieroll = rnd(20);
+            /* C dokick.c:204-214: kick_monster checks special damage and
+             * shade immunity even when the kick's to-hit roll would miss.
+             * A harmless kick ends the sequence without passive retaliation. */
+            const kickSpecial = kickOnly
+                ? special_dmgval(game.youmonst, mtmp, W_ARMF, null) : 0;
+            if (kickOnly && mtmp.data?.pmidx === PM_SHADE && !kickSpecial) {
+                await Your('kick passes harmlessly through %s.', mon_nam(mtmp));
+                break;
+            }
             const dhit = tmp > dieroll || !!(u && u.uswallow);
             let _sumI = M_ATTK_MISS;
             /* C uhitm.c:5581-5590, the prologue of this arm's `if (dhit)`:
@@ -3506,7 +3516,8 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                         | ((!odd_claw || !multi_claw) ? W_RINGR : 0);
                 } else if (aatyp === AT_KICK_H) armask = W_ARMF;
                 else if (aatyp === AT_BUTT_H) armask = W_ARMH;
-                if (armask) specialdmg = special_dmgval(game.youmonst, mtmp, armask, silverhit);
+                if (armask) specialdmg = kickOnly ? kickSpecial
+                    : special_dmgval(game.youmonst, mtmp, armask, silverhit);
                 const isShade = !!(mtmp.data && (mtmp.data.pmidx | 0) === PM_SHADE);
                 if (isShade && !specialdmg) {
                     if (verb === 'hit'
@@ -3686,30 +3697,7 @@ const M1_AMPHIBIOUS_UH = 0x00080000; /* C monflag.h M1_AMPHIBIOUS */
 const MAGICAL_BREATHING_IDX_UH = 52; /* C prop.h MAGICAL_BREATHING */
 /* C mondata.h:120 extra_nasty(ptr) */
 function _extra_nasty_uh(row) { return ((row[7] | 0) & M2_NASTY_UH) !== 0; }
-/* C worn.c:717-736 — experience and combat share the complete armor lookup. */
-function find_mac(mtmp) {
-    return find_mac_worn(mtmp);
-}
-/* C hack.h:1531 ARM_BONUS(obj), applied to one worn armor chain node:
- *     objects[obj->otyp].a_ac + obj->spe
- *       - min((int) greatest_erosion(obj), objects[obj->otyp].a_ac)
- * a_ac is read from the generated js/armor_data.js table (indexed by otyp,
- * exactly as C indexes objects[] — see js/do_wear.js's armBonus(), the same
- * pattern for the HERO's worn slots). greatest_erosion is the MAX of the two
- * 2-bit erosion counters, not their sum. */
-function _arm_bonus_uh(obj) {
-    const row = ARMOR_DATA[obj.otyp | 0];
-    const a_ac = row ? (row.a_ac | 0) : 0;
-    const spe = (obj.spe | 0);
-    const er = Math.max((obj.oeroded | 0), (obj.oeroded2 | 0));
-    return a_ac + spe - Math.min(er, a_ac);
-}
-const AMULET_OF_GUARDING_UH = 210; /* objects.h AMULET() amulet of guarding —
-    same otyp js/do_wear.js:273 uses for the hero's identical -2 special case */
-const AC_MAX_UH = 99; /* C you.h:472 AC_MAX */
-function find_mac_full_uh(mtmp) {
-    return find_mac_worn(mtmp);
-}
+/* C worn.c:717-736 find_mac — canonical port imported from worn.js */
 /* C Amphibious := Breathless || amphibious(youmonst.data); the same read
  * js/teleport.js:1060 Amphibious_hero() uses. */
 function _Amphibious_uh() {
@@ -6143,7 +6131,7 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
                 return;
             }
             monstunseesu(M_SEEN_SLEEP);
-            await fall_asleep_real(-rnd(10), true);
+            await fall_asleep(-rnd(10), true);
             if (_uh_Blind())
                 You("are put to sleep!");
             else
@@ -6247,9 +6235,7 @@ export function golemeffects(mon, adtyp, dmg) {
     if (heal && healmon(mon, heal, 0) && cansee(mon.mx | 0, mon.my | 0))
         return pline_mon(mon, `${Monnam(mon)} seems healthier.`);
 }
-function mlifesaver(mon) {
-    return mlifesaver_real(mon); /* C mon.c:2827: nonliving/vampshifter guard. */
-}
+/* C mon.c:2827 mlifesaver — canonical port imported from js/mon.js */
 /* C mon.c:3377-3417: the trap helper supplies the death message and
  * mondead/mondied sequence; retain how for corpse suppression and pet elegies. */
 export async function monkilled(mon, msg, adtyp) {
@@ -6700,10 +6686,6 @@ function is_flyer(data) {
     return (data.mflags1 & M1_FLY) !== 0;
 }
 
-/* pline_mon — C: pline with monster attribution */
-function pline_mon(mtmp, fmt, ...args) {
-    return pline_mon_uh(mtmp, fmt, ...args);
-}
 
 /* C youprop.h:240 Levitation = ((HLevitation || ELevitation) && !BLevitation)
  * and :253 Flying = ((HFlying || EFlying || (u.usteed && is_flyer(...))) &&
@@ -8005,7 +7987,7 @@ async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
     }
     wake_nearto(magr.mx, magr.my, 2 * 2);
     mhm.damage = mdef.mhp;
-    const obj = mlifesaver_real(mdef);
+    const obj = mlifesaver(mdef);
     if (obj) await m_useup(mdef, obj);
     if (!(await corpse_chance(mdef, magr, true)) || DEADMONSTER(magr))
         return;
@@ -8307,7 +8289,7 @@ export async function minstapetrify(mdef, by_you) {
     /* trap.c:3871 intrinsic speed removal, then the stoning message */
     mon_adjust_speed(mdef, -3, null);
     if (cansee(mdef.mx | 0, mdef.my | 0))
-        await pline_mon_uh(mdef, `${Monnam(mdef)} turns to stone.`);
+        await pline_mon(mdef, `${Monnam(mdef)} turns to stone.`);
     if (by_you) {
         game.stoned = true; /* gs.stoned */
         await xkilled(mdef, XKILL_NOMSG);

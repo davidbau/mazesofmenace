@@ -117,7 +117,7 @@ import { start_corpse_timeout, start_glob_timeout } from './mklev.js'; // reloca
 import { get_mtraits } from './mkobj.js'; // relocate-fns
 import { PM_ICE_TROLL } from './pm.generated.js'; // relocate-fns
 import { age_is_relative } from './timeout.js'; // relocate-fns
-import { get_adjacent_loc } from './cmd.js'; // relocate-fns
+import { get_adjacent_loc, invletter_value as invletter_value_cmd } from "./cmd.js"; // relocate-fns
 import { tally_BUCX } from './invent.js'; // relocate-fns
 export { _COIN_CLASS, _is_cleric }; // relocate-fns
 
@@ -1229,10 +1229,10 @@ function _pu_loot_classify(obj) {
     const k = classorder.indexOf(obj.oclass | 0);
     return (k >= 0) ? (1 + k) : (1 + classorder.length + ((obj.oclass | 0) !== 17 ? 1 : 0));
 }
+/* C invent.c:391 invletter_value — the one port is js/cmd.js; this adapts the
+ * string invlet the pickup sorter may carry. */
 function _pu_invletter_value(c) {
-    if (typeof c === 'string') c = c.charCodeAt(0);
-    return c >= 97 && c <= 122 ? c - 95 : c >= 65 && c <= 90 ? c - 37
-        : c === 36 ? 1 : c === 35 ? 54 : 55;
+    return invletter_value_cmd(typeof c === 'string' ? c.charCodeAt(0) : c);
 }
 function _pu_sortloot(eligible, qflags) {
     const sl = game.flags?.sortloot ?? 'l';

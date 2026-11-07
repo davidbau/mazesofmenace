@@ -1,4 +1,4 @@
-import { pline_mon as pline_mon_real } from './pline.js';
+import { pline_mon } from './pline.js';
 import { impossible_sync } from './display.js';
 import { ledger_no as ledger_no_real } from './bones.js';
 import { quest_monster_died } from './quest.js';
@@ -47,12 +47,7 @@ import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
 import { PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT, OBJ_LUAFREE } from './const.js';
-import { fill_supply_chest, save_mtraits, free_omid, bless as bless_obj, curse as curse_obj } from './mkobj.js';
-/* C mkobj.c:1888 weight() has ONE implementation; js/weight.js's export is
- * the single C-faithful port this file forwards to (see the note at the
- * local `weight` below).  Late-bound like the eat.js cycle weight.js itself
- * documents: nothing here reads the binding at module-eval time. */
-import { weight as weight_real } from './weight.js';
+import { fill_supply_chest, save_mtraits, free_omid, bless as bless_obj, curse as curse_obj, weight } from './mkobj.js'; // C mkobj.c:1888 weight()
 import { cant_revive } from './read.js';
 import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
@@ -86,7 +81,7 @@ import { DEFSYM_EXPLANATION } from './defsym_data.js';
 /* C makemon.c:1384 mongets() — makemon's `mitem` block hands the extra
  * starting item over the same helper m_initweap uses. */
 import { mongets } from './m_initweap.js';
-import { monhaskey, m_can_break_boulder, mon_allowflags as mon_allowflags_mv, can_fog, mon_track_clear, can_hide_under_obj as can_hide_under_obj_real } from './monmove.js';
+import { monhaskey, m_can_break_boulder, mon_allowflags as mon_allowflags_mv, can_fog, mon_track_clear, can_hide_under_obj } from './monmove.js';
 import { attacktype_fordmg, emits_light, monflee, onscary, set_malign, mbirth_limit, MAXMONNO, findgold, role_maligntyp } from './makemon.js';
 import { which_armor } from './worn.js';
 /* C wizard.c:605 nasty()'s before/after monster count. */
@@ -353,6 +348,7 @@ const S_ZOMBIE = 52;
 const S_LICH = 38;
 const S_MUMMY = 39;
 const S_VAMPIRE = 48;
+const S_BAT = 28, S_VORTEX = 22, S_DOG = 4;
 const S_DEMON = 56; /* '&' major demon */
 const PM_WRAITH = 230; /* pm.generated.js PM_WRAITH = 230 */
 /* Barracks squad monsters */
@@ -2259,9 +2255,6 @@ function curse(otmp) {
 }
 const HEAVY_IRON_BALL = 477;
 const CANDELABRUM_OF_INVOCATION = 262;
-function weight(otmp) {
-    return weight_real(otmp);
-}
 /* C invent.c:4517 merged(&otmp, &obj) + shk.c:1187 obfree(obj, otmp), for
  * add_to_container()'s merge probe below.  `obj` arrives OBJ_FREE (C panics
  * otherwise) and `otmp` is already OBJ_CONTAINED, which is what makes most of
@@ -8953,14 +8946,7 @@ function m_poisongas_ok_resists_poison(mon) {
 
 
 
-/* C ref: monmove.c:2140-2183 can_hide_under_obj(obj) — is this object type
- * one a monster can hide beneath. NO_HIDING_UNDER_STATUES is #ifdef'd out
- * in the C source (never defined), so the statue-exclusion loop at the end
- * is dead code and is not ported (matches js/monmove.js's port of the same
- * C function). */
-export function can_hide_under_obj(obj) {
-    return can_hide_under_obj_real(obj);
-}
+export { can_hide_under_obj };
 
 
 
@@ -9710,9 +9696,6 @@ export async function add_to_minv(mon, obj) {
  * This was `throw new Error('not yet ported: pline_mon')`, reached the moment
  * setmangry() (:15332) angers a peaceful humanoid.  See the Monnam note above:
  * the two throws sat on the same line of the same C statement. */
-async function pline_mon(mtmp, fmt, ...args) {
-    return pline_mon_real(mtmp, fmt, ...args);
-}
 
 
 /* pline() is NOT redefined here.  C ref: pline.c:113 pline() — one function,
@@ -10105,9 +10088,9 @@ export function validvamp_nc(mon, mndx, monclass) {
         return [true, mndx];
     switch (monclass) {
     case S_VAMPIRE: mndx = mon.cham | 0; break;
-    case 28 /* S_BAT */: mndx = PM_VAMPIRE_BAT_NC; break;
-    case 22 /* S_VORTEX */: mndx = PM_FOG_CLOUD_NC; break;
-    case 4 /* S_DOG */:
+    case S_BAT: mndx = PM_VAMPIRE_BAT_NC; break;
+    case S_VORTEX: mndx = PM_FOG_CLOUD_NC; break;
+    case S_DOG:
         if ((mon.cham | 0) !== PM_VAMPIRE_NC) { mndx = PM_WOLF_NC; break; }
         mndx = NON_PM; break;
     default: mndx = NON_PM; break;

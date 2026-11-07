@@ -275,16 +275,8 @@ export function is_door_mappear(mon) {
 // C ref: dbridge.c:46-83 is_pool / is_lava / is_pool_or_lava
 // is_pool: POOL, MOAT, WATER, or a drawbridge with a moat underneath.
 // is_lava: LAVAPOOL, LAVAWALL, or a drawbridge with lava underneath.
-export function is_pool(x, y) {
-    if (!isok(x, y)) return false;
-    const lev = game.level?.at(x, y);
-    if (!lev) return false;
-    const typ = lev.typ;
-    if (typ === POOL || typ === MOAT || typ === WATER) return true;
-    return typ === DRAWBRIDGE_UP
-        && !Is_juiblex_level(game.u?.uz)
-        && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_MOAT;
-}
+export { is_pool } from './dbridge.js';
+import { is_pool } from './dbridge.js';
 /* Pre-existing file-local spelling, kept so this file's own call sites and the
  * two comments in mklev.js/teleport.js that cite it by name still resolve. */
 const _is_pool_local = is_pool;

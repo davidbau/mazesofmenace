@@ -5,6 +5,7 @@
 // description, sensing side channel, and optional permonst together for every
 // hero, swallowed, monster, object, trap, warning, invisible, and cmap arm.
 
+import { rm_doormask } from './game.js';
 import {
     BEAR_TRAP,
     BLINDED,
@@ -168,7 +169,6 @@ import { visible_region_at } from './region.js';
 import { dist2, mungspaces, strstri, visctrl } from './hacklib.js';
 import { HELP_TEXT_FILES } from './help_data.js';
 import { currency, display_inventory, sobj_at } from './invent.js';
-import { tty_yn_function } from './topl.js';
 import { m_at } from './monst.js';
 import {
     M2_DEMON, M2_ELF, M2_HUMAN, M2_ORC,
@@ -281,7 +281,7 @@ import { cansee, couldsee, howmonseen } from './vision.js';
 import { spot_time_left } from './timeout.js';
 import { getlin, select_menu } from './windows.js';
 import {
-    cmdq_key_char, getdir, key2extcmddesc, key2txt, yn_function,
+    cmdq_key_char, getdir, key2extcmddesc, key2txt, y_n, yn_function,
 } from './cmd.js';
 
 export const WHAT_IS_A_LOCATION = 'a monster, object or location';
@@ -821,8 +821,7 @@ function look_at_object(glyph, x, y, state) {
         || location?.typ === SDOOR) {
         result += ' embedded in a wall';
     } else if (location?.typ === DOOR
-        && Boolean((location.doormask ?? location.flags ?? 0)
-            & (D_CLOSED | D_LOCKED))) {
+        && Boolean(rm_doormask(location) & (D_CLOSED | D_LOCKED))) {
         result += ' embedded in a door';
     } else if (is_pool(x, y, state)) {
         result += ' in water';
@@ -1270,7 +1269,7 @@ function lookatOrdinaryTerrain(x, y, glyph, state) {
         if (is_drawbridge_wall(x, y, state) >= 0)
             return 'open drawbridge portcullis';
         const location = state.level?.at(x, y);
-        const mask = location?.flags || location?.doormask || 0;
+        const mask = location?.flags ?? 0;
         return (mask & ~D_TRAPPED) === D_BROKEN ? 'broken door' : 'doorway';
     }
     if (index === S_cloud)
@@ -1943,8 +1942,14 @@ export async function checkfile(
 
         let show = userTyped || dontAsk;
         if (!show) {
-            const answer = await tty_yn_function(
-                `More info about "${terms[pass]}"?`, 'yn', 'n', state,
+            // pager.c asks through y_n(), so the question takes
+            // yn_function()'s query_menu menu and command-queue paths.
+            // copynchars() leaves room for the closing quote and question
+            // mark in the QBUFSZ question buffer.
+            const prefix = 'More info about "';
+            const room = QBUFSZ - 1 - (prefix.length + 2);
+            const answer = await y_n(
+                `${prefix}${terms[pass].slice(0, room)}"?`, state,
             );
             show = answer === 'y';
         }

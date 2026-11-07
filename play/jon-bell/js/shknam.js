@@ -1,7 +1,7 @@
 // shknam.js — C ref: shknam.c.
 import { ALL_TRAPS, CORR, DUST, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, HEALTHY_TIN, In_mines, ROOM, ROOMOFFSET, SDOOR, ismnum, isok } from './const.js';
 import { cvt_sdoor_to_door } from './detect.js';
-import { newsym } from './display.js';
+import { newsym, impossible_sync } from './display.js';
 import { Is_special, ledger_no, on_level } from './dungeon.js';
 import { set_tin_variety } from './eat.js';
 import { game } from './gstate.js';
@@ -20,10 +20,10 @@ import { in_rooms } from './hack.js';
 import { rloc } from './teleport.js';
 import { mon_learns_traps } from './mondata.js';
 import { m_at } from './uhitm.js';
-import { ESHK, SHOPBASE } from './const.js'; // relocate-fns
-import { shkname as shkname_real } from './dokick.js'; // relocate-fns
+import { ESHK, HALLUC, HALLUC_RES, SHOPBASE } from './const.js'; // relocate-fns
+import { noit_mon_nam } from './mhitm.js';
 import { highc } from './hacklib.js'; // relocate-fns
-import { shtype_row } from './mklev.js'; // relocate-fns
+import { shtype_row, shkname_halluc_pick } from './mklev.js'; // relocate-fns
 import { _cmd_Hallucination, in_town } from './cmd.js'; // relocate-fns
 import { letter } from './hacklib.js'; // relocate-fns
 
@@ -497,9 +497,15 @@ export async function stock_room(shpIndx, sroom) {
         game.level.flags.has_shop = true;
 }
 
+/* C ref: shknam.c:899-906 — shkname_is_pname: check if shopkeeper's name is a player name
+ * boolean shkname_is_pname(struct monst *mtmp)
+ */
 export function shkname_is_pname(mtmp) {
-    /* BLOCKED: C: const char *shknm = ESHK(mtmp)->shknam; */
-    throw new Error('shkname_is_pname: ESHK(mtmp)->shknam not captured — harness gap');
+    const shknm = mtmp?.mextra?.eshk?.shknam;
+    if (typeof shknm !== 'string' || !shknm.length)
+        return false;
+    const c0 = shknm.charAt(0);
+    return c0 === '-' || c0 === '+' || c0 === '=';
 }
 
 /* C shknam.c:805 saleable(shkp, obj) — does this shop deal in this item? */
@@ -526,25 +532,50 @@ export function saleable(shkp, obj) {
 const VEGETARIAN_CLASS_SALE = 19;
 
 /* C ref: shknam.c:841-849 Shknam(mtmp) = shkname(mtmp) with its first
- * character capitalized via highc(). js/dokick.js's own Shknam is a
- * throwing stub (not a real candidate to re-point to); js/dokick.js's
- * shkname IS the real general port (shkname_real, imported above), so this
- * composes it with the same highc() capitalization C applies, rather than
- * reading ESHK().shknam directly (which skipped both shkname's
- * leading-marker strip and this capitalization). */
+ * character capitalized via highc(). */
 export function Shknam(shkp) {
-    const nam = shkname_real(shkp);
+    const nam = shkname(shkp);
     return nam ? (highc(nam.charAt(0)) + nam.slice(1)) : nam;
 }
 
-/* C ref: shknam.c:855-897 shkname(mtmp) — the real general port lives in
- * js/dokick.js (shkname_real, imported above; documented KNOWN GAP: its
- * Hallucination arm returns the true name rather than drawing the two rn2
- * calls C's random-shop-type/random-name picker would). Previously this
- * called Shknam(shkp) directly — backwards from C, which has Shknam call
- * shkname, not the reverse — and never stripped a leading non-letter
- * marker. */
-export function shkname(shkp) { return shkname_real(shkp); }
+/* C ref: shknam.c:855-897 shkname(mtmp) — the shopkeeper's own name from
+ * ESHK(mtmp)->shknam, with any non-letter prefix character stripped (the
+ * leading '-'/'+'/'=' markers that flag a player-name-derived shk name).
+ * Hallucination picks a random shop type, then a name from its list. */
+export function shkname(mtmp) {
+    /* C shknam.c:861-864: the name buffer comes from noit_mon_nam(), with
+     * isshk cleared so mon_nam() cannot recurse back here. Under Hallucination
+     * that call draws rndmonnam() (do_name.c:952) on the DISPLAY stream and the
+     * result is then overwritten below, so the draws are a pure side effect. */
+    let nam;
+    if (mtmp) {
+        const save_isshk = mtmp.isshk;
+        mtmp.isshk = 0;
+        nam = noit_mon_nam(mtmp);
+        mtmp.isshk = save_isshk;
+    }
+    /* C shknam.c:866-869: validate before the Hallucination RNG calls. */
+    if (!mtmp || !mtmp.isshk) {
+        impossible_sync('shkname: "%s" is not a shopkeeper.', nam);
+        return nam;
+    }
+    if (!mtmp.mextra?.eshk)
+        throw new Error(`panic: shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
+    /* C shknam.c:874-890: Hallucination (HHallucination && !Halluc_resistance)
+     * and not gameover picks a random shop type, then a random name from its
+     * list (two rn2 draws, js/mklev.js shkname_halluc_pick). */
+    const hp = game.u?.uprops?.[HALLUC];
+    const hr = game.u?.uprops?.[HALLUC_RES];
+    let shknm = mtmp?.mextra?.eshk?.shknam;
+    if (hp && (hp.intrinsic | 0) && !((hr?.intrinsic | 0) || (hr?.extrinsic | 0))
+        && !game.program_state?.gameover) {
+        const pick = shkname_halluc_pick();
+        if (pick)
+            shknm = pick;
+    }
+    /* C shknam.c:892-893; hacklib.c:69 letter() also includes '@'. */
+    return letter(shknm.charAt(0)) ? shknm : shknm.slice(1);
+}
 
 /* C shknam.c:907-925 is_izchak — use the stored name, never shkname(),
  * which can invent a random name while hallucinating. */

@@ -52,7 +52,7 @@ import { setworn } from './worn.js';
 import { racial_exception } from './worn.js';
 import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './wield.js';
 import { weapon_descr, MONS_NAMES } from './uhitm.js';
-import { an as an_objnam, the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
+import { an, the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import {
@@ -216,11 +216,6 @@ function selfmask() {
     return RACE_SELFMASK[ir] ?? RACE_SELFMASK[0];
 }
 function your_race(ptr) { return (ptr.mflags2 & selfmask()) !== 0; }
-
-// C objnam.c:2145: share the article exceptions and bounds with an().
-function an(s) {
-    return an_objnam(s);
-}
 
 // C polyself.c:1077 uasmon_maxStr() — the max-Str for the new form.
 // R = character_race(form): NULL for ordinary (non-player-race) monsters, in
@@ -2587,6 +2582,10 @@ function There(msg, ...args) {
 async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
 function plur(x) { return (x === 1) ? "" : "s"; }
 
+const M1_METALLIVORE = 0x80000000; /* monflag.h */
+/* C hack.h:80 #define SHOP_WALL_DMG (10L * ACURRSTR) */
+function SHOP_WALL_DMG() { return 10 * acurrstr(game.u); }
+
 // C hack.c:647-824 still_chewing(): boulders take priority over their terrain.
 export async function still_chewing(x, y) {
     const g = game;
@@ -2603,7 +2602,7 @@ export async function still_chewing(x, y) {
     if (d.down) { resetDig(); }
     const dg = g.context.digging;
     const obstructed = IS_OBSTRUCTED(lev.typ);
-    const metallivore = ((g.youmonst.data.mflags1 | 0) & 0x80000000) !== 0;
+    const metallivore = ((g.youmonst.data.mflags1 | 0) & M1_METALLIVORE) !== 0; /* metallivorous() */
     if (!boulder && ((obstructed && !may_dig_look(x, y))
         || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE)))) {
         await pline('You hurt your teeth on the %s.'.replace('%s',
@@ -2635,7 +2634,7 @@ export async function still_chewing(x, y) {
     }
     dg.effort = (dg.effort | 0) + 30 + udaminc;
     if (dg.effort <= 100) {
-        if (g.flags?.verbose !== false)
+        if (g.flags?.verbose)
             await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${!boulder && isbars ? 'bars' : what}.`);
         dg.chew = true;
         await watch_dig(null, x, y, false);
@@ -2658,8 +2657,7 @@ export async function still_chewing(x, y) {
         }
     } else if (IS_WALL(lev.typ)) {
         if (in_rooms(x, y, SHOPBASE).length) {
-            // C hack.c:754 SHOP_WALL_DMG uses condensed ACURRSTR (3..25).
-            add_damage(x, y, 10 * acurrstr(u));
+            add_damage(x, y, SHOP_WALL_DMG());
             dmgtxt = 'damage';
         }
         digtxt = 'chew a hole in the wall.';

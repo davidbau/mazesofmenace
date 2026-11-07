@@ -218,7 +218,7 @@ import {
 
 import { fuzzymatch, lcase, s_suffix, upstart } from './hacklib.js';
 import { aligns } from './roles.js';
-import { d, rn2, rnd, rn2_on_display_rng, rnz } from './rng.js';
+import { d, rn1, rn2, rnd, rne, rnl, rn2_on_display_rng, rnz } from './rng.js';
 import { CLR_BRIGHT_BLUE, CLR_RED, NO_COLOR } from './terminal.js';
 import { ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
@@ -239,7 +239,8 @@ import { cansee, couldsee } from './vision.js';
 import { next_to_u } from './apply_next_to_u.js';
 import { do_blinding_ray } from './apply.js';
 import {
-    canspotmon, glyph_at, glyph_is_trap, map_invisible, newsym, shieldeff,
+    canspotmon, glyph_at, glyph_is_trap, map_invisible, map_invisible_planning,
+    newsym, shieldeff,
     see_monsters,
 } from './display.js';
 import { invocation_pos, losehp, nomul, spoteffects } from './hack.js';
@@ -852,6 +853,11 @@ export async function touch_artifact(obj, monster, env = game) {
 
     const artifact = state.artilist[index];
     const yours = monster === state.youmonst;
+    // A caller passes either the game state or an env carrying it. An env's
+    // message and losehp() operations let a planning clone run this hero arm
+    // without writing to the live message window.
+    const effectEnv = env === state ? {} : env;
+    const message = effectEnv.message ?? ttyPline;
     /* all quest artifacts are self-willed; if this ever changes, `badclass'
        will have to be extended to explicitly include quest artifacts */
     const { selfWilled, badclass, badalign } = artifactTouchRestrictions(
@@ -862,7 +868,7 @@ export async function touch_artifact(obj, monster, env = game) {
         || (badalign && (!yours || !randomFromEnv(env)(4)))) {
         if (!yours) return false;
         // C ref: artifact.c:951-959. Blast the hero.
-        await ttyPline(
+        await message(
             `You are blasted by ${s_suffix(the(xnameFresh(obj, state), state))} power!`,
             state);
         touch_blasted = true;
@@ -874,7 +880,7 @@ export async function touch_artifact(obj, monster, env = game) {
             dmg += Maybe_Half_Phys(tmp, state);
         }
         const buf = `touching ${artifact.name}`;
-        await losehp(dmg, buf, KILLED_BY, state);
+        await losehp(dmg, buf, KILLED_BY, state, effectEnv);
         // C's accepted death enters done() and does not return.
         if (state.program_state?.gameover) return false;
         await exercise(A_WIS, false, state);
@@ -885,10 +891,10 @@ export async function touch_artifact(obj, monster, env = game) {
         if (yours) {
             // C ref: artifact.c:965-968. Evade message.
             if (!carried(obj))
-                await ttyPline(
+                await message(
                     `${Tobjnam(obj, 'evade', state)} your grasp!`, state);
             else
-                await ttyPline(
+                await message(
                     `${Tobjnam(obj, 'are', state)} beyond your control!`,
                     state);
         }
@@ -1836,8 +1842,12 @@ export async function Mb_hit(
             state, env);
         /* assume probing has some sort of noticeable feedback
            even if it is being done by one monster to another */
-        if (attack_indx === MB_INDEX_PROBE && !canspotmon(mdef, state))
-            map_invisible(mdef.mx, mdef.my, state);
+        // A planning clone keeps display.c map_invisible()'s memory write
+        // and leaves the live paint to the replayed turn.
+        if (attack_indx === MB_INDEX_PROBE && !canspotmon(mdef, state)) {
+            if (state === game) map_invisible(mdef.mx, mdef.my, state);
+            else map_invisible_planning(mdef.mx, mdef.my, state);
+        }
     }
 
     /* now perform special effects */
@@ -2018,7 +2028,11 @@ export async function artifact_hit(
     magr, mdef, otmp, dmgptr, dieroll, state = game, rawEnv = {},
 ) {
     const env = { ...rawEnv, state };
-    const random = env.random ?? { rn2, rnd, d };
+    // The effects below reach far: Magicbane's cancellation runs
+    // zap.c cancel_monst() into mon.c newcham(), and the elemental brands
+    // reach the item-destruction rolls. A caller that supplies no random
+    // source gets the whole core set C calls.
+    const random = env.random ?? { d, rn1, rn2, rnd, rne, rnl, rnz };
     const effectEnv = { ...env, state, random };
     const message = env.message
         ?? (env.planning ? async () => {} : ttyPline);
@@ -2527,9 +2541,7 @@ async function invoke_create_portal(obj, state) {
         || newlev.dnum === u.uz.dnum || !(await next_to_u(state))) {
         await ttyPline('You feel very disoriented for a moment.', state);
     } else {
-        const blind = (u.uprops?.[44]?.intrinsic ?? 0) !== 0
-            || (u.uprops?.[44]?.extrinsic ?? 0) !== 0;
-        if (!blind)
+        if (!Blind(state))
             await ttyPline('You are surrounded by a shimmering sphere!', state);
         else
             await ttyPline('You feel weightless for a moment.', state);
@@ -2814,21 +2826,15 @@ async function arti_invoke(obj, state = game) {
         }
         break;
     case INVIS: {
-        // BInvis: extrinsic/intrinsic blocking invisibility
-        const bInvis = (state.u.uprops?.[INVIS]?.extrinsic ?? 0)
-            & ~(W_ARTI | W_ART);
-        const blind = (state.u.uprops?.[44]?.intrinsic ?? 0) !== 0
-            || (state.u.uprops?.[44]?.extrinsic ?? 0) !== 0;
-        if (bInvis || blind) {
+        // youprop.h BInvis is u.uprops[INVIS].blocked (a mummy wrapping).
+        if (state.u.uprops[INVIS]?.blocked || Blind(state)) {
             await nothing_special(obj, state);
             return ECMD_TIME;
         }
         newsym(state.u.ux, state.u.uy);
-        const halluc = (state.u.uprops?.[HALLUC]?.intrinsic ?? 0) !== 0
-            || (state.u.uprops?.[HALLUC]?.extrinsic ?? 0) !== 0;
         if (on)
             await ttyPline(
-                `Your body takes on a ${halluc ? 'normal' : 'strange'} transparency...`,
+                `Your body takes on a ${Hallucination(state) ? 'normal' : 'strange'} transparency...`,
                 state);
         else
             await ttyPline('Your body seems to unfade...', state);
@@ -2891,12 +2897,7 @@ export async function arti_speak(obj, state = game, env = {}) {
 
     const message = env.message ?? ttyPline;
     const random = env.random ?? { rn2 };
-    const rumor = getrumor(bcsign(obj), true, {
-        ...env, state, random,
-        exercise: env.exercise ?? ((index, increase) => exercise(
-            index, increase, state, { rn2: random.rn2.bind(random) },
-        )),
-    });
+    const rumor = getrumor(bcsign(obj), true, { ...env, state, random });
     const line = rumor || 'NetHack rumors file closed for renovation.';
     await message(`${Tobjnam(obj, 'whisper', state)}:`, state);
     // sndprocs.h compiles SetVoice to an empty macro in the recorder's
@@ -3101,6 +3102,7 @@ export function isPermanentlyPoisoned(obj) {
 // controls whether the object is dropped when the hero can no longer touch it.
 export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
     let obj = objp.obj;
+    const message = rawEnv.message ?? ttyPline;
 
     /* allow hero in silver-hating form to try to perform invocation ritual */
     if (obj.otyp === BELL_OF_OPENING
@@ -3109,7 +3111,7 @@ export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
         return 1;
     }
 
-    if (await touch_artifact(obj, state.youmonst, state)) {
+    if (await touch_artifact(obj, state.youmonst, { ...rawEnv, state })) {
         let dmg = 0;
         const ag = (state.objects[obj.otyp].oc_material === SILVER
             && Hate_silver(state));
@@ -3125,7 +3127,7 @@ export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
 
         /* hero can't handle this object, but didn't get touch_artifact()'s
            "<obj> evades your grasp|control" message; give an alternate one */
-        await ttyPline(
+        await message(
             `You can't handle ${yname(obj, state)}${obj.owornmask ? ' anymore' : ''}!`,
             state);
         /* also inflict damage unless touch_artifact() already did so */
@@ -3152,13 +3154,11 @@ export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
             if (bane)
                 dmg += rnd(10);
             const buf = `handling ${what}`;
-            await losehp(dmg, buf, KILLED_BY, state);
+            await losehp(dmg, buf, KILLED_BY, state, rawEnv);
             await exercise(A_CON, false, state, { rn2 }, {
                 encumberMessage: rawEnv.encumberMessage ?? (async (subject) => {
                     const { encumber_msg } = await import('./pickup.js');
-                    await encumber_msg(subject, {
-                        message: rawEnv.message ?? ttyPline,
-                    });
+                    await encumber_msg(subject, { message });
                 }),
             });
         }
@@ -3168,7 +3168,7 @@ export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
        dropping the hero onto a polymorph trap or into water or
        lava and potentially dropping or destroying the item */
     if (obj.owornmask) {
-        await remove_worn_item(obj, false, state);
+        await remove_worn_item(obj, false, state, rawEnv);
         let found = false;
         for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
             if (otmp === obj) { found = true; break; }
@@ -3181,12 +3181,12 @@ export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
     if (loseit && obj) {
         if (Levitation(state)) {
             await freeinv(obj, { state });
-            await hitfloor(obj, true, state);
+            await hitfloor(obj, true, state, rawEnv);
         } else {
             /* dropx gives a message if a dropped item lands on an altar;
                we provide one for other terrain */
             if (!IS_ALTAR(state.level.at(state.u.ux, state.u.uy).typ))
-                await ttyPline(
+                await message(
                     `${Tobjnam(obj, 'fall', state)} to the ${surface(state.u.ux, state.u.uy, state)}.`,
                     state);
             await dropx(obj, dropCommandEnv(state, rawEnv));
@@ -3248,6 +3248,18 @@ async function untouchable(obj, drop_untouchable, state = game, rawEnv = {}) {
 // and carried objects after a form or alignment change. The per-game field
 // represents C's static recursion counter; nested calls share it across awaits.
 export async function retouch_equipment(dropflag, state = game, rawEnv = {}) {
+    // The touch tests print, can blast the hero to death in done(), and
+    // unwield or drop equipment. Stop a planning clone here so its owner
+    // replays this source path live, then replans from that state. With an
+    // empty pack and no steed every scan below finds nothing, and the call
+    // has no observable effect, so a plan may continue through it.
+    if (rawEnv.planning && (state.invent || state.u.usteed)) {
+        if (typeof rawEnv.requestPlanningInput !== 'function')
+            throw new TypeError(
+                'planned retouch_equipment requires a replay boundary',
+            );
+        return rawEnv.requestPlanningInput('artifact.c retouch_equipment');
+    }
     const had_gloves = Boolean(state.uarmg);
     const had_rings = Number(Boolean(state.uleft)) + Number(Boolean(state.uright));
     const retouchEnv = { ...rawEnv, state };
@@ -3320,7 +3332,7 @@ export function count_surround_traps(x, y, state = game) {
                 continue;
             }
             const levp = state.level.at(dx, dy);
-            if (IS_DOOR(levp.typ) && (levp.doormask & D_TRAPPED) !== 0) {
+            if (IS_DOOR(levp.typ) && (levp.flags & D_TRAPPED) !== 0) {
                 ++ret;
                 continue;
             }

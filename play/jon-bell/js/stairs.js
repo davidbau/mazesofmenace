@@ -1,8 +1,7 @@
 // stairs.js — C ref: stairs.c.
 import { game } from './gstate.js';
 import { strsubst } from './hacklib.js';
-import { depth as depth_of_level } from './dungeon.js';
-import { single_level_branch, u_on_newpos, u_on_rndspot } from './dungeon.js';
+import { depth as depth_of_level, dunlev, on_level, single_level_branch, u_on_newpos, u_on_rndspot } from './dungeon.js';
 
 // Stairway list management
 export function stairway_add(x, y, up, isladder, dest) {
@@ -139,7 +138,7 @@ export function stairs_description(sway, outbuf, stcase) {
         if (sway.u_traversed) {
             let specialdepth = (tolev.dnum === game.quest_dnum
                                 || single_level_branch(tolev)); /* knox */
-            let to_dlev = specialdepth ? tolev.dlevel : depth_of_level(tolev);
+            let to_dlev = specialdepth ? dunlev(tolev) : depth_of_level(tolev);
 
             outbuf += " to level " + to_dlev;
         }
@@ -153,10 +152,10 @@ export function stairs_description(sway, outbuf, stcase) {
                  stairs + " " + updown + " " +
                  (!haveAmulet ? "out of the dungeon"
                   /* minimize our expectations about what comes next */
-                  : ((tolev.dnum === game.earth_level.dnum && tolev.dlevel === game.earth_level.dlevel)
-                     || (tolev.dnum === game.air_level.dnum && tolev.dlevel === game.air_level.dlevel)
-                     || (tolev.dnum === game.fire_level.dnum && tolev.dlevel === game.fire_level.dlevel)
-                     || (tolev.dnum === game.water_level.dnum && tolev.dlevel === game.water_level.dlevel))
+                  : (on_level(tolev, game.earth_level)
+                     || on_level(tolev, game.air_level)
+                     || on_level(tolev, game.fire_level)
+                     || on_level(tolev, game.water_level))
                     ? "to the Elemental Planes"
                     : "to the end game");
     } else {

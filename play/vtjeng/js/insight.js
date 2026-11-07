@@ -270,8 +270,6 @@ import { oc_to_str } from './options.js';
 import {
     DUNCE_CAP,
     GAUNTLETS_OF_POWER,
-    GREEN_DRAGON_SCALE_MAIL,
-    GREEN_DRAGON_SCALES,
     AMULET_OF_GUARDING,
     LUCKSTONE,
     RIN_ADORNMENT,
@@ -304,11 +302,13 @@ import {
     is_rider,
     lays_eggs,
     type_is_pname,
+    defended,
 } from './mondata.js';
 import {
     AD_ACID,
     AD_COLD,
     AD_DGST,
+    AD_DISE,
     AD_DISN,
     AD_ELEC,
     AD_FIRE,
@@ -359,7 +359,6 @@ import {
 } from './roles.js';
 import { costly_spot } from './shk.js';
 import { ttyPline } from './tty_message.js';
-import { tty_yn_function } from './topl.js';
 import { find_ac } from './u_init_inventory_attrs.js';
 import { livelog_printf } from './pline.js';
 import { note_unported } from './unported.js';
@@ -1438,17 +1437,6 @@ function status_enlightenment(mode, final, state, lines) {
     }
 }
 
-// youprop.h:69 widens Sick_resistance with defended(&gy.youmonst, AD_DISE).
-// mondata.c defended() answers that from a wielded artifact whose defn.adtyp is
-// AD_DISE -- artilist.h holds none, so artifact.c:663 is the only AD_DISE in
-// the tree -- or from worn dragon armor, where artifact.c defends() maps
-// AD_DISE to green scales alone. So the extra term reduces to the worn suit.
-function greenDragonSuit(state) {
-    return Boolean(state.uarm
-        && (state.uarm.otyp === GREEN_DRAGON_SCALES
-            || state.uarm.otyp === GREEN_DRAGON_SCALE_MAIL));
-}
-
 // C ref: insight.c attributes_enlightenment() (1487-2005), "intrinsics and the
 // like, other non-obvious capabilities". C's `mode` parameter is UNUSED, so
 // this port drops it as background_enlightenment() does.
@@ -1572,7 +1560,10 @@ export async function attributes_enlightenment(final, state, lines) {
     if (activeUnblocked(DRAIN_RES))
         you_are(lines, final, 'level-drain resistant',
             from_what(DRAIN_RES, state));
-    if (activeUnblocked(SICK_RES) || greenDragonSuit(state))
+    // youprop.h:69 widens Sick_resistance with defended(&gy.youmonst,
+    // AD_DISE): green dragon scales, or the hero polymorphed into a green
+    // dragon, which mondata.c defended() treats as wearing them.
+    if (activeUnblocked(SICK_RES) || defended(state.youmonst, AD_DISE, state))
         you_are(lines, final, 'immune to sickness', from_what(SICK_RES, state));
     if (activeUnblocked(STONE_RES)) {
         const description = `${temp_resist(STONE_RES, state) ? 'temporarily ' : ''}`
@@ -2600,11 +2591,14 @@ export async function list_genocided(
             ? 'extinct ' : ''}species${genocided ? ' genocided' : ''}${
             extinct && genocided ? ' and extinct' : ''}?`;
         const responses = gone.length > 1 ? 'ynaq' : 'ynq\u001ba';
-        const answer = ask
-            ? queryFunction
-                ? await queryFunction(query, responses, defquery, true, state)
-                : await tty_yn_function(query, responses, defquery, state)
-            : defquery;
+        let answer = defquery;
+        if (ask) {
+            // insight.c asks through yn_function(). cmd.js imports this
+            // module, so resolve it lazily, as list_vanquished() does.
+            const ask_fn = queryFunction
+                ?? (await import('./cmd.js')).yn_function;
+            answer = await ask_fn(query, responses, defquery, true, state);
+        }
         if (answer === 'q') disclosureStop(state);
         if (answer !== 'y' && answer !== 'a') return;
 

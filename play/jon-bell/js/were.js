@@ -9,7 +9,8 @@ import { monster_nearby } from './allmain.js';
 import { night } from './calendar.js';
 import { canseemon } from './display.js';
 import { FULL_MOON, HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS,
-    POLYMORPH_CONTROL, STUNNED, UNCHANGING, PARANOID_WERECHANGE, DEAF, NEUTRAL } from './const.js';
+    POLYMORPH_CONTROL, STUNNED, UNCHANGING, PARANOID_WERECHANGE, DEAF, NEUTRAL,
+    LOW_PM, NO_MM_FLAGS } from './const.js';
 import { rn1, rnd } from './rng.js';
 import { newsym } from './display.js';
 import { pline, You_hear, You_feel } from './pline.js';
@@ -22,7 +23,7 @@ import { an } from './objnam.js';
 import { set_mon_data, permonstTemplate, monPmname, monflee, onscary, monnear } from './makemon.js';
 import { polymon } from './polyself.js';
 import { makemon } from './mklev.js';
-import { healmon, wake_nearto as wake_nearto_mklev } from './mon.js';
+import { healmon, wake_nearto } from './mon.js'; /* C mon.c:4402 */
 import { Monnam } from './mcastu.js';
 import { mon_break_armor } from './worn.js';
 import { possibly_unwield } from './weapon.js';
@@ -151,7 +152,7 @@ export async function new_were(mon) {
         return;
 
     const pm = counter_were(monsndx(mon.data));
-    if (pm < 0 /* LOW_PM */) {
+    if (pm < LOW_PM) {
         await impossible('unknown lycanthrope %s.', monPmname(monsndx(mon.data), NEUTRAL));
         return;
     }
@@ -253,16 +254,12 @@ function Hallucination() {
  * dropping C's `gm.multi < 0` conjunct entirely, and its Deaf() (:51) reads the
  * writer-less u.uprops[DEAF] slot. */
 
-/* C mon.c wake_nearto(x, y, distance) — wake_nearto_core(x, y, distance, FALSE).
- * js/mklev.js:10777 is the tree's single real body (this file already imports
- * healmon from that module, so the edge exists). */
-function wake_nearto(x, y, distance) {
-    wake_nearto_mklev(x, y, distance);
-}
 
 /* C sounds.h Soundeffect(se, vol) — audio only; it touches no game state and
  * draws no RNG, so a no-op IS the port.  Same reading as js/dig.js:817 and
  * js/mklev.js:12401, which already spell it that way. */
+/* C ref: seffects.h:44 seffect(canine_howl) */
+const se_canine_howl = 0;
 function Soundeffect(senum, vol) { /* audio only — no state, no RNG */ }
 
 /* C ref: nethack-c/src/mon.c monsndx(ptr) — `ptr - &mons[0]`, i.e. the permonst's
@@ -304,7 +301,7 @@ export async function were_summon(ptr, yours, visible, genbuf) {
         default:
             continue;
         }
-        const mtmp = await makemon(typ, game.u.ux, game.u.uy, 0 /* NO_MM_FLAGS */);
+        const mtmp = await makemon(typ, game.u.ux, game.u.uy, NO_MM_FLAGS);
         if (mtmp) {
             total++;
             if (canseemon(mtmp))
@@ -350,8 +347,8 @@ export async function were_change(mon) {
                     break;
                 }
                 if (howler) {
-                    Soundeffect(0, 50); /* se_canine_howl = 0 (stub) */
-                    You_hear("a %s howling at the moon.", howler);
+                    Soundeffect(se_canine_howl, 50);
+                    await You_hear("a %s howling at the moon.", howler);
                     wake_nearto(mon.mx, mon.my, 4 * 4);
                 }
             }

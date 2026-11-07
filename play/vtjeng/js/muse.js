@@ -200,7 +200,7 @@ import { in_rooms } from './rooms.js';
 import { add_damage, inhishop } from './shk.js';
 import { stairway_at } from './stairs.js';
 import { heroIsBlind, messageAt } from './startup_a11y.js';
-import { pline_mon, verbalize } from './pline.js';
+import { pline_mon, verbalize, youFeel } from './pline.js';
 import {
     destroy_drawbridge,
     find_drawbridge,
@@ -739,7 +739,8 @@ async function mon_escape(mtmp, vismon, state, env) {
         await pline_mon(mtmp,
             `${capitalizedMonsterName(mtmp, state)} escapes the dungeon!`,
             state);
-    mongone(mtmp, env);
+    // mongone() answers a promise when the departure must print first.
+    await mongone(mtmp, env);
     return 2;
 }
 
@@ -1805,9 +1806,9 @@ async function you_aggravate(mtmp, state) {
     // C: #ifdef CLIPPING cliparound() -- not applicable to the JS renderer
     show_glyph_cell(mtmp.mx, mtmp.my, map_monster_glyph_info(mtmp, state));
     display_self(state);
-    // C: You_feel("aggravated at %s.") -- prepends "You feel "
     await ttyPline(messageAt(
-        `You feel aggravated at ${monsterCommonName(mtmp, state, SUPPRESS_IT)}.`,
+        youFeel(`aggravated at ${monsterCommonName(mtmp, state, SUPPRESS_IT)}.`,
+            state),
         mtmp.mx, mtmp.my, state), state);
     // C: display_nhwindow(WIN_MAP, TRUE) -- flush the map display
     await flush_screen(1);
@@ -2033,7 +2034,7 @@ export function find_defensive(monster, tryescape, rawEnv = {}) {
             /* monsters digging in Sokoban can ruin things */
             && !state.level?.flags?.sokoban_rules
             /* digging wouldn't be effective; assume they know that */
-            && !((state.level?.at?.(x, y)?.wall_info ?? 0) & W_NONDIGGABLE)
+            && !((state.level?.at?.(x, y)?.flags ?? 0) & W_NONDIGGABLE)
             && !(Is_botlevel(hero?.uz) || In_endgame(hero?.uz))
             && !(is_ice(x, y, state) || is_pool(x, y, state)
                 || is_lava(x, y, state))
@@ -2507,8 +2508,7 @@ async function mbhit(mon, range, fhitm, fhito_fn, obj, state, rawEnv = {}) {
                         state.gb.bhitpos.x,
                         state.gb.bhitpos.y,
                     );
-                    if ((hitDoor.doormask === D_BROKEN
-                        || hitDoor.flags === D_BROKEN)
+                    if (hitDoor.flags === D_BROKEN
                         && in_rooms(
                             state.gb.bhitpos.x,
                             state.gb.bhitpos.y,
@@ -2527,7 +2527,7 @@ async function mbhit(mon, range, fhitm, fhito_fn, obj, state, rawEnv = {}) {
             }
         }
         if (!ZAP_POS(ltyp)
-            || (IS_DOOR(ltyp) && (lev.doormask
+            || (IS_DOOR(ltyp) && (lev.flags
                                   & (D_LOCKED | D_CLOSED)))) {
             state.gb.bhitpos.x -= ddx;
             state.gb.bhitpos.y -= ddy;

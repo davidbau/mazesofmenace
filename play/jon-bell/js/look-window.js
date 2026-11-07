@@ -2,10 +2,34 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { build_window_screen, tty_window_offx, build_text_window_screen, tty_text_window_utf8_line } from './com_pager.js';
+import { keyhelp_compress_str } from './cmd.js';
 import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_screen, docorner_blank_utf8_captures } from './display.js';
 
-export async function displayLookWindow(lines) {
+export async function displayLookWindow(putstrLines) {
     const g = game;
+    /* C wintty.c:2253,2401-2418 tty_putstr(NHW_MENU): compress_str() a line of
+     * CO or more columns, record strlen + 1 in maxcol, and break it at the last
+     * blank before CO, putstr()ing the tail as the next line. */
+    const lines = [];
+    let maxcol = 0;
+    for (let str of putstrLines.map(String)) {
+        for (;;) {
+            if (str.length >= 80 || str.includes('\n'))
+                str = keyhelp_compress_str(str);
+            maxcol = Math.max(maxcol, str.length + 1);
+            let i = 79;
+            if (str.length >= 80)
+                while (i && str[i] !== ' ' && str[i] !== '\n') i--;
+            if (str.length < 80 || !i) { lines.push(str); break; }
+            lines.push(str.slice(0, i));
+            str = str.slice(i + 1);
+        }
+    }
+    /* wintty.c:1908-1918 (H2344_BROKEN): offx = min(40, cols - maxcol - 1),
+     * clamped to 0.  At offx 0 process_text_window (wintty.c:1798-1803) prints
+     * no leading blank, so content starts at column 0, while dmore's --More--
+     * still goes at offx + 1 (wintty.c:1844). */
+    const offx0 = 80 - maxcol - 1 <= 0;
     // display_nhwindow(WIN_MESSAGE, FALSE) acknowledges existing messages first.
     if (g._pending_message && g._topl_win_stop) {
         /* topl.c more():232-246 — WIN_STOP live: no key is read and the closing
@@ -77,8 +101,8 @@ export async function displayLookWindow(lines) {
         await flush_screen(1);
         return;
     }
-    const windowLines = [...lines, '--More--'];
-    const col = tty_window_offx(windowLines, 'more');
+    const windowLines = [...lines, offx0 ? ' --More--' : '--More--'];
+    const col = offx0 ? 0 : tty_window_offx(windowLines, 'more');
     /* C topl.c:257-301 buffers WIN_STOP messages without painting them.
      * Preserve the same physical topline build_window_screen uses; suppressed
      * text must not reappear when tty_dismiss_nhwindow restores the corner
@@ -95,7 +119,7 @@ export async function displayLookWindow(lines) {
     for (;;) {
         g._screen_output = screen;
         if (g.nhDisplay) {
-            g.nhDisplay.cursorCol = col + '--More--'.length;
+            g.nhDisplay.cursorCol = (offx0 ? 1 : col) + '--More--'.length;
             g.nhDisplay.cursorRow = windowLines.length - 1;
         }
         const key = await nhgetch();
@@ -106,8 +130,8 @@ export async function displayLookWindow(lines) {
      * maxrow counts the putstr'd lines (wintty.c:2408-2409), and dmore's
      * --More-- sits on row maxrow itself, so docorner(offx, maxrow + 1)
      * stops at the --More-- row: `lines`, not windowLines, is maxrow. */
-    docorner_blank_utf8_captures(col - 1, lines.length + 1);
+    docorner_blank_utf8_captures(offx0 ? 0 : col - 1, lines.length + 1);
     g._pending_message = '';
     // tty_dismiss_nhwindow repaints the map; row zero left of the window stays.
-    if (underWindow) g._topl_sticky = underWindow;
+    if (underWindow && !offx0) g._topl_sticky = underWindow;
 }

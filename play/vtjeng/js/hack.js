@@ -2,6 +2,7 @@
 // C refs: hack.c pooleffects() and spoteffects(), plus the selected return
 // helpers named at their definitions below.
 
+import { rm_doormask } from './game.js';
 import {
     A_CON,
     A_DEX,
@@ -1432,9 +1433,9 @@ function heroIsDeaf(state) {
 //
 // It used to carry a `loc.doormask & (D_CLOSED | D_LOCKED)` term as well. The
 // term was dead rather than wrong in general: js/mklev.js dosdoor() (2545)
-// writes only `loc.flags` for an ordinary dungeon door, so it answered FALSE
+// wrote only `loc.flags` for an ordinary dungeon door, so it answered FALSE
 // for those, though create_door() (2731) and the special-level door path (951)
-// do write `doormask` and would have satisfied it. Either way it is
+// wrote a separate `doormask` field and would have satisfied it. Either way it is
 // unreachable now for the one caller there is. blocksMove() is called only
 // from preflightDomoveDestination(), whose else-if chain claims every closed
 // or locked door in its closed_door() arm before reaching here, so the deleted
@@ -1665,7 +1666,7 @@ export function requireSimpleHeroDestination(
 }
 
 function doorMask(location) {
-    return location?.flags || location?.doormask || 0;
+    return location?.flags ?? 0;
 }
 
 // C ref: hack.c doorless_door(). A doorway lacks its door when no mask bit
@@ -2079,7 +2080,7 @@ export async function still_chewing(x, y, state = game) {
     if (digging.down) digging = reset_digging(state);
 
     if (!boulder && ((IS_OBSTRUCTED(lev.typ) && !may_dig(x, y, state))
-        || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE)))) {
+        || (lev.typ === IRONBARS && (lev.flags & W_NONDIGGABLE)))) {
         const what = lev.typ === IRONBARS ? 'bars'
             : IS_TREE(lev.typ) ? 'tree' : 'hard stone';
         await ttyPline(`You hurt your teeth on the ${what}.`, state);
@@ -2161,7 +2162,6 @@ export async function still_chewing(x, y, state = game) {
             && !in_town(x, y, state)) lev.typ = CORR;
         else {
             lev.typ = DOOR;
-            lev.doormask = D_NODOOR;
             lev.flags = D_NODOOR;
         }
     } else if (IS_TREE(lev.typ)) {
@@ -2176,13 +2176,11 @@ export async function still_chewing(x, y, state = game) {
             ? 'You devour the iron bars.' : 'You eat through the bars.';
         await dissolve_bars(x, y, state);
     } else if (lev.typ === SDOOR) {
-        if ((lev.doormask ?? lev.flags ?? 0) & D_TRAPPED) {
-            lev.doormask = D_NODOOR;
+        if (rm_doormask(lev) & D_TRAPPED) {
             lev.flags = D_NODOOR;
             await b_trapped('secret door', NO_PART, state);
         } else {
             digtxt = 'You chew through the secret door.';
-            lev.doormask = D_BROKEN;
             lev.flags = D_BROKEN;
         }
         lev.typ = DOOR;
@@ -2191,13 +2189,11 @@ export async function still_chewing(x, y, state = game) {
             add_damage(x, y, SHOP_DOOR_COST, state);
             dmgtxt = 'break';
         }
-        if ((lev.doormask ?? lev.flags ?? 0) & D_TRAPPED) {
-            lev.doormask = D_NODOOR;
+        if (rm_doormask(lev) & D_TRAPPED) {
             lev.flags = D_NODOOR;
             await b_trapped('door', NO_PART, state);
         } else {
             digtxt = 'You chew through the door.';
-            lev.doormask = D_BROKEN;
             lev.flags = D_BROKEN;
         }
     } else {
@@ -2665,7 +2661,7 @@ async function moverock_core(sx, sy, state, env) {
                 deltrap(ttmp, state);
                 await useupf(otmp, 1, objectEnv);
                 await bury_objs(rx, ry, state, effectEnv);
-                state.level.at(rx, ry).wall_info &= ~W_NONDIGGABLE;
+                state.level.at(rx, ry).flags &= ~W_NONDIGGABLE;
                 state.level.at(rx, ry).candig = 1;
                 if (cansee(rx, ry, state)) redraw(rx, ry, state);
                 return sobj_at(BOULDER, sx, sy, state) ? -1 : 0;
@@ -4844,8 +4840,8 @@ export async function pickup_checks(state = game, env = {}) {
         const typ = lev?.typ;
 
         if (IS_THRONE(typ)) {
-            // rm.h:218 aliases `looted` onto the same field `doormask` names,
-            // which is what doorMask() reads. Nothing ported loots a throne,
+            // rm.h:218 aliases `looted` onto `flags`, which is what
+            // doorMask() reads. Nothing ported loots a throne,
             // so the shorter line is the only one a game reaches.
             await message(
                 `It must weigh${doorMask(lev) ? ' almost' : ''} a ton!`,
@@ -5965,14 +5961,14 @@ export function may_dig(x, y, state = game) {
     const location = state.level?.at?.(x, y);
     if (!location) return false;
     return !((IS_STWALL(location.typ) || IS_TREE(location.typ, state))
-        && ((location.wall_info ?? 0) & W_NONDIGGABLE));
+        && ((location.flags ?? 0) & W_NONDIGGABLE));
 }
 
 export function may_passwall(x, y, state = game) {
     const location = state.level?.at?.(x, y);
     if (!location) return false;
     return !(IS_STWALL(location.typ)
-        && ((location.wall_info ?? 0) & W_NONPASSWALL));
+        && ((location.flags ?? 0) & W_NONPASSWALL));
 }
 
 // C ref: hack.c bad_rock(), specialized only by its supplied monster species.

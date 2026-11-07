@@ -14,6 +14,9 @@ export function init_rect() {
     if (!game.nhrect) {
         game.n_rects = Math.trunc((COLNO * ROWNO) / 30);
         game.nhrect = new Array(game.n_rects);
+        // C ref: rect.c:34-35 — alloc() failure panics (never returns).
+        if (!game.nhrect)
+            throw new Error('panic: Could not alloc rect');
         for (let i = 0; i < game.n_rects; i++) {
             game.nhrect[i] = { lx: 0, ly: 0, hx: 0, hy: 0 };
         }
@@ -108,7 +111,7 @@ export function add_rect(r) {
 export function split_rects(r1, r2) {
     const old_r = { ...r1 };
     remove_rect(r1);
-    // Walk down since rect_cnt & rects[] will change
+    // Walk down since rect_cnt & rect[] (game.nhrect) will change...
     for (let i = game.rect_cnt - 1; i >= 0; i--) {
         const r = { lx: 0, ly: 0, hx: 0, hy: 0 };
         if (intersect(game.nhrect[i], r2, r))

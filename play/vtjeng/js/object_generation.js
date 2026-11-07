@@ -11,11 +11,10 @@ import {
 import { LS_OBJECT, ONAME_LEVEL_DEF } from './const.js';
 import { oname } from './do_name.js';
 import { del_light_source } from './light.js';
-import { is_reviver } from './mondata.js';
 import { monsterObject } from './monster_object.js';
 import { obj_no_longer_held } from './obj.js';
 import { obj_stop_timers } from './timeout.js';
-import { block_point } from './vision.js';
+import { block_point, recalc_block_point } from './vision.js';
 
 export function objectGenerationHooks(overrides = {}) {
     return {
@@ -32,21 +31,15 @@ export function objectGenerationHooks(overrides = {}) {
         // of the boulder and shows up only as a screen mismatch many steps
         // later.
         blockPoint: (x, y, env) => block_point(x, y, env.state),
+        // mkobj.c remove_object():2518 is the other half: lifting a boulder
+        // off a square calls vision.c recalc_block_point() there.
+        recalcBlockPoint: (x, y, env) => recalc_block_point(x, y, env.state),
         deleteObjectLightSource: (obj, env) => {
             del_light_source(LS_OBJECT, obj, env.state);
         },
         isPermanentlyPoisoned,
         makeArtifact,
         monsterObject,
-        isReviver: (mnum, env) => {
-            const monster = env.state.mons?.[mnum];
-            if (!monster) {
-                throw new Error(
-                    `object merging requires monster ${mnum}`,
-                );
-            }
-            return is_reviver(monster);
-        },
         objectNoLongerHeld: obj_no_longer_held,
         nameObject: (obj, name, env) => oname(obj, name, ONAME_LEVEL_DEF, env),
         stopObjectTimers: (obj, env) => {

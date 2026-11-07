@@ -78,7 +78,7 @@ import { dmonsfree } from './mon.js';
 import { forget_temple_entry } from './priest.js';
 import { flip_level, flip_level_rnd } from './sp_lev.js';
 import { docrt } from './display.js';
-import { done } from './end.js';
+import { done, ynq } from './end.js';
 import { yn_function } from './cmd.js';
 import { paranoid_query } from './paranoid.js';
 import { DIED } from './const.js';
@@ -521,7 +521,7 @@ export async function wiz_kill() {
         if (cc.x === g.u.ux && cc.y === g.u.uy) {
             if (g.u.usteed) {
                 // C wizcmds.c:271 calls ynq (hack.h:1330): default 'q', queue replies.
-                const c = await yn_function(`Kill ${mon_nam(g.u.usteed).slice(0, 110)}?`, 'ynq', 'q', true);
+                const c = await ynq(`Kill ${mon_nam(g.u.usteed).slice(0, 110)}?`);
                 if (c === 'q') break;
                 if (c === 'y') mtmp = g.u.usteed;
             }

@@ -16,7 +16,8 @@ import { goodpos } from './trap.js';
  * @param {object} cbs — mkMplayer callbacks (must include makemon)
  */
 export async function create_mplayers(num, special, cbs) {
-    /* C: fakemon = cg.zeromonst — only .data is filled in, so no m_id/wormno. */
+    /* C: fakemon = cg.zeromonst; set_mon_data() below fills in .data and .mnum;
+       m_id and wormno stay zero from zeromonst. */
     const fakemon = { data: null, mnum: -1, m_id: 0, wormno: 0,
                       mx: 0, my: 0, minvent: null };
     while (num) {

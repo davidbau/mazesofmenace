@@ -20,7 +20,7 @@ import { heroSpecies } from './polyself.js';
 import { removeMonsterFromGame } from './mon.js';
 import { AMULET_OF_REFLECTION, AMULET_OF_YENDOR, OBJECT_NAMES, SHIELD_OF_REFLECTION } from './object_data.js';
 import { stopHeroOccupation } from './allmain.js';
-import { getLine } from './query.js';
+import { getLine } from './windows.js';
 import { addCreatedObjectToMonsterInventory, addObjectToMonsterInventory } from './steal.js';
 import { detachHeroGold } from './sit.js';
 import { d, rn1, rn2, rnd } from './rng.js';
@@ -296,8 +296,8 @@ function summonEnvironment(monster) {
     }
 }
 // C minion.c:monster_census():
-export function monsterCensus(spotted = false) {
-    return requireGameLevel().monsters.filter(monster => monster.mhp > 0
+export function monsterCensus(spotted = false, state = game) {
+    return requireGameLevel(state).monsters.filter(monster => !monster.dead && monster.mhp > 0
         && !(monster.isgd && monster.mx === 0)
         && (!spotted || canSpotMonster(monster))).length;
 }

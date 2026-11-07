@@ -2,7 +2,7 @@
 import { ARMOR_DATA } from './armor_data.js';
 import { FINGER, GETOBJ_SUGGEST, HAND, IA_ADJUST_OBJ, IA_ADJUST_STACK, IA_APPLY_OBJ, IA_BUY_OBJ, IA_DIP_OBJ, IA_DROP_OBJ, IA_EAT_OBJ, IA_ENGRAVE_OBJ, IA_FIRE_OBJ, IA_INVOKE_OBJ, IA_NAME_OBJ, IA_NAME_OTYP, IA_NONE, IA_QUAFF_OBJ, IA_QUIVER_OBJ, IA_READ_OBJ, IA_RUB_OBJ, IA_SACRIFICE, IA_SWAPWEAPON, IA_TAKEOFF_OBJ, IA_THROW_OBJ, IA_TIP_CONTAINER, IA_TWOWEAPON, IA_UNWIELD, IA_WEAR_OBJ, IA_WHATIS_OBJ, IA_WIELD_OBJ, IA_ZAP_OBJ, OCLASS_ARMOR, OCLASS_COIN, OCLASS_GEM, OCLASS_POTION, OCLASS_RING, OCLASS_SCROLL, OCLASS_SPBOOK, OCLASS_WAND, OCLASS_WEAPON, SPE_NOVEL_OTYP, W_AMUL_C, W_ARMC_C, W_ARMF_C, W_ARMG_C, W_ARMH_C, W_ARMS_C, W_ARMU_C, W_ARM_C, W_RINGL_C, W_RINGR_C, W_TOOL_C, _IA_ALCHEMY_SMOCK_OTYP, _IA_BAG_OF_TRICKS_OTYP, _IA_BEARTRAP_OTYP, _IA_BELL_OF_OPENING_OTYP, _IA_BELL_OTYP, _IA_BLINDFOLD_OTYP, _IA_BRASS_LANTERN_OTYP, _IA_BULLWHIP_OTYP, _IA_CANDELABRUM_OTYP, _IA_CAN_OF_GREASE_OTYP, _IA_CREAM_PIE_OTYP, _IA_CREDIT_CARD_OTYP, _IA_CRYSTAL_BALL_OTYP, _IA_DRUM_OF_EARTHQUAKE_OTYP, _IA_DWARVISH_MATTOCK_OTYP, _IA_EUCALYPTUS_LEAF_OTYP, _IA_EXPENSIVE_CAMERA_OTYP, _IA_FIGURINE_OTYP, _IA_FORTUNE_COOKIE_OTYP, _IA_GRAPPLING_HOOK_OTYP, _IA_HAWAIIAN_SHIRT_OTYP, _IA_HEAVY_IRON_BALL_OTYP, _IA_HORN_OF_PLENTY_OTYP, _IA_LAND_MINE_OTYP, _IA_LARGE_BOX_OTYP, _IA_LEASH_OTYP, _IA_LENSES_OTYP, _IA_LOCK_PICK_OTYP, _IA_MAGIC_LAMP_OTYP, _IA_MAGIC_MARKER_OTYP, _IA_MAGIC_WHISTLE_OTYP, _IA_MEAT_RING_OTYP, _IA_MIRROR_OTYP, _IA_OIL_LAMP_OTYP, _IA_PICK_AXE_OTYP, _IA_POT_OIL_OTYP, _IA_SADDLE_OTYP, _IA_SCR_BLANK_PAPER_OTYP, _IA_SCR_MAIL_OTYP, _IA_SKELETON_KEY_OTYP, _IA_SPE_BLANK_PAPER_OTYP, _IA_SPE_BOOK_OF_THE_DEAD_OTYP, _IA_STETHOSCOPE_OTYP, _IA_TALLOW_CANDLE_OTYP, _IA_TINNING_KIT_OTYP, _IA_TIN_OPENER_OTYP, _IA_TIN_OTYP, _IA_TIN_WHISTLE_OTYP, _IA_TOWEL_OTYP, _IA_T_SHIRT_OTYP, _IA_UNICORN_HORN_OTYP, _IA_WAX_CANDLE_OTYP, _IA_WOODEN_FLUTE_OTYP, _OCLASS_AMULET, _hero_youmonst, _levlAt, _wt_cantwield, ammo_and_launcher, bimanual_tw, body_part, carrying, cmdq_add_ec, cmdq_add_key, could_twoweap, impossible, is_ammo, is_blade, is_graystone, is_launcher, is_missile, is_plural_obj, is_weptool, set_cursor, singular_xname, surface } from './cmd.js';
 import { build_window_screen, menu_search_case } from './com_pager.js';
-import { CQ_CANNED, ECMD_OK, Has_contents, IS_ALTAR, ONAME, PICK_ONE, ROOMOFFSET, SHOPBASE, has_oname } from './const.js';
+import { CQ_CANNED, ECMD_OK, HANDS_SYM, Has_contents, IS_ALTAR, ONAME, PICK_ONE, ROOMOFFSET, SHOPBASE, has_oname } from './const.js';
 import { ia_checkfile } from './pager.js';
 import { _threeStatusLines, await_menu_key, docorner_blank_utf8_captures, docrt, flush_screen, force_more } from './display.js';
 import { call_ok, name_ok } from './do_name.js';
@@ -35,7 +35,7 @@ export function itemactions_pushkeys(otmp, act) {
             : otmp === game.u.uswapwep ? 'remarm_swapwep'
             : otmp === game.u.uquiver ? 'dowieldquiver'
             : 'donull');
-        cmdq_add_key(CQ_CANNED, 45); // HANDS_SYM
+        cmdq_add_key(CQ_CANNED, HANDS_SYM);
         break;
     case IA_APPLY_OBJ:
         cmdq_add_ec(CQ_CANNED, 'doapply');
@@ -48,7 +48,7 @@ export function itemactions_pushkeys(otmp, act) {
     case IA_NAME_OBJ:
     case IA_NAME_OTYP:
         cmdq_add_ec(CQ_CANNED, 'docallcmd');
-        cmdq_add_key(CQ_CANNED, act === IA_NAME_OBJ ? 105 : 111); // i / o
+        cmdq_add_key(CQ_CANNED, (act === IA_NAME_OBJ) ? 'i' : 'o');
         cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     case IA_DROP_OBJ:
@@ -138,7 +138,7 @@ export function itemactions_pushkeys(otmp, act) {
         break;
     case IA_WHATIS_OBJ:
         cmdq_add_ec(CQ_CANNED, 'dowhatis');
-        cmdq_add_key(CQ_CANNED, 105); // i: item from inventory
+        cmdq_add_key(CQ_CANNED, 'i');
         cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
@@ -549,20 +549,25 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
     /* ── Build the menu window (same geometry as doinv) ── */
     const windowLines = [];
     for (const m of menu)
-        windowLines.push(`${m.let} - ${m.txt}`);
+        windowLines.push(`${m.let} - ${m.txt}`.slice(0, 78));
     windowLines.push('(end)');
     /* tty_end_menu (wintty.c:2726-2731) sizes cw->cols over every mlist entry,
      * and the end_menu title (iactions.c:699) is one of them, so a long
      * "Do what with ...?" title widens the window and moves offx left. */
-    const _iaTitleText = `Do what with ${_the_objnam(_ia_cxname(otmp))}?`;
+    /* tty_end_menu (wintty.c:2728-2732) truncates each entry, including the
+     * prompt, to cols - 2 before measuring the window. */
+    const _iaTitleText = `Do what with ${_the_objnam(_ia_cxname(otmp))}?`.slice(0, 78);
     const maxLen = Math.max(windowLines.reduce((mx, ln) => Math.max(mx, ln.length), 0),
                             _iaTitleText.length);
     /* C wintty.c:1927 — `!iflags.menu_overlay` drops the NHW_MENU to offx 0 and
      * clears the whole screen, however short the menu is. */
-    /* wintty.c:1927 `cw->offx == 10`: cols - maxcol - 1 <= 10 (a 67+ column
-     * title) takes the same clear-screen branch. */
+    /* wintty.c:13 defines H2344_BROKEN, so the `cw->offx == 10` clear-screen
+     * test (wintty.c:1927) is #else-dead; a 70-column menu keeps offx 9. */
+    /* wintty.c:1908-1918 gives offx 0 when cols - (maxLen + 2) - 1
+     * is nonpositive; process_menu_window (:1406-1412) then clears the
+     * whole screen, and erase_menu_or_text (:971-978) uses docrt. */
     const iaFullScreen = game.iflags?.menu_overlay === false
-        || game.iflags?.menu_overlay === 0 || 77 - maxLen <= 10;
+        || game.iflags?.menu_overlay === 0 || maxLen >= 77;
     /* wintty.c:1917 `if (cw->offx < 0) cw->offx = 0;` — a window wider than the
      * screen starts at offx 0, i.e. content column 1, never negative. */
     const WIN_COL = iaFullScreen ? 0 : Math.max(1, Math.min(41,
@@ -575,7 +580,7 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
      * corpse), and the() supplies the article C's `the` supplies — including
      * declining to add one for a proper-named or unique object, which the
      * hardcoded "the " could not. */
-    const title = `Do what with ${_the_objnam(_ia_cxname(otmp))}?`;
+    const title = _iaTitleText;
     const uac = u.uac ?? 0;
     /* Title is row 0 (reverse video); a blank line; then the menu body. */
     const fullLines = [menu_heading_text(title), '', ...windowLines]; /* iactions.c:698 end_menu; wintty.c:2688 */

@@ -55,7 +55,8 @@ import { yelp } from './sounds.js';
 import { impossible, place_monster } from './steed.js';
 import { impossible as rloc_impossible } from './pline.js';
 import { set_mon_data } from './makemon.js';
-import { GP_ALLOW_XY } from './const.js';
+import { GP_ALLOW_XY, IS_SINK } from './const.js';
+import { dosinkfall } from './spoteffects.js';
 import { PASSES_WALLS } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { hideunder } from './mon.js';
@@ -120,12 +121,14 @@ import { D_TRAPPED as D_TRAPPED_VR, D_NODOOR as D_NODOOR_VR } from './const.js';
 import { upstart as upstart_vr } from './hacklib.js';
 import { newcham as newcham_vr } from './mon.js';
 import { expels_gu as expels_gu_vr } from './mhitu.js';
+import { set_msg_xy as set_msg_xy_vr } from './cmd.js';
+import { uunstick as uunstick_vr } from './polyself.js';
 import { x_monnam as x_monnam_vr } from './mhitm.js';
 import { nonliving as nonliving_vr } from './makemon.js';
 import { Unaware as Unaware_vr } from './display.js';
 import { ismnum as ismnum_vr, G_GENOD as G_GENOD_VR, NON_PM as NON_PM_VR, ARTICLE_THE as ARTICLE_THE_VR, ARTICLE_A as ARTICLE_A_VR, SUPPRESS_INVISIBLE as SUPPRESS_INVISIBLE_VR, AUGMENT_IT as AUGMENT_IT_VR, SUPPRESS_NAME as SUPPRESS_NAME_VR, SUPPRESS_IT as SUPPRESS_IT_VR } from './const.js';
 import { M2_LORD, is_demon, is_dprince } from './makemon.js'; // relocate-fns
-import { get_iter_mons as get_iter_mons_real } from './mon.js'; // relocate-fns
+import { get_iter_mons } from './mon.js'; // relocate-fns
 import { On_W_tower_level } from './dungeon.js'; // relocate-fns
 /* C ref: include/hack.h flag bits for collect_coords() */
 export const CC_NO_FLAGS = 0x00;
@@ -507,6 +510,10 @@ export async function teleds(nux, nuy, teleds_flags) {
      * the room-entry message waits for lava_effects()'s own spoteffects(). */
     if (!game.iflags?.in_lava_effects)
         await check_special_room(false);
+    /* hack.c:3353-3354 */
+    if (!game.iflags?.in_lava_effects && IS_SINK(game.level?.locations?.[u.ux]?.[u.uy]?.typ ?? 0)
+        && Levitation_hero())
+        await dosinkfall();
     /* The command-result publication used to sit immediately after the
      * materialize pline above, i.e. BEFORE spoteffects ran.  That snapshot is
      * what DESTROYED the room-entry message once check_special_room was wired:
@@ -2154,6 +2161,10 @@ export async function u_teleport_mon(mtmp, give_feedback) {
  * mnexto ring shuffle + spoteffects) runs first, then newcham back to the
  * vampire.  Returns TRUE when the monster rose (mondead() then returns early).
  */
+const S_GHOST_VR = 54; /* C defsym.h S_GHOST */
+/* C mondata.h noncorporeal(ptr) */
+function noncorporeal_vr(ptr) { return (ptr.mlet | 0) === S_GHOST_VR; }
+
 export async function vamprises(mtmp) {
     const mndx = mtmp.cham | 0;
     if (!ismnum_vr(mndx) || mndx === ((mtmp.data?.pmidx ?? mtmp.mnum) | 0)
@@ -2161,8 +2172,8 @@ export async function vamprises(mtmp) {
         return false;
     const u = game.u;
     const ptr = mtmp.data;
-    const noncorp = (ptr.mlet | 0) === 54 /* S_GHOST */;
-    const amorph = !!((ptr.mflags1 | 0) & 0x00000004);
+    const noncorp = noncorporeal_vr(ptr);
+    const amorph = amorphous(ptr);
     const specMon = nonliving_vr(ptr) || noncorp || amorph;
     const specDeath = !!game.gd?.disintegested || noncorp || amorph;
     const unaware = Unaware_vr();
@@ -2181,16 +2192,14 @@ export async function vamprises(mtmp) {
     if (u.ustuck === mtmp) {
         if (u.uswallow)
             await expels_gu_vr(mtmp, (ptr.pmidx ?? mtmp.mnum) | 0, false);
-        else {
-            set_ustuck(null);
-            await pline(`${Monnam(mtmp)} is no longer in your clutches.`);
-        }
+        else
+            await uunstick_vr();
     }
     if (!await newcham_vr(mtmp, mndx, 0 /* NO_NC_FLAGS */))
         return (mtmp.mhp | 0) > 0;
     mtmp.cham = ((mtmp.data?.pmidx ?? mtmp.mnum) | 0) === mndx ? NON_PM_VR : mndx;
     if (canspotmon(mtmp)) {
-        await pline(upstart_vr(action) + ' '
+        await pline_mon(mtmp, upstart_vr(action) + ' '
             + x_monnam_vr(mtmp, ARTICLE_A_VR, null,
                           SUPPRESS_NAME_VR | SUPPRESS_IT_VR | SUPPRESS_INVISIBLE_VR, false) + '!');
         game.vamp_rise_msg = true;
@@ -2200,12 +2209,16 @@ export async function vamprises(mtmp) {
         const lev = game.level.at(x0, y0);
         const trapped = ((lev.doormask | 0) & D_TRAPPED_VR) !== 0;
         const seeit = cansee_vr(x0, y0);
+
+        set_msg_xy_vr(x0, y0); /* You()/pline() will reset this */
         if (!seeit)
             await You_hear_vr('%s.', trapped ? 'an explosion' : 'a door being smashed');
         else if (!canspotmon(mtmp))
             await You_see_vr('%s.', trapped ? 'a door exploding' : 'a door being smashed');
         else if (!unaware)
             await pline(trapped ? 'The door is smashed and it explodes!' : 'The door is smashed.');
+        set_msg_xy_vr(0, 0); /* in case none of the messages was delivered */
+
         lev.doormask = D_NODOOR_VR;
         recalc_block_point_vr(x0, y0);
         if (trapped) {
@@ -2214,7 +2227,7 @@ export async function vamprises(mtmp) {
             const trap_killed = await mb_trapped_vr(mtmp, seeit);
             game.flags.verbose = save_verbose;
             if (trap_killed && canspotmon(mtmp) && !unaware)
-                await pline(`${Monnam(mtmp)} is destroyed!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} is destroyed!`);
         }
     }
     newsym(x0, y0);
@@ -2239,13 +2252,7 @@ function m_blocks_teleporting(mtmp) {
     return false;
 }
 
-/** C mon.c:4534 get_iter_mons — iterate fmon, return first monster for which
- * bfunc is TRUE (else null). Skips DEADMONSTER (mhp < 1). The reconstructed
- * fmon cells carry mnum (the permonst index); materialize mtmp.data via
- * permonstTemplate(mnum) — the C mtmp->data pointer into mons[mndx]. */
-function get_iter_mons(bfunc) {
-    return get_iter_mons_real(bfunc);
-}
+/** C mon.c:4534 get_iter_mons — canonical port imported from js/mon.js */
 
 /** C teleport.c noteleport_level — is teleporting prevented on this level for this monster? */
 export function noteleport_level(mon) {

@@ -892,7 +892,7 @@ export async function block_door(x, y, state = game, { message = ttyPline } = {}
 // guard for a broken door at the hero's current square.
 export async function block_entry(x, y, state = game, { message = ttyPline } = {}) {
     const source = state.level?.at(state.u?.ux, state.u?.uy);
-    const sourceMask = source?.flags || source?.doormask || 0;
+    const sourceMask = source?.flags ?? 0;
     if (!IS_DOOR(source?.typ) || sourceMask !== D_BROKEN) return false;
     const roomno = in_rooms(x, y, SHOPBASE, state)[0] ?? 0;
     const shopkeeper = shop_keeper(roomno, state);
@@ -3829,7 +3829,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
     const location = state.level.at(x, y);
     if (IS_ROOM(damage.typ)
         || (damage.typ === location.typ
-            && (!IS_DOOR(damage.typ) || location.doormask > D_BROKEN))) {
+            && (!IS_DOOR(damage.typ) || location.flags > D_BROKEN))) {
         return disposition;
     }
 
@@ -3838,9 +3838,8 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
 
     location.typ = damage.typ;
     if (IS_DOOR(damage.typ)) {
-        // rm.flags aliases rm.doormask in C; keep both JS projections in sync.
+        // levl[x][y].doormask = D_CLOSED; rm.h's doormask is `flags`.
         location.flags = D_CLOSED;
-        location.doormask = D_CLOSED;
     }
     else location.flags = damage.flags;
 
@@ -3850,6 +3849,18 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
     del_engr_at(x, y, state);
 
     if (seeit) redraw(x, y);
+    // block_point() rebuilds vision.c's module-wide transparency index. A
+    // planning clone borrows that index, so mark the borrow first; the
+    // planning wrapper restores it afterwards. Otherwise the dry run's
+    // repair blocks sight on the live map before the live repair runs.
+    if (env.planning) {
+        if (typeof env.admitPlannedVisionChange !== 'function') {
+            throw new TypeError(
+                'planned shop repair requires admitPlannedVisionChange',
+            );
+        }
+        env.admitPlannedVisionChange(x, y, state);
+    }
     block_point(x, y, state);
     if (catchup) return 1;
 

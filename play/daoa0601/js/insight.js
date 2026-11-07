@@ -401,7 +401,7 @@ function statusEnlightenmentLines(magic = false, final = 0, killer = '') {
             message(steedName.charAt(0).toUpperCase() + steedName.slice(1), ' has ', ' had ', legs);
     }
     if ((u.glibTurns ?? 0) > 0)
-        have(`slippery ${fingersOrGloves()}${wizard ? ` (${u.glibTurns})` : ''}`);
+        have(`slippery ${fingersOrGloves(true)}${wizard ? ` (${u.glibTurns})` : ''}`);
     // C insight.c:cause_known(): a worn, seen, type-discovered item confers
     // a definitely-known cause.
     const knownCause = (property) => (u._propertySources?.[property]?.worn ?? [])
@@ -749,18 +749,24 @@ export function attributeEnlightenmentLines(final = 0) {
         can('teleport', 'teleportation');
     if (active('teleportControl'))
         have('teleport control', 'teleportControl');
-    const trapped = (u.utrap ?? 0) > 0 && u.utraptype !== TT_PIT;
-    const levitationSources = intrinsicPropertyMask('levitation') || extrinsicPropertyMask('levitation');
-    const levitationTerrain = u._propertySources?.levitation?.blockedByTerrain;
-    if (levitationSources && (trapped || levitationTerrain))
-        message('You ', 'would levitate', 'would have levitated', `${trapped ? ' if not trapped' : ''}${trapped && levitationTerrain ? ' and' : ''}${levitationTerrain ? ' if surroundings permitted' : ''}`);
-    const flightSources = intrinsicPropertyMask('flying') || extrinsicPropertyMask('flying')
-        || monsterIsFlyer(u.usteed?.mnum ?? -1);
-    if (flightSources && propertyIsBlocked('flying')) {
-        const terrain = u._propertySources?.flying?.blockedByTerrain;
+    // C insight.c:1690-1736 zeroes BLevitation/BFlying to test latent
+    // capability, then explains the stored blocked bits (I_SPECIAL is the
+    // float_vs_flight() mask, FROMOUTSIDE the terrain one).
+    const levitationRecord = u._propertySources?.levitation;
+    const levitationFloat = !!levitationRecord?.blockedByFloat;
+    const levitationTerrain = !!levitationRecord?.blockedByTerrain;
+    if (intrinsicPropertyMask('levitation') || extrinsicPropertyMask('levitation')) {
+        if (levitationFloat || levitationTerrain)
+            message('You ', 'would levitate', 'would have levitated', `${levitationFloat ? ' if not trapped' : ''}${levitationFloat && levitationTerrain ? ' and' : ''}${levitationTerrain ? ' if surroundings permitted' : ''}`);
+    }
+    const flightRecord = u._propertySources?.flying;
+    const flightFloat = !!flightRecord?.blockedByFloat;
+    const flightTerrain = !!flightRecord?.blockedByTerrain;
+    if ((intrinsicPropertyMask('flying') || extrinsicPropertyMask('flying')
+        || monsterIsFlyer(u.usteed?.mnum ?? -1)) && (flightFloat || flightTerrain)) {
         const reason = propertyIsActive('levitation') ? " if you weren't levitating"
-            : trapped && !terrain ? " if you weren't trapped"
-                : terrain && !trapped ? ' if surroundings permitted' : ' if circumstances permitted';
+            : flightFloat && !flightTerrain ? " if you weren't trapped"
+                : flightTerrain && !flightFloat ? ' if surroundings permitted' : ' if circumstances permitted';
         message('You ', 'would fly', 'would have flown', reason);
     }
     if (monsterIsClinger(u.umonnum ?? -1)) {
@@ -1594,14 +1600,6 @@ function vanquishedEntries() {
 export function vanquishedTypeCount() {
     return (game.mvitals || []).filter(vital => (vital?.died ?? 0) > 0).length;
 }
-// C insight.c:N_times(): "once", "twice", "thrice", then "N times".
-function timesText(count) {
-    if (count === 2)
-        return 'twice';
-    if (count === 3)
-        return 'thrice';
-    return `${count} times`;
-}
 // Part of C insight.c:list_vanquished(): indents each entry so its name
 // column lines up with the three-digit count prefix of multiple-kill rows.
 function vanquishedIndent(text) {
@@ -1613,7 +1611,8 @@ function vanquishedIndent(text) {
         return 2;
     return /[0-9]/.test(text.charAt(2)) ? 0 : 4;
 }
-// C insight.c:list_vanquished().
+// Part of C insight.c:list_vanquished(): the vanquished-creatures menu text,
+// shared with end.c's end-of-game disclosure (C asks the query there).
 export function vanquishedLines(ask = false) {
     const mode = vanqSortMode();
     const entries = vanquishedEntries();
@@ -1640,7 +1639,7 @@ export function vanquishedLines(ask = false) {
         if (entry.unique) {
             text = `${entry.pname ? '' : 'the '}${entry.name}`;
             if (entry.count > 1)
-                text += ` (${timesText(entry.count)})`;
+                text += ` (${times(entry.count)})`;
             wasUnique = true;
         }
         else {

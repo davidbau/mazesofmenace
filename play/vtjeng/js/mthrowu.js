@@ -80,6 +80,7 @@ import {
     WT_IRON_BALL_INCR,
     XKILL_NOMSG,
     u_at,
+    vision_clears,
 } from './const.js';
 import {
     is_pool,
@@ -1294,6 +1295,8 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
         const blinded = state.u.uprops?.[BLINDED];
         const blindedTimeout = Math.trunc(blinded?.intrinsic ?? 0) & TIMEOUT;
         await make_blinded(blindedTimeout + blindinc, false, state);
+        if (!heroIsBlind(state))
+            await message(`Your ${vision_clears}`, state);
     }
     state.gt.thrownobj = null;
     return 0;
@@ -2097,7 +2100,7 @@ export async function hit_bars(objRef, objx, objy, barsx, barsy, breakflags, sta
     const otmp = objRef.obj;
     const obj_type = otmp.otyp;
     const location = state.level.at(barsx, barsy);
-    const nodissolve = (location.wall_info & W_NONDIGGABLE) !== 0;
+    const nodissolve = (location.flags & W_NONDIGGABLE) !== 0;
     const your_fault = (breakflags & BRK_BY_HERO) !== 0;
     const melee_attk = (breakflags & BRK_MELEE) !== 0;
     let noise = 0;

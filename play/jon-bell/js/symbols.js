@@ -9,7 +9,8 @@ import { gs, SYM_CONTROL, SYM_PCHAR, SYM_OC, SYM_MON, SYM_OTH, H_UTF8 } from './
 import { escapes } from './options.js';
 import { dat_content } from './dat_source.js';
 import { match_glyph as match_glyph_real,
-         glyphrep_to_custom_map_entries as glyphrep_to_custom_map_entries_real } from './glyphs.js';
+         glyphrep_to_custom_map_entries as glyphrep_to_custom_map_entries_real,
+         glyphmap, purge_custom_entries, clear_all_glyphmap_colors } from './glyphs.js';
 import { H_UNK, gp } from './const.js'; // relocate-fns
 import { sym_val } from './options.js'; // relocate-fns
 
@@ -273,8 +274,19 @@ const gm_symchange = 4; // C display.h: glyphmap_change_triggers
 function init_primary_symbols() { /* not yet ported: init_primary_symbols */ }
 function init_showsyms() { /* not yet ported: init_showsyms */ }
 
-function clear_symsetentry(which_set, name_too) {
-    // not yet ported: clear_symsetentry
+/* C symbols.c:319-349: discard the old set's attributes and customizations. */
+export function clear_symsetentry(which_set, name_too) {
+    const set = gs_symset(which_set);
+    const old_handling = set.handling;
+    set.desc = null;
+    set.handling = H_UNK;
+    set.nocolor = set.primary = set.rogue = 0;
+    if (name_too) set.name = null;
+    const other_set = which_set === 0 ? 1 : 0;
+    if (old_handling === H_UTF8 && gs_symset(other_set).handling !== H_UTF8)
+        for (const gm of glyphmap) gm.u = null;
+    purge_custom_entries(which_set);
+    clear_all_glyphmap_colors();
 }
 
 /**

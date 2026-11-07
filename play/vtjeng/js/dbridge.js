@@ -199,12 +199,12 @@ export function create_drawbridge(x, y, dir, flag, state = game) {
     if (flag) { /* We want the bridge open */
         loc.typ = DRAWBRIDGE_DOWN;
         loc2.typ = DOOR;
-        loc2.doormask = D_NODOOR;
+        loc2.flags = D_NODOOR;
     } else {
         loc.typ = DRAWBRIDGE_UP;
         loc2.typ = DBWALL;
         /* Drawbridges are non-diggable. */
-        loc2.wall_info = W_NONDIGGABLE;
+        loc2.flags = W_NONDIGGABLE;
     }
     loc.horizontal = !horiz;
     loc2.horizontal = horiz;
@@ -296,7 +296,7 @@ export async function destroy_drawbridge(x, y, state = game, rawEnv = {}) {
 
     await wake_nearto(x, y, 500, env);
     wall.typ = DOOR;
-    wall.doormask = D_NODOOR;
+    wall.flags = D_NODOOR;
     const bridgeTrap = t_at(x, y, state);
     if (bridgeTrap) deltrap(bridgeTrap, state);
     const wallTrap = t_at(x2, y2, state);
@@ -616,7 +616,7 @@ export async function close_drawbridge(x, y, state = game, env = {}) {
         wall.horizontal = true;
     else
         wall.horizontal = false;
-    wall.wall_info = W_NONDIGGABLE;
+    wall.flags = W_NONDIGGABLE;
     const [first, second] = occupants(state);
     set_entity(x, y, first, state);
     set_entity(x2, y2, second, state);
@@ -665,7 +665,7 @@ export async function open_drawbridge(x, y, state = game, env = {}) {
     bridge.typ = DRAWBRIDGE_DOWN;
     const wall = state.level.at(x2, y2);
     wall.typ = DOOR;
-    wall.doormask = D_NODOOR;
+    wall.flags = D_NODOOR;
     const [first, second] = occupants(state);
     set_entity(x, y, first, state);
     set_entity(x2, y2, second, state);

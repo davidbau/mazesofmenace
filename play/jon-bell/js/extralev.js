@@ -1,5 +1,5 @@
 // extralev.js — C ref: extralev.c.
-import { CORR, D_NODOOR, IS_WALL, OROOM, SCORR, XL_DOWN, XL_LEFT, XL_RIGHT, XL_UP } from './const.js';
+import { CORR, NO_MM_FLAGS, D_NODOOR, IS_WALL, OROOM, SCORR, XL_DOWN, XL_LEFT, XL_RIGHT, XL_UP } from './const.js';
 import { game } from './gstate.js';
 import { christen_monst, roguename } from './mhitm.js';
 import { PM_GHOST, add_room, curse, dodoor, makemon, mksobj_at, weight } from './mklev.js';
@@ -296,7 +296,7 @@ export async function makerogueghost() {
     croom = g.level.rooms[rn2(g.level.nroom)];
     x = somex(croom);
     y = somey(croom);
-    if (!(ghost = await makemon(PM_GHOST, x, y, 0 /* NO_MM_FLAGS */)))
+    if (!(ghost = await makemon(PM_GHOST, x, y, NO_MM_FLAGS)))
         return;
     ghost.msleeping = 1;
     ghost = christen_monst(ghost, roguename());

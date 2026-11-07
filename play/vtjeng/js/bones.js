@@ -3,6 +3,10 @@
 
 import { rest_region_capacity } from './region.js';
 import {
+    BR_NO_END1,
+    BR_NO_END2,
+    BR_PORTAL,
+    BR_STAIR,
     COLNO,
     DEFUNCT_MONSTER,
     DELPHI,
@@ -13,9 +17,14 @@ import {
     LOST_NONE,
     MAGIC_PORTAL,
     MAXNROFROOMS,
+    MAX_NUM_WORMS,
     MM_NONAME,
     NON_PM,
     NO_MINVENT,
+    OBJ_FREE,
+    RANGE_LEVEL,
+    TIMER_MONSTER,
+    TIMER_OBJECT,
     ROOMOFFSET,
     ROWNO,
     RIGHT_HANDED,
@@ -25,10 +34,9 @@ import {
     ismnum,
 } from './const.js';
 import { isok } from './cmd_isok.js';
-import { christen_monst } from './do_name.js';
+import { christen_monst, free_oname } from './do_name.js';
 import { mk_named_object } from './corpstat.js';
 import { objectGenerationEnv } from './object_generation.js';
-import { eaten_stat } from './eat.js';
 import { newsym } from './display.js';
 import { m_dowear } from './worn.js';
 import {
@@ -43,10 +51,10 @@ import {
     load_exclusions,
     mapseen_room,
     maxledgerno,
+    on_level,
     save_exclusions,
 } from './dungeon.js';
 import { formatkiller } from './topten.js';
-import { fruit_from_indx } from './fruit.js';
 import { game } from './gstate.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import {
@@ -74,7 +82,9 @@ import { can_carry } from './moncarry.js';
 import { the, xname } from './objnam.js';
 import { artifact_light } from './artifacts.js';
 import { unleash_all } from './apply.js';
-import { obj_is_burning } from './light.js';
+import {
+    maybe_write_ls, obj_is_burning, relink_light_sources, restore_light_sources,
+} from './light.js';
 import {
     defineObjAliases,
     next_ident,
@@ -85,7 +95,13 @@ import {
     weight,
     curse,
 } from './obj.js';
-import { end_burn } from './timeout.js';
+import { end_burn, restore_timers, timer_is_local } from './timeout.js';
+import { block_point } from './vision.js';
+import { place_wsegs } from './worm.js';
+import { deltrap } from './trap.js';
+import { rest_engravings, sanitize_engravings } from './engrave.js';
+import { decodeUtf8ByteString, encodeUtf8ByteString } from './hacklib.js';
+import { ghostfruit, reset_oattached_mids } from './restore.js';
 import {
     BOW,
     ELVEN_BOW,
@@ -101,6 +117,13 @@ import {
     SPE_NOVEL,
     STATUE,
     TIN,
+    BRASS_LANTERN,
+    CANDELABRUM_OF_INVOCATION,
+    ICE_BOX,
+    OIL_LAMP,
+    POT_OIL,
+    TALLOW_CANDLE,
+    WAX_CANDLE,
 } from './objects.js';
 import {
     MS_LEADER,
@@ -192,11 +215,18 @@ export function deleteBonesFile(uz) {
 // ── Bones helper functions ──
 
 // C ref: bones.c goodfruit() (41-48). Marks a fruit type as existing by
-// restoring its positive fid (savebones negates all fids beforehand).
+// restoring its positive fid (savebones negates all fids beforehand). The
+// lookup is objnam.c fruit_from_indx()'s plain walk of gf.ffruit: js/fruit.js
+// fruit_from_indx() rejects a chain holding the negated fids as invalid.
 function goodfruit(id, state) {
-    const f = fruit_from_indx(-id, state);
-    if (f) f.fid = id;
+    for (let f = state.gf?.ffruit ?? null; f; f = f.nextf) {
+        if (f.fid === -id) {
+            f.fid = id;
+            return;
+        }
+    }
 }
+
 
 // C ref: bones.c set_ghostly_objlist() (783-790). Sets the ghostly flag on
 // every object in a chain so the next hero knows the item came from bones.
@@ -298,8 +328,7 @@ function resetobjs(ochain, restore, state) {
                      || (otmp.otyp === CORPSE
                          && ismnum(otmp.corpsenm)
                          && otmp.corpsenm >= SPECIAL_PM))) {
-                otmp.oname = null;
-                otmp.onamelth = 0;
+                free_oname(otmp);
             }
 
             if (otmp.otyp === SLIME_MOLD) {
@@ -346,12 +375,9 @@ function give_to_nearby_mon(otmp, x, y, state) {
 
 // Object hooks for the possessions savebones() moves. mkobj.c
 // add_to_container() calls obj_no_longer_held() again for a container outside
-// any inventory, such as the hero's statue, and a partly eaten food item in
-// its contents needs eat.c eaten_stat() for the statue's weight. mkobj.c
-// add_to_minv() can merge a partly eaten item into a monster's stack, and the
-// merge's weight() needs the same eaten_stat().
+// any inventory, such as the hero's statue.
 function bonesObjectEnv(state) {
-    return objectGenerationEnv({ state, hooks: { eatenStat: eaten_stat } });
+    return objectGenerationEnv({ state });
 }
 
 // C ref: bones.c drop_upon_death() (259-303). Drops all hero inventory,
@@ -511,8 +537,9 @@ export async function savebones(how, when, corpse, state) {
         ep.eread = 0;
     }
 
-    // Negate all fruit IDs; goodfruit() restores the ones objects reference.
-    for (let f = state.ffruit; f; f = f.nextf) {
+    // C ref: bones.c:449-453. Mark every named fruit as nonexistent;
+    // goodfruit() restores the fid of each one an object still uses.
+    for (let f = state.gf?.ffruit ?? null; f; f = f.nextf) {
         f.fid = -f.fid;
     }
 
@@ -796,13 +823,57 @@ function serializeBonesLevel(state) {
         return tc;
     });
 
-    // Clone fruit chain
-    let fruitChain = null;
-    if (state.ffruit) {
-        fruitChain = [];
-        for (let f = state.ffruit; f; f = f.nextf) {
-            fruitChain.push({ fname: f.fname, fid: f.fid });
-        }
+    // C ref: save.c savefruitchn() (951-971), which savebones() calls
+    // before savelev(): the fruits goodfruit() marked, in chain order.
+    const fruitChain = [];
+    for (let f = state.gf?.ffruit ?? null; f; f = f.nextf) {
+        if (f.fid >= 0) fruitChain.push({ fname: f.fname, fid: f.fid });
+    }
+
+    // C ref: engrave.c save_engravings() (1551-1580), which savelev_core()
+    // calls after the object chains: every engraving with text, in chain
+    // order. The text is copied whole; rest_engravings() strips the leading
+    // spaces that wipeout_text() left behind.
+    const engravings = [];
+    for (let ep = state.head_engr; ep; ep = ep.nxt_engr) {
+        if (!ep.engr_txt?.[0]) continue;
+        const saved = { ...ep, engr_txt: [...ep.engr_txt] };
+        delete saved.nxt_engr;
+        engravings.push(saved);
+    }
+
+    // C ref: timeout.c save_timers(RANGE_LEVEL) (2668-2699), which
+    // savelev_core() calls first: every level-local timer, in queue order.
+    // write_timer() (2505-2550) replaces an object or monster argument with
+    // its id and marks the timer for relinking.
+    const timers = [];
+    for (let timer = state.gt?.timer_base; timer; timer = timer.next) {
+        if (!timer_is_local(timer, state)) continue;
+        let arg = timer.arg;
+        if (timer.kind === TIMER_OBJECT) arg = timer.arg.o_id;
+        else if (timer.kind === TIMER_MONSTER) arg = timer.arg.m_id;
+        timers.push({
+            timeout: timer.timeout,
+            tid: timer.tid,
+            kind: timer.kind,
+            func_index: timer.func_index,
+            arg,
+            needs_fixup: timer.kind === TIMER_OBJECT
+                || timer.kind === TIMER_MONSTER,
+        });
+    }
+
+    // C ref: save.c savedamage() (640-662), which savelev_core() calls after
+    // the monster loop's data: the shop damage list in chain order.
+    const damage = [];
+    for (let dam = level.damagelist ?? null; dam; dam = dam.next) {
+        damage.push({
+            when: dam.when,
+            place: { x: dam.place.x, y: dam.place.y },
+            cost: dam.cost,
+            typ: dam.typ,
+            flags: dam.flags,
+        });
     }
 
     return {
@@ -829,33 +900,84 @@ function serializeBonesLevel(state) {
         monsters,
         floorObjects,
         buriedObjects,
+        engravings,
+        timers,
+        // C ref: worm.c save_worm() (528-551), which savelev_core() calls
+        // right after savemonchn(): every worm slot's segments, tail first.
+        worms: (level.worms ?? []).map((slot) => (slot
+            ? {
+                segments: slot.segments.map(({ x, y }) => ({ x, y })),
+                growtime: slot.growtime,
+            }
+            : null)),
+        damage,
+        // C ref: light.c save_light_sources(RANGE_LEVEL), which savelev_core()
+        // calls right after save_timers().
+        lights: maybe_write_ls(RANGE_LEVEL, state),
         fruitChain,
         moves: state.moves,
     };
 }
 
-// C ref: restore.c restmonchn/restobjchn. During ghostly restoration, every
-// monster and every object (including container contents and monster inventory)
-// receives a fresh identity via next_ident(), which draws rnd(2). The C code
-// processes in the order: monsters (with their inventory inline), floor
-// objects, buried objects. The total count of calls determines the PRNG
-// advancement; since each call draws exactly one rnd(2), the order within a
-// chain does not affect the final PRNG state.
-function reassignObjIds(ochain, state) {
+// C ref: obj.h age_is_relative(): these objects keep their remaining burn
+// or fuel time in age rather than a creation turn.
+function age_is_relative(otmp) {
+    return otmp.otyp === BRASS_LANTERN || otmp.otyp === OIL_LAMP
+        || otmp.otyp === CANDELABRUM_OF_INVOCATION
+        || otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE
+        || otmp.otyp === POT_OIL;
+}
+
+// C ref: restore.c restobjchn() (231-296), its ghostly fixups for each
+// object read from a bones file, in chain order: a fresh identity from
+// next_ident() (254-259), then, unless the chain is frozen, the age moved
+// from the dead hero's clock to this one's (266-267), then the contents,
+// which are frozen inside an ice box (271-278). A slime mold also has its
+// fruit renumbered by ghostfruit() (260-261) before its age moves.
+// `ghost` carries getlev()'s state for the whole file: `omoves`, the turn the
+// bones level was saved on (svo.omoves); `idMap`, C's add_id_mapping() table,
+// which maps each saved id to the restored object; and `oldfruit`, the dead
+// hero's fruit chain (go.oldfruit).
+function restobjchn_ghostly(ochain, frozen, ghost, state) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
+        const oldId = otmp.o_id;
         otmp.o_id = next_ident({ state });
-        if (otmp.cobj) reassignObjIds(otmp.cobj, state);
+        ghost.idMap.set(oldId, otmp);
+        if (otmp.otyp === SLIME_MOLD) ghostfruit(otmp, ghost.oldfruit, state);
+        if (!frozen && !age_is_relative(otmp))
+            otmp.age = state.moves - ghost.omoves + otmp.age;
+        if (otmp.cobj)
+            restobjchn_ghostly(otmp.cobj, otmp.otyp === ICE_BOX, ghost, state);
     }
 }
 
-function reassignBonesIds(state) {
-    // Monster identities and inline inventories are assigned while
-    // restmonchn() rebuilds each monster. These are the remaining object
-    // chains in C getlev().
-    // Floor objects (C: restobjchn for fobj)
-    reassignObjIds(state.level?.objlist, state);
-    // Buried objects (C: restobjchn for buriedobjlist)
-    reassignObjIds(state.level?.buriedobjlist, state);
+// C ref: restore.c find_lev_obj() (71-107). The restored fobj chain is
+// reversed and every object freed, then each is put back with
+// place_object(), so the head of the saved chain ends on top of its pile,
+// boulders stay above other objects, and obj_no_longer_held() gives a
+// crysknife its chance to revert. Rooms have no resident yet (set_residency()
+// comes later in getlev()), so place_object() clears every no_charge and
+// costly_alteration() finds no shopkeeper. The ball and chain fixup applies
+// only to the hero's own level in a saved game, never to bones.
+async function find_lev_obj(state) {
+    let fobjtmp = null;
+    let otmp;
+    while ((otmp = state.level.objlist) != null) {
+        state.level.objlist = otmp.nobj;
+        otmp.nobj = fobjtmp;
+        otmp.where = OBJ_FREE;
+        fobjtmp = otmp;
+    }
+    const env = {
+        state,
+        hooks: {
+            blockPoint: (x, y, placeEnv) => block_point(x, y, placeEnv.state),
+        },
+    };
+    while ((otmp = fobjtmp) != null) {
+        fobjtmp = otmp.nobj;
+        await place_object(otmp, otmp.ox, otmp.oy, env);
+    }
 }
 
 // C ref: bones.c getbones() (716-730), mongone() leaves dead monsters on the
@@ -864,6 +986,11 @@ function reassignBonesIds(state) {
 // arrival code begins iterating monsters.
 function purgeDefunctBonesMonsters(state) {
     for (let mtmp = state.level?.monlist; mtmp; mtmp = mtmp.nmon) {
+        // C ref: bones.c:717-718. MGIVENNAME() reads either home.
+        if (mtmp.mextra?.mgivenname)
+            mtmp.mextra.mgivenname = sanitize_name(mtmp.mextra.mgivenname, state);
+        else if (mtmp.mgivenname)
+            mtmp.mgivenname = sanitize_name(mtmp.mgivenname, state);
         if (mtmp.mhpmax === DEFUNCT_MONSTER) {
             mongone(mtmp, { state });
         } else {
@@ -920,13 +1047,7 @@ export async function getbones(state = game) {
     }
 
     // Restore the level from the bones snapshot.
-    restoreBonesLevel(bonesData, state);
-
-    // C ref: restore.c getlev() -- during ghostly (bones) restoration, each
-    // monster and object gets a fresh identity via next_ident(). Monster
-    // identities and inline inventories were assigned by restmonchn-shaped
-    // reconstruction above; this covers the floor and buried chains.
-    reassignBonesIds(state);
+    await restoreBonesLevel(bonesData, state);
 
     // C ref: restore.c getlev() resets peaceful/malign relative to the new
     // character while walking the restored monster chain.
@@ -939,6 +1060,8 @@ export async function getbones(state = game) {
 
     // C ref: bones.c:731 repairs shop damage after restoring the bones level.
     await fix_shop_damage(state);
+    // C ref: bones.c:736, once the file is closed.
+    sanitize_engravings(state);
 
     state.u.uroleplay ??= {};
     state.u.uroleplay.numbones = (state.u.uroleplay.numbones ?? 0) + 1;
@@ -950,7 +1073,7 @@ export async function getbones(state = game) {
 }
 
 // Restore a bones level from a serialized snapshot into the game state.
-function restoreBonesLevel(bonesData, state) {
+async function restoreBonesLevel(bonesData, state) {
     if (!bonesData?.locations) return;
 
     // Older bones snapshots may contain the JS terminal buffer. Re-clone the
@@ -1013,6 +1136,23 @@ function restoreBonesLevel(bonesData, state) {
         return head;
     }
 
+    // C ref: restore.c getlev():1110 reads the level's timestamp, the turn
+    // savebones() wrote it on.
+    const omoves = bonesData.moves;
+    // C's id mapping table (restore.c add_id_mapping()), cleared by getlev()
+    // and filled while the monster and object chains are read: each saved
+    // m_id or o_id maps to the restored monster or object.
+    const idMap = new Map();
+    // C ref: restore.c getlev():1076-1077 loadfruitchn(), first of all: the
+    // dead hero's fruits, which loadfruitchn() pushes as it reads them, so
+    // the old chain is in reverse order. getlev():1251 frees it; this game's
+    // own chain, gf.ffruit, only gains the names ghostfruit() adds.
+    const ghost = {
+        omoves,
+        idMap,
+        oldfruit: [...(bonesData.fruitChain ?? [])].reverse(),
+    };
+
     // Rebuild monsters: place in the grid and build the monlist chain.
     const monsGrid = [];
     for (let x = 0; x < COLNO; x++) monsGrid.push(new Array(ROWNO).fill(null));
@@ -1022,7 +1162,9 @@ function restoreBonesLevel(bonesData, state) {
         // C restmonchn() assigns a fresh identity, resolves mtmp->data from
         // the serialized species number, and then calls propagate() for the
         // ghostly birth before restoring inline inventory.
+        const oldId = m.m_id;
         m.m_id = next_ident({ state });
+        idMap.set(oldId, m);
         m.data = state.mons?.[m.mnum] ?? m.data;
         const mndx = m.cham === NON_PM ? monsndx(m.data) : m.cham;
         if (!propagate(mndx, true, true, { state }))
@@ -1033,7 +1175,7 @@ function restoreBonesLevel(bonesData, state) {
             // C restore.c restmonchn() (419-425): restore the monster back
             // pointer of every object in its pack.
             for (let obj = m.minvent; obj; obj = obj.nobj) obj.ocarry = m;
-            reassignObjIds(m.minvent, state);
+            restobjchn_ghostly(m.minvent, false, ghost, state);
         } else {
             m.minvent = null;
         }
@@ -1053,12 +1195,24 @@ function restoreBonesLevel(bonesData, state) {
         if (m.isshk) restshk(m, true, state);
         if (m.ispriest) restpriest(m, true, state);
         m.nmon = null;
-        if (isok(m.mx, m.my)) monsGrid[m.mx][m.my] = m;
         if (monTail) { monTail.nmon = m; monTail = m; }
         else { monHead = m; monTail = m; }
     }
     level.monsters = monsGrid;
     level.monlist = monHead;
+    // C ref: worm.c rest_worm() (577-603), which getlev() calls right after
+    // restmonchn(): each worm slot's segments, tail first, and every slot's
+    // wgrowtime. A slot with no segments is free (get_wormno() tests its
+    // head), so it restores as js/worm.js's empty slot.
+    level.worms = Array(MAX_NUM_WORMS).fill(null);
+    (bonesData.worms ?? []).forEach((saved, wormno) => {
+        if (wormno > 0 && saved?.segments?.length) {
+            level.worms[wormno] = {
+                segments: saved.segments.map(({ x, y }) => ({ x, y })),
+                growtime: saved.growtime,
+            };
+        }
+    });
 
     // C restore.c:rest_stairs() rebuilds gs.stairs before the caller places
     // the hero. Rebuild the chain separately from level.upstair/dnstair;
@@ -1090,40 +1244,86 @@ function restoreBonesLevel(bonesData, state) {
     // level's zones onto the list the departing level's savelev() emptied.
     load_exclusions(bonesData.exclusion_zones, state);
 
-    // Rebuild floor objects: place in the per-location .objects chains, the
-    // per-location grid (level.objects), and the flat objlist chain.
+    // C ref: restore.c getlev() (1158-1163): fobj = restobjchn(), which
+    // gives each floor object a fresh identity on a ghostly level, then
+    // find_lev_obj() builds the pile grid; the buried chain is read after.
+    // place_object() works on state.level, so the level is installed first.
     const objGrid = [];
     for (let x = 0; x < COLNO; x++) objGrid.push(new Array(ROWNO).fill(null));
-    const floorObjList = rebuildObjChain(bonesData.floorObjects ?? []);
-    // Build per-location piles from the flat list (group by ox,oy)
-    for (let otmp = floorObjList; otmp; otmp = otmp.nobj) {
-        const x = otmp.ox;
-        const y = otmp.oy;
-        if (!isok(x, y)) continue;
-        // objects grid: head of per-square nobj chain for rendering
-        otmp.nexthere = objGrid[x][y];
-        objGrid[x][y] = otmp;
-        // locations .objects: same per-square chain for level operations
-        const loc = level.locations?.[x]?.[y];
-        if (loc) {
-            otmp.nexthere = loc.objects ?? null;
-            loc.objects = otmp;
-        }
-    }
     level.objects = objGrid;
-    level.objlist = floorObjList;
+    level.objlist = rebuildObjChain(bonesData.floorObjects ?? []);
+    restobjchn_ghostly(level.objlist, false, ghost, state);
+
+    state.level = level;
+    await find_lev_obj(state);
 
     // Buried objects
     level.buriedobjlist = rebuildObjChain(bonesData.buriedObjects ?? []);
+    restobjchn_ghostly(level.buriedobjlist, false, ghost, state);
 
-    state.level = level;
+    // C ref: restore.c getlev():1166 rest_engravings(), after the object
+    // chains. save_engravings() writes head_engr in chain order and
+    // rest_engravings() pushes each one it reads, so the restored chain is
+    // reversed; it then strips leading spaces and stamps engr_time.
+    let engravings = null;
+    for (const saved of bonesData.engravings ?? [])
+        engravings = { ...saved, engr_txt: [...saved.engr_txt],
+            nxt_engr: engravings };
+    state.head_engr = engravings;
+    rest_engravings(state);
+
     rest_region_capacity(level);
 
-    // C restore.c getlev() (1181-1183): rest_rooms() cleared every room's
-    // resident pointer, so each shopkeeper on the restored chain reclaims
-    // its room before the level begins play.
-    for (let mtmp = level.monlist; mtmp; mtmp = mtmp.nmon)
+    // C restore.c getlev() (1177-1195), the placement half of its monster
+    // loop: rest_rooms() cleared every room's resident pointer, so each
+    // shopkeeper on the restored chain reclaims its room; then each monster
+    // goes onto the map and a worm's tail with it, in chain order.
+    for (let mtmp = level.monlist; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.isshk) set_residency(mtmp, false, state);
+        if (isok(mtmp.mx, mtmp.my)) level.monsters[mtmp.mx][mtmp.my] = mtmp;
+        if (mtmp.wormno) place_wsegs(mtmp, null, { state });
+    }
+
+    // C ref: restore.c getlev():1130 restore_timers(RANGE_LEVEL, elapsed)
+    // and 1305 relink_timers(ghostly). A bones level's timers move from the
+    // dead hero's clock to this one's (timeout.c 2722-2723); each object
+    // timer then points at the restored object that had the saved id.
+    const timers = [];
+    for (const saved of bonesData.timers ?? []) {
+        const timer = { ...saved, next: null };
+        timer.timeout += state.moves - omoves;
+        if (timer.needs_fixup) {
+            if (timer.kind !== TIMER_OBJECT)
+                throw new Error('relink_timers: no monster timer implemented');
+            timer.arg = idMap.get(saved.arg);
+            if (!timer.arg) throw new Error(`can't find o_id ${saved.arg}`);
+            timer.needs_fixup = false;
+        }
+        timers.push(timer);
+    }
+    restore_timers(timers, state);
+
+    // C ref: restore.c getlev():1131 restore_light_sources(), right after
+    // the timers, and 1300 relink_light_sources(ghostly) after every monster
+    // and object is read. C relinks after the monster loop's restore_cham();
+    // this relinks first, which differs only if restore_cham() changed a
+    // light-emitting shapeshifter, where C's del_light_source() would miss
+    // the still-unlinked source.
+    restore_light_sources(bonesData.lights, state);
+    relink_light_sources(idMap, state);
+
+    // C ref: restore.c restdamage() (153-179), which getlev() calls after
+    // its monster loop: each record read is pushed, so the list comes back
+    // reversed, and a bones file's times move to this game's clock.
+    level.damagelist = null;
+    for (const saved of bonesData.damage ?? []) {
+        level.damagelist = {
+            ...saved,
+            place: { ...saved.place },
+            when: saved.when + (state.moves - omoves),
+            next: level.damagelist,
+        };
+    }
 
     // C restore.c rest_track() restores this after the level's other
     // level-local structures and before ghostly arrival.  initrack() first
@@ -1144,17 +1344,60 @@ function restoreBonesLevel(bonesData, state) {
         initrack(state);
     }
 
-    // Restore fruit chain.
-    if (bonesData.fruitChain) {
-        let fHead = null;
-        let fTail = null;
-        for (const fc of bonesData.fruitChain) {
-            const f = { fname: fc.fname, fid: fc.fid, nextf: null };
-            if (fTail) { fTail.nextf = f; fTail = f; }
-            else { fHead = f; fTail = f; }
+    // C ref: restore.c getlev() (1235-1296), its ghostly arm. getbones()
+    // calls getlev() with lev 0, so the arm that gives a level between
+    // Medusa's and the castle a missing down staircase (1246-1257) never runs
+    // for bones. The old fruit chain freed at 1251 is ghost.oldfruit.
+    const br = Is_branchlev(state.u.uz, state);
+    if (br && state.u.uz.dlevel === 1) {
+        // A branch's first level keeps the dead hero's way back to the
+        // parent dungeon; point it at this game's other end of the branch.
+        const ltmp = assign_level({},
+            on_level(state.u.uz, br.end1) ? br.end2 : br.end1);
+        switch (br.type) {
+        case BR_STAIR:
+        case BR_NO_END1:
+        case BR_NO_END2: {
+            let stway = state.stairs;
+            while (stway && stway.tolev?.dnum === state.u.uz.dnum)
+                stway = stway.next;
+            if (stway) assign_level(stway.tolev, ltmp);
+            break;
         }
-        state.ffruit = fHead;
+        case BR_PORTAL: { /* max of 1 portal per level */
+            const trap = level.traps.find((t) => t.ttyp === MAGIC_PORTAL);
+            if (!trap) throw new Error('getlev: need portal but none found');
+            assign_level(trap.dst, ltmp);
+            break;
+        }
+        default:
+            break;
+        }
+    } else if (!br) {
+        // Remove any dangling portals.
+        for (const trap of [...level.traps]) {
+            if (trap.ttyp === MAGIC_PORTAL) deltrap(trap, state);
+        }
     }
+
+    // C ref: restore.c getlev():1301, the last fixup once every monster and
+    // object has its new id.
+    reset_oattached_mids(idMap, state);
+}
+
+// C ref: bones.c sanitize_name() (197-220), for the tty window port the
+// recorder uses. It works on the name's bytes: a control character or DEL
+// becomes '.', and without wc_eight_bit_input a byte with its eighth bit set
+// becomes '_'. JavaScript strings cannot be changed in place, so the caller
+// stores the result.
+export function sanitize_name(name, state = game) {
+    const strip8thBit = !state.iflags?.wc_eight_bit_input;
+    return decodeUtf8ByteString(encodeUtf8ByteString(name).map((byte) => {
+        const c = byte & 0x7F;
+        if (c < 0x20 || c === 0x7F) return 0x2E;
+        if (c !== byte && strip8thBit) return 0x5F;
+        return byte;
+    }));
 }
 
 // C ref: bones.c bones_include_name() (762-780). Checks whether the current

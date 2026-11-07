@@ -38,7 +38,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { breakarm as breakarm_real, num_horns, pronoun_gender } from './mondata.js'; // relocate-fns
 import { discover_object } from './o_init.js'; // relocate-fns
 import { an, cloak_simple_name, distant_name, doname, otense, simpleonames } from './objnam.js'; // relocate-fns
-import { You_hear, pline, pline_mon as pline_mon_real, impossible as trap_impossible } from './pline.js'; // relocate-fns
+import { You_hear, pline, pline_mon, impossible as trap_impossible } from './pline.js'; // relocate-fns
 import { PM_AIR_ELEMENTAL, PM_CHICKATRICE, PM_COCKATRICE, PM_GRAY_DRAGON, PM_LONG_WORM } from './pm.generated.js'; // relocate-fns
 import { rnl } from './rng.js'; // relocate-fns
 import { begin_burn, end_burn } from './timeout.js'; // relocate-fns
@@ -626,7 +626,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
                 else if (newarm.slice(0, 3).toLowerCase() === 'an ')
                     newarm = 'another ' + newarm.slice(3);
             }
-            pline_mon_real(mon, `${Monnam(mon)}${buf} puts on ${newarm}.`);
+            pline_mon(mon, `${Monnam(mon)}${buf} puts on ${newarm}.`);
             if (autocurse)
                 pline(`${s_suffix(Monnam(mon))} ${simpleonames(best)} `
                       + `${otense(best, 'glow')} ${hcolor(NH_BLACK_MDW)} for a moment.`);
@@ -1043,13 +1043,13 @@ export function mon_adjust_speed(mon, adjust, obj) {
                "slowing down" even if fast movement rate retained via worn
                speed boots */
             if (game.flags && game.flags.verbose)
-                pline_mon_real(mon, Monnam_t(mon) + " is slowing down.");
+                pline_mon(mon, Monnam_t(mon) + " is slowing down.");
         } else if ((adjust | 0) > 0 || (mon.mspeed | 0) === UME_MFAST) {
             /* C worn.c:553-555 */
-            pline_mon_real(mon, Monnam_t(mon) + " is suddenly moving " + howmuch + "faster.");
+            pline_mon(mon, Monnam_t(mon) + " is suddenly moving " + howmuch + "faster.");
         } else {
             /* C worn.c:556-558 */
-            pline_mon_real(mon, Monnam_t(mon) + " seems to be moving " + howmuch + "slower.");
+            pline_mon(mon, Monnam_t(mon) + " seems to be moving " + howmuch + "slower.");
         }
 
         if (obj)
@@ -1280,11 +1280,6 @@ export async function mon_break_armor(mon, polyspot) {
     function Soundeffect(se, vol) { }
     const se_clank = 40, se_cracking_sound = 46, se_ripping_sound = 136,
           se_thud = 175;
-    /* C ref: pline.c:435-452 — forwards to the module-level import.  This inner
-       stub SHADOWED it and swallowed every call in the enclosing function. */
-    function pline_mon(mon, fmt, ...args) {
-        return pline_mon_real(mon, fmt, ...args);
-    }
     /* C you.h:323-324 — evaluate the shared hallucinating pronoun selector
        even when no armor is present; worn.c:1184 initializes both locals
        before testing breakarm/sliparm. */

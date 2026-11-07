@@ -1,5 +1,5 @@
 import { pline_The, verbalize } from './pline.js';
-import { pline_mon as pline_mon_real } from './pline.js';
+import { pline_mon } from './pline.js';
 import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
 
@@ -936,11 +936,6 @@ export function mcast_open_wounds(dmg) {
 // in the codebase (e.g. js/display.js's local impossible()).
 function impossible(_msg, ..._args) { }
 
-// pline_mon / pline_The — C ref: pline.c:138-146. set_msg_xy() to the hero
-// (0,0) or the monster's square; vpline's accessiblemsg prefix reads it.
-function pline_mon(mtmp, msg, ...args) {
-    return pline_mon_real(mtmp, msg, ...args);
-}
 
 export function Monnam(mtmp) {
     return Monnam_real(mtmp);

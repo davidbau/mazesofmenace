@@ -25,7 +25,7 @@ import { _pickup_burden_level, touch_artifact_youmonst } from './wizcmds.js';
 import { setnotworn, setworn } from './worn.js';
 import { _sortloot_within_class, fully_identify_obj as fully_identify_obj_cmd, ggetobj, useup } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
-import { _topl_joins_committed, flush_screen, obj_to_glyph, use_last_flush_snapshot } from './display.js'; // relocate-fns
+import { _topl_joins_committed, docrt, flush_screen, obj_to_glyph, status_r1_menu_docrt, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { doname_with_price, not_fully_identified } from './objnam.js'; // relocate-fns
 import { map_menu_cmd } from './options.js'; // relocate-fns
@@ -952,6 +952,23 @@ async function _identify_objlist_menu_body(promptText) {
         reset_count = false;
     }
     g._pending_message = '';
+    /* C wintty.c:966-980 erase_menu_or_text: a full-screen menu closes
+     * with docrt() and flush_screen(1).  windows.c:1859-1863 keeps bot()
+     * disabled through that redraw, including its hallucinated glyphs. */
+    if (FULL_SCREEN) {
+        const oldBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await docrt(false, g._screen_output);
+            await flush_screen(1);
+        } finally {
+            g._bot_disabled = oldBotDisabled;
+        }
+        status_r1_menu_docrt();
+        g._r1botAfterMap = g.level;
+        g._r1textOver = true;
+        g._statusBlankAfterDocrt = true;
+    }
     await flush_screen(1);
     if (escaped) return null; /* C n == -2 */
     /* C tty_select_menu / process_menu_window hand back the picks in MENU order

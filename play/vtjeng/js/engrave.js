@@ -45,6 +45,7 @@ import {
     HAND,
     ECMD_TIME,
     DEAF,
+    vision_clears,
     } from './const.js';
 import {
     is_pool,
@@ -85,6 +86,7 @@ import { bimanual } from './worn.js';
 import { livelog_printf, youSee } from './pline.js';
 import { dry_a_towel } from './weapon.js';
 import { goodpos } from './teleport.js';
+import { sanitize_name } from './bones.js';
 
 const RUBOUTS = new Map([
     ['A', '^'], ['B', 'Pb['], ['C', '('], ['D', '|)['], ['E', '|FL[_'],
@@ -1119,7 +1121,7 @@ export async function doengrave(state = game, env = {}) {
     if (de.doblind && !resists_blnd(state.youmonst, state)) {
         await say('You are blinded by the flash!');
         await make_blinded(env.random.rnd(50), false, state, env.blindingEnv ?? {});
-        if (!heroBlind(state)) await say('Your vision clears.');
+        if (!heroBlind(state)) await say(`Your ${vision_clears}`);
     }
     if (de.disprefresh) env.redraw?.(state.u.ux, state.u.uy, state);
     return de.ret;
@@ -1438,6 +1440,14 @@ export function rest_engravings(state = game) {
             ep.engr_txt[1] = ep.engr_txt[1].replace(/^ +/u, '');
         ep.engr_time = state.moves;
     }
+}
+
+// C ref: engrave.c sanitize_engravings() (1498-1505). While loading bones,
+// clean each engraving's actual text, which could otherwise disrupt the
+// player's terminal when displayed.
+export function sanitize_engravings(state = game) {
+    for (let ep = state.head_engr ?? null; ep; ep = ep.nxt_engr)
+        ep.engr_txt[0] = sanitize_name(ep.engr_txt[0], state);
 }
 
 // C ref: engrave.c rloc_engr() (1667-1681). The caller refreshes the old square;

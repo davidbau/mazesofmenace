@@ -12,7 +12,7 @@ import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { set_corpsenm } from './mklev.js';
 import { christen_monst } from './mhitm.js';
 export { oname } from './objnam.js';
-import { oname, an as an_objnam } from "./objnam.js";
+import { oname, an } from "./objnam.js";
 import { display_text_window } from './com_pager.js';
 
 /**
@@ -245,23 +245,6 @@ export function formatkiller(buf, siz, how, incl_helpless) {
     }
 
     return result;
-}
-
-/**
- * an() — Add "a" or "an" prefix to a word.
- * Mirrors C's an() from chargen.c
- */
-function an(word) {
-    /* C objnam.c:2147 an():
-     *     if (!str || !*str) {
-     *         impossible("Alphabet soup: 'an(%s)'.", str ? "\"\"" : "<null>");
-     *         return strcpy(buf, "an []");
-     *     }
-     * The empty/NULL input yields the literal "an []", not the input.  This is
-     * what makes formatkiller produce "dissolved in an []" for an empty
-     * svk.killer.name. */
-    /* just_an() carries the long-u exceptions (unicorn, useful, ...) */
-    return an_objnam(word);
 }
 
 /**

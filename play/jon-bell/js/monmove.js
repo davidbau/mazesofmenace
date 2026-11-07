@@ -42,7 +42,7 @@ import { sobj_at } from './invent.js';
 import { u_on_newpos, Is_special } from './dungeon.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
 import { upstart } from './hacklib.js';
-import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon as healmon_real, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear as monnear_real } from './mon.js';
+import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear as monnear_real } from './mon.js';
 import { is_pool as is_pool_mv2 } from './look.js';
 import { may_dig } from './hack.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
@@ -2019,9 +2019,22 @@ export async function m_move(mtmp, after) {
             /* C monmove.c:1798-1800 treats this attack as MMOVE_MOVED even
              * when the attacker stays put. postmov's redraws (:1508, :1656)
              * still run, retiring pre_mm_attack's transient invisible marker
-             * on levels without hero memory. Our postmov only has the tail. */
+             * on levels without hero memory. Our postmov only has the tail,
+             * so the MMOVE_MOVED middle (mintrap, door, bars, dig) runs here:
+             * a covetous monster standing on a teleport trap is rloc'd by
+             * postmov's mintrap (monmove.c:1509) after the attack. */
+            const _cdidsee = !!cansee(mtmp.mx | 0, mtmp.my | 0);
             await notice_mon(mtmp); /* C postmov:1470, before either redraw */
             newsym(_entry_omx, _entry_omy);
+            const _ctr = await postmov_special_trap(mtmp);
+            if (_ctr !== null) return _ctr;
+            const _cmf1 = mtmp.data?.mflags1 | 0;
+            const _cctun = !Is_rogue_level(game.u?.uz) && !!(_cmf1 & M1_TUNNEL_MDW);
+            if ((await postmov_door(mtmp, _cdidsee, _cmf1, _cctun)) === MMOVE_DIED_MV)
+                return MMOVE_DIED_MV;
+            if ((await postmov_bars(mtmp)) === MMOVE_DONE_MV) return MMOVE_DONE_MV;
+            if (_cctun && may_dig(mtmp.mx | 0, mtmp.my | 0) && await mdig_tunnel(mtmp))
+                return MMOVE_DIED_MV;
             newsym(mtmp.mx | 0, mtmp.my | 0);
             return postmov(mtmp, MMOVE_MOVED_MV, true);
         }
@@ -2995,7 +3008,7 @@ function touch_artifact_mv(_otmp, _mtmp) {
 async function _m_consume_metal_obj_mv(mtmp, otmp) {
     const ispet = !!(mtmp.mtame | 0);
     if (!ispet && (mtmp.mhp | 0) < (mtmp.mhpmax | 0))
-        healmon_real(mtmp, OC_WEIGHT[otmp.otyp | 0] | 0, 0);
+        healmon(mtmp, OC_WEIGHT[otmp.otyp | 0] | 0, 0);
     /* C:1401-1402 `if (Has_contents(otmp)) meatbox(mtmp, otmp);` — Has_contents
      * is `otmp->cobj != 0` (obj.h:334).  No vanilla container is metallic
      * (LARGE_BOX/CHEST are WOOD, ICE_BOX PLASTIC, the bags CLOTH), so this arm
@@ -3499,12 +3512,8 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
 /* C ref: monflag.h:108 M1_REGEN — monster regenerates hit points */
 const M1_REGEN_MON_REGEN = 0x00800000;
 
-/* C ref: mon.c:4596 healmon().  The canonical body lives in mon.js and is
- * already used by the other healing callers; keep this export as a thin
- * compatibility wrapper for monmove's historical public surface. */
-export function healmon(mtmp, amt, overheal) {
-    return healmon_real(mtmp, amt, overheal);
-}
+/* C ref: mon.c:4596 healmon() — re-export canonical body from js/mon.js */
+export { healmon };
 
 /* C ref: monmove.c:307-320 mon_regen — regenerate lost hit points and digest meals.
  * regenerates(ptr) = (ptr->mflags1 & M1_REGEN) != 0 (from mondata.h)

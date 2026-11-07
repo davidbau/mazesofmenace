@@ -793,6 +793,9 @@ export async function newgame() {
     }
     g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
     g.disp.botlx = 1;
+    /* allmain.c:75's new rndencode makes the next bot() update_all from BL_GOLD on
+     * (botl.c:1564-1567); this port's set_wear/rnd(9000) run ahead of welcome. */
+    g._blRndencodeNew = true;
     /* C ref: allmain.c:91 moveloop_preamble() — encumber_msg(); "in case they
      * auto-picked up something" (pickup(1) above). */
     if (!chargenIncomplete)
@@ -938,8 +941,6 @@ export async function unmul(msg_override) {
      * while a run suppresses time_botl) repaints at the nomovemsg pline's flush. */
     (g.disp ||= {}).botl = 1;
     g.multi = 0;
-    if (g.u)
-        g.u.usleep = 0; /* C hack.c:4197 */
     if (msg_override != null)
         g.nomovemsg = msg_override;
     else if (g.nomovemsg == null || g.nomovemsg === 0) /* C's NULL (steal.c:550 `= 0`) */
@@ -957,16 +958,14 @@ export async function unmul(msg_override) {
         }
     }
     g.nomovemsg = null;
-    /* C hack.c:4197 — unmul clears u.usleep (set by fall_asleep, timeout.c:972). */
-    /* C hack.c:4197 — unmul clears u.usleep (a stale value made mattacku's
-     * mhitu.c:940 "combat awakens you" rn2(10) fire for a woken hero). */
+    /* C hack.c:4197 — unmul clears u.usleep (set by fall_asleep, timeout.c:972;
+     * a stale value made mattacku's mhitu.c:940 "combat awakens you" rn2(10)
+     * fire for a woken hero). */
     if (g.u) g.u.usleep = 0;
-    g.u.usleep = 0; /* C hack.c:4197 */
-    /* C hack.c:4197 `u.usleep = 0;` */
-    if (g.u) g.u.usleep = 0;
-    if (g.u) g.u.usleep = 0; /* C hack.c:4197 */
+    /* C hack.c:4198 `gm.multi_reason = NULL, gm.multireasonbuf[0] = '\0';` */
     g.multi_reason = null;
-    /* C ref: hack.c:4109-4116 — clear afternmv BEFORE calling it. */
+    g.multireasonbuf = '';
+    /* C ref: hack.c:4200-4207 — clear afternmv BEFORE calling it. */
     if (g.afternmv) {
         const tag = g.afternmv;
         g.afternmv = null;
@@ -1645,6 +1644,10 @@ async function eat_occupation_turn() {
     // into _resultMessage).  Strip that known prefix so we isolate THIS turn's fresh
     // content (movemon plines), avoiding a double-count of the committed line.
     let preEat = g._resultMessage || '';
+    /* wintty.c:2277-2300: ATR_URGENT belongs to each queued pline.
+     * The callback's fresh topline can reset the live urgent marks while
+     * these earlier movemon messages are still waiting in preEat. */
+    const preEatUrgent = new Set(g._topl_urgent_marks || []);
     let preEatJoins = (g._resultMessageJoins?.src === preEat
         && Array.isArray(g._resultMessageJoins?.joins))
         ? g._resultMessageJoins.joins.slice()
@@ -1870,7 +1873,8 @@ async function eat_occupation_turn() {
         /* wintty.c:2277-2283: ATR_URGENT clears an existing WIN_STOP and
          * wipes the message window before update_topl samples skip.  These
          * deferred occupation plines must retain the same urgent attribute. */
-        const partUrgent = (g._topl_urgent_marks || []).includes(part);
+        const partUrgent = (_fromPreEat && preEatUrgent.has(part))
+            || (g._topl_urgent_marks || []).includes(part);
         if (partUrgent && g._topl_win_stop) {
             g._topl_win_stop = false;
             g._topl_win_stop_buf = null;
@@ -1885,6 +1889,12 @@ async function eat_occupation_turn() {
              * it stays on the topline while WIN_STOP swallows what follows. */
             if (_fromPreEat && _preEatSeen === 1)
                 { _committed = part; _emitted = true; }
+            /* Same rule for cpostfx's mimic arm: done_eating's line owned the
+             * ESC'd more() and was drawn there (eat.c:556, topl.c:257-300). */
+            else if (g._eatMimicStopOwner && part === g._eatMimicStopOwner) {
+                g._eatMimicStopOwner = null;
+                _committed = part; _emitted = true;
+            }
             continue;
         }
         /* A part cut at recorded joins is ONE pline: its internal "  " (a
@@ -1993,6 +2003,7 @@ async function eat_occupation_turn() {
             }
         }
     }
+    g._eatMimicStopOwner = null;
     if (g._eatMimicAcked) { g._eatMimicAcked = false; prior = null; }
     if (g._eatMimicForceMore) {
         /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE): more() over the last pline. */
@@ -2704,6 +2715,7 @@ function _merge_countdown_pline() {
 // moveloop_core (allmain.c:563) calls this after the occupation callback; if it
 // returns TRUE the occupation is interrupted (stop_occupation()).  This is what
 // turn 15 and breaks the `learn` occupation before its delay counts to 0.
+const M1_HIDE = 0x00000100; /* monflag.h */
 export function monster_nearby() {
     const g = game;
     const u = g.u || {};
@@ -2731,7 +2743,7 @@ export function monster_nearby() {
                 continue;
             // C hack.c:4121: is_hider tests the current form's M1_HIDE bit.
             if (mtmp.mundetected
-                && ((mtmp.data?.mflags1 ?? monsPack.mons[mndx]?.[6] ?? 0) & 0x100))
+                && ((mtmp.data?.mflags1 ?? monsPack.mons[mndx]?.[6] ?? 0) & M1_HIDE))
                 continue;
             // C: not helpless (asleep/frozen).  Our roster tracks mcanmove.
             if (!mtmp.mcanmove || mtmp.msleeping)
@@ -3104,7 +3116,15 @@ async function moveloop_core_faithful() {
                         : (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
                     /* The interrupt pline's flush_screen()/bot() paints the NEW hunger (newuhs set
                      * botl) but HP as of the last flush, so only uhs is refreshed. */
-                    if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs,
+                    /* pline.c:273-277: any other raising pline (encumber_msg, allmain.c:208,
+                     * plines BEFORE its SET_BOTL, pickup.c:1990-2016) blocks in more() before
+                     * movemon, so the page shows ITS flush's status — not a later movemon
+                     * bot()'s cap (mattacku repainting the post-useup " Burdened"). */
+                    const _pmOwnPf = (g._newuhsMsgUhs && g._newuhsMsgUhs.msg === _pmPageMsg) ? null
+                        : (g._plineFlushFrames || []).findLast((f) => f.botl
+                            && f.off === pm.text.length && f.msg === _pmPageMsg);
+                    if (_pmOwnPf) g._occCurBotl = { ..._pmOwnPf.botl, ...(pmUhs != null ? { uhs: pmUhs } : {}) };
+                    else if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs,
                         /* same bot(): near_capacity() after newuhs' ATEMP(A_STR) reset (eat.c:3463,3507-3508) */
                         ...(g._botlPaintedCap != null ? { cap: g._botlPaintedCap | 0 } : {}) };
                     const _pmMorc = await occupation_force_more(pm.text, _postMealPreFrame, (g.moves | 0) - 1, pmUhs);

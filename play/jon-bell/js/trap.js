@@ -80,7 +80,7 @@ import { PM_STEAM_VORTEX } from './pm.generated.js';
 import { PM_LONG_WORM, PM_DEATH, PM_PESTILENCE, PM_FAMINE, PM_MINOTAUR } from './pm.generated.js';
 import { PM_PIT_VIPER, PM_PIT_FIEND, PM_RANGER } from './pm.generated.js';
 /* goodpos_onscary()'s Gehennom short-circuit; js/mklev.js reads the same one. */
-import { Inhell, nonlivingMon, splitobj, sliparm as sliparm_real, onscary as onscary_real, mon_knows_traps as mon_knows_traps_real } from './makemon.js';
+import { Inhell, nonlivingMon, splitobj, sliparm as sliparm_real, onscary, mon_knows_traps as mon_knows_traps_real } from './makemon.js';
 import { pmname } from './do_name.js';
 import { can_saddle as can_saddle_real } from './steed.js';
 import { which_armor } from './worn.js';
@@ -247,7 +247,7 @@ const Trap_Moved_Mon = 3;
 const Trap_Is_Gone = 4; /* C trap.h: trap consumed (deltrap) */
 
 function Soundeffect(se, vol) { /* C sndprocs.h:272 no-op without USER_SOUNDS */ }
-const se_deafening_roar_atmospheric = 0, se_low_hum = 0;
+const se_deafening_roar_atmospheric = 0, se_low_hum = 0, se_drain_noises = 0, se_ring_in_drain = 0;
 const M2_NEUTER = 0x00040000;
 function is_neuter(ptr) { return ((ptr?.mflags2 | 0) & M2_NEUTER) !== 0; }
 const G_UNIQ = 0x1000;
@@ -466,8 +466,14 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
     if (fltxt !== null && (mtmp.wormno ? worm_known(mtmp) : cansee(mtmp.mx | 0, mtmp.my | 0))) {
         const _verb = _mk_nonliving(mtmp) ? 'destroyed' : 'killed';
         set_msg_xy_trap(mtmp.mx, mtmp.my); /* pline_mon (pline.c:138-146) */
+        /* C monkilled(): the monster is still on the grid (mhp 0 from the hit)
+         * while pline() recalculates vision and newsym()s its square, so the
+         * flush behind the --More-- still shows it (mon.c:3376, pline.c:266). */
+        const _hadZero = !!mtmp._zeroHpOnGrid;
+        if ((mtmp.mhp | 0) < 1) mtmp._zeroHpOnGrid = true;
         void pline(`${Monnam_t(mtmp)} is ${_verb}`
                    + (fltxt ? ` by the ${fltxt}` : '') + '!');
+        mtmp._zeroHpOnGrid = _hadZero;
     } else {
         /* C mon.c:3390-3391: monkilled() defers an unseen tame monster's
          * death message through iflags.sad_feeling, then mondied()->mondead()
@@ -1060,13 +1066,6 @@ function _gp_closed_door(x, y) {
 function _gp_accessible(x, y) {
     return accessible_mv(x, y);
 }
-/* C ref: hack.c:906-912 may_dig(x,y). */
-function _gp_may_dig(x, y) {
-    const loc = lev_flags(x, y);
-    const ltyp = lev_typ(x, y);
-    return !((IS_STWALL(ltyp) || IS_TREE(ltyp))
-             && ((loc ? loc.wall_info | 0 : 0) & W_NONDIGGABLE));
-}
 /* C ref: mondata.h:19-33/134 monster-flag predicates read by goodpos(). */
 const _GP_M1_SWIM = 0x00000002, _GP_M1_AMORPHOUS = 0x00000004,
       _GP_M1_WALLWALK = 0x00000008, _GP_M1_AMPHIBIOUS = 0x00000200,
@@ -1097,17 +1096,8 @@ function _gp_Upolyd() {
     const u = game.u;
     return !!(u && u.umonnum !== u.umonster);
 }
-/* C ref: monmove.c:241-304 onscary.  Still unported: it needs inhishop() /
- * inhistemple() and an `ep->guardobjects` engraving field this port does not
- * carry.  It is reached only for a monster with a real m_id; makemon's
- * rndmonst() retry loop — the one live GP_CHECKSCARY caller — passes C's
- * `fakemon` (m_id 0), which takes goodpos_onscary() below instead.  Throw
- * loudly rather than answer wrongly if a caller with a real monster appears. */
-function _gp_onscary(x, y, mtmp) {
-    /* makemon.js carries the complete monmove.c:241-304 implementation,
-     * including musical scaring, Elbereth, altars, and shop/temple guards. */
-    return onscary_real(x, y, mtmp);
-}
+/* C monmove.c:241-304 onscary() is defined once in js/makemon.js
+ * and imported at the top of this file. */
 
 /* C monsym.h/defsym.h monster-class symbols, and monflag.h / mondata.h. */
 const _GP_S_ANGEL = 27, _GP_S_VAMPIRE = 48, _GP_S_HUMAN = 53;
@@ -1228,7 +1218,7 @@ export function goodpos(x, y, mtmp, gpflags) {
         if (_gp_amorphous(mdat) && _gp_closed_door(x, y))
             return true;
         /* avoid onscary() if caller has specified that restriction */
-        if (checkscary && (mtmp.m_id ? _gp_onscary(x, y, mtmp)
+        if (checkscary && (mtmp.m_id ? onscary(x, y, mtmp)
                                      : _gp_goodpos_onscary(x, y, mdat)))
             return false;
     }
@@ -5874,7 +5864,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
         impossible_tr('Invalid erosion type in erode_obj'); return ER_NOTHING;
     }
     const erosion = primary ? (otmp.oeroded | 0) : (otmp.oeroded2 | 0);
-    if (!ostr) ostr = _erode_xname(otmp);
+    if (!ostr) ostr = cxname(otmp); /* C trap.c:238 */
     if (visobj && !(uvictim || vismon) && /^the /i.test(ostr)) ostr = ostr.slice(4);
     const visible = uvictim || vismon || visobj;
     /* C trap.c:226-260 — Monnam(victim) is an argument of each pline, so it is
@@ -5960,14 +5950,6 @@ function _obj_in_invent(otmp) {
     }
     return false;
 }
-/* C ref: erode_obj's `if (!ostr) ostr = cxname(otmp)` (trap.c:238).  This used
- * to return the literal string "item" for anything without an _name, so every
- * un-named erode message read "Your item rusts!"; route through the shared
- * cxname (js/cmd.js) that the inventory window already uses. */
-function _erode_xname(otmp) {
-    if (!otmp) return 'item';
-    return cxname(otmp) || 'item';
-}
 export async function burnarmor(victim) {
     /* C trap.c:88-161.  victim==&gy.youmonst on the hero fire-ray path. */
     const u = game.u || {};
@@ -6006,7 +5988,7 @@ export async function burnarmor(victim) {
             let item = hitting_u ? _hero_worn(W_ARMC, u.uarmc) : _which_armor(victim, W_ARMC);
             if (item) { (await burn_dmg(item, cloak_simple_name(item))); return 1; }
             item = hitting_u ? _hero_worn(W_ARM, u.uarm) : _which_armor(victim, W_ARM);
-            if (item) { (await burn_dmg(item, _erode_xname(item))); return 1; }
+            if (item) { (await burn_dmg(item, xname(item))); return 1; } /* C trap.c:132 */
             item = hitting_u ? _hero_worn(W_ARMU, u.uarmu) : _which_armor(victim, W_ARMU);
             if (item) (await burn_dmg(item, 'shirt'));
             return 1;
@@ -6587,7 +6569,7 @@ export async function dosinkring(obj) {
         finished = true;
         break;
     case 193: /* RIN_SLOW_DIGESTION */
-        await pline('The ring is regurgitated!');
+        await pline_The('ring is regurgitated!');
         finished = true;
         break;
     case 183: /* RIN_LEVITATION */
@@ -6603,6 +6585,7 @@ export async function dosinkring(obj) {
         await pline('Static electricity surrounds the sink.');
         break;
     case 186: /* RIN_CONFLICT */
+        Soundeffect(se_drain_noises, 50);
         await You_hear('loud noises coming from the drain.');
         break;
     case 182: /* RIN_SUSTAIN_ABILITY */
@@ -6674,10 +6657,10 @@ export async function dosinkring(obj) {
             await pline("You don't see anything happen to the sink.");
             break;
         case 192: /* RIN_FREE_ACTION */
-            await pline('You see the ring slide right down the drain!');
+            await You_see('the ring slide right down the drain!');
             break;
         case 199: /* RIN_SEE_INVISIBLE */
-            await pline(`You see some ${_sr_Hallucination() ? 'oxygen molecules' : 'air'} in the sink.`);
+            await You_see(`some ${_sr_Hallucination() ? 'oxygen molecules' : 'air'} in the sink.`);
             break;
         case 181: /* RIN_STEALTH */
             await pline('The sink seems to blend into the floor for a moment.');
@@ -6710,6 +6693,7 @@ export async function dosinkring(obj) {
     if (ideed) {
         await _sr_trycall(obj);
     } else if (!nosink) {
+        Soundeffect(se_ring_in_drain, 50);
         await You_hear('the ring bouncing down the drainpipe.');
     }
     if (!rn2(20) && !nosink) {

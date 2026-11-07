@@ -12,8 +12,90 @@ import { impossible } from './pline.js';
 const OBJ_CONTAINED = 2; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
 import { forget_temple_entry } from './priest.js';
-import { weight } from './weight.js';
+import { _cwt } from './weight.js';
+import { eaten_stat } from './eat.js';
+import { LOW_PM } from './const.js';
+import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE } from './oc_weight.generated.js';
+import corpseData from './eat_corpse_data.json' with { type: 'json' };
+import monMsizePack from './makemon_msize.json' with { type: 'json' };
+import { impossible_sync } from './display.js';
+import { simpleonames } from './objnam.js';
 import { game } from './gstate.js';
+const LARGEST_INT = 32767; /* C global.h:135 */
+const MONS_CWT = /** @type {number[]} */ (corpseData.cwt || []);
+/* C monst.h:285 ismnum(): bounded on both ends (const.js ismnum drops the upper bound). */
+function _ismnum_cwt(pmidx) {
+    return Number.isInteger(pmidx) && pmidx >= LOW_PM && pmidx < MONS_CWT.length;
+}
+const COIN_CLASS = 12;
+const HEAVY_IRON_BALL = 477;
+const CANDELABRUM_OF_INVOCATION = 262;
+const TALLOW_CANDLE = 224;
+const CORPSE = 265;
+
+/* C mkobj.c:1889 weight(obj) — full weight of one object incl. container
+ * contents.
+ *
+ * Unlike C's inv_weight(), which reads the cached otmp->owt, we recompute
+ * weight() from objects[].oc_weight because the replay-reconstructed hero
+ * inventory carries a placeholder owt (=1), not the live cached value. */
+export function weight(obj) {
+    if (!obj) return 0;
+    const otyp = obj.otyp | 0;
+    let wt = (otyp >= 0 && otyp < OC_WEIGHT.length) ? (OC_WEIGHT[otyp] | 0) : 0;
+
+    /* C mkobj.c:1892,1958,1968: quan stays long through the validity test,
+     * corpse product, and coin division; only the coin quotient is cast. */
+    if (obj.quan != null && obj.quan < 1) {
+        impossible_sync('Calculating weight of %ld %s?', obj.quan, simpleonames(obj));
+        return 0; /* C impossible() path */
+    }
+    /* C: globby → return owt as-is (glob weight managed elsewhere). */
+    if (obj.globby) return obj.owt | 0;
+
+    const isContainer = (otyp >= OTYP_LARGE_BOX && otyp <= OTYP_BAG_OF_TRICKS);
+    if (isContainer || otyp === OTYP_STATUE) {
+        if (otyp === OTYP_STATUE && _ismnum_cwt(obj.corpsenm)) {
+            const msize = monMsizePack.msize[obj.corpsenm];
+            const minwt = (msize + msize + 1) * 100;
+            wt = Math.trunc(3 * _cwt(obj.corpsenm) / 2);
+            if (wt < minwt) wt = minwt;
+            wt = Math.imul(wt, obj.quan | 0);
+        }
+        let cwt = 0;
+        for (let c = obj.cobj; c; c = c.nobj)
+            cwt = (cwt + weight(c)) | 0;
+        if (otyp === OTYP_BAG_OF_HOLDING) {
+            cwt = obj.cursed ? Math.imul(cwt, 2)
+                  : obj.blessed ? Math.trunc(((cwt + 3) | 0) / 4)
+                    : Math.trunc(((cwt + 1) | 0) / 2);
+        }
+        return (wt + cwt) | 0;
+    }
+    if (otyp === CORPSE && _ismnum_cwt(obj.corpsenm)) {
+        const long_wt = obj.quan * _cwt(obj.corpsenm | 0);
+        let cwt = (long_wt > LARGEST_INT) ? LARGEST_INT : long_wt;
+        if (obj.oeaten | 0)
+            cwt = eaten_stat(cwt, obj);
+        return cwt;
+    }
+    if ((obj.oclass | 0) === FOOD_CLASS && (obj.oeaten | 0))
+        return eaten_stat(Math.imul(obj.quan, wt), obj);
+    if ((obj.oclass | 0) === COIN_CLASS) {
+        const cw = Math.trunc((obj.quan + 50) / 100) | 0;
+        return Math.max(cw, 1);
+    }
+    if (otyp === HEAVY_IRON_BALL && (obj.owt | 0) !== 0) {
+        return obj.owt | 0;
+    }
+    if (otyp === CANDELABRUM_OF_INVOCATION && (obj.spe | 0)) {
+        return wt + (obj.spe | 0) * (OC_WEIGHT[TALLOW_CANDLE] | 0);
+    }
+    const quan = obj.quan | 0;
+    return wt ? Math.imul(wt, quan) : ((quan + 1) >> 1);
+}
+
+
 /* C mkobj.c curse()/unbless() side-effect arms, each imported from the file that
  * already holds its one real body: */
 import { confers_luck } from './attrib.js';   /* artifact.c:524 */

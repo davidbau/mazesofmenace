@@ -126,7 +126,8 @@ import { nomul } from './allmain.js';
 import { monstseesu, monstunseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
 import { finish_meating, dmgtype as dmgtype_real } from './dogmove.js';
-import { FAINTED, M_AP_NOTHING, PRONOUN_HALLU } from './const.js';
+import { FAINTED, M_AP_NOTHING, PRONOUN_HALLU, TEMPLE } from './const.js';
+import { in_rooms } from './hack.js';
 import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated.js';
 /* C end.c:185-300 done_in_by — use the canonical death attribution path.
  * mhitm's local no-op used to discard the stoning killer, leaving the
@@ -1659,7 +1660,7 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
     wake_msg(mtmp, via_attack);
     mtmp.msleeping = 0;
     const M_AP_MONSTER = 3;
-    const apType = (mtmp.m_ap_type | 0) & 0x7 /* M_AP_TYPMASK */;
+    const apType = M_AP_TYPE(mtmp);
     if (apType !== M_AP_NOTHING) {
         if (apType !== M_AP_MONSTER)
             seemimic(mtmp);
@@ -1677,7 +1678,8 @@ export async function wakeup(mtmp, via_attack, defer_priest = false) {
             growl(mtmp);
         await setmangry(mtmp, true);
         if (was_peaceful) {
-            if (mtmp.ispriest && !defer_priest)
+            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length
+                && !defer_priest)
                 await ghod_hitsu(mtmp); // C mon.c:4358: finish retaliation before returning.
             if (mtmp.isshk && !(game.u && game.u.ushops && game.u.ushops[0]))
                 hot_pursuit(mtmp);
@@ -1694,7 +1696,8 @@ export async function wakeup_attack(mtmp, via_attack) {
      * so it must be sampled before the call, not after. */
     const was_peaceful = mtmp.mpeaceful;
     await wakeup(mtmp, via_attack, true);
-    if (via_attack && was_peaceful && mtmp.ispriest)
+    if (via_attack && was_peaceful && mtmp.ispriest
+        && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length) /* C mon.c:4357 */
         await ghod_hitsu(mtmp);
 }
 

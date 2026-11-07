@@ -38,7 +38,7 @@ import { OC_NAME as PRAY_OC_NAME } from './oc_name_data.js';
 import { PARANOID_CONFIRMATION_DEFAULT_BITS } from './options.js';
 import { paranoid_query } from './paranoid.js';
 import { rider_corpse_revival } from './pickup.js';
-import { PM_AIR_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_GUARD, PM_HIGH_PRIEST, PM_MONK, PM_PRIEST, PM_SHOPKEEPER, PM_WATER_ELEMENTAL, PM_WRAITH, PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js';
+import { PM_ACID_BLOB, PM_AIR_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_GUARD, PM_HIGH_PRIEST, PM_MONK, PM_PRIEST, PM_SHOPKEEPER, PM_WATER_ELEMENTAL, PM_WRAITH, PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js';
 import { rehumanize as rehumanize_real } from './polyself.js';
 import { make_confused, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned } from './potion.js';
 import { angry_priest, findpriest, p_coaligned, temple_occupied } from './priest.js';
@@ -250,7 +250,7 @@ const BLINDED_SAC = 15; /* prop.h BLINDED */
 function _sacrifice_value(otmp) {
     const row = monsPack.mons[otmp.corpsenm | 0];
     let value = 0;
-    if ((otmp.corpsenm | 0) === 6 /* PM_ACID_BLOB */
+    if ((otmp.corpsenm | 0) === PM_ACID_BLOB
         || ((game.moves | 0) <= (_peek_age_sac(otmp) + 50))) {
         value = (row[2] | 0) + 1;
         if (otmp.oeaten) value = eaten_stat(value, otmp);
@@ -329,7 +329,7 @@ async function _offer_different_alignment_altar(otmp, altaralign) {
             livelog_printf(0x0200 /* LL_ALIGNMENT */, 'permanently converted to '
                            + ['lawful', 'neutral', 'chaotic'][1 - altaralign]);
             ab[0] = altaralign;
-            if (!(u.uarmh && (u.uarmh.otyp | 0) === 99)) /* HELM_OF_OPPOSITE_ALIGNMENT */
+            if (!(u.uarmh && (u.uarmh.otyp | 0) === HELM_OF_OPPOSITE_ALIGNMENT))
                 u.ualign.type = ab[0];
             await pline(`You have a ${(u.ualign.type | 0) !== oldalign ? 'sudden ' : ''}sense of a new direction.`);
             if ((u.ualign.type | 0) !== oldalign) {
@@ -739,7 +739,8 @@ const AMULET_OF_STRANGULATION = 203;
 
 const AMULET_OF_UNCHANGING_PRAY = 207;
 
-const _TROUBLE_HELM_OF_OPPOSITE_ALIGNMENT = 99;
+const HELM_OF_OPPOSITE_ALIGNMENT = 99; /* objects.h */
+const POTION_CLASS = 8; /* objclass.h */
 
 const _TROUBLE_SADDLE_OTYP = 235;
 
@@ -910,7 +911,7 @@ function _worst_cursed_item() {
     /* if worn helmet of opposite alignment is making you an adherent
        of the current god, he/she/it won't uncurse that for you */
     } else if (u.uarmh && u.uarmh.cursed /* helmet */
-               && (u.uarmh.otyp | 0) !== _TROUBLE_HELM_OF_OPPOSITE_ALIGNMENT) {
+               && (u.uarmh.otyp | 0) !== HELM_OF_OPPOSITE_ALIGNMENT) {
         otmp = u.uarmh;
     } else if (u.uarmf && u.uarmf.cursed) { /* boots */
         otmp = u.uarmf;
@@ -2090,7 +2091,7 @@ async function _pleased(gAlign) {
             else await You('are surrounded by %s aura.', an(hcolor('light blue')));
             for (let obj = g.invent, next; obj; obj = next) {
                 next = obj.nobj;
-                if (obj.cursed && (obj !== u.uarmh || obj.otyp !== _TROUBLE_HELM_OF_OPPOSITE_ALIGNMENT)) {
+                if (obj.cursed && (obj !== u.uarmh || obj.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)) {
                     if (!_hero_Blind()) {
                         await pline('%s %s.', Yobjnam2(obj, 'softly glow'), hcolor(NH_AMBER));
                         g.iflags.last_msg = PLNMSG_OBJ_GLOWS;
@@ -2235,7 +2236,7 @@ async function _water_prayer(bless_water) {
             otmp.cursed = !bless_water;
             otmp.bknown = bc_known;
             changed += otmp.quan;
-        } else if (otmp.oclass === 8 /* POTION_CLASS */)
+        } else if (otmp.oclass === POTION_CLASS)
             other = true;
     }
     if (!_hero_Blind() && changed)

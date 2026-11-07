@@ -482,6 +482,10 @@ export function apply_customizations(which_set, docustomize) {
                     if (sc.custtype === custom_nhcolor) {
                         const gmap = glyphmap[details.content.ccolor.glyphidx];
                         set_map_customcolor(gmap, details.content.ccolor.nhcolor);
+                        /* the colour now in glyphmap[]; an entry added later
+                         * (in-game glyph option) stays unapplied until the
+                         * next reset_customcolors() */
+                        details.content.ccolor.applied = details.content.ccolor.nhcolor;
                     }
                 }
                 details = details.next;

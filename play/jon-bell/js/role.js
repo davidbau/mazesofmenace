@@ -1,7 +1,8 @@
 // role.js — C ref: role.c.
 import { ALIGNS, GENDERS, RACES, ROLES, ROLE_ALIGNMASK, ROLE_GENDMASK, ROLE_NONE, ROLE_RACEMASK, RSF_ALGNMNT, RSF_GENDER, RSF_RACE, RSF_ROLE, RSF_filter, rfilter } from './chargen_ui.js';
-import { ok_align as ok_align_shared, ok_gend as ok_gend_shared, ok_race as ok_race_shared, ok_role as ok_role_shared, setrolefilter as setrolefilter_shared, str2align, str2gend, str2race, str2role } from './roles.js';
-import { Hello as shk_Hello } from './shk.js'; // relocate-fns
+import { ok_align, ok_gend, ok_race, ok_role, str2align, str2gend, str2race, str2role } from './roles.js';
+import { game } from './gstate.js';
+import { PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_MAIL_DAEMON } from './pm.generated.js';
 
 // C ref: role.c:1358 clearrolefilter().  RSF_filter falls through to RSF_ROLE,
 // so it clears the mask AND every role flag — a full reset.
@@ -25,10 +26,9 @@ export function clearrolefilter(which) {
     }
 }
 
-// C role.c:1284: use the shared parser with this chargen run's filter state.
-export function setrolefilter(bufp) {
-    return setrolefilter_shared(bufp, rfilter);
-}
+// C role.c:1284 setrolefilter(): single port lives in roles.js (its default
+// filter is gr.rfilter, the same object as chargen_ui's rfilter).
+export { setrolefilter } from './roles.js';
 
 // C ref: role.c:1303 gotrolefilter().
 export function gotrolefilter() {
@@ -37,23 +37,9 @@ export function gotrolefilter() {
     return false;
 }
 
-export function ok_role(rolenum, racenum, gendnum, alignnum) {
-    return ok_role_shared(rolenum, racenum, gendnum, alignnum, rfilter);
-}
-
-export function ok_race(rolenum, racenum, gendnum, alignnum) {
-    return ok_race_shared(rolenum, racenum, gendnum, alignnum, rfilter);
-}
-
-export function ok_gend(rolenum, racenum, gendnum, _alignnum) {
-    // C role.c:1107: share both fixed and random checks with this UI's filter.
-    return ok_gend_shared(rolenum, racenum, gendnum, _alignnum, rfilter);
-}
-
-export function ok_align(rolenum, racenum, _gendnum, alignnum) {
-    // C role.c:1172: share the compatibility checks with this UI's filter.
-    return ok_align_shared(rolenum, racenum, _gendnum, alignnum, rfilter);
-}
+// C role.c:1005/1072/1107/1172 ok_role/ok_race/ok_gend/ok_align(): single
+// port lives in roles.js, filtering on gr.rfilter (shared with chargen_ui).
+export { ok_role, ok_race, ok_gend, ok_align };
 
 // pick_*: rigid (only one option → return it AND consume rn2(1) for parity)
 // or random (consume rn2(n_valid) — caller-supplied via chargenRng).
@@ -113,16 +99,61 @@ export function rigid_role_checks(state, tracker) {
     }
 }
 
-// C role.c:1698-1720: suffix namespaces are tried in this order, even for '*'.
-export function plnamesuffix(name, state) {
-    const [base, ...tokens] = name.split('-');
+// C hacklib.c:601 findword(): word of wordlen chars in a space-separated list.
+function findword(list, word, wordlen, ignorecase) {
+    const w = word.slice(0, wordlen);
+    for (const p of list.split(' ')) {
+        if (!p) continue;
+        if (ignorecase ? p.toLowerCase() === w.toLowerCase() : p === w) return p;
+    }
+    return null;
+}
+
+// C role.c:1665-1720 plnamesuffix().  opts.genericusers is sysopt.genericusers
+// (null in this build's sysopt) and opts.plnamelen is gp.plnamelen (usually 0).
+// A "" result means plname was cleared so the caller must prompt (askname()).
+// Suffix namespaces are tried in this order, even for '*'.
+export function plnamesuffix(name, state, opts = {}) {
+    const genericusers = opts.genericusers || null;
+    let plnamelen = opts.plnamelen || 0;
+    if (genericusers) {
+        if (genericusers[0] === '*') {
+            name = '';
+        } else {
+            const e = name.indexOf('-', plnamelen);
+            const i = e >= 0 ? e : name.length;
+            if (findword(genericusers, name, i, false)) name = '';
+        }
+        if (!name) plnamelen = 0;
+    }
+    if (!name) return '';
+    const head = name.slice(0, plnamelen);
+    const [rest, ...tokens] = name.slice(plnamelen).split('-');
     for (const token of tokens) {
         for (const [key, parse] of [['role', str2role], ['race', str2race], ['gender', str2gend], ['align', str2align]]) {
             const value = parse(token);
             if (value !== ROLE_NONE) { state[key] = value; break; }
         }
     }
-    return base.replace(/,/g, ' ');
+    return (head + rest).replace(/,/g, ' ');
 }
 
-export function Hello(mtmp) { return shk_Hello(mtmp); }
+/* C role.c:2119-2140  Hello(mtmp) — the greeting word, by role.  Role_switch is
+ * gu.urole.mnum, which js/roles.js:595 stores on game.urole.mnum from the same
+ * PM_* monster indices. */
+export function Hello(mtmp) {
+    switch ((game.urole?.mnum) | 0) {
+    case PM_KNIGHT:
+        return 'Salutations'; /* Olde English */
+    case PM_SAMURAI:
+        return (mtmp && (mtmp.mnum | 0) === PM_SHOPKEEPER)
+            ? 'Irasshaimase' : 'Konnichi wa'; /* Japanese */
+    case PM_TOURIST:
+        return 'Aloha'; /* Hawaiian */
+    case PM_VALKYRIE:
+        // C role.c:2135: MAIL_STRUCTURES is defined in include/global.h:430.
+        return (mtmp && (mtmp.mnum | 0) === PM_MAIL_DAEMON) ? 'Hallo' : 'Velkommen'; /* Norse */
+    default:
+        return 'Hello';
+    }
+}

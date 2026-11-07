@@ -1,14 +1,19 @@
 // dbridge.js — C ref: dbridge.c.
-import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, IS_DRAWBRIDGE, IS_WALL, IS_WATERWALL, Is_juiblex_level as Is_juiblex_level_real, LAVAPOOL, MOAT, STONE, W_NONDIGGABLE, isok } from './const.js';
+import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, IS_DRAWBRIDGE, IS_WALL, IS_WATERWALL, Is_juiblex_level as Is_juiblex_level_real, LAVAPOOL, LAVAWALL, MOAT, POOL, STONE, WATER, W_NONDIGGABLE, isok } from './const.js';
 import { is_ice as is_ice_real } from './engrave.js';
 import { game } from './gstate.js';
-import { is_pool as is_pool_real } from './look.js';
-import { pooleffects_is_lava as is_lava_real } from './cmd.js'; // relocate-fns
 import { impossible } from './pline.js';
 
 /* C ref: dbridge.c:84-95 is_pool(x,y) — POOL/MOAT/WATER or is_moat(). */
 export function is_pool(x, y) {
-    return is_pool_real(x, y);
+    if (!isok(x, y))
+        return false;
+    const ltyp = game.level.at(x, y).typ | 0;
+    /* The ltyp == MOAT is not redundant with is_moat, because the
+     * Juiblex level does not have moats, although it has MOATs. */
+    if (ltyp === POOL || ltyp === MOAT || ltyp === WATER || is_moat(x, y))
+        return true;
+    return false;
 }
 
 function Is_juiblex_level(uz) { return Is_juiblex_level_real(uz); }
@@ -184,5 +189,15 @@ export function create_drawbridge(x, y, dir, flag) {
 }
 
 export function is_lava(x, y) {
-    return is_lava_real(x, y);
+    if (!isok(x, y))
+        return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc)
+        return false;
+    const ltyp = loc.typ | 0;
+    if (ltyp === LAVAPOOL || ltyp === LAVAWALL
+        || (ltyp === DRAWBRIDGE_UP
+            && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_LAVA))
+        return true;
+    return false;
 }

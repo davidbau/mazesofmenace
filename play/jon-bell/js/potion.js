@@ -3,7 +3,7 @@
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
 import { ledger_no } from './bones.js';
-import { You, Your, You_feel as You_feel_real } from './pline.js';
+import { You, Your, You_feel } from './pline.js';
 import { a_monnam } from './mhitm.js';
 import { make_blinded, resist, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { explode, explode_oil } from './explode.js';
@@ -110,7 +110,7 @@ import { obj_extract_self } from './mklev.js';
 import { freeinv, useupall } from './cmd.js';
 import { _pickup_burden_level } from './wizcmds.js';
 import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
-import { makeplural as makeplural_objnam } from './objnam.js';
+import { makeplural, makeplural as makeplural_objnam } from './objnam.js';
 import { ACID_RES, ANTIMAGIC, MAX_OIL_IN_FLASK } from './const.js';
 import { NOTELL, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, has_mgivenname,
          W_SADDLE, OBJ_INVENT, OBJ_FREE } from './const.js';
@@ -1885,19 +1885,7 @@ export function eyecount(mondata) {
     const pmidx = mondata?.pmidx | 0;
     return (pmidx === PM_CYCLOPS || pmidx === PM_FLOATING_EYE) ? 1 : 2;
 }
-/* C objnam.c:2833-3020 makeplural() is fully ported in js/objnam.js and
- * exported; this file carried a file-local throwing stub of the same name,
- * which SHADOWED it for every call site here (fountain.c:44's hallucinatory
- * snake plural, potion.c:1267's lycanthrope form, the floating-eye "eyes").
- * Re-exported through a wrapper rather than an import so the four existing
- * call sites keep their unqualified spelling. */
-function makeplural(word) {
-    return makeplural_objnam(word);
-}
 /* C ref: pline.c:380-388 Your(msg, ...) — canonical port imported from js/pline.js. */
-async function You_feel(msg, ...args) {
-    return You_feel_real(msg, ...args);
-}
 function Your1(msg) {
     return pline('Your ' + msg);
 }

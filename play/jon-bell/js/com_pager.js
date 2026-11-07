@@ -552,7 +552,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
     }
     const rowStatus = (r) => docorner_status_row(r, rows3 ? _status_sgr(st3[r - 21])
         : (r === 22 ? _statusLine1() : _statusLine2(uacStep0, pwOverride)));
-    const statusStillBlank = (game._statusBlankAfterDocrt === true && statusClipCol == null)
+    const statusStillBlank = (game._statusBlankAfterDocrt === true)
         || (!!_prevRows && _prevRows.length >= 24
         && (rows3 ? _prevRows[21] === '' : true)
         && _prevRows[22] === '' && _prevRows[23] === '' && statusClipCol == null
@@ -1157,7 +1157,12 @@ export async function topl_more_page(msg, uacAtCapture) {
          * pline.c:273-274); only map cells actually drawn can erase it. */
         const row1 = game._status1Whole ? _status_row1_whole_with_tail(st3[0])
             : _status_row1_map_overlay(st3[0]);
-        output = output.replace(/[^\n]*\n$/, '') + row1 + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
+        if ((g._status_blanked || g._statusBlankAfterDocrt === true) && g.u && (g.u.uhp | 0) === -1) {
+            /* botl.c:259 declines while u.uhp == -1: the three status rows stay blank */
+            output = output.replace(/[^\n]*\n$/, '') + '\n\n';
+        } else {
+            output = output.replace(/[^\n]*\n$/, '') + row1 + '\n' + _status_sgr(st3[1]) + '\n' + _status_sgr(st3[2]);
+        }
     } else if (g._status_blanked || g._statusBlankAfterDocrt === true) {
         /* restore.c:932 docrt() -> cls() blanked the status rows, and the
          * welcome pline's flush could not repaint them: botl.c:259 declines

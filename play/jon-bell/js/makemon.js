@@ -1,6 +1,6 @@
 import { impossible_sync } from './display.js';
 import { pline_The, urgent_pline } from './pline.js';
-import { pline_mon as pline_mon_real } from './pline.js';
+import { pline_mon } from './pline.js';
 import { Mgender } from './do_name.js';
 import { ledger_no } from './bones.js';
 import { On_W_tower_level, has_ceiling, dunlevs_in_dungeon } from './dungeon.js';
@@ -6179,7 +6179,6 @@ function monsndx_mm(ptr) {
 /* C pline_mon(mon, fmt, ...) — callers await the message before changing form. */
 /* C pline.c:138-146: set_msg_xy to the hero (0,0) or the monster's square;
  * vpline's accessiblemsg prefix reads it. */
-function pline_mon(mtmp, msg, ...args) { return pline_mon_real(mtmp, msg, ...args); }
 
 /**
  * C makemon.c:2049 grow_up(mtmp, victim) — a monster levels up (killed a

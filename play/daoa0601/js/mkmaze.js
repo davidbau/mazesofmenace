@@ -33,7 +33,7 @@ import { makemon, makemonAt, setMonsterMalign } from './makemon.js';
 import { occupied } from './mkroom.js';
 import { objectProb } from './o_init.js';
 import { upstart } from './hacklib.js';
-import { addFruit } from './options.js';
+import { addFruit } from './message_types.js';
 import { MONSTER_NAME } from './monster_data.js';
 import { nameOrc, randomOrcName, setMonsterGivenName } from './do_name.js';
 import { addObjectToMonsterInventory } from './steal.js';
@@ -44,7 +44,7 @@ import { premap_detect } from './detect.js';
 import { is_branchlev, placeHeroOnLevel, specialLevelAt } from './dungeon.js';
 import { impossible } from './diagnostics.js';
 import { LUA_SOURCES } from './generated/lua_sources.js';
-import { NO_TRAP, PM_MINOTAUR, countLevelFeatures, mkstairs, mktrap, place_branch, placeBranchAt } from './mklev.js';
+import { NO_TRAP, PM_MINOTAUR, countLevelFeatures, mkstairs, mktrap, place_branch } from './mklev.js';
 import { stairway_find_dir } from './stairs.js';
 import { isRoom } from './map_types.js';
 import { sendMonsterToLimbo, mnearto, dealWithMonsterOvercrowding, moveMonsterNextToHero } from './mon.js';
@@ -317,7 +317,7 @@ async function putLregionHere(x, y, nlx, nly, nhx, nhy, type, oneshot, destinati
         await mkportal(x, y, destination.dnum, destination.dlevel);
     }
     else if (type === LR_BRANCH) {
-        await placeBranchAt(is_branchlev(game.u.uz), x, y);
+        await place_branch(is_branchlev(game.u.uz), x, y);
     }
     else if (type === LR_DOWNSTAIR || type === LR_UPSTAIR) {
         await mkstairs(x, y, type === LR_UPSTAIR, null);

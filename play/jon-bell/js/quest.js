@@ -109,7 +109,7 @@ function _helpless(mtmp) {
 // based on whether the nemesis is helpless and nearby.
 export function quest_stat_check(mtmp) {
     // C: if (mtmp->data->msound == MS_NEMESIS)  — plain deref, no guard
-    if (mtmp.data.msound === 37) { // MS_NEMESIS = 37
+    if (mtmp.data.msound === MS_NEMESIS) {
         // C: Qstat(in_battle) = (!helpless(mtmp) && monnear(mtmp, u.ux, u.uy));
         //    where Qstat(x) == svq.quest_status.x  (single faithful path, no fallback)
         const is_helpless = _helpless(mtmp);

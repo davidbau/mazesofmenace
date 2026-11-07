@@ -1,11 +1,11 @@
 // mthrowu.js — C ref: mthrowu.c.
 import { exercise } from './attrib.js';
-import { ACID_RES, A_CON, A_STR, IS_OBSTRUCTED, KILLED_BY_AN, LAVAWALL, W_WEP, isok } from './const.js';
+import { ACID_RES, A_CON, A_STR, IS_OBSTRUCTED, KILLED_BY_AN, LAVAWALL, OBJ_DELETED, W_WEP, isok } from './const.js';
 import { losehp } from './hack.js';
 import { game } from './gstate.js';
 import { distmin } from './hacklib.js';
 import { hates_silver as hates_silver_thitu } from './makemon.js';
-import { dealloc_obj } from './mklev.js';
+import { obfree } from './shk.js';
 import { sobj_at } from './invent.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { killer_xname as _thitu_killer_xname, an, doname, mshot_xname, obj_is_pname, the, vtense } from './objnam.js';
@@ -316,9 +316,17 @@ export async function m_useup(mon, obj) {
     }
 }
 
+/* m_useupall — C ref: nethack-c/src/mthrowu.c:1153-1158:
+ *     extract_from_minvent(mon, obj, TRUE, FALSE);
+ *     obfree(obj, (struct obj *) 0);
+ * obfree() must precede deallocation: even an unbilled object triggers the
+ * current shop's lookup (shk.c:1214-1217), applying an angry keeper's surcharge.
+ * Billed objects instead remain on billobjs. Update the bridge deletion count
+ * only when obfree actually queued the object for deletion. */
 export async function m_useupall(mon, obj) {
     await extract_from_minvent(mon, obj, true, false);
-    await dealloc_obj(obj);
+    await obfree(obj, null);
+    if (obj.where !== OBJ_DELETED) return;
     const store = game.__bridge__ || (game.__bridge__ = {});
     const key = 'objs_deleted.count';
     const cur = store[key] !== undefined ? Number(store[key]) : 0;

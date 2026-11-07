@@ -652,6 +652,12 @@ async function do_oname(obj) {
         /* C do_name.c:351 display_nhwindow(WIN_MESSAGE, FALSE) pages it */
         if (game._pending_message)
             await force_more_pages(game._pending_message);
+        /* topl.c more():232-235 — ESC at this display_nhwindow page sets WIN_STOP,
+         * so the "You engrave" pline below is swallowed. */
+        if (game._topl_win_stop_armed) {
+            game._topl_win_stop_armed = false;
+            game._topl_win_stop = true;
+        }
         await pline('You engrave: "%s".', slipped);
         const conduct = (game.u.uconduct ||= {});
         conduct.literate = (conduct.literate | 0) + 1; /* C do_name.c:356 */
@@ -795,6 +801,8 @@ export function pmname(pm, mgender) { return monPmname(pm.pmidx, mgender); }
  * Any other input is C's plain colorpref arm — hcolor_real returns it as-is
  * (or draws when hallucinating / null) — never the "" this used to collapse
  * to, which skipped the hallucination draw entirely. */
+const NH_AMBER = 'amber';
+
 export function hcolor(color) {
     const name = color === NH_BLUE ? "blue"
         : color === NH_RED ? "red"
@@ -802,6 +810,7 @@ export function hcolor(color) {
         : color === NH_BLACK ? "black"
         : color === NH_SILVER ? "silver"
         : color === NH_GOLDEN ? "golden"
+        : (color === NH_AMBER || color === "amber") ? "amber"
         : "";
     return name ? hcolor_real(name) : hcolor_real(color);
 }

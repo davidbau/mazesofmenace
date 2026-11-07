@@ -41,7 +41,8 @@
 //   - "race forces chaotic" / "role forces lawful" style lines have 4 spaces
 //     of left-padding; they're emitted as \x1b[(indent+4)C + content.
 
-import { an as an_objnam } from './objnam.js';
+import { an } from './objnam.js';
+import { gr as roleGlobals } from './roles.js';
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
@@ -164,7 +165,9 @@ const RSF_ROLE = 1, RSF_RACE = 2, RSF_GENDER = 3, RSF_ALGNMNT = 4,
 // chargen entry point clears it before it starts (see resetRfilter()).
 // ──────────────────────────────────────────────────────────────────────────
 
-const rfilter = { roles: [], mask: 0 };
+// One object with roles.js's gr.rfilter (C has a single gr.rfilter), so the
+// role.c ok_*/setrolefilter port in roles.js is the only body.
+const rfilter = roleGlobals.rfilter;
 
 
 function resetRfilter() { clearrolefilter(RSF_filter); }
@@ -194,9 +197,6 @@ resetRfilter();
 function isVowel(c) {
     return c === 'a' || c === 'e' || c === 'i' || c === 'o' || c === 'u'
         || c === 'A' || c === 'E' || c === 'I' || c === 'O' || c === 'U';
-}
-function an(word) {
-    return an_objnam(word);
 }
 
 // roleLabel: role name with optional female substitute, gender-aware
@@ -1817,10 +1817,13 @@ export async function playChargen(ctx) {
     // C's `goto makepicks` keeps whatever the player filtered (role.c:2705) —
     // so the recursive call below passes keepFilter.
     if (!ctx.keepFilter) {
+        const rc = game.rc_rolefilter
+            ? { mask: game.rc_rolefilter.mask, roles: [...game.rc_rolefilter.roles] }
+            : null;
         resetRfilter();
-        if (game.rc_rolefilter) {
-            rfilter.mask = game.rc_rolefilter.mask;
-            rfilter.roles = [...game.rc_rolefilter.roles];
+        if (rc) {
+            rfilter.mask = rc.mask;
+            for (let i = 0; i < rc.roles.length; i++) rfilter.roles[i] = rc.roles[i];
         }
     }
     const st = {

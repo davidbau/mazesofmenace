@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { pline_mon as pline_mon_real } from './pline.js';
+import { pline_mon } from './pline.js';
 import { ledger_no } from './bones.js';
 import { In_W_tower_wz } from './dochug.js';
 // dog.c — Starting pet and pet AI helpers.
@@ -57,7 +57,8 @@ import { ESHK, EPRI, EGD } from './const.js';      /* C mextra.h accessors */
 import { picked_container, deliver_obj_to_mon } from './dokick.js';    /* C shk.c:3084 */
 /* C steal.c:851-871 mdrop_special_objs — canonical special-inventory drop
  * handling; this module's keepdogs() steed branch reaches it directly. */
-import { mdrop_special_objs as mdrop_special_objs_real } from './steal.js';
+import { mdrop_special_objs } from './steal.js';
+export { mdrop_special_objs } from './steal.js';
 import { obfree } from './dokick.js';
 import { set_residency, make_happy_shk } from './shk.js';
 import { in_rooms } from './hack.js'; /* C shk.c:1395/1907 */
@@ -111,12 +112,6 @@ import { mbirth_limit, rndmonstAdj,
          set_malign as _set_malign_real } from './makemon.js'; /* C makemon.c */
 import { spell_skilltype } from './spell.js';           /* C spell.c:855 */
 import { P_SKILL } from './skills.js';                  /* C attrib.c-adjacent skill table */
-/* C pline.c:132 pline_mon(mon, fmt, ...) — pline() preceded by set_msg_xy() for
- * message-origin coordinates and accessibility, matching
- * the same body js/mklev.js:14496 carries. */
-function pline_mon(mtmp, fmt, ...args) {
-    return pline_mon_real(mtmp, fmt, ...args);
-}
 /* C youprop.h:116-120 — Hallucination is (HHallucination && !Halluc_resistance),
  * where HHallucination is u.uprops[HALLUC].intrinsic (INTRINSIC only; there is
  * no EHallucination in 5.0).  This is the live spelling — the one js/potion.js
@@ -1260,11 +1255,7 @@ function _ad_prop_on(p) {
     const r = game.u?.uprops?.[p];
     return !!r && !!((r.intrinsic | 0) || (r.extrinsic | 0)) && !(r.blocked | 0);
 }
-/* mdrop_special_objs: LOCAL throwing stub DELETED — use steal.js's canonical
- * body at keepdogs(). */
-export async function mdrop_special_objs(mtmp) {
-    return await mdrop_special_objs_real(mtmp);
-}
+/* mdrop_special_objs: forwarded from steal.js canonical body directly. */
 
 /* C dungeon.c:1376 ledger_no(lev) = lev->dlevel + svd.dungeons[lev->dnum].ledger_start
  * C dungeon.c:1402 ledger_to_dnum / :1422 ledger_to_dlev — the inverses.
@@ -1276,17 +1267,39 @@ export async function mdrop_special_objs(mtmp) {
  * migrate_to_level's stub was even entered.  js/mklev.js:2485 and
  * js/cmd.js:5626 each keep the same one-liner file-locally; this is the third
  * copy of the C macro, not a stand-in. */
+/* C end.c:394 panic() for a window-inited game: pending toplines are paged
+ * out first (they were already on the tty), then raw_print("\r\nOops...")
+ * leaves the final screen.  After wait_synch() dismisses it, the process
+ * exits without reading any further keys. */
 export async function panic(_msg) {
     await flush_pending_messages();
     game.program_state.panicking = 1;
     raw_print('');
     raw_print('Oops...');
+    /* C end.c:406 wait_synch(): raw_print bumped ttyDisplay->rawprint, so
+     * tty_wait_synch (wintty.c:3628-3631) -> getret() (wintty.c:764-781) ->
+     * xwaitforspace(" ") (getline.c:230-257, cbreak): Return/Newline, ESC,
+     * space or the dismiss_more key end the wait; any other key rings the
+     * bell and is read again.  Keys after that one are never read: the
+     * process exits below, so they make no frames.  Input running out
+     * (EOF/hangup, getline.c:236-239) also ends the wait, and the error save
+     * below is still written before the process goes. */
+    let hangup = null;
+    for (;;) {
+        let raw;
+        try { raw = await nhgetch(); } catch (e) { hangup = e; break; }
+        const c = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+        if (c === 10 || c === 13 || c === 27 || c === 32
+            || c === (game._ttyDismissMore | 0))
+            break;
+    }
     /* C end.c:445-447 set_error_savefile() + dosave0(): the panic save is
      * "<savefile>.e"; the next process's check_panic_save() (files.c:1312)
      * finds it.  Marker only: the error save is never restored. */
     if (game.program_state.something_worth_saving)
         vfsWriteFile(savefile_name(String(game.plname || '').split('-')[0].replace(/,/g, ' ')) + '.e', '1');
-    await nhgetch();
+    /* The process is gone (end.c:467 NH_abort / really_done). */
+    if (hangup) throw hangup;
     const { nh_terminate } = await import('./end.js');
     await nh_terminate(1, 'panic');
 }
@@ -1413,7 +1426,7 @@ function mon_leave(mtmp) {
         const cnt = count_wsegs(mtmp), mx = mtmp.mx, my = mtmp.my;
         num_segs = Math.min(cnt, MAX_NUM_WORMS - 1);
         wormgone(mtmp);
-        if (mx) place_monster(mtmp, mx, my);
+        if (mx) place_monster(mtmp, mx, my, !mtmp._mapRemoved);
     }
 
     return num_segs;

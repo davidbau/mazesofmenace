@@ -20,6 +20,7 @@ import {
     COULD_SEE,
     IN_SIGHT,
     LFILE_EXISTS,
+    LS_MONSTER,
     M_AP_TYPE,
     ROWNO,
     VISITED,
@@ -53,7 +54,9 @@ import { adj_erinys, hideunder, restrap, restore_cham } from './mon.js';
 import { hides_under, is_hider } from './mondata.js';
 import { S_EEL, S_MIMIC } from './monsters.js';
 import { init_oclass_probs } from './o_init.js';
-import { defineObjAliases } from './obj.js';
+import { defineObjAliases, free_omid } from './obj.js';
+import { fruitadd } from './fruit.js';
+import { note_unported } from './unported.js';
 import { defineObjclassAliases, GRAPPLING_HOOK, PICK_AXE } from './objects.js';
 import { set_mimic_sym } from './makemon_create.js';
 import { restpriest } from './priest.js';
@@ -422,6 +425,15 @@ export async function dorestore(state = game) {
         state.program_state.restoring = wasRestoring;
     }
 
+    // C ref: light.c relink_light_sources() -> find_mid(nid, FM_EVERYWHERE),
+    // whose FM_YOU arm answers m_id 1 with &youmonst. A light emitted by the
+    // polymorphed hero was saved with the hero's monster record, which the
+    // snapshot does not restore as youmonst, so point it back at youmonst.
+    for (let light = state.gl?.light_base; light; light = light.next) {
+        if (light.type === LS_MONSTER && light.id?.m_id === 1)
+            light.id = state.youmonst;
+    }
+
     // C ref: restore.c dorecover():905-906. The current symbol set is not
     // saved; startup options selected the primary set, so a game saved on
     // the Rogue level switches to its symbols here, as goto_level() does on
@@ -456,6 +468,23 @@ export async function dorestore(state = game) {
     state.level.buriedobjlist = restobjchn(state.level.buriedobjlist, state);
     state.gb ??= {};
     state.gb.billobjs = restobjchn(snapshot.billobjs ?? null, state);
+
+    // C ref: restore.c getlev():1181-1221, the hero's level under
+    // REST_CURRENT_LEVEL. The snapshot keeps level.monsters, the steed and
+    // the holder, so place_monster(), place_wsegs() and the u.usteed_mid and
+    // u.ustuck_mid fixups have no work. dorecover() reads the level at the
+    // turn it was saved, so `elapsed` is zero: no mon_catchup_elapsed_time()
+    // and no hide_monst(). restore_cham() still runs: a vampire that rose in
+    // its own form with cham NON_PM may shapeshift again after the restore.
+    for (let mtmp = state.level.monlist; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.isshk) set_residency(mtmp, false, state);
+        if (mtmp !== state.u.usteed && hides_under(mtmp.data)
+            && mtmp.mundetected) {
+            // restore.c:1197 discards hideunder()'s result.
+            await hideunder(mtmp, { state });
+        }
+        await restore_cham(mtmp, state);
+    }
 
     // C ref: restore.c getlev():1226 rest_bubbles(), after the hero's
     // level's monsters and regions, rebuilds the Plane of Water's or Air's
@@ -604,6 +633,40 @@ export function restobjchn(first, state) {
             context.spbook.book = otmp;
     }
     return first;
+}
+
+// C ref: restore.c ghostfruit() (500-512). A slime mold read from a bones
+// file names its fruit by the dead hero's fid; look that up in the old chain
+// getlev() loaded and give the object this game's fid for the same name,
+// adding the name to this game's chain if it is new.
+export function ghostfruit(otmp, oldfruit, state) {
+    const oldf = oldfruit.find((fruit) => fruit.fid === otmp.spe);
+    if (!oldf) {
+        note_unported('pline.c impossible');
+        return;
+    }
+    otmp.spe = fruitadd(oldf.fname, null, { state });
+}
+
+// C ref: restore.c reset_oattached_mids() (1509-1530), which getlev() calls
+// last of all. Only a bones file's floor objects are touched: a corpse's or
+// statue's remembered monster stops being anyone's pet or anyone in
+// particular, and an object attached to a monster id (a ghost's corpse) is
+// pointed at that monster's new id, or detached if the monster was not
+// restored. `idMap` maps each saved id to the restored monster or object.
+export function reset_oattached_mids(idMap, state = game) {
+    for (let otmp = state.level?.objlist ?? null; otmp; otmp = otmp.nobj) {
+        const omonst = otmp.oextra?.omonst;
+        if (omonst) {
+            omonst.m_id = 0;
+            omonst.mpeaceful = omonst.mtame = 0; /* pet's owner died! */
+        }
+        if (otmp.oextra?.omid) {
+            const restored = idMap.get(otmp.oextra.omid);
+            if (restored) otmp.oextra.omid = restored.m_id ?? restored.o_id;
+            else free_omid(otmp);
+        }
+    }
 }
 
 // C ref: restore.c restmon() (307-373). The snapshot keeps nmon and every
