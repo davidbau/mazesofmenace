@@ -25,17 +25,17 @@ import { paranoidQuery, commandResultCancelled, commandResultFailed, resetOccupa
 import { makeBlinded } from './potion.js';
 import { gulp_blnd_check, holdingMonsterName, } from './mhitu.js';
 import { BOULDER, CORPSE, CRYSKNIFE, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LEASH, LOADSTONE, MEATBALL, MEAT_RING, MEAT_STICK, TIN, WORM_TOOTH } from './object_data.js';
-import { makePlural, withIndefiniteArticle, ownedObjectName, verbForSubject, objectCombatName, objectDescription, objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle, objectMonsterName, ownedObjectAction, definiteObjectAction } from './objnam.js';
+import { makePlural, withIndefiniteArticle, ownedObjectName, verbForSubject, objectCombatName, objectDescription, objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle, ownedObjectAction, definiteObjectAction } from './objnam.js';
 import { objectTypeKnown, oinit } from './o_init.js';
 import { billForObject, chargeAlteredUnpaidObject, deleteObject, objectIsUnpaid, stolenValue, sellHeroDroppedObject, SELL_DELIBERATE, SELL_NORMAL, setSellDisposition, setShopResidency, fixShopDamage, dopay } from './shk.js';
 import { d, rn1, rn2, rnd } from './rng.js';
-import { callObjectType, displayColorName, displayLiquidName, monsterName, randomDisplayMonsterName } from './do_name.js';
+import { callObjectType, displayColorName, displayLiquidName, monsterName, objectMonsterName, randomDisplayMonsterName } from './do_name.js';
 import { threateningMonsterNearby, loseHeroHp, impactDisturbsZombies, switchHeroTerrain, burnAwayHeroSlime, blockMonsterNotices, noticeAllMonsters, unblockMonsterNotices, heroLocomotion, nearCapacity, checkSpecialRoom, endVoluntaryMultiTurn, applyHeroLiquidEffects, SLT_ENCUMBER } from './hack.js';
 import { applyFloorEffects } from './floor_effects.js';
 import { buryFloorObjectsAt, addBuriedObject, buriedBallToPunishment, applyPickAxeDirection } from './dig.js';
 import { canSpotMonster, newsym, docrt, consumeHallucinatedMenuObjectGlyph, OBJECT_CLASS_SYMBOLS, map_object, flush_screen, reglyphSymbolSet, } from './display.js';
 import { cansee, vision_note_blocker_change, vision_recalc, vision_reset, vision_reset_new_level } from './vision.js';
-import { finishEnvironmentalMonsterDeath, wakeMonstersNearWithMessages, monsterInAir, changeMonsterForm, healMonster, sendMonsterToLimbo, moveMonsterNextToHero, setHeroGrip, monsterDeathCount, killGenocidedMonsters, purgeDeadMonsters, restoreMonsterShape, finishHeroMonsterKill, isRider, zombieForm, } from './mon.js';
+import { finishEnvironmentalMonsterDeath, wakeMonstersNearWithMessages, monsterInAir, changeMonsterForm, healMonster, sendMonsterToLimbo, moveMonsterNextToHero, setHeroGrip, monsterDeathCount, killGenocidedMonsters, purgeDeadMonsters, restoreMonsterShape, finishHeroMonsterKill, zombieForm, } from './mon.js';
 import { heroSpecies, heroFormSticks, heroIsPolymorphed, body_part, mbodypart } from './polyself.js';
 import { rollPhysicalWeaponDamage } from './weapon.js';
 import { useUpFloorObject, stack_object } from './invent.js';
@@ -77,7 +77,8 @@ import { resetTrapSetting, bringLeashedFollowers } from './apply.js';
 import { maybeResetPick } from './lock.js';
 import { addExperience, checkExperienceLevel } from './exper.js';
 import { runDueTimers, restoreLevelTimers, objectTimers, scheduleObjectTimer } from './timeout.js';
-import { restoreLevelChains, restoreMonsterCover, hideMonsterOnRestore, restoreMonsterWormHeads } from './restore.js';
+import { restoreLevelChains, restoreMonsterCover, restoreMonsterWormHeads } from './restore.js';
+import { hideMonsterOnRestore } from './mon.js';
 import { restoreLevelPetHistory, restoreObjectPetHistory } from './save.js';
 import { restoreLevelLightSources } from './light.js';
 import { finishLivingGame } from './end.js';
@@ -92,7 +93,7 @@ import { deliverMigratingMonsters, discardMigrations, updateMonsterLastMove, cat
 import { deliverSpecialLevelMessages } from './questpgr.js';
 import { descendFromLevitation } from './levitation_commands.js';
 import { do_attack, hitMonsterWithHeroObject } from './uhitm.js';
-import { monsterSpeciesHidesOnCeiling, monsterIsDisplacer } from './mondata.js';
+import { monsterSpeciesHidesOnCeiling, monsterIsDisplacer, monsterIsRider } from './mondata.js';
 import { LL_ACHIEVE, LL_DEBUG, G_GENOD, OBJECT_TIMER_KIND } from './const.js';
 import { rotCorpse } from './corpse_rot.js';
 import { canSeeMonster } from './display.js';
@@ -135,6 +136,7 @@ export async function dodrop() {
             setSellDisposition(SELL_NORMAL);
     }
 }
+// C do.c:boulder_hits_pool().
 export async function dropBoulderIntoLiquid(boulder, x, y, state = game, { publish = plineWithContinuation, random = rn2, pushing = false, } = {}) {
     requireLiveGame(state);
     if (!boulder || boulder.otyp !== BOULDER) {
@@ -247,11 +249,13 @@ export async function tryCallObjectType(object, state = game) {
     return callObjectType(object, state);
 }
 const FRUIT_DEFAULT = 'slime mold';
+// Part of C do.c:polymorph_sink(): the In_hell() altar-alignment test.
 // C turn_undead/other precedent: Gehennom by dungeon name.
 function inGehennom(state) {
     const dnum = state.u?.uz?.dnum ?? -1;
     return state.dungeons?.[dnum]?.dname === 'Gehennom';
 }
+// Part of C do.c:dosinkring(): the makeplural(pl_fruit) smell message.
 function fruitNamePlural(state) {
     return makePlural(state.fruitName || FRUIT_DEFAULT);
 }
@@ -341,6 +345,7 @@ async function teleportSink(state) {
     }
     return false;
 }
+// C do.c:dosinkring().
 export async function dropRingIntoSink(object, { state = game, publish = plineWithContinuation } = {}) {
     // Full world mutation: terrain, floor inventory, burial, shop bills.
     requireLiveGame(state);
@@ -664,6 +669,7 @@ export async function dropInventoryObjectAtHero(object, { state = game, publish 
     }
     await dropObjectAtHero(object, { state, publish });
 }
+// C do.c:dropz().
 export async function dropObjectAtHero(object, { impact = false, state = game, publish = plineWithContinuation } = {}) {
     requireLiveGame(state);
     const hero = state.u;
@@ -749,6 +755,7 @@ function isPolymorphFood(object) {
         && (is_shapeshifter(object.corpsenm)
             || (MONSTER_ATTACKS[object.corpsenm] || []).some(([, damageType]) => damageType === AD_POLY));
 }
+// C do.c:engulfer_digests_food().
 async function engulferDigestsFood(object, { state, publish }) {
     const swallower = state.u.ustuck;
     if (!swallower || !monsterDigests(swallower)
@@ -831,6 +838,7 @@ function* crysknifeReversions(object) {
             yield member;
     }
 }
+// Part of C do.c:obj_no_longer_held(): the CRYSKNIFE revert to worm tooth.
 function revertCrysknife(object) {
     object.otyp = WORM_TOOTH;
     object.oerodeproof = false;
@@ -842,6 +850,7 @@ function revertCrysknife(object) {
     if (object.plural !== undefined)
         object.plural = makePlural(name);
 }
+// Port only: created objects must be free and unbilled.
 export function assertCreatedObject(object, state = game) {
     if (object.where !== 'free')
         throw new Error(`created object must be free, got ${object.where}`);
@@ -850,6 +859,7 @@ export function assertCreatedObject(object, state = game) {
             throw new Error('created object must be unbilled');
     }
 }
+// Part of C do.c:obj_no_longer_held(): synchronous form for created graphs.
 // Valid only for immediate constructor graphs. An unbilled free root cannot
 // be charged; contained descendants have no costly_alteration mutation case.
 export function createdObjectNoLongerHeld(object, state = game) {
@@ -857,6 +867,8 @@ export function createdObjectNoLongerHeld(object, state = game) {
     for (const member of crysknifeReversions(object))
         revertCrysknife(member);
 }
+// Part of C do.c:obj_no_longer_held(): synchronous variant with an
+// await-safety check.
 export function objectNoLongerHeldSynchronously(object, state = game) {
     if (!object)
         return;
@@ -960,6 +972,7 @@ export async function dropMultipleObjects() {
             setSellDisposition(SELL_NORMAL);
     }
 }
+// Part of C do.c:menu_drop(): the query_category() category prompt.
 async function dropCategories() {
     // The multi-select window's own dismissal restores the screen: C's
     // select_menu() runs the whole windowport call with bot_disabled, so
@@ -967,6 +980,7 @@ async function dropCategories() {
     // Restoring a pre-menu snapshot here would paint the old status back.
     return await chooseObjectCategories('Drop what type of items?', game.inventory);
 }
+// Part of C do.c:menu_drop(): the query_objlist() inventory pick.
 async function chooseDroppedObjects(objects) {
     if (!objects.length)
         return [];
@@ -993,6 +1007,7 @@ async function chooseDroppedObjects(objects) {
         title: 'What would you like to drop?', sections, returnCounts: true,
     });
 }
+// Part of C do.c:menu_drop(): the bypass-rescan drop loop.
 async function dropAllMatching(matches) {
     let dropped = false;
     bypassObjectList(game.inventory, false);
@@ -1010,6 +1025,8 @@ async function dropAllMatching(matches) {
     }
     return dropped;
 }
+// Part of C do.c:menu_drop(): the per-item count split; LOADSTONE keeps its
+// curse count in corpsenm.
 async function dropCount(object, count) {
     if (count > 0 && count < objectQuantity(object) && !isWeldedPrimary(object)) {
         if (object.otyp === LOADSTONE && object.cursed)
@@ -1023,6 +1040,7 @@ async function dropCount(object, count) {
     }
     return await dropHeroObject(object);
 }
+// Part of C pickup.c:allow_category(): the BUC-state categorization.
 function bucCategory(object) {
     if (object.oclass === COIN_CLASS)
         return game.flags.goldX ? 'X' : 'U';
@@ -1030,9 +1048,16 @@ function bucCategory(object) {
         object.bknown = true;
     return !object.bknown ? 'X' : object.blessed ? 'B' : object.cursed ? 'C' : 'U';
 }
+// Part of C pickup.c:allow_category(): the unpaid filter including
+// contained objects.
 function hasUnpaid(object) {
     return !!object.unpaid || !!object.contents?.some(hasUnpaid);
 }
+// Part of C pickup.c:allow_category(): the do.c drop path's form.  The
+// drop prompt answers with category letters rather than query_category's
+// menu, so this half walks the same class/BUC/unpaid/just-picked groups
+// over DropCategory values; pickup.ts:categoryMatcher is the C-shaped
+// owner over the loot menu's selections.
 function matchesCategories(object, categories) {
     const classes = categories.filter((category) => typeof category === 'number');
     if (object.oclass === COIN_CLASS && classes.length)
@@ -1043,6 +1068,8 @@ function matchesCategories(object, categories) {
         && (!categories.includes('u') || hasUnpaid(object))
         && (!categories.includes('P') || !!object.pickup_prev);
 }
+// Part of C invent.c:query_category(): the traditional/combination
+// "kinds of thing" drop prompt (with pickup.c's ggetobj() letters).
 async function traditionalDropCategories(combo) {
     const classes = [...new Set(game.inventory.map(object => object.oclass))];
     const statuses = new Set(game.inventory.map(bucCategory));
@@ -2053,6 +2080,8 @@ export function scheduleLevelChange(args, changeLevel = gotoLevel, preMessage = 
         | (arrival === 'falling' ? UTOTYPE_FALLING : 0)
         | (arrival === 'portal' ? UTOTYPE_PORTAL : 0);
 }
+// Port only: rebuilds schedule_goto()'s deferred change from saved
+// utolev/utotype.
 // C saves u.utolev/utotype, but neither callback pointers nor deferred
 // messages. Rebuild the pending arrival so the normal turn loop completes it.
 export function restoreScheduledLevelChange() {
@@ -2093,6 +2122,7 @@ export async function finishScheduledLevelChange() {
     }
     game.u.utotype = 0;
 }
+// Port only: decodes the saved utotype arrival flags.
 function restoredLevelArrival(type) {
     if (type & UTOTYPE_PORTAL)
         return 'portal';
@@ -2100,10 +2130,12 @@ function restoredLevelArrival(type) {
         return 'falling';
     return type & UTOTYPE_ATSTAIRS ? 'stairs' : 'random';
 }
+// Port only: cache key for the port's savelev()/getlev() level files.
 // The port's level files: savelev()/getlev() keyed by ledger number.
 function levelCacheKey(depth) {
     return `${depth?.dnum ?? 0}:${depth?.dlevel ?? 1}`;
 }
+// Port only: copies the hero's track for level save/restore.
 function cloneHeroTrack(track = game._heroTrack) {
     return (track || []).map(point => ({ x: point.x, y: point.y }));
 }
@@ -2206,6 +2238,7 @@ export async function dowipe(state = game) {
     await pline(`Your ${body_part(FACE, state)} is already clean.`);
     state.context.move = 1;
 }
+// C do.c:set_wounded_legs().
 export async function woundHeroLegs(side, turns, state = game, { publish = plineWithContinuation, } = {}) {
     const hero = state.u;
     state.context.botl = true;
@@ -2218,6 +2251,7 @@ export async function woundHeroLegs(side, turns, state = game, { publish = pline
         hero._woundedLegSide = 'both';
     await encumber_msg(state, publish);
 }
+// C do.c:heal_legs().
 export async function healHeroLegs(state = game, { cause = 'healing', publish = plineWithContinuation, } = {}) {
     const hero = state.u;
     if (!((hero._woundedLegTurns ?? 0) > 0) && !hero._woundedLegSide)
@@ -2237,6 +2271,7 @@ export async function healHeroLegs(state = game, { cause = 'healing', publish = 
         await encumber_msg(state, publish);
     return true;
 }
+// Part of C do.c:flooreffects(): the boulder-in-pit branch.
 // ── moved from src/js/trap.ts ──
 export async function applyBoulderPitEffects(boulder, trap, x, y, { state = game, publish = plineWithContinuation, verb = '', } = {}) {
     requireLiveGame(state);
@@ -2313,15 +2348,17 @@ export async function applyBoulderPitEffects(boulder, trap, x, y, { state = game
     await newsym(x, y);
     return { finished: true, object: null, buriedFloorObjects };
 }
-// C do.c:flooreffects() calls hmon(HMON_THROWN, 1) on a boulder settling
-// into a pit, without thitmonst()'s accuracy, Dexterity exercise, missile
-// mulch, or thrown-object passive work.
+// Part of C do.c:flooreffects(): the hmon(HMON_THROWN, 1) call on a
+// boulder settling into a pit, without thitmonst()'s accuracy, Dexterity
+// exercise, missile mulch, or thrown-object passive work.
 export async function hitMonsterWithSettlingBoulder(monster, boulder, { state = game, publish = plineWithContinuation, } = {}) {
     const hit = await hitMonsterWithHeroObject(monster, boulder, {
         state, publish, mode: 'thrown', dieRoll: 1,
     });
     return { heroDied: hit.heroDied };
 }
+// Part of C do.c:flooreffects(): the passes_walls()/throws_rocks() exemption
+// from the falling boulder.
 function ignoresFallingBoulder(mnum) {
     return monsterPassesWalls(mnum) || monsterThrowsRocks(mnum);
 }
@@ -2407,6 +2444,7 @@ export async function reviveCorpseImmediately(corpse, state = game, { announce =
     await finishBuriedRevival(event, state);
     return event;
 }
+// Port only: dispatches a claimed object timer to revive_mon()/zombify_mon().
 // Claimed timers have already been removed from the object timer chain.
 export async function runClaimedCorpseRevivalTimer(claimed, state = game, currentTurn = state.moves ?? 0) {
     const corpse = claimed?.object;
@@ -2455,14 +2493,14 @@ async function reviveMon(corpse, state, currentTurn) {
         await plineWithContinuation(message);
     let kind;
     let delay;
-    if (isRider(corpse.corpsenm) && rn2(99)) {
+    if (monsterIsRider({ mnum: corpse.corpsenm }) && rn2(99)) {
         kind = OBJECT_TIMER_KIND.REVIVE_MON;
         delay = riderRevivalTime(corpse, true);
     }
     else {
         kind = OBJECT_TIMER_KIND.ROT_CORPSE;
         if (!objectTimers(corpse).some(timer => timer.kind === kind)) {
-            await plineWithContinuation(`You feel ${isRider(corpse.corpsenm) ? 'much ' : ''}less hassled.`);
+            await plineWithContinuation(`You feel ${monsterIsRider({ mnum: corpse.corpsenm }) ? 'much ' : ''}less hassled.`);
         }
         delay = Math.max(1, d(5, 50) - (currentTurn - (corpse.age ?? currentTurn)));
     }
@@ -2486,6 +2524,7 @@ async function zombifyMon(corpse, state, currentTurn) {
     set_corpsenm(corpse, target);
     return reviveMon(corpse, state, currentTurn);
 }
+// Part of C do.c:revive_corpse(): the buried-corpse pit (OBJ_BURIED case).
 export async function finishBuriedRevival(event, state) {
     if (event.kind === 'revived' && event.buried)
         event.trap = await maketrap(event.monster.mx, event.monster.my, PIT);

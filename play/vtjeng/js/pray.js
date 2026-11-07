@@ -170,7 +170,7 @@ import {
 import { paranoid_query, y_n, yn_function } from './cmd.js';
 import { eaten_stat, floorfood } from './eat.js';
 import { newsym, shieldeff, xlev_to_rank } from './display.js';
-import { dropy, heal_legs } from './do.js';
+import { dropCommandEnv, dropy, heal_legs } from './do.js';
 import {
     disintegrate_arm,
     Amulet_off,
@@ -722,7 +722,9 @@ async function bestow_artifact(maxGiftValue, state) {
             : ansimpleoname(otmp, state);
     if (!blind) name += ` named ${bare_artifactname(otmp, state)}`;
     await at_your_feet(upstart(name), state);
-    await dropy(otmp, state);
+    // do.c dropy() reaches newsym() and encumber_msg() through the drop
+    // command's operations.
+    await dropy(otmp, dropCommandEnv(state));
     await godvoice(u.ualign.type, 'Use my gift wisely!', state);
     u.ugifts++;
     u.ublesscnt = rnz(300 + (50 * nartifacts));
@@ -1510,7 +1512,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         // FALLTHROUGH
     case TROUBLE_HUNGRY:
         await ttyPline(`Your ${body_part(STOMACH, state.youmonst)} feels content.`, state);
-        init_uhunger(state);
+        await init_uhunger(state);
         state.disp ??= {};
         state.disp.botl = true;
         break;
@@ -1846,7 +1848,8 @@ export async function dopray(state = game) {
         } else {
             answer = await y_n('Force the gods to be pleased?', state);
         }
-        const ok = answer === 'y'.charCodeAt(0);
+        const ok = answer === 'y';
+
         if (ok) {
             state.u.ublesscnt = 0;
             if (state.u.uluck < 0) state.u.uluck = 0;
@@ -2657,7 +2660,7 @@ export async function pleased(g_align, state = game) {
                 state.disp.botl = true;
                 await encumber_msg(state);
             }
-            if (u.uhunger < 900) init_uhunger(state);
+            if (u.uhunger < 900) await init_uhunger(state);
             if (u.uluck < 0) u.uluck = 0;
             u.ucreamed = 0;
             await make_blinded(0, true, state);

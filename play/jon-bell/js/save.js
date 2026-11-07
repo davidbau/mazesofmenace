@@ -158,6 +158,12 @@ export function savefile_name(plname) {
 
 export const NOT_SAVED = [
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
+    // C decl.c:400-401 gh.hitmsg_mid/hitmsg_prev are process globals that
+    // savegamestate() never writes; a restored process starts them 0/NULL.
+    '_hitmsg_mid', '_hitmsg_prev_ai', '_hitmsg_prev_ao', '_hitmsg_prev_aatyp',
+    // C decl.h:545 gl.last_hider (set mon.c:4796) is a process global that
+    // savegamestate() never writes; a restored process starts it 0.
+    'l',
     // C save.c:265-333 omits vision.c's process-local sight buffers; keep
     // vision_init()'s empty view until restore.c:927 rebuilds visibility.
     'viz_array', '_viz_rmin', '_viz_rmax', 'active_buf',

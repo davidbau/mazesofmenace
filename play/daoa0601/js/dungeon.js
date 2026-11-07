@@ -13,7 +13,8 @@ import { makePlural, withIndefiniteArticle } from './objnam.js';
 import { questLeaderName } from './questpgr.js';
 import { ATR_INVERSE, addMenuHeading } from './windows.js';
 import { tty_add_menu, tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu, tty_select_menu, tty_start_menu } from './wintty.js';
-import { map_location, see_nearby_objects, updateLastSeenTerrain } from './display.js';
+import { canSeeMonster, map_location, mimicAppearance, see_nearby_objects, } from './display.js';
+import { cmapToType } from './mkroom.js';
 import { hasCarriedProperty, hasInvokedProperty, hasWornProperty, propertyIsActive } from './properties.js';
 import { shopResident, shopkeeperInOwnShop } from './shk.js';
 import { monsterAtPosition } from './steed.js';
@@ -49,9 +50,11 @@ function packedDungeonFlags(flags) {
 function packedDungeonAlignment(alignment) {
     return DUNGEON_ALIGNMENT_BITS[alignment];
 }
+// Port only: Amask2align() with AM_NONE kept as null.
 function alignmentType(mask) {
     return mask ? Amask2align(mask) : null;
 }
+// Port only: u.uz with a required-location check.
 function currentDungeonLocation(state = game) {
     const location = state.u.uz;
     if (!location)
@@ -93,6 +96,7 @@ export function dungeonDepth(dnum, dlevel, dungeons = game?.dungeons) {
         return dlevel;
     return dungeon.depth_start + dlevel - 1;
 }
+// Part of C dungeon.c:depth(): the u.uz form of dungeonDepth().
 export function depth(uz, dungeons = game?.dungeons) {
     return dungeonDepth(uz?.dnum ?? 0, uz?.dlevel ?? 1, dungeons);
 }
@@ -108,8 +112,9 @@ export function endgameLevelName(uz) {
         [-1, 'Plane of Earth'],
     ]).get(endgameDepth) || `unknown plane #${endgameDepth}`;
 }
-// C Is_special(): the dungeon graph, rather than a generation script,
-// determines whether the current depth has a special-level descriptor.
+// C dungeon.c:Is_special().
+// The dungeon graph, rather than a generation script, determines whether
+// the current depth has a special-level descriptor.
 export function specialLevelAt(location = currentDungeonLocation(), state = game) {
     for (const level of state.specialLevels?.values() || []) {
         if (level.dnum === location.dnum && level.dlevel === location.dlevel)
@@ -128,6 +133,7 @@ export function inducedAlignment(percent) {
         return dungeonAlignment;
     return rn2(3) - 1;
 }
+// Part of C dungeon.c:On_W_tower_level(): the current-level test.
 export function levelIsWizardTower(state = game) {
     const prototype = state._activeSpecialLevel?.prototype;
     return prototype !== undefined && WIZARD_TOWER_LEVELS.has(prototype);
@@ -196,6 +202,16 @@ export async function u_on_rndspot(region = null, up = false) {
     await switchHeroTerrain();
     return { x: game.u.ux, y: game.u.uy };
 }
+// C dungeon.c:Is_botlevel()
+// dungeon.c:1637 — checks if the level is the deepest in its dungeon
+// branch. Each branch has its own num_dunlevs.
+export function Is_botlevel(uz) {
+    const lev = uz ?? game?.u?.uz;
+    if (!lev)
+        return false;
+    const dun = game?.dungeons?.[lev.dnum];
+    return !!dun && lev.dlevel === dun.num_dunlevs;
+}
 // C dungeon.c:Can_rise_up(). Branch-top ascent requires its real up stair.
 export function canHeroRiseUp(x, y, { state = game } = {}) {
     const level = currentDungeonLocation(state);
@@ -243,6 +259,7 @@ export function find_hell() {
         throw new Error('find_hell: the dungeon graph has no Valley of the Dead');
     return { dnum: valley.dnum, dlevel: 1 };
 }
+// C dungeon.c:level_difficulty().
 export function level_difficulty() {
     const uz = game.u?.uz;
     let difficulty;
@@ -360,6 +377,7 @@ function branchKind(branch) {
         return 'no_end2';
     return 'stair';
 }
+// Part of C dungeon.c:print_branch(): the br_string[] kind label.
 function branchTypeDescription(branch) {
     return {
         portal: 'Portal',
@@ -400,7 +418,7 @@ function dungeonLayoutEvents(dnum) {
         || Number(a.kind === 'special') - Number(b.kind === 'special'));
     return events;
 }
-// print_dungeon()'s per-dungeon heading line.
+// Part of C dungeon.c:print_dungeon(): the per-dungeon heading line.
 function dungeonHeading(dnum) {
     const dungeon = game.dungeons[dnum];
     if (!dungeon)
@@ -550,6 +568,23 @@ export function initOverviewRecord(location, state = game) {
         untendedRooms: [],
     });
 }
+// C dungeon.c:update_lastseentyp(). Terrain memory is independent of the
+// remembered glyph: an object can hide the terrain, and a mimic can fake it.
+export function updateLastSeenTerrain(x, y) {
+    const location = requireGameLevel().at(x, y);
+    if (!location)
+        throw new RangeError(`Display coordinate (${x}, ${y}) is outside the map`);
+    let typ = location.typ === DRAWBRIDGE_UP
+        ? drawbridgeUnderlyingType(location.drawbridgemask ?? 0) : location.typ;
+    // Native m_at() retains a dying actor until remove_monster(), including
+    // a vision refresh while its death announcement awaits acknowledgment.
+    const monster = game.level ? monsterAtPosition(game.level, x, y) : null;
+    if (monster && M_AP_TYPE(monster) === M_AP_FURNITURE
+        && canSeeMonster(monster)) {
+        typ = cmapToType(mimicAppearance(monster));
+    }
+    location.lastseentyp = typ;
+}
 // C dungeon.c:recalc_mapseen().  The overview records what the hero has
 // learned about the current level, not every feature in the live map.
 // C dungeon.c:count_feat_lastseentyp(): the cap-3 feature counts over
@@ -657,9 +692,22 @@ export function recordMappedOverviewState({ discoveredRoom = null, state = game 
         finalRestingPlaces,
     });
 }
+// C dungeon.c:on_level().
 export function sameDungeonLevel(left, right) {
     return !!left && !!right && left.dnum === right.dnum && left.dlevel === right.dlevel;
 }
+// C dungeon.c:Is_branchlev(). A hero whose level is not yet placed matches
+// no branch, rather than the dungeon origin.
+export function is_branchlev(lev, state = game) {
+    if (!lev)
+        return null;
+    for (const branch of state.branches) {
+        if (sameDungeonLevel(lev, branch.end1) || sameDungeonLevel(lev, branch.end2))
+            return branch;
+    }
+    return null;
+}
+// Part of C dungeon.c:recalc_mapseen(): the per-level flags.
 function currentOverviewFlags(prior, state) {
     const here = currentDungeonLocation(state);
     const atSpecial = (name) => sameDungeonLevel(here, state.specialLevels?.get(name));
@@ -685,6 +733,8 @@ function currentOverviewFlags(prior, state) {
         questing: atSpecial('x-strt') && !!state.quest_status?.got_quest,
     };
 }
+// Part of C dungeon.c:recalc_mapseen(): Ludios throne and castle drawbridge
+// detection.
 function learnOverviewStructure(flags, x, y, state) {
     const level = state.level;
     const typ = level?.at(x, y)?.lastseentyp;
@@ -698,6 +748,8 @@ function learnOverviewStructure(flags, x, y, state) {
         flags.castletune = true;
     }
 }
+// Part of C dungeon.c:recalc_mapseen(): valley, sanctum, and
+// vibrating-square flags.
 function updateSanctumOverview(flags, altars, state) {
     if (sameDungeonLevel(state.u.uz, state.valley_level)) {
         if (altars)
@@ -734,8 +786,9 @@ export async function printLevelAnnotation(state = game) {
     if (annotation)
         await plineWithContinuation(`You remember this level as ${annotation}.`);
 }
-// C mapseen_temple(): entering an attended temple identifies these levels,
-// even if blindness prevents the hero from discovering the altar.
+// C dungeon.c:mapseen_temple().
+// Entering an attended temple identifies these levels, even if blindness
+// prevents the hero from discovering the altar.
 export function recordTempleOverview(state = game) {
     const here = currentDungeonLocation(state);
     if (!state._overviewRecords?.has(`${here.dnum}:${here.dlevel}`))
@@ -748,8 +801,9 @@ export function recordTempleOverview(state = game) {
     else if (sameDungeonLevel(here, state.sanctum_level))
         record.flags.msanctum = true;
 }
-// C recbranch_mapseen(): only traversal from the parent endpoint teaches a
-// connection. Level teleport and artifact travel do not call this function.
+// C dungeon.c:recbranch_mapseen().
+// Only traversal from the parent endpoint teaches a connection. Level
+// teleport and artifact travel do not call this function.
 export function recordOverviewBranch(source, destination, state = game) {
     if (source.dnum === destination.dnum)
         return;
@@ -759,7 +813,8 @@ export function recordOverviewBranch(source, destination, state = game) {
     if (branch && record)
         record.branch = { ...branch.end2, up: branch.end1_up, type: branch.type };
 }
-// C remdun_mapseen(): keep knowledge for disclosure and possible reentry.
+// C dungeon.c:remdun_mapseen().
+// Keep knowledge for disclosure and possible reentry.
 export function markOverviewUnreachable(dnum, state = game) {
     for (const [key, record] of state._overviewRecords || []) {
         if (Number(key.split(':')[0]) === dnum)
@@ -775,6 +830,7 @@ export function recordDiscoveredRoom(roomIndex, { state = game } = {}) {
     recordMappedOverviewState({ discoveredRoom: roomIndex, state });
     return true;
 }
+// Port only: Lua-table validation for dungeon.lua fields.
 // The Lua runtime supplies the data. This module owns dungeon.c's placement
 // and branch construction rules.
 function definitionRecord(value, path) {
@@ -782,6 +838,7 @@ function definitionRecord(value, path) {
         throw new TypeError(`${path} must be a Lua table with named fields`);
     return Object.fromEntries(Object.entries(value));
 }
+// Port only: Lua-array validation for dungeon.lua fields.
 function definitionArray(value, path) {
     if (value === undefined || value === null)
         return [];
@@ -789,14 +846,17 @@ function definitionArray(value, path) {
         throw new TypeError(`${path} must be a Lua array`);
     return value;
 }
+// Port only: string-field validation for dungeon.lua.
 function definitionString(value, path) {
     if (typeof value !== 'string')
         throw new TypeError(`${path} must be a string`);
     return value;
 }
+// Port only: optional string field.
 function optionalDefinitionString(value, path) {
     return value == null ? undefined : definitionString(value, path);
 }
+// Port only: integer-field validation for dungeon.lua.
 function definitionInteger(value, path, fallback) {
     if (value == null && fallback !== undefined)
         return fallback;
@@ -804,6 +864,7 @@ function definitionInteger(value, path, fallback) {
         throw new TypeError(`${path} must be an integer`);
     return value;
 }
+// Port only: dungeon-flag name validation.
 function definitionFlag(value, path) {
     switch (value) {
         case 'town':
@@ -815,6 +876,7 @@ function definitionFlag(value, path) {
         default: throw new TypeError(`${path} is not a dungeon flag`);
     }
 }
+// Port only: flag-list validation.
 function definitionFlags(value, path) {
     if (value == null)
         return [];
@@ -823,6 +885,7 @@ function definitionFlags(value, path) {
     return definitionArray(value, path)
         .map((flag, index) => definitionFlag(flag, `${path}[${index + 1}]`));
 }
+// Port only: alignment-name validation.
 function definitionAlignment(value, path) {
     if (value == null)
         return 'unaligned';
@@ -838,6 +901,7 @@ function definitionAlignment(value, path) {
         default: throw new TypeError(`${path} is not a dungeon alignment`);
     }
 }
+// Port only: branch-type name validation.
 function definitionBranchType(value, path) {
     if (value == null)
         return 'stair';
@@ -851,6 +915,7 @@ function definitionBranchType(value, path) {
         default: throw new TypeError(`${path} is not a dungeon branch type`);
     }
 }
+// Port only: up/down direction validation.
 function definitionBranchUp(value, path) {
     if (value == null || value === 'down')
         return false;
@@ -871,6 +936,7 @@ function branchDefinition(value, path) {
         branchType: definitionBranchType(source.branchtype, `${path}.branchtype`),
     };
 }
+// Part of C dungeon.c:init_dungeon_levels(): one Lua LEVEL entry.
 function levelDefinition(value, path) {
     const source = definitionRecord(value, path);
     const flags = definitionFlags(source.flags, `${path}.flags`);
@@ -888,6 +954,7 @@ function levelDefinition(value, path) {
         bonetag: optionalDefinitionString(source.bonetag, `${path}.bonetag`),
     };
 }
+// Part of C dungeon.c:init_dungeon_dungeons(): one Lua DUNGEON entry.
 function dungeonDefinition(value, path) {
     const source = definitionRecord(value, path);
     const flags = definitionFlags(source.flags, `${path}.flags`);
@@ -918,18 +985,21 @@ function dungeonDefinition(value, path) {
             .map((level, index) => levelDefinition(level, `${path}.levels[${index + 1}]`)),
     };
 }
+// Part of C dungeon.c:init_dungeons(): reading dungeon.lua.
 export async function loadDungeonDefinitions() {
     const definitions = await currentLuaLifecycle().loadData(game, 'dungeon.lua', 'dungeon');
     if (!Array.isArray(definitions))
         throw new Error('dungeon.lua did not define a dungeon array');
     return definitions.map((definition, index) => dungeonDefinition(definition, `dungeon[${index + 1}]`));
 }
+// Port only: dungeons[] access with a present check.
 function requireDungeon(dungeons, dnum) {
     const dungeon = dungeons[dnum];
     if (!dungeon)
         throw new Error(`Missing dungeon ${dnum}`);
     return dungeon;
 }
+// C dungeon.c:level_range().
 function levelRange(dungeon, spec, finalByName) {
     let base = spec.base;
     if (spec.chain) {
@@ -949,6 +1019,7 @@ function levelRange(dungeon, spec, finalByName) {
             : 1;
     return { base, count };
 }
+// C dungeon.c:possible_places().
 function possiblePlaces(index, levels, dungeon, finalByName) {
     const level = levels[index];
     if (!level)
@@ -1178,6 +1249,8 @@ export async function init_dungeons() {
             dungeon.depth_start--;
     }
 }
+// Part of C dungeon.c:init_dungeons(): the "x-" quest-name substitution
+// with urole.filecode.
 export function specialDisplayName(name, state = game) {
     if (name.startsWith('x-')) {
         const code = state.urole?.filecode || 'Wiz';
@@ -1185,6 +1258,7 @@ export function specialDisplayName(name, state = game) {
     }
     return name;
 }
+// Port only: prototype name at a depth; quest fillers per mklev.c:makelevel().
 export function specialPrototypeAt(dnum, dlevel) {
     for (const [name, level] of game.specialLevels || []) {
         if (level.dnum === dnum && level.dlevel === dlevel)
@@ -1204,6 +1278,8 @@ export function specialPrototypeAt(dnum, dlevel) {
     }
     return null;
 }
+// Part of C dungeon.c:query_annotation(): mungspaces() and storage of the
+// answer.
 // query_annotation()'s storage: empty input and Escape preserve the
 // existing value; space-only input removes it after mungspaces().
 function setLevelAnnotation(level, value) {
@@ -1218,6 +1294,7 @@ function setLevelAnnotation(level, value) {
     else
         game._levelAnnotations.delete(key);
 }
+// Part of C dungeon.c:query_annotation(): the describe_level() description.
 function annotationLevelDescription(level) {
     if (sameDungeonLevel(level, game.u.uz))
         return 'this dungeon level';
@@ -1259,6 +1336,7 @@ export async function doannotate() {
     await queryLevelAnnotation();
     game.context.move = 0;
 }
+// Port only: groups visited levels from the overview records.
 function visitedDungeonLevels() {
     const byDungeon = new Map();
     const remember = (dnum, dlevel) => {
@@ -1276,10 +1354,13 @@ function visitedDungeonLevels() {
     }
     return byDungeon;
 }
+// Part of C dungeon.c:print_mapseen(): quest/Knox local-depth adjustment.
 function overviewDepth(dnum, dlevel) {
     return dnum === game.quest_dnum || dnum === game.knox_level?.dnum
         ? dlevel : dungeonDepth(dnum, dlevel);
 }
+// Part of C dungeon.c:print_mapseen(): per-dungeon heading with the
+// builds_up() range.
 function dungeonOverviewHeading(dnum) {
     const dungeon = game.dungeons?.[dnum];
     if (!dungeon)
@@ -1480,6 +1561,7 @@ export function dungeonOverviewDisclosure(ending, cause) {
     }
     return lines;
 }
+// Part of C dungeon.c:print_mapseen(): one level's disclosure lines.
 function overviewDisclosureLevel(dnum, dlevel, ending, hereVerb, cause) {
     const record = game._overviewRecords?.get?.(`${dnum}:${dlevel}`);
     const annotation = game._levelAnnotations?.get?.(`${dnum}:${dlevel}`);
@@ -1633,11 +1715,6 @@ export function levelHasCeiling(state = game) {
     const onEarth = !!current && !!earth
         && current.dnum === earth.dnum && current.dlevel === earth.dlevel;
     return !inEndgame || onEarth;
-}
-export function levelIsWaterLevel(state = game) {
-    const level = state.u?.uz;
-    const water = state.water_level;
-    return !!level && !!water && level.dnum === water.dnum && level.dlevel === water.dlevel;
 }
 // C dungeon.c:ceiling(). Moved from terrain_name.js (pure move).
 export function ceilingName(x, y, state = game) {

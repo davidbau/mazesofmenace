@@ -4,11 +4,11 @@ import { pline } from './pline.js';
 import { helpless } from './mhitm.js';
 import { Monnam } from './mcastu.js';
 import { verbalize } from './cmd.js';
-import { PM_GECKO, PM_LONG_WORM } from './pm.generated.js';
+import { PM_GECKO, PM_LONG_WORM, PM_ORACLE } from './pm.generated.js';
 import { body_part } from './cmd.js'; // relocate-fns
-import { EPRI, HAIR, HEAD, MORGUE, NECK, ROOMOFFSET, ZOO } from './const.js'; // relocate-fns
+import { BEEHIVE, COURT, EPRI, HAIR, HEAD, MORGUE, NECK, ROOMOFFSET, S_ANT, ZOO } from './const.js'; // relocate-fns
 import { canseemon as canseemon_ff } from './display.js'; // relocate-fns
-import { Hallucination } from './fastforward.js'; // relocate-fns
+import { Hallucination, dosounds } from './fastforward.js'; // relocate-fns
 import { vtense } from './objnam.js'; // relocate-fns
 import { You_hear } from './pline.js'; // relocate-fns
 import { halu_gname } from './pray.js'; // relocate-fns
@@ -20,7 +20,7 @@ import { adjalign, exercise } from './attrib.js'; // relocate-fns
 import { midnight, night } from './calendar.js'; // relocate-fns
 import { ALGN_SINNED, MS_ANIMAL, MS_DJINNI, MS_GUARDIAN, MS_NEMESIS, MS_SILENT, OCLASS_WEAPON, SPE_NOVEL_OTYP, STATUE_OTYP, SetVoice, Your, _EDOG_local, _Role_if_PM_HEALER, _Underwater, _cmd_Hallucination, _fl_pmidx, _glyph_at, _haseyes, _helpless_mon, _hero_Deaf, _hero_youmonst, _quest_status, _um_mhis, _uprop_active, create_nhwindow, currency, destroy_nhwindow, display_nhwindow, freeinv, incr_itimeout_prop, inv_cnt, is_weptool, merge_choice, nothing_happens, pline_The, putstr, quest_chat, record_achievement, which_armor } from './cmd.js'; // relocate-fns
 import { money_cnt } from './hack.js'; // relocate-fns
-import { ACH_ORCL, A_WIS, BOLT_LIM, CLAIRVOYANT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FROMOUTSIDE, FULL_MOON, Has_contents, INTRINSIC, IRONBARS, IS_WALL, In_endgame, LL_CONDUCT, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, PROTECTION, SDOOR, STRAT_WAITMASK, TEMPLE, Upolyd, W_ARMH as W_ARMH_TO, isok } from './const.js'; // relocate-fns
+import { ACH_ORCL, A_WIS, BOLT_LIM, CLAIRVOYANT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FROMOUTSIDE, FULL_MOON, Has_contents, INTRINSIC, IRONBARS, IS_WALL, In_endgame, LL_CONDUCT, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, NHW_MENU, PROTECTION, SDOOR, STRAT_WAITMASK, TEMPLE, Upolyd, W_ARMH as W_ARMH_TO, isok } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, canseemon, glyph_is_invisible_at } from './display.js'; // relocate-fns
 import { dropy } from './do.js'; // relocate-fns
 import { noveltitle } from './do_name.js';
@@ -41,14 +41,14 @@ import { BY_ORACLE, add_to_minv, in_rooms } from './mklev.js';
 import { inside_shop } from './shk.js';
 import { outoracle, outrumor } from './rumors.js'; // relocate-fns
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js'; // relocate-fns
-import { wake_nearto } from './mon.js'; // relocate-fns
+import { wake_nearto, Soundeffect } from './mon.js'; // relocate-fns
 import { same_race } from './mondata.js'; // relocate-fns
 import { an, doname, genus, helm_simple_name, quest_info } from './objnam.js'; // relocate-fns
 import { livelog_printf } from './pline.js'; // relocate-fns
 import { PM_BABY_SILVER_DRAGON, PM_DEATH, PM_HUMAN_WERERAT, PM_PRISONER, PM_RAVEN, PM_SILVER_DRAGON, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_WATER_DEMON, PM_WINTER_WOLF, PM_WINTER_WOLF_CUB, PM_WOLF } from './pm.generated.js'; // relocate-fns
 import { has_shrine, p_coaligned } from './priest.js'; // relocate-fns
 import { rn1 } from './rng.js'; // relocate-fns
-import { shk_chat, contained_cost as shk_contained_cost, currency as shk_currency, get_cost as shk_get_cost, get_pricing_units as shk_get_pricing_units, inhishop as shk_inhishop, shop_keeper as shk_shop_keeper, shop_object as shk_shop_object } from './shk.js'; // relocate-fns
+import { shk_chat, contained_cost as shk_contained_cost, currency as shk_currency, get_cost as shk_get_cost, get_pricing_units as shk_get_pricing_units, inhishop as shk_inhishop, shop_keeper as shk_shop_keeper, shop_object } from './shk.js'; // relocate-fns
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js'; // relocate-fns
 import { t_at } from './trap.js'; // relocate-fns
 import { m_at, mon_nam, more_experienced, newexplevel } from './uhitm.js'; // relocate-fns
@@ -58,17 +58,59 @@ import { PLNMSG_GROWL } from './const.js'; // relocate-fns
 import { Deaf } from './display.js'; // relocate-fns
 import { Monnam_mm, xm_Hallucination } from './mhitm.js'; // relocate-fns
 
+export { dosounds };
+
+/* C monflag.h / mondata.h constants and helpers */
+const M1_FLY = 0x00000001;
+const M1_CARNIVORE = 0x20000000;
+const M1_HERBIVORE = 0x40000000;
+const S_EEL = 57;
+
+const MS_BARK     =  1;
+const MS_MEW      =  2;
+const MS_ROAR     =  3;
+const MS_BELLOW   =  4;
+const MS_GROWL    =  5;
+const MS_SQEEK    =  6;
+const MS_SQAWK    =  7;
+const MS_CHIRP    =  8;
+const MS_HISS     =  9;
+const MS_BUZZ     = 10;
+const MS_GRUNT    = 11;
+const MS_NEIGH    = 12;
+const MS_MOO      = 13;
+const MS_WAIL     = 14;
+const MS_MUMBLE   = 21;
+const MS_HUMANOID = 25;
+const MS_GROAN    = 44;
+
+const se_courtly_conversation = 'se_courtly_conversation';
+const se_sceptor_pounding = 'se_sceptor_pounding';
+const se_low_buzzing = 'se_low_buzzing';
+const se_angry_drone = 'se_angry_drone';
+const se_bees = 'se_bees';
+const se_canine_whine = 'se_canine_whine', se_squeal = 'se_squeal';
+const se_yelp = 'se_yelp', se_feline_yelp = 'se_feline_yelp', se_canine_yelp = 'se_canine_yelp';
+const se_avian_screak = 'se_avian_screak', se_wail = 'se_wail';
+
+function is_silent(ptr) { return (ptr?.msound | 0) === MS_SILENT; }
+function carnivorous(ptr) { return Boolean((ptr?.mflags1 | 0) & M1_CARNIVORE); }
+function herbivorous(ptr) { return Boolean((ptr?.mflags1 | 0) & M1_HERBIVORE); }
+function is_flyer(ptr) { return Boolean((ptr?.mflags1 | 0) & M1_FLY); }
+
 // C sounds.c:519-541 — pet hunger noises (dogmove.c:383).
 export async function beg(mtmp) {
     const ptr = mtmp.data;
-    if (helpless(mtmp) || !(ptr.mflags1 & (0x20000000 | 0x40000000)))
-        return; // M1_CARNIVORE | M1_HERBIVORE
+    if (helpless(mtmp) || !(carnivorous(ptr) || herbivorous(ptr)))
+        return;
 
-    if (ptr.msound !== 0 && ptr.msound <= 17 /* MS_ANIMAL */) {
+    /* presumably nearness and soundok checks have already been made */
+    if (!is_silent(ptr) && (ptr.msound | 0) <= MS_ANIMAL) {
         await domonnoise(mtmp);
-    } else if (ptr.msound >= 25 /* MS_HUMANOID */) {
+    } else if ((ptr.msound | 0) >= MS_HUMANOID) {
         if (!canspotmon(mtmp))
             map_invisible(mtmp.mx, mtmp.my);
+        SetVoice(mtmp, 0, 80, 0);
         await verbalize("I'm hungry.");
     } else if (canspotmon(mtmp)) {
         await pline('%s seems famished.', Monnam(mtmp));
@@ -80,15 +122,17 @@ export async function beg(mtmp) {
 export function cry_sound(mon) {
     const data = mon.data;
     switch (data.msound) {
-    case 9: return 'hiss';
-    case 3:
-    case 5: return 'growl';
-    case 8: return 'chirp';
-    case 10: return 'buzz';
-    case 7: return 'screech';
-    case 11: return 'grunt';
-    case 21: return 'mumble';
-    default: return data.mlet === 57 ? 'gurgle' : 'chitter';
+    case MS_HISS: return 'hiss';
+    case MS_ROAR:
+    case MS_GROWL: return 'growl';
+    case MS_CHIRP: return 'chirp';
+    case MS_BUZZ: return 'buzz';
+    case MS_SQAWK: return 'screech';
+    case MS_GRUNT: return 'grunt';
+    case MS_MUMBLE: return 'mumble';
+    default:
+    case MS_SILENT:
+        return data.mlet === S_EEL ? 'gurgle' : 'chitter';
     }
 }
 
@@ -126,7 +170,7 @@ export async function throne_mon_sound(mtmp) {
     if (((mtmp.msleeping | 0) || (f2 & 0x00000400) /* is_lord */
          || (f2 & 0x00000800) /* is_prince */)
         && !(f1 & 0x00040000) /* is_animal */
-        && mon_in_room(mtmp, 2 /* COURT; const.js */)) {
+        && mon_in_room(mtmp, COURT)) {
         const throne_msg = [
             "the tones of courtly conversation.",
             "a sceptre pounded in judgment.",
@@ -134,26 +178,43 @@ export async function throne_mon_sound(mtmp) {
             "Queen Beruthiel's cats!",
         ];
         const which = rn2(3) + (Hallucination() ? 1 : 0);
-        if (which !== 2)
+        if (which !== 2) {
+            if (which === 0) {
+                Soundeffect(se_courtly_conversation, 30);
+            } else if (which === 1) {
+                Soundeffect(se_sceptor_pounding, 100);
+            }
             await You_hear(throne_msg[which]);
-        else
+        } else {
             await pline(throne_msg[2].replace('%s', game.flags?.female ? 'her' : 'his'));
+        }
         return true;
     }
     return false;
 }
 
-/* C sounds.c:68-91 beehive_mon_sound(). */
+/* C sounds.c:61-86 beehive_mon_sound(). */
 export async function beehive_mon_sound(mtmp) {
     const data = mtmp.data;
-    if ((data?.mlet | 0) !== 1 /* S_ANT */
-        || !((data?.mflags1 | 0) & 0x00000001) /* M1_FLY */
-        || !mon_in_room(mtmp, 5 /* BEEHIVE; const.js */))
+    if ((data?.mlet | 0) !== S_ANT
+        || !is_flyer(data)
+        || !mon_in_room(mtmp, BEEHIVE))
         return false;
-    const selection = rn2(2) + (Hallucination() ? 1 : 0);
-    await You_hear(selection === 0 ? 'a low buzzing.'
-        : selection === 1 ? 'an angry drone.'
-            : `bees in your ${game.u?.uarmh ? '' : '(nonexistent) '}bonnet!`);
+    const hallu = Hallucination() ? 1 : 0;
+    switch (rn2(2) + hallu) {
+    case 0:
+        Soundeffect(se_low_buzzing, 30);
+        await You_hear("a low buzzing.");
+        break;
+    case 1:
+        Soundeffect(se_angry_drone, 100);
+        await You_hear("an angry drone.");
+        break;
+    case 2:
+        Soundeffect(se_bees, 100);
+        await You_hear(`bees in your ${game.u?.uarmh ? '' : '(nonexistent) '}bonnet!`);
+        break;
+    }
     return true;
 }
 
@@ -224,7 +285,7 @@ export async function morgue_mon_sound(mtmp) {
 
 export async function oracle_sound(mtmp) {
     const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    if (mndx !== 274)
+    if (mndx !== PM_ORACLE)
         return false;
     /* and don't produce silly effects when she's clearly visible */
     if (Hallucination() || !canseemon_ff(mtmp)) {
@@ -251,7 +312,7 @@ export async function temple_priest_sound(mtmp) {
         const hallu = Hallucination() ? 1 : 0;
         let trycount = 0;
         const ax = EPRI(mtmp).shrpos.x, ay = EPRI(mtmp).shrpos.y;
-        const speechless = ((mtmp.data?.msound | 0) <= 17); /* MS_ANIMAL */
+        const speechless = ((mtmp.data?.msound | 0) <= MS_ANIMAL);
         const in_sight = canseemon_ff(mtmp) || cansee_ff(ax, ay);
         let msg;
         do {
@@ -529,18 +590,22 @@ export function whimper(mtmp) {
     if ((mtmp?.msleeping | 0) || !(mtmp?.mcanmove | 0) || !msound)
         return;
     let verb = null;
+    let se = se_canine_whine;
     if (_uprop_active('HALLUC')) {
         verb = _WHIMPER_H_SOUNDS[rn2(_WHIMPER_H_SOUNDS.length)];
     } else {
         switch (msound) {
-        case 2: /* MS_MEW, monflag.h ms_sounds */
-        case 5: /* MS_GROWL */ verb = 'whimper'; break;
-        case 1: /* MS_BARK */ verb = 'whine'; break;
-        case 6: /* MS_SQEEK */ verb = 'squeal'; break;
+        case MS_MEW:
+        case MS_GROWL: verb = 'whimper'; break;
+        case MS_BARK:  verb = 'whine'; break;
+        case MS_SQEEK: se = se_squeal; verb = 'squeal'; break;
         default: break;
         }
     }
     if (verb) {
+        if (!_uprop_active('HALLUC')) {
+            Soundeffect(se, 50);
+        }
         pline(`${Monnam(mtmp)} ${vtense(null, verb)}.`);
         if (game.context?.run)
             nomul(0);
@@ -553,42 +618,42 @@ export function whimper(mtmp) {
 export function growl_sound(mtmp) {
     let ret;
     switch (mtmp.data.msound) {
-    case 2:  /* MS_MEW */
-    case 9:  /* MS_HISS */
+    case MS_MEW:
+    case MS_HISS:
         ret = "hiss";
         break;
-    case 1:  /* MS_BARK */
-    case 5:  /* MS_GROWL */
+    case MS_BARK:
+    case MS_GROWL:
         ret = "growl";
         break;
-    case 3:  /* MS_ROAR */
+    case MS_ROAR:
         ret = "roar";
         break;
-    case 4:  /* MS_BELLOW */
+    case MS_BELLOW:
         ret = "bellow";
         break;
-    case 10: /* MS_BUZZ */
+    case MS_BUZZ:
         ret = "buzz";
         break;
-    case 6:  /* MS_SQEEK */
+    case MS_SQEEK:
         ret = "squeal";
         break;
-    case 7:  /* MS_SQAWK */
+    case MS_SQAWK:
         ret = "screech";
         break;
-    case 12: /* MS_NEIGH */
+    case MS_NEIGH:
         ret = "neigh";
         break;
-    case 14: /* MS_WAIL */
+    case MS_WAIL:
         ret = "wail";
         break;
-    case 44: /* MS_GROAN */
+    case MS_GROAN:
         ret = "groan";
         break;
-    case 13: /* MS_MOO */
+    case MS_MOO:
         ret = "low";
         break;
-    case 0:  /* MS_SILENT */
+    case MS_SILENT:
         ret = "commotion";
         break;
     default:
@@ -666,7 +731,7 @@ export async function tiphat() {
         const loc = g.level?.at?.(x, y);
         if (vismon || unseen || (statue && Hallu)
             || (range === 1 && mtmp && _responsive_mon_at(x, y)
-                && (mtmp.data?.msound | 0) !== 0)
+                && !is_silent(mtmp.data))
             || !(accessible(x, y) || (loc && loc.typ === IRONBARS)))
             break;
     }
@@ -1487,30 +1552,30 @@ export async function domonnoise(mtmp) {
     return ECMD_TIME;
 }
 
+const COIN_CLASS = 12; /* objclass.h */
+
 /* C shk.c:5407 price_quote() and :5469 shk_embellish(). */
 async function price_quote(first) {
     const g = game;
-    /* shk.c:5416 shkp = shop_keeper(inside_shop(u.ux, u.uy)) — in_rooms(…, IS_SHOP_ROOM)
-     * is not inside_shop(): IS_SHOP_ROOM is no room-type argument, so the lookup
-     * found no room, no shopkeeper, and the quote returned silently. */
+    /* C shk.c:5416 shkp = shop_keeper(inside_shop(u.ux, u.uy)). */
     const shkp = shk_shop_keeper(inside_shop(g.u.ux | 0, g.u.uy | 0));
     if (!shkp || !shk_inhishop(shkp)) return;
     const rows = [];
     let lastCost = 0, lastContents = false;
     for (let o = first; o; o = o.nexthere) {
-        if ((o.oclass | 0) === 12) continue;
+        if ((o.oclass | 0) === COIN_CLASS) continue;
         let cost = (o.no_charge || o === game.u?.uball || o === game.u?.uchain)
             ? 0 : shk_get_cost(o, shkp);
         let contents = !cost;
         if (Has_contents(o)) cost += shk_contained_cost(o, shkp, 0, false, false);
         if (o.globby) cost *= shk_get_pricing_units(o);
-        if (!cost) contents = false; /* shk.c:5427: "no charge" resets contentsonly */
+        if (!cost) contents = false; /* C shk.c:5437: "no charge" resets contentsonly */
         lastCost = cost; lastContents = contents;
         const price = cost ? `${cost} ${shk_currency(cost)}${(o.quan | 0) > 1 ? ' each' : ''}` : 'no charge';
         rows.push(`${contents ? 'the contents of ' : ''}${(await doname(o))}, ${price}`);
     }
     if (rows.length > 1) {
-        const win = create_nhwindow(3);
+        const win = create_nhwindow(NHW_MENU);
         putstr(win, 0, 'Fine goods for sale:'); putstr(win, 0, '');
         for (const row of rows) putstr(win, 0, row);
         await display_nhwindow(win, true); destroy_nhwindow(win);
@@ -1518,13 +1583,18 @@ async function price_quote(first) {
     }
     if (rows.length === 1) {
         const o = first;
-        if (!lastCost) await verbalize('%s!', upstart(rows[0]));
-        else {
+        if (!lastCost) {
+            /* C shk.c:5449-5453: "<doname(obj)>, no charge" */
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize('%s!', upstart(rows[0]));
+        } else {
             /* C shk.c:5456: doname's tin_variety draw precedes the quote RNG. */
             const base = `${lastContents ? 'the contents of ' : ''}${(await doname(o))}`;
             /* C arg order (observed): currency(cost) is drawn before shk_embellish */
             const cur = shk_currency(lastCost);
             const embellish = lastContents ? '.' : shk_embellish(o, lastCost);
+            /* C shk.c:5458 SetVoice(shkp, 0, 80, 0) */
+            SetVoice(shkp, 0, 80, 0);
             await verbalize('%s, price %ld %s%s%s', upstart(base), lastCost, cur,
                 (o.quan | 0) > 1 ? ' each' : '', embellish);
         }
@@ -1562,7 +1632,6 @@ function shk_embellish(itm, cost) {
     return '.';
 }
 
-function shop_object(x, y) { return shk_shop_object(x, y); }
 
 /* C sounds.c:351-394: use cmd.js's shared growl_sound(mtmp) verb table. */
 /* C sounds.c:397-423: growl is void; peacefuls_respond reads last_msg
@@ -1572,16 +1641,16 @@ export function growl(mtmp) {
     if (!data) return;
     /* C mondata.h helpless(mon) — msleeping || !mcanmove.  wakeup() clears
      * msleeping BEFORE calling growl, so this normally passes. */
-    if ((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0) || (data.msound | 0) === 0 /* MS_SILENT */)
+    if ((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0) || (data.msound | 0) === MS_SILENT)
         return;
-    /* C sounds.c:365-368 — `if (Hallucination) growl_verb = ROLL_FROM(h_sounds);
+    /* C sounds.c:410-413 — `if (Hallucination) growl_verb = ROLL_FROM(h_sounds);
      * else growl_verb = growl_sound(mtmp);`.  The hallucination arm was missing,
      * and it is an rn2(35) on the CORE stream, not just a different word. */
     const growl_verb = xm_Hallucination()
         ? H_SOUNDS_MM[rn2(H_SOUNDS_MM.length)]
         : growl_sound(mtmp);
     if (growl_verb) {
-        /* C sounds.c:414 — if (canseemon(mtmp) || !Deaf) */
+        /* C sounds.c:415 — if (canseemon(mtmp) || !Deaf) */
         if (canseemon(mtmp) || !Deaf()) {
             pline(Monnam_mm(mtmp) + ' ' + vtense(null, growl_verb) + '!');
             (game.iflags ||= {}).last_msg = PLNMSG_GROWL; // C sounds.c:416
@@ -1602,10 +1671,6 @@ const H_SOUNDS_MM = [
     'twang',  'toot',    'gargle', 'hoot',   'warble',
 ];
 
-/* C monflag.h msound ordinals read by yelp()'s switch. */
-/* C monflag.h:12-25 — ms_sounds enum values. */
-const MS_BARK_MM = 1, MS_MEW_MM = 2, MS_ROAR_MM = 3, MS_GROWL_MM = 5,
-      MS_SQEEK_MM = 6, MS_SQAWK_MM = 7, MS_WAIL_MM = 14;
 
 export function yelp(mtmp) {
     const data = mtmp.data || permonstTemplate((mtmp.mndx ?? mtmp.mnum ?? -1) | 0);
@@ -1615,6 +1680,7 @@ export function yelp(mtmp) {
     if ((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0) || !msound)
         return;
     let yelp_verb = null;
+    let se = se_yelp;
     if (xm_Hallucination()) {
         yelp_verb = H_SOUNDS_MM[rn2(H_SOUNDS_MM.length)];
     } else {
@@ -1622,17 +1688,18 @@ export function yelp(mtmp) {
          * Deaf (the pet's sound is not heard, so the verb is a visible guess). */
         const deaf = Deaf();
         switch (msound) {
-        case MS_MEW_MM:   yelp_verb = !deaf ? 'yowl' : 'arch'; break;
-        case MS_BARK_MM:
-        case MS_GROWL_MM: yelp_verb = !deaf ? 'yelp' : 'recoil'; break;
-        case MS_ROAR_MM:  yelp_verb = !deaf ? 'snarl' : 'bluff'; break;
-        case MS_SQEEK_MM: yelp_verb = !deaf ? 'squeal' : 'quiver'; break;
-        case MS_SQAWK_MM: yelp_verb = !deaf ? 'screak' : 'thrash'; break;
-        case MS_WAIL_MM:  yelp_verb = !deaf ? 'wail' : 'cringe'; break;
+        case MS_MEW:   se = se_feline_yelp; yelp_verb = !deaf ? 'yowl' : 'arch'; break;
+        case MS_BARK:
+        case MS_GROWL: se = se_canine_yelp; yelp_verb = !deaf ? 'yelp' : 'recoil'; break;
+        case MS_ROAR:  yelp_verb = !deaf ? 'snarl' : 'bluff'; break;
+        case MS_SQEEK: se = se_squeal; yelp_verb = !deaf ? 'squeal' : 'quiver'; break;
+        case MS_SQAWK: se = se_avian_screak; yelp_verb = !deaf ? 'screak' : 'thrash'; break;
+        case MS_WAIL:  se = se_wail; yelp_verb = !deaf ? 'wail' : 'cringe'; break;
         default: break;
         }
     }
     if (yelp_verb) {
+        Soundeffect(se, 70);
         pline(Monnam_mm(mtmp) + ' ' + vtense(null, yelp_verb) + '!');
         if (game.context?.run)
             nomul(0);

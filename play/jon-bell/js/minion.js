@@ -14,7 +14,7 @@ import { nomul, unmul, stop_occupation } from './allmain.js';
 import { money2mon, currency } from './shk.js';
 import { getlin } from './windows.js';
 import { acurr } from './attrib.js';
-import { A_CHA, RLOC_MSG } from './const.js';
+import { A_CHA, RLOC_MSG, LL_UMONST } from './const.js';
 import { canseemon } from './display.js';
 import { livelog_printf } from './pline.js';
 import { mon_nam } from './uhitm.js';
@@ -24,7 +24,7 @@ import { pline, You_feel } from './pline.js';
 import { Blind } from './vision.js';
 import { Monnam } from './mcastu.js';
 import { Hear_again } from './eat.js';
-import { verbalize } from './cmd.js';
+import { verbalize, SetVoice } from './cmd.js';
 import { mk_roamer } from './priest.js';
 import { enexto_out } from './teleport.js';
 import { permonstTemplate } from './makemon.js';
@@ -55,6 +55,7 @@ export async function lose_guardian_angel(mon) {
         if (canspotmon(mon)) {
             if (!Deaf()) {
                 await pline(`${Monnam(mon)} rebukes you, saying:`);
+                SetVoice(mon, 0, 80, 0);
                 await verbalize('Since you desire conflict, have some more!');
             } else {
                 await pline(`${Monnam(mon)} vanishes!`);
@@ -80,6 +81,7 @@ export async function gain_guardian_angel() {
             await pline('A voice booms:');
         else
             await You_feel('a booming voice:');
+        SetVoice(null, 0, 80, 0 /* voice_deity */);
         await verbalize('Thy desire for conflict shall be fulfilled!');
         /* send in some hostile angels instead */
         await lose_guardian_angel(null);
@@ -88,6 +90,7 @@ export async function gain_guardian_angel() {
             await pline('A voice whispers:');
         else
             await You_feel('a soft voice:');
+        SetVoice(null, 0, 80, 0 /* voice_deity */);
         await verbalize('Thou hast been worthy of me!');
         const mm = enexto_out(u.ux, u.uy, permonstTemplate(PM_ANGEL));
         let mtmp;
@@ -205,7 +208,7 @@ export async function demon_talk(mtmp) {
         set_malign(mtmp);
         return 0;
     }
-    livelog_printf(0x0800 /* LL_UMONST */, 'bribed %s with %ld %s for safe passage',
+    livelog_printf(LL_UMONST, 'bribed %s with %ld %s for safe passage',
         x_monnam(mtmp, 1, null, 0x1F, false), offer, offer === 1 ? 'zorkmid' : 'zorkmids');
     await mongone(mtmp);
     return 1;
@@ -237,16 +240,10 @@ export async function bribe(mtmp, prompt) {
 /* C ref: nethack-c-v5/upstream/src/minion.c:27-34 free_emin — release a
  * monster's minion extension and clear isminion. Not exported in C
  * (top-level, non-static, but this port has no other caller yet); kept
- * private here since make_familiar is its only user. makemon()'s
- * angel/cleric minion branch (js/mklev.js:5622-5637) stores the emin data
- * flatly on the monster object rather than under mextra (unlike the
- * MM_EMIN-flag branch a few lines above it, which does use mextra.emin via
- * newemin()) — clear both representations so a later isminion/EMIN() reader
- * sees it gone regardless of which branch produced this monster. */
+ * private here since make_familiar is its only user.  As in C, the only
+ * emin storage is mextra.emin. */
 export function free_emin(mtmp) {
     if (mtmp.mextra && mtmp.mextra.emin)
         mtmp.mextra.emin = null;
-    if (mtmp.emin)
-        mtmp.emin = null;
     mtmp.isminion = 0;
 }

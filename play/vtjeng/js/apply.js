@@ -328,7 +328,6 @@ import {
 } from './mondata.js';
 import {
     accessible, closed_door, monflee, onscary, set_apparxy, youHear,
-    youSee,
 } from './monmove.js';
 import { m_at } from './monst.js';
 import { paralyze_monst } from './mhitm.js';
@@ -627,7 +626,7 @@ import {
     zapyourself,
 } from './zap.js';
 import { explode } from './explode.js';
-import { heroUnaware, pline_mon, verbalize } from './pline.js';
+import { heroUnaware, pline_mon, verbalize, youSee } from './pline.js';
 import { note_unported } from './unported.js';
 import {
     dbon, dry_a_towel, possibly_unwield, setmnotwielded, uwep_skill_type,
@@ -2067,7 +2066,7 @@ export async function use_trap(obj, state = game, env = {}) {
                         `You drop ${the(trapname(ttyp, false, state), state)}!`,
                         state,
                     );
-                    await dropx(obj, { ...env, state });
+                    await dropx(obj, dropCommandEnv(state, { ...env, state }));
                     return;
                 }
             }
@@ -2374,7 +2373,7 @@ export async function use_stone(tstone, state = game, env = {}) {
         );
     } else if (streakColor) {
         await ttyPline(
-            `You see ${streakColor} streaks on the ${stoneName}.`,
+            youSee(`${streakColor} streaks on the ${stoneName}.`, state),
             state,
         );
     } else {
@@ -3463,7 +3462,7 @@ export async function use_candle(obj, state = game, env = {}) {
     const attachQuery = safe_qbuf(
         query, '?', candelabrum, yname, thesimpleoname, 'it', state,
     );
-    if (await y_n(attachQuery, state) === 'n'.charCodeAt(0)) {
+    if (await y_n(attachQuery, state) === 'n') {
         await use_lamp(obj, state, env);
         return;
     }
@@ -3776,9 +3775,12 @@ export async function fig_transform(figurine, timeout, rawEnv = {}) {
                 );
             } else {
                 await message(
-                    `You see ${monsterName} `
-                        + `${locomotion(monster.data, 'drop')} out of your `
-                        + `pack${andVanish}!`,
+                    youSee(
+                        `${monsterName} `
+                            + `${locomotion(monster.data, 'drop')} out of your `
+                            + `pack${andVanish}!`,
+                        state,
+                    ),
                     state,
                 );
             }
@@ -3787,8 +3789,11 @@ export async function fig_transform(figurine, timeout, rawEnv = {}) {
             if (canSeeSpot && !silent) {
                 const text = suppressSee
                     ? `${an(xnameFresh(figurine, state))} suddenly vanishes!`
-                    : `You see a figurine transform into ${monsterName}`
-                        + `${andVanish}!`;
+                    : youSee(
+                        `a figurine transform into ${monsterName}`
+                            + `${andVanish}!`,
+                        state,
+                    );
                 await message(messageAt(text, x, y, state), state);
                 redraw = true;
             }
@@ -3806,9 +3811,12 @@ export async function fig_transform(figurine, timeout, rawEnv = {}) {
                     carriedBy = 'thin air';
                 }
                 await message(
-                    `You see ${monsterName} `
-                        + `${locomotion(monster.data, 'drop')} out of `
-                        + `${carriedBy}${andVanish}!`,
+                    youSee(
+                        `${monsterName} `
+                            + `${locomotion(monster.data, 'drop')} out of `
+                            + `${carriedBy}${andVanish}!`,
+                        state,
+                    ),
                     state,
                 );
             }
@@ -4734,6 +4742,7 @@ export async function maybe_dunk_boulders(
 // consumed charge, then runs the type-specific explosion and callbacks in C's
 // eight-neighbor-plus-hero order.
 export async function do_break_wand(obj, state = game, rawEnv = {}) {
+    const nothing_else_happens = 'But nothing else happens...';
     const env = { ...rawEnv, state };
     const random = env.random ?? { d, rn1, rn2, rnd, rne, rnl, rnz };
     const message = env.message ?? ttyPline;
@@ -4788,7 +4797,7 @@ export async function do_break_wand(obj, state = game, rawEnv = {}) {
     await setnotworn(obj, setwornEnv(state));
 
     if (!await zappable(obj, state)) {
-        await message(nothing_happens, state, env);
+        await message(nothing_else_happens, state, env);
         discard_broken_wand(state, env);
         return ECMD_TIME;
     }
@@ -4822,7 +4831,7 @@ export async function do_break_wand(obj, state = game, rawEnv = {}) {
     case WAN_ENLIGHTENMENT:
     case WAN_SECRET_DOOR_DETECTION:
     case WAN_STASIS:
-        await message('But nothing else happens...', state, env);
+        await message(nothing_else_happens, state, env);
         discard_broken_wand(state, env);
         return ECMD_TIME;
     case WAN_DEATH:

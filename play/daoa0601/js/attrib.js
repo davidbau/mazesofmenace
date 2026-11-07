@@ -10,7 +10,7 @@ import { finishHeroDeath } from './end.js';
 import { MONSTER_GENO, MONSTER_NAME, MONSTER_SYMBOL, adjustErinys } from './monster_data.js';
 import { monsterHasEyes, monsterHasProperName, nameToMonster } from './mondata.js';
 import { d, rn1, rn2, rnd } from './rng.js';
-import { retouchEquipment } from './artifact.js';
+import { retouchEquipment, whatGives } from './artifact.js';
 import { makeConfused } from './potion.js';
 import { summonFuries } from './makemon.js';
 import { grantIntrinsicProperty, hasIntrinsicProperty, hasPermanentIntrinsicProperty, propertyIsActive, propertyTimeout, revokeIntrinsicProperty, } from './properties.js';
@@ -43,9 +43,12 @@ const ATTRIBUTE_NAME = [
 export const ATTRIBUTE_DISPLAY_ORDER = Object.freeze([
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
 ]);
+// Part of C attrib.c:acurr(), attrib.c:adjattrib(): equipment-slot accessor
+// for the checks C writes as direct uarmg/uwep/uarmh reads.
 function wornObject(state, slot) {
     return state?.[slot] || state?.u?.[slot] || null;
 }
+// C attrib.c:acurr()
 // Equipment changes the effective value without overwriting the base value.
 export function currentAttribute(attribute, state = game) {
     requireAttributeIndex(attribute);
@@ -67,6 +70,8 @@ export function currentStrength(state = game) {
         return 19 + Math.trunc(strength / 50);
     return Math.min(strength, 125) - 100;
 }
+// Part of C attrib.c:acurr(): the per-equipment bounds (gauntlets of power,
+// Ogresmasher, dunce cap) and the 3..25 clamp, returned as a pair.
 function attributeLimits(attribute, state) {
     if (attribute === A_STR)
         return [wornObject(state, 'uarmg')?.otyp === GAUNTLETS_OF_POWER ? STR25 : 3, STR25];
@@ -372,6 +377,8 @@ export function setMoreLuck(state = game) {
     else
         state.u.moreluck = -LUCKADD;
 }
+// Part of C attrib.c:adjattrib(): the msgflg message half, split out for
+// async callers.
 // adjattrib()'s message half (msgflg handling), split out for async callers.
 export function attributeChangeMessage(attribute, result, state = game) {
     requireAttributeIndex(attribute);
@@ -403,12 +410,16 @@ export async function exerciseAttribute(attribute, improving, state = game) {
     if (state.moves > 0 && (attribute === A_STR || attribute === A_CON))
         await encumber_msg(state);
 }
+// Part of C attrib.c:exercise(): the synchronous Wisdom-only entry callers
+// reach without an input boundary.
 // Sync wrapper over exercise() for Wisdom: exercise(A_WIS, ...) never
 // reaches the encumber_msg() tail, so knowledge and identification can use
 // the same accumulation rule without an input boundary.
 export function exerciseWisdom(improving = true, state = game) {
     accumulateAttributeExercise(A_WIS, improving, state);
 }
+// Part of C attrib.c:exercise(): the accumulation core shared by the async
+// and sync paths.
 function accumulateAttributeExercise(attribute, improving, state) {
     requireAttributeIndex(attribute);
     const hero = state.u;
@@ -627,6 +638,7 @@ export function varyInitAttr() {
         }
     }
 }
+// Part of C attrib.c:exerchk(): the deferral test for the periodic check.
 function exerciseCheckIsDeferred(state) {
     // C attrib.c:exerchk() runs its test whenever `moves >=
     // next_attrib_check && !multi`.  An occupation installed with multi
@@ -640,6 +652,9 @@ const SLOT_MASKS = {
     uleft: W_RINGL, uright: W_RINGR, uamul: W_AMUL, ublindf: W_TOOL,
     uwep: W_WEP, uswapwep: W_SWAPWEP, uquiver: W_QUIVER,
 };
+// Port only: recompute a property's intrinsic bit mask (FROMEXPER,
+// FROMRACE, ...) from the recorded property sources, mirroring the
+// u.uprops[] intrinsic field C maintains in place.
 export function intrinsicPropertyMask(property, state = game) {
     const sources = state.u._propertySources?.[property]?.intrinsic;
     return propertyTimeout(property, state)
@@ -649,6 +664,9 @@ export function intrinsicPropertyMask(property, state = game) {
         | (sources?.form ? FROMFORM : 0)
         | (sources?.potion ? I_SPECIAL : 0);
 }
+// Port only: recompute a property's extrinsic worn-slot mask (W_ARM,
+// W_RINGL, ...) from the recorded property sources, mirroring the
+// u.uprops[] extrinsic field C maintains in place.
 export function extrinsicPropertyMask(property, state = game) {
     const sources = state.u._propertySources?.[property];
     let mask = (sources?.carried.length ? W_ART : 0) | (sources?.invoked ? W_ARTI : 0);
@@ -659,6 +677,7 @@ export function extrinsicPropertyMask(property, state = game) {
         mask |= W_TOOL;
     return mask;
 }
+// C youprop.h:Very_fast()
 export function veryFast(state = game) {
     return !!((intrinsicPropertyMask('fast', state) & ~INTRINSIC)
         || extrinsicPropertyMask('fast', state));
@@ -772,10 +791,14 @@ export function fromWhat(property, state = game, blocked = false) {
         suffix = suffix.replace(/ of strangulation.*$/i, '');
     return suffix;
 }
+// Part of C attrib.c:from_what(): the owning object's display name in
+// provenance strings.
 function propertyObjectName(object, state) {
     return artifactById(object.oartifact, state)?.name.replace(/^The /, 'the ')
         ?? ownedSimpleObjectName(object, state, { capitalized: false });
 }
+// Part of C attrib.c:from_what(): the "because of ..." tails for sources
+// blocked by a conflicting item.
 function blockedProvenance(property, state) {
     const blindfold = state.ublindf || state.u.ublindf;
     if (property === 'blinded' && blindnessBlocked(state) && isEyesOfTheOverworld(blindfold, state)
@@ -789,50 +812,9 @@ function blockedProvenance(property, state) {
         return ` because of ${ownedSimpleObjectName(helmet, state, { capitalized: false })}`;
     return '';
 }
+// Port only: hero-shaped wrapper for mondata.c's noeyes() species test.
 export function heroHasNoEyes(state = game) {
     return !monsterHasEyes(state.u.umonnum ?? -1);
-}
-const DEFENSES = {
-    fireResistance: 'fire', coldResistance: 'cold', antimagic: 'magic',
-    poisonResistance: 'poison', drainResistance: 'life-drain',
-};
-const FLAGS = {
-    searching: 'SPFX_SEARCH', hallucinationResistance: 'SPFX_HALRES', telepathy: 'SPFX_ESP',
-    stealth: 'SPFX_STLTH', regeneration: 'SPFX_REGEN', teleportControl: 'SPFX_TCTRL',
-    warnOfMonster: 'SPFX_WARN', warning: 'SPFX_WARN', energyRegeneration: 'SPFX_EREGEN',
-    halfSpellDamage: 'SPFX_HSPDAM', halfPhysicalDamage: 'SPFX_HPHDAM', reflection: 'SPFX_REFLECT',
-};
-// C artifact.c:what_gives()
-// The first item conveying a particular intrinsic.
-// C artifact.c:abil_to_adtyp(): the C extrinsic-pointer table became the
-// DEFENSES map above.
-// C artifact.c:abil_to_spfx(): likewise the FLAGS map for spfx bits.
-export function whatGives(property, state = game) {
-    const wornmask = W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU
-        | W_AMUL | W_RINGL | W_RINGR | W_TOOL | W_ART | W_ARTI
-        | (state.u.twoweap ? W_SWAPWEP : 0);
-    const extrinsic = extrinsicPropertyMask(property, state);
-    const wornbits = wornmask & extrinsic;
-    for (const object of state.inventory) {
-        if (object.oartifact && (property !== 'warnOfMonster' || state.context.warntype?.obj)) {
-            const artifact = artifactById(object.oartifact, state);
-            if (!artifact)
-                continue;
-            const defense = DEFENSES[property];
-            const flag = FLAGS[property];
-            if (defense && (artifact.carriedDefense === defense
-                || artifact.defense === defense && ((object.owornmask ?? 0) & ~(W_ART | W_ARTI))))
-                return object;
-            if (flag && (artifact.carriedFlags.includes(flag)
-                || artifact.flags.includes(flag) && object.owornmask))
-                return object;
-            if (object === state.uwep && property === 'blindResistance' && (extrinsic & W_WEP))
-                return object;
-        }
-        else if (wornbits && wornbits === (wornmask & (object.owornmask ?? 0)))
-            return object;
-    }
-    return null;
 }
 // C attrib.c:adjabil(). A level change grants or revokes role (FROMEXPER)
 // and race (FROMRACE) abilities, and each changed level adds or removes
@@ -914,6 +896,7 @@ export function newHeroHitPoints(state) {
     }
     return hp;
 }
+// Part of C attrib.c:newhp(): the Con adjustment table.
 // The Con adjustment table of C newhp().
 function newHeroConstitutionBonus(constitution) {
     if (constitution <= 3)
@@ -1026,6 +1009,8 @@ export async function changeHeroAlignment(newAlignment, reason, state = game) {
         await retouchEquipment(0, { state });
     }
 }
+// Port only: runtime validation that an attribute index is one of the six
+// hero attributes.
 export function requireAttributeIndex(attribute) {
     if (!Number.isInteger(attribute) || attribute < A_STR || attribute > A_CHA)
         throw new RangeError(`Unknown hero attribute ${attribute}`);

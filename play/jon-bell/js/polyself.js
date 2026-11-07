@@ -24,7 +24,7 @@ import { newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_res
 import { pline, urgent_pline } from './pline.js';
 import { impossible } from './pline.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
-import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental as is_home_elemental_real } from './makemon.js';
+import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental } from './makemon.js';
 import { getlin } from './windows.js';
 import { mksobj, mkclass_poly_nc, set_bknown } from './mklev.js';
 import { mungspaces } from './hacklib.js';
@@ -133,7 +133,7 @@ import {
     PM_HUMAN_WERERAT, PM_HUMAN_WEREJACKAL, PM_HUMAN_WEREWOLF,
     PM_STONE_GIANT, PM_HILL_GIANT, PM_MEDUSA,
 } from './pm.generated.js';
-import { body_part as body_part_real, mbodypart as mbodypart_real } from './cmd.js'; // relocate-fns
+import { mbodypart as mbodypart_real } from './cmd.js'; // relocate-fns
 import { youhiding } from './insight.js'; // relocate-fns
 export { M1_CLING, M1_FLY, M_AP_FURNITURE_local, M_AP_NOTHING_local, M_AP_OBJECT_local, S_EEL, _hides_under, an }; // relocate-fns
 
@@ -206,10 +206,6 @@ function is_giant(ptr) { return (ptr.mflags2 & M2_GIANT) !== 0; }
 /* C mondata.h:95 is_undead(ptr) — mflags2 & M2_UNDEAD, NOT mflags1. */
 function is_undead(ptr) { return (ptr.mflags2 & M2_UNDEAD) !== 0; }
 function is_golem(ptr) { return ptr.mlet === S_GOLEM; }
-// C polyself.c:869 passes &mons[mntmp] to the shared makemon.c:33 helper.
-function is_home_elemental(pmidx) {
-    return is_home_elemental_real({ pmidx: pmidx | 0 });
-}
 
 // C mondata.h is_placeholder — PM_ORC/PM_GIANT/PM_HUMAN/PM_ELF placeholders.
 const PLACEHOLDER = new Set([72, 169, 260, 264]);
@@ -2719,10 +2715,10 @@ export async function still_chewing(x, y) {
  * in js/cmd.js (mbodypart_real, imported above). */
 export function mbodypart(shkp, part) { return mbodypart_real(shkp, part); }
 
-/* C polyself.c:2142-2145 body_part(part) = mbodypart(&gy.youmonst, part) —
- * the real general port lives in js/cmd.js (body_part_real, imported above,
- * itself calling the same real mbodypart against the hero's own youmonst). */
-export function body_part(part) { return body_part_real(part); }
+/* C polyself.c:2142-2146 body_part(part) = mbodypart(&gy.youmonst, part). */
+export function body_part(part) {
+    return mbodypart_real(game.youmonst, part);
+}
 
 export function skinback(val) {
     const u = game.u || {};

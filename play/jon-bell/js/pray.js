@@ -3,7 +3,7 @@ import { nomul } from './allmain.js';
 import { confers_luck, discover_artifact, is_art } from './artifact.js';
 import { C_ATTR_TO_DISP, adjalign, adjattrib, exercise, getAbase, getAmax, setuhpmax } from './attrib.js';
 import { Confusion_hero, EYE, FOOT, LL_SPOILER, LOADSTONE, NH_AMBER, NH_BLACK, OCLASS_SPBOOK, OCLASS_WEAPON, PM_KNIGHT, RIN_SUSTAIN_ABILITY, Role_if, SET_BOTL, STOMACH, SetVoice, THIT_CORPSE, THIT_M2_JEWELS, THIT_S_UNICORN, Your, _AD_BLND, _AT_ENGL, _Blindfolded, _Blindfolded_only, _Deaf, _FE_M2_UNDEAD, _Flying, _IA_MAGIC_MARKER_OTYP, _Is_sanctum, _Levitation, _Luck, _MOLOCH, _POT_WATER_OTYP, _Punished, _Role_if, _Unchanging, _You_feel, _align_gname, _an, _cmd_Hallucination, _eprop, _eyecount, _hero_Blind, _hero_Deaf, _hero_youmonst, _hprop, _is_demon, _is_vampshifter, _ismnum, _ld_carried, _levlAt, _mh_a_monnam, _mk_artifact_by_align, _nohands, _paranoid_query_yn, _plineVFmt, _prayer_uhim, _region_danger, _set_prop_itimeout, _st_Punished, _stuck_in_wall, _uprop_active, body_part, carrying, impossible, is_weptool, makeknown, mbodypart, obj_to_any, pline_The, record_achievement, rescued_from_terrain, set_moreluck, spelleffects, useup, useupf, verbalize, wake_nearby, which_armor } from './cmd.js';
-import { ACH_TUNE, AGGRAVATE_MONSTER, AM_CHAOTIC, AM_MASK, AM_SANCTUM, AM_SHRINE, ASCENDED, A_CHAOTIC, A_CON, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, Align2amask, Amask2align, BLINDED, BOLT_LIM, COLD_RES, CONFUSION, CXN_ARTICLE, DEAF, DIED, DISINT_RES, DISSOLVED, ECMD_OK, ECMD_TIME, ESCAPED, EXT_ENCUMBER, FIRE_RES, FIXED_ABIL, FROMOUTSIDE, GLIB as GLIB_PROP, HALLUC, HALLUC_RES, HUNGRY, HVY_ENCUMBER, INTRINSIC, IS_ALTAR, Is_astralevel, KILLED_BY, KILLED_BY_AN, LL_ARTIFACT, LL_CONDUCT, LL_DIVINEGIFT, MAXULEV, MCORPSENM, MM_EMIN, MM_NOMSG, M_AP_FURNITURE, M_AP_TYPE, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, NON_PM, ONAME_GIFT, ONAME_KNOW_ARTI, PARANOID_CONFIRM, PARANOID_PRAY, PASSES_WALLS, PLNMSG_OBJ_GLOWS, POISON_RES, PROTECTION, P_BROAD_SWORD, P_ISRESTRICTED, P_LONG_SWORD, REFLECTING, ROOM, SEE_INVIS, SHOCK_RES, SICK, SICK_ALL, SLEEP_RES, SLIMED, STEALTH, STONED, STRANGLED, STRAT_APPEARMSG, STUNNED, TELEDS_NO_FLAGS, TELEPAT, TIMEOUT, TT_BURIEDBALL, TT_LAVA, Upolyd, WEAK, WOUNDED_LEGS, W_ARMC as W_ARMC_TO, W_ARMS as W_ARMS_TO, W_ARM as W_ARM_TO, W_SADDLE, FAST as _FW_FAST, EMIN as _fl_EMIN, isok } from './const.js';
+import { ACH_TUNE, AGGRAVATE_MONSTER, AM_CHAOTIC, AM_MASK, AM_SANCTUM, AM_SHRINE, ANIMATE_SPELL, ASCENDED, A_CHAOTIC, A_CON, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, Align2amask, Amask2align, BLINDED, BOLT_LIM, COLD_RES, CONFUSION, CXN_ARTICLE, DEAF, DIED, DISINT_RES, DISSOLVED, ECMD_OK, ECMD_TIME, ESCAPED, EXT_ENCUMBER, FIRE_RES, FIXED_ABIL, FROMOUTSIDE, GLIB as GLIB_PROP, HALLUC, HALLUC_RES, HUNGRY, HVY_ENCUMBER, INTRINSIC, IS_ALTAR, Is_astralevel, KILLED_BY, KILLED_BY_AN, LL_ARTIFACT, LL_CONDUCT, LL_DIVINEGIFT, MAXULEV, MCORPSENM, MM_EMIN, MM_NOMSG, M_AP_FURNITURE, M_AP_TYPE, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, NON_PM, ONAME_GIFT, ONAME_KNOW_ARTI, PARANOID_CONFIRM, PARANOID_PRAY, PASSES_WALLS, PLNMSG_OBJ_GLOWS, POISON_RES, PROTECTION, P_BROAD_SWORD, P_ISRESTRICTED, P_LONG_SWORD, REFLECTING, ROOM, SEE_INVIS, SHOCK_RES, SICK, SICK_ALL, SLEEP_RES, SLIMED, STEALTH, STONED, STRANGLED, STRAT_APPEARMSG, STUNNED, S_altar, TELEDS_NO_FLAGS, TELEPAT, TIMEOUT, TT_BURIEDBALL, TT_LAVA, Upolyd, WEAK, WOUNDED_LEGS, W_ARMC as W_ARMC_TO, W_ARMS as W_ARMS_TO, W_ARM as W_ARM_TO, W_SADDLE, FAST as _FW_FAST, EMIN as _fl_EMIN, isok } from './const.js';
 import { unpunish as unpunish_invent } from './read.js';
 import { canspotmon, flush_pending_messages, force_more, newsym, retouch_equipment, see_monsters, shieldeff as shieldeff_gz } from './display.js';
 import { You_feel, You_hear, livelog_printf, pline } from './pline.js';
@@ -73,6 +73,24 @@ const LUCKMIN_PRAY = -10;  /* you.h LUCKMIN */
 
 const LUCKMAX_PRAY = 10;   /* you.h LUCKMAX */
 
+const voice_deity = 0x0004; /* sndprocs.h:163 */
+const spe_Unknown = 0;      /* spell.h:22 */
+const AMULET_OF_YENDOR = 213;
+const FAKE_AMULET_OF_YENDOR = 212;
+const CORPSE = 265;
+const STATUE = 476;
+const S_LICH = 38;
+const S_GHOST = 54;
+const S_VAMPIRE = 48;
+const S_WRAITH = 49;
+const S_MUMMY = 39;
+const S_ZOMBIE = 52;
+
+/* C align.h:17 — ALIGNLIM (10L + (svm.moves / 200L)). */
+function ALIGNLIM() {
+    return 10 + Math.trunc((game.moves | 0) / 200);
+}
+
 /* C ref: attrib.c:411 change_luck(schar n) — RNG-free luck adjust + clamp. */
 function _change_luck(n) {
     const u = game.u || (game.u = {});
@@ -88,8 +106,7 @@ export async function dosacrifice() {
         await pline(`You are not ${(_Levitation() || _Flying()) ? 'over' : 'on'} an altar.`);
         return ECMD_OK;
     }
-    const up = u.uprops;
-    if (((up?.[CONFUSION]?.intrinsic) | 0) || ((up?.[STUNNED]?.intrinsic) | 0)) {
+    if (_uprop_active('CONFUSION') || _uprop_active('STUNNED')) {
         await pline('You are too impaired to perform the rite.');
         return ECMD_OK;
     }
@@ -101,7 +118,7 @@ export async function dosacrifice() {
     const otmp = await floorfood('sacrifice', 1);
     if (!otmp)
         return ECMD_OK;
-    if ((otmp.otyp | 0) === 213 /* AMULET_OF_YENDOR */) {
+    if ((otmp.otyp | 0) === AMULET_OF_YENDOR) {
         if (!highaltar) {
             await _offer_too_soon(altaralign);
             return ECMD_TIME;
@@ -109,11 +126,11 @@ export async function dosacrifice() {
         await _offer_real_amulet(otmp, altaralign);
         return ECMD_TIME;
     }
-    if ((otmp.otyp | 0) === 212 /* FAKE_AMULET_OF_YENDOR */) {
+    if ((otmp.otyp | 0) === FAKE_AMULET_OF_YENDOR) {
         await _offer_fake_amulet(otmp, highaltar, altaralign);
         return ECMD_TIME;
     }
-    if ((otmp.otyp | 0) === THIT_CORPSE) {
+    if ((otmp.otyp | 0) === CORPSE) {
         await _offer_corpse(otmp, highaltar, altaralign);
         return ECMD_TIME;
     }
@@ -178,7 +195,7 @@ async function _offer_real_amulet(otmp, altaralign) {
         await pline('An invisible choir sings, and you are bathed in radiance...');
         await godvoice(altaralign, 'Mortal, thou hast done well!');
         if (game._pending_message) await force_more(game._pending_message);
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize('In return for thy service, I grant thee the gift of Immortality!');
         await You(`ascend to the status of Demigod${game.flags?.female ? 'dess' : ''}...`);
         await done(ASCENDED);
@@ -344,10 +361,10 @@ async function _offer_different_alignment_altar(otmp, altaralign) {
         if (c) c.altarmask = Align2amask(u.ualign.type | 0) | (shrine ? AM_SHRINE : 0);
         newsym(u.ux, u.uy);
         if (!_blind_sac())
-            await pline(`The altar glows ${(u.ualign.type | 0) === A_LAWFUL ? 'white'
-                        : (u.ualign.type | 0) ? 'black' : 'gray'}.`);
+            await pline(`The altar glows ${hcolor((u.ualign.type | 0) === A_LAWFUL ? 'white'
+                        : (u.ualign.type | 0) ? NH_BLACK : 'gray')}.`);
         if (rnl(u.ulevel | 0) > 6 && (u.ualign.record | 0) > 0
-            && rnd(u.ualign.record | 0) > Math.trunc(3 * (10 + Math.trunc((game.moves | 0) / 200)) / 4))
+            && rnd(u.ualign.record | 0) > Math.trunc((3 * ALIGNLIM()) / 4))
             await _summon_prayer_minion(altaralign, true);
         /* C pray.c:1682-1685: a converted temple angers its former priest. */
         const pri = findpriest(temple_occupied(u.urooms));
@@ -358,7 +375,7 @@ async function _offer_different_alignment_altar(otmp, altaralign) {
         _change_luck(-1);
         exercise(A_WIS, false);
         if (rnl(u.ulevel | 0) > 6 && (u.ualign.record | 0) > 0
-            && rnd(u.ualign.record | 0) > Math.trunc(7 * (10 + Math.trunc((game.moves | 0) / 200)) / 8))
+            && rnd(u.ualign.record | 0) > Math.trunc((7 * ALIGNLIM()) / 8))
             await _summon_prayer_minion(altaralign, true);
     }
 }
@@ -615,7 +632,6 @@ function _a_align(x, y) {
 
 /* C ref: pray.c:2489 altarmask_at(coordxy x, coordxy y). */
 export function altarmask_at(x, y) {
-    const S_altar = 33;
     let res = 0;
     if (isok(x, y)) {
         const mon = m_at(x, y);
@@ -646,7 +662,7 @@ export async function altar_wrath(x, y) {
                   : "Despite your deafness, you seem to hear",
             _align_gname(altaralign),
             !deaf ? "?) whispers" : " say");
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize("Thou shalt pay, infidel!");
         const luck = _Luck();
         if (luck > -5 && rn2(luck + 6))
@@ -1014,7 +1030,7 @@ async function _fix_worst_trouble(trouble) {
         await make_sick(0n, null, false, SICK_ALL);
         break;
     case TROUBLE_REGION:
-        /* C pray.c:420-423 — stinking cloud, with hero vulnerable to HP loss. */
+        /* C pray.c:417-420 — stinking cloud, with hero vulnerable to HP loss. */
         await region_safety();
         break;
     case TROUBLE_HIT:
@@ -1301,9 +1317,17 @@ export async function dopray() {
          * before the prompt overwrites the topline. */
         if (g._pending_message)
             await force_more(g._pending_message);
-        /* pray.c:2244/2247 — ParanoidPray uses YN(), else y_n(); both render
-         * "<prompt> [yn] (n)" and default to 'n'.  Reuse the paranoid y_n helper. */
-        const force = await _paranoid_query_yn('Force the gods to be pleased?');
+        /* pray.c:2240-2248 — ParanoidPray saves in_doagain, forces it FALSE for
+         * the prompt, then restores it. Otherwise calls y_n. */
+        let force;
+        if (bits & PARANOID_PRAY) {
+            const save_doagain = !!g.gi?.in_doagain;
+            if (g.gi) g.gi.in_doagain = false;
+            force = await _paranoid_query_yn('Force the gods to be pleased?');
+            if (g.gi) g.gi.in_doagain = save_doagain;
+        } else {
+            force = await _paranoid_query_yn('Force the gods to be pleased?');
+        }
         if (force) {
             u.ublesscnt = 0;                 /* pray.c:2250 */
             if ((u.uluck | 0) < 0) u.uluck = 0; /* pray.c:2251-2252 */
@@ -1367,17 +1391,17 @@ async function maybe_turn_mon_iter(mtmp) {
             let xlev = 6;
             let flee = true;
             switch (mtmp.data.mlet | 0) {
-            case 38: xlev += 2; /* S_LICH */
+            case S_LICH: xlev += 2;
             // falls through
-            case 54: xlev += 2; /* S_GHOST */
+            case S_GHOST: xlev += 2;
             // falls through
-            case 48: xlev += 2; /* S_VAMPIRE */
+            case S_VAMPIRE: xlev += 2;
             // falls through
-            case 49: xlev += 2; /* S_WRAITH */
+            case S_WRAITH: xlev += 2;
             // falls through
-            case 39: xlev += 2; /* S_MUMMY */
+            case S_MUMMY: xlev += 2;
             // falls through
-            case 52: /* S_ZOMBIE */
+            case S_ZOMBIE:
                 if ((u.ulevel | 0) >= xlev && !await resist(mtmp, 0, 0, 0 /* NOTELL */)) {
                     if ((u.ualign?.type | 0) === A_CHAOTIC) {
                         mtmp.mpeaceful = 1;
@@ -1533,7 +1557,7 @@ async function _gcrownu() {
     switch (u.ualign.type) {
     case A_LAWFUL:
         u.uevent.uhand_of_elbereth = 1;
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize('I crown thee...  The Hand of Elbereth!');
         livelog_printf(LL_DIVINEGIFT, 'was crowned "The Hand of Elbereth" by %s', gname);
         break;
@@ -1541,7 +1565,7 @@ async function _gcrownu() {
         u.uevent.uhand_of_elbereth = 2;
         inHand = is_art(u.uwep, ART_VORPAL_BLADE);
         alreadyExists = exist_artifact(LONG_SWORD, artiname(ART_VORPAL_BLADE));
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize('Thou shalt be my Envoy of Balance!');
         livelog_printf(LL_DIVINEGIFT, 'became %s Envoy of Balance', s_suffix(gname));
         break;
@@ -1550,7 +1574,7 @@ async function _gcrownu() {
         inHand = is_art(u.uwep, ART_STORMBRINGER);
         alreadyExists = exist_artifact(RUNESWORD, artiname(ART_STORMBRINGER));
         const what = ((alreadyExists && !inHand) || classGift) ? 'take lives' : 'steal souls';
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize('Thou art chosen to %s for My Glory!', what);
         livelog_printf(LL_DIVINEGIFT, 'was chosen to %s for the Glory of %s', what, gname);
         break;
@@ -1566,7 +1590,7 @@ async function _gcrownu() {
         await dropy(obj);
         u.ugifts = (u.ugifts | 0) + 1;
         livelog_printf(LL_DIVINEGIFT | LL_ARTIFACT | LL_SPOILER, 'was bestowed with %s', bbuf);
-        if (known_spell(classGift) !== 0 /* spe_Unknown */ && ok_wep(u.uwep))
+        if (known_spell(classGift) !== spe_Unknown && ok_wep(u.uwep))
             obj = u.uwep;
     }
     switch (u.ualign.type) {
@@ -1649,7 +1673,7 @@ async function _give_prayer_spell() {
     const obj = await _fl_mkobj(-OCLASS_SPBOOK /* SPBOOK_no_NOVEL */, true);
     while (--trycnt > 0) {
         if (obj.otyp !== SPE_BLANK_PAPER) {
-            if (known_spell(obj.otyp) <= 0 /* spe_Unknown */
+            if (known_spell(obj.otyp) <= spe_Unknown
                 && P_SKILL(spell_skilltype(obj.otyp)) !== P_ISRESTRICTED)
                 break;
         } else if (!game._oc_name_known?.[SPE_BLANK_PAPER]
@@ -1664,7 +1688,7 @@ async function _give_prayer_spell() {
         const letter = force_learn_spell(obj.otyp);
         if (letter !== '\0') {
             const name = PRAY_OC_NAME[obj.otyp];
-            if (knowledge === 0 /* spe_Unknown */)
+            if (knowledge === spe_Unknown)
                 await pline("Divine knowledge of %s fills your mind!  Spell '%c'.", name, letter);
             else
                 await Your("knowledge of spell '%c' - %s is %s.", letter, name,
@@ -1746,12 +1770,12 @@ async function _god_zaps_you(respGod) {
         monstseesu_gz(M_SEEN_DISINT);
     }
     if (Is_astralevel(u.uz) || _Is_sanctum(u.uz)) {
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize("Thou cannot escape my wrath, mortal!");
         await _summon_prayer_minion(respGod);
         await _summon_prayer_minion(respGod);
         await _summon_prayer_minion(respGod);
-        SetVoice(null, 0, 80, 0 /* voice_deity */);
+        SetVoice(null, 0, 80, voice_deity);
         await verbalize("Destroy %s, my servants!", _prayer_uhim());
     }
 }
@@ -1831,8 +1855,8 @@ async function _angrygods(respGod) {
     switch (roll) {
         case 0:
         case 1:
-            /* pray.c:729 — Hallucination changes the deity's adjective. */
-            await pline(`You feel that ${_align_gname(respGod)} is ${_cmd_Hallucination() ? 'bummed' : 'displeased'}.`);
+            /* pray.c:728-729 — You_feel respects Unaware. */
+            await You_feel(`that ${_align_gname(respGod)} is ${_cmd_Hallucination() ? 'bummed' : 'displeased'}.`);
             break;
         case 2:
         case 3:
@@ -1842,7 +1866,7 @@ async function _angrygods(respGod) {
                             : "art arrogant"}, ${
                         (_hero_youmonst()?.data?.mlet | 0) === S_HUMAN
                             ? "mortal" : "creature"}."`);
-            SetVoice(null, 0, 80, 0 /* voice_deity */);
+            SetVoice(null, 0, 80, voice_deity);
             await verbalize("Thou must relearn thy lessons!");
             /* C passes FALSE (== 0), not a JS boolean: attrib.c's msgflg is
              * compared with `== 0` as well as `<= 0`, and `false === 0` is
@@ -1880,7 +1904,7 @@ async function _angrygods(respGod) {
         case 8: {
             /* C pray.c:760-772; minion.c:198-265 summon_minion(respGod, FALSE). */
             await godvoice(respGod, null);
-            SetVoice(null, 0, 80, 0 /* voice_deity */);
+            SetVoice(null, 0, 80, voice_deity);
             await verbalize("Thou durst %s me?", _on_altar() && _a_align(u.ux, u.uy) !== respGod ? "scorn" : "call upon");
             await pline(`"Then die, ${(_hero_youmonst()?.data?.mlet | 0) === S_HUMAN ? "mortal" : "creature"}!"`);
             await _summon_prayer_minion(respGod);
@@ -2022,9 +2046,9 @@ async function _pleased(gAlign) {
             if (!u.uevent.uopened_dbridge && !u.uevent.gehennom_entered) {
                 if ((u.uevent.uheard_tune | 0) < 1) {
                     await godvoice(gAlign, null);
-                    SetVoice(null, 0, 80, 0 /* voice_deity */);
+                    SetVoice(null, 0, 80, voice_deity);
                     await verbalize('Hark, %s!', (g.youmonst.data.mflags2 & 0x8 /* M2_HUMAN */) ? 'mortal' : 'creature');
-                    SetVoice(null, 0, 80, 0 /* voice_deity */);
+                    SetVoice(null, 0, 80, voice_deity);
                     await verbalize('To enter the castle, thou must play the right tune!');
                     u.uevent.uheard_tune = (u.uevent.uheard_tune | 0) + 1;
                     break;
@@ -2100,7 +2124,7 @@ async function _pleased(gAlign) {
             }
             await pline('"and thus I grant thee the gift of %s!"', gift);
             if (prop === TELEPAT && _hero_Blind()) see_monsters();
-            SetVoice(null, 0, 80, 0 /* voice_deity */);
+            SetVoice(null, 0, 80, voice_deity);
             await verbalize('Use it wisely in my name!');
             break;
         }
@@ -2228,27 +2252,21 @@ async function _pray_revive() {
     let otmp;
     for (otmp = game.level.levelObjects[u.ux][u.uy]; otmp; otmp = otmp.nexthere) {
         const saved = otmp.oextra?.omonst;
-        if ((otmp.otyp === 265 /* CORPSE */ || otmp.otyp === 476 /* STATUE */)
+        if ((otmp.otyp === CORPSE || otmp.otyp === STATUE)
             && saved?.mtame && !saved.isminion)
             break;
     }
     if (!otmp)
         return false;
-    if (otmp.otyp === 265 /* CORPSE */)
+    if (otmp.otyp === CORPSE)
         return !!(await revive(otmp, true));
-    return !!(await animate_statue(otmp, u.ux, u.uy, 2 /* ANIMATE_SPELL */, null));
+    return !!(await animate_statue(otmp, u.ux, u.uy, ANIMATE_SPELL, null));
 }
 
 /* C ref: pray.c:2506-2510 a_gname() — returns the name of the altar's deity.
  * Calls a_gname_at(u.ux, u.uy). */
 export function a_gname() {
-    const result = a_gname_at(game.u.ux | 0, game.u.uy | 0);
-    if (result != null)
-        return result;
-    /* Fallback: if level data unavailable, return hero's own deity.
-     * This matches the C behavior when the hero is on an altar but the
-     * level data isn't accessible in the JS replay environment. */
-    return _align_gname((game.u.ualign && game.u.ualign.type) | 0);
+    return a_gname_at(game.u.ux | 0, game.u.uy | 0);
 }
 
 /* C ref: pray.c:2513-2520 a_gname_at(coordxy x, coordxy y) — returns the name
@@ -2314,8 +2332,7 @@ export function halu_gname(alignment) {
     let gnam = null;
     let which;
 
-    /* C pray.c:2583 / youprop.h:120: Halluc_resistance also suppresses
-     * random gods when x_monnam() temporarily requests a priest's true name. */
+    /* C pray.c:2582-2583: return align_gname(alignment) if !Hallucination. */
     if (!_cmd_Hallucination())
         return align_gname(alignment);
 

@@ -19,8 +19,8 @@ import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
-import { _topl_stash_result, newsym, newsym_force, flush_screen, obj_to_glyph, menu_item_marker, force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
-import { pline, Norep, You_see } from './pline.js';
+import { _topl_stash_result, newsym, newsym_force, flush_screen, obj_to_glyph, mon_to_glyph, map_glyphinfo, menu_item_marker, force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
+import { pline, Norep, You_see, You, Your, You_cant } from './pline.js';
 import { pline_with_more, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { money_cnt } from './hack.js';
 import { menu_heading_text } from './tty_menu.js';
@@ -28,7 +28,8 @@ import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
 import { boxlock } from './lock.js';
 import { nomul } from './allmain.js';
 import { nhgetch } from './input.js';
-import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
+import { touch_artifact_youmonst, touch_artifact_youmonst as touch_artifact, _pickup_burden_level } from './wizcmds.js';
+import { unbless } from './mkobj.js';
 import { poly_when_stoned } from './mondata.js';
 import { polymon } from './polyself.js';
 import { exercise } from './attrib.js';
@@ -37,19 +38,22 @@ import { corpse_xname, killer_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.
 import { Blind } from './vision.js';
 import { get_obj_location } from './zap.js';
 import { ARMOR_DATA } from './armor_data.js';
-import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { splitobj } from './makemon.js';
 import { which_armor } from './worn.js';
 import { rnd, rn2 } from './rng.js';
 import { losehp } from './hack.js';
 import { yn_function, read_engr_at } from './cmd.js';
 import {
-    ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok, AUTOUNLOCK_FORCE, CQ_CANNED,
+    ECMD_OK, ECMD_TIME, is_pit, is_hole, u_at, TT_PIT, isok, AUTOUNLOCK_FORCE, AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY, CQ_CANNED,
     OBJ_CONTAINED, OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, engulfing_u,
     LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING,
     STONE, MENU_TRADITIONAL, MENU_FULL,
     AUTOSELECT_SINGLE, INVORDER_SORT, FEEL_COCKATRICE, BY_NEXTHERE,
-    PICK_ANY, PICK_ONE, W_SADDLE, ARTICLE_THE, SUPPRESS_SADDLE,
+    PICK_ANY, PICK_ONE, PICK_NONE, USE_INVLET, SIGNAL_ESCAPE, SIGNAL_NOMENU,
+    INCLUDE_HERO, INCLUDE_VENOM, NO_MM_FLAGS,
+    W_SADDLE, ARTICLE_THE, SUPPRESS_SADDLE,
     ICE, MOAT, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
     IS_POOL, IS_LAVA, IS_FURNITURE, PLNMSG_BACK_ON_GROUND, FUMBLING, TIMEOUT,
     LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
@@ -69,7 +73,7 @@ import { hliquid, x_monnam } from './mhitm.js';
 /* pickup()'s own guard cascade (pickup.c:690-735) — real, already-ported
  * bodies from their owning files, imported read-only. */
 import { is_pool } from './look.js';
-import { look_here } from './invent.js';
+import { will_feel_cockatrice, look_here } from './invent.js';
 import { t_at } from './trap.js';
 import { extract_from_minvent } from './worn.js';
 import { can_reach_floor } from './hold_another_object.js';
@@ -79,7 +83,7 @@ import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
 import { safe_qbuf as safe_qbuf_shk, costly_spot, addtobill, shop_keeper, inhishop, remote_burglary, shk_your } from './shk.js';
 import { in_rooms } from './hack.js';
-import { remove_object, obj_extract_self, engr_at, set_bknown, is_rider_pm, revive_corpse } from './mklev.js';
+import { remove_object, obj_extract_self, engr_at, set_bknown, is_rider_pm, revive_corpse, GOLD_PIECE, OC_USES_KNOWN } from './mklev.js';
 import { On_stairs } from './stairs.js';
 import { upstart } from './hacklib.js';
 import { weight } from './weight.js';
@@ -93,23 +97,21 @@ import { observe_object, discover_object } from './o_init.js';
  * so this is a genuine two-way module cycle.  Verified safe: these are
  * hoisted `function` exports referenced only from inside other functions
  * (never at module-evaluation time), and a standalone import test confirmed
- * both directions resolve with no TDZ error.  cmd.js's OWN describe_decor
- * (module-private, not exported, and not this file's to edit) omits the
- * HFumbling-deferral guard and the ICE/Norep arm — this port's describe_decor
- * below restores both directly from pickup.c rather than copying that gap. */
+ * both directions resolve with no TDZ error.  cmd.js imports describe_decor
+ * from this file, so its callers share the HFumbling and ICE/Norep arms. */
 import {
     dfeature_at as _cmd_dfeature_at,
     waterbody_name as _cmd_waterbody_name,
     pooleffects_back_on_ground as _cmd_back_on_ground,
-    body_part, ceiling,
+    body_part, ceiling, self_lookat, _digests,
     count_unpaid, loot_xname,
     bhp_Maybe_Half_Phys,
     cmdq_add_ec,
 } from './cmd.js';
 import { getlin } from './windows.js';
 import { def_oc_syms_chars, def_char_to_objclass } from './drawing.js';
+import { symset_cell } from './symbols.js';
 import { uescaped_shaft, unconscious, uteetering_at_seen_pit } from './trap.js'; // relocate-fns
-import { encumber_msg as encumber_msg_real } from './weight.js'; // relocate-fns
 import { CORPSE } from './makemon.js'; // relocate-fns
 import { start_corpse_timeout, start_glob_timeout } from './mklev.js'; // relocate-fns
 import { get_mtraits } from './mkobj.js'; // relocate-fns
@@ -125,10 +127,13 @@ export { _COIN_CLASS, _is_cleric }; // relocate-fns
  * BAG_OF_HOLDING=219, BAG_OF_TRICKS=220.
  * C ref: pickup.c:2025 if (Is_container(cobj))
  */
+const LARGE_BOX = 214;
+const BAG_OF_HOLDING = 219;
+const BAG_OF_TRICKS = 220;
 function isContainer(obj) {
     if (!obj) return false;
     const otyp = (obj.otyp | 0);
-    return otyp >= 214 && otyp <= 220; // LARGE_BOX to BAG_OF_TRICKS
+    return otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS;
 }
 
 /* Is there a container at x,y. Optional: return count of containers at x,y.
@@ -195,12 +200,14 @@ export function reset_justpicked(olist) {
  *   st_corpse = 0x2     - is it a corpse obj?
  *   st_petrifies = 0x4  - does the corpse petrify on touch?
  *   st_resists = 0x8    - do you have stoning resistance?
+ *   st_all = 0x0f       - all tests
  */
+export const st_gloves = 0x1;
+export const st_corpse = 0x2;
+export const st_petrifies = 0x4;
+export const st_resists = 0x8;
+export const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
 export function u_safe_from_fatal_corpse(obj, tests) {
-    const st_gloves = 0x1;
-    const st_corpse = 0x2;
-    const st_petrifies = 0x4;
-    const st_resists = 0x8;
     const CORPSE = 265;
     const PM_COCKATRICE = 10;
     const PM_CHICKATRICE = 9;
@@ -216,7 +223,7 @@ export function u_safe_from_fatal_corpse(obj, tests) {
         return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
     }
 
-    // Test each condition in order (C: if-else with OR operators)
+    // Test conditions (C pickup.c:275-280 single if with OR-ed conditions followed by return FALSE)
     if (((tests & st_gloves) && game.u.uarmg)
         || ((tests & st_corpse) && obj.otyp !== CORPSE)
         || ((tests & st_petrifies) && !touch_petrifies(obj.corpsenm))
@@ -229,7 +236,7 @@ export function u_safe_from_fatal_corpse(obj, tests) {
 /* C pickup.c fatal_corpse_mistake: a successful stone-golem transformation
  * permits the transfer; petrification stops it even after lifesaving. */
 export async function fatal_corpse_mistake(obj, remotely) {
-    if (u_safe_from_fatal_corpse(obj, 0x0f) || remotely) return false;
+    if (u_safe_from_fatal_corpse(obj, st_all) || remotely) return false;
     const data = game.youmonst?.data;
     if (data && poly_when_stoned(data) && await polymon(PM_STONE_GOLEM)) {
         // C pickup.c:291: display_nhwindow(WIN_MESSAGE, FALSE) calls more()
@@ -313,7 +320,7 @@ const LARGE_BOX_OTYP = 214;
 const CHEST_OTYP = 215;
 const ICE_BOX_OTYP = 216;
 const BAG_OF_TRICKS_OTYP = 220;
-const AUTOUNLOCK_APPLY_KEY = 2;
+const SPE_WIZARD_LOCK = 381; /* objects.h SPE_WIZARD_LOCK */
 
 /* C pickup.c:2107-2109: retain xname's called and individual names. */
 function _box_xname(obj) {
@@ -339,7 +346,7 @@ async function do_loot_cont(cobjRef, cindex, ccount) {
         let unlocktool = null;
         if ((autounlock & AUTOUNLOCK_APPLY_KEY) !== 0)
             unlocktool = autokey(true);
-        const willPrompt = unlocktool != null || (autounlock & 1); /* pickup.c:2123 AUTOUNLOCK_UNTRAP */
+        const willPrompt = unlocktool != null || ((autounlock & AUTOUNLOCK_UNTRAP) !== 0); /* pickup.c:2123 AUTOUNLOCK_UNTRAP */
         /* C pickup.c:2100-2103 — locked message; lknown picks "is locked" vs
          * "Hmmm, ... turns out to be locked."  The subsequent yn prompt owns
          * more(): a known trap skips the check prompt (lock.c:474), letting
@@ -432,12 +439,13 @@ async function reverse_loot() {
             if (coffers?.spe === 2) break;
         }
         if (coffers) {
+            cmd.SetVoice?.(null, 0, 80, 0); // C pickup.c:2403 SetVoice((struct monst *) 0, 0, 80, 0)
             await cmd.verbalize('Thank you for your contribution to reduce the debt.');
             cmd.freeinv(goldob);
             await add_to_container(coffers, goldob);
             coffers.owt = weight(coffers); coffers.cknown = 0;
-            if (!coffers.olocked) await boxlock(coffers, { otyp: 381 /* SPE_WIZARD_LOCK */ });
-        } else if (tile.looted !== T_LOOTED && (mon = await makemon(courtmon(), x, y, 0))) {
+            if (!coffers.olocked) await boxlock(coffers, { otyp: SPE_WIZARD_LOCK });
+        } else if (tile.looted !== T_LOOTED && (mon = await makemon(courtmon(), x, y, NO_MM_FLAGS))) {
             cmd.freeinv(goldob);
             await add_to_minv(mon, goldob);
             await pline('The exchequer accepts your contribution.');
@@ -492,7 +500,7 @@ async function doloot_core() {
     /* C's `lootcont:` label sits above the container block and the lootmon
      * branch jumps BACK to it when the player directs at their own square and
      * a container is there; a labelled loop is the transliteration. */
-    /* C pickup.c:2210-2211 — an `m` prefix (iflags.menu_requested) jumps
+    /* C pickup.c:2213-2214 — an `m` prefix (iflags.menu_requested) jumps
      * straight to lootmon, skipping the container block on the first pass. */
     let skipConts = !!g.iflags?.menu_requested;
     lootcont:
@@ -781,47 +789,14 @@ function _surface_at(x, y) {
         : lev.typ;
 }
 
-/* C ref: dungeon.c:1749-1785 surface(x,y) — the narrative terrain word used
- * by read_engr_at()'s "on the <eloc>" plines below.  NOT transcribed: the
- * `u_at(x,y) && u.uswallow && is_animal(...)` maw/husk arm (dungeon.c:1754-
- * 1759) — every caller of read_engr_at in THIS file already runs on the
- * `!u.uswallow` path (pickup()'s own guard, and check_here() is only called
- * from there), so porting an untested swallowed-hero branch here would be a
- * guess, mirroring js/look.js's own `_surface_lk`'s identical omission for
- * the identical reason.  Reuses this file's own `_surface_at(x,y)` for the
- * SURFACE_AT(x,y) macro (rm.h:133) rather than re-deriving it. RNG: none. */
-function _surface_word(x, y) {
-    const lev = game.level?.at ? game.level.at(x, y) : null;
-    if (!lev) return 'ground';
-    const levtyp = _surface_at(x, y);
-    if (IS_AIR(levtyp))
-        return Is_waterlevel(game.u?.uz)
-            ? 'air bubble' : (levtyp === CLOUD ? 'cloud' : 'air');
-    if (is_pool(x, y))
-        return (_Underwater() && !Is_waterlevel(game.u?.uz))
-            ? 'bottom' : hliquid('water');
-    if (is_ice(x, y))
-        return 'ice';
-    if (_is_lava(x, y))
-        return hliquid('lava');
-    if (lev.typ === DRAWBRIDGE_DOWN)
-        return 'bridge';
-    if (IS_ALTAR(levtyp))
-        return 'altar';
-    if (IS_GRAVE(levtyp))
-        return 'headstone';
-    if (IS_FOUNTAIN(levtyp))
-        return 'fountain';
-    if (On_stairs(x, y))
-        return 'stairs';
-    if (IS_WALL(levtyp) || levtyp === SDOOR)
-        return 'wall';
-    if (IS_DOOR(levtyp))
-        return 'doorway';
-    if (IS_ROOM(levtyp) && !Is_earthlevel(game.u?.uz))
-        return 'floor';
-    return 'ground';
-}
+/* C ref: dungeon.c:1749-1785 surface(x,y) — DELETED a file-local hand-rolled
+ * copy (`_surface_word`) that had ZERO callers: read_engr_at()'s "on the
+ * <eloc>" plines live in js/cmd.js's exported port, which calls the ONE
+ * canonical surface() (js/cmd.js:16452) for its eloc.  The copy also omitted
+ * the swallowed-hero maw/husk arm (dungeon.c:1754-1759) and invented a
+ * null-tile "ground" arm.  Only this file's `_surface_at` (the rm.h:133
+ * SURFACE_AT macro twin, used at :1018) remains, and it is a different
+ * function from surface(). */
 
 /* C ref: pickup.c:335-348 deferred_decor(boolean setup) — called ONLY from
  * describe_decor()'s own HFumbling guard below (setup=TRUE); the setup=FALSE
@@ -843,7 +818,7 @@ async function deferred_decor(setup) {
 }
 export { deferred_decor };
 
-async function describe_decor() {
+export async function describe_decor() {
     const g = game;
     const u = g.u;
     g.iflags = g.iflags || {};
@@ -1013,6 +988,8 @@ function n_or_more(obj, refCount) {
     return (obj.quan | 0) >= refCount;
 }
 
+/* C wintty.c process_menu_window: selection and paging shared by the
+ * pickup query and the multiple-container loot menu. */
 const _QO_SELECT_ALL = 0x2e /* '.' */, _QO_UNSELECT_ALL = 0x2d /* '-' */,
       _QO_INVERT_ALL = 0x40 /* '@' */, _QO_SELECT_PAGE = 0x2c /* ',' */,
       _QO_UNSELECT_PAGE = 0x5c /* '\\' */, _QO_INVERT_PAGE = 0x7e /* '~' */;
@@ -1033,20 +1010,25 @@ async function _select_menu(items, how, paint = null) {
         /* wintty.c tty_end_menu: a menu taller than the terminal paginates at
          * rows-1 (23) content rows with a "(N of M)" footer; each page is a
          * full-screen window and bare selectors apply to the visible page. */
-        let pageStart = 0, pageEnd = items.length, pageCount = 1;
+        let visibleItems = new Set(items), pageCount = 1;
         if (paint) {
-            const all = [titleErased ? '' : menu_heading_text(paint.title), ''];
+            const all = paint.title != null ? [titleErased ? '' : menu_heading_text(paint.title), ''] : [];
+            const rowItems = all.map(() => null);
+            if (paint.header) { all.push(paint.header); rowItems.push(null); }
             let lastHeading = null;
             for (const it of items)
             {
                 /* C pickup.c:1100-1130 query_objlist: a class heading precedes
                  * each run of same-class entries (invent.c:4790 names[]). */
-                if (it.heading && it.heading !== lastHeading)
+                if (it.heading && it.heading !== lastHeading) {
                     all.push(menu_heading_text(it.heading));
+                    rowItems.push(null);
+                }
                 lastHeading = it.heading;
                 const showGlyph = it.glyph && game.iflags?.use_menu_glyphs
                     && !((game.iflags.menuobjsyms | 0) & 4);
                 all.push(`${it.sel} ${menu_item_marker(it, page, showGlyph)} ${it.text}`);
+                rowItems.push(it);
             }
             all.push('(end)');
             const tall = all.length > 24;
@@ -1057,8 +1039,7 @@ async function _select_menu(items, how, paint = null) {
                 if (page >= pageCount) page = pageCount - 1;
                 const rs = page * 23, re = Math.min(body.length, rs + 23);
                 lines = [...body.slice(rs, re), `(${page + 1} of ${pageCount})`];
-                pageStart = Math.max(0, rs - 2);
-                pageEnd = Math.max(0, re - 2);
+                visibleItems = new Set(rowItems.slice(rs, re).filter(Boolean));
                 while (lines.length < 24) lines.push('');
             }
             const full = tall || lines.length === 24;
@@ -1086,8 +1067,7 @@ async function _select_menu(items, how, paint = null) {
         const raw = await nhgetch();
         const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         const ch = String.fromCharCode(k);
-        const hit = items.find((it, ix) => it.sel === ch
-            && ix >= pageStart && ix < pageEnd);
+        const hit = items.find((it) => it.sel === ch && visibleItems.has(it));
         // C wintty.c:1564-1615: digits accumulate a count; ESC cancels it.
         if (!hit && k >= 48 && k <= 57
             && (pendingCount || !items.some(it => it.gsel === ch))) {
@@ -1097,7 +1077,7 @@ async function _select_menu(items, how, paint = null) {
         }
         const count = Number(pendingCount);
         pendingCount = 0n;
-        if (hit) {
+        if (hit && how !== PICK_NONE) {
             // C toggle_menu_curr: a count replaces an existing selection.
             hit.selected = count > 0 || !hit.selected;
             hit.count = hit.selected ? (count || -1) : -1;
@@ -1115,12 +1095,13 @@ async function _select_menu(items, how, paint = null) {
             continue;
         }
         if (k === 0x3a /* ':' MENU_SEARCH */) {
+            if (how === PICK_NONE) continue;
             /* C wintty.c:1700-1730 — getlin, "*%s*", pmatchi on "%c - %s". */
             const finished = await menu_search_case(
                 how === PICK_ONE ? 'ONE' : 'ANY',
                 items.map((it) => ({ str: `${it.sel} - ${it.text}`, it })),
                 () => String(game._screen_output).split('\n'),
-                (curr) => { curr.it.selected = !curr.it.selected; });
+                (curr) => { curr.it.selected = !curr.it.selected; curr.it.count = -1; });
             titleErased = true;
             if (finished) return false;
             continue;
@@ -1131,18 +1112,27 @@ async function _select_menu(items, how, paint = null) {
         if (k === 10 || k === 13)
             return false; /* commit */
         if (how === PICK_ANY && (k === _QO_SELECT_ALL || k === _QO_SELECT_PAGE)) {
-            for (const it of items) it.selected = true;
+            for (const it of items)
+                if ((k === _QO_SELECT_ALL || visibleItems.has(it)) && !it.selected) {
+                    it.selected = true; it.count = -1;
+                }
             continue;
         }
         if (k === _QO_UNSELECT_ALL || k === _QO_UNSELECT_PAGE) {
-            for (const it of items) { it.selected = false; it.count = -1; }
+            for (const it of items)
+                if (k === _QO_UNSELECT_ALL || visibleItems.has(it)) { it.selected = false; it.count = -1; }
             continue;
         }
         if (how === PICK_ANY && (k === _QO_INVERT_ALL || k === _QO_INVERT_PAGE)) {
-            for (const it of items) { it.selected = !it.selected; if (!it.selected) it.count = -1; }
+            for (const it of items)
+                if (k === _QO_INVERT_ALL || visibleItems.has(it)) {
+                    it.selected = !it.selected;
+                    it.count = -1;
+                }
             continue;
         }
-        if (ch !== '\0' && items.some((it) => it.gsel === ch)) {
+        if (how !== PICK_NONE && ch !== '\0' && items.some((it) => it.gsel === ch)) {
+            if (how === PICK_ONE && items.filter((it) => it.gsel === ch).length !== 1) continue;
             for (const it of items) if (it.gsel === ch) {
                 it.selected = !it.selected;
                 it.count = it.selected ? (count || -1) : -1;
@@ -1157,13 +1147,16 @@ async function _select_menu(items, how, paint = null) {
     }
 }
 
+/* C invent.c:592 sortloot(), with query_objlist's flag-dependent mode.
+ * The array holds the filtered chain, including fatal corpses retained by
+ * SORTLOOT_PETRIFY, before query_objlist applies its per-row allow check. */
 const _PU_INV_ORDER = [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
 const _PU_SLIME_MOLD_OTYP = 285, _PU_TIN_OTYP = 296, _PU_EGG_OTYP = 266,
       _PU_CORPSE_OTYP = 265;
 /* C invent.c:188-198 armcat[] indexed by oc_armcat (SUIT 0, SHIELD 1, HELM 2,
  * GLOVES 3, BOOTS 4, CLOAK 5, SHIRT 6); out-of-range -> 7 -> armcat[7] = 8. */
 const _PU_LOOT_ARMCAT = [7, 4, 1, 2, 3, 5, 6, 8];
-function _pu_loot_subclass(obj) {
+function _pu_loot_subclass(obj, discovered) {
     if ((obj.oclass | 0) === 3 /* ARMOR_CLASS */) {
         let k = ARMOR_DATA[obj.otyp | 0]?.armcat;
         if (k === undefined || k < 0 || k >= 7) k = 7;
@@ -1181,12 +1174,20 @@ function _pu_loot_subclass(obj) {
     if ((obj.oclass | 0) === 6 /* TOOL_CLASS */) {
         /* C invent.c:215-240 */
         const t = obj.otyp | 0;
-        if (obj.dknown && game._oc_name_known && game._oc_name_known[t]
+        if (obj.dknown && discovered
             && (t === 220 || t === 252))
             return 2;
         if (isContainer(obj)) return 1;
         return ((t >= 247 && t <= 251) || t === 253 || t === 254
                 || (t >= 256 && t <= 258) || t === 252) ? 3 : 4;
+    }
+    if ((obj.oclass | 0) === 13 /* GEM_CLASS */) {
+        const seen = !!obj.dknown;
+        switch (MKOBJ_OC_MATERIAL[obj.otyp | 0]) {
+        case 20: return !seen ? 1 : !discovered ? 2 : 3; // GEMSTONE
+        case 19: return !seen ? 1 : !discovered ? 2 : 4; // GLASS
+        default: return !seen ? 5 : obj.otyp !== 474 ? (!discovered ? 6 : 7) : 8;
+        }
     }
     if ((obj.oclass | 0) !== 7 /* FOOD_CLASS */)
         return 1;
@@ -1198,12 +1199,11 @@ function _pu_loot_subclass(obj) {
     default:                  return obj.globby ? 6 : 2;
     }
 }
-function _pu_loot_disco(obj) {
+function _pu_loot_disco(obj, discovered) {
     const otyp = obj.otyp | 0;
     if (!(obj.dknown | 0)) return 1;
-    const discovered = !!(game._oc_name_known && game._oc_name_known[otyp]);
     if (discovered || !getObjDescr(otyp)) return 4;
-    return 2;
+    return game._oc_uname?.[otyp] ? 3 : 2;
 }
 function _pu_loot_xname(obj) {
     // C invent.c:309-387: suppress name prefixes and rank towel/glob sizes.
@@ -1227,110 +1227,183 @@ function _pu_loot_classify(obj) {
         ? [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16]
         : (game.flags?.inv_order || _PU_INV_ORDER);
     const k = classorder.indexOf(obj.oclass | 0);
-    return (k >= 0) ? (1 + k) : (1 + classorder.length + 1);
+    return (k >= 0) ? (1 + k) : (1 + classorder.length + ((obj.oclass | 0) !== 17 ? 1 : 0));
 }
-function _pu_sortloot(eligible) {
-    /* invent.c:628: `if (mode && n > 1)` — pickup.c:1079-1083 builds mode from
-     * flags.sortloot/sortpack; USE_INVLET is never set here.  Mode 0
-     * (sortloot:none + !sortpack) keeps chain order. */
+function _pu_invletter_value(c) {
+    if (typeof c === 'string') c = c.charCodeAt(0);
+    return c >= 97 && c <= 122 ? c - 95 : c >= 65 && c <= 90 ? c - 37
+        : c === 36 ? 1 : c === 35 ? 54 : 55;
+}
+function _pu_sortloot(eligible, qflags) {
     const sl = game.flags?.sortloot ?? 'l';
-    if (!(sl === 'f' || sl === 'l' || game.flags?.sortpack))
+    const lootMode = sl === 'f' || (sl === 'l' && !(qflags & USE_INVLET));
+    const invletMode = !lootMode && !!(qflags & USE_INVLET);
+    const packMode = !!game.flags?.sortpack;
+    if (!lootMode && !invletMode && !packMode)
         return eligible.slice();
-    const lootMode = (sl === 'f' || sl === 'l');
     const arr = eligible.map((obj, indx) => ({ obj, indx, orderclass: 0 }));
-    if (arr.length > 1) {
-        for (const sli of arr) {
+    const classify = (sli) => {
+        if (!sli.orderclass) {
+            const discovered = !!game._oc_name_known?.[sli.obj.otyp];
             sli.orderclass = _pu_loot_classify(sli.obj);
-            sli.subclass = _pu_loot_subclass(sli.obj);
-            sli.disco = _pu_loot_disco(sli.obj);
-            /* invent.c:479 — name/BUCX tiers need SORTLOOT_LOOT (sortloot l/f) */
-            sli.str = lootMode ? _pu_loot_xname(sli.obj) : '';
-            sli.bucx = (sli.obj.bknown
-                        ? (sli.obj.blessed ? 3 : !sli.obj.cursed ? 2 : 1) : 0);
+            sli.subclass = _pu_loot_subclass(sli.obj, discovered);
+            sli.disco = _pu_loot_disco(sli.obj, discovered);
         }
-        arr.sort((a, b) => (a.orderclass - b.orderclass)
-            || (a.subclass - b.subclass)
-            || (a.disco - b.disco)
-            || (lootMode ? (_pu_strcmpi(a.str, b.str) || (b.bucx - a.bucx)) : 0)
-            || (a.indx - b.indx));
-    }
-    return arr.map((sli) => sli.obj);
+    };
+    const compare = (a, b) => {
+        let cmp;
+        if (!invletMode || packMode) {
+            classify(a); classify(b);
+            if ((cmp = a.orderclass - b.orderclass)) return cmp;
+            if (!invletMode) {
+                if ((cmp = a.subclass - b.subclass)) return cmp;
+                if ((cmp = a.disco - b.disco)) return cmp;
+            }
+        }
+        if (invletMode && (cmp = _pu_invletter_value(a.obj.invlet)
+                               - _pu_invletter_value(b.obj.invlet))) return cmp;
+        if (lootMode) {
+            a.str ??= _pu_loot_xname(a.obj);
+            b.str ??= _pu_loot_xname(b.obj);
+            if ((cmp = _pu_strcmpi(a.str, b.str))) return cmp;
+            const buc = (o) => o.bknown ? (o.blessed ? 3 : !o.cursed ? 2 : 1) : 0;
+            if ((cmp = buc(b.obj) - buc(a.obj))) return cmp;
+            if ((cmp = (b.obj.greased | 0) - (a.obj.greased | 0))) return cmp;
+            if ((cmp = Math.max(a.obj.oeroded | 0, a.obj.oeroded2 | 0)
+                       - Math.max(b.obj.oeroded | 0, b.obj.oeroded2 | 0))) return cmp;
+            if ((cmp = Number(!!(b.obj.rknown && b.obj.oerodeproof))
+                       - Number(!!(a.obj.rknown && a.obj.oerodeproof)))) return cmp;
+            // C invent.c:533 tests obj1's type, including its asymmetry.
+            if (OC_USES_KNOWN[a.obj.otyp] && a.obj.oclass !== 7) {
+                cmp = (b.obj.known ? b.obj.spe | 0 : -1000)
+                    - (a.obj.known ? a.obj.spe | 0 : -1000);
+                if (cmp) return cmp;
+            }
+        }
+        return a.indx - b.indx;
+    };
+    // libc's merge sort. Comparison order matters for observe_object and
+    // loot_xname (which can consume RNG for tins), even across classes.
+    const mergeSort = (v) => {
+        if (v.length < 2) return v;
+        const mid = Math.trunc(v.length / 2);
+        const left = mergeSort(v.slice(0, mid)), right = mergeSort(v.slice(mid));
+        const out = [];
+        let i = 0, j = 0;
+        while (i < left.length && j < right.length)
+            out.push(compare(left[i], right[j]) <= 0 ? left[i++] : right[j++]);
+        return out.concat(left.slice(i), right.slice(j));
+    };
+    return mergeSort(arr).map((sli) => sli.obj);
 }
 
+/* C pickup.c:1025-1214 query_objlist.  Arrays replace C's allocated pick
+ * list: [] means zero choices, -1 SIGNAL_NOMENU, -2 SIGNAL_ESCAPE. */
 const _QO_CLASS_NAME = {
     1: 'Illegal objects', 2: 'Weapons', 3: 'Armor', 4: 'Rings', 5: 'Amulets',
     6: 'Tools', 7: 'Comestibles', 8: 'Potions', 9: 'Scrolls', 10: 'Spellbooks',
     11: 'Wands', 12: 'Coins', 13: 'Gems/Stones', 14: 'Boulders/Statues',
-    15: 'Iron balls', 16: 'Chains',
+    15: 'Iron balls', 16: 'Chains', 17: 'Venoms',
 };
 async function query_objlist(qstr, objchain, qflags, how, allow) {
+    const engulfer = !!(qflags & INCLUDE_HERO);
+    if (!objchain && !engulfer) return [];
     let n = 0, last = null;
-    const eligible = [];
     for (let curr = objchain; curr; curr = _follow(curr, qflags))
-        if (allow(curr)) { last = curr; n++; eligible.push(curr); }
+        if (allow(curr)) { last = curr; n++; }
 
     const engulfer_minvent = objchain?.where === OBJ_MINVENT
-        && game.u.uswallow && objchain.ocarry === game.u.ustuck;
+        && engulfing_u(objchain.ocarry);
     if (engulfer_minvent && n === 1 && objchain.owornmask)
         qflags &= ~AUTOSELECT_SINGLE;
-    if (n === 0)
-        return [];
-    if (n === 1 && (qflags & AUTOSELECT_SINGLE))
-        return [{ obj: last, count: last.quan | 0 }];
-
-    const sorted = _pu_sortloot(eligible);
-    const items = sorted.map((o) => ({ obj: o, sel: null, gsel: null, selected: false }));
-    let first = true;
-    for (const it of items) {
-        if (first && (it.obj.oclass | 0) === _COIN_CLASS) it.sel = '$';
-        first = false;
+    if (engulfer) {
+        ++n;
+        qflags &= ~AUTOSELECT_SINGLE;
     }
-    /* wintty.c:2715-2726 tty_end_menu: any row with no explicit selector
-     * gets the next 'a'..'z' then 'A'..'Z' slot, in menu (= sorted) order. */
-    let menu_ch = 97; /* 'a' */
+    if (n === 0)
+        return (qflags & SIGNAL_NOMENU) ? -1 : [];
+    if (n === 1 && (qflags & AUTOSELECT_SINGLE))
+        return [{ obj: last, count: last.quan }];
+
+    // C sortloot calls allow again, retaining petrifying corpses even when
+    // the filter rejects them (invent.c:619-624 SORTLOOT_PETRIFY).
+    const eligible = [];
+    for (let curr = objchain; curr; curr = _follow(curr, qflags))
+        if (allow(curr) || ((qflags & FEEL_COCKATRICE) && curr.otyp === CORPSE
+                          && (curr.corpsenm === 9 || curr.corpsenm === 10)))
+            eligible.push(curr);
+    const sorted = _pu_sortloot(eligible, qflags);
+    const pack = [...(game.flags?.inv_order || _PU_INV_ORDER)];
+    if (qflags & INCLUDE_VENOM) pack.push(17);
+    const items = [];
+    let first = true;
+    // INVORDER_SORT controls grouping independently of sortloot's mode.
+    for (const oclass of (qflags & INVORDER_SORT) ? pack : [null]) {
+        for (const obj of sorted) {
+            if (oclass !== null && obj.oclass !== oclass) continue;
+            if ((qflags & FEEL_COCKATRICE) && obj.otyp === CORPSE
+                && will_feel_cockatrice(obj, false)) {
+                await look_here(0, LOOKHERE_NOFLAGS);
+                return [];
+            }
+            if (!allow(obj)) continue;
+            let heading = oclass !== null ? _QO_CLASS_NAME[oclass] : null;
+            if (heading && how !== PICK_NONE && game.iflags?.menu_head_objsym)
+                heading += ' '.repeat(Math.max(0, 7 - heading.length))
+                    + `  ('${def_oc_syms_chars[oclass]}')`;
+            const glyph = obj_to_glyph(obj); // includes map_glyphinfo(0,0,...)
+            items.push({ obj, glyph, heading, selected: false,
+                sel: (qflags & USE_INVLET) ? obj.invlet
+                    : first && obj.oclass === _COIN_CLASS ? '$' : null,
+                gsel: def_oc_syms_chars[MKOBJ_OC_CLASS[obj.otyp]],
+                text: await doname_with_price(obj) });
+            first = false;
+        }
+    }
+    const fakeHero = { quan: 1 };
+    if (engulfer) {
+        const glyph = mon_to_glyph(game.youmonst);
+        const info = {};
+        map_glyphinfo(0, 0, glyph.glyph, 0, info);
+        const sym = typeof info.ttychar === 'string' ? info.ttychar.charCodeAt(0) : info.ttychar;
+        const cell = symset_cell(sym);
+        items.push({ obj: fakeHero, sel: '>', gsel: null, selected: false,
+            heading: (qflags & INVORDER_SORT) && n > 1
+                ? `${_digests(game.u.ustuck.data) ? 'Swallowed' : 'Engulfed'} Creatures` : null,
+            glyph: { ...glyph, ch: cell.ch, decgfx: cell.dec, color: info.gm.sym.color },
+            text: an(await self_lookat()) });
+    }
+    // C tty_end_menu assigns missing selectors after all rows are added.
+    let menu_ch = 97, row = (qstr != null ? 2 : 0) + (game.gt?.this_title ? 1 : 0);
+    let lastHeading = null, selectorPage = -1;
     for (const it of items) {
+        if (it.heading && it.heading !== lastHeading) ++row;
+        lastHeading = it.heading;
+        const page = Math.trunc(row++ / 23);
+        if (page !== selectorPage) { menu_ch = 97; selectorPage = page; }
+        if (typeof it.sel === 'number') it.sel = it.sel ? String.fromCharCode(it.sel) : null;
         if (it.sel) continue;
         it.sel = String.fromCharCode(menu_ch);
-        menu_ch = (menu_ch === 122 /* 'z' */) ? 65 /* 'A' */ : menu_ch + 1;
+        menu_ch = menu_ch === 122 ? 65 : menu_ch + 1;
     }
-    /* def_oc_syms[oclass].sym — the group accelerator for each item's own
-     * class (defsym.h's OBJCLASS table; pickup.c:1121 `any.a_obj = curr` +
-     * def_oc_syms lookup). */
-    const _OC_SYM = { 1: ']', 2: ')', 3: '[', 4: '=', 5: '"', 6: '(', 7: '%',
-        8: '!', 9: '?', 10: '+', 11: '/', 12: '$', 13: '*', 14: '`', 15: '0',
-        16: '_', 17: '.' };
-    for (const it of items) {
-        const gs = _OC_SYM[it.obj.oclass | 0];
-        if (gs) it.gsel = gs;
-    }
-
-    /* C pickup.c:1096-1130 paints the menu: title, then a heading per object
-     * class (sortloot already groups by class) before its doname'd entries. */
-    for (const it of items) {
-        if ((qflags & FEEL_COCKATRICE) && Blind() && !u_safe_from_fatal_corpse(it.obj, 0x0f)) {
-            await look_here(0, LOOKHERE_NOFLAGS);
-            return [];
-        }
-        it.glyph = obj_to_glyph(it.obj);
-        it.text = await doname_with_price(it.obj);
-        it.heading = (qflags & INVORDER_SORT) ? (_QO_CLASS_NAME[it.obj.oclass | 0] ?? 'Items') : null;
-        if (it.heading && how !== 0 && game.iflags?.menu_head_objsym)
-            it.heading += ' '.repeat(Math.max(0, 7 - it.heading.length))
-                + `  ('${_OC_SYM[it.obj.oclass | 0]}')`;
-    }
-    const cancelled = await _select_menu(items, how, { title: qstr });
-    if (cancelled) return [];
+    const cancelled = await _select_menu(items, how,
+        { title: qstr, header: game.gt?.this_title });
+    if (cancelled) return (qflags & SIGNAL_ESCAPE) ? -2 : [];
     const picked = [];
     for (const it of items.filter((it) => it.selected)) {
-        if (engulfer_minvent && it.obj.owornmask) {
-            await pline("You can't pick %s up.", shk_your('', it.obj) + simpleonames({ ...it.obj, quan: 1 }));
+        if (it.obj === fakeHero) {
+            await You_cant('pick yourself up!');
             continue;
         }
-        picked.push(it);
+        if (engulfer_minvent && it.obj.owornmask) {
+            const cmd = await _cmdModule();
+            await You_cant("pick %s up.", await cmd.ysimple_name(it.obj));
+            continue;
+        }
+        picked.push({ obj: it.obj,
+            count: it.count === -1 || it.count > it.obj.quan ? it.obj.quan : it.count });
     }
-    // C pickup.c:1190-1191 bounds each selected count by the stack size.
-    return picked.map((it) => ({ obj: it.obj,
-        count: it.count > 0 ? Math.min(it.count, it.obj.quan) : it.obj.quan }));
+    return picked;
 }
 
 /* C pickup.c:1544 delta_cwt().  A carried bag of holding contributes its
@@ -1338,7 +1411,7 @@ async function query_objlist(qstr, objchain, qflags, how, allow) {
  * weight.  Temporarily unlinking the object is exactly C's calculation and
  * preserves the container chain on return. */
 function delta_cwt(container, obj) {
-    if ((container.otyp | 0) !== 219 /* BAG_OF_HOLDING */)
+    if ((container.otyp | 0) !== BAG_OF_HOLDING)
         return obj.owt | 0;
     const oldWeight = container.owt | 0;
     let newWeight = oldWeight;
@@ -1388,8 +1461,9 @@ async function carry_count(obj, container, count, telekinesis) {
         return { count, wt_before, wt_after };
 
     /* C pickup.c:1631-1697 — find the largest prefix of a stack that fits.
-     * The caller supplies the user-facing confirmation/message; this routine
-     * only needs the native count and post-lift weight. */
+     * The function emits the 'You can only ...' and 'There ... cannot ...'
+     * messages itself, as C does at lines 1679 and 1696, and returns the count
+     * and weights. */
     let qq = 0;
     if (is_gold) {
         iw -= GOLD_WT(umoney);
@@ -1457,21 +1531,31 @@ async function _lift_ynq(query) {
     return await yn_function(query, 'ynq', 'q');
 }
 
+const M2_ROCKTHROW = 0x08000000; /* monflag.h:149 */
+const throws_rocks = (ptr) => ptr && ((ptr.mflags2 | 0) & M2_ROCKTHROW) !== 0;
+const WIN_MESSAGE = 1;
+function clear_nhwindow(win) {
+    if (win === WIN_MESSAGE) {
+        game._pending_message = '';
+        game._topl_sticky = null;
+    }
+}
+
 export async function lift_object(obj, container, cnt, telekinesis) {
     const g = game;
     await _cmdModule();
     if ((obj.otyp | 0) === _BOULDER_OTYP && In_sokoban(g.u?.uz)) {
-        await pline(`You cannot get your ${_cmd_mod.body_part(HAND)} around this ${xname(obj)}.`);
+        await You("cannot get your %s around this %s.", _cmd_mod.body_part(HAND), xname(obj));
         return -1;
     }
-    const throwsRocks = (((g.youmonst?.data?.mflags2 | 0) & 0x08000000) !== 0);
+    const throwsRocks = throws_rocks(g.youmonst?.data);
     if ((obj.otyp | 0) === _LOADSTONE_OTYP
         || ((obj.otyp | 0) === _BOULDER_OTYP && throwsRocks)) {
         if (inv_cnt_local(false) < _invlet_basic
             || !_cmd_mod.carrying(obj.otyp | 0)
             || await merge_choice_local(g.invent, obj))
             return 1;
-        await pline(`You are carrying too much stuff to pick up ${(obj.quan | 0) === 1 ? 'another' : 'more'} ${xname(obj)}.`);
+        await You("are carrying too much stuff to pick up %s %s.", (obj.quan | 0) === 1 ? 'another' : 'more', xname(obj));
         return -1;
     }
 
@@ -1487,9 +1571,9 @@ export async function lift_object(obj, container, cnt, telekinesis) {
         let goldLater = false;
         for (let it = ((obj.where | 0) === OBJ_FLOOR ? obj.nexthere : obj.nobj);
              it; it = ((obj.where | 0) === OBJ_FLOOR ? it.nexthere : it.nobj)) {
-            if ((it.otyp | 0) === 438 /* GOLD_PIECE */) { goldLater = true; break; }
+            if ((it.otyp | 0) === GOLD_PIECE) { goldLater = true; break; }
         }
-        await pline(`Your knapsack cannot accommodate any more items${goldLater ? ' (except gold)' : ''}.`);
+        await Your("knapsack cannot accommodate any more items%s.", goldLater ? ' (except gold)' : '');
         result = -1;
     } else {
         result = 1;
@@ -1527,6 +1611,7 @@ export async function lift_object(obj, container, cnt, telekinesis) {
                 if (ans === 'q') result = -1;
                 else if (ans === 'n') result = 0;
                 /* else 'y' (ynq's default fallthrough) => result stays 1 */
+                clear_nhwindow(WIN_MESSAGE);
             }
         }
     }
@@ -1646,12 +1731,12 @@ export async function pickup_object(obj, count, telekinesis) {
         /* C pickup.c:1820-1822 — gear worn by the monster engulfing the
          * hero cannot be removed.  This refusal consumes no turn or RNG. */
         if (engulfing_u(obj.ocarry)) {
-            await pline("You can't pick %s up.", await _cmd_mod.ysimple_name(obj));
+            await You_cant("pick %s up.", await _cmd_mod.ysimple_name(obj));
             return 0;
         }
     }
     if (obj.oartifact) {
-        const touched = await touch_artifact_youmonst(obj);
+        const touched = await touch_artifact(obj);
         // C artifact.c:951 leaves the blast on the topline before pickup's
         // later messages (pickup.c:1826,1883); publish the deferred You().
         const blast = g._touch_artifact_blast_msg;
@@ -1660,7 +1745,7 @@ export async function pickup_object(obj, count, telekinesis) {
         if (!touched) return 0;
     }
     if ((obj.otyp | 0) === _CORPSE_OTYP) {
-        /* C pickup.c:1824-1829.  Remote acquisition is safe from the
+        /* C pickup.c:1828-1831.  Remote acquisition is safe from the
          * bare-handed petrification check; direct pickup of a cockatrice or
          * chickatrice corpse is fatal unless gloves/resistance apply. */
         if (await fatal_corpse_mistake(obj, telekinesis)
@@ -1669,7 +1754,7 @@ export async function pickup_object(obj, count, telekinesis) {
         }
     }
     if ((obj.otyp | 0) === _SCR_SCARE_MONSTER_OTYP) {
-        /* C pickup.c:1830-1856.  Capacity is computed before changing the
+        /* C pickup.c:1832-1862.  Capacity is computed before changing the
          * scroll's blessed/spe state; an unliftable stack remains untouched. */
         const fitted = await carry_count(obj, null, count || (obj.quan | 0), false);
         count = fitted.count | 0;
@@ -1678,7 +1763,7 @@ export async function pickup_object(obj, count, telekinesis) {
         if (count > 0 && count < (obj.quan | 0))
             obj = (await splitobj(obj, count));
         if (obj.blessed) {
-            obj.blessed = false;
+            await unbless(obj);
         } else if (!obj.spe && !obj.cursed) {
             obj.spe = 1;
         } else {
@@ -1750,11 +1835,11 @@ export function allow_category(obj) {
 
 
 /* C ref: pickup.c:97-117 collect_obj_classes() */
-function collect_obj_classes(otmp, here) {
+function collect_obj_classes(otmp, here, filter = null) {
     let ilets = '', itemcount = 0;
     while (otmp) {
         const c = def_oc_syms_chars[otmp.oclass | 0];
-        if (!ilets.includes(c)) ilets += c;
+        if (!ilets.includes(c) && (!filter || filter(otmp))) ilets += c;
         itemcount++;
         otmp = here ? otmp.nexthere : otmp.nobj;
     }
@@ -1840,7 +1925,7 @@ export async function query_classes(action, objs, here, menu_on_demand) {
             let not_everything = false, filtered = false;
             let again = false;
             const inbuf = await getlin(`What kinds of thing do you want to ${action}? [${ilets}]`);
-            if (inbuf && inbuf.charCodeAt(0) === 27) { r.ok = false; return r; }
+            if (inbuf && inbuf[0] === '\x1b' /* '\033' */) { r.ok = false; return r; }
             for (const sym of (inbuf || '')) {
                 if (sym === ' ') continue;
                 else if (sym === 'A') r.one_at_a_time = true;
@@ -2129,12 +2214,9 @@ export async function pickup(what) {
 
 /* near_capacity() — C hack.c:4349; real STR/CON+inventory-weight impl now
  * imported from weight.js (shared faithful impl). */
-/* encumber_msg() stub — C hack.c:4382.
- * Prints an encumbrance message to the player.
- * Not yet ported; called only when STR is restored from negative. */
-export async function encumber_msg() {
-    return encumber_msg_real();
-}
+/* encumber_msg() — C pickup.c:1972 / hack.c:4382.
+ * Shared faithful implementation re-exported directly from weight.js. */
+export { encumber_msg } from './weight.js';
 
 /* C pickup.c:2781-2799 removed_from_icebox().  Frozen object ages are stored
  * relative to the turn at which they entered the ice box.  On removal they

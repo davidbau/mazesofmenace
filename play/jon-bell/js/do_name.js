@@ -12,7 +12,7 @@ import { Upolyd } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, carrying, cmdq_clear, cmdq_pop, donamelevel, flooreffects_is_plural, getObjFromGetobj, getpos, look_at_object, set_cursor, type_is_pname, verbalize } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
-import { ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
+import { ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, OBJ_FREE, OBJ_INVENT, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, PL_PSIZ, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, await_menu_key, canspotmon, docorner_blank_utf8_captures, docrt, flush_screen, force_more_pages, see_with_infrared, sensemon } from './display.js'; // relocate-fns
 import { You, xname } from './do_wear.js'; // relocate-fns
 import { shkname as dokick_shkname } from './dokick.js'; // relocate-fns
@@ -26,13 +26,14 @@ import { discover_object, undiscover_object } from './o_init.js'; // relocate-fn
 import { CXN_NORMAL, Ysimple_name2, simpleonames as _ia_simpleonames, an, getObjDescr, oname, xname_flags } from './objnam.js';
 import { artifact_name as artifact_name_exported, exist_artifact } from './artifact.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
-import { PM_DEATH, PM_FAMINE, PM_GHOST, PM_PESTILENCE } from './pm.generated.js'; // relocate-fns
-import { safe_qbuf as inventory_safe_qbuf } from './shk.js'; // relocate-fns
+import { NUMMONS, PM_DEATH, PM_FAMINE, PM_GHOST, PM_JUIBLEX, PM_PESTILENCE } from './pm.generated.js'; // relocate-fns
+import { COIN_CLASS, safe_qbuf as inventory_safe_qbuf } from './shk.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { m_at } from './uhitm.js'; // relocate-fns
 import { cansee } from './vision.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
-import { mon_nam as uhitm_mon_nam } from './uhitm.js'; // relocate-fns
+import { x_monnam, xm_has_mgivenname } from './mhitm.js';
+import { SUPPRESS_SADDLE } from './const.js';
 import { hcolor as hcolor_real } from './mhitm.js'; // relocate-fns
 import { NH_BLACK, NH_BLUE, NH_GOLDEN, NH_PURPLE, NH_RED, NH_SILVER } from './read.js'; // relocate-fns
 import { NON_PM } from './const.js'; // relocate-fns
@@ -300,7 +301,7 @@ export async function docallcmd() {
         return finished;
     };
     await showCallMenu();
-    /* Read user selection — C ref: do_name.c:557 select_menu(win, PICK_ONE, ...)
+    /* Read user selection — C ref: do_name.c:551 select_menu(win, PICK_ONE, ...)
      * -> win/tty/wintty.c process_menu_window.  This was a BARE nhgetch(), which
      * closed the menu on ANY key; C rings the bell and redraws the same page for
      * a key outside the response set (wintty.c:1738), so every such key was a
@@ -347,7 +348,7 @@ export async function docallcmd() {
     } else if (selCh === 'f') {
         await namefloorobj();                /* do_name.c:590-592 */
     } else if (selCh === 'd') {
-        await rename_disco();                /* do_name.c:586-588 */
+        await rename_disco();                /* do_name.c:593-595 */
     }
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
@@ -374,7 +375,8 @@ async function namefloorobj() {
         await pline(`There doesn't seem to be any object ${here ? 'under you' : 'there'}.`);
         return;                                         /* C:704-709 */
     }
-    const buf = obj.otyp ? _ia_simpleonames(obj) : 'strange object';
+    const STRANGE_OBJECT = 0; /* objects.h:80 */
+    const buf = (obj.otyp !== STRANGE_OBJECT) ? _ia_simpleonames(obj) : 'strange object';
     const use_plural = obj.quan > 1;
     if ((u.uprops[HALLUC]?.intrinsic | 0)
         && !((u.uprops[HALLUC_RES]?.intrinsic | 0) || (u.uprops[HALLUC_RES]?.extrinsic | 0))) {
@@ -393,7 +395,7 @@ async function namefloorobj() {
     } else {
         await docall(obj);
     }
-    if (fakeobj) { obj.where = 0; await dealloc_obj(obj); }
+    if (fakeobj) { obj.where = OBJ_FREE; await dealloc_obj(obj); }
 }
 
 /* C ref: o_init.c:1128-1213 rename_disco() — the nameable subset of the
@@ -441,7 +443,9 @@ async function rename_disco() {
     const maxLen = lines.reduce((mx, ln) =>
         Math.max(mx, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
     /* wintty.c:1908 H2344_BROKEN: offx = min(min(82, cols/2), cols - maxcol - 1);
-     * a menu of >= 24 lines (wintty.c cw->maxrow >= rows - 1) or one too wide
+     * a menu whose content rows + 1 reach 24 (lines.length >= 23, wintty.c
+     * cw->maxrow >= rows - 1; C rename_disco itself makes no paging
+     * decision, o_init.c:1185 end_menu) or one too wide
      * for an overlay drops to offx 0 and is paged at 23 content rows with
      * process_menu_window's "(%d of %d)" footer (wintty.c:1537-1539). */
     const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
@@ -507,12 +511,13 @@ async function rename_disco() {
     await docall(odummy);
 }
 
+const SPE_NOVEL = 408; /* objects.h: SPE_NOVEL */
+
 /* C ref: do_name.c:463 name_ok(obj) — getobj's classifier for `#name i'. */
 export function name_ok(obj) {
-    const COIN_CLASS = 12; /* objclass.h (15 is BALL_CLASS) */
     if (!obj || (obj.oclass | 0) === COIN_CLASS)
         return GETOBJ_EXCLUDE;
-    if (!obj.dknown || (obj.oartifact | 0) || (obj.otyp | 0) === SPE_NOVEL_OTYP)
+    if (!obj.dknown || (obj.oartifact | 0) || (obj.otyp | 0) === SPE_NOVEL)
         return GETOBJ_DOWNPLAY;
     return GETOBJ_SUGGEST;
 }
@@ -594,8 +599,8 @@ async function _alreadynamed(mtmp, monnambuf, usrbuf) {
     const norm = (t) => t.toLowerCase().replace(/[ \-_]/g, '');
     const rider = [PM_DEATH, PM_FAMINE, PM_PESTILENCE].includes(_fl_pmidx(mtmp));
     if (!usrbuf) {
-        const name = has_mgivenname(mtmp) || type_is_pname(mtmp.data) || mtmp.isshk;
-        await pline('%s would rather keep %s existing %s.', upstart(monnambuf), rider ? 'its' : _um_mhis(mtmp), name ? 'name' : 'title');
+        const name_not_title = has_mgivenname(mtmp) || type_is_pname(mtmp.data) || mtmp.isshk;
+        await pline('%s would rather keep %s existing %s.', upstart(monnambuf), rider ? 'its' : _um_mhis(mtmp), name_not_title ? 'name' : 'title');
         return true;
     }
     const inv = monnambuf.toLowerCase().indexOf('invisible '), of = monnambuf.toLowerCase().indexOf(' of ');
@@ -605,7 +610,7 @@ async function _alreadynamed(mtmp, monnambuf, usrbuf) {
         else await pline('%s is already called %s.', upstart(mhe(mtmp)), monnambuf);
         return true;
     }
-    if (_fl_pmidx(mtmp) === 303 /* PM_JUIBLEX */ && /Juiblex/i.test(monnambuf) && /^Jubilex$/i.test(usrbuf)) {
+    if (_fl_pmidx(mtmp) === PM_JUIBLEX && /Juiblex/i.test(monnambuf) && /^Jubilex$/i.test(usrbuf)) {
         await pline("%s doesn't like being called %s.", upstart(monnambuf), usrbuf);
         return true;
     }
@@ -629,11 +634,10 @@ async function do_oname(obj) {
             [obj.oextra?.oname || 'The artifact']));
         return;
     }
-    /* C do_name.c:606-641 — restricted artifact names slip while engraving.
-     * The display-only RNG is injected into wipeout_text so this cosmetic
-     * correction cannot perturb the scored core stream.  A matching base type
-     * with a single object is allowed through to oname(), which creates the
-     * artifact just as C does. */
+    /* C do_name.c:349 — restricted artifact names slip while engraving.
+     * Only the slip count uses the display-only RNG; wipeout_text keeps
+     * the global rn2 as in C.  A matching base type with a single object is
+     * allowed through to oname(), which creates the artifact just as C does. */
     const candidate = artifact_name_exported(buf, true);
     if (candidate && (_restrict_name(obj, candidate.name)
                       || exist_artifact(obj.otyp, candidate.name))) {
@@ -658,7 +662,7 @@ async function do_oname(obj) {
     await oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
 }
 
-const PL_PSIZ_CMD = 63; /* config.h PL_PSIZ */
+const PL_PSIZ_CMD = PL_PSIZ; /* config.h PL_PSIZ */
 
 /* C do_name.c:605-633 docall_xname(obj) — the formatter docall() hands to
  * safe_qbuf().  Formats a COPY of the object with the doname-caliber
@@ -710,12 +714,12 @@ async function name_from_player(prompt, _defres) {
     if (!buf || buf === '\x1b')
         return null;
     let out = mungspaces(buf);
-    if (out.length >= PL_PSIZ_DOCALL)
-        out = out.slice(0, PL_PSIZ_DOCALL - 1);
+    if (out.length >= PL_PSIZ)
+        out = out.slice(0, PL_PSIZ - 1);
     return out;
 }
 
-const PL_PSIZ_DOCALL = 63; /* global.h:404 */
+const PL_PSIZ_DOCALL = PL_PSIZ; /* global.h:404 PL_PSIZ */
 
 export async function docall(obj) {
     const g = game;
@@ -747,9 +751,7 @@ export async function docall(obj) {
         delete g._oc_uname[otyp];
     }
     /* C:665-673 — strip leading and trailing spaces; uncalls item if all
-     * spaces.  js/mklev.js mungspaces returns a single space for an all-space
-     * input rather than the empty string, which is why both are tested (the
-     * same pair js/cmd.js:1543 already tests). */
+     * spaces. mungspaces returns the empty string for all-space input. */
     const munged = mungspaces(buf);
     if (!munged || munged === ' ') {
         if (had_name)
@@ -759,7 +761,7 @@ export async function docall(obj) {
         discover_object(otyp, false, true, true);
     }
     /* C:674-675 */
-    if ((obj.where | 0) === 3 /* OBJ_INVENT */ || carrying(otyp))
+    if ((obj.where | 0) === OBJ_INVENT || carrying(otyp))
         update_inventory();
 }
 
@@ -767,14 +769,22 @@ export async function docall(obj) {
  *   char *bp = mon_nam(mtmp); *bp = highc(*bp); return bp;
  * highc() only uppercases a-z (hacklib.h). */
 export function Monnam(mtmp) {
-    const bp = uhitm_mon_nam(mtmp);
+    const bp = mon_nam(mtmp);
     if (!bp) return bp;
     let first = bp.charCodeAt(0);
     if (0x61 <= first && first <= 0x7a) first &= ~0x20;
     return String.fromCharCode(first) + bp.slice(1);
 }
 
-export function mon_nam(mon) { return uhitm_mon_nam(mon); }
+/* mon_nam(mtmp) — C ref: do_name.c:1041-1046.
+ *   return x_monnam(mtmp, ARTICLE_THE, (char *) 0,
+ *                   (has_mgivenname(mtmp)) ? SUPPRESS_SADDLE : 0, FALSE);
+ * xm_has_mgivenname (not const.js has_mgivenname): the former reads the mon
+ * struct's presence bit directly. */
+export function mon_nam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_THE, null,
+                    xm_has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
+}
 
 /* C do_name.c:1303-1308: permonst-pointer wrapper for the shared gender lookup. */
 export function pmname(pm, mgender) { return monPmname(pm.pmidx, mgender); }
@@ -802,6 +812,8 @@ export function minimal_monnam(mon, ckloc) {
     if (!mon) return '[Null monster]';
     if (!mon.data) return '[Null mon->data]';
     const mndx = mon.data.pmidx | 0;
+    if (mndx < 0) return `[Invalid mon->data ${mndx} < 0]`;
+    if (mndx >= NUMMONS) return `[Invalid mon->data ${mndx} >= ${NUMMONS}]`;
     const gender = mon.female ? 1 : 0; /* monst.h:268 Mgender */
     if (ckloc && mndx === PM_LONG_WORM && mon.mx
         && monster_at(mon.mx, mon.my) !== mon)

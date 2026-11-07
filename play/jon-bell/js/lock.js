@@ -5,7 +5,7 @@
 // (lock.c:957-1052). The drawbridge predicates used by the shared branches
 // are implemented locally below to keep lock.js independent of dokick.js.
 import { game } from './gstate.js';
-import { stop_occupation as stop_lock_occupation } from './allmain.js';
+import { stop_occupation } from './allmain.js';
 import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { costly_alteration } from './cmd.js';
 import { costly_spot, shop_keeper, stolen_value, obfree, currency } from './shk.js';
@@ -64,11 +64,12 @@ import { maybe_absorb_item } from './steal.js';
 import { stumble_onto_mimic } from './uhitm.js';
 import { TT_PIT } from './const.js';
 import { DEAF, HALLUC, HALLUC_RES, STUNNED, CONFUSION, DBWALL, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH,
-         IS_DRAWBRIDGE, HALF_PHDAM, KILLED_BY_AN, NO_PART, SHOP_DOOR_COST } from './const.js';
+         IS_DRAWBRIDGE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, OBJ_INVENT, HALF_PHDAM, KILLED_BY_AN, NO_PART, SHOP_DOOR_COST } from './const.js';
 /* C ref: objects.h — WAN_STRIKING otyp (js/makemon.js and js/muse.js pin the
- * same value); SPE_FORCE_BOLT shares doorlock's arm in C but is not reachable
- * here yet. */
+ * same value); SPE_FORCE_BOLT shares doorlock's arm in C. */
 const WAN_STRIKING_OTYP = 417;
+const SPE_FORCE_BOLT_OTYP_LK = 376;
+const SPE_FORCE_BOLT = SPE_FORCE_BOLT_OTYP_LK;
 function _lock_Deaf() {
     const p = game.u?.uprops?.[DEAF];
     return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
@@ -156,6 +157,24 @@ function _rawRnd(x) {
 
 
 
+/* C ref: lock.c:781 doopen_indir(coordxy x, coordxy y)
+ * Called when autoopen fires on walking into a closed door at (x, y).
+ * x, y guaranteed non-zero (caller passes the door tile coordinates).
+ *
+ * Fully ported against C lock.c:780-935:
+ *   - nohands guard (line 788)
+ *   - TT_PIT container prompt (lines 794-796)
+ *   - get_adjacent_loc (lines 797-806)
+ *   - hero location / doloot (lines 808-812)
+ *   - pit reach guard (lines 815-818)
+ *   - stumble_on_door_mimic (lines 820-821)
+ *   - Confusion / Stunned res = ECMD_TIME (lines 825-826)
+ *   - newsym / lastseentyp learned something (lines 831-839)
+ *   - portcullis / drawbridge / container_at / nodoor (lines 841-853)
+ *   - D_BROKEN, D_NODOOR, D_ISOPEN, D_LOCKED autounlock (lines 855-895)
+ *   - verysmall guard (lines 898-902)
+ *   - D_CLOSED strength check, D_TRAPPED b_trapped, light unblock (lines 905-935)
+ */
 export async function doopen_indir(x, y) {
     const g = game;
     if (_nohands_lk()) {
@@ -164,9 +183,8 @@ export async function doopen_indir(x, y) {
         g.context.move = 0; /* ECMD_OK */
         return ECMD_OK;
     }
-    /* C lock.c:786 — int res = ECMD_OK; the "learned something" / Confusion
-     * upgrades to ECMD_TIME (lock.c:822-838) are not ported (see the scope note
-     * above), so res only ever carries ECMD_OK out of the not-closed branch. */
+    /* C lock.c:786 — int res = ECMD_OK; upgraded to ECMD_TIME on confusion/stun
+     * or when newsym / mapseen reveals something (lock.c:825-839). */
     let res = ECMD_OK;
 
     /* C lock.c:793-795 — a container underfoot can be opened from a pit. */
@@ -241,9 +259,9 @@ export async function doopen_indir(x, y) {
     }
 
     if (portcullis || loc.typ !== DOOR) {
-        if (_is_db_wall_stub(cx, cy) || loc.typ === 19 /* DRAWBRIDGE_UP */) {
+        if (_is_db_wall_stub(cx, cy) || loc.typ === DRAWBRIDGE_UP) {
             await pline('There is no obvious way to open the drawbridge.');
-        } else if (portcullis || loc.typ === 34 /* DRAWBRIDGE_DOWN */) {
+        } else if (portcullis || loc.typ === DRAWBRIDGE_DOWN) {
             await pline('The drawbridge is already open.');
         } else {
             const { container_at } = await import('./pickup.js');
@@ -724,9 +742,9 @@ export async function doclose() {
     }
     /* C lock.c:1008 — portcullis || !IS_DOOR(door->typ) — also the goto nodoor target */
     if (noDoor || portcullis || !door || !_IS_DOOR(door.typ)) {
-        if (!noDoor && (_is_db_wall_stub(x, y) || (door && door.typ === 19 /* DRAWBRIDGE_UP */))) {
+        if (!noDoor && (_is_db_wall_stub(x, y) || (door && door.typ === DRAWBRIDGE_UP))) {
             await pline('The drawbridge is already closed.');
-        } else if (!noDoor && (portcullis || (door && door.typ === 34 /* DRAWBRIDGE_DOWN */))) {
+        } else if (!noDoor && (portcullis || (door && door.typ === DRAWBRIDGE_DOWN))) {
             await pline('There is no obvious way to close the drawbridge.');
         } else {
             /* nodoor: */
@@ -809,6 +827,9 @@ const CREDIT_CARD_OTYP = 223;
 const LARGE_BOX_OTYP = 214;
 const CHEST_OTYP = 215;
 const ICE_BOX_OTYP = 216;
+/* C objects.h:265 CORPSE */
+const CORPSE_OTYP = 265;
+const CORPSE = CORPSE_OTYP;
 /* C obj.h:338 Is_box(o) := otyp == LARGE_BOX || otyp == CHEST */
 function _Is_box(o) { return o && (o.otyp === LARGE_BOX_OTYP || o.otyp === CHEST_OTYP); }
 
@@ -959,6 +980,11 @@ export function reset_pick() {
     game.xlock = { usedtime: 0, picktyp: 0, chance: 0, door: null, box: null, magic_key: false };
 }
 
+/* C obj.h:332 carried(o) = ((o)->where == OBJ_INVENT) */
+function carried(o) {
+    return Boolean(o && (o.where | 0) === OBJ_INVENT);
+}
+
 /* C ref: lock.c:268 maybe_reset_pick(struct obj *container) — level change or
  * object deletion; context may no longer be valid.
  *
@@ -970,8 +996,6 @@ export function reset_pick() {
  *   if (container ? (container == gx.xlock.box)
  *                 : (!gx.xlock.box || !carried(gx.xlock.box)))
  *       reset_pick();
- *
- * carried(o) macro: (o)->where == OBJ_INVENT (3) — object in hero's inventory
  */
 export function maybe_reset_pick(container) {
     const x = game.xlock || {};
@@ -982,16 +1006,11 @@ export function maybe_reset_pick(container) {
             reset_pick();
         }
     } else {
-        /* container is NULL: reset if not carrying gx.xlock.box.
-         * carried(o) ⇔ o.where === OBJ_INVENT (3) */
-        if (!x.box || !x.box.where || (x.box.where | 0) !== 3 /* OBJ_INVENT */) {
+        /* container is NULL: reset if not carrying gx.xlock.box (lock.c:283). */
+        if (!x.box || !carried(x.box)) {
             reset_pick();
         }
     }
-}
-
-function stop_occupation() {
-    return stop_lock_occupation();
 }
 
 export async function picklock() {
@@ -1023,7 +1042,7 @@ export async function picklock() {
         exercise(A_DEX, true);
         x.usedtime = 0; return 0;
     }
-    /* C lock.c:99 — rn2(100) >= chance → still busy. */
+    /* C lock.c:98 — rn2(100) >= chance → still busy. */
     if (rn2(100) >= (x.chance | 0)) {
         return 1; /* still busy */
     }
@@ -1215,7 +1234,7 @@ export async function breakchestlock(box, destroyit) {
             }
             await useup(otmp);
         }
-        if (box.otyp === ICE_BOX_OTYP && otmp.otyp === 265 /* CORPSE */) {
+        if (box.otyp === ICE_BOX_OTYP && otmp.otyp === CORPSE) {
             otmp.age = g.moves - otmp.age;
             start_corpse_timeout(otmp);
         }
@@ -1260,7 +1279,7 @@ async function chest_shatter_msg(otmp) {
         // C lock.c:1285: vapors affect heroes who breathe or have eyes.
         const form = _hero_mflags1_lk();
         if ((form & 0x00000400 /* M1_BREATHLESS */) && (form & 0x00001000 /* M1_NOEYES */)) return;
-        /* C lock.c:1286 — potionbreathe(otmp) (hero not breathless/has eyes). */
+        /* C lock.c:1285 — potionbreathe(otmp) (hero not breathless/has eyes). */
         commit_force_messages();
         game._forceBotl = capture_pre_movemon_botl();
         await potionbreathe(otmp);
@@ -1392,6 +1411,12 @@ function is_pick_force(o) {
     return weapon_type(o) === P_PICK_AXE_SK;
 }
 
+/* C obj.h:271 — #define any_quest_artifact(o) ((o)->oartifact >= ART_ORB_OF_DETECTION) */
+const ART_ORB_OF_DETECTION = 21;
+function any_quest_artifact(o) {
+    return Boolean(o && (o.oartifact | 0) >= ART_ORB_OF_DETECTION);
+}
+
 /* C ref: lock.c:288 autokey(boolean opening) — pick a tool for autounlock.
  *   Other roles' quest artifacts are fallback tools only (lock.c:298-343).
  *   Among ordinary/own-role keys, prefer a magic key (lock.c:318). */
@@ -1399,7 +1424,7 @@ export function autokey(opening) {
     let key = null, pick = null, card = null;
     let akey = null, apick = null, acard = null;
     for (let o = game.invent; o; o = o.nobj) {
-        if ((o.oartifact | 0) >= 21 /* ART_ORB_OF_DETECTION, obj.h:271 */ && !is_quest_artifact(o)) {
+        if (any_quest_artifact(o) && !is_quest_artifact(o)) {
             switch (o.otyp | 0) {
                 case SKELETON_KEY_OTYP: if (!akey) akey = o; break;
                 case LOCK_PICK_OTYP: if (!apick) apick = o; break;
@@ -1854,7 +1879,7 @@ export async function doorlock(otmp, x, y) {
         /* C lock.c:1049-1076 */
         const _ot = otmp.otyp | 0;
         if (_ot === WAN_OPENING_OTYP_LK || _ot === SPE_KNOCK_OTYP_LK
-            || _ot === WAN_STRIKING_OTYP || _ot === 376) {
+            || _ot === WAN_STRIKING_OTYP || _ot === SPE_FORCE_BOLT) {
             door.typ = DOOR;
             door.doormask = D_CLOSED | ((door.doormask | 0) & D_TRAPPED);
             newsym(x, y);
@@ -1870,7 +1895,7 @@ export async function doorlock(otmp, x, y) {
 
     switch (otmp.otyp | 0) {
     case WAN_STRIKING_OTYP:
-    case 376: /* SPE_FORCE_BOLT */
+    case SPE_FORCE_BOLT:
         if ((door.doormask | 0) & (D_LOCKED | D_CLOSED)) {
             if ((door.doormask | 0) & D_TRAPPED) {
                 /* C lock.c:1105-1135: a trapped door explodes.  The doorway
@@ -1929,6 +1954,7 @@ export async function doorlock(otmp, x, y) {
             if (vis) {
                 await pline(`${dustcloud} springs up in the older, more primitive doorway.`);
             } else {
+                /* C lock.c:1145 — Soundeffect(se_swoosh, 25); Soundeffect is a no-op in this port */
                 await You_hear('a swoosh.');
             }
             if (await _obstructed_stub(x, y, mysterywand)) {

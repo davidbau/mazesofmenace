@@ -15,7 +15,7 @@ import { curse } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { weight } from './weight.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ATTENDANT, PM_BALROG, PM_CAPTAIN, PM_CHIEFTAIN, PM_DISPATER, PM_DWARF, PM_ETTIN, PM_ELVENKING, PM_FOREST_CENTAUR, PM_GUIDE, PM_HIGH_PRIEST, PM_HOBBIT, PM_HORNED_DEVIL, PM_HUNTER, PM_LIEUTENANT, PM_NEANDERTHAL, PM_NINJA, PM_ORCUS, PM_OGRE_KING, PM_OGRE_LORD, PM_PAGE, PM_PRIEST, PM_ROSHI, PM_SALAMANDER, PM_SERGEANT, PM_SOLDIER, PM_STUDENT, PM_THUG, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WARRIOR, PM_YEENOGHU, PM_GOBLIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, } from './pm.generated.js';
+import { PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ARCHEOLOGIST, PM_ATTENDANT, PM_BALROG, PM_CAPTAIN, PM_CHIEFTAIN, PM_DISPATER, PM_DWARF, PM_ETTIN, PM_ELVENKING, PM_FOREST_CENTAUR, PM_GUIDE, PM_HIGH_PRIEST, PM_HOBBIT, PM_HORNED_DEVIL, PM_HUNTER, PM_LIEUTENANT, PM_NEANDERTHAL, PM_NINJA, PM_ORCUS, PM_OGRE_KING, PM_OGRE_LORD, PM_PAGE, PM_PRIEST, PM_ROSHI, PM_SALAMANDER, PM_SERGEANT, PM_SOLDIER, PM_STUDENT, PM_THUG, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WARRIOR, PM_WIZARD, PM_YEENOGHU, PM_GOBLIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, } from './pm.generated.js';
 /** @typedef {[number, number, number, number, number, number, number, number, number]} MonRow */
 const MONS = /** @type {MonRow[]} */ (monsPack.mons);
 const MONS_MSOUND = /** @type {number[]} */ (monMsoundPack.msound);
@@ -414,11 +414,30 @@ function _is_lminion(mtmp) {
         ? mtmp.mextra.emin.min_align : (MONS[mndx][4] | 0);
     return algn > 0;
 }
+const CANDELABRUM_OF_INVOCATION = 262;
+const BELL_OF_OPENING = 263;
+const SPE_BOOK_OF_THE_DEAD = 409;
+const P_SHORT_SWORD = 5;
+const P_SABER = 9;
+
+/* C mondata.h:157 is_mplayer(ptr) */
+function _is_mplayer(ptr) {
+    const pmi = typeof ptr === 'number' ? ptr : ((ptr?.pmidx ?? ptr?.mnum) | 0);
+    return pmi >= PM_ARCHEOLOGIST && pmi <= PM_WIZARD;
+}
+
+/* C obj.h:223 is_sword(otmp) */
+function _is_sword(otmp) {
+    if (!otmp || (otmp.oclass | 0) !== WEAPON_CLASS) return false;
+    const sk = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
+    return sk >= P_SHORT_SWORD && sk <= P_SABER;
+}
+
 export async function mongets(mtmp, otyp, mksobjFn) {
     if (!otyp)
         return null;
     const otmp = await mksobjFn(otyp, true, false);
-    /* C makemon.c:2204-2207 — demons never get blessed objects.  Without it a
+    /* C makemon.c:2189-2192 — demons never get blessed objects.  Without it a
      * demon's blessed misc potion of invisibility skips you_aggravate()
      * (muse.c:2477-2479, cursed only). */
     if (otmp && monMlet(monsndx(mtmp)) === S_DEMON) {
@@ -432,7 +451,26 @@ export async function mongets(mtmp, otyp, mksobjFn) {
             otmp.spe = 0;
         otmp.oerodeproof = 1;
         otmp.oeroded = otmp.oeroded2 = 0;
+    } else if (otmp && _is_mplayer(mtmp?.data ?? monsndx(mtmp)) && _is_sword(otmp)) {
+        /* C makemon.c:2200-2202 */
+        otmp.spe = 3 + rn2(4);
     }
+
+    /* C makemon.c:2204-2214 */
+    if (otmp) {
+        if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
+            otmp.spe = 0;
+            otmp.age = 0;
+            otmp.lamplit = 0;
+            otmp.blessed = otmp.cursed = false;
+        } else if (otmp.otyp === BELL_OF_OPENING) {
+            otmp.spe = 0;
+            otmp.blessed = otmp.cursed = false;
+        } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD) {
+            otmp.blessed = otmp.cursed = false;
+        }
+    }
+
     /* C makemon.c:2218-2223 — princes do not tolerate inferior gear.
      * This adjustment is after the demon/minion/mplayer special cases in C
      * and before mpickobj; it is stateful because weapon damage reads spe. */
@@ -442,7 +480,7 @@ export async function mongets(mtmp, otyp, mksobjFn) {
         else if ((otmp.oclass | 0) === ARMOR_CLASS && (otmp.spe | 0) < 0)
             otmp.spe = 0;
     }
-    /* C makemon.c:2223 — mpickobj → add_to_minv */
+    /* C makemon.c:2224 — mpickobj → add_to_minv */
     /* C makemon.c:2224-2227 — mpickobj() merges into an existing stack
      * (add_to_minv, mkobj.c:2655) and returns nonzero when otmp was freed. */
     if (otmp && await mpickobj(mtmp, otmp))

@@ -23,7 +23,7 @@ import { set_wall_state } from './display.js';
 import { u_on_newpos } from './dungeon.js';
 import { newcham } from './mon.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal, worm_seg_swap, wormgone } from './worm.js';
-import { mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, set_corpsenm, count_level_features, makecorridors, mkstairs, build_room, add_room, topologize, occupied } from './mklev.js';
+import { mapfrag_get, mktrap, mksobj_at, mkobj_at, mksobj, makemon, mk_tt_object, mkcorpstat, resists_ston, del_engr_at, engr_at, make_engr_at, refile_engr_at, set_corpsenm, count_level_features, makecorridors, mkstairs, build_room, add_room, topologize, occupied } from './mklev.js';
 import { mpickobj } from './steal.js';
 import { sobj_at } from './invent.js';
 import { wallification, get_level_extends, fix_wall_spines } from './mkmaze.js';
@@ -4383,14 +4383,14 @@ export async function flip_level(flp, extras) {
             for (let y = 0; y < ROWNO; y++) {
                 const etmp = engr_at(x, y);
                 if (etmp)
-                    hits.push({ x, y, text: etmp.text, engr_type: etmp.engr_type });
+                    hits.push({ x, y, ep: etmp });
             }
         }
         for (const h of hits) {
             del_engr_at(h.x, h.y);
             const newY = (flp & 1) ? FlipY(h.y) : h.y;
             const newX = (flp & 2) ? FlipX(h.x) : h.x;
-            make_engr_at(newX, newY, h.text, null, 0, h.engr_type);
+            refile_engr_at(h.ep, newX, newY);
         }
     }
 

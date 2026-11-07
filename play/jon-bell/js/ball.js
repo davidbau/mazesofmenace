@@ -33,7 +33,7 @@ import { t_at, deltrap, reset_utrap, fill_pit } from './trap.js';
 import { find_mac } from './worn.js';
 import { spoteffects } from './hack.js';
 import { remove_object, obj_extract_self, place_object } from './mklev.js';
-import { maybe_unhide_at } from './mon.js';
+import { maybe_unhide_at, Soundeffect } from './mon.js';
 import { Yname2 } from './cmd.js';
 import { flooreffects } from './do.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -61,6 +61,8 @@ import {
 } from './const.js';
 import { hmon } from './uhitm.js'; // relocate-fns
 import { movobj } from './hack.js'; // relocate-fns
+
+const se_destroy_web = 77;
 
 /* C hack.h Maybe_Half_Phys(dmg), kept local to this object subsystem. */
 function ball_Maybe_Half_Phys(dmg) {
@@ -251,7 +253,7 @@ export function set_bc(already_blind) {
     /*
      *  Since we can still see, remove the ball&chain and get the glyph that
      *  would be beneath them.  Then put the ball&chain back.
-     *  (C ball.c:404-405 calls remove_object WITHOUT maybe_unhide_at here.)
+     *  (C ball.c:397-399 calls remove_object WITHOUT maybe_unhide_at here.)
      */
     remove_object(uchain);
     if (ball_on_floor)
@@ -322,7 +324,7 @@ export async function ballfall() {
             await pline('Fortunately, you are wearing a hard helmet.');
             dmg = 3;
         } else if (game.flags?.verbose !== false) {
-            await pline(`${Yname2(u.uarmh)} does not protect you.`); /* C ball.c:59 */
+            await pline(`${Yname2(u.uarmh)} does not protect you.`); /* C ball.c:62 */
         }
     }
     await losehp(ball_Maybe_Half_Phys(dmg),
@@ -340,7 +342,7 @@ async function placebc_core() {
         return;
     }
 
-    await flooreffects(uchain, u.ux, u.uy, ''); // ball.c:126 — chain might rust
+    await flooreffects(uchain, u.ux, u.uy, ''); // ball.c:127 — chain might rust
     if (carried(uball)) {
         u.bc_order = BCPOS_DIFFER;        // ball.c:129
     } else {
@@ -348,12 +350,12 @@ async function placebc_core() {
         place_object(uball, u.ux, u.uy);
         u.bc_order = BCPOS_CHAIN;
     }
-    place_object(uchain, u.ux, u.uy);     // ball.c:139
+    place_object(uchain, u.ux, u.uy);     // ball.c:138
     // ball.c:141 — pick up glyph.  This is read back by move_bc's Blind half
     // (and is the ONLY initialiser of u.bglyph/u.cglyph on the goto_level
     // arrival path, where set_bc is not called).
     u.bglyph = u.cglyph = bc_glyph_at(u.ux, u.uy);
-    newsym(u.ux, u.uy);                   // ball.c:143
+    newsym(u.ux, u.uy);                   // ball.c:142
     game.bcrestriction = 0;
 }
 
@@ -418,6 +420,7 @@ export async function drop_ball(x, y) {
         case TT_PIT: await pline('%spit!', pullmsg); break;
         case TT_WEB:
             await pline('%sweb!', pullmsg);
+            Soundeffect(se_destroy_web, 30);
             await pline('The web is destroyed!');
             deltrap(t_at(u.ux | 0, u.uy | 0));  // ball.c:906
             break;
@@ -445,7 +448,7 @@ export async function drop_ball(x, y) {
     const occupied = !!monster_at(tx, ty);
     const dt = t_at(tx, ty);
     if (!lev && !occupied && !u.utrap
-        && (is_pool_here(tx, ty) || (dt && (is_pit(dt.ttyp) || is_hole(dt.ttyp))))) {
+        && (is_pool(tx, ty) || (dt && (is_pit(dt.ttyp) || is_hole(dt.ttyp))))) {
         u.ux = tx; u.uy = ty;
     } else {
         u.ux = tx - (u.dx | 0); u.uy = ty - (u.dy | 0);
@@ -596,7 +599,7 @@ function findBallChain() {
 // (dbridge.c)" throw stub; reproduced locally instead, exactly as
 // js/dokick.js's non-exported is_pool and js/cmd.js's pooleffects_is_pool
 // already do for the same reason.
-function is_pool_here(x, y) {
+function is_pool(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     const t = loc.typ | 0;
@@ -607,6 +610,7 @@ function is_pool_here(x, y) {
         && !Is_juiblex_level(game.u?.uz)
         && (((loc.drawbridgemask ?? loc.flags ?? 0) | 0) & DB_UNDER) === DB_MOAT;
 }
+const is_pool_here = is_pool;
 
 // Levitation macro — youprop.h: (HLevitation|ELevitation) set and not
 // condition below is false in every one of the 4 records that reach this
@@ -710,9 +714,9 @@ async function dragSection(x, y, uball, uchain, bc_control, ballx, bally, chainx
     // ball.c:793-800
     const chOx = uchain.ox, chOy = uchain.oy;
     let t = null;
-    const poolCond = is_pool_here(chOx, chOy)
+    const poolCond = is_pool(chOx, chOy)
         && (game.level.at(chOx, chOy).typ === POOL
-            || !is_pool_here(uball.ox, uball.oy)
+            || !is_pool(uball.ox, uball.oy)
             || game.level.at(uball.ox, uball.oy).typ === POOL);
     if (!poolCond) {
         t = t_at(chOx, chOy);

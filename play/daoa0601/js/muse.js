@@ -26,7 +26,7 @@ import { enexto, monsterTeleportRestricted, reportMonsterTeleportRestriction } f
 import { displayColorName, monsterName, monsterReflexiveAction, randomDisplayMonsterName, visibleMonsterSubject } from './do_name.js';
 import { possessiveName, dist2, distmin, upstart } from './hacklib.js';
 import { depth, ledgerNo } from './dungeon.js';
-import { monsterObjectPronoun, monsterSubjectPronoun, monsterKnowsTrap, monsterLearnsTrap, monsterIsHelpless, monsterHasAcidResistance, monsterHasStoneResistance, monsterLocomotion, monsterPolymorphsWhenStoned, monstersForgetHeroResistance, monstersObserveHeroResistance, sameMonsterRace, speciesCanBlow, is_mercenary, monsterHasEyes, monsterHasNoHands, monsterHasNoLimbs, monsterHatesLight, monsterHatesSilver, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsFlyer, monsterIsKop, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsSlimeproof, monsterIsSlithy, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterPassesWalls, monsterThrowsRocks, needspick, acidic as speciesIsAcidic, touchPetrifies, resistsBlnd, } from './mondata.js';
+import { monsterObjectPronoun, monsterSubjectPronoun, monsterKnowsTrap, monsterLearnsTrap, monsterIsHelpless, monsterHasAcidResistance, monsterHasStoneResistance, monsterLocomotion, formCanBecomeStoneGolem, monstersForgetHeroResistance, monstersObserveHeroResistance, sameMonsterRace, speciesCanBlow, is_mercenary, monsterHasEyes, monsterHasNoHands, monsterHasNoLimbs, monsterHatesLight, monsterHatesSilver, monsterIsAmorphous, monsterIsAnimal, monsterIsBat, monsterIsFlyer, monsterIsKop, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsSlimeproof, monsterIsSlithy, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterPassesWalls, monsterThrowsRocks, needspick, acidic as speciesIsAcidic, touchPetrifies, resistsBlnd, } from './mondata.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { canSeeMonster, canSenseMonster, canSpotMonster, cls, displaySelf, docrt, flashGlyphAt, map_invisible, newsym, shieldeff, show_glyph_cell, transientMonsterGlyph } from './display.js';
 import { formatFeltMessage, formatHeardMessage, plineWithContinuation, publishHeardMessage, } from './pline.js';
@@ -40,16 +40,16 @@ import { thawObject } from './pickup.js';
 import { isQuantumBox } from './quantum_cat.js';
 import { canLetGo, tryCallObjectType, dropObjectAtHero } from './do.js';
 import { finishInventoryRemoval, inventoryItemDescription } from './invent.js';
-import { changeMonsterForm, finishEnvironmentalMonsterDeath, finishMonsterKilled, healMonster, maybeUnhideAt, paralyzeMonster, removeMonsterFromGame, wakeMonster, monsterCanCarryObject, revealMonsterAppearance, presentMonsterGrowth, finishHeroMonsterKillOutcome, } from './mon.js';
+import { changeMonsterForm, finishEnvironmentalMonsterDeath, finishMonsterKilled, healMonster, maybeUnhideAt, removeMonsterFromGame, wakeMonster, monsterCanCarryObject, revealMonsterAppearance, presentMonsterGrowth, finishHeroMonsterKillOutcome, } from './mon.js';
+import { paralyzeMonster } from './mhitm.js';
 import { advanceMonsterWormBody } from './worm.js';
 import { adjustMonsterSpeed, monsterSpeedMessage, setMonsterPermanentInvisibility } from './worn.js';
 import { makemonAt, rndmonstAdj, growMonster, setMonsterMalign } from './makemon.js';
 import { makePlural, verbForSubject, withIndefiniteArticle, definiteName, distantObjectName, minimalObjectName, objectCombatName, objectName, objectNameIsPlural, observeDistantObjectForNaming, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { splitObjectStack, forgetObjectKnowledge, unlinkObject, addObjectToContainer, objectWeight, isContainer, placeObjectSynchronously, sweepFloorPile } from './mkobj.js';
 import { canHeroRiseUp, levelAtDepth, levelIsWizardTower, sameDungeonLevel, ceilingName, surfaceName } from './dungeon.js';
-import { removeWornHeroItem } from './hero_equipment.js';
 import { destroyObjectFromMonsterInventory, findMonsterArmorClass, wornInSlot } from './worn.js';
-import { addObjectToMonsterInventory } from './steal.js';
+import { addObjectToMonsterInventory, removeWornHeroItem } from './steal.js';
 import { isWeldedPrimary, willWeld } from './wield.js';
 import { dropBoulderOnHero, dropBoulderOnMonster } from './read.js';
 import { beginObjectBurn } from './timeout.js';
@@ -59,7 +59,7 @@ import { heroIsBlind, heroIsDeaf, heroIsHallucinating, heroIsUnaware } from './s
 import { makeBlinded } from './potion.js';
 import { destroyDrawbridge, findDrawbridgeAt, isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { changeDoorByMagic } from './lock.js';
-import { stopHeroOccupation } from './occupation.js';
+import { stopHeroOccupation } from './allmain.js';
 import { propertyIsActive } from './properties.js';
 import { rayHitMessage, rayMissMessage } from './zap.js';
 import { heroHasHalfSpellDamage, monsterResistsEffect, learnWand } from './zap.js';
@@ -95,6 +95,8 @@ const PM_KI_RIN = MONSTER_NAME.indexOf('ki-rin');
 const PM_LIZARD = MONSTER_NAME.indexOf('lizard');
 const PM_STALKER = MONSTER_NAME.indexOf('stalker');
 const PM_GRID_BUG = MONSTER_NAME.indexOf('grid bug');
+// Part of C muse.c:precheck(), mzapwand(), mplayhorn(), mreadmsg(): the
+// BOLT_LIM near/distant hearing threshold.
 // The near/far hearing threshold mzapwand(), mplayhorn(), mreadmsg() and
 // precheck()'s explosion feedback share: BOLT_LIM + 1 when the monster's
 // square could be seen, BOLT_LIM - 3 otherwise.
@@ -329,18 +331,25 @@ async function m_tele(monster, type, seen, options, trap = null) {
             await randomMonsterRelocation(monster, { ...options, flags: RLOC_MSG });
     }
 }
+// Part of C muse.c:find_defensive(), find_offensive(): the shared
+// noteleport_level and mon_knows_traps test.
 // Shared noteleport_level()/mon_knows_traps() condition in find_defensive() and find_offensive().
 function teleportNotKnownBlocked(monster, state) {
     return !monsterTeleportRestricted(monster, state) || !monsterKnowsTrap(monster, { ttyp: TELEP_TRAP });
 }
+// C wizard.c:mon_has_amulet(): does the monster carry the real Amulet?
 // mon_has_amulet() inventory predicate, shared by the teleport paths.
 function hasAmulet(monster) {
     return (monster.minvent || monster.inventory || []).some(object => object.otyp === AMULET_OF_YENDOR);
 }
+// Part of C muse.c:find_defensive(), use_defensive(): the Is_botlevel
+// test.
 // Is_botlevel() expression shared by find_defensive() and use_defensive().
 function atBottom(state) {
     return state.u.uz.dlevel === state.dungeons[state.u.uz.dnum]?.num_dunlevs;
 }
+// Part of C muse.c:find_defensive(): its is_floater exemptions, the
+// mondata.h macro inlined.
 // is_floater() macro: S_EYE or S_LIGHT.
 function monsterFloats(monster) {
     const symbol = MONSTER_SYMBOL[monster.mnum];
@@ -399,7 +408,7 @@ export function find_defensive(monster, state, { tryEscape = false, random = rn2
     const weapon = state.uwep || state.u.uwep;
     if (!monster.mpeaceful && !noHands && weapon?.otyp === CORPSE
         && touchPetrifies(weapon.corpsenm ?? -1) && !monsterHasStoneResistance(monster)
-        && !monsterPolymorphsWhenStoned(monster)
+        && !formCanBecomeStoneGolem(monster.mnum)
         && monsterLinedUpWithHero(monster, state, random)) {
         const wand = inventory.find(object => object.otyp === WAN_UNDEAD_TURNING && object.spe > 0);
         if (wand)
@@ -805,6 +814,8 @@ export async function use_defensive(monster, choice, options) {
         }
     }
 }
+// Part of C muse.c:rnd_offensive_item(), rnd_defensive_item(),
+// rnd_misc_item(): the shared creature exclusions.
 // Common creature exclusions in the three native rnd_*_item() functions.
 function rejectsRandomItem(monster) {
     const mndx = monster.mnum;
@@ -813,6 +824,7 @@ function rejectsRandomItem(monster) {
         || (MONSTER_ATTACKS[mndx] || []).some(attack => attack[0] === AT_EXPL)
         || symbol === S_GHOST || monsterIsKop(mndx);
 }
+// Part of C muse.c:rnd_offensive_item(): its which_armor W_ARMH lookup.
 // which_armor(W_ARMH), including the port's creation-time wornSlot phase.
 function wornHelmet(monster) {
     const inventory = monster?.minvent || monster?.inventory || [];
@@ -1374,6 +1386,8 @@ export async function use_offensive(monster, choice, options) {
         }
     }
 }
+// Part of C muse.c:use_offensive(): the sgn-aimed ray and throw
+// direction.
 // This pure sgn expression is also an equivalence-proof entry point.
 // The sgn(mux - mx)/sgn(muy - my) aim of use_offensive()'s rays and throws.
 function aimedDirection(monster) {
@@ -2257,6 +2271,8 @@ export function ureflects(state = game) {
         return { object: null, noun: 'scales' };
     return null;
 }
+// Part of C muse.c:ureflects(): the boolean reflection test C callers
+// branch on.
 export function heroReflectsRay(state = game) {
     return !!(state.u?.reflection
         || ureflects(state));
@@ -2283,9 +2299,12 @@ export function mon_reflects(monster, state = game) {
         return { noun: 'scales', object: null };
     return null;
 }
+// Part of C muse.c:mon_reflects(): the boolean reflection test.
 export function monsterReflectsRay(monster, state = game) {
     return mon_reflects(monster, state) !== null;
 }
+// Part of C muse.c:ureflects(), mon_reflects(): makeknown of a revealed
+// reflection source; the wisdom exercise stays with the callers in C.
 export function discoverHeroReflectionSource(source = ureflects(), state = game) {
     const object = source?.object;
     if (!object || ![SHIELD_OF_REFLECTION, AMULET_OF_REFLECTION].includes(object.otyp)

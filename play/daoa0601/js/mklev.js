@@ -10,7 +10,7 @@ import { stack_object } from './invent.js';
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS, SPBOOK_no_NOVEL, } from './objclass.js';
 import { recorderLocalEpochSeconds, recorderTimestamp } from './calendar.js';
 import { rotCorpse } from './corpse_rot.js';
-import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, mkcorpstat, set_corpsenm, rndmonnum, rndmonnumAdj, discardMonsterInventory, linkObjectToMonsterInventory, curseObjectState, deallocateObject, objectWeight, nextIdent, placeCreatedObject, updateIceObjectTimersAt } from './mkobj.js';
+import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, mkcorpstat, set_corpsenm, rndmonnum, rndmonnumAdj, linkObjectToMonsterInventory, curseObjectState, deallocateObject, objectWeight, nextIdent, placeCreatedObject, updateIceObjectTimersAt } from './mkobj.js';
 import { restoreMonsterInventoryOwnership } from './mon.js';
 import { oinit, objectMaterial } from './o_init.js';
 import { isRoom } from './map_types.js';
@@ -25,7 +25,6 @@ import { monsterHasMapPosition, monsterAtPosition, monsterOccupiesPosition } fro
 import { nameObjectFromTopten } from './topten.js';
 import { normalDemon } from './minion.js';
 import { randomMonsterRelocation } from './teleport.js';
-import { pickNastyShape } from './wizard.js';
 import { restoreLevelChains, restoreMonsterWormHeads, validMonsterWormBodies } from './restore.js';
 import { restoreLevelPetHistory } from './save.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
@@ -41,12 +40,12 @@ import { encodeSavedGraph } from './saved_graph.js';
 import { decodeBonesPayload } from './bones_validation.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { SHOP_TYPES, RANDOM_SHOP_TYPES } from './shknam.js';
-import { GP_ALLOW_XY, GP_CHECKSCARY, RLOC_ERR, RLOC_NOMSG, In_mines, PL_NSIZ, A_CHA, COLNO, ROWNO, STONE, MAX_TYPE, ROOM, CORR, DOOR, STAIRS, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, MARK, DUST, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, IS_WALL, IS_STWALL, COULD_SEE, IN_SIGHT, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_botlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, SPACE_POS, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, AIR, TRICKED, A_NONE, A_LAWFUL, AM_SHRINE, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, MM_ASLEEP, MM_NOGRP, MM_EPRI, MM_ESHK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, HEALTHY_TIN, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND } from './const.js';
+import { GP_ALLOW_XY, GP_CHECKSCARY, RLOC_ERR, RLOC_NOMSG, In_mines, PL_NSIZ, A_CHA, COLNO, ROWNO, STONE, MAX_TYPE, ROOM, CORR, DOOR, STAIRS, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, MARK, DUST, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, IS_WALL, IS_STWALL, COULD_SEE, IN_SIGHT, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_stronghold, Invocation_lev, In_hell, In_quest, In_V_tower, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, SPACE_POS, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, AIR, TRICKED, A_NONE, A_LAWFUL, AM_SHRINE, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, MM_ASLEEP, MM_NOGRP, MM_EPRI, MM_ESHK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, HEALTHY_TIN, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, is_hole, is_pit } from './const.js';
 import { isok } from './cmd.js';
 import { init_rect, rnd_rect } from './rect.js';
-import { depth as depth_of_level, dungeonDepth, inducedAlignment, ledgerNo, level_difficulty, placeHeroOnLevel, specialLevelAt, u_on_rndspot } from './dungeon.js';
+import { Is_botlevel, depth as depth_of_level, dungeonDepth, inducedAlignment, is_branchlev, ledgerNo, level_difficulty, placeHeroOnLevel, specialLevelAt, u_on_rndspot } from './dungeon.js';
 import { AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, LARGE_BOX, CHEST, ICE_BOX, TALLOW_CANDLE, WAX_CANDLE, EXPENSIVE_CAMERA, CORPSE, EGG, KELP_FROND, SLIME_MOLD, MELON, LUMP_OF_ROYAL_JELLY, CREAM_PIE, TIN, GOLD_PIECE, SPE_NOVEL, TOUCHSTONE, ROCK, BOULDER, STATUE, MACE, RING_MAIL, ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, oc_level } from './object_data.js';
-import { MONSTER_ATTACKS, MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_NAME } from './monster_data.js';
+import { MONSTER_DIFFICULTY, MONSTER_GENO, MONSTER_ALIGNMENT, MONSTER_LEVEL, MONSTER_FLAGS2, MONSTER_SYMBOL, MONSTER_NAME } from './monster_data.js';
 import { nhgetch } from './input.js';
 import { flush_screen, newsym, back_to_glyph, canOverwriteTerrain, set_wall_state } from './display.js';
 import { pline, plineWithContinuation } from './pline.js';
@@ -101,9 +100,6 @@ const PM_ARCHAEOLOGIST = 331;
 const PM_WIZARD = 343;
 export const PM_SALAMANDER = 329;
 export const S_MIMIC = 13;
-const S_ANGEL = 27;
-const S_DEMON = 56;
-const G_UNIQ_MASK = 0x1000;
 export const PM_BLACK_LIGHT = 119;
 export const PM_STALKER = 153;
 export const XLIM = 4;
@@ -138,10 +134,9 @@ const POLY_TRAP = 22;
 export const VIBRATING_SQUARE = 23;
 const TRAPPED_DOOR = 24;
 const TRAPPED_CHEST = 25;
-export function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
-export function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 // C dungeon.c:Can_dig_down()
 // ── Hero digging/falling predicates (C ref: dungeon.c) ──
+// C dungeon.c:Can_dig_down():
 // C refs: dungeon.c Can_dig_down()/Can_fall_thru().  A level's hard-floor
 // flag is only one of the gates: bottom levels and the invocation level also
 // reject holes, while the Castle is an explicit exception because its
@@ -155,6 +150,7 @@ export function canDigDown(uz = game.u.uz) {
         && !Is_botlevel(uz)
         && !Invocation_lev(uz);
 }
+// C dungeon.c:Can_fall_thru():
 export function canFallThrough(uz = game.u.uz) {
     return canDigDown(uz) || (uz !== undefined && Is_stronghold(uz));
 }
@@ -239,116 +235,8 @@ export async function makemonNear(mnum, centerX, centerY, flags = 0, requestedBy
     // goodpos() for the requested species before makemon() owns construction.
     return makemon(mnum, pos.x, pos.y, flags, requestedByHero);
 }
-// C wizard.c:nasty()
-// Uses wizard.c:pick_nasty() for mcastu.c:mcast_summon_mons().
-// A monster-cast summon deliberately chooses an explicit high-difficulty
-// species, asks enexto() for a square around the caster's apparent hero
-// position, then runs the ordinary makemon() constructor.  The created
-// actors retain the normal constructor's messages and display updates.
-export async function summonNastyMonsters(summoner) {
-    const created = [];
-    const census = nastyMonsterCensus();
-    const flags = summoner ? MM_NOMSG : 0;
-    const inHell = !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
-    // wizard.c:nasty() occasionally delegates to demon.c:msummon().  The
-    // caller handles that different summoning path.
-    if (!rn2(10) && inHell) {
-        return {
-            count: 0,
-            created,
-            deferredDemonSummon: true,
-        };
-    }
-    const summonerClass = summoner ? MONSTER_SYMBOL[summoner.mnum] ?? 0 : 0;
-    let difficultyCap = summoner ? MONSTER_DIFFICULTY[summoner.mnum] ?? 0 : 0;
-    const casterAlignment = Math.sign(summoner ? MONSTER_ALIGNMENT[summoner.mnum] ?? 0 : 0);
-    const outerLimit = (game.u?.ulevel ?? 1) > 3
-        ? Math.trunc((game.u?.ulevel ?? 1) / 3) : 1;
-    const outerCount = rnd(outerLimit);
-    const archLich = MONSTER_NAME.indexOf('arch-lich');
-    const archon = MONSTER_NAME.indexOf('Archon');
-    const lowerArchDifficulty = Math.min(MONSTER_DIFFICULTY[archon] ?? 0, MONSTER_DIFFICULTY[archLich] ?? 0);
-    for (let i = outerCount; i > 0 && created.length < 10; --i) {
-        for (let j = 0; j < 20; ++j) {
-            let makeindex = null;
-            let candidateClass = 0;
-            let tryLimit = 11;
-            do {
-                if (!--tryLimit) {
-                    makeindex = null;
-                    break;
-                }
-                makeindex = pickNastyShape(difficultyCap);
-                candidateClass = MONSTER_SYMBOL[makeindex] ?? 0;
-            } while ((difficultyCap > 0
-                && (MONSTER_DIFFICULTY[makeindex] ?? 0)
-                    >= difficultyCap
-                && (MONSTER_ATTACKS[makeindex] || []).some(([attackType]) => attackType === 255))
-                || (summonerClass === S_DEMON && candidateClass === S_ANGEL)
-                || (summonerClass === S_ANGEL && candidateClass === S_DEMON));
-            if (makeindex == null)
-                continue;
-            const position = summoner ? enexto(makeindex, summoner.mux ?? game.u.ux, summoner.muy ?? game.u.uy)
-                : { x: game.u.ux, y: game.u.uy };
-            if (!position)
-                continue;
-            let monster = await makemon(makeindex, position.x, position.y, flags);
-            if (monster) {
-                monster.msleeping = 0;
-                monster.mpeaceful = 0;
-                monster.mtame = 0;
-                setMonsterMalign(monster);
-            }
-            else {
-                monster = await makemon(null, position.x, position.y, flags);
-                if (monster) {
-                    const replacementClass = MONSTER_SYMBOL[monster.mnum] ?? 0;
-                    if ((difficultyCap > 0 && (MONSTER_DIFFICULTY[monster.mnum] ?? 0) >= difficultyCap
-                        && rn2(In_endgame(game.u.uz) ? 3 : 7)
-                        && (MONSTER_ATTACKS[monster.mnum] ?? []).some(([type]) => type === 255))
-                        || (summonerClass === S_DEMON && replacementClass === S_ANGEL)
-                        || (summonerClass === S_ANGEL && replacementClass === S_DEMON)) {
-                        await unmakeNastySubstitute(monster);
-                        monster = null;
-                    }
-                }
-            }
-            if (!monster)
-                continue;
-            if (monster.mnum === archLich || monster.mnum === archon) {
-                if (!difficultyCap || difficultyCap > lowerArchDifficulty)
-                    difficultyCap = lowerArchDifficulty;
-            }
-            monster.mspec_used = rnd(4);
-            created.push(monster);
-            const monsterAlignment = MONSTER_ALIGNMENT[monster.mnum] ?? 0;
-            if (created.length >= 10
-                || monsterAlignment === 0
-                || Math.sign(monsterAlignment) === casterAlignment) {
-                break;
-            }
-        }
-    }
-    return { count: created.length ? nastyMonsterCensus() - census : 0, created };
-}
-function nastyMonsterCensus() {
-    return game.level?.monsters.filter(monster => !monster.dead && monster.mhp > 0
-        && !(monster.isgd && monster.mx === 0)).length ?? 0;
-}
-// C makemon.c:unmakemon(). Rejected substitutes undo their counted birth
-// and artifact creation before the ordinary non-death removal.
-async function unmakeNastySubstitute(monster) {
-    const vital = game.mvitals?.[monster.mnum];
-    if (vital) {
-        if (vital.born > 0 && vital.born < 255)
-            vital.born--;
-        if ((MONSTER_GENO[monster.mnum] ?? 0) & G_UNIQ_MASK)
-            vital.mvflags &= ~G_EXTINCT;
-    }
-    monster.mhp = 0;
-    await discardMonsterInventory(monster, true);
-    await removeMonsterFromGame(monster);
-}
+// Part of C do.c:revive_corpse(): the deferred fill_pit tail after the
+// revived zombie's presentation.
 export async function finishBuriedZombieTimer(event, state = game) {
     if (!event || event.kind !== 'revived' || event.finished)
         return event;
@@ -362,6 +250,9 @@ export async function finishBuriedZombieTimer(event, state = game) {
     event.buriedFloorObjects = result.buriedFloorObjects;
     return event;
 }
+// C dig.c:rot_organic(): the timer callback, burying a container's
+// contents before the object rots away.
+// Also C dig.c:rot_corpse(): the corpse-rot half runs here too.
 export async function runClaimedObjectRotTimer(claimed, state = game) {
     const object = claimed?.object;
     const kind = claimed?.timer?.kind;
@@ -408,6 +299,7 @@ export async function mklev() {
     // was built for. Direct mklev() callers get that same fresh table here.
     vision_reset_new_level();
 }
+// C mklev.c:count_level_features():
 export function countLevelFeatures(state = game) {
     const lvl = state.level;
     if (!lvl?.flags)
@@ -732,7 +624,7 @@ async function makelevel() {
             return;
         sort_rooms();
         await generate_stairs();
-        const branchp = is_branchlev();
+        const branchp = is_branchlev(game.u.uz);
         await placeRoomLevelBranch(branchp);
         // C ref: mklev.c makelevel() skip0 tail.  C still counts
         // ROOM_IS_FILLABLE rooms and draws the bonus-room selection here,
@@ -757,7 +649,7 @@ async function makelevel() {
     sort_rooms();
     await generate_stairs();
     // Branch check
-    const branchp = is_branchlev();
+    const branchp = is_branchlev(game.u.uz);
     let roomThreshold = branchp ? 4 : 3;
     await makecorridors();
     await make_niches();
@@ -850,7 +742,7 @@ async function maybePlaceKnoxPortal(x, y) {
         && branch.end1?.dnum === game.knox_level.dnum
         && branch.end1?.dlevel === game.knox_level.dlevel;
     const source = onKnoxSourceEnd ? branch.end2 : branch.end1;
-    if (!onKnoxSourceEnd && is_branchlev())
+    if (!onKnoxSourceEnd && is_branchlev(game.u.uz))
         return false;
     if ((source?.dnum ?? -1) < dungeons.length)
         return false;
@@ -963,6 +855,7 @@ export function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
     level.nsubroom = subroomIndex + 1;
     return croom;
 }
+// C mklev.c:create_vault():
 function create_vault() {
     return create_room(-1, -1, 2, 2, -1, -1, VAULT, true);
 }
@@ -1129,6 +1022,7 @@ export function topologize(croom) {
 // ============================================================
 // Corridors
 // ============================================================
+// C mklev.c:good_rm_wall_doorpos():
 function good_rm_wall_doorpos(x, y, dir, room) {
     const map = requireGameLevel();
     const rmno = map.rooms.indexOf(room) + ROOMOFFSET;
@@ -1154,6 +1048,7 @@ function good_rm_wall_doorpos(x, y, dir, room) {
         return false;
     return true;
 }
+// C mklev.c:finddpos_shift():
 function finddpos_shift(xp, yp, dir, aroom) {
     const level = requireGameLevel();
     const rdir = DIR_180(dir);
@@ -1240,6 +1135,7 @@ function finddpos(cc, dir, aroom) {
     cc.y = y1;
     return false;
 }
+// C mklev.c:maybe_sdoor():
 export function maybe_sdoor(chance) {
     const d = depth_of_level(game.u?.uz);
     return (d > 2) && !rn2(Math.max(2, chance));
@@ -1295,9 +1191,11 @@ async function dosdoor(x, y, aroom, type) {
     }
     add_door(x, y, aroom);
 }
+// C mklev.c:dodoor():
 export async function dodoor(x, y, aroom) {
     await dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
+// C mklev.c:add_door():
 export function add_door(x, y, aroom) {
     const level = requireGameLevel();
     for (let i = 0; i < aroom.doorct; i++) {
@@ -1327,6 +1225,7 @@ export function add_door(x, y, aroom) {
     level.doors[aroom.fdoor] = { x, y };
     level.doorindex++;
 }
+// C mklev.c:bydoor():
 function bydoor(x, y) {
     const map = requireGameLevel();
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -1338,6 +1237,7 @@ function bydoor(x, y) {
     }
     return false;
 }
+// C mklev.c:okdoor():
 export function okdoor(x, y) {
     const map = requireGameLevel();
     const loc = map.at(x, y);
@@ -1463,6 +1363,7 @@ export async function makecorridors() {
 // ============================================================
 // Stairs
 // ============================================================
+// C mklev.c:generate_stairs_room_good():
 function generate_stairs_room_good(croom, phase) {
     if (!croom || croom.hx < 0)
         return false;
@@ -1474,6 +1375,7 @@ function generate_stairs_room_good(croom, phase) {
         return false;
     return true;
 }
+// C mklev.c:generate_stairs_find_room():
 function generate_stairs_find_room() {
     const level = requireGameLevel();
     if (!level.nroom)
@@ -1493,6 +1395,7 @@ function generate_stairs_find_room() {
     const selected = level.rooms[rn2(level.nroom)];
     return isRoom(selected) ? selected : null;
 }
+// C mklev.c:mkstairs():
 export async function mkstairs(x, y, up, croom, force = false) {
     const g = game;
     const level = requireGameLevel();
@@ -1529,6 +1432,7 @@ export async function mkstairs(x, y, up, croom, force = false) {
     else
         level.dnstair = { x, y };
 }
+// C mklev.c:generate_stairs():
 async function generate_stairs() {
     const g = game;
     const pos = { x: 0, y: 0 };
@@ -1558,6 +1462,7 @@ async function generate_stairs() {
 // ============================================================
 // Niches
 // ============================================================
+// C mklev.c:cardinal_nextto_room():
 function cardinal_nextto_room(aroom, x, y) {
     const map = requireGameLevel();
     const rmno = map.rooms.indexOf(aroom) + ROOMOFFSET;
@@ -1570,6 +1475,7 @@ function cardinal_nextto_room(aroom, x, y) {
     }
     return false;
 }
+// C mklev.c:place_niche():
 function place_niche(aroom) {
     const level = requireGameLevel();
     let dy;
@@ -1595,6 +1501,7 @@ function place_niche(aroom) {
         return null;
     return { dy, xx, yy };
 }
+// C mklev.c:makeniche():
 async function makeniche(trap_type) {
     const g = game;
     const level = requireGameLevel();
@@ -1659,6 +1566,7 @@ async function makeniche(trap_type) {
         return;
     }
 }
+// C mklev.c:make_niches():
 async function make_niches() {
     const level = requireGameLevel();
     let ct = rnd(Math.trunc(level.nroom / 2) + 1);
@@ -1682,18 +1590,7 @@ async function make_niches() {
 // ============================================================
 // Branch placement
 // ============================================================
-export function is_branchlev() {
-    const g = game;
-    if (!g.branches)
-        return null;
-    for (const br of g.branches) {
-        if (br?.end1?.dnum === (g.u?.uz?.dnum ?? 0) && br?.end1?.dlevel === (g.u?.uz?.dlevel ?? 1))
-            return br;
-        if (br?.end2?.dnum === (g.u?.uz?.dnum ?? 0) && br?.end2?.dlevel === (g.u?.uz?.dlevel ?? 1))
-            return br;
-    }
-    return null;
-}
+// C mklev.c:find_branch_room():
 function find_branch_room(mp) {
     if (!requireGameLevel().nroom) {
         const point = mazeFloorPoint();
@@ -1706,6 +1603,7 @@ function find_branch_room(mp) {
         somexyspace(croom, mp);
     return croom;
 }
+// C mklev.c:place_branch(): placement at known coordinates.
 export async function placeBranchAt(branchp, x, y) {
     const g = game;
     if (!branchp || g.made_branch)
@@ -1727,6 +1625,7 @@ export async function placeBranchAt(branchp, x, y) {
     }
     g.made_branch = true;
 }
+// C mklev.c:place_branch(): the random-coordinate form via find_branch_room.
 export async function place_branch(branchp) {
     const g = game;
     if (!branchp || g.made_branch)
@@ -1750,6 +1649,7 @@ async function placeRoomLevelBranch(branch) {
 // ============================================================
 // Fill ordinary room
 // ============================================================
+// C mklev.c:traptype_rnd():
 function traptype_rnd({ spiderOnWeb = true }) {
     const lvl = level_difficulty();
     let kind = rnd(TRAPNUM - 1);
@@ -1802,6 +1702,7 @@ function traptype_rnd({ spiderOnWeb = true }) {
     }
     return kind;
 }
+// C mklev.c:find_okay_roompos():
 function find_okay_roompos(croom, crd) {
     let tryct = 0;
     do {
@@ -1812,6 +1713,7 @@ function find_okay_roompos(croom, crd) {
     } while (occupied(crd.x, crd.y) || bydoor(crd.x, crd.y));
     return true;
 }
+// C mklev.c:mktrap_victim():
 export async function mktrap_victim(trap) {
     const lvl = level_difficulty();
     const kind = trap.ttyp;
@@ -1969,6 +1871,7 @@ export async function mktrap(num, options, croom, coordinate) {
     const trap = await maketrap(pos.x, pos.y, kind);
     return await finishLevelTrapConstruction(trap, options);
 }
+// C mklev.c:mkfount():
 function mkfount(croom) {
     const level = requireGameLevel();
     const pos = { x: 0, y: 0 };
@@ -1983,6 +1886,7 @@ function mkfount(croom) {
         level.flags.nfountains++;
     }
 }
+// C mklev.c:mkaltar():
 function mkaltar(croom) {
     if (!croom || croom.rtype !== OROOM)
         return;
@@ -1997,6 +1901,7 @@ function mkaltar(croom) {
     const al = rn2(A_LAWFUL + 2) - 1;
     loc.flags = Align2amask(al);
 }
+// C mklev.c:mkgrave():
 async function mkgrave_room(croom) {
     const dobell = !rn2(10);
     if (croom.rtype !== OROOM)
@@ -2022,6 +1927,7 @@ async function mkgrave_room(croom) {
     if (dobell)
         await mksobj_at(BELL, pos.x, pos.y, true, false);
 }
+// Part of C mklev.c:mkinvokearea(): the concentric ring walk.
 // The rings are deliberately visited in native order: actors encounter the
 // changed terrain before the next ring.
 function invocationRings(x, y) {
@@ -2132,11 +2038,15 @@ async function changeInvocationSquare({ x, y }, distance, state) {
     vision_note_blocker_change(x, y);
     await newsym(x, y);
 }
+// Part of C mklev.c:mkinvpos(): the liquid-death finisher for a monster
+// standing in a changed square.
 function finishInvocationLiquidDeath(monster, options) {
     if (options.cause === 'drowning' || options.cause === 'lava-burning')
         return finishHeroLiquidMonsterDeath(monster, options);
     return finishMonsterLiquidDeath(monster, options);
 }
+// Part of C mklev.c:fill_ordinary_room(): the skip_nonrogue random-object
+// tail.
 async function fillRandomRoomObjects(croom, pos) {
     if (!rn2(3) && somexyspace(croom, pos)) {
         await mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
@@ -2218,7 +2128,7 @@ export async function fill_ordinary_room(croom, bonus_items) {
     // Bonus items
     let skip_chests = false;
     if (bonus_items && somexyspace(croom, pos)) {
-        const branchp = is_branchlev();
+        const branchp = is_branchlev(game.u.uz);
         const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
         const minesDnum = g.dungeons?.findIndex(dungeon => dungeon?.dname === 'The Gnomish Mines') ?? -1;
         const entersMines = branchp && (g.u?.uz?.dnum ?? 0) !== minesDnum
@@ -2303,6 +2213,7 @@ export async function fill_ordinary_room(croom, bonus_items) {
 // ============================================================
 // Mineralize
 // ============================================================
+// C mklev.c:water_has_kelp():
 function water_has_kelp(x, y, kelp_pool, kelp_moat) {
     const loc = requireGameLevel().at(x, y);
     if (!loc)
@@ -2315,6 +2226,7 @@ function water_has_kelp(x, y, kelp_pool, kelp_moat) {
         return true;
     return false;
 }
+// Part of C mklev.c:mineralize(): the kelp-placement loop.
 async function mineralize_kelp(kelp_pool, kelp_moat) {
     if (kelp_pool < 0)
         kelp_pool = 10;
@@ -2325,6 +2237,7 @@ async function mineralize_kelp(kelp_pool, kelp_moat) {
             if (water_has_kelp(x, y, kelp_pool, kelp_moat))
                 await mksobj_at(KELP_FROND, x, y, true, false);
 }
+// C mklev.c:mineralize():
 export async function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = requireGameLevel();
     if (!skip_lvl_checks && In_endgame(game.u.uz))
@@ -2410,6 +2323,7 @@ export async function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_l
 // ============================================================
 // Level finalize topology
 // ============================================================
+// C mklev.c:level_finalize_topology():
 async function level_finalize_topology() {
     const level = requireGameLevel();
     bound_digging();

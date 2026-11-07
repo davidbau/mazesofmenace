@@ -114,6 +114,7 @@ import {
     PICK_NONE,
     PLNMSG_BACK_ON_GROUND,
     POISON_RES,
+    MOAT,
     POOL,
     RIGHT_SIDE,
     ROWNO,
@@ -1747,6 +1748,24 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
                 && !needspick(state.youmonst?.data)))) {
         return;
     }
+    // A safe monster inside a wall or other physical obstacle, such as a
+    // phasing elemental. test_move()'s obstacle arm (hack.c:1011-1072)
+    // returns FALSE for DO_MOVE unless the hero passes that wall, is
+    // underwater (also FALSE, with a message), or tunnels through it, so
+    // domove_core() stops before the swap and the turn costs no time.
+    // The tunnelling arm can fall through, and the autodig arm digs; both
+    // stay refused below.
+    if (destination && IS_OBSTRUCTED(destination.typ)
+        && !(propertyPresent(state, PASSES_WALLS)
+            && may_passwall(x, y, state))
+        && (state.u?.uinwater
+            || (!(tunnels(state.youmonst?.data)
+                && !needspick(state.youmonst?.data))
+                && !(state.flags?.autodig && !state.context?.run
+                    && !state.context?.nopick && state.uwep
+                    && is_pick(state.uwep, state))))) {
+        return;
+    }
     // C records a pony on wished ICE and CLOUD, a little dog in both an
     // intact open doorway and a kicked-broken doorway, and a tame water
     // elemental in a pool. test_move() admits those destinations and
@@ -1759,6 +1778,9 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
             || destination.typ === ICE
             || destination.typ === CLOUD
             || destination.typ === POOL
+            // A moat is a pool to is_pool(), test_move() and
+            // swim_move_danger(); only waterbody_name() tells them apart.
+            || destination.typ === MOAT
             // The Plane of Air's open sky. test_move() admits AIR like any
             // other non-obstructed square, and the hero's arrival there runs
             // the same spoteffects() and describe_decor() owners as a walk
@@ -2564,7 +2586,7 @@ async function moverock_core(sx, sy, state, env) {
                 // 474-475. C names the steed when mounted; dopush() below
                 // carries the same distinction for a successful push.
                 const you_or_steed = state.u.usteed
-                    ? upstart(y_monnam(state.u.usteed, state)) : 'you';
+                    ? y_monnam(state.u.usteed, state) : 'you';
                 const who = deliver_part1
                     ? you_or_steed : upstart(you_or_steed);
                 const what = deliver_part1
@@ -2898,7 +2920,7 @@ export async function test_move(
                         if (state.u.usteed) {
                             await message(
                                 "You can't lead "
-                                + upstart(y_monnam(state.u.usteed, state))
+                                + y_monnam(state.u.usteed, state)
                                 + ' through that closed door.',
                                 state,
                             );
@@ -3050,9 +3072,13 @@ export async function test_move(
                 && !(tunnels(species) && !needspick(species))
                 && !carrying(PICK_AXE, state)
                 && !carrying(DWARVISH_MATTOCK, state)) {
+                // C: !((obj = carrying(WAN_DIGGING))
+                //       && !objects[obj->otyp].oc_name_known)
+                // Only an unidentified wand of digging lets travel plan
+                // through a second boulder; a known one does not.
                 const diggingWand = carrying(WAN_DIGGING, state);
-                if (!diggingWand
-                    || !objectType(diggingWand, state).oc_name_known) {
+                if (!(diggingWand
+                      && !objectType(diggingWand, state).oc_name_known)) {
                     return false;
                 }
             }
@@ -3821,14 +3847,21 @@ export async function avoid_trap_andor_region(x, y, state = game) {
     return false;
 }
 
-// C ref: hack.c carrying_too_much() (2616-2636).
-export async function carrying_too_much(state = game) {
+// C ref: hack.c carrying_too_much() (2616-2636), its test alone. Pure: it
+// reads the load and hit points and changes nothing.
+export function carryingTooMuchToMove(state = game) {
     const wtcap = near_capacity(state);
     const lowHitPoints = Upolyd(state.u)
         ? state.u.mh < 5 && state.u.mh !== state.u.mhmax
         : state.u.uhp < 10 && state.u.uhp !== state.u.uhpmax;
-    if ((wtcap >= OVERLOADED || (wtcap > SLT_ENCUMBER && lowHitPoints))
-        && !Is_airlevel(state.u.uz)) {
+    return (wtcap >= OVERLOADED || (wtcap > SLT_ENCUMBER && lowHitPoints))
+        && !Is_airlevel(state.u.uz);
+}
+
+// C ref: hack.c carrying_too_much() (2616-2636).
+export async function carrying_too_much(state = game) {
+    if (carryingTooMuchToMove(state)) {
+        const wtcap = near_capacity(state);
         if (wtcap < OVERLOADED) {
             await ttyPline("You don't have enough stamina to move.", state);
             await exercise(A_CON, false, state, { rn2 }, {

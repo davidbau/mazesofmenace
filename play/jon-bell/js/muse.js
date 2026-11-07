@@ -163,6 +163,7 @@ export async function mzapwand(mtmp, otmp, self) {
                       ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
         const near = dist2(mtmp.mx | 0, mtmp.my | 0,
                            game.u.ux | 0, game.u.uy | 0) <= range * range;
+        Soundeffect(se_zap, 100);
         await You_hear(`a ${near ? "nearby" : "distant"} zap.`);
         unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (self) {
@@ -602,6 +603,7 @@ function is_vampshifter(mon) {
 /* C ref: sndprocs.h Soundeffect(seid, vol) — audio only; a no-op in the tty
  * build (no USER_SOUNDS), no state, no RNG.  se_boing is its enum tag. */
 const se_boing = 'se_boing';
+const se_zap = 'se_zap';
 function Soundeffect(seid, vol) { /* sndprocs.h:272 no-op without USER_SOUNDS */ }
 
 

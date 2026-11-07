@@ -7,13 +7,13 @@
 import { rn2, rnd, rne } from './rng.js';
 import { RIGHT_HANDED, LEFT_HANDED, P_NUM_SKILLS, P_UNSKILLED,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU } from './const.js';
-import { PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MONK,
+import { PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_CAVEMAN as PM_CAVE_DWELLER, PM_HEALER, PM_KNIGHT, PM_MONK,
     PM_CLERIC, PM_ROGUE, PM_RANGER, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
     PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { setworn } from './worn.js';
 import { useupall, is_ammo } from './cmd.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
-import { initialspell, num_spells, spell_skilltype } from './spell.js';
+import { initialspell, num_spells, spell_skilltype, MAXSPELL } from './spell.js';
 import { OC_DESCR } from './oc_descr_data.js';
 import './skills.js';
 import { skill_init } from './weapon.js';
@@ -40,9 +40,11 @@ import { discover_object } from './o_init.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 import { OC_USES_KNOWN, dealloc_obj, mksobj, mkobj } from './mklev.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
-import { NON_PM, A_CHAOTIC, A_CON, JUMPING, BLINDED, FROMOUTSIDE, LAST_PROP } from './const.js';
+import { NON_PM, A_CHAOTIC, A_CON, JUMPING, BLINDED, FROMOUTSIDE, LAST_PROP, NO_SPELL } from './const.js';
 import { ROLE_PM_MNUM } from './roles.js'; // relocate-fns
 import { SKILLS_FOR_ROLE } from './skills.js'; // relocate-fns
+import { init_uhunger } from './eat.js';
+import { max_rank_sz } from './botl.js';
 const STATUE = 476; // objects.h
 // C role indices (role.c order): 0=Archeologist 1=Barbarian 2=Caveman 3=Healer
 // 4=Knight 5=Monk 6=Priest 7=Rogue 8=Ranger 9=Samurai 10=Tourist 11=Valkyrie 12=Wizard
@@ -202,13 +204,36 @@ export async function u_init_misc() {
      * u_init_misc() with an unresolved role at all (see the bail's comment). */
     g.flags.female = (g.flags.initgend | 0) !== 0;
     g.flags.beginner = true; /* C u_init.c:950 */
-    /* C ref u_init.c:950 `flags.beginner = TRUE;` — cleared by more_experienced()
-     * (exper.c:202); strange_feeling() (potion.c:1463) reads it. */
-    g.flags.beginner = true;
-    g.u = g.u || {};
+
+    const tmpuroleplay = g.u?.uroleplay ? { ...g.u.uroleplay } : {};
+    const savedUbirthday = g.u?.ubirthday;
+    const savedLgod = g.u?.lgod;
+    const savedNgod = g.u?.ngod;
+    const savedCgod = g.u?.cgod;
+    // C u_init.c:954 (void) memset((genericptr_t) &u, 0, sizeof(u));
+    // Zero whole u struct; necessary when aborting from a failed restore.
+    // Preserves existing object reference on g.u for callers.
+    if (g.u) {
+        for (const k of Object.keys(g.u)) {
+            delete g.u[k];
+        }
+    } else {
+        g.u = {};
+    }
     const u = g.u;
-    // C u_init.c:957 memset(&u, 0, sizeof(u)); you.h embeds every property
-    // slot. Reset before adjabil, including on a failed-restore restart.
+    u.ustuck = null;
+    u.uroleplay = tmpuroleplay;
+    if (savedUbirthday !== undefined) u.ubirthday = savedUbirthday;
+    if (savedLgod !== undefined) u.lgod = savedLgod;
+    if (savedNgod !== undefined) u.ngod = savedNgod;
+    if (savedCgod !== undefined) u.cgod = savedCgod;
+    u.uevent = {
+        minor_oracle: 0, major_oracle: 0, read_tribute: 0,
+        qcalled: 0, qexpelled: 0, qcompleted: 0,
+        uheard_tune: 0, uopened_dbridge: 0, invoked: 0,
+        gehennom_entered: 0, uhand_of_elbereth: 0, udemigod: 0,
+        uvibrated: 0, ascended: 0, amulet_wish: 0,
+    };
     u.uexp = 0n;
     u.urexp = 0n;
     // C u_init.c:954 memset also zeroes the embedded struct u_have.
@@ -216,22 +241,28 @@ export async function u_init_misc() {
     u.uhave = { amulet: 0, bell: 0, book: 0, menorah: 0, questart: 0 };
     u.uprops = Array.from({length: LAST_PROP + 1},
         () => ({intrinsic: 0, extrinsic: 0, blocked: 0}));
-    /* C ref u_init.c:983: u.uz.dlevel = 1.  C memset(&u,0,sizeof(u)) at
-     * u_init.c:954 zeroes u.uz.dlevel; line 983 then sets it back to 1.
-     * Mirror that here so the post-u_init_misc state matches C. */
+    /* C ref u_init.c:983-985:
+     *   u.uz.dlevel = 1;
+     *   u.uz0.dlevel = 0;
+     *   u.utolev = u.uz;
+     */
     u.uz = u.uz || {};
     u.uz.dlevel = 1;
-    /* C ref u_init.c:954: memset(&u, 0, sizeof(u)) zeros every u.* field at
-     * the top of u_init_misc().  Most scalars we explicitly init below; these
-     * three are sourced by mapstate.js and otherwise default to undefined on
-     * the JS side, so write them explicitly to match the C memset semantics.
-     *
-     *   u.umovement — short, zero at post_init.  C sets it to NORMAL_SPEED=12
-     *     in moveloop_preamble() (allmain.c:85), which fires AFTER the
-     *     post_init dump at allmain.c:909 — so the post_init value is 0.
-     *   u.uluck     — schar, zero at post_init.  The `u.uluck = u.moreluck = 0`
-     *     assignment in u_init.c:963 is inside `#if 0` (documentation only);
-     *     memset(&u,0,...) at u_init.c:954 is the actual source of the 0. */
+    u.uz.dnum = 0;
+    u.uz0 = u.uz0 || {};
+    u.uz0.dlevel = 0;
+    u.uz0.dnum = 0;
+    u.utolev = { ...u.uz };
+
+    /* C ref u_init.c:987-989:
+     *   u.umoved = FALSE;
+     *   u.umortality = 0;
+     *   u.ugrave_arise = NON_PM;
+     */
+    u.umoved = false;
+    u.umortality = 0;
+    u.ugrave_arise = NON_PM;
+
     u.umovement = 0;
     u.uluck = 0;
     u.moreluck = 0;
@@ -253,26 +284,24 @@ export async function u_init_misc() {
     const pw = newpw();
     u.uen = u.uenmax = u.uenpeak = pw;
     u.uspellprot = 0;
+    /* C ref u_init.c:999 — adjabil(0, 1), i.e. "the hero gains every innate
+     * ability whose role/race table row has ulevel == 1". */
     await adjabil(0, 1);
     u.ulevel = u.ulevelmax = 1;
-    const uhsBefore = (u.uhs | 0);
-    const NOT_HUNGRY = 1;
-    const atempStr = (u.acurr && u.acurr.atemp && u.acurr.atemp.a)
-        ? ((u.acurr.atemp.a[0] | 0)) : 0;
-    g.disp = g.disp || { botl: 0, botlx: 0, time_botl: 0, toplin: 0, inmore: 0 };
-    g.disp.botl = (uhsBefore !== NOT_HUNGRY || atempStr < 0) ? 1 : 0;
-    u.uhunger = 900;
-    u.uhs = NOT_HUNGRY;
-    if (atempStr < 0 && u.acurr && u.acurr.atemp && u.acurr.atemp.a) {
-        u.acurr.atemp.a[0] = 0;
+    /* C ref u_init.c:1002 / eat.c:126-135 init_uhunger(). */
+    init_uhunger();
+    /* C ref u_init.c:1003-1004:
+     *   for (i = 0; i <= MAXSPELL; i++)
+     *       svs.spl_book[i].sp_id = NO_SPELL;
+     */
+    g.spl_book = g.spl_book || [];
+    for (let i = 0; i <= MAXSPELL; i++) {
+        if (!g.spl_book[i]) g.spl_book[i] = { sp_id: NO_SPELL, sp_lev: 0, sp_know: 0 };
+        else g.spl_book[i].sp_id = NO_SPELL;
     }
     /* C ref u_init.c:1005: u.ublesscnt = 300 — "no prayers just yet".
      * Prayer cooldown counter; decremented in moveloop, no RNG involved. */
     u.ublesscnt = 300;
-    // C u_init.c:1023-1028: OPTIONS:blind sets PermaBlind, not a timeout.
-    if (u.uroleplay?.blind)
-        u.uprops[BLINDED].intrinsic |= FROMOUTSIDE;
-    u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
     /* C ref u_init.c:1006 + attrib.c:1099-1100:
      *   u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type =
      *       aligns[flags.initalign].value;
@@ -296,6 +325,21 @@ export async function u_init_misc() {
     u.ualignbase = u.ualignbase || [0, 0];
     u.ualignbase[0] = alignVal; /* A_CURRENT */
     u.ualignbase[1] = alignVal; /* A_ORIGINAL */
+    /* C ref u_init.c:1019-1021:
+     * For now, everyone starts out with a night vision range of 1 and
+     * their xray_range disabled.
+     */
+    u.nv_range = 1;
+    u.xray_range = -1;
+    u.unblind_telepat_range = -1;
+
+    // C u_init.c:1027-1029: OPTIONS:blind sets PermaBlind, not a timeout.
+    if (u.uroleplay?.blind)
+        u.uprops[BLINDED].intrinsic |= FROMOUTSIDE;
+    u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
+
+    /* C ref u_init.c:1033: max_rank_sz(); */
+    max_rank_sz();
     // Equipment, spells, skills and AC belong to u_init_skills_discoveries,
     // after inventory creation and the first display (C allmain.c:newgame).
 }
@@ -1225,8 +1269,11 @@ async function ini_inv_mkobj_filter(oclass, got_level1_spellbook) {
 
 // C u_init.c:1182 — only the original object's type is substituted.
 function ini_inv_obj_substitution(trop, obj) {
-    const race = [PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC].indexOf(game.urace.mnum);
-    const replacement = _INV_SUBS[race]?.[obj.otyp];
+    // C u_init.c:1184: if (gu.urace.mnum != PM_HUMAN)
+    if (game.urace.mnum === PM_HUMAN) return obj.otyp;
+    // C u_init.c:1192: inv_subs[i].race_pm == gu.urace.mnum
+    const raceIdx = [PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC].indexOf(game.urace.mnum);
+    const replacement = _INV_SUBS[raceIdx]?.[obj.otyp];
     if (replacement !== undefined)
         obj.otyp = replacement;
     return obj.otyp;
@@ -1235,7 +1282,8 @@ function ini_inv_obj_substitution(trop, obj) {
 // C u_init.c:1208 — adjustment and RNG act on the same object.
 function ini_inv_adjust_obj(trop, obj) {
     let stop = false;
-    if (trop.oclass === COIN_CLASS_C) {
+    // C u_init.c:1211: trop->trclass == COIN_CLASS; oclass is JS spelling of trobj.trclass
+    if ((trop.trclass ?? trop.oclass) === COIN_CLASS_C) {
         obj.quan = game.u.umoney0;
     } else {
         if (OC_USES_KNOWN[obj.otyp]) obj.known = 1;
@@ -1335,7 +1383,7 @@ export async function u_init_role() {
         if (!rn2(6)) await ini_inv(TROBJ_LAMP);
         knows_class(WEAPON_CLASS_C, role); knows_class(ARMOR_CLASS_C, role);
         break;
-    case PM_CAVEMAN:
+    case PM_CAVE_DWELLER: // C u_init.c:676 PM_CAVE_DWELLER (PM_CAVEMAN in pm.generated.js)
         await ini_inv(TROBJ_CAV);
         break;
     case PM_HEALER:
@@ -1440,7 +1488,9 @@ export async function u_init_inventory_attrs() {
     game.u.umoney0 = 0;
     await u_init_role();
     await u_init_race();
-    if (game.flags.explore) await ini_inv(TROBJ_WISHING);
+    // C u_init.c:1383: if (discover) — flag.h:33 defines #define discover flags.explore
+    const discover = Boolean(game.flags.discover ?? game.flags.explore);
+    if (discover) await ini_inv(TROBJ_WISHING);
     if (game.u.umoney0) await ini_inv([
         {otyp:GOLD_PIECE_OTYP,spe:0,oclass:COIN_CLASS_C,qmin:1,qmax:1,bless:0},
         {otyp:0,spe:0,oclass:0,qmin:0,qmax:0,bless:0},

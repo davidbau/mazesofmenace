@@ -595,6 +595,9 @@ export function revive_egg(obj, state = game, env = {}) {
 export async function revive(corpse, byHero = false, rawEnv = {}) {
     const env = revivalEnv(rawEnv);
     const { state } = env;
+    // A planned monster action passes a silent message operation; the live
+    // pass prints through the same one.
+    const message = env.message ?? ttyPline;
     if (corpse?.otyp !== CORPSE) return null;
 
     const originalType = corpse.corpsenm;
@@ -646,7 +649,7 @@ export async function revive(corpse, byHero = false, rawEnv = {}) {
     if (corpse.norevive
         || (originalSpecies.mlet === S_EEL && !is_pool(x, y, state))) {
         if (cansee(x, y, state)) {
-            await ttyPline(
+            await message(
                 `${upstart(corpse_xname(corpse, null, CXN_PFX_THE, state))} `
                     + 'twitches feebly.',
                 state,
@@ -724,7 +727,7 @@ export async function revive(corpse, byHero = false, rawEnv = {}) {
             if (oneOf) corpse.quan++;
             const corpseName = corpse_xname(corpse, null, CXN_NO_PFX, state);
             if (oneOf) corpse.quan--;
-            await ttyPline(
+            await message(
                 upstart(owner + corpseName) + ' glows iridescently.',
                 state,
                 env,
@@ -732,7 +735,7 @@ export async function revive(corpse, byHero = false, rawEnv = {}) {
             state.iflags ??= {};
             state.iflags.last_msg = PLNMSG_OBJ_GLOWS;
         } else if (shopkeeper) {
-            await ttyPline('A corpse is resuscitated.', state, env);
+            await message('A corpse is resuscitated.', state, env);
         }
         if (shopkeeper && monster !== shopkeeper) {
             await stolen_value(
@@ -745,7 +748,7 @@ export async function revive(corpse, byHero = false, rawEnv = {}) {
         const ghost = find_mid(corpse.oextra.omid, FM_FMON, state);
         if (ghost && ghost.data === state.mons?.[PM_GHOST]) {
             if (canseemon(ghost, state)) {
-                await ttyPline(
+                await message(
                     Monnam(ghost, state, env)
                         + ' is suddenly drawn into its former body!',
                     state,
@@ -1080,6 +1083,9 @@ function probe_objchain(head, state = game) {
 export async function unturn_dead(monster, state = game, rawEnv = {}) {
     const isHero = monster === state.youmonst;
     const youSeeIt = isHero || canseemon(monster, state);
+    // A monster's zap reaches here from muse.c mbhitm(); its planning pass
+    // supplies a silent message operation that the live pass replaces.
+    const message = rawEnv.message ?? ttyPline;
     let object = isHero ? state.invent : monster.minvent;
     let revivedCount = 0;
     while (object) {
@@ -1121,13 +1127,13 @@ export async function unturn_dead(monster, state = game, rawEnv = {}) {
                 const asMonster = differentType
                     ? ' as ' + an(monsterCommonName(revived.data, state))
                     : '';
-                await ttyPline(
+                await message(
                     owner + corpseName + ' suddenly ' + verb + asMonster + '!',
                     state,
                     rawEnv,
                 );
             } else if (canseemon(revived, state)) {
-                await ttyPline(
+                await message(
                     upstart(a_monnam(revived, { state }))
                         + ' suddenly appears!',
                     state,
@@ -1139,7 +1145,7 @@ export async function unturn_dead(monster, state = game, rawEnv = {}) {
         }
         object = next;
     }
-    if (isHero && revivedCount) await encumber_msg(state);
+    if (isHero && revivedCount) await encumber_msg(state, { message });
     return revivedCount;
 }
 
@@ -1620,7 +1626,7 @@ export async function resist(mtmp, oclass, damage, tell, state = game,
     const resisted = random.rn2(100 + alev - dlev) < (mtmp.data?.mr ?? 0);
     if (resisted) {
         if (tell) {
-            await shieldeff_mon(mtmp, { state });
+            await shieldeff_mon(mtmp, { ...rawEnv, state });
         }
         damage = Math.trunc((damage + 1) / 2);
     }
@@ -3050,7 +3056,7 @@ export async function cancel_item(obj, state = game, rawEnv = {}) {
                 obj.otyp = POT_FRUIT_JUICE;
             } else {
                 obj.otyp = POT_WATER;
-                obj.odiluted = false;
+                obj.odiluted = 0;
             }
             break;
         }
@@ -3340,7 +3346,7 @@ export async function bhito(obj, wand, state = game,
                 const ox = location?.x ?? obj.ox;
                 const oy = location?.y ?? obj.oy;
                 const saveNorevive = obj.norevive;
-                obj.norevive = false;
+                obj.norevive = 0;
                 const monster = await revive(obj, true, {
                     ...rawEnv, state, random,
                 });
@@ -3678,7 +3684,7 @@ export async function bhitm(monster, wand, state = game,
             damage *= 2;
         damage = spell_damage_bonus(damage, state);
         if (resists_drli(monster, state)) {
-            await shieldeff_mon(monster, { state });
+            await shieldeff_mon(monster, { ...rawEnv, state });
         } else if (!await resist(
             monster, wand.oclass, damage, NOTELL, state, random, rawEnv,
         ) && monster.mhp >= 1) {
@@ -3841,7 +3847,7 @@ export async function bhitm(monster, wand, state = game,
             && has_mcorpsenm(monster)) {
             // A long worm changed by this same zap is not transformed again.
         } else if (resists_magm(monster, state)) {
-            await shieldeff_mon(monster, { state });
+            await shieldeff_mon(monster, { ...rawEnv, state });
         } else if (!await resist(
             monster,
             wand.oclass,
@@ -4202,6 +4208,11 @@ export async function zap_map(
                 { ...rawEnv, state, random },
             );
         }
+        break;
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+        await wipe_engr_at(x, y, random.d(2, 4), true,
+            { ...rawEnv, state, random });
         break;
     }
     if (trapLearn.value) learnwand(wand, state);
@@ -6104,10 +6115,14 @@ export async function dobuzz(
                     range -= 2;
             } else if (u_at(sx, sy, state) && range >= 0) {
                 nomul(0, state);
+                // C's `goto buzzmonst` for the steed leaves this arm, so the
+                // lightning flash and stop_occupation() below are skipped.
+                let steedTargeted = false;
                 if (state.u.usteed && !random.rn2(3)
                     && !(await mon_reflects(state.u.usteed, null, state, env))) {
                     // C jumps to buzzmonst for the steed. The helper preserves
                     // the exact shared reflection, death, and wakeup path.
+                    steedTargeted = true;
                     const steed = state.u.usteed;
                     const steedResult = await buzzmonst(
                         steed, type, nd, fltyp, damgtype, spellType,
@@ -6197,14 +6212,16 @@ export async function dobuzz(
                         state,
                     );
                 }
-                if (damgtype === ZT_LIGHTNING) {
-                    await flashburn(random.d(nd, 50), true, state,
-                        { ...env, message });
+                if (!steedTargeted) {
+                    if (damgtype === ZT_LIGHTNING) {
+                        await flashburn(random.d(nd, 50), true, state,
+                            { ...env, message });
+                    }
+                    // stop_occupation() prints through dobuzz()'s message
+                    // operation, which a planned breath silences.
+                    await stop_occupation(state, { message });
+                    nomul(0, state);
                 }
-                // stop_occupation() prints through dobuzz()'s message
-                // operation, which a planned breath silences.
-                await stop_occupation(state, { message });
-                nomul(0, state);
             }
             // C ref: zap.c:4995-4996. Gas that missed or was not reflected
             // leaves a 1x1 cloud via the deferred zap_over_floor(). C casts

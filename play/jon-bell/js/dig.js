@@ -15,12 +15,12 @@ import { flooreffects } from './do.js';
 import { rn2, rn1, rnd, rnl } from './rng.js';
 import { PM_DWARF as PM_DWARF_ } from './pm.generated.js';
 import { game } from './gstate.js';
-import { Can_dig_down as Can_dig_down_real } from './dungeon.js';
+import { Can_dig_down as Can_dig_down_real, assign_level } from './dungeon.js';
 import { dbon, dmgval } from './uhitm.js';
 import { body_part, align_str } from './cmd.js';
 import { desecrate_altar, altarmask_at } from './pray.js';
 import { Amask2align, AM_MASK, AM_SANCTUM } from './const.js';
-import { FOOT, FORCETRAP } from './const.js';
+import { FOOT, FORCETRAP, ECMD_CANCEL } from './const.js';
 import { reset_utrap } from './trap.js';
 import { yname } from './do_wear.js';
 import { OC_NAME } from './oc_name_data.js';
@@ -40,7 +40,7 @@ import { TT_PIT, STONE, SCORR, CORR, DOOR, D_NODOOR, IS_WALL, IS_OBSTRUCTED, IS_
          TIMER_OBJECT, ROT_ORGANIC, SDOOR, D_BROKEN, D_TRAPPED, W_NONDIGGABLE, SHOPBASE, ROOM, IS_TREE,
          WM_MASK, D_LOCKED, Is_rogue_level, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          HALLUC, HALLUC_RES, DEAF, TAINT_AGE, A_LAWFUL, TRAPPED_DOOR, DIR_180, DIR_ERR, IS_DRAWBRIDGE,
-         DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, xdir, ydir, N_DIRS } from './const.js';
+         DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ICED_MOAT, xdir, ydir, N_DIRS } from './const.js';
 /* mdig_tunnel leaf callees, imported from their C homes: wake_nearto (mklev.c
  * via js/mklev.js), mon_learns_traps (trap.c), mondied (mon.c via
  * js/makemon.js — still a throwing stub, reached only on a lethal door blast). */
@@ -114,7 +114,7 @@ import { In_hell } from './dungeon.js';
 import { On_stairs, On_ladder, stairway_at } from './stairs.js';
 import { Monnam } from './mcastu.js';
 import { is_pool_or_lava } from './look.js';
-import { water_damage_chain, pooleffects, switch_terrain } from './cmd.js';
+import { water_damage_chain, pooleffects, switch_terrain, spot_checks } from './cmd.js';
 import { boulder_hits_pool } from './do.js';
 import { impact_drop } from './dokick.js';
 import { delobj } from './invent.js';
@@ -167,28 +167,25 @@ import { RIGHT_SIDE } from './const.js';
 import { the, xname } from './objnam.js';
 import { PM_EARTH_ELEMENTAL, PM_XORN } from './pm.generated.js';
 
+const IRON_CHAIN = 478, se_chains_rattling_gears_turning = 0, se_smashing_and_crushing = 0, se_loud_splash = 0, se_loud_crash = 0, se_crushing_sound = 0, se_gears_turning_chains_rattling = 0;
+
 /* C dbridge.c:888-1019: bridge terrain, debris, vision, and the occupants. */
 export async function destroy_drawbridge(x, y) {
-    const ox = x | 0, oy = y | 0;
-    const inputDir = is_drawbridge_wall(ox, oy);
     const bx = { value: x | 0 }, by = { value: y | 0 };
-    if (!find_drawbridge(bx, by)) return;
     const bridge = game.level?.at(bx.value, by.value);
     if (!bridge || !IS_DRAWBRIDGE(bridge.typ | 0)) return;
     let wx = bx.value, wy = by.value;
-    if (inputDir >= 0) { wx = ox; wy = oy; }
-    else {
-        switch ((bridge.drawbridgemask | 0) & DB_DIR) {
-        case DB_NORTH: wy--; break;
-        case DB_SOUTH: wy++; break;
-        case DB_EAST: wx++; break;
-        case DB_WEST: wx--; break;
-        }
+    switch ((bridge.drawbridgemask | 0) & DB_DIR) {
+    case DB_NORTH: wy--; break;
+    case DB_SOUTH: wy++; break;
+    case DB_EAST: wx++; break;
+    case DB_WEST: wx--; break;
     }
     const under = (bridge.drawbridgemask | 0) & DB_UNDER;
     const lava = under === DB_LAVA;
     const iced = (bridge.drawbridgemask | 0) & DB_ICE;
     if (under === DB_MOAT || lava) {
+        Soundeffect(se_loud_splash, 100);
         const raised = bridge.typ === DRAWBRIDGE_UP;
         const sx = raised ? wx : bx.value, sy = raised ? wy : by.value;
         if (cansee(sx, sy) || (game.u.ux === sx && game.u.uy === sy))
@@ -204,12 +201,13 @@ export async function destroy_drawbridge(x, y) {
             await flooreffects(boulder, bx.value, by.value, 'fall');
         }
     } else {
+        Soundeffect(se_loud_crash, 100);
         if (cansee(bx.value, by.value) || (game.u.ux === bx.value && game.u.uy === by.value))
             await pline('The drawbridge disintegrates!');
         else await You_hear('a loud *CRASH*!');
         bridge.typ = iced ? ICE : ROOM;
         // icedpool aliases drawbridgemask (rm.flags); retain ICED_MOAT on ice.
-        bridge.icedpool = iced ? 16 : 0;
+        bridge.icedpool = iced ? ICED_MOAT : 0;
     }
     wake_nearto(bx.value, by.value, 500);
     const wall = game.level?.at(wx, wy);
@@ -220,7 +218,7 @@ export async function destroy_drawbridge(x, y) {
     del_engr_at(bx.value, by.value); del_engr_at(wx, wy);
     // C dbridge.c:949-959: create and scatter each piece of iron-chain debris.
     for (let i = rn2(6); i > 0; --i) {
-        const obj = await mksobj_at(478 /* IRON_CHAIN */, rn2(2) ? bx.value : wx, rn2(2) ? by.value : wy, true, false);
+        const obj = await mksobj_at(IRON_CHAIN, rn2(2) ? bx.value : wx, rn2(2) ? by.value : wy, true, false);
         await scatter(obj.ox, obj.oy, 1, MAY_HIT, obj);
     }
     newsym(bx.value, by.value); newsym(wx, wy);
@@ -255,6 +253,7 @@ export async function destroy_drawbridge(x, y) {
                 else
                     await pline('%s hit by a huge chunk of metal!', db_E_phrase(etmp1, 'are'));
             } else if (!Deaf_dg() && !db_is_u(etmp1) && !is_pool(bx.value, by.value)) {
+                Soundeffect(se_crushing_sound, 75);
                 await You_hear('a crushing sound.');
             }
             db_set_killer('collapsing drawbridge');
@@ -552,6 +551,7 @@ export async function open_drawbridge(x, y) {
             db = (u.ux - p.bx) ** 2 + (u.uy - p.by) ** 2;
         await You_see(`a drawbridge ${dw < db ? 'going' : 'coming'} down!`);
     } else {
+        Soundeffect(se_gears_turning_chains_rattling, 100);
         await You_hear('gears turning and chains rattling.');
     }
     p.bridge.typ = DRAWBRIDGE_DOWN;
@@ -585,6 +585,7 @@ export async function close_drawbridge(x, y) {
             db = (u.ux - x) ** 2 + (u.uy - y) ** 2;
         await You_see(`a drawbridge ${(((u.ux === x || u.uy === y) && !u.uinwater) || dw < db) ? 'coming' : 'going'} up!`);
     } else {
+        Soundeffect(se_chains_rattling_gears_turning, 75);
         await You_hear('chains rattling and gears turning.');
     }
     p.bridge.typ = DRAWBRIDGE_UP;
@@ -601,8 +602,10 @@ export async function close_drawbridge(x, y) {
     await db_do_entity(db_occupants[0]);          /* Do set_entity after first */
     db_occupants[1] = db_set_entity(p.wx, p.wy); /* do_entity for worm tail */
     await db_do_entity(db_occupants[1]);
-    if (OBJ_AT(p.bx, p.by) && !Deaf_real())
+    if (OBJ_AT(p.bx, p.by) && !Deaf_real()) {
+        Soundeffect(se_smashing_and_crushing, 75);
         await You_hear('smashing and crushing.');
+    }
     await revive_nasty(p.bx, p.by, null); /* C dbridge.c:820-821 */
     await revive_nasty(p.wx, p.wy, null);
     await delallobj(p.bx, p.by); // C dbridge.c:822-823
@@ -698,32 +701,9 @@ function diggingCtx() {
 
 
 
-// set_utrap(rn1(4,2)) (dig.c:739).  maketrap is stubbed in JS (trap.c:457 returns
-// null); we record a PIT trap directly on the level list so t_at sees it and set
-// levitating nor flying (wont_fall == FALSE) so the set_utrap branch is taken.
+// C ref: dig.c:640 digactualhole(x, y, BY_YOU, PIT) — forward to canonical digactualhole_
 async function digactualhole_pit(x, y) {
-    const g = game;
-    /* C dig.c:703-707 — madeby_u, at the hero's square. */
-    await pline('You dig a pit in the %s.', surface_(x, y)); /* dig.c:626-637 surface() */
-    /* maketrap() PIT arm -> unearth_objs() (trap.c:552, dig.c:2110) ends in
-     * del_engr_at(x, y): digging the pit erases any engraving on the square. */
-    del_engr_at(x, y);
-    /* record the PIT trap so t_at(x,y) is consistent for any later dig resume. */
-    g.level = g.level || {};
-    if (!Array.isArray(g.level.traps)) g.level.traps = [];
-    /* maketrap() on an occupied square (trap.c oldplace) re-types the existing
-     * trap in place; digactualhole then sets madeby_u and seetrap() (dig.c:700-706). */
-    const old = g.level.traps.find((t) => t.tx === x && t.ty === y);
-    if (old) {
-        old.ttyp = PIT; old.tseen = 1; old.madeby_u = true; old.once = 0;
-    } else {
-        g.level.traps.push({ tx: x, ty: y, ttyp: PIT, tseen: 1, madeby_u: true });
-    }
-    /* C dig.c:730 — if (madeby_u) wake_nearby(FALSE); (before the at_u set_utrap). */
-    wake_nearby_(false);
-    /* C dig.c:737-740 — at_u && !wont_fall → set_utrap(rn1(4,2), TT_PIT). */
-    set_utrap(rn1(4, 2), TT_PIT);
-    g.vision_full_recalc = 1;
+    return await digactualhole_(x, y, BY_YOU_, PIT);
 }
 
 // C ref: dig.c:885 dighole(pit_only=TRUE, by_magic=FALSE, cc=NULL) — for the
@@ -863,7 +843,9 @@ async function furniture_handled_(x, y, madeby_u) {
         await breaksink(x, y);
         return true;
     } else if (typ === DRAWBRIDGE_DOWN || is_drawbridge_wall(x, y) >= 0) {
-        await destroy_drawbridge(x, y);
+        const bx = { value: x }, by = { value: y };
+        find_drawbridge(bx, by);
+        await destroy_drawbridge(bx.value, by.value);
         return true;
     }
     return false;
@@ -1277,12 +1259,8 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
                 set_utrap(rn1(4, 2), TT_PIT);
                 g.vision_full_recalc = 1;
             } else {
-                /* C: reset_utrap(TRUE) == set_utrap(0,0) plus float_up()/
-                 * "can fly" feedback if Lev/Fly newly becomes unblocked
-                 * (trap.c:1044-1054); the feedback is message-only (no state
-                 * this file tracks), so reuse the already-ported set_utrap
-                 * for the state half and skip the feedback text. */
-                set_utrap(0, 0);
+                /* C dig.c:742 reset_utrap(TRUE) */
+                await reset_utrap(true);
             }
             if (oldobjs !== newobjs) await pickup(1);
         } else if (mtmp) {
@@ -1428,7 +1406,7 @@ async function dighole(pit_only, by_magic, cc) {
     } else if (is_pool_or_lava(dig_x, dig_y)) {
         await pline('The %s sloshes furiously for a moment, then subsides.',
                     hliquid(is_lava_(dig_x, dig_y) ? 'lava' : 'water'));
-        wake_nearby_(false);
+        wake_nearby(false);
     } else if (old_typ === DRAWBRIDGE_DOWN || is_drawbridge_wall(dig_x, dig_y) >= 0) {
         if (pit_only) {
             await pline('The drawbridge seems too hard to dig through.');
@@ -1444,7 +1422,7 @@ async function dighole(pit_only, by_magic, cc) {
             ttmp.ttyp = PIT;
         } else {
             await pline('KADOOM!  The boulder falls in!');
-            wake_nearby_(false);
+            wake_nearby(false);
             await delfloortrap(ttmp);
         }
         await delobj(boulder_here);
@@ -1481,9 +1459,11 @@ async function dighole(pit_only, by_magic, cc) {
             retval = true;
         } else {
             if (by_magic && ttmp && (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP)) {
-                /* C dig.c:1009-1010, trap.c:5341-5372: conversion also
+                /* C dig.c:1006, 1009-1010, trap.c:5341-5372: conversion also
                  * releases trapped occupants before the hole is created. */
-                const trap_obj = (ttmp.ttyp === LANDMINE) ? 243 : 244;
+                const LAND_MINE = 243;
+                const BEARTRAP = 244;
+                const trap_obj = (ttmp.ttyp === LANDMINE) ? LAND_MINE : BEARTRAP;
                 await cnv_trap_obj(trap_obj, 1, ttmp, true);
             }
             if (nohole || pit_only
@@ -1496,7 +1476,7 @@ async function dighole(pit_only, by_magic, cc) {
             retval = true;
         }
     }
-    spot_checks_(dig_x, dig_y, old_typ);
+    spot_checks(dig_x, dig_y, old_typ);
     return retval;
 }
 export { dighole };
@@ -1995,7 +1975,8 @@ export async function use_pick_axe2(obj) {
             dc.warned = false;
             dc.pos.x = rx;
             dc.pos.y = ry;
-            dc.level = g.u && g.u.uz ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel } : { dnum: 0, dlevel: 0 };
+            /* C dig.c:1301 assign_level(&svc.context.digging.level, &u.uz) */
+            assign_level(dc.level, g.u && g.u.uz ? g.u.uz : { dnum: 0, dlevel: 0 });
             dc.effort = 0;
             dc.tool = obj;
             if (!dc.quiet)
@@ -2118,10 +2099,10 @@ export async function use_pick_axe(obj, dirCh) {
         const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
         const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
         if (DX[dirCh] === undefined) {
-            /* getdir returned 0 (ESC / unknown) → ECMD_CANCEL. */
+            /* C dig.c:1153: getdir returned 0 (ESC / unknown) -> return (res|ECMD_CANCEL). */
             g.context = g.context || {};
             g.context.move = 0;
-            return 0;
+            return ECMD_CANCEL;
         }
         u.dx = DX[dirCh]; u.dy = DY[dirCh]; u.dz = 0;
     }
@@ -2361,10 +2342,10 @@ function removeObjectFloor(otmp) {
 
 
 
-// C ref: dig.c:1989 debugpline1("bury_an_obj: %s", xname(otmp)) — lint.h's
-// non-lint build compiles debugpline1 to either an empty macro or
-// ifdebug(pline(...)); either way it never touches otmp/game state tracked
-// convention for debug/log helpers (js/mcastu.js's impossible()).
+// C ref: dig.c:1989 debugpline1("bury_an_obj: %s", xname(otmp)) — in C without
+// DEBUG, debugpline1 is an empty macro (lint.h:68) so xname(otmp) is never
+// evaluated. In JS, evaluating xname(otmp) here would invoke observe_object()
+// on buried items, polluting discovery state.
 function debugpline1(_fmt, _arg) { }
 
 // end_burn (timeout.c:1801) is IMPORTED from js/timeout.js now — the throw-stub
@@ -2380,7 +2361,6 @@ function debugpline1(_fmt, _arg) { }
 
 // C ref: dig.c:1983 bury_an_obj(struct obj *otmp, boolean *dealloced).
 export async function bury_an_obj(otmp, dealloced) {
-    debugpline1('bury_an_obj: %s', otmp);
     if (dealloced)
         dealloced.value = 0;
 
@@ -2734,6 +2714,12 @@ function rm_waslit() {
     return false;
 }
 
+/* C mondata.h:29 passes_walls(ptr) = (((ptr)->mflags1 & M1_WALLWALK) != 0L) */
+const M1_WALLWALK = 0x00000008;
+function passes_walls(ptr) {
+    return ((ptr?.mflags1 | 0) & M1_WALLWALK) !== 0;
+}
+
 async function mkcavepos(x, y, dist, waslit, rockit) {
     if (!isok(x, y))
         return;
@@ -2742,7 +2728,7 @@ async function mkcavepos(x, y, dist, waslit, rockit) {
         if (IS_OBSTRUCTED(lev.typ) || t_at(x, y))
             return;
         const mon = _m_at(x, y);
-        if (mon && !(mon.data.mflags1 & 0x00000008 /* M1_WALLWALK */))
+        if (mon && !passes_walls(mon.data))
             await rloc(mon, RLOC_NOMSG);
     } else if (lev.typ === ROOM) {
         return;
@@ -2766,11 +2752,13 @@ export async function mkcavearea(rockit) {
     const { ux, uy } = game.u;
     let xmin = ux, xmax = ux, ymin = uy, ymax = uy;
     const waslit = rm_waslit();
-    if (rockit)
+    if (rockit) {
+        Soundeffect(se_crashing_rock, 100);
         await pline('Crash!  The ceiling collapses around you!');
-    else
+    } else {
         await pline('A mysterious force %s cave around you!',
             game.level.at(ux, uy).typ === CORR ? 'creates a' : 'extends the');
+    }
     if (game._pending_message)
         await force_more(game._pending_message); // WIN_MESSAGE, TRUE
 

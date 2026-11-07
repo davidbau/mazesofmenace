@@ -46,7 +46,7 @@ import { savelev } from './save.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
 /* js/game.js makeLocation() seeds disp_color with terminal.js's NO_COLOR. */
 import { NO_COLOR as NO_COLOR_BONES } from './terminal.js';
-import { has_oname, ONAME, ONAME_BONES, has_mgivenname, DEFUNCT_MONSTER, NON_PM } from './const.js';
+import { has_oname, ONAME, ONAME_BONES, has_mgivenname, DEFUNCT_MONSTER, NON_PM, LOST_NONE, SHOPBASE, TRICKED, NEUTRAL, OBJ_FLOOR, OBJ_CONTAINED } from './const.js';
 import { free_oname } from './dokick.js';
 import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
@@ -54,8 +54,11 @@ import { Is_branchlev } from './dungeon.js';
 import { formatkiller } from './topten.js';
 import { OC_USES_KNOWN } from './mklev.js';
 import { In_hell } from './dungeon.js';
-import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { invalidate_map_row, impossible_sync } from './display.js';
+import { PM_ORACLE, PM_MEDUSA, PM_VLAD_THE_IMPALER, PM_DOPPELGANGER } from './pm.generated.js';
+import { invalidate_map_row, impossible_sync, debugpline } from './display.js';
+import { get_obj_location } from './zap.js';
+import { in_rooms } from './hack.js';
+import { cant_revive } from './read.js';
 import { pline } from './pline.js';
 import { fruitadd } from './options.js';
 import { the, xname, oname, is_quest_artifact } from './objnam.js';
@@ -68,9 +71,12 @@ import { DISMOUNT_BONES } from './const.js';
 import { clear_bypasses } from './worn.js';
 import { hhmmss, yyyymmdd } from './calendar.js';
 import { permonstTemplate } from './makemon.js';
+import { safe_oname } from './do_name.js';
 
 /* monflag.h G_UNIQ — the geno bit unique_corpstat() tests (see resetobjs). */
 const G_UNIQ = 0x1000;
+/* C mondata.h:174 unique_corpstat(ptr) */
+function unique_corpstat(ptr) { return ((ptr.geno | 0) & G_UNIQ) !== 0; }
 
 /* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
 function save_ebones(mtmp) {
@@ -166,25 +172,55 @@ function set_ghostly_objlist(ochain) {
     }
 }
 
+const FOOD_CLASS = 7;
+function has_omonst(o) { return Boolean(o?.oextra?.omonst); }
+
 /* C bones.c:51 resetobjs(ochain, restore).
  * RNG-FREE on both halves; the next_ident() draws a bones load makes are in
- * restore.c's restobjchn/restmonchn, not here.
- *
- * Remaining gaps include in_use deallocation, how_lost, and the
- * SCR_MAIL / CORPSE-STATUE cant_revive / mines-soko prize arms. */
+ * restore.c's restobjchn/restmonchn, not here. */
 async function resetobjs(ochain, restore) {
-    for (let otmp = ochain; otmp; otmp = otmp?.nobj) {
+    let otmp, nobj;
+    for (otmp = ochain; otmp; otmp = nobj) {
+        nobj = otmp?.nobj;
         if (otmp.cobj)
             await resetobjs(otmp.cobj, restore);
+        if (otmp.in_use) {
+            obj_extract_self(otmp);
+            await dealloc_obj(otmp);
+            continue;
+        }
         if (restore) {
             // C bones.c:68-78: reject duplicates and this hero's quest artifact.
             if (otmp.oartifact) {
-                if (exist_artifact(otmp.otyp, ONAME(otmp)) || is_quest_artifact(otmp)) {
+                if (exist_artifact(otmp.otyp, safe_oname(otmp)) || is_quest_artifact(otmp)) {
                     otmp.oartifact = 0;
                     if (has_oname(otmp)) free_oname(otmp);
                 } else {
-                    artifact_exists(otmp, ONAME(otmp), true, ONAME_BONES);
+                    artifact_exists(otmp, safe_oname(otmp), true, ONAME_BONES);
                 }
+            } else if (has_oname(otmp)) {
+                otmp.oextra.oname = sanitize_name(ONAME(otmp));
+            }
+            /* C bones.c:84-99: 3.6.3: set no_charge for partly eaten food in shop;
+               all other items become goods for sale if in a shop */
+            if ((otmp.oclass | 0) === FOOD_CLASS && otmp.oeaten) {
+                let top = otmp;
+                while (top.where === OBJ_CONTAINED && top.ocontainer)
+                    top = top.ocontainer;
+                const ox = { value: 0 }, oy = { value: 0 };
+                let no_charge = 0;
+                if (top.where === OBJ_FLOOR
+                    && get_obj_location(top, ox, oy, 0)
+                    && inside_shop(ox.value, oy.value)) {
+                    const rooms = in_rooms(ox.value, oy.value, SHOPBASE);
+                    if (rooms.length > 0) {
+                        const rno = rooms[0];
+                        const sroom = game.level?.rooms?.[rno - ROOMOFFSET];
+                        if (sroom && tended_shop(sroom))
+                            no_charge = 1;
+                    }
+                }
+                otmp.no_charge = no_charge;
             }
             continue;
         }
@@ -200,6 +236,7 @@ async function resetobjs(ochain, restore) {
         otmp.tknown = 0;
         otmp.invlet = 0;
         otmp.no_charge = 0;
+        otmp.how_lost = LOST_NONE; /* C bones.c:112 */
         /* C bones.c:115-129 — strip user-supplied names; statues, novels,
          * artifacts and named corpses of special (unique) monsters keep theirs. */
         if (has_oname(otmp)
@@ -212,6 +249,10 @@ async function resetobjs(ochain, restore) {
          * invocation relics stop being the real thing in the next game. */
         if (otmp.otyp === 285 /* SLIME_MOLD */) {
             goodfruit(otmp.spe);
+        } else if (otmp.otyp === 364 /* SCR_MAIL */) {
+            /* C bones.c:134-138 */
+            if (otmp.spe === 0)
+                otmp.spe = 1;
         } else if (otmp.otyp === 266 /* EGG */) {
             otmp.spe = 0; /* not "laid by you" in next game */
         } else if (otmp.otyp === 296 /* TIN */) {
@@ -220,8 +261,19 @@ async function resetobjs(ochain, restore) {
              * G_UNIQ for wizard) loads as "an empty tin" for the next player. */
             const mndx = otmp.corpsenm | 0;
             if (ismnum(mndx)
-                && (permonstTemplate(mndx).geno & G_UNIQ) !== 0)
+                && unique_corpstat(permonstTemplate(mndx)))
                 otmp.corpsenm = NON_PM;
+        } else if (otmp.otyp === 265 /* CORPSE */ || otmp.otyp === 476 /* STATUE */) {
+            /* C bones.c:147-165 */
+            const mnumBox = { value: otmp.corpsenm | 0 };
+            if (has_omonst(otmp) && cant_revive(mnumBox, false, null)) {
+                free_omonst(otmp);
+                if (mnumBox.value === PM_DOPPELGANGER && otmp.otyp === 265 /* CORPSE */)
+                    set_corpsenm(otmp, mnumBox.value);
+            }
+        } else if (is_mines_prize(otmp) || is_soko_prize(otmp)) {
+            /* C bones.c:166-169 */
+            otmp.nomerge = 0;
         } else if (otmp.otyp === 213 /* AMULET_OF_YENDOR */) {
             otmp.otyp = 212; /* FAKE_AMULET_OF_YENDOR */
             await curse_obj(otmp);
@@ -252,16 +304,16 @@ async function resetobjs(ochain, restore) {
  * OTHER caller — bones.c:257's own comment names both).  C's definition site is
  * bones.c:258; importing rather than re-deriving keeps one body, per the
  * two-real-bodies rule. */
-import { fix_shop_damage, goodfruit_fp as goodfruit } from './shk.js';
+import { fix_shop_damage, goodfruit_fp as goodfruit, inside_shop, tended_shop } from './shk.js';
 import { unleash_all } from './apply.js';
 import { create_bonesfile, delete_bonesfile, open_bonesfile } from './files.js'; // relocate-fns
-import { freeinv } from './cmd.js'; // relocate-fns
+import { freeinv, is_mines_prize, is_soko_prize } from './cmd.js'; // relocate-fns
 import { isok, u_at } from './const.js'; // relocate-fns
 import { obj_no_longer_held } from './do.js'; // relocate-fns
 import { can_carry } from './dogmove.js'; // relocate-fns
-import { artifact_light as artifact_light_real } from './light.js'; // relocate-fns
+import { artifact_light as artifact_light_real, obj_is_burning } from './light.js'; // relocate-fns
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' }; // relocate-fns
-import { add_to_container, place_object } from './mklev.js'; // relocate-fns
+import { add_to_container, place_object, obj_extract_self, dealloc_obj, set_corpsenm, free_omonst } from './mklev.js'; // relocate-fns
 import { rn2 as rn2_shk } from './rng.js'; // relocate-fns
 import { COIN_CLASS, goodfruit_fp, monMflags2_fp } from './shk.js'; // relocate-fns
 import { end_burn as end_burn_fp } from './timeout.js'; // relocate-fns
@@ -567,6 +619,23 @@ export function getbones() {
     return getbones_load(f);
 }
 
+/* C pline1(line) */
+async function pline1(line) {
+    await pline(line);
+}
+
+/* C restore.c:1035 trickery(reason) */
+async function trickery(reason) {
+    await pline('Strange, this map is not as I remember it.');
+    await pline('Somebody is trying some trickery here...');
+    await pline('This game is void.');
+    if (!game.svk) game.svk = {};
+    if (!game.svk.killer) game.svk.killer = {};
+    game.svk.killer.name = reason || '';
+    const { done } = await import('./end.js');
+    await done(TRICKED);
+}
+
 async function getbones_load(f) {
     const g = game;
     const u = g.u || {};
@@ -583,48 +652,76 @@ async function getbones_load(f) {
         }
     }
 
-    /* C bones.c:689 getlev(nhfp, 0, 0) — read the bones level in.  js/restore.js
-     * getlev() reads program_state.reading_bonesfile for its `ghostly` arm: no
-     * mon_catchup_elapsed_time, and NO rnd(10) hide roll (C's `ghostly ||`
-     * short-circuits the && that contains it).
-     *
-     * getlev() must see the snapshot through the normal store, which is where
-     * the bones file's copy is installed first. */
-    const { propagate } = await import('./makemon.js');
-    for (let m = f.snap.fmon; m; m = m.nmon) {
-        m.m_id = next_ident_bones();
-        // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
-        if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
-            m.mhpmax = DEFUNCT_MONSTER;
-        renumber_objchn(m.minvent, f.snap.fruits);
+    /* C bones.c:680-692: check stored bonesid length */
+    const oldbonesid = f.bonesid ?? '';
+    const bonesid = bones_filename(u.uz).slice(3);
+    const c = oldbonesid.length + 1;
+    if (c > 40 /* sizeof oldbonesid */) {
+        if (wizard()) {
+            await debugpline('bones.c', 'Abandoning bones , %u > %u.', c, 40);
+        }
+        g.program_state.reading_bonesfile = 0;
+        return false;
     }
-    renumber_objchn(f.snap.fobj, f.snap.fruits);
-    renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits);
-    renumber_objchn(f.snap.billobjs, f.snap.fruits);
 
-    const ledger = ledger_no(u.uz);
-    (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
-    const { getlev } = await import('./restore.js');
-    await getlev(ledger);
+    let ok = true;
+    if (bonesid !== oldbonesid) {
+        /* C bones.c:693-704: if (strcmp(bonesid, oldbonesid) != 0) */
+        const errbuf = `This is bones level '${oldbonesid}', not '${bonesid}'!`;
+        if (wizard()) {
+            await pline1(errbuf);
+            ok = false;
+        }
+        g.program_state.reading_bonesfile = 0;
+        await trickery(errbuf);
+    } else {
+        /* C bones.c:689 getlev(nhfp, 0, 0) — read the bones level in.  js/restore.js
+         * getlev() reads program_state.reading_bonesfile for its `ghostly` arm: no
+         * mon_catchup_elapsed_time, and NO rnd(10) hide roll (C's `ghostly ||`
+         * short-circuits the && that contains it).
+         *
+         * getlev() must see the snapshot through the normal store, which is where
+         * the bones file's copy is installed first. */
+        const { propagate } = await import('./makemon.js');
+        for (let m = f.snap.fmon; m; m = m.nmon) {
+            m.m_id = next_ident_bones();
+            // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
+            if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
+                m.mhpmax = DEFUNCT_MONSTER;
+            renumber_objchn(m.minvent, f.snap.fruits);
+        }
+        renumber_objchn(f.snap.fobj, f.snap.fruits);
+        renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits);
+        renumber_objchn(f.snap.billobjs, f.snap.fruits);
 
-    /* C bones.c:714-731 — sanitize names, purge defunct monsters, repair shops. */
-    const { sanitize_name } = await import('./options.js');
-    const { mongone } = await import('./mklev.js');
-    for (let m = g.fmon; m; m = m.nmon) {
-        /* C reads the bones file into fresh monst structs, mtrack intact; the
-         * snapshot here is the dead game's object, so drop its goto_level
-         * level tag or the arrival would zero the track (js/cmd.js). */
-        m._portTrackLevel = undefined;
-        if (has_mgivenname(m))
-            m.mextra.mgivenname = sanitize_name(m.mextra.mgivenname);
-        if (m.mhpmax === DEFUNCT_MONSTER)
-            await mongone(m);
-        else
-            await resetobjs(m.minvent, true);
+        const ledger = ledger_no(u.uz);
+        (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
+        const { getlev } = await import('./restore.js');
+        await getlev(ledger);
+
+        /* C bones.c:714-731 — sanitize names, purge defunct monsters, repair shops. */
+        const { mongone } = await import('./mklev.js');
+        for (let m = g.fmon; m; m = m.nmon) {
+            /* C reads the bones file into fresh monst structs, mtrack intact; the
+             * snapshot here is the dead game's object, so drop its goto_level
+             * level tag or the arrival would zero the track (js/cmd.js). */
+            m._portTrackLevel = undefined;
+            if (has_mgivenname(m))
+                m.mextra.mgivenname = sanitize_name(m.mextra.mgivenname);
+            if (m.mhpmax === DEFUNCT_MONSTER) {
+                if (wizard()) {
+                    const monname = m.data?.pmnames?.[NEUTRAL] ?? permonstTemplate(m.mnum)?.pmnames?.[NEUTRAL] ?? '';
+                    await debugpline('bones.c', 'Removing defunct monster %s from bones.', monname);
+                }
+                await mongone(m);
+            } else {
+                await resetobjs(m.minvent, true);
+            }
+        }
+        await resetobjs(g.fobj, true);
+        await resetobjs(g.level?.buriedobjlist, true);
+        await fix_shop_damage();
     }
-    await resetobjs(g.fobj, true);
-    await resetobjs(g.level?.buriedobjlist, true);
-    await fix_shop_damage();
 
     /* C bones.c:729-731 */
     g.program_state.reading_bonesfile = 0;
@@ -634,13 +731,13 @@ async function getbones_load(f) {
 
     if (wizard()) {
         if (!await paranoid_query(false, 'Unlink bones?'))
-            return true;
+            return ok;
     }
     /* C bones.c:739-748 delete_bonesfile(); a failure means another game won
      * the race and this one regenerates the level instead. */
     if (!delete_bonesfile(u.uz))
         return false;
-    return true;
+    return ok;
 }
 
 /* C bones.c:761-780 bones_include_name(const char *name) — TRUE when this
@@ -768,14 +865,11 @@ function artifact_light_fp(obj) {
     return artifact_light_real(obj);
 }
 
-function obj_is_burning_fp(obj) {
-    return !!(obj && obj.lamplit);
-}
-
 const SLIME_MOLD_OTYP = 285;
 
 export async function drop_upon_death(mtmp, cont, x, y) {
     const g = game;
+    g.u.twoweap = false; /* bypass set_twoweap() - C bones.c:269 */
     let otmp;
     while ((otmp = g.invent) != null) {
         await freeinv(otmp); // C bones.c:273: extract from OBJ_INVENT.
@@ -783,7 +877,7 @@ export async function drop_upon_death(mtmp, cont, x, y) {
         if (!mtmp || is_undead(mtmp.data))
             await obj_no_longer_held(otmp);
 
-        if ((cont || artifact_light_fp(otmp)) && obj_is_burning_fp(otmp))
+        if ((cont || artifact_light_fp(otmp)) && obj_is_burning(otmp))
             end_burn_fp(otmp, true);
         otmp.owornmask = 0;
 
@@ -870,7 +964,7 @@ export function can_make_bones() {
 /* C bones.c:198 sanitize_name(namebuf) — strip control characters, and
  * replace high-bit bytes unless the tty's eight_bit_tty option allows them.
  * Startup callers pass the option value accumulated at that rc-file line. */
-export function sanitize_name(namebuf, strip_8th_bit = !game.iflags?.wc_eight_bit_input) {
+export function sanitize_name(namebuf, strip_8th_bit = ((game.windowprocs?.name ?? 'tty') === 'tty' && !game.iflags?.wc_eight_bit_input)) {
     let out = '';
     for (let i = 0; i < namebuf.length; i++) {
         const ch = namebuf.charCodeAt(i) & 0xff;

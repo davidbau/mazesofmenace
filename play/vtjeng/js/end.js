@@ -206,6 +206,7 @@ import {
 import { tty_raw_print, tty_wait_synch } from './tty_rawprint.js';
 import { init_uhunger } from './u_init.js';
 import { hidden_gold } from './u_init_inventory_attrs.js';
+import { objectGenerationEnv } from './object_generation.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import { accessible } from './monmove.js';
 import { note_unported } from './unported.js';
@@ -313,7 +314,7 @@ async function savelife(how, state = game) {
         u.mh = Math.min(u.mhmax, givehp);
 
     if (u.uhunger < 500 || how === CHOKING)
-        init_uhunger(state);
+        await init_uhunger(state);
 
     // cure impending doom of sickness hero won't have time to fix
     // C ref: Sick is u.uprops[SICK].intrinsic; TIMEOUT is 0x00FFFFFF.
@@ -618,7 +619,7 @@ export async function done2(state = game) {
     if (In_tutorial(state.u?.uz)
         && await y_n(
             'Switch from the tutorial back to regular play?', state,
-        ) === KEY_Y) {
+        ) === 'y') {
         abandonTutorial = true;
     }
 
@@ -658,12 +659,12 @@ export async function done2(state = game) {
         const coreAnswer = await yn_function(
             'Dump core?', 'ynq', 'q', true, state,
         );
-        if (coreAnswer === KEY_Y) {
+        if (coreAnswer === 'y') {
             throw new UnsupportedEndOfGameError(
                 'done2() requested the unavailable core-dump path',
             );
         }
-        if (coreAnswer === KEY_Q) {
+        if (coreAnswer === 'q') {
             state.program_state ??= {};
             state.program_state.stopprint =
                 (state.program_state.stopprint ?? 0) + 1;
@@ -873,15 +874,10 @@ export async function done(how, state = game, source = {}) {
 }
 
 const DISCLOSURE_OPTIONS = 'iavgco';
-const KEY_Y = 'y'.charCodeAt(0);
-const KEY_Q = 'q'.charCodeAt(0);
-const KEY_A = 'a'.charCodeAt(0);
 
 // C ref: end.c should_query_disclose_option() (475-515). The returned
 // `defquery` is the answer used when the option suppresses the prompt and the
-// default passed to yn_function() when it does not. yn_function() returns a
-// key code, so a caller that skips the prompt converts `defquery` with
-// charCodeAt(0) before comparing it with KEY_Y or KEY_Q.
+// default passed to yn_function() when it does not.
 function should_query_disclose_option(category, state) {
     const index = DISCLOSURE_OPTIONS.indexOf(category);
     if (index < 0) {
@@ -929,8 +925,8 @@ async function disclose(how, taken, state) {
             defquery,
             true,
             state,
-        ) : defquery.charCodeAt(0);
-        if (c === KEY_Y) {
+        ) : defquery;
+        if (c === 'y') {
             state.iflags.force_invmenu = false;
             await display_inventory(null, true, state, {
                 menu: (items) => select_menu(state, {
@@ -942,7 +938,7 @@ async function disclose(how, taken, state) {
             });
             await container_contents(state.invent, true, true, false, state);
         }
-        if (c === KEY_Q) discloseStop(state);
+        if (c === 'q') discloseStop(state);
     }
 
     if (!disclosureStopprint(state)) {
@@ -953,8 +949,8 @@ async function disclose(how, taken, state) {
             defquery,
             true,
             state,
-        ) : defquery.charCodeAt(0);
-        if (c === KEY_Y) {
+        ) : defquery;
+        if (c === 'y') {
             const lines = await enlightenment(
                 BASICENLIGHTENMENT | MAGICENLIGHTENMENT,
                 how >= PANICKED ? ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD,
@@ -962,7 +958,7 @@ async function disclose(how, taken, state) {
             );
             await displayTtyMenuTextWindow(state, lines);
         }
-        if (c === KEY_Q) discloseStop(state);
+        if (c === 'q') discloseStop(state);
     }
 
     if (!disclosureStopprint(state)) {
@@ -984,15 +980,15 @@ async function disclose(how, taken, state) {
                 ? ' and achievements' : ''}?`;
             c = await yn_function(query, 'ynq', defquery, true, state);
         } else {
-            c = defquery.charCodeAt(0);
+            c = defquery;
         }
-        if (c === KEY_Y) {
+        if (c === 'y') {
             await show_conduct(
                 how >= PANICKED ? ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD,
                 state,
             );
         }
-        if (c === KEY_Q) discloseStop(state);
+        if (c === 'q') discloseStop(state);
     }
     if (!disclosureStopprint(state)) {
         const { ask, defquery } = should_query_disclose_option('o', state);
@@ -1002,14 +998,14 @@ async function disclose(how, taken, state) {
             defquery,
             true,
             state,
-        ) : defquery.charCodeAt(0);
-        if (c === KEY_Y) {
+        ) : defquery;
+        if (c === 'y') {
             // C ref: end.c disclose():696. Final disclosure passes 1 for a
             // living ending (escape, ascension, panic) and 2 for death;
             // `how` remains the death reason for the current level row.
             await show_overview(how >= PANICKED ? 1 : 2, how, state);
         }
-        if (c === KEY_Q) discloseStop(state);
+        if (c === 'q') discloseStop(state);
     }
 }
 
@@ -1019,11 +1015,16 @@ async function disclose(how, taken, state) {
 function finishInUseInventory(state) {
     // The recorder's TTY window hook is a no-op, but useup() still checks that
     // an update hook exists while the permanent inventory option is enabled.
-    const hooks = { updateInventory() {} };
+    // useup()'s obfree() stops the timers and light source of an item still
+    // in use, such as a lit potion of oil whose quaff killed the hero.
+    const env = objectGenerationEnv({
+        state,
+        hooks: { updateInventory() {} },
+    });
     for (let obj = state.invent; obj;) {
         const next = obj.nobj;
         if (obj.in_use)
-            useup(obj, { state, hooks });
+            useup(obj, env);
         obj = next;
     }
 }

@@ -4,6 +4,7 @@ import { is_ice as is_ice_real } from './engrave.js';
 import { game } from './gstate.js';
 import { is_pool as is_pool_real } from './look.js';
 import { pooleffects_is_lava as is_lava_real } from './cmd.js'; // relocate-fns
+import { impossible } from './pline.js';
 
 /* C ref: dbridge.c:84-95 is_pool(x,y) — POOL/MOAT/WATER or is_moat(). */
 export function is_pool(x, y) {
@@ -156,7 +157,7 @@ export function create_drawbridge(x, y, dir, flag) {
         x2++;
         break;
     default:
-        /* impossible("bad direction in create_drawbridge"); */
+        impossible("bad direction in create_drawbridge");
         /*FALLTHRU*/
     case DB_WEST:
         horiz = false;

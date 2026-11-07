@@ -44,7 +44,7 @@ import { has_oname, ONAME, Upolyd, BOLT_LIM, ECMD_OK, ECMD_TIME, Is_astralevel, 
 ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
 SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
 SUPPRESS_MAPPEARANCE, SUPPRESS_NAME, AUGMENT_IT,
-W_SADDLE, BLINDED, INVIS, STRANGLED, FREE_ACTION, STUNNED } from './const.js';
+W_SADDLE, BLINDED, INVIS, STRANGLED, FREE_ACTION, STUNNED, NOTELL, M_AP_TYPE } from './const.js';
 import { impossible } from './steed.js';
 import { M_ATTK_HIT, M_ATTK_MISS, M_ATTK_DEF_DIED, NATTK,
 /* attack types */
@@ -126,7 +126,7 @@ import { nomul } from './allmain.js';
 import { monstseesu, monstunseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
 import { finish_meating, dmgtype as dmgtype_real } from './dogmove.js';
-import { FAINTED, M_AP_NOTHING } from './const.js';
+import { FAINTED, M_AP_NOTHING, PRONOUN_HALLU } from './const.js';
 import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated.js';
 /* C end.c:185-300 done_in_by — use the canonical death attribution path.
  * mhitm's local no-op used to discard the stoning killer, leaving the
@@ -182,6 +182,7 @@ const AT_MAGC = 255;
  */
 const AD_MAGM = 1;
 const AD_FIRE = 2;
+const AD_SLEE = 4;
 const AD_ACID = 8;
 const AD_STON = 18;
 const AD_RUST = 24;
@@ -765,6 +766,7 @@ const coynames = [
 ];
 
 export function coyotename(mtmp) {
+    if (!mtmp) return "";
     return `${x_monnam(mtmp, ARTICLE_NONE, null, 0, true)} - ${
         mtmp.mcan ? coynames[coynames.length - 1]
                   : coynames[(mtmp.m_id >>> 0) % (coynames.length - 1)]}`;
@@ -787,7 +789,7 @@ export function distant_monnam(mon, article) {
 
     if (mon.data && mon.data.pmidx === PM_HIGH_CLERIC && !Hallucination
         && Is_astralevel(game.u.uz) && !m_next2u(mon)) {
-        let buf = article === 1 /* ARTICLE_THE */ ? "the " : "";
+        let buf = article === ARTICLE_THE ? "the " : "";
         buf += mon.female ? "high priestess" : "high priest";
         return buf;
     } else {
@@ -1382,7 +1384,7 @@ export function mon_nam_too(mon, other_mon) {
         return mon_nam(mon);
     } else {
         let buf = "";
-        switch (pronoun_gender(mon, 2)) { /* PRONOUN_HALLU */
+        switch (pronoun_gender(mon, PRONOUN_HALLU)) {
         case 0:
             buf = "himself";
             break;
@@ -1424,7 +1426,9 @@ export function new_oname(obj, lth) {
             free_oname(obj); /* already has oextra, might also have name */
         }
         obj.oextra_oname_present = 1; /* ONAME(obj) = alloc(lth) */
-        obj.oname = alloc(lth);
+        if (!obj.oextra) obj.oextra = {};
+        obj.oextra.oname = alloc(lth);
+        obj.oname = obj.oextra.oname;
     } else {
         /* zero length: the new name is empty; get rid of the old name */
         if (obj.oextra_present && obj.oextra_oname_present)
@@ -2600,14 +2604,14 @@ export function helpless(mon) {
 /* C mhitm.c:1223-1260 sleep_monst()/slept_monst().  Preserve the resistance
  * check order: only the final resist() check consumes RNG. */
 export async function sleep_monst(mon, amt, how) {
-    const apType = (mon.m_ap_type | 0) & 0x7;
+    const apType = M_AP_TYPE(mon);
     if ((how | 0) >= 0 && !mon.msleeping && !(mon.mfrozen | 0)
         && (mon.data?.mlet | 0) === 13 /* S_MIMIC */
         && (apType === 1 /* M_AP_FURNITURE */ || apType === 2 /* M_AP_OBJECT */))
         seemimic(mon);
 
-    if (Resists_Elem(mon, SLEEP_RES) || defended(mon, 4 /* AD_SLEE */)
-        || ((how | 0) >= 0 && await resist(mon, how | 0, 0, 0 /* NOTELL */))) {
+    if (Resists_Elem(mon, SLEEP_RES) || defended(mon, AD_SLEE)
+        || ((how | 0) >= 0 && await resist(mon, how | 0, 0, NOTELL))) {
         shieldeff(mon.mx | 0, mon.my | 0);
     } else if (mon.mcanmove) {
         finish_meating(mon);
@@ -2627,7 +2631,7 @@ export async function sleep_monst(mon, amt, how) {
 export async function slept_monst(mon) {
     if (helpless(mon) && mon === game.u?.ustuck
         && !sticks(game.youmonst.data) && !game.u.uswallow) {
-        set_msg_xy(mon.mx, mon.my); /* C mhitm.c:1257 pline_mon() */
+        set_msg_xy(mon.mx, mon.my); /* C mhitm.c:1254 pline_mon() */
         await pline(`${s_suffix(Monnam_mm(mon))} grip relaxes.`);
         await unstuck(mon);
     }

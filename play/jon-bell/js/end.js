@@ -31,7 +31,7 @@ import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level, ledger_no } from './bones.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, impossible_sync } from './display.js';
-import { yn_function_menu, randomkey, readchar } from './cmd.js';
+import { yn_function_menu, randomkey, readchar, keyhelp_compress_str } from './cmd.js';
 import { bot } from './botl.js';
 import { pline, urgent_pline } from './pline.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
@@ -1416,13 +1416,40 @@ function sound_exit_nhsound(why) {
         game.soundprocs.sound_exit_nhsound(why);
 }
 
+/* C hack.h:1329 #define y_n(query) yn_function(query, ynchars, 'n', TRUE) */
+async function y_n(query) {
+    const ans = await yn_function(query, 'yn', 'n', true);
+    if (!game.gi?.in_doagain) {
+        game._topl_sticky = `${query} [yn] (n)`;
+        game._topl_empty_sticky = game._topl_sticky;
+    }
+    return ans;
+}
+
+/* C hack.h:1330 #define ynq(query) yn_function(query, ynqchars, 'q', TRUE) */
+async function ynq(query) {
+    const ans = await yn_function(query, 'ynq', 'q', true);
+    if (!game.gi?.in_doagain) {
+        game._topl_sticky = `${query} [ynq] (q)`;
+        game._topl_empty_sticky = game._topl_sticky;
+    }
+    return ans;
+}
+
 /* C ref: end.c:90-118 done2(void) — the #quit / ^C confirmation. */
 export async function done2() {
     const g = game;
+    /* C end.c:92-96 —
+     *     boolean abandon_tutorial = FALSE;
+     *     if (In_tutorial(&u.uz)
+     *         && y_n("Switch from the tutorial back to regular play?") == 'y')
+     *         abandon_tutorial = TRUE;
+     *
+     * hack.h:1329 `y_n(query) == yn_function(query, ynchars, 'n', TRUE)`,
+     * consulting cmdq via addcmdq=TRUE. */
     let abandon_tutorial = false;
     if (In_tutorial(g.u?.uz)
-        && (await _yn_prompt('Switch from the tutorial back to regular play?',
-                             'yn', 'n')) === 'y')
+        && (await y_n('Switch from the tutorial back to regular play?')) === 'y')
         abandon_tutorial = true;
     const quit = !abandon_tutorial
         && await paranoid_query(!!((g.flags?.paranoia_bits | 0) & PARANOID_QUIT),
@@ -1455,7 +1482,7 @@ export async function done2() {
         return ECMD_OK;
     }
     if (wizard()) {
-        const c2 = await _yn_prompt('Dump core?', 'ynq', 'q');
+        const c2 = await ynq('Dump core?');
         if (c2 === 'q')
             g.program_state.stopprint++;
         /* C end.c:134-141 — a positive answer leaves the tty first, then calls
@@ -1670,7 +1697,7 @@ function should_query_disclose_option(category) {
     const idx = DISCLOSURE_OPTIONS.indexOf(category);
     if (idx < 0) {
         impossible_sync("should_query_disclose_option: bad category %c", category);
-        return [true, 'n'];              /* C: impossible() then return TRUE */
+        return [true, 'n'];              /* C: *defquery = 'n'; return TRUE */
     }
     const disclose = _end_disclose()[idx];
     switch (disclose) {
@@ -2402,8 +2429,10 @@ export async function container_contents(list, identified, all_containers, repor
      * disclosure call passes gi.invent with all_containers TRUE and needs the
      * real walk. */
     for (let box = list; box; box = box.nobj) {
-        await _container_contents_one(box, identified, all_containers, reportempty,
-                                      statusClipCol);
+        const res = await _container_contents_one(box, identified, all_containers, reportempty,
+                                                  statusClipCol);
+        if (res === 'continue')
+            continue;
         if (!all_containers)
             break;
     }
@@ -2422,17 +2451,20 @@ async function _container_contents_one(box, identified, all_containers, reportem
             box.lknown = 1;
         /* update_inventory(): pure display refresh. */
     }
-    /* C end.c:1612-1613 — BAG_OF_TRICKS is the wrong type of container. */
+    /* C end.c:1612-1613 — BAG_OF_TRICKS is the wrong type of container.
+     * In C, continue jumps to the for-loop increment, bypassing
+     * if (!all_containers) break; at end.c:1667-1668. */
     if ((box.otyp | 0) === BAG_OF_TRICKS)
-        return;
+        return 'continue';
     if (box.cobj) {
         const cat = SchroedingersBox(box);
         const lines = [];
         /* C end.c:1627 — xname preserves the statue's monster and object names. */
-        lines.push(`Contents of ${the(xname(box))}:`);
+        const putstrLines = [];
+        putstrLines.push(`Contents of ${the(xname(box))}:`);
         /* C end.c:1629-1630 — the blank line is skipped only while dumping. */
         if (!dumping)
-            lines.push('');
+            putstrLines.push('');
         /* C end.c:1631 buf[0] = buf[1] = ' ' — every item row carries two leading
          * spaces, which build_window_screen() renders as an indent from the
          * window column. */
@@ -2451,24 +2483,45 @@ async function _container_contents_one(box, identified, all_containers, reportem
                         obj.lknown = 1;
                     }
                 }
-                lines.push('  ' + (await _item_doname(obj)));
+                putstrLines.push('  ' + (await _item_doname(obj)));
             }
         } else {
-            lines.push("  Schroedinger's cat!");
+            putstrLines.push("  Schroedinger's cat!");
         }
         /* C end.c:1655-1657 — trailing blank line when dumping, then display_nhwindow. */
         if (dumping)
-            lines.push('');
-        lines.push('--More--');
+            putstrLines.push('');
+        /* C wintty.c:2253,2402-2417 tty_putstr(NHW_MENU): compress_str() a line of
+         * CO or more columns, record its length in maxcol, and break it at the
+         * last blank before CO, putstr()ing the tail as the next line. */
+        let maxcol = 0;
+        for (const src of putstrLines) {
+            let str = String(src);
+            for (;;) {
+                if (str.length >= 80 || str.includes('\n'))
+                    str = keyhelp_compress_str(str);
+                maxcol = Math.max(maxcol, str.length + 1);
+                let i = 79;
+                if (str.length >= 80)
+                    while (i && str[i] !== ' ' && str[i] !== '\n') i--;
+                if (str.length < 80 || !i) { lines.push(str); break; }
+                lines.push(str.slice(0, i));
+                str = str.slice(i + 1);
+            }
+        }
+        /* wintty.c:1907-1916 (H2344_BROKEN): offx = min(40, cols - maxcol - 1),
+         * clamped to 0; at offx 0 process_text_window prints no leading blank. */
+        const offx0 = 80 - maxcol - 1 <= 0;
+        lines.push(offx0 ? ' --More--' : '--More--');
         /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to
          * offx 0 and term_clear_screen()s (map and status included). */
         /* C wintty.c:1924: maxrow counts putstr rows, excluding dmore's footer.
          * A 23-row contents window still overlays, with --More-- on row 23. */
         const fullScreen = lines.length - 1 >= 24 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
-        const WIN_COL = fullScreen ? 1 : tty_window_offx(lines, 'more');
+        const WIN_COL = fullScreen ? 1 : offx0 ? 0 : tty_window_offx(lines, 'more');
         const uac = g.u?.uac ?? 0;
         const moreRow = lines.length - 1;
-        const moreCursorCol = WIN_COL + '--More--'.length;
+        const moreCursorCol = (offx0 ? 1 : WIN_COL) + '--More--'.length;
         /* The disclosure inventory menu is dismissed immediately before this
          * text window.  tty_dismiss_nhwindow()'s docorner clears the right
          * part of both status rows, and process_text_window does not repaint

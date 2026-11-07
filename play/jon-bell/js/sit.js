@@ -35,8 +35,8 @@ import { vtense } from './objnam.js';
 import { PM_NINJA } from './pm.generated.js';
 import { block_point, unblock_point, cansee } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE, A_CON } from './const.js';
-import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST } from './pm.generated.js';
+import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE, A_CON, A_NEUTRAL, A_CHAOTIC } from './const.js';
+import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST as PM_HIGH_CLERIC } from './pm.generated.js';
 
 function _hero_resists(prop) {
     const p = game.u?.uprops?.[prop];
@@ -48,7 +48,13 @@ import { make_confused, make_glib, make_sick } from './potion.js';
 import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon, monPmname } from './makemon.js';
 import { canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, Deaf } from './display.js';
 import { pline, livelog_printf, urgent_pline } from './pline.js';
-import { LL_CONDUCT, LL_GENOCIDE, UNCHANGING, POLY_REVERT } from './const.js';
+import { LL_CONDUCT, LL_GENOCIDE, UNCHANGING, POLY_REVERT, POLY_NOFLAGS, UTOTYPE_NONE, SICK_ALL } from './const.js';
+/* C objclass.h COIN_CLASS / SPBOOK_CLASS; objects.h SPE_REMOVE_CURSE
+ * (js/spell.js:130); monsym.h S_VAMPIRE; sndprocs.h:165 voice_throne. */
+const COIN_CLASS = 12, SPBOOK_CLASS = 10, SPE_REMOVE_CURSE = 395;
+const S_VAMPIRE = 48, voice_throne = 0x0010;
+/* C mondata.h:213 is_vampire(ptr) */
+function is_vampire(ptr) { return (ptr.mlet | 0) === S_VAMPIRE; }
 import { PM_VAMPIRE, PM_VAMPIRE_LORD as PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { do_mapping } from './read.js';
 import { identify_pack } from './invent.js';
@@ -67,7 +73,7 @@ import { spec_ability, adjattrib, change_luck, exercise } from './attrib.js';
 import { hcolor, Amonnam } from './mhitm.js';
 import { update_inventory } from './mhitm.js';
 import { which_armor } from './worn.js';
-import { shieldeff as shieldeff_rc, Monnam } from './mcastu.js';
+import { shieldeff as shieldeff_rc, Monnam, is_lminion } from './mcastu.js';
 import { aggravate } from './wizard.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 /* tele's C home is teleport.c:840. */
@@ -77,8 +83,20 @@ import { makewish } from './wizcmds.js';
 import { getlin } from './windows.js';
 import { rndmonst } from './makemon.js';
 import { adjalign as adjalign_sit } from './attrib.js';
-import { verbalize, list_genocided } from './cmd.js';
+import { verbalize, list_genocided, SetVoice } from './cmd.js';
 import { DEAF } from './const.js';
+
+const G_GENO = 0x20, G_NOCORPSE = 0x10, G_UNIQ = 0x1000;
+const REALLY = 1, PLAYER = 2, ONTHRONE = 4;
+const S_invisible = 35;
+const M2_HUMAN = 0x00000008;
+const M2_DEMON = 0x00000100;
+const M2_PNAME = 0x00080000;
+const thats_enough_tries = "That's enough tries!";
+function pline1(msg) { return pline(msg); }
+function is_human(ptr) { return ((ptr?.mflags2 | 0) & M2_HUMAN) !== 0; }
+function is_demon(ptr) { return ((ptr?.mflags2 | 0) & M2_DEMON) !== 0; }
+function type_is_pname(ptr) { return ((ptr?.mflags2 | 0) & M2_PNAME) !== 0; }
 /* makemon's C home is makemon.c:1338; the real port lives in js/mklev.js
  * (NOT js/makemon.js — that file only has makemonDomesticSaddle). */
 import { makemon } from './mklev.js';
@@ -144,7 +162,7 @@ export async function take_gold() {
     let lost_money = false;
     for (let obj = game.invent; obj;) {
         const next = obj.nobj || null;
-        if ((obj.oclass | 0) === 12 /* COIN_CLASS */) {
+        if ((obj.oclass | 0) === COIN_CLASS) {
             lost_money = true;
             await remove_worn_item(obj, false); /* C sit.c:23 */
             await delobj(obj);                  /* C sit.c:24 (obj_resists draw, invent.c:1446) */
@@ -169,7 +187,6 @@ export async function take_gold() {
  * scroll is blessed (read.c:1735); js/read.js must call this (out of file).
  * Includes conduct logging and polymorphed self-genocide (read.c:2674-2816). */
 export async function do_class_genocide() {
-    const G_GENO = 0x20, G_NOCORPSE = 0x10, G_UNIQ = 0x1000;
     const MS_LEADER = 36, MS_NEMESIS = 37, MS_GUARDIAN = 38;
     const mvitals = (game.mvitals ||= []);
     const vit = (i) => (mvitals[i] ||= { born: 0, died: 0, mvflags: 0 });
@@ -221,7 +238,7 @@ export async function do_class_genocide() {
         if (!goodcnt && cls !== permonstTemplate(roleM)?.mlet
             && cls !== permonstTemplate(raceM)?.mlet) {
             if (gonecnt) await pline('All such monsters are already nonexistent.');
-            else if (immunecnt || cls === 35 /* S_invisible */)
+            else if (immunecnt || cls === S_invisible)
                 await You("aren't permitted to genocide such monsters.");
             else if (wizard() && buf[0] === '*') {
                 /* C read.c:2706-2717 */
@@ -283,8 +300,8 @@ export async function do_class_genocide() {
                     && (snd !== MS_NEMESIS || quest_info(MS_NEMESIS) === i)
                     && (snd !== MS_GUARDIAN || quest_info(MS_GUARDIAN) === i)
                     && (i !== PM_NINJA || game.urole?.mnum === PM_SAMURAI)) {
-                    const named = !!(t.mflags2 & 0x00080000); /* M2_PNAME */
-                    const uniq = !!(t.geno & G_UNIQ) && i !== PM_HIGH_PRIEST;
+                    const named = type_is_pname(t);
+                    const uniq = !!(t.geno & G_UNIQ) && i !== PM_HIGH_CLERIC;
                     await You("aren't permitted to genocide %s%s.",
                         (uniq && !named) ? 'the ' : '',
                         (uniq || named) ? t.pmnames[2] : nam);
@@ -306,20 +323,21 @@ export async function do_class_genocide() {
 /* C read.c:2826 do_genocide().  The class menu is a separate C helper; this
  * covers the ordinary type-selection path used by scrolls and thrones. */
 export async function do_genocide(flags = 1) {
-    const really = (flags & 1) !== 0;
-    const onThrone = (flags & 4) !== 0;
+    const really = (flags & REALLY) !== 0;
+    const onThrone = (flags & ONTHRONE) !== 0;
     // C read.c:2838-2843: confused reading selects the base hero type
     // directly, even while polymorphed, without asking for a monster name.
-    let selected = (flags & 2) ? game.u.umonster : null;
-    let killPlayer0 = (flags & 2) !== 0;
+    let selected = (flags & PLAYER) ? game.u.umonster : null;
+    let killPlayer0 = (flags & PLAYER) !== 0;
     for (let i = 0; selected === null; i++) {
+        /* C read.c:2846-2853 */
         if (i >= 5) {
             /* cursed effect => no free pass (unless rndmonst() fails) */
-            if (!really) {
+            if (!(flags & REALLY)) {
                 const r = rndmonst();
                 if (r != null) { selected = r; break; }
             }
-            await pline("That's enough tries!");
+            await pline1(thats_enough_tries);
             return false;
         }
         let prompt = 'What type of monster do you want to genocide?';
@@ -335,7 +353,7 @@ export async function do_genocide(flags = 1) {
             continue;
         }
         if (buf[0] === '\x1b' || /^(?:none|'none'|nothing)$/i.test(buf)) {
-            if (!really) {
+            if (!(flags & REALLY)) {
                 const r = rndmonst();
                 if (r != null) { selected = r; break; }
             }
@@ -368,12 +386,13 @@ export async function do_genocide(flags = 1) {
             break;
         }
         const aln = Math.sign(game.u?.ualign?.type | 0);
-        if ((ptr0.mflags2 & 0x8) !== 0) adjalign_sit(-aln);
-        if ((ptr0.mflags2 & 0x100) !== 0) adjalign_sit(aln);
-        if (!(ptr0.geno & 0x20)) {
+        if (is_human(ptr0)) adjalign_sit(-aln);
+        if (is_demon(ptr0)) adjalign_sit(aln);
+        if (!(ptr0.geno & G_GENO)) {
             if (!Deaf()) {
                 if (game.flags?.verbose !== false)
                     await pline('A thunderous voice booms through the caverns:');
+                SetVoice(null, 0, 80, 0 /* voice_deity */);
                 await verbalize('No, mortal!  That will not be done.');
             }
             continue;
@@ -385,11 +404,11 @@ export async function do_genocide(flags = 1) {
 
     const data = permonstTemplate(selected);
     if (!really) {
-        /* C read.c:2985-3004 — cursed scroll: no genocide, create monsters */
+        /* C read.c:2996-3014 — cursed scroll: no genocide, create monsters */
         let cnt = 0;
         const census0 = monster_census(false);
         const v0 = (game.mvitals ||= [])[selected] ||= { born: 0, died: 0, mvflags: 0 };
-        if (!(data.geno & 0x1000) && !(v0.mvflags & (G_GENOD | G_EXTINCT))) {
+        if (!(data.geno & G_UNIQ) && !(v0.mvflags & (G_GENOD | G_EXTINCT))) {
             for (let n = rn1(3, 4); n > 0; n--) {
                 if (!await makemon(selected, game.u.ux | 0, game.u.uy | 0, NO_MINVENT | MM_NOMSG))
                     break;
@@ -423,7 +442,7 @@ export async function do_genocide(flags = 1) {
     else
         livelog_printf(LL_GENOCIDE, 'genocided %s', makeplural(data.pmnames[2]));
     const vital = game.mvitals[selected] ||= { born: 0, died: 0, mvflags: 0 };
-    vital.mvflags |= G_GENOD | 0x10; /* G_NOCORPSE */
+    vital.mvflags |= G_GENOD | G_NOCORPSE;
     /* C read.c:2936-2966: which/buf selection, then makeplural unless the
      * prefix starts with 'a' ("all "). */
     let which = 'all ';
@@ -438,8 +457,8 @@ export async function do_genocide(flags = 1) {
         }
     } else {
         buf = data?.pmnames?.[2] || 'such monsters';
-        if ((data.geno & 0x1000) && selected !== PM_HIGH_PRIEST)
-            which = !((data.mflags2 >>> 0) & 0x00080000) ? 'the ' : '';
+        if ((data.geno & G_UNIQ) && selected !== PM_HIGH_CLERIC)
+            which = !type_is_pname(data) ? 'the ' : '';
     }
     await pline('Wiped out %s%s.', which, (which.charAt(0) !== 'a') ? buf : makeplural(buf));
     // C read.c:2967-2995: resolve hero death before monster/inventory cleanup.
@@ -447,9 +466,9 @@ export async function do_genocide(flags = 1) {
         game.u.uhp = -1;
         game.svk ||= {};
         const killer = game.svk.killer ||= { id: 0, format: 0, name: '', next: null };
-        killer.format = (flags & 2) ? KILLED_BY : KILLED_BY_AN;
-        killer.name = (flags & 2) ? 'genocidal confusion'
-            : onThrone ? 'imperious order' : 'scroll of genocide';
+        killer.format = (flags & PLAYER) ? KILLED_BY : KILLED_BY_AN;
+        killer.name = (flags & PLAYER) ? 'genocidal confusion'
+            : (flags & ONTHRONE) ? 'imperious order' : 'scroll of genocide';
         if (Upolyd(game.u) && selected !== current) {
             delayed_killer(POLYMORPH, killer.format, killer.name);
             await pline('You feel %s inside.', udeadinside());
@@ -677,8 +696,8 @@ function dprince(atyp) {
         const pm = PM_ORCUS + rn1(PM_DEMOGORGON + 1 - PM_ORCUS, 0);
         const v = game.mvitals?.[pm];
         const d = permonstTemplate(pm);
-        if (!((v?.mvflags | 0) & G_GONE) /* C minion.c:396 */
-            && (atyp === -128 || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
+        if (!((v?.mvflags | 0) & G_GONE) /* C minion.c:397 */
+            && (atyp === A_NONE || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
             return pm;
     }
     return dlord(atyp);
@@ -691,27 +710,28 @@ export function dlord(atyp) {
         const v = game.mvitals?.[pm];
         const d = permonstTemplate(pm);
         if (!((v?.mvflags | 0) & G_GONE)
-            && (atyp === -128 || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
+            && (atyp === A_NONE || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
             return pm;
     }
     return ndemon(atyp);
 }
+const S_ANGEL = 27;
 export function lminion() {
     for (let tries = 0; tries < 20; ++tries) {
-        const pm = mkclass(27, 0); /* S_ANGEL */
+        const pm = mkclass(S_ANGEL, 0);
         if (pm !== null && pm !== NON_PM
             && !(permonstTemplate(pm).mflags2 & M2_LORD))
             return pm;
     }
     return NON_PM;
 }
-function _is_lminion(mon, d) {
-    if (!d || !(d.mflags2 & 0x1000)) return false; /* M2_MINION */
-    const a = mon?.ispriest && mon.mextra?.epri ? mon.mextra.epri.shralign
-        : mon?.isminion && mon.mextra?.emin ? mon.mextra.emin.min_align
-        : d.maligntyp;
-    return Math.sign(a | 0) === 1;
+/* C minion.c:419-426 llord */
+function llord() {
+    if (!(game.mvitals?.[PM_ARCHON]?.mvflags & G_GONE))
+        return PM_ARCHON;
+    return lminion(); /* approximate */
 }
+const S_LIGHT = 25; /* defsym.h MONSYM(25, 'y', LIGHT, S_LIGHT) */
 /* C mondata.c:1449 msummon_environ */
 const _ENV = (n, c, w) => n.forEach(k => { _ENV_T[k] = [c, w]; });
 const _ENV_T = {};
@@ -748,20 +768,20 @@ export async function msummon(mon) {
     } else if (is_ndemon(ptr)) {
         dtype = !rn2(20) ? dlord(atyp) : !rn2(6) ? ndemon(atyp) : (ptr.pmidx | 0);
         cnt = 1;
-    } else if (_is_lminion(mon, ptr)) {
-        dtype = (ptr.mflags2 & M2_LORD) && !rn2(20) ? (game.mvitals?.[PM_ARCHON]?.mvflags & G_GONE ? lminion() : PM_ARCHON)
+    } else if (is_lminion(mon)) { /* monst.h:281; mon is non-null here (the Wizard takes the first arm) */
+        dtype = (ptr.mflags2 & M2_LORD) && !rn2(20) ? llord()
             : ((ptr.mflags2 & M2_LORD) || !rn2(6)) ? lminion() : (ptr.pmidx | 0);
         cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
     } else if ((ptr.pmidx | 0) === PM_ANGEL) {
         if (rn2(6)) dtype = PM_ANGEL;
-        else if (atyp === 0)
+        else if (atyp === A_NEUTRAL)
             dtype = [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)];
-        else if (atyp === -1 || atyp === A_NONE) dtype = ndemon(atyp);
+        else if (atyp === A_CHAOTIC || atyp === A_NONE) dtype = ndemon(atyp);
         cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
     }
     if (dtype === NON_PM) return 0;
     /* C minion.c:137-148 — sanity checks */
-    if (cnt > 1 && (permonstTemplate(dtype).geno & 0x1000 /* G_UNIQ */)) cnt = 1;
+    if (cnt > 1 && (permonstTemplate(dtype).geno & G_UNIQ)) cnt = 1;
     if ((game.mvitals?.[dtype]?.mvflags & G_GONE) !== 0) {
         dtype = ndemon(atyp);
         if (dtype === NON_PM) return 0;
@@ -781,19 +801,19 @@ export async function msummon(mon) {
                 m.mextra.emin.min_align = atyp;
                 m.mextra.emin.renegade = ((atyp !== game.u.ualign.type) ^ !m.mpeaceful) ? 1 : 0;
             }
-            if (m.data.mlet === 27 && !Blind()) { /* C minion.c:162-170 */
+            if (m.data.mlet === S_ANGEL && !Blind()) { /* C minion.c:162-170 */
                 await show_transient_light(null, m.mx, m.my);
                 xlight = true;
             }
             if (cnt === 0 && canseemon(m)) {
-                const d = m.data, k = d.mlet === 27 ? PM_ANGEL : d.mlet === 26 ? PM_YELLOW_LIGHT : (d.pmidx | 0);
+                const d = m.data, k = d.mlet === S_ANGEL ? PM_ANGEL : d.mlet === S_LIGHT ? PM_YELLOW_LIGHT /* mondata.c:1452-1454 */ : (d.pmidx | 0);
                 const [cloud, what] = _ENV_T[k] || ['cloud', 'smoke'];
                 await pline(`${Amonnam(m)} appears in a ${cloud} of ${what}!`);
             }
         }
     }
     if (xlight) await transient_light_cleanup(); /* C minion.c:183-188 */
-    /* C:196-197 */
+    /* C:190-192 */
     if (result) result = monster_census(false) - census;
     return result;
 }
@@ -852,7 +872,7 @@ async function special_throne_effect(effect) {
             /* grease hands and inventory */
             /* C: make_glib(rn1(101, 100)) */
             for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
-                if (otmp.oclass !== /* COIN_CLASS */ 12)
+                if (otmp.oclass !== COIN_CLASS)
                     otmp.greased = 1;
             }
             make_glib(rn1(101, 100));
@@ -872,7 +892,7 @@ async function special_throne_effect(effect) {
             if (u.uhave?.amulet)
                 await You_feel("extremely disoriented for a moment.");
             else
-                schedule_goto(vs_level, 0, null, "You feel extremely out of place.");
+                schedule_goto(vs_level, UTOTYPE_NONE, null, "You feel extremely out of place.");
             break;
         }
         case 9:
@@ -896,8 +916,8 @@ async function special_throne_effect(effect) {
              * have thrown the instant the real seffects (which reads
              * sobj.otyp) was reached — build the C-shaped argument instead. */
             const fake_spellbook = {
-                otyp: /* SPE_REMOVE_CURSE */ 395,
-                oclass: /* SPBOOK_CLASS */ 10,
+                otyp: SPE_REMOVE_CURSE,
+                oclass: SPBOOK_CLASS,
                 blessed: 1,
             };
             if (!u.uprops) u.uprops = {};
@@ -910,12 +930,12 @@ async function special_throne_effect(effect) {
         }
         case 11:
             /* polymorph — polyself() has its own RNG */
-            if ((game.gy?.youmonst?.data || permonstTemplate(u.umonnum)).mlet === 48 /* S_VAMPIRE, mondata.h:213 */)
+            if (is_vampire(game.gy?.youmonst?.data || permonstTemplate(u.umonnum)))
                 await You_feel("unworthy.");
             else {
                 await pline("This throne was not meant for those such as you!");
                 await You_feel("a change coming over you.");
-                await polyself(0);
+                await polyself(POLY_NOFLAGS);
             }
             break;
         case 12: {
@@ -1050,7 +1070,7 @@ export async function throne_sit_effect() {
                 u.uhp = u.uhpmax;
                 u.ucreamed = 0;
                 make_blinded(0, true);
-                await make_sick(0, null, false, /* SICK_ALL */ 3);
+                await make_sick(0, null, false, SICK_ALL);
                 heal_legs_real(0);
                 SET_BOTL();
                 break;
@@ -1077,6 +1097,7 @@ export async function throne_sit_effect() {
                 const cnt = rnd(10);
                 /* Magical voice not affected by deafness (sit.c:114-117) */
                 await pline('A voice echoes:');
+                SetVoice(null, 0, 80, voice_throne);
                 await verbalize('Thine audience hath been summoned, %s!',
                                 game.flags?.female ? 'Dame' : 'Sire');
                 for (let i = cnt; i > 0; --i) {
@@ -1088,6 +1109,7 @@ export async function throne_sit_effect() {
                 /* C sit.c:125-131: magical voice, not affected by deafness.
                  * No RNG here — do_genocide() has its own RNG. */
                 await pline('A voice echoes:');
+                SetVoice(null, 0, 80, voice_throne);
                 await verbalize('By thine Imperious order, %s...',
                     game.flags?.female ? 'Dame' : 'Sire');
                 await do_genocide(5); /* REALLY|ONTHRONE */
@@ -1095,6 +1117,7 @@ export async function throne_sit_effect() {
             case 9: {
                 /* C sit.c:133-143: announce the curse once, then apply it. */
                 await pline('A voice echoes:');
+                SetVoice(null, 0, 80, voice_throne);
                 await verbalize('A curse upon thee for sitting upon this most holy throne!');
                 const luck = (u.uluck | 0) + (u.moreluck | 0);
                 if (luck > 0) {
@@ -1235,7 +1258,6 @@ function Upolyd(u) {
  * ---------------------------------------------------------------------------
  */
 const S_DEMON = 56;          /* C monsym.h S_DEMON */
-const M2_DEMON = 0x00000100; /* C monflag.h */
 const M2_LORD = 0x00000400;
 const M2_PRINCE = 0x00000800;
 const MONS = /** @type {any[]} */ (monsPack.mons);
@@ -1253,21 +1275,8 @@ export function ndemon(atyp) {
 }
 
 const AMULET_OF_YENDOR = 213; /* C objects.h — unique amulet otyp */
-/* ---------------------------------------------------------------------------
- * mon_has_amulet — check if a monster carries the Amulet of Yendor.
- * C ref: nethack-c/src/wizard.c:105 mon_has_amulet(struct monst *mtmp)
- *
- * Iterates through the monster's minvent (carried objects), returns 1 if
- * any object has otyp == AMULET_OF_YENDOR, else 0.
- * ---------------------------------------------------------------------------
- */
-export function mon_has_amulet(mtmp) {
-    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
-        if ((otmp.otyp | 0) === AMULET_OF_YENDOR)
-            return 1;
-    }
-    return 0;
-}
+/* C ref: wizard.c:105 mon_has_amulet(mtmp) — forwarded to canonical js/wizard.js body */
+export { mon_has_amulet } from './wizard.js';
 
 /* ---------------------------------------------------------------------------
  * Unported helpers (stubs)

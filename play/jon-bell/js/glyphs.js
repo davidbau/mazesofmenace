@@ -3,9 +3,9 @@
 
 import { game } from './gstate.js';
 import { config_error_add } from './cfgfiles.js';
-import { gs, H_UTF8 } from './const.js';
-import { glyphid_is_known, glyphid_number, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
-import { customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbols.js';
+import { gs, H_UTF8, SYM_PCHAR, SYM_OC, SYM_MON } from './const.js';
+import { glyphid_table, glyph_is_monster, MON_MLET, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
+import { LOADSYMS, customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbols.js';
 import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
 import { set_map_u } from './utf8map.js'; // relocate-fns
 
@@ -144,6 +144,8 @@ const gc = { currentgraphics: 0 };
  */
 // WIRE_PENDING: port-gen-purge_all_custom_entries-001
 export function purge_all_custom_entries() {
+    /* the glyphnag/colornag function statics (glyphs.c:84,97) are BSS of a fresh C process */
+    glyphnag = colornag = 0;
     for (let i = 0; i < NUM_GRAPHICS + 1; ++i) {
         purge_custom_entries(i);
     }
@@ -198,9 +200,10 @@ export function purge_custom_entries(which_set) {
 /* ── glyphid cache globals (from glyphs.c) ─────────────────────── */
 
 /* C: enum reserved_activities { res_nothing, res_dump_glyphids, res_fill_cache }; */
-const res_fill_cache = 2;
+const res_dump_glyphids = 1, res_fill_cache = 2;
 /* C: enum things_to_find { find_nothing, find_pm, find_oc, find_cmap, find_glyph }; */
 const find_nothing = 0;
+const find_pm = 1, find_oc = 2, find_cmap = 3, find_glyph = 4;
 
 /* C: static const struct find_struct zero_find = { 0 }; */
 const zero_find = {
@@ -217,7 +220,7 @@ let glyphcache_find;
 let to_custom_symbol_find;
 const nonzero_black = 0x1000000; /* CLR_BLACK | NH_BASIC_COLOR */
 
-/* ── unported helpers (stubs) ──────────────────────────────────── */
+/* ── glyph ID cache and parsing ───────────────────────────────── */
 
 /* C glyphs.c:333-351: a zeroed double-hash table, at least 2*MAX_GLYPH. */
 function init_glyph_cache() {
@@ -237,7 +240,119 @@ export function free_glyphid_cache() {
     glyphcache_find = undefined;
     to_custom_symbol_find = undefined;
 }
-function parse_id(id, findwhat) { return 0; /* stub — not yet ported */ }
+/* C glyphs.c:437-451: rotate a uint32, folding ASCII case before hashing. */
+function glyph_hash(id) {
+    let hash = 0;
+    for (let i = 0; i < id.length; ++i) {
+        let ch = id.charCodeAt(i);
+        if (ch >= 65 && ch <= 90) ch += 32;
+        hash = (((hash << 1) | (hash >>> 31)) ^ ch) >>> 0;
+    }
+    return hash;
+}
+
+/* C strcmpi folds ASCII letters; Unicode case aliases are not glyph IDs. */
+function glyphid_equal(a, b) {
+    const fold = s => s.replace(/[A-Z]/g, ch => ch.toLowerCase());
+    return fold(a) === fold(b);
+}
+
+/* C glyphs.c:377-422.  Duplicate IDs are deliberately not coalesced. */
+function add_glyph_to_cache(glyphnum, id) {
+    const hash = glyph_hash(id), mask = glyphid_cache_size - 1;
+    const hash1 = hash & mask;
+    const hash2 = ((hash >>> glyphid_cache_lsize) & mask) | 1;
+    let i = hash1;
+    do {
+        if (glyphid_cache[i].id === null) {
+            glyphid_cache[i] = { glyphnum, id };
+            return;
+        }
+        i = (i + hash2) & mask;
+    } while (i !== hash1);
+    throw new Error('glyphid_cache full');
+}
+
+function find_glyph_in_cache(id) {
+    const hash = glyph_hash(id), mask = glyphid_cache_size - 1;
+    const hash1 = hash & mask;
+    const hash2 = ((hash >>> glyphid_cache_lsize) & mask) | 1;
+    let i = hash1;
+    do {
+        if (glyphid_cache[i].id === null) return -1;
+        if (glyphid_equal(id, glyphid_cache[i].id))
+            return glyphid_cache[i].glyphnum;
+        i = (i + hash2) & mask;
+    } while (i !== hash1);
+    return -1;
+}
+
+/* C glyphs.c:824-1172. glyphid_table generates the per-glyph names in
+ * parse_id's order (including skipped object descriptions and C's generic
+ * piletop naming bug); the diagnostic window uses the same generator. */
+function parse_id(id, findwhat) {
+    let dump_ids = false, filling_cache = false;
+    if (findwhat.findtype === find_nothing && findwhat.restype) {
+        if (findwhat.restype === res_dump_glyphids) {
+            if (!findwhat.reserved) return 0;
+            dump_ids = true;
+        }
+        if (findwhat.restype === res_fill_cache) {
+            if (!findwhat.reserved || findwhat.reserved !== glyphid_cache) return 0;
+            filling_cache = true;
+        }
+    }
+    const is_G = id?.startsWith('G_');
+    const is_S = id?.startsWith('S_');
+    let pm_offset = 0, oc_offset = 0, cmap_offset = 0;
+    let pm_count = 0, oc_count = 0, cmap_count = 0;
+    if ((is_G && !glyphid_cache) || filling_cache || dump_ids || is_S) {
+        for (let i = 0; i < LOADSYMS.length; ++i) {
+            const range = LOADSYMS[i].range;
+            if (!pm_offset && range === SYM_MON) pm_offset = i;
+            if (!pm_count && pm_offset && range !== SYM_MON) pm_count = i - pm_offset;
+            if (!oc_offset && range === SYM_OC) oc_offset = i;
+            if (!oc_count && oc_offset && range !== SYM_OC) oc_count = i - oc_offset;
+            if (!cmap_offset && range === SYM_PCHAR) cmap_offset = i;
+            if (!cmap_count && cmap_offset && range !== SYM_PCHAR) cmap_count = i - cmap_offset;
+        }
+    }
+    if (is_G || filling_cache || dump_ids) {
+        if (!filling_cache && id && glyphid_cache) {
+            const val = find_glyph_in_cache(id);
+            if (val < 0) return 0;
+            Object.assign(findwhat, { findtype: find_glyph, val, loadsyms_offset: 0 });
+            return 1;
+        }
+        const glyphs = glyphid_table();
+        for (let glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+            const name = glyphs[glyph].id;
+            if (name === null) continue;
+            if (dump_ids)
+                findwhat.reserved.write(`(${String(glyph).padStart(4, '0')}) ${name}\n`);
+            else if (filling_cache)
+                add_glyph_to_cache(glyph, name);
+            else if (id && glyphid_equal(id, name)) {
+                Object.assign(findwhat, { findtype: find_glyph, val: glyph, loadsyms_offset: 0 });
+                return 1;
+            }
+        }
+    } else if (is_S) {
+        for (const [offset, count, type] of [[cmap_offset, cmap_count, find_cmap],
+                [oc_offset, oc_count, find_oc], [pm_offset, pm_count + 1, find_pm]]) {
+            for (let i = 0; i < count; ++i) {
+                if (glyphid_equal(LOADSYMS[i + offset].name.slice(2), id.slice(2))) {
+                    Object.assign(findwhat, { findtype: type, val: i + (type === find_pm ? 1 : 0),
+                        loadsyms_offset: i + offset });
+                    return 1;
+                }
+            }
+        }
+    }
+    if (dump_ids || filling_cache) return 1;
+    Object.assign(findwhat, { findtype: find_nothing, val: 0, loadsyms_offset: 0 });
+    return 0;
+}
 
 /* ── fill_glyphid_cache ────────────────────────────────────────── */
 /* C ref: nethack-c/src/glyphs.c:303-321 */
@@ -441,23 +556,45 @@ function shuffle_customizations() {
 /* ── glyphrep_to_custom_map_entries ────────────────────────────── */
 /* C ref: nethack-c/src/glyphs.c:111-182 */
 
-/* stubs for unported helpers */
-/* stub: parse_id() is unported beyond the G_unexplored/G_nothing names; any
- * other G_ id that parse_id would name (glyphs.c:890-1118) is taken to match
- * one glyph (0); an unknown G_ id matches nothing and returns 0. */
+/* C glyphs.c:234-283: an S_ reference visits every matching glyph. */
 function glyph_find_core(id, findwhat) {
-    if (id && /^S_/i.test(id)) {
-        const m = /^[Uu]\+([0-9a-fA-F]{1,7})/.exec(findwhat.unicode_val || '');
-        customize_s_glyph_utf8(id, m ? parseInt(m[1], 16) : 0);
-        return 1;
+    if (!parse_id(id, findwhat)) return 0;
+    if (findwhat.findtype === find_glyph) {
+        findwhat.callback(findwhat.val, findwhat);
+    } else {
+        for (let glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+            let do_callback = false, end_find = false;
+            switch (findwhat.findtype) {
+            case find_cmap:
+                do_callback = glyph_to_cmap(glyph) === findwhat.val;
+                break;
+            case find_pm:
+                if (glyph_is_monster(glyph)) {
+                    const nm = MON_MLET.length;
+                    // display.h glyph_to_mon: the invisibility/body blocks
+                    // interrupt the otherwise contiguous monster families.
+                    const base = glyph < 4 * nm ? 0
+                        : glyph < 6 * nm + 1 ? 4 * nm + 1 : 7 * nm + 1;
+                    do_callback = MON_MLET[(glyph - base) % nm] === findwhat.val;
+                }
+                break;
+            case find_oc:
+                // C compares object TYPE, not class. parse_id's oc value is
+                // 0..16, so corpses/statues cannot match this branch.
+                do_callback = glyph === GLYPH_OBJ_OFF + findwhat.val
+                    || glyph === GLYPH_OBJ_PILETOP_OFF + findwhat.val;
+                break;
+            case find_glyph:
+                do_callback = end_find = glyph === findwhat.val;
+                break;
+            default:
+                end_find = true;
+                break;
+            }
+            if (do_callback) findwhat.callback(glyph, findwhat);
+            if (end_find) break;
+        }
     }
-    if (!id || !/^G_/.test(id)) return 1;
-    /* C glyphs.c:1099-1103 parse_id names these two glyphs directly;
-     * display.h:543-551 puts them last, before MAX_GLYPH. */
-    const special = { g_unexplored: MAX_GLYPH - 2, g_nothing: MAX_GLYPH - 1 }[id.toLowerCase()];
-    if (special === undefined && !glyphid_is_known(id)) return 0;
-    findwhat.glyphid = id; /* parse_id resolves the name to a glyph number; keep the name */
-    if (findwhat.callback) findwhat.callback(special ?? glyphid_number(id), findwhat);
     return 1;
 }
 function rgbstr_to_int32(s) { return rgbstr_to_int32_real(s); }
@@ -472,8 +609,7 @@ function add_custom_glyph_entry(name, glyphidx, which_set, custtype, value) {
     const field = custtype === custom_nhcolor ? 'ccolor' : 'urep';
     if (gdc.custtype === custtype && gdc.customization_name === name)
         for (let d = gdc.details; d; d = d.next)
-            if (d.content[field].glyphidx === glyphidx
-                && d.content[field].glyphid === value.glyphid) {
+            if (d.content[field].glyphidx === glyphidx) {
                 Object.assign(d.content[field], value);
                 return;
             }
@@ -492,14 +628,20 @@ function to_custom_symset_entry_callback(glyph, findwhat) {
     const uval = match ? parseInt(match[1], 16) : 0;
     if (uval && uval < 0x110000 && !(uval >= 0xd800 && uval < 0xe000)) {
         const name = gs.symset?.[idx]?.name;
-        if (name) add_custom_glyph_entry(name, glyph, idx, custom_ureps,
-            { u: { utf32ch: uval, utf8str: String.fromCodePoint(uval) } });
+        if (name) {
+            add_custom_glyph_entry(name, glyph, idx, custom_ureps,
+                { u: { utf32ch: uval, utf8str: String.fromCodePoint(uval) } });
+            // The map renderer also keeps a symbol-indexed Unicode view.
+            // Update it only after C's match, UTF-8 and symset checks succeed.
+            if (idx === 0 && findwhat.findtype !== find_glyph)
+                customize_s_glyph_utf8(LOADSYMS[findwhat.loadsyms_offset].name, uval);
+        }
         else if (!glyphnag++) config_error_add('Unimplemented customization feature, ignoring for now');
     }
     if (findwhat.color) {
         const sym = Array.isArray(gs.symset) ? gs.symset[idx] : null;
         if (sym && sym.name) {
-            add_custom_glyph_entry(sym.name, glyph, idx, custom_nhcolor, { nhcolor: findwhat.color, glyphid: findwhat.glyphid });
+            add_custom_glyph_entry(sym.name, glyph, idx, custom_nhcolor, { nhcolor: findwhat.color });
         } else if (!colornag++) {
             config_error_add('Unimplemented customization feature,'
                              + ' ignoring for now');

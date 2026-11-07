@@ -1,6 +1,6 @@
 // invent.js — C ref: invent.c.
 import { addinv_core1, addinv_core2, carry_obj_effects, freeinv, inv_cnt, mergable, obj_extract_self_general, prinv, reorder_invent } from './cmd.js';
-import { FUMBLING, ONAME, ONAME_SKIP_INVUPD, SHRINK_GLOB, Upolyd, W_QUIVER, W_SWAPWEP, W_WEP, has_oname } from './const.js';
+import { FUMBLING, MENU_TRADITIONAL, ONAME, ONAME_SKIP_INVUPD, SHRINK_GLOB, Upolyd, W_QUIVER, W_SWAPWEP, W_WEP, has_oname } from './const.js';
 import { dropx, dropy } from './do.js';
 import { picked_container } from './dokick.js';
 import { hitfloor, throwing_weapon } from './dothrow.js';
@@ -14,7 +14,7 @@ import { pudding_merge_message } from './mkobj.js';
 import { observe_object } from './o_init.js';
 import { oname } from './objnam.js';
 import { reset_justpicked, u_safe_from_fatal_corpse } from './pickup.js';
-import { impossible, pline } from './pline.js';
+import { There, impossible, pline } from './pline.js';
 import { globby_bill_fixup, obfree } from './shk.js';
 import { obj_stop_timers, stop_timer } from './timeout.js';
 import { Blind } from './vision.js';
@@ -60,7 +60,7 @@ const INVLET_BASIC = 52;
 const NOINVSYM = 0x23, GOLD_SYM = 0x24;
 
 /* objects.h otyps. */
-const CORPSE = 265, LOADSTONE = 471;
+const CORPSE = 265, LOADSTONE = 471, CRYSKNIFE = 43;
 
 /* include/pickup.h / hack.h — u_safe_from_fatal_corpse test mask.
  * st_gloves 0x1 | st_corpse 0x2 | st_petrifies 0x4 | st_resists 0x8. */
@@ -79,8 +79,12 @@ const OBJ_FREE = 0, OBJ_INVENT = 3;
  * an already-valid letter.  The free-letter scan starts just AFTER
  * gl.lastinvnr and wraps — it does not restart at 'a', so a freed slot is
  * reused only once the cursor comes back around to it.  RNG-free.
+ *
+ * THE one port (invent.c audit a2_invent_30): the file-local hand copies
+ * js/cmd.js _adj_assigninvlet and js/eat.js _eat_assigninvlet forward here
+ * rather than carrying the body a second and third time.
  * ------------------------------------------------------------------------ */
-function assigninvlet(otmp) {
+export function assigninvlet(otmp) {
     /* there should be at most one of these in inventory... */
     if ((otmp.oclass | 0) === COIN_CLASS) {
         otmp.invlet = GOLD_SYM;
@@ -448,7 +452,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 
     if (obj.oartifact) {
         const wasUpolyd = Upolyd(u);
-        const crysknife = (obj.otyp | 0) === 43;
+        const crysknife = (obj.otyp | 0) === CRYSKNIFE;
         const oerodeproof = obj.oerodeproof;
         place_object(obj, u.ux | 0, u.uy | 0);
         // C invent.c:1227 / artifact.c:951: touching prints the blast before
@@ -477,7 +481,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         }
         remove_object(obj);
         if (crysknife) {
-            obj.otyp = 43;
+            obj.otyp = CRYSKNIFE;
             obj.oerodeproof = oerodeproof;
         }
     }
@@ -587,14 +591,10 @@ function fully_identify_obj(otmp) {
 
 /* C ref: invent.c:2650 identify(otmp) — identify one object and give immediate
  * feedback via prinv (the "n - a blessed scroll of enchant weapon." line). */
-async function identify(otmp) {
+export async function identify(otmp) {
     fully_identify_obj(otmp);
-    await _prinv_identify(otmp);
+    await prinv(null, otmp, 0);
     return 1;
-}
-
-async function _prinv_identify(obj) {
-    await prinv(null, obj, 0);
 }
 
 export async function identify_pack(id_limit, learning_id) {
@@ -603,7 +603,7 @@ export async function identify_pack(id_limit, learning_id) {
     if (!unid_cnt) {
         await pline(`You have already identified ${learning_id ? 'the rest' : 'all'} of your possessions.`);
     } else if (!id_limit || id_limit >= unid_cnt) {
-        /* Identify everything (C read.c:2724-2730). */
+        /* Identify everything (C invent.c:2724-2730). */
         let remaining = unid_cnt;
         for (let o = g.invent; o; o = o.nobj) {
             if (not_fully_identified(o)) {
@@ -614,7 +614,7 @@ export async function identify_pack(id_limit, learning_id) {
     } else {
         // C invent.c:2734-2744: traditional selection precedes the menu.
         let n = 0;
-        if (g.flags.menu_style === 0 /* MENU_TRADITIONAL */)
+        if (g.flags.menu_style === MENU_TRADITIONAL)
             do {
                 n = await ggetobj('identify', identify, id_limit, false);
                 if (n < 0) break;
@@ -1005,22 +1005,14 @@ function _Underwater() {
     return !!(game.u && game.u.uinwater);
 }
 
-/* C ref: invent.c:4333 will_feel_cockatrice(otmp, force_touch).  Mirrors
- * js/cmd.js's real port (same file cannot be imported without a cycle risk
- * this port avoids by the same convention js/eat.js/js/pickup.js already
- * use for their own local mirrors), but reads Blind via js/vision.js's real
- * Blind() rather than the `flags.blind` field — see vision.js's own comment
- * on why that field under-reports. */
+/* C ref: invent.c:4333 will_feel_cockatrice(otmp, force_touch).  Forwards to
+ * js/cmd.js's real port (imported above as will_feel_cockatrice_real).  The
+ * local mirror this replaced read Blind via js/vision.js's Blind() while the
+ * real port reads the same expression through cmd.js's _u_blind() — both are
+ * (HBlinded || EBlinded) && !BBlinded (youprop.h:103), so the answers never
+ * diverged; only the body count did. */
 function _will_feel_cockatrice_lk(otmp, force_touch) {
-    const u = game.u;
-    const hasGloves = !!(u && u.uarmg);
-    const sr = game.u?.uprops?.[STONE_RES];
-    const hasStoneResistance = !!((sr?.intrinsic | 0) || (sr?.extrinsic | 0));
-    const isCorpse = !!otmp && (otmp.otyp | 0) === _CORPSE_OTYP;
-    const corpsenm = otmp ? (otmp.corpsenm | 0) : -1;
-    const touchPetrifies = corpsenm === _PM_COCKATRICE || corpsenm === _PM_CHICKATRICE;
-    return (Blind() || force_touch) && !hasGloves && !hasStoneResistance
-        && isCorpse && touchPetrifies;
+    return will_feel_cockatrice_real(otmp, force_touch);
 }
 
 async function _feel_cockatrice_lk(otmp, force_touch) {
@@ -1030,7 +1022,10 @@ async function _feel_cockatrice_lk(otmp, force_touch) {
         await pline(`You touched ${name} with your bare ${makeplural(body_part(HAND))}.`);
     else
         await pline(`Touching ${name} is a fatal mistake...`);
-    await instapetrify(`touching ${name} bare-handed`);
+    /* C invent.c:4357 overwrites kbuf with killer_xname(otmp) — "a cockatrice
+     * corpse", the indefinite article — for the killer; the CXN_PFX_THE form
+     * above is only for the two plines. */
+    await instapetrify(`touching ${killer_xname(otmp)} bare-handed`);
 }
 
 /* C ref: invent.c:4105 look_here(int obj_cnt, unsigned lookhere_flags).
@@ -1088,7 +1083,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
             const regPart = reg ? `a ${reg_damg(reg) ? 'poison gas' : 'vapor'} cloud` : '';
             const joiner = (reg && trap) ? ' and ' : '';
             const trapPart = trap ? an(trapname(trap.ttyp | 0, false)) : '';
-            await pline(`There is ${regPart}${joiner}${trapPart} here.`);
+            /* C invent.c:4171 There("is %s%s%s here.", ...) */
+            await There('is %s%s%s here.', regPart, joiner, trapPart);
         }
     }
 
@@ -1152,12 +1148,12 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
         await read_engr_at(x, y);
         const quan1 = (otmp.quan == null ? 1 : (otmp.quan | 0)) === 1;
         if (obj_cnt === 1 && quan1) {
-            await pline(`There is ${picked_some ? 'another' : 'an'} object here.`);
+            await There('is %s object here.', picked_some ? 'another' : 'an');
         } else {
             const word = (obj_cnt === 2) ? 'two'
                 : (obj_cnt < 5) ? 'a few'
                 : (obj_cnt < 10) ? 'several' : 'many';
-            await pline(`There are ${word}${picked_some ? ' more' : ''} objects here.`);
+            await There('are %s%s objects here.', word, picked_some ? ' more' : '');
         }
         for (let o = otmp; o; o = o.nexthere) {
             if ((o.otyp | 0) === _CORPSE_OTYP && _will_feel_cockatrice_lk(o, false)) {

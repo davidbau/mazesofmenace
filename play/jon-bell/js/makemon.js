@@ -48,7 +48,7 @@ function _makemon_blind() {
 }
 import { game, wizard, discover } from './gstate.js';
 import { obj_split_timers, age_is_relative, stop_timer, begin_burn } from './timeout.js';
-import { artifact_light, obj_split_light_source as obj_split_light_source_real } from './light.js';
+import { artifact_light, obj_split_light_source } from './light.js';
 import { depth as depth_of_level, deepest_lev_reached } from './dungeon.js';
 import { W_ARMOR, W_ACCESSORY, TRAPNUM, NO_TRAP, FLYING, LEVITATION, BLINDED, P_DAGGER, P_KNIFE } from './const.js';
 import { BILLSZ, ROT_CORPSE, AGGRAVATE_MONSTER } from './const.js';
@@ -60,7 +60,7 @@ import { Unaware } from './display.js';
 import { flash_mon } from './mon.js';
 import { Norep, You_hear, You_feel } from './pline.js';
 import { In_endgame, In_sokoban, Is_astralevel, Is_waterlevel, Is_firelevel, Is_earthlevel, Is_airlevel, Is_rogue_level, In_mines, MM_FEMALE, MM_MALE, NO_MINVENT, W_SADDLE, I_SPECIAL, COLNO, ROWNO, isok, SEE_INVIS, TELEPORT_CONTROL, STRANGLED, OBJ_MINVENT, REFLECTING, W_ARMS, W_WEP, W_AMUL, W_ARM, OBJ_FREE, OBJ_FLOOR, OBJ_LUAFREE, OBJ_INVENT, MIGR_RANDOM, NC_VIA_WAND_OR_SPELL, NC_SHOW_MSG, HAND, POLY_TRAP, Upolyd, IS_ALTAR, DISPLACED, FOOT, In_V_tower, RLOC_MSG, OBJ_CONTAINED, IS_FURNITURE, IS_DRAWBRIDGE, PIT, HOLE, FORCEBUNGLE, } from './const.js';
-import { NO_MM_FLAGS, MM_ADJACENTOK, MM_NOWAIT } from './const.js';
+import { NO_MM_FLAGS, MM_ADJACENTOK, MM_NOWAIT, G_EXTINCT } from './const.js';
 import { OC_COST } from './oc_cost_data.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
@@ -638,7 +638,8 @@ function isHomeElementalMndx(mndx) {
     return false;
 }
 export function is_home_elemental(ptr) {
-    return isHomeElementalMndx(ptr.pmidx);
+    const mndx = typeof ptr === 'number' ? ptr : ((ptr?.pmidx ?? ptr?.mnum) | 0);
+    return isHomeElementalMndx(mndx);
 }
 const S_LIGHT_ML = 25; /* defsym.h:324 MONSYM(25, 'y', LIGHT, S_LIGHT) */
 export function emits_light(mdata) {
@@ -3027,7 +3028,7 @@ export async function create_critters(cnt, mptr, neverask) {
             }
         }
         let x = u.ux | 0, y = u.uy | 0;
-        /* C makemon.c:1573-1576 — if in water, try to encourage an aquatic
+        /* C makemon.c:1576-1579 — if in water, try to encourage an aquatic
          * monster by finding and then specifying another wet location.
          *     if (!mptr && u.uinwater && enexto(&c, x, y, &mons[PM_GIANT_EEL]))
          *         x = c.x, y = c.y;
@@ -3045,7 +3046,7 @@ export async function create_critters(cnt, mptr, neverask) {
         if (!mon)
             continue; /* try again [should probably stop instead] */
 
-        /* C makemon.c:1582-1585:
+        /* C makemon.c:1584-1587:
          *     if ((canseemon(mon) && (M_AP_TYPE(mon) == M_AP_NOTHING
          *                             || M_AP_TYPE(mon) == M_AP_MONSTER))
          *         || sensemon(mon))
@@ -3074,7 +3075,7 @@ export async function propagate(mndx, tally, ghostly) {
     /* if it's unique, don't ever make it again */
     const mons_row = MONS[mndx];
     if (mons_row && (mons_row[3] & G_UNIQ) !== 0 && mndx !== PM_HIGH_CLERIC) {
-        mv.mvflags |= 0x01; /* G_EXTINCT */
+        mv.mvflags |= G_EXTINCT; /* C makemon.c:968 */
     }
 
     if ((mv.born | 0) < 255 && tally && (!ghostly || result)) {
@@ -3082,14 +3083,14 @@ export async function propagate(mndx, tally, ghostly) {
     }
     if ((mv.born | 0) >= lim
         && !(mons_row[3] & G_NOGEN)
-        && !(mv.mvflags & 0x01)) { /* G_EXTINCT */
+        && !(mv.mvflags & G_EXTINCT)) {
         /* C makemon.c:975-978, include/lint.h:29-38 (ifdebug). */
         if (wizard() && debugcore('makemon.c', true)) {
             const saved = game.iflags.last_msg;
-            await pline('Automatically extinguished %s.', makeplural(MONS_PMNAMES[mndx][2]));
+            await pline('Automatically extinguished %s.', makeplural(MONS_PMNAMES[mndx][NEUTRAL])); /* C makemon.c:977 */
             game.iflags.last_msg = saved;
         }
-        mv.mvflags |= 0x01; /* G_EXTINCT */
+        mv.mvflags |= G_EXTINCT; /* C makemon.c:979 */
     }
     return result;
 }
@@ -4337,7 +4338,9 @@ async function you_aggravate(mtmp) {
      * from an earlier page of the same turn (HP 115 vs C 78). */
     const _agg_sv = game._paintedSnapshot;
     game._paintedSnapshot = null;
-    const _agg1Morc = await force_more(String(game._pending_message || _agg1));
+    /* muse.c:2635 cls() acknowledges _agg1; it must not pline it again
+     * when WIN_STOP already suppressed the original update_topl(). */
+    const _agg1Morc = await force_more(String(game._pending_message || _agg1), undefined, false, false, null, true);
     /* C's cls() is a separate blocking display_nhwindow after _agg1's
      * pline has completed. If its page is dismissed with ESC, WIN_STOP is
      * already live when the later You_feel(_agg2) arrives, so that message is
@@ -4360,7 +4363,8 @@ async function you_aggravate(mtmp) {
     /* display_nhwindow(WIN_MAP, TRUE) is a separate blocking page after _agg2's
      * pline completed: an ESC there leaves WIN_STOP live (topl.c:234) until the
      * next tty_nhgetch (wintty.c:4066), so later plines this turn are swallowed. */
-    if (await force_more(String(game._pending_message || _agg2)) === 27) {
+    /* muse.c:2642 acknowledges _agg2 without another update_topl(), too. */
+    if (await force_more(String(game._pending_message || _agg2), undefined, false, false, null, true) === 27) {
         game._topl_win_stop = true;
         game._topl_win_stop_armed = false;
     }
@@ -6111,7 +6115,7 @@ export async function unsplitobj(obj) {
  * imported at the top of this file.  It used to throw, which was the correct
  * behaviour while no timer existed to split; splitting a stack of timed
  * corpses now duplicates their ROT_CORPSE elements as C does. */
-function obj_split_light_source(src, dest) { return obj_split_light_source_real(src, dest); }
+/* obj_split_light_source: real body imported directly from js/light.js (light.c:779) */
 export { tele_restrict };
 
 

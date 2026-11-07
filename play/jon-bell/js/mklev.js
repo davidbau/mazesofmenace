@@ -48,6 +48,11 @@ import { PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC, PM_WHITE_UNICORN as PM_WHITE_U
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT, OBJ_LUAFREE } from './const.js';
 import { fill_supply_chest, save_mtraits, free_omid, bless as bless_obj, curse as curse_obj } from './mkobj.js';
+/* C mkobj.c:1888 weight() has ONE implementation; js/weight.js's export is
+ * the single C-faithful port this file forwards to (see the note at the
+ * local `weight` below).  Late-bound like the eat.js cycle weight.js itself
+ * documents: nothing here reads the binding at module-eval time. */
+import { weight as weight_real } from './weight.js';
 import { cant_revive } from './read.js';
 import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
@@ -60,8 +65,7 @@ import { rndmonstAdj, rndmonnumAdj, newMonHp, assignMakemonFemale, isArmedMndx, 
 import { noteleport_level } from './teleport.js';
 import { mon_set_minvis } from './worn.js';
 import { more_experienced } from './exper.js';
-import { dng_bottom, maybe_finish_sokoban } from './trap.js';
-import { TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA } from './const.js';
+import { dng_bottom } from './trap.js';
 import { rndghostname, christen_monst, roguename, y_monnam, Amonnam, seemimic, update_inventory } from './mhitm.js';
 import { growl } from './sounds.js';
 import { big_to_little, little_to_big, mon_hates_silver, passes_bars, resist_conflict, locomotion } from './mondata.js';
@@ -114,7 +118,6 @@ import { themerooms_contents_pillars, themerooms_contents_random_dungeon_feature
 import { selection_new, selection_setpoint, selection_getpoint, selection_getbounds, selection_do_grow } from './selvar.js';
 import { nhlib_filler_region_rng_consume, nhlib_fill_storeroom_rng, nhlib_fill_buried_treasure_rng, nhlib_fill_ice_room_rng, nhlib_fill_cloud_room_rng, nhlib_percent, nhlib_fill_garden_rng, nhlib_math_random_two_arg, nhlib_fill_temple_of_gods_rng, nhlib_fill_ghost_rng, nhlib_fill_teleportation_hub_rng, } from './nhlib.js';
 import { litstate_rnd } from './mkmap.js';
-import { chooseTrapnote } from './mklev_choose_trapnote.js';
 import { getbones } from './bones.js';
 import { recalc_block_point } from './vision.js';
 import { does_block, unblock_point } from './vision.js';
@@ -162,10 +165,11 @@ import { themerooms_contents_twin_businesses } from './sp_lev.js';
 import { is_pool_or_lava } from './look.js';
 import { closed_door } from './monmove.js';
 import { may_dig } from './hack.js';
-import { t_at, fill_pit, deltrap, goodpos, unearth_objs } from './trap.js';
+// C trap.c:456-590 has one maketrap body for level generation and play.
+import { t_at, fill_pit, deltrap, goodpos, maketrap } from './trap.js';
 import { mon_knows_traps, mon_learns_traps } from './mondata.js';
 import { m_carrying, linedup } from './mthrowu.js';
-import { mon_adjust_speed, m_dowear, extract_from_minvent as extract_from_minvent_md, update_mon_extrinsics as update_mon_extrinsics_md } from './worn.js';
+import { mon_adjust_speed, m_dowear, extract_from_minvent, update_mon_extrinsics as update_mon_extrinsics_md } from './worn.js';
 /* prop.h-adjacent: trap.c's ALL_TRAPS sentinel for mon_learns_traps (const.js:2270). */
 import { ALL_TRAPS } from './const.js';
 import { rloco, thiefdead } from './steal.js';
@@ -201,15 +205,15 @@ import { subfrombill, find_objowner, onbill } from './shk.js';
 import { costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { W_SADDLE } from './const.js';
-import { add_damage } from './shk.js';
 import { spot_stop_timers } from './timeout.js';
 import { long_to_any } from './cmd.js';
-import { IS_ROOM, DB_UNDER, DB_ICE, DB_FLOOR, DB_MOAT, DB_LAVA, MELT_ICE_AWAY, TIMER_LEVEL, SHOP_HOLE_COST, Is_juiblex_level } from './const.js';
+import { IS_ROOM, DB_UNDER, DB_ICE, DB_FLOOR, DB_MOAT, DB_LAVA, MELT_ICE_AWAY, TIMER_LEVEL, Is_juiblex_level } from './const.js';
 import { shop_keeper } from './shk.js';
 import { delete_contents } from './shk.js';
-/* C shknam.c:793's on_level(&u.uz, &orcus_level); the real body, NOT
- * js/shk.js's or js/priest.js's throw-stub of the same name. */
-import { on_level } from './dungeon.js';
+/* C shknam.c:793's on_level(&u.uz, &orcus_level); the real body from
+ * js/dungeon.js (js/shk.js and js/priest.js now re-export the same one).
+ * dungeon_branch_dnum is the canonical dungeon_branch() end2 scan. */
+import { on_level, dungeon_branch_dnum } from './dungeon.js';
 /* C zap.c:1458 obj_resists — the real body (js/dogmove.js).  It was imported
  * under an alias only because this file also declared a file-local
  * `function obj_resists(otmp, a, b) { return false; }` stub that shadowed it
@@ -2255,61 +2259,8 @@ function curse(otmp) {
 }
 const HEAVY_IRON_BALL = 477;
 const CANDELABRUM_OF_INVOCATION = 262;
-/* C mkobj.c:1889 weight(obj) — full weight of one object incl. container
- * contents / statue-of-monster heft / corpse-by-mons-cwt.  Was a broken
- * placeholder (`return otmp?.owt || 1`) that made every mksobj-family
- * owt assignment in this file a no-op; ported faithfully here since this
- * file (unlike js/weight.js, a replay-only simplification for inventory
- * reconstruction) always has live corpsenm/MONS_ROWS/MONS_CWT/MONS_MSIZE
- * data available for freshly-created objects.
- * container_weight() also reaches existing, partially eaten contents. */
 function weight(otmp) {
-    if (!otmp) return 0;
-    const otyp = otmp.otyp | 0;
-    let wt = (otyp >= 0 && otyp < OC_WEIGHT.length) ? (OC_WEIGHT[otyp] | 0) : 0;
-    const quan = otmp.quan | 0;
-    if (otmp.quan < 1) {
-        impossible_sync('Calculating weight of %ld %s?', otmp.quan, simpleonames(otmp));
-        return 0;
-    }
-    if (Object.prototype.hasOwnProperty.call(otmp, 'globby') && otmp.globby) return otmp.owt | 0;
-    const isContainer = (otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS);
-    if (isContainer || otyp === STATUE) {
-        if (otyp === STATUE && ismnum(otmp.corpsenm)) {
-            const msize = MONS_MSIZE[otmp.corpsenm] | 0;
-            const minwt = (msize + msize + 1) * 100;
-            wt = Math.trunc((3 * (MONS_CWT[otmp.corpsenm] | 0)) / 2);
-            if (wt < minwt) wt = minwt;
-            wt = Math.imul(wt, quan);
-        }
-        let cwt = 0;
-        for (let c = otmp.cobj; c; c = c.nobj)
-            cwt = (cwt + weight(c)) | 0;
-        if (otyp === BAG_OF_HOLDING) {
-            cwt = otmp.cursed ? Math.imul(cwt, 2)
-                : otmp.blessed ? Math.trunc(((cwt + 3) | 0) / 4)
-                    : Math.trunc(((cwt + 1) | 0) / 2);
-        }
-        return (wt + cwt) | 0;
-    }
-    if (otyp === CORPSE && ismnum(otmp.corpsenm)) {
-        const long_wt = otmp.quan * (MONS_CWT[otmp.corpsenm] | 0);
-        wt = long_wt > 32767 ? 32767 : long_wt; // C global.h:135 LARGEST_INT
-        return otmp.oeaten ? eaten_stat(wt, otmp) : wt;
-    }
-    if ((otmp.oclass | 0) === FOOD_CLASS && otmp.oeaten)
-        return eaten_stat(Math.imul(quan, wt), otmp);
-    if ((otmp.oclass | 0) === COIN_CLASS) {
-        const cw = Math.trunc((otmp.quan + 50) / 100) | 0;
-        return Math.max(cw, 1);
-    }
-    if (otyp === HEAVY_IRON_BALL && (otmp.owt | 0) !== 0) {
-        return otmp.owt | 0;
-    }
-    if (otyp === CANDELABRUM_OF_INVOCATION && (otmp.spe | 0)) {
-        return wt + (otmp.spe | 0) * (OC_WEIGHT[TALLOW_CANDLE] | 0);
-    }
-    return wt ? Math.imul(wt, quan) : ((quan + 1) >> 1);
+    return weight_real(otmp);
 }
 /* C invent.c:4517 merged(&otmp, &obj) + shk.c:1187 obfree(obj, otmp), for
  * add_to_container()'s merge probe below.  `obj` arrives OBJ_FREE (C panics
@@ -2416,7 +2367,7 @@ function makemonPtrMndx(mdat) {
     return NON_PM;
 }
 function makemon_rnd_goodpos(mon, gpflags, cc) {
-    /* C makemon.c:1087 — gpflags |= GP_AVOID_MONPOS */
+    /* C makemon.c:1085 — gpflags |= GP_AVOID_MONPOS */
     gpflags |= GP_AVOID_MONPOS;
     let tryct = 0;
     let nx, ny;
@@ -2425,8 +2376,8 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
     do {
         nx = rn1(COLNO - 3, 2); /* rn2(COLNO-3)+2 = rn2(77)+2 */
         ny = rn2(ROWNO);
-        /* C: (!gi.in_mklev && cansee(nx,ny)) ? FALSE : goodpos(nx, ny, mon, gpflags)
-         * goodpos with null mon: isok + !u_at + !MON_AT(avoid_monpos) + accessible */
+        /* C makemon.c:1090 — (!gi.in_mklev && cansee(nx,ny)) ? FALSE : goodpos(nx, ny, mon, gpflags)
+         * goodpos with mon (null for new monster): isok + !u_at + !MON_AT(avoid_monpos) + accessible */
         if (!game.in_mklev && cansee(nx, ny)) {
             good = false;
         } else {
@@ -2533,15 +2484,10 @@ async function m_initgrp(mtmp, x, y, n, mmflags) {
         if (cc) {
             mmx = cc.x;
             mmy = cc.y;
-            /* C makemon.c:135 — makemon(mtmp->data, mm.x, mm.y, mmflags | MM_NOGRP).
-             * makemon is async but a MM_NOGRP member never reaches the group-block
-             * await, so it resolves synchronously and prepends the new monster to
-             * game.fmon before returning (same invariant the ghost-fill path relies
-             * on); read the member off the fmon head rather than awaiting. */
-            await makemon(mndx, mmx, mmy, (mmflags | MM_NOGRP));
-            const mon = game.fmon;
-            if (mon && (mon.mnum === mndx)) {
-                /* C makemon.c:136-138 — force hostile, then recompute malign from the new state */
+            /* C makemon.c:135-138 — mon = makemon(mtmp->data, mm.x, mm.y, mmflags | MM_NOGRP);
+             * if (mon) { mon->mpeaceful = 0; mon->mavenge = 0; set_malign(mon); } */
+            const mon = await makemon(mndx, mmx, mmy, (mmflags | MM_NOGRP));
+            if (mon) {
                 mon.mpeaceful = 0;
                 mon.mavenge = 0;
                 set_malign(mon);
@@ -3470,158 +3416,6 @@ export async function mkroll_launch(ttmp, x, y, otyp, ocount) {
     newsym(ttmp.launch.x, ttmp.launch.y);
     return 1;
 }
-// C ref: trap.c:457 maketrap — create a trap at (x,y) of type typ.
-// Mirrors: trap.c:464-590 field init, switch, and linked-list prepend to gf.ftrap.
-// Simplified: the NEW-trap terrain screen (CAN_OVERWRITE_TERRAIN / pool / lava /
-// furniture / AIR / single-level-branch, trap.c:478-489) is still omitted here —
-// level-gen pre-screens positions.  The OLDPLACE branch (trap.c:466-477) is NOT
-// optional and is now present: see below.
-/* C ref: pline.c impossible() — a warning channel, not a fault.  js/trap.js's
- * maketrap twin spells its no-op the same way (impossible_ at js/trap.js:1612);
- * this file had no such helper because no ported body here reached one. */
-function mklev_impossible(msg, ...args) { return lifecycle_impossible(msg, ...args); }
-async function maketrap(x, y, typ) {
-    // C trap.c:464-465 — TRAPPED_DOOR and TRAPPED_CHEST are never physical traps
-    if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST)
-        return null;
-    const oldtrap = t_at(x, y);
-    if (oldtrap && (oldtrap.ttyp === MAGIC_PORTAL || oldtrap.ttyp === VIBRATING_SQUARE))
-        return null;
-    const oldplace = !!oldtrap;
-    // C trap.c:469-474: replacing a holding trap can release the hero.
-    const u = game.u;
-    if (oldplace && u.utrap && u_at(x, y)
-        && ((u.utraptype === TT_BEARTRAP && typ !== BEAR_TRAP)
-            || (u.utraptype === TT_WEB && typ !== WEB)
-            || (u.utraptype === TT_PIT && !is_pit(typ))
-            || (u.utraptype === TT_LAVA && !is_lava_mv(x, y))))
-        await reset_utrap(false);
-    const _ltLoc = game.level?.at(x, y);
-    const _lt = _ltLoc ? (_ltLoc.typ | 0) : STONE;
-    if (!oldplace
-        && ((!game.iflags?.debug_overwrite_stairs && (_lt === LADDER || _lt === STAIRS))
-            || is_pool_or_lava(x, y)
-            || (IS_FURNITURE(_lt) && typ !== PIT && typ !== HOLE)
-            || (_lt === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
-            || (IS_AIR(_lt) && typ !== MAGIC_PORTAL)
-            || (typ === LEVEL_TELEP && single_level_branch(game.u?.uz))))
-        return null;
-    // C trap.c:490-495 — allocate new trap struct, zero fields
-    const trap = oldtrap || {
-        ttyp: typ,
-        tx: x,
-        ty: y,
-        tseen: (typ === HOLE),
-        once: false,
-        launch: { x: -1, y: -1 }, // C: launch.x = launch.y = -1
-        tnote: 0,
-        dst: { dnum: -1, dlevel: -1 },
-        ntrap: null, // C: ntrap pointer for gf.ftrap linked list
-    };
-    /* C trap.c:496-502: zero vl, including tnote (trap.h:14), on reuse too. */
-    trap.vl = {};
-    trap.launch_otyp = trap.conjoined = trap.tnote = 0;
-    trap.launch2 = { x: 0, y: 0 };
-    trap.ttyp = typ;
-    trap.once = false;
-    /* C trap.c:501 — unhideable_trap(typ), i.e. HOLE only (trap.h:115). */
-    trap.tseen = (typ === HOLE);
-    trap.madeby_u = 0;
-    trap.launch = { x: -1, y: -1 };
-    /* C trap.h:23 — `#define teledest launch`: teledest IS the launch field, so
-     * C's `ttmp->launch.x = ttmp->launch.y = -1` re-init (trap.c:497) clears it
-     * too.  This port keeps the two under separate names, so clearing only
-     * `launch` left a re-typed square carrying the PREVIOUS trap's destination. */
-    trap.teledest = { x: -1, y: -1 };
-    trap.dst = { dnum: -1, dlevel: -1 };
-    if (!game.level)
-        return trap;
-    // C trap.c:506-508 — SQKY_BOARD: choose_trapnote
-    if (typ === SQKY_BOARD)
-        trap.tnote = chooseTrapnote(trap);
-    // C trap.c:509-511 — STATUE_TRAP: create a "living" statue
-    if (typ === STATUE_TRAP)
-        await mk_trap_statue(x, y);
-    // C trap.c:512-514 — ROLLING_BOULDER_TRAP: boulder will roll towards trigger
-    if (typ === ROLLING_BOULDER_TRAP)
-        await mkroll_launch(trap, x, y, BOULDER, 1);
-    if (typ === PIT || typ === SPIKED_PIT) {
-        // C trap.c:514-517 — `ttmp->conjoined = 0;` then FALLTHRU
-        trap.conjoined = 0;
-    }
-    if (typ === PIT || typ === SPIKED_PIT || typ === HOLE || typ === TRAPDOOR) {
-        const _lev = game.level.at(x, y);
-        const _typNow = () => (_lev ? (_lev.typ | 0) : STONE);
-        // C trap.c:521-522
-        if (is_hole(typ))
-            hole_destination(trap.dst);
-        /* C trap.c:523-527 — schedule shop repair for a hole/pit dug in a shop. */
-        if (in_rooms(x, y, SHOPBASE).length > 0
-            && (is_hole(typ) || IS_DOOR(_typNow()) || IS_WALL(_typNow()))) {
-            add_damage(x, y,
-                       ((IS_DOOR(_typNow()) || IS_WALL(_typNow()))
-                        && !game.context?.mon_moving) ? SHOP_HOLE_COST : 0);
-        }
-        /* C trap.c:529-561 — normalise the terrain the trap sits on. */
-        let clear_flags = true; /* assume lev->flags needs to be reset */
-        if (_typNow() === DRAWBRIDGE_UP) {
-            clear_flags = false;
-            const was_ice = _lev && (((_lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE);
-            if (_lev) {
-                _lev.drawbridgemask = ((_lev.drawbridgemask | 0) & ~DB_UNDER) | DB_FLOOR;
-            }
-            if (was_ice) {
-                obj_ice_effects(x, y, true);
-                spot_stop_timers(x, y, MELT_ICE_AWAY);
-            }
-        }
-        else if (IS_ROOM(_typNow())) {
-            set_levltyp(x, y, ROOM);
-        }
-        /* C trap.c:549-554 — "some cases which can happen when digging down
-         * while phasing thru solid areas" (and the makeniche niche, above). */
-        else if (_typNow() === STONE || _typNow() === SCORR) {
-            set_levltyp(x, y, CORR);
-        }
-        else if (IS_WALL(_typNow()) || _typNow() === SDOOR) {
-            set_levltyp(x, y, game.level.flags?.is_maze_lev ? ROOM
-                              : game.level.flags?.is_cavernous_lev ? CORR
-                                : DOOR);
-        }
-        // C trap.c:560-561 — set_levltyp doesn't take care of this [yet?]
-        if (clear_flags && _lev)
-            _lev.flags = 0;
-        // C trap.c:563-564
-        await unearth_objs(x, y);
-        recalc_block_point(x, y);
-    }
-    if (typ === TELEP_TRAP) {
-        const lp = game.gl?.launchplace;
-        const lpx = lp ? lp.x : undefined;
-        const lpy = lp ? lp.y : undefined;
-        if (isok(lpx, lpy)) {
-            const xstart = (game.gx?.xstart) | 0;
-            const ystart = (game.gy?.ystart) | 0;
-            trap.teledest = { x: xstart + lpx, y: ystart + lpy };
-            if (trap.teledest.x === x && trap.teledest.y === y)
-                await mklev_impossible('making fixed-dest tele trap pointing to itself');
-        }
-    }
-    // C trap.c:578-583 — `if (!oldplace) { ttmp->ntrap = gf.ftrap; gf.ftrap
-    // = ttmp; }`.  A REUSED trap is already on the chain (and already in the
-    // legacy array); re-linking it would splice the list onto itself.
-    if (!oldplace) {
-        trap.ntrap = game.ftrap ?? null;
-        game.ftrap = trap;
-        // maintain legacy array for occupied() checks
-        if (!game.level.traps)
-            game.level.traps = [];
-        game.level.traps.push(trap);
-    } else if (game.level.flags?.sokoban_rules ?? game.sokoban) {
-        maybe_finish_sokoban(); // C trap.c:584-589
-    }
-    return trap;
-}
 // C ref: engrave.c — minimal engraving storage for wipe_engr_at
 const _engr_map = new Map();
 // C ref: engrave.c make_engr_at — create engraving at coordinates
@@ -3706,8 +3500,13 @@ function wipe_engr_at(x, y, cnt, magical) {
         ep.text = trimmed;
     }
 }
+/* C rumors.c MD_PAD_RUMORS — expected padded line length handed to
+   get_rnd_line() by every rumor/engrave/epitaph caller. */
+const MD_PAD_RUMORS = 60;
+
+/* C rumors.c:523 couldnt_open_file(fname) — omitted; EPITAPH_LINES is an in-memory table */
 function get_rnd_text_epitaph() {
-    return get_rnd_line_from_section(EPITAPH_LINES, EPITAPH_OFFSETS, EPITAPH_CHUNK_SIZE, rn2, 60);
+    return get_rnd_line_from_section(EPITAPH_LINES, EPITAPH_OFFSETS, EPITAPH_CHUNK_SIZE, rn2, MD_PAD_RUMORS);
 }
 export function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
@@ -3749,10 +3548,6 @@ function get_rnd_line_from_section(lines, offsets, sectionSize, rngFn, padlength
     } while (--trylimit > 0);
     return lines[(lo + 1) % lines.length];
 }
-/* C rumors.c MD_PAD_RUMORS — expected padded line length handed to
-   get_rnd_line() by every rumor/engrave/epitaph caller. */
-const MD_PAD_RUMORS = 60;
-
 /* C hack.h:54-57 — outrumor()'s `mechanism` argument. */
 export const BY_ORACLE = 0, BY_COOKIE = 1, BY_PAPER = 2, BY_OTHER = 9;
 
@@ -3919,6 +3714,12 @@ export function engr_at(x, y) {
 }
 export function move_engr_at(x, y, tx, ty, ep) {
     _engr_map.delete(`${x},${y}`);
+    ep.engr_x = tx;
+    ep.engr_y = ty;
+    _engr_map.set(`${tx},${ty}`, ep);
+}
+/* C sp_lev.c:690-695 flip_level moves each struct engr by rewriting engr_x/y in place; re-file an already-detached record under its new square. */
+export function refile_engr_at(ep, tx, ty) {
     ep.engr_x = tx;
     ep.engr_y = ty;
     _engr_map.set(`${tx},${ty}`, ep);
@@ -8173,33 +7974,38 @@ export async function find_branch_room(mp) {
         if (!somexyspace(croom, mp)) await lifecycle_impossible("Can't place branch!");
     return croom;
 }
-/* C ref: dungeon.c:2170-2185 dungeon_branch(s) — the branch whose end2 lies in
+/* C ref: dungeon.c:1870-1886 dungeon_branch(s) — the branch whose end2 lies in
  * dungeon `dnum`.  C looks the dnum up by name; the two names this port needs
  * ("Fort Ludios", "The Quest") already have their dnum on game (knox_level.dnum
- * and quest_dnum), so the name lookup is folded into the caller. */
+ * and quest_dnum), so the name lookup is folded into the caller.  Forwards to
+ * dungeon_branch_dnum — the ONE canonical end2 scan in js/dungeon.js — so this
+ * file keeps no second body.  The undefined-dnum arm has no C counterpart (C
+ * resolves a name, and dname_to_dnum panics on an unknown one); the not-found
+ * arm now throws exactly as C's panic() does instead of returning null. */
 function dungeon_branch_by_dnum(dnum) {
     if (dnum === undefined || dnum === null)
         return null;
-    const brlist = game._dungeon_branches || game.branches || [];
-    for (const br of brlist)
-        if (br?.end2?.dnum === dnum)
-            return br;
-    return null; /* C panics here; every dungeon.lua we load defines both */
+    return dungeon_branch_dnum(dnum);
 }
-/* C ref: dungeon.c:2187-2194 at_dgn_entrance(s) — on_level(&u.uz, &br->end1). */
+/* C ref: dungeon.c:1897-1903 at_dgn_entrance("The Quest") —
+ * dungeon_branch(s) then on_level(&u.uz, &br->end1); the name's dnum is the
+ * cached game.quest_dnum, and the comparison is the REAL on_level port
+ * (js/dungeon.js:57), not a hand-inlined dnum/dlevel test. */
 function at_dgn_entrance_quest() {
     const br = dungeon_branch_by_dnum(game.quest_dnum);
-    const uz = game.u?.uz;
-    return !!(br && uz && br.end1?.dnum === uz.dnum && br.end1?.dlevel === uz.dlevel);
+    return !!(br && on_level(game.u?.uz, br.end1));
 }
 async function mk_knox_portal(x, y) {
     const g = game;
     const knox = g.knox_level;
     const br = dungeon_branch_by_dnum(knox?.dnum);
     if (!br)
-        return; /* C: dungeon_branch() panics, so never returns */
+        return; /* only the undefined-dnum defensive arm; a resolved dnum that
+                 * matches no branch throws, as C's dungeon_branch() panics */
     let source;
-    if (knox && br.end1?.dnum === knox.dnum && br.end1?.dlevel === knox.dlevel) {
+    /* C mklev.c:2632 — on_level(&knox_level, &br->end1): the REAL on_level
+     * port (js/dungeon.js:57), not a hand-inlined dnum/dlevel test. */
+    if (knox && on_level(knox, br.end1)) {
         source = br.end2;
     }
     else {
@@ -9432,9 +9238,8 @@ export async function discard_minvent(mtmp, uncreate_artifacts) {
 /* constant: ONAME_NO_FLAGS */
 const ONAME_NO_FLAGS = 0;
 
-export async function extract_from_minvent(mtmp, otmp, a, b) {
-    return await extract_from_minvent_md(mtmp, otmp, a, b);
-}
+/* C worn.c:1376-1417 extract_from_minvent — canonical port exported from worn.js */
+export { extract_from_minvent };
 
 /* obfree: the local throwing stub that stood here shadowed js/dokick.js's
  * real body (C shk.c:1186-1272) for discard_minvent() above.  Imported at
@@ -9701,7 +9506,7 @@ export async function revive_corpse(otmp, do_msgs = true) {
         if (is_uwep)
             await pline(`The ${cname} writhes out of your grasp!`);
         else
-            await pline('You feel squirming in your backpack!');
+            await You_feel('squirming in your backpack!');
     } else if (where0 === OBJ_BURIED && _zombie_pit) {
         /* C do.c:2220-2238 -- OBJ_BURIED, is_zomb */
         if (cansee(mon.mx | 0, mon.my | 0)) {
@@ -10100,15 +9905,15 @@ export async function mdrop_obj_md(mon, obj, verbosely) {
     /* C steal.c:825 extract_from_minvent(mon, obj, FALSE, TRUE).  The real port
      * is js/trap.js:7988 (worn.c:1377); this file's same-named export at :14900
      * is a throwing stub, hence the alias on the import. */
-    await extract_from_minvent_md(mon, obj, false, true);
+    await extract_from_minvent(mon, obj, false, true);
     /* C steal.c:826-833, the saddle arm:
      *     if (unwornmask && mon->mtame && (unwornmask & W_SADDLE) != 0L
      *         && !obj->unpaid && costly_spot(omx, omy)
      *         && strchr(in_rooms(u.ux, u.uy, SHOPBASE), levl[omx][omy].roomno))
      *         obj->no_charge = 1;
-     * NOT PORTED, and named rather than silently dropped: costly_spot() has no
-     * js/ definition at all (grep returns none), and the arm needs a TAME
-     * SADDLED steed dying inside a shop the hero is standing in.  It sets a
+     * costly_spot() is js/shk.js's and in_rooms() returns the room numbers as
+     * an array, so strchr() becomes includes().  The arm needs a TAME SADDLED
+     * steed dying inside a shop the hero is standing in; it sets a
      * shop-billing flag and draws nothing. */
     if (unwornmask && mon.mtame && (unwornmask & W_SADDLE) !== 0
         && !obj.unpaid && costly_spot(omx, omy)
@@ -10144,7 +9949,7 @@ export async function relobj_md(mtmp) {
     if (mtmp.isgd) {
         const gold = findgold(mtmp.minvent);
         if (gold) {
-            await extract_from_minvent_md(mtmp, gold, true, true);
+            await extract_from_minvent(mtmp, gold, true, true);
             await obfree(gold, null);
         }
     }
@@ -10191,6 +9996,10 @@ const PM_ARCHON_NC = 125;
  * does not export them. */
 const G_HELL_NC = 0x0400;
 const G_NOHELL_NC = 0x0800;
+const G_NOGEN_NC = 0x0200;
+const G_UNIQ_NC = 0x1000;
+const G_FREQ_NC = 0x0007;
+const S_LICH_NC = S_LICH;
 
 function is_mplayer_nc(mndx) {
     return mndx >= PM_ARCHEOLOGIST_NC && mndx <= PM_WIZARD_NC;
@@ -10266,18 +10075,18 @@ export function mkclass_poly_nc(cls) {
             break;
     if (first === SPECIAL_PM_NC)
         return NON_PM;
-    let gmask = 0x0200 | 0x1000; /* G_NOGEN | G_UNIQ */
-    if (rn2(9) || cls === 38 /* S_LICH */)
+    let gmask = G_NOGEN_NC | G_UNIQ_NC; /* C makemon.c:1994 */
+    if (rn2(9) || cls === S_LICH_NC /* C makemon.c:1997 */)
         gmask |= (Inhell() ? G_NOHELL_NC : G_HELL_NC);
     const ok = (m) => !mvitals_genod_nc(m) && ((MONS_ROWS[m][3] | 0) & gmask) === 0;
     for (last = first; last < SPECIAL_PM_NC && (MONS_ROWS[last][0] | 0) === cls; last++)
         if (ok(last))
-            num += (MONS_ROWS[last][3] | 0) & 7;
+            num += (MONS_ROWS[last][3] | 0) & G_FREQ_NC; /* C makemon.c:2002 */
     if (!num)
         return NON_PM;
     for (num = rnd(num); num > 0; first++)
         if (ok(first))
-            num -= (MONS_ROWS[first][3] | 0) & 7;
+            num -= (MONS_ROWS[first][3] | 0) & G_FREQ_NC; /* C makemon.c:2002 */
     first--;
     return first;
 }
@@ -10325,7 +10134,7 @@ export async function mselftouch_nc(mon, arg, byplayer) {
             || (mwep.corpsenm | 0) === PM_CHICKATRICE)
         && !Resists_Elem(mon, STONE_RES)) {
         if (cansee(mon.mx, mon.my))
-            await pline('%s%s touches %s.', arg || '', arg ? mon_nam_wm(mon) : Monnam(mon),
+            await pline_mon(mon, '%s%s touches %s.', arg || '', arg ? mon_nam_wm(mon) : Monnam(mon),
                         corpse_xname_rc(mwep, null, 4 /* CXN_PFX_THE */));
         await minstapetrify(mon, byplayer);
         if (mon.mhp > 0 && !which_armor(mon, W_ARMG) && !Resists_Elem(mon, STONE_RES))
@@ -10376,13 +10185,14 @@ export async function clone_mon_ml(mon, x, y) {
     m2.isgd = 0;
     m2.ispriest = 0;
     mon_track_clear(m2);
+    place_monster(m2, m2.mx, m2.my); /* C makemon.c:898 */
     if (emits_light(m2.data))
         new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER,
                          monst_to_any(m2));
     if (mon.mextra?.mgivenname)
         christen_monst(m2, mon.mextra.mgivenname);
     else if (mon.isshk)
-        christen_monst(m2, shkname(mon)); /* C makemon.c:893 */
+        christen_monst(m2, shkname(mon)); /* C makemon.c:905-906 */
     if (!game.context?.mon_moving && mon.mpeaceful) {
         const luck = game.u?.uluck | 0;
         if (mon.mtame)
@@ -10521,7 +10331,7 @@ export function set_bknown(obj, onoff) {
 /* C mkobj.c:129-141 — release the monster snapshot stored in an object's
  * oextra.  JavaScript has no free(), so clearing the nested record and its
  * mextra is the observable equivalent of freeing it and nulling OMONST(obj). */
-function free_omonst(otmp) {
+export function free_omonst(otmp) {
     const x = otmp?.oextra;
     const mon = x?.omonst;
     if (!x || !mon)

@@ -11,15 +11,17 @@ import { adjustHeroAlignment, exerciseAttribute, exerciseWisdom } from './attrib
 import { is_shield } from './object_properties.js';
 import { adjustArmorAttributeBonus, armorSlotFor, destroyWornArmor, disintegrateWornArmor, erodeWornArmor, objectIsHardHelmet, removeHeroAccessory, some_armor, wearHeroAccessory, wearHeroArmor, wornArmorInDestroyOrder } from './do_wear.js';
 import { explode } from './explode.js';
-import { heroIsPunished, placeBallAndChain, setBallAndChainFelt } from './ball.js';
-import { A_CON, A_STR, A_WIS, ACCESSIBLE, COLNO, D_CLOSED, D_LOCKED, DOOR, EXPL_FIERY, G_EXTINCT, G_GENOD, G_NOCORPSE, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, In_endgame, In_quest, IS_AIR, IS_OBSTRUCTED, Is_earthlevel, Is_rogue_level, Luck, M_SEEN_FIRE, MM_EDOG, MM_FEMALE, MM_MALE, MM_MINVIS, MM_NOEXCLAM, MM_NOMSG, NO_MINVENT, PLNMSG_TOWER_OF_FLAME, POLY_REVERT, ROWNO, SDOOR, SPE_LIM, TT_BURIEDBALL, Upolyd, W_ARMH, W_ART, W_ARTI, W_BALL, W_CHAIN, WT_IRON_BALL_INCR, HAND, HEAD, LEG, STOMACH, LL_CONDUCT, LL_GENOCIDE, } from './const.js';
+import { beginBallAndChainRedraw, finishBallAndChainMove, heroIsPunished, placeBallAndChain, setBallAndChainFelt } from './ball.js';
+import { A_CON, A_STR, A_WIS, ACCESSIBLE, COLNO, CORR, D_CLOSED, D_LOCKED, DOOR, EXPL_FIERY, G_EXTINCT, G_GENOD, G_NOCORPSE, G_GONE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, In_endgame, In_quest, IS_AIR, IS_OBSTRUCTED, Is_earthlevel, Is_rogue_level, Is_waterlevel, Luck, M_SEEN_FIRE, MM_EDOG, MM_FEMALE, MM_MALE, MM_MINVIS, MM_NOEXCLAM, MM_NOMSG, NO_MINVENT, PLNMSG_TOWER_OF_FLAME, POLY_REVERT, ROWNO, SDOOR, SPE_LIM, TT_BURIEDBALL, Upolyd, W_ARMH, W_ART, W_ARTI, W_BALL, W_CHAIN, WT_IRON_BALL_INCR, HAND, HEAD, LEG, STOMACH, LL_CONDUCT, LL_GENOCIDE, } from './const.js';
 import { canSpotMonster, flashGlyphAt, map_invisible, newsym, shieldeff, transientMonsterGlyph } from './display.js';
 import { isok } from './cmd.js';
 import { formatFeltMessage, formatHeardMessage, pline as syncPline, plineWithContinuation, plineWithContinuation as pline, recordGameLogEvent, } from './pline.js';
 import { revealSecretDoor, detectFood, detectGold, detectTraps, mapMagicLevel } from './detect.js';
 import { impossible } from './diagnostics.js';
 import { lightDamage } from './zap.js';
-import { lightRoom, objectLightRadius } from './light.js';
+import { lightHitsGremlin, objectLightRadius, snuffLightSource } from './light.js';
+import { snuffLitObject } from './apply.js';
+import { impactArtifactLight } from './potion.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { makeConfused, finishStrangeFeeling, strangeFeeling, makeStunned } from './potion.js';
@@ -27,10 +29,11 @@ import { feelingAfterSelfGenocide, genocideDeathOptions, heroIsUnchanging, heroM
 import { sokobanGuilt } from './trap.js';
 import { consumeInventoryItem, delobj, identifyPack, inventoryItemDescription, chooseInventoryObject } from './invent.js';
 import { createCritters, mkclassAligned, rndmonstAdj, setMonsterMalign } from './makemon.js';
-import { withMonsterNoticesBlocked, showGetposTip, loseHeroHp, exceedsActionCapacity } from './hack.js';
+import { withMonsterNoticesBlocked, showGetposTip, loseHeroHp, exceedsActionCapacity, roomForRoomno, maybeHalfPhysicalDamage } from './hack.js';
 import { MONSTER_GENO, MONSTER_NAME, MONSTER_SYMBOL, monsterTypeName, requireMonsterData } from './monster_data.js';
 import { makeMonsterFlee } from './monmove.js';
-import { monsterAtPosition, monsterSaddle, putSaddleOnMonster } from './steed.js';
+import { monsterAtPosition, monsterHasMapPosition, monsterSaddle, putSaddleOnMonster } from './steed.js';
+import { artifactEmitsLight } from './artifact.js';
 import { makePlural, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, withIndefiniteArticle, erosionMatters } from './objnam.js';
 import { learnObjectType, observeObject, objectTypeKnown } from './o_init.js';
 import { tryCallObjectType } from './do.js';
@@ -42,7 +45,7 @@ import { APRON_MESSAGES, CANDY_WRAPPERS, HAWAIIAN_BACKGROUNDS, HAWAIIAN_MOTIFS, 
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { chargeAlteredUnpaidObject, deleteObject, updateUnpaidObjectPrice } from './shk.js';
 import { dropCursedSecondaryWeapon, chwepon, objectEnchantment, setWeaponEnchantment } from './wield.js';
-import { cansee, couldsee } from './vision.js';
+import { cansee, couldsee, clearAreaCells, vision_recalc } from './vision.js';
 import { prepareMapPositionHighlights, selectMapPosition, showGetposInstructions } from './getpos.js';
 import { finishHeroDeath as defaultHeroDeath, finishHeroDeath as finishNativeHeroDeath } from './end.js';
 import { listGenocided } from './insight.js';
@@ -52,7 +55,7 @@ import { burnAwayHeroSlime, endObjectBurn } from './timeout.js';
 import { loseHeroSpellMemory, studyBook } from './spell.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { ceilingName, levelHasCeiling } from './dungeon.js';
-import { MONSTER_CLASS_SYMBOLS, monsterObjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, nameToMonster, nameToMonsterClass, resolveMonsterClass, resolveMonsterName, is_male, monsterHasProperName, monsterHidesUnder, monsterIsAmorphous, monsterIsDemon, monsterIsFemale, monsterIsHider, monsterIsHuman, monsterIsNoncorporeal, monsterIsUnsolid, monsterIsVampire, monsterIsWhirly, monsterPassesWalls, heroCanChant, } from './mondata.js';
+import { MONSTER_CLASS_SYMBOLS, monsterObjectPronoun, monstersForgetHeroResistance, monstersObserveHeroResistance, nameToMonster, resolveMonsterClass, resolveMonsterName, is_male, monsterHasProperName, monsterHidesUnder, monsterIsAmorphous, monsterIsDemon, monsterIsFemale, monsterIsHider, monsterIsHuman, monsterIsNoncorporeal, monsterIsUnsolid, monsterIsVampire, monsterIsWhirly, monsterPassesWalls, heroCanChant, monsterDigests, } from './mondata.js';
 import { addExperience } from './exper.js';
 import { gotoLevel as changeLevel, scheduleLevelChange } from './do.js';
 import { recordLiteracy } from './literacy.js';
@@ -78,6 +81,7 @@ const SCR_TAMING = OBJECT_NAMES.indexOf('taming');
 const SCR_GOLD_DETECTION = OBJECT_NAMES.indexOf('gold detection');
 const SCR_FOOD_DETECTION = OBJECT_NAMES.indexOf('food detection');
 const SCR_CHARGING = OBJECT_NAMES.indexOf('charging');
+// C read.c:doread().
 export async function doread(options = {}) {
     const { gotoLevel = (...args) => { scheduleLevelChange(args); }, ...hooks } = options;
     requirePlayingGame(game);
@@ -147,6 +151,7 @@ function classifyReadableObject(object) {
         return GETOBJ_EXCLUDE;
     return [SCROLL_CLASS, SPBOOK_CLASS].includes(object.oclass) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
 }
+// Part of C read.c:doread(): the scroll announcement and confusion line.
 async function announceScroll(source, confused) {
     const silently = !heroCanChant();
     const staysVisible = source.otyp === SCR_FIRE || (source.otyp === SCR_REMOVE_CURSE && source.cursed);
@@ -162,6 +167,7 @@ async function announceScroll(source, confused) {
         await pline(heroIsHallucinating() ? 'Being so trippy, you screw up...'
             : `Being confused, you ${silently ? 'misunderstand' : 'mispronounce'} the magic words...`);
 }
+// Port only: read result bookkeeping (turn spent, hero death, cancel).
 function finishRead(spentTime, cancelled = false) {
     const heroDied = !!game.program_state.gameover;
     game.context.move = Number(spentTime && !heroDied);
@@ -205,6 +211,7 @@ function chargingChoice(object, state) {
         return discovered ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
     return GETOBJ_EXCLUDE;
 }
+// Part of C read.c:seffect_charging(): the getobj charge prompt.
 // getobj("charge", charge_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT).
 export async function chooseObjectToCharge(state = game) {
     return chooseInventoryObject('charge', object => chargingChoice(object, state), { forcePrompt: true, allowCount: true });
@@ -229,6 +236,7 @@ export async function rechargeObject(object, blessing, state = game) {
         object.spe = Math.max(-SPE_LIM, Math.min(object.spe, SPE_LIM));
     return { heroDied: false };
 }
+// Part of C read.c:recharge(): the wand half.
 async function rechargeWand(wand, blessing, state) {
     const limit = wand.otyp === WAN_WISHING ? 1
         : objectDirection(wand.otyp, state) === NODIR ? 15 : 8;
@@ -255,6 +263,7 @@ async function rechargeWand(wand, blessing, state) {
         await glow(wand, state, limit === 1 || wand.spe >= limit ? 'blue' : null, limit === 1);
     }
 }
+// Part of C read.c:recharge(): the ring half.
 export async function rechargeRing(ring, blessing, state = game, { publish = pline, random = rn2, rollOne = rnd, die = defaultHeroDeath, } = {}) {
     const adjustment = blessing > 0 ? rollOne(3) : blessing < 0 ? -rollOne(2) : 1;
     const slot = ['uleft', 'uright'].find(slot => state[slot] === ring || state.u[slot] === ring);
@@ -266,7 +275,7 @@ export async function rechargeRing(ring, blessing, state = game, { publish = pli
             await removeHeroAccessory(ring, state);
         if (state.program_state.gameover)
             return { damage: 0, heroDied: true };
-        const damage = physicalDamage(rollOne(3 * Math.abs(ring.spe)), state);
+        const damage = maybeHalfPhysicalDamage(rollOne(3 * Math.abs(ring.spe)), state);
         await consumeInventoryItem(ring, state);
         if (state.program_state.gameover)
             return { damage: 0, heroDied: true };
@@ -299,6 +308,7 @@ export async function rechargeRing(ring, blessing, state = game, { publish = pli
     ring.spe = Math.max(-SPE_LIM, Math.min(ring.spe, SPE_LIM));
     return { damage: 0, heroDied: false };
 }
+// Part of C read.c:recharge(): the tool half.
 async function rechargeTool(tool, blessing, state) {
     const previous = tool.recharged;
     if (objectCharged(tool.otyp) && previous < 7)
@@ -457,17 +467,131 @@ export async function explodeWand(wand, extraCharges = 0, state = game) {
     wand.in_use = true;
     const motion = extraCharges ? 'vibrates violently and' : 'suddenly';
     await pline(`${ownedObjectName(wand, state)} ${motion} explodes!`);
-    if (await loseHeroHp(physicalDamage(damage, state), 'exploding wand', { state }))
+    if (await loseHeroHp(maybeHalfPhysicalDamage(damage, state), 'exploding wand', { state }))
         return;
     await consumeInventoryItem(wand, state);
     await exerciseAttribute(A_STR, false, state);
 }
-function physicalDamage(amount, state) {
-    return state.u.halfPhysicalDamage
-        ? Math.trunc((amount + 1) / 2) : amount;
+// Part of C read.c:litroom(): the swallowed-carrier line.
+function swallowedLightMessage() {
+    const swallower = game.u?.ustuck;
+    if (!swallower)
+        return null;
+    const subject = monsterName(swallower, { capitalized: true });
+    if (monsterDigests(swallower))
+        return `${possessiveName(subject)} stomach is lit.`;
+    return monsterIsWhirly(swallower)
+        ? `${subject} shines briefly.`
+        : `${subject} glistens.`;
+}
+// Part of C read.c:litroom(): the affected cells (do_clear_area, or the
+// whole room on rogue levels).
+async function roomEffectCells(radius, lit) {
+    if (!Is_rogue_level(game.u?.uz)) {
+        // Sunsword illuminates the hero's spot directly; do_clear_area
+        // rejects radius zero in both the native source and the port.
+        if (radius === 0)
+            return [{ x: game.u.ux, y: game.u.uy }];
+        return await clearAreaCells(game.u.ux, game.u.uy, radius);
+    }
+    const roomno = game.level?.at?.(game.u.ux, game.u.uy)?.roomno;
+    const room = roomForRoomno(game.level, roomno ?? 0);
+    if (!room)
+        return [];
+    const cells = [];
+    for (let x = room.lx - 1; x <= room.hx + 1; x++) {
+        for (let y = room.ly - 1; y <= room.hy + 1; y++)
+            cells.push({ x, y });
+    }
+    room.rlit = lit ? 1 : 0;
+    return cells;
+}
+// Part of C read.c:litroom(): the carried-light snuff and count pass.
+async function affectCarriedLights(worsen) {
+    let stillLit = 0;
+    for (const object of [...game.inventory]) {
+        if (!object.lamplit)
+            continue;
+        if (artifactEmitsLight(object))
+            await impactArtifactLight(object, worsen);
+        else if (worsen)
+            await snuffLitObject(object);
+        if (object.lamplit)
+            stillLit++;
+    }
+    return stillLit;
+}
+const PM_GREMLIN = 40;
+// C read.c:litroom()
+// Also C read.c:set_lit(): inlined as the per-cell lit flag write and the
+// gremlin collection below.
+export async function lightRoom(lit, { radius = 5, source, finishMonsterKill } = {}) {
+    const blind = heroIsBlind();
+    const swallowed = !!game.u?.uswallow;
+    const noEffect = swallowed || game.underwater || game.u?.uinwater
+        || Is_waterlevel(game.u?.uz);
+    if (!lit) {
+        const stillLit = await affectCarriedLights(true);
+        if (!blind) {
+            const message = stillLit
+                ? 'The ambient light seems dimmer.'
+                : swallowed
+                    ? 'It seems even darker in here than before.'
+                    : 'You are surrounded by darkness!';
+            await plineWithContinuation(message);
+        }
+    }
+    else {
+        if (source?.oclass === SCROLL_CLASS && source.blessed)
+            await affectCarriedLights(false);
+        if (swallowed) {
+            const message = swallowedLightMessage();
+            if (!blind && message)
+                await plineWithContinuation(message);
+        }
+        else if (!blind && (!Is_rogue_level(game.u?.uz)
+            || game.level?.at?.(game.u.ux, game.u.uy)?.typ !== CORR)) {
+            await plineWithContinuation(`A lit field ${noEffect ? 'briefly ' : ''}surrounds you!`);
+        }
+    }
+    if (noEffect)
+        return false;
+    const ballAndChain = !lit && !blind ? await beginBallAndChainRedraw() : null;
+    const gremlins = [];
+    for (const { x, y } of await roomEffectCells(radius, lit)) {
+        const location = game.level?.at?.(x, y);
+        if (!location)
+            continue;
+        location.lit = !!lit;
+        if (!lit) {
+            snuffLightSource(x, y);
+            continue;
+        }
+        const monster = game.level?.monsters?.find(candidate => monsterHasMapPosition(candidate, game) &&
+            candidate.mx === x && candidate.my === y
+            && candidate.mnum === PM_GREMLIN
+            && !candidate.dead && (candidate.mhp ?? 1) > 0);
+        if (monster)
+            gremlins.push(monster);
+    }
+    if (!blind) {
+        await vision_recalc(2);
+        await finishBallAndChainMove(ballAndChain);
+    }
+    game.vision_full_recalc = 1;
+    if (lit && gremlins.length) {
+        await vision_recalc(0);
+        for (const gremlin of gremlins.reverse()) {
+            if (!finishMonsterKill)
+                throw new TypeError('lightRoom needs a monster death handler');
+            await lightHitsGremlin(gremlin, rnd(5), finishMonsterKill);
+        }
+    }
+    return true;
 }
 // Armor and weapon scroll effects. C read.c:seffect_enchant_armor(),
 // seffect_destroy_armor(), and seffect_enchant_weapon().
+// Part of C read.c:seffects(): the armor/weapon scroll dispatch.
 // Initial reading prose, Wisdom exercise, normal disposal, and discovery
 // remain with seffects()/doread(). Strange feelings consume their own source.
 export async function applyArmorScrollEffect(source, { state = game } = {}) {
@@ -561,6 +685,7 @@ async function enchantArmor(source, state) {
     }
     return { known };
 }
+// Part of C read.c:seffect_enchant_armor(): the confused proofing branch.
 async function proofArmor(armor, cursed, state) {
     const oldProof = !!armor.oerodeproof;
     armor.oerodeproof = false;
@@ -581,6 +706,7 @@ async function proofArmor(armor, cursed, state) {
     }
     await replaceProofing(armor, oldProof, !cursed, state);
 }
+// Part of C read.c:seffect_enchant_armor(): the dragon scales hardening.
 async function hardenDragonScales(armor, source, state) {
     await pline(`${ownedObjectAction(armor, null, state)} merges and hardens!`);
     const wasLit = armor.lamplit;
@@ -641,6 +767,8 @@ export async function enchantWeapon(scroll, state = game) {
         capEnchantment(weapon);
     return !processed;
 }
+// Part of C read.c:seffect_enchant_weapon(): the confused proof/repair
+// branch.
 // C seffect_enchant_weapon() confused branch: set, clear, or repair
 // erosion proofing. The enchantment never changes here.
 async function proofConfusedReading(uwep, scursed, state) {
@@ -729,12 +857,17 @@ async function destroyArmor(source, state) {
         return { known: true };
     return itchyFeeling(source, 'Your skin itches.', state);
 }
+// Part of C read.c:seffect_destroy_armor(), seffect_enchant_armor(): the
+// strange-feeling plus STR/CON exercise exit.
 async function itchyFeeling(source, message, state) {
     const result = await strangeFeeling(source, message, { state });
     await exerciseAttribute(A_STR, false, state);
     await exerciseAttribute(A_CON, false, state);
     return result;
 }
+// Part of C read.c:seffect_destroy_armor(), seffect_enchant_weapon(),
+// seffect_enchant_armor(): restoring old proofing before the degradation
+// charge.
 async function replaceProofing(armor, oldProof, newProof, state) {
     if (oldProof && !newProof) {
         armor.oerodeproof = true;
@@ -742,6 +875,8 @@ async function replaceProofing(armor, oldProof, newProof, state) {
     }
     armor.oerodeproof = newProof;
 }
+// Port only: vision recalc and shine message after an armor's light
+// radius changes.
 async function adjustArmorLight(armor, oldRadius, state) {
     if (!oldRadius)
         return;
@@ -754,23 +889,29 @@ async function adjustArmorLight(armor, oldRadius, state) {
             + `${Math.abs(delta) > 1 ? 'much ' : ''}${delta > 0 ? 'brighter' : 'less brightly'}.`);
     }
 }
+// Part of C read.c:seffect_enchant_armor(): the glow/vibrate subject.
 function armorGlow(armor, cursed, sameColor, violent, state) {
     const verb = heroIsBlind(state) ? 'vibrate' : 'glow';
     const color = heroIsBlind(state) || sameColor
         ? '' : ` ${displayColorName(cursed ? 'black' : 'silver', state)}`;
     return `${ownedObjectAction(armor, `${violent ? 'violently ' : ''}${verb}`, state)}${color}`;
 }
+// Part of C read.c:seffect_enchant_armor(): the verb pluralization.
 function armorVerb(armor, verb) {
     return armor.quan > 1 ? verb : `${verb}s`;
 }
+// Part of C read.c:seffect_enchant_armor(): the special-armor test.
 function isSpecialArmor(armor, state) {
     return [ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_CLOAK,
         ELVEN_SHIELD, ELVEN_BOOTS].includes(armor.otyp)
         || armor.otyp === CORNUTHAUM && state.urole?.key === 'wizard';
 }
+// C youprop.h:Confusion().
 function isConfused(state) {
     return !!state.u?.confused || (state.u?.confusionTurns ?? 0) > 0;
 }
+// Part of C read.c:seffect_enchant_armor(), seffect_destroy_armor(): the
+// enchantment write.
 function setEnchantment(armor, amount) {
     armor.spe = Math.max(-SPE_LIM, Math.min(SPE_LIM, amount));
     armor.enchantment = armor.spe;
@@ -851,6 +992,8 @@ async function causeFearEffect(source, state) {
     }
     return;
 }
+// Part of C read.c:seffect_remove_curse(): the effective worn mask with
+// the swap-weapon and quiver carve-outs.
 function removeCurseWornMask(object, state) {
     let mask = (object.owornmask ?? 0) & ~(W_BALL | W_ART | W_ARTI);
     const swapWeapon = state.uswapwep || state.u?.uswapwep;
@@ -873,11 +1016,15 @@ function removeCurseWornMask(object, state) {
     }
     return mask;
 }
+// Part of C read.c:seffect_remove_curse(): the blessed/loadstone/leash
+// applicability test.
 function removeCurseAppliesTo(object, blessed, state) {
     return blessed || !!removeCurseWornMask(object, state)
         || object.otyp === LOADSTONE
         || (object.otyp === LEASH && !!object.leashmon);
 }
+// Part of C read.c:seffect_remove_curse(): the confused random
+// bless-or-curse.
 async function randomlyBlessOrCurse(object, state) {
     if (object.blessed || object.cursed || rn2(2))
         return false;
@@ -887,6 +1034,7 @@ async function randomlyBlessOrCurse(object, state) {
     await dropCursedSecondaryWeapon(object, state);
     return changed;
 }
+// Part of C read.c:seffect_remove_curse(): the felt-helping message.
 export function removeCurseFeeling(confused) {
     const hallucinating = heroIsHallucinating(game);
     if (hallucinating) {
@@ -974,6 +1122,7 @@ export async function applyRemoveCurseSpell({ state = game, blessed = false, cur
     });
     return { known: false, consumed: false, heroDied: !!state.program_state.gameover };
 }
+// C read.c:maybe_tame().
 async function maybeTame(monster, source, state) {
     const wasTame = monster.mtame ?? 0;
     const wasPeaceful = !!monster.mpeaceful;
@@ -1047,6 +1196,7 @@ export async function applyLightScrollEffect(scroll, { finishMonsterKill } = {})
     }
     return { known, consumed: false, heroDied: !!game.program_state.gameover };
 }
+// Part of C read.c:seffect_light(): the confused light pets.
 async function createConfusedLightPets(scroll) {
     const mnum = scroll.cursed ? PM_BLACK_LIGHT : PM_YELLOW_LIGHT;
     if ((game.mvitals?.[mnum]?.mvflags ?? 0) & G_GONE) {
@@ -1105,6 +1255,7 @@ async function mailEffect(source, state) {
     else if (!state.iflags?.debug_fuzzer)
         await plineWithContinuation('This game cannot open the system mail reader.');
 }
+// Part of C read.c:seffects(): the area scroll dispatch.
 export async function applyAreaScrollEffect(source, { state = game, finishHeroDeath = defaultHeroDeath, finishMonsterKill = finishHeroMonsterKillOutcome, } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -1262,9 +1413,12 @@ async function cloudEffect(source, state) {
     }
     return { known: true, consumed: false, heroDied: false };
 }
+// C mkobj.c:bcsign().
 function blessing(source) {
     return source.blessed ? 1 : source.cursed ? -1 : 0;
 }
+// Part of C read.c:seffect_genocide(), seffect_fire(),
+// seffect_stinking_cloud(): the already_known spell-or-typed test.
 function sourceTypeKnown(source, state) {
     return source.oclass === SPBOOK_CLASS || objectTypeKnown(source, state);
 }
@@ -1278,6 +1432,7 @@ export function validCloudPosition(state, x, y) {
     return (typ !== undefined && ACCESSIBLE(typ))
         || isPoolAt(x, y, state) || isLavaAt(x, y, state);
 }
+// C read.c:can_center_cloud().
 function canCenterCloud(x, y, state) {
     if (!isok(x, y))
         return false;
@@ -1342,6 +1497,7 @@ async function detectionEffect(source, state) {
         await finishStrangeFeeling(source, { state });
     return { known: !!result.known, consumed: !!result.result };
 }
+// C read.c:seffect_identify().
 // Native seffect_identify(), including the scroll-only consumption and
 // discovery boundary before selecting the remaining inventory.
 export async function identifyEffect(source, { state = game, } = {}) {
@@ -1424,6 +1580,7 @@ export async function applyScrollEffects(source, { state = game, gotoLevel, fini
         heroDied: !!result?.heroDied || !!state.program_state.gameover,
     };
 }
+// Part of C read.c:seffects(): the magic-source Wisdom exercise.
 async function exerciseScrollWisdom(otyp, state) {
     if (objectMagic(otyp))
         await exerciseAttribute(A_WIS, true, state);
@@ -1606,26 +1763,34 @@ export async function dropBoulderOnMonster(x, y, { state = game, confused = fals
     await landFallingRock(object, x, y, state);
     return { dropped: true, heroDied: !!state.program_state.gameover };
 }
+// Part of C read.c:drop_boulder_on_monster(): the hittable-monster test.
 function canBeHit(monster) {
     return !monsterIsAmorphous(monster) && !monsterIsNoncorporeal(monster)
         && !monsterIsUnsolid(monster) && !monsterPassesWalls(monster.mnum);
 }
+// Part of C read.c:drop_boulder_on_player(), drop_boulder_on_monster(): the
+// falling rock/boulder creation.
 async function fallingRock(confused) {
     const object = await mksobj(confused ? ROCK : BOULDER, false, false);
     object.quan = confused ? rn1(5, 2) : 1;
     object.owt = objectWeight(object);
     return object;
 }
+// Part of C read.c:drop_boulder_on_player(), drop_boulder_on_monster():
+// the falling object's doname description.
 // C doname() observes the falling object, so later blind feeling still
 // calls seen rocks "rocks" rather than "stones".
 async function fallingRockName(object, state) {
     observeObjectForNaming(object, { state });
     return await inventoryItemDescription(object);
 }
+// Part of C read.c:drop_boulder_on_player(), drop_boulder_on_monster():
+// landing the object on the floor.
 async function landFallingRock(object, x, y, state) {
     await landFloorObject(object, x, y, { state, verb: 'fall' });
     await newsym(x, y);
 }
+// Part of C read.c:drop_boulder_on_monster(): the You_hear result lines.
 async function hear(message, state) {
     const heard = formatHeardMessage(message, state);
     if (heard)
@@ -1764,19 +1929,24 @@ export async function doGenocide(how, { finishHeroDeath = finishNativeHeroDeath,
     await killGenocidedMonsters();
     return true;
 }
+// Part of C read.c:do_genocide(): the hero's own-species test.
 function heroOwnSpecies(species) {
     const state = requireInitializedGame();
     return species === state.u.umonster || species === state.urace.mnum;
 }
+// Port only: validated mvitals record access for genocide.
 function genocideVital(species) {
     const vital = game.mvitals?.[species];
     if (!vital)
         throw new Error(`Genocide requires initialized history for species ${species}`);
     return vital;
 }
+// Part of C read.c:do_genocide(): the G_GENOD test.
 function speciesWasGenocided(species) {
     return !!(genocideVital(species).mvflags & G_GENOD);
 }
+// Part of C read.c:do_genocide(): setting G_GENOD/G_NOCORPSE and the
+// conduct count.
 function recordGenocide(species) {
     const state = requireInitializedGame();
     const vital = genocideVital(species);
@@ -1786,6 +1956,7 @@ function recordGenocide(species) {
         return;
     state.u.uconduct.genocides = (state.u.uconduct.genocides ?? 0) + 1;
 }
+// Part of C read.c:do_genocide(): the wiped-out name presentation.
 function genocidePresentation(species) {
     const state = requireInitializedGame();
     if (heroIsHallucinating(state)) {
@@ -1799,6 +1970,7 @@ function genocidePresentation(species) {
     const named = monsterHasProperName(species);
     return { name: requireMonsterData(MONSTER_NAME, species), prefix: unique ? named ? '' : 'the ' : 'all ' };
 }
+// Part of C read.c:do_genocide(): reverting a targeted vampire form.
 async function revertTargetedVampireForm(species) {
     const state = requireInitializedGame();
     const base = state.u.mcham;
@@ -1807,6 +1979,7 @@ async function revertTargetedVampireForm(species) {
         && (species === state.u.umonnum || species === base))
         await polymorphHero(POLY_REVERT);
 }
+// Part of C read.c:do_genocide(): the "Sent in" replacement monsters.
 async function sendInMonsters(species, name) {
     const state = requireInitializedGame();
     const census = () => state.level.monsters.filter(monster => monster.mhp > 0 && !(monster.isgd && monster.mx === 0)).length;
@@ -1833,6 +2006,7 @@ async function sendInMonsters(species, name) {
     }
     return true;
 }
+// Part of C read.c:do_genocide(): the species request loop.
 async function requestGenocideSpecies(really) {
     const state = requireInitializedGame();
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -1886,6 +2060,7 @@ async function requestGenocideSpecies(really) {
     await plineWithContinuation("That's enough tries!");
     return null;
 }
+// Part of C read.c:do_class_genocide(): the class request loop.
 async function requestGenocideClass() {
     const state = requireInitializedGame();
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -1905,7 +2080,7 @@ async function requestGenocideClass() {
             attempt--;
             continue;
         }
-        const monsterClass = nameToMonsterClass(response);
+        const monsterClass = resolveMonsterClass(response).monsterClass;
         let immune = 0, gone = 0, available = 0;
         for (let species = 0; species < MONSTER_NAME.length; species++) {
             if (MONSTER_SYMBOL[species] !== monsterClass)
@@ -1944,6 +2119,8 @@ async function requestGenocideClass() {
     await plineWithContinuation("That's enough tries!");
     return null;
 }
+// Part of C read.c:do_genocide(), do_class_genocide(): the shared
+// genocide prompt.
 async function genocideInput(kind, attempt) {
     const state = requireInitializedGame();
     const subject = kind === 'class' ? 'class of monsters' : 'type of monster';
@@ -1953,6 +2130,8 @@ async function genocideInput(kind, attempt) {
     const response = await getLine(`What ${subject} do you want to genocide?${suffix}`, (_ch, key) => key >= 32 && key < 127);
     return response === null ? '\u001b' : response.trim().replace(/\s+/g, ' ');
 }
+// Part of C read.c:do_genocide(), do_class_genocide(): the declined
+// answer test.
 function declinedGenocide(response) {
     return response.startsWith('\u001b') || ['none', "'none'", 'nothing'].includes(response.toLowerCase());
 }
@@ -2052,6 +2231,8 @@ export function revivalReplacement(mnum, body, revival = true) {
         return PM_DOPPELGANGER;
     return null;
 }
+// Part of C trap.c:animate_statue(), zap.c:revive(): the spe
+// CORPSTAT_GENDER to MM_ flags read.
 export function bodyGenderFlags(body) {
     const gender = (body.spe ?? 0) & 0x03;
     if (gender === 1)
@@ -2127,6 +2308,8 @@ function parseCreationRequest(text) {
         invisible: modifiers.has('invisible'), hidden: modifiers.has('hidden'),
     };
 }
+// Part of C read.c:create_particular_parse(): the name-to-monster
+// resolution.
 function monsterChoice(name) {
     if (game.flags.debug && (name === '*' || name === 'random'))
         return { kind: 'random' };
@@ -2193,6 +2376,7 @@ async function createRequestedMonsters(request) {
     }
     return madeAny;
 }
+// Part of C read.c:create_particular_creation(): the MM_ flag computation.
 function creationFlags(request, species) {
     const fixedGender = species !== null && (is_male(species) || monsterIsFemale(species));
     const setGender = request.genderConflict || !fixedGender;
@@ -2201,12 +2385,15 @@ function creationFlags(request, species) {
     return gender | (request.genderConflict ? 0 : MM_NOEXCLAM)
         | (request.invisible ? MM_MINVIS : 0);
 }
+// Part of C read.c:create_particular_creation(): whether the created
+// monster can start hidden.
 function canHideCreatedMonster(monster) {
     const symbol = requireMonsterData(MONSTER_SYMBOL, monster.mnum);
     return monsterIsHider(monster.mnum) && symbol !== 13
         || monsterHidesUnder(monster.mnum) && !!game.level?.objects[monster.mx]?.[monster.my]?.length
         || symbol === 57 && isPoolAt(monster.mx, monster.my);
 }
+// C mon.c:flash_mon().
 async function flashCreatedMonster(monster) {
     let count = couldsee(monster.mx, monster.my) ? 8 : 4;
     if (game.flags.sparkle === false)
@@ -2260,11 +2447,15 @@ export function hawaiianDesign(object, state = game) {
     const backgroundText = inscriptionAt(HAWAIIAN_BACKGROUNDS, background % HAWAIIAN_BACKGROUNDS.length);
     return `${makePlural(hawaiianMotif(object, state))} on ${withIndefiniteArticle(backgroundText)} background`;
 }
+// Part of C read.c:erode_obj_text(), hawaiian_design(): the u.ubirthday
+// read.
 function heroBirthday(state) {
     if (state.ubirthday === undefined)
         throw new Error('Object text requires the initialized hero birth time.');
     return state.ubirthday;
 }
+// Part of C read.c:tshirt_text(), hawaiian_motif(): the indexed
+// inscription pick.
 function inscriptionAt(messages, index) {
     const message = messages[index];
     if (message === undefined)

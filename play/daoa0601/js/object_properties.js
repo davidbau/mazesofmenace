@@ -15,6 +15,7 @@ const COPPER = 13;
 const MITHRIL = 17;
 const GLASS = 19;
 const WHACK = 4;
+// Port only: null-safe read of an object's class field.
 function objectClass(object) {
     return object?.oclass ?? 0;
 }
@@ -26,7 +27,7 @@ export function isGrayStone(object) {
 }
 // C obj.h:greatest_erosion() macro: worst of fire and rot damage.
 export function greatestErosion(object) {
-    return Math.max(object.oeroded ?? 0, object.oeroded2 ?? 0);
+    return Math.max(object?.oeroded ?? 0, object?.oeroded2 ?? 0);
 }
 // C obj.h:is_weptool().
 export function isWeaponTool(object) {

@@ -18,7 +18,7 @@ import { makemon, mkclass, propagateMonsterSpecies, setMonsterMalign } from './m
 import { ensureMinionData } from './minion.js';
 import { monsterAtPosition, putSaddleOnMonster } from './steed.js';
 import { MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SYMBOL, monsterTypeName } from './monster_data.js';
-import { ismnum, GRAVE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, THRONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, IS_POOL, In_endgame, Is_waterlevel, SPACE_POS, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_NONE, AM_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, MM_NOGRP, MM_EMIN, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT, G_GENOD, G_GONE, LEVEL_TIMER_KIND, STRAT_WAITFORU, F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM } from './const.js';
+import { ismnum, GRAVE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, DELPHI, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, THRONE, ENGRAVE, BURN, MARK, DUST, ENGR_BLOOD, ACCESSIBLE, IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_LAVA, IS_POOL, In_endgame, Is_waterlevel, SPACE_POS, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, TREE, AIR, CLOUD, A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, AM_NONE, AM_LAWFUL, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, MM_NOGRP, MM_EMIN, MM_NOTAIL, MM_IGNOREWATER, MM_ADJACENTOK, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT, G_GENOD, G_GONE, LEVEL_TIMER_KIND, STRAT_WAITFORU, F_LOOTED, F_WARNED, S_LDWASHER, S_LPUDDING, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, is_hole, is_pit } from './const.js';
 import { isok } from './cmd.js';
 import { changeMonsterForm, removeMonsterFromGame, shapechangerGender } from './mon.js';
 import { impossible } from './diagnostics.js';
@@ -52,20 +52,22 @@ import { somexy, fillBarracksRoom, fillBeehiveRoom, fillCourtRoom, fillMorgueRoo
 import { beginObjectBurn, scheduleLevelTimer, stopLevelTimer } from './timeout.js';
 import { monsterEmitsLight, vision_reset } from './vision.js';
 import { SpecialSelection, match_maptyps, mapCharacterType, specialSelectionMatch } from './selvar.js';
-import { CANDELABRUM_OF_INVOCATION, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, is_hole, is_pit, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, topologize } from './mklev.js';
+import { CANDELABRUM_OF_INVOCATION, G_IGNORE, G_NOGEN, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, PM_BLACK_LIGHT, PM_FIRE_ELEMENTAL, PM_GIANT_SPIDER, PM_MINOTAUR, PM_SALAMANDER, PM_STALKER, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VLAD_THE_IMPALER, RIN_TELEPORTATION, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SCR_TELEPORTATION, SQKY_BOARD, S_MIMIC, TELEP_TRAP, TRAPDOOR, TRAPNUM, VIBRATING_SQUARE, WAN_DIGGING, WAN_TELEPORTATION, WEB, XLIM, YLIM, add_door, add_room, add_subroom, canDigDown, canFallThrough, makecorridors, maybe_sdoor, mkstairs, mktrap, mktrap_victim, okdoor, topologize } from './mklev.js';
 import { stairway_add } from './stairs.js';
 import { enexto } from './teleport.js';
 import { make_engr_at } from './engrave.js';
 import { fix_wall_spines, setLevelTerrainLit, setLevelTerrainType, vibratingSquarePoint } from './mkmaze.js';
 import { makeroguerooms } from './extralev.js';
 import { stockShopRoom } from './shknam.js';
-import { specialShrinePriest } from './priest.js';
+import { finishSpecialRoamer, specialShrinePriest } from './priest.js';
 import { isLavaAt, isPoolAt, makeSpecialDrawbridge } from './dbridge.js';
-import { is_dwarf, is_gnome, is_male, is_shapeshifter, monsterHasStoneResistance, monsterIsFemale, monsterPolymorphsWhenStoned, setMonsterSpecies, monsterIsAmphibious, monsterIsFlyer, monsterIsSwimmer, monsterPassesWalls, monsterIsGolem, monsterIsPlayerMonster, monsterIsVampireShifter, nameToMonster } from './mondata.js';
+import { is_dwarf, is_gnome, is_male, is_shapeshifter, monsterHasStoneResistance, monsterIsFemale, formCanBecomeStoneGolem, setMonsterSpecies, monsterIsAmphibious, monsterIsFlyer, monsterIsSwimmer, monsterPassesWalls, monsterIsGolem, monsterIsPlayerMonster, monsterIsVampireShifter, nameToMonster } from './mondata.js';
 import { roomForIndex, roomsAt } from './hack.js';
 import { PanicTermination } from './panic_termination.js';
 import { LUA_SOURCES } from './generated/lua_sources.js';
 import { LuaArgumentError, NethackLuaError } from './lua/errors.js';
+import { swapDirectionBits } from './hacklib.js';
+// Part of C sp_lev.c:fill_special_room(): fill vault squares with depth-scaled gold.
 export async function fillVault(room) {
     if (!room)
         return;
@@ -76,6 +78,7 @@ export async function fillVault(room) {
         }
     }
 }
+// Port only: adapt random special-level coordinates to an optional position.
 async function specialRandomLocation(context, acceptable) {
     const point = await get_location_coord(context, null, DRY, acceptable);
     return point.x === -1 && point.y === -1 ? null : point;
@@ -328,6 +331,8 @@ function rnddoor() {
         throw new Error('Missing random door state');
     return mask;
 }
+// Part of C sp_lev.c:flip_level(): compute and clamp the area to flip.
+// The extent scan duplicates get_level_extends in mkmaze.ts.
 function getSpecialLevelExtents() {
     const map = requireGameLevel();
     const findColumn = (start, step) => {
@@ -678,12 +683,6 @@ function flip_dbridge_vertical(location) {
     location.flags = location.drawbridgemask = (mask & ~DB_DIR)
         | (direction === first ? second : first);
 }
-// C hacklib.c:swapbits()
-// Swap a pair of bits.
-function swapDirectionBits(value, first, second) {
-    const different = ((value >> first) ^ (value >> second)) & 1;
-    return value ^ ((different << first) | (different << second));
-}
 // C sp_lev.c:flip_encoded_dir_bits().
 function flip_encoded_dir_bits(flp, value) {
     if (flp & 1) {
@@ -735,21 +734,7 @@ export async function flip_level_rnd(allowed, extras = false) {
         flp |= 2;
     await flip_level(flp, extras);
 }
-// C priest.c:mk_roamer()
-// The caller creates the monster; this is its aligned-minion initialization.
-export function finishSpecialRoamer(monster, alignment, peaceful) {
-    const coaligned = alignment === (game.u?.ualign?.type ?? A_NEUTRAL);
-    monster.ispriest = 0;
-    monster.isminion = 1;
-    const minion = ensureMinionData(monster);
-    minion.min_align = alignment;
-    minion.renegade = coaligned && !peaceful;
-    monster.maligntyp = alignment;
-    monster.mpeaceful = peaceful ? 1 : 0;
-    monster.msleeping = 0;
-    monster.mtrapseen = 0x7fffffff;
-    setMonsterMalign(monster);
-}
+// Port only: create an object and transfer it to a special-level monster.
 export async function giveSpecialMonsterObject(context, monster, otyp, spe) {
     const point = await specialRandomLocation(context);
     if (!point || !monster)
@@ -760,6 +745,7 @@ export async function giveSpecialMonsterObject(context, monster, otyp, spe) {
     remove_object(object, game);
     return await addObjectToMonsterInventory(monster, object, game, { atFront: true });
 }
+// Part of C mklev.c:mktrap(): finish trap residents, destinations and predecessor victims.
 export async function finishLevelTrapConstruction(trap, { spiderOnWeb = true, seen = false, victim = true } = {}) {
     if (!trap)
         return null;
@@ -879,8 +865,9 @@ export async function get_location_coord(context, coordinate, humidity, filter) 
         return await get_location(context, point, humidity, filter);
     return point;
 }
+// Port only: decode a packed special-level coordinate without the random sentinel.
 // Shared packed-coordinate form: sp_lev.h SP_COORD_PACK/SP_COORD_X/SP_COORD_Y.
-// Unlike get_location_coord(), it never recognizes the random sentinel.
+// Unlike get_location_coord, it never recognizes the random sentinel.
 export async function getPackedLocationCoord(context, coordinate, humidity, filter) {
     return await get_location(context, { x: coordinate.x & 0xff, y: coordinate.y & 0xff }, humidity, filter);
 }
@@ -925,6 +912,7 @@ async function create_trap(context, typ, options, coordinate) {
         return null;
     return await mktrap(typ, options, null, point);
 }
+// Port only: construct the Lua placement context for an existing room.
 export function specialRoomContext(room) {
     const context = {
         xstart: room.lx,
@@ -1387,11 +1375,12 @@ function noncoalignment() {
         return choice ? A_CHAOTIC : A_LAWFUL;
     return choice ? -original : A_NEUTRAL;
 }
-// align.h:Align2amask(): the macro argument is a ternary
-// macro that re-evaluates noncoalignment() for every comparison. Its first
-// comparison tests against A_NONE (-128), which noncoalignment() never
+// Part of C sp_lev.c:sp_amask_to_amask(): evaluate the repeated noncoalignment macro argument.
+// align.h:Align2amask: the macro argument is a ternary
+// macro that re-evaluates noncoalignment for every comparison. Its first
+// comparison tests against A_NONE (-128), which noncoalignment never
 // returns, so resolution always continues: a lawful second draw stops after
-// two rn2(2) draws, anything else forces a third and can store the shifted
+// two rn2 draws with bound 2; anything else forces a third and can store the shifted
 // (alignment + 2) mask.
 function noncoalignedSpecialAmask() {
     const first = noncoalignment();
@@ -1926,7 +1915,7 @@ async function create_object(context, options, corpseSpecies, parentContainer, p
             if (mndx === null)
                 throw new Error('Medusa statue monster has no species.');
             // makemon() can change the form; C tests poly_when_stoned(wastyp).
-            if (monsterHasStoneResistance(was) || monsterPolymorphsWhenStoned({ mnum: mndx })) {
+            if (monsterHasStoneResistance(was) || formCanBecomeStoneGolem(mndx)) {
                 await removeMonsterFromGame(was);
                 continue;
             }
@@ -2156,7 +2145,7 @@ export async function lspo_monster(context, state, inventories, id, x, y) {
     return monster;
 }
 // C sp_lev.c:create_monster()
-// Also C priest.c:mk_roamer(): creation is inlined here; finishSpecialRoamer initializes it
+// Also C priest.c:mk_roamer(): creation is inlined here; priest.ts:finishSpecialRoamer initializes it
 // Resolve species and location, then apply the requested attributes.
 export async function create_monster(context, options) {
     const { point, monsterClass, monsterType } = options;
@@ -2467,6 +2456,7 @@ export async function map_cleanup(state = game) {
         }
     }
 }
+// Part of C sp_lev.c:flip_level(): flip saved Lua region rectangles.
 export function flipLuaRegions(active) {
     for (const field of [
         'upTeleportRegion', 'upTeleportExclude',
@@ -2485,6 +2475,15 @@ export function flipLuaRegions(active) {
             region.exclude = flipSpecialRegion(region.exclude) ?? region.exclude;
     }
 }
+// C sp_lev.c:floodfillchk_match_under(). The terrain travels with the
+// predicate instead of global state.
+export function floodfillchk_match_under(x, y, terrain) {
+    return game.level?.at?.(x, y)?.typ === terrain;
+}
+// C sp_lev.c:set_floodfillchk_match_under().
+export function set_floodfillchk_match_under(terrain) {
+    return (x, y) => floodfillchk_match_under(x, y, terrain);
+}
 // C sp_lev.c:floodfillchk_match_accessible(): ACCESSIBLE terrain plus
 // secret corridors and doors.
 function floodfillchk_match_accessible(x, y) {
@@ -2492,6 +2491,7 @@ function floodfillchk_match_accessible(x, y) {
     const type = level.at(x, y)?.typ;
     return type !== undefined && (ACCESSIBLE(type) || type === SDOOR || type === SCORR);
 }
+// Port only: adapt selection flood fill to the accessible-terrain predicate.
 function floodAccessibleArea(selection, x, y) {
     selection.floodFill(x, y, true, floodfillchk_match_accessible);
 }
@@ -2573,23 +2573,27 @@ export async function ensure_way_out() {
         floodAccessibleArea(reachable, unreachable.x, unreachable.y);
     }
 }
+// Port only: detach a generated object if it is on the floor.
 export function removeFloorObject(object) {
     if (object?.where === 'floor')
         remove_object(object, game);
 }
+// Port only: transfer an optional generated object into its container.
 export async function addToContainer(container, object) {
     if (!container || !object)
         return object;
     removeFloorObject(object);
     return await addCreatedObjectToContainer(container, object, game);
 }
+// Part of C sp_lev.c:create_object(): reject stone-resistant Medusa statue species.
 export function medusaPetrifiable(mndx) {
     const resistance = mndx == null ? 0 : MONSTER_RESISTS[mndx] || 0;
     const stoneResistant = !!(resistance & 0x80);
     const changesToStoneGolem = mndx != null && monsterIsGolem(mndx) && mndx !== 257;
     return !stoneResistant && !changesToStoneGolem;
 }
-// C mk_trap_statue() and create_object(): direct extraction, not unwear_mon_obj.
+// Part of C trap.c:mk_trap_statue(), sp_lev.c:create_object(): transfer generated monster gear into a statue.
+// C mk_trap_statue and create_object: direct extraction, not unwear_mon_obj.
 export async function putGeneratedMonsterInventoryInStatue(monster, statue) {
     while (monster.minvent?.length) {
         const object = monster.minvent[0];
@@ -2691,6 +2695,7 @@ function lvlfill_swamp(fg = ROOM, bg = MOAT, lit = false) {
         }
     }
 }
+// Part of C sp_lev.c:flip_level(): mirror one region and its exclusion rectangle.
 function flipSpecialRegion(region) {
     const flip = requireGameLevel()._flip;
     if (!region || !flip)
@@ -2769,11 +2774,13 @@ export async function fill_special_room(croom) {
     else if (croom.rtype === SWAMP)
         level.flags.has_swamp = true;
 }
+// Port only: collect coordinates in Lua selection iteration order.
 export function luaSelectionCoordinates(selection) {
     const coordinates = [];
     selection.forEachLua((x, y) => coordinates.push({ x, y }));
     return coordinates;
 }
+// C sp_lev.c:check_room()
 export function check_room(lowx, ddx, lowy, ddy, vault) {
     const map = requireGameLevel();
     let hix = lowx.v + ddx.v, hiy = lowy.v + ddy.v;
@@ -2965,6 +2972,7 @@ export function create_room(x, y, w, h, xal, yal, rtype, rlit) {
     }
     return true;
 }
+// C sp_lev.c:create_subroom()
 function create_subroom(proom, x, y, w, h, rtype, rlit) {
     const width = proom.hx - proom.lx + 1;
     const height = proom.hy - proom.ly + 1;
@@ -3810,6 +3818,7 @@ export async function load_special(active) {
 }
 const themedLuaSessions = new WeakMap();
 const activeThemes = new WeakMap();
+// Part of C mklev.c:makerooms(): open the dungeon's theme state and run its pre-generation hook.
 export async function beginLuaThemerooms() {
     const lifecycle = currentLuaLifecycle();
     const dungeonNumber = game.u?.uz?.dnum ?? 0;
@@ -3869,12 +3878,14 @@ export async function beginLuaThemerooms() {
     await state.callValueAsync(state.getGlobal('pre_themerooms_generate'), []);
     return true;
 }
+// Port only: call a named function in the active themed-room Lua state.
 export async function callLuaThemerooms(name, args = []) {
     const state = activeThemes.get(game)?.state;
     if (!state)
         throw new Error('themed rooms are not active');
     return state.callValueAsync(state.getGlobal(name), args);
 }
+// Part of C mklev.c:makerooms(): run the themed-room generator and detect room creation.
 export async function themerooms_generate() {
     const level = requireGameLevel();
     const session = activeThemes.get(game)?.session;

@@ -10,7 +10,7 @@ import { clone_mon_ml } from './mklev.js';
 import { pline } from './pline.js';
 import { canspotmon } from './display.js';
 import { Monnam } from './mcastu.js';
-import { s_suffix } from './hacklib.js';
+import { s_suffix, distmin } from './hacklib.js';
 import { game } from './gstate.js';
 import { impossible } from './steed.js';
 import { impossible as cutworm_impossible } from './pline.js';
@@ -269,7 +269,7 @@ export async function cutworm(worm, x, y, cuttier) {
     while (curr && ((curr.wx | 0) !== (x | 0) || (curr.wy | 0) !== (y | 0)))
         curr = curr.nseg;
     if (!curr) {
-        // C worm.c:399: report the missing segment before returning.
+        // C worm.c:401: report the missing segment before returning.
         await cutworm_impossible("cutworm: no segment at (%d,%d)", x, y);
         return;
     }
@@ -520,8 +520,10 @@ export function place_wsegs(worm, oldworm) {
 
         if (oldworm && mtmp === oldworm)
             remove_monster(x, y);
-        /* else if (mtmp)   impossible("placing worm seg <%d,%d> over another mon")
-           else if (oldworm) impossible("replacing worm seg <%d,%d> on empty spot") */
+        else if (mtmp)
+            impossible("placing worm seg <%d,%d> over another mon", x, y);
+        else if (oldworm)
+            impossible("replacing worm seg <%d,%d> on empty spot", x, y);
 
         place_worm_seg(worm, x, y);
         curr = curr.nseg;
@@ -671,9 +673,12 @@ export function rest_worm(nhfp) {
  * but the consecutive-segment walk needs the tail chain, so the whole function
  * belongs on this side of the module boundary.
  *
- * C's impossible() on a non-adjacent pair is a diagnostic, not control flow —
- * it returns FALSE either way, so it is not reproduced.  RNG-free. */
+ * C worm.c:913 impossible() on non-adjacent location. RNG-free. */
 export function worm_cross(x1, y1, x2, y2) {
+    if (distmin(x1, y1, x2, y2) !== 1) {
+        impossible("worm_cross checking for non-adjacent location?");
+        return false;
+    }
     /* attempting to pass between worm segs is only relevant for diagonal */
     if (x1 === x2 || y1 === y2)
         return false;

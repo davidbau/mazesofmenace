@@ -6,7 +6,7 @@ import { RANGE_GLOBAL, NHF_BONESFILE, TIMER_LEVEL, TIMER_OBJECT, TIMER_NONE,
          OBJ_INVENT, OBJ_MIGRATING, OBJ_FLOOR, OBJ_BURIED, OBJ_CONTAINED,
          OBJ_MINVENT, BURN_OBJECT, LS_OBJECT, SHRINK_GLOB, CONTAINED_TOO,
          BURIED_TOO, NO_MINVENT, MM_NOMSG, G_EXTINCT, G_GENOD,
-         MV_KNOWS_EGG, FIG_TRANSFORM, ROT_CORPSE, REVIVE_MON } from './const.js';
+         MV_KNOWS_EGG, FIG_TRANSFORM, ROT_CORPSE, REVIVE_MON, NON_PM } from './const.js';
 import { rot_organic, rot_corpse } from './dig.js';
 import { game } from './gstate.js';
 import { eatfood } from './eat.js';
@@ -581,11 +581,15 @@ async function shrink_glob_timer(arg, timeout) {
     }
 }
 
+/* C mondata.h:62 is_silent(ptr) — msound == MS_SILENT. */
+const MS_SILENT = 0;
+const is_silent = (ptr) => (ptr?.msound | 0) === MS_SILENT;
+
 /* C timeout.c:1017-1220 hatch_egg().  This is async because makemon() and
  * the display message path are async in the JS port. */
 async function hatch_egg(arg, timeout) {
     const egg = arg?.a_obj;
-    if (!egg || (egg.corpsenm | 0) < 0)
+    if (!egg || (egg.corpsenm | 0) === NON_PM)
         return;
 
     const mnum = big_to_little(egg.corpsenm | 0);
@@ -644,7 +648,7 @@ async function hatch_egg(arg, timeout) {
             await You_see(`${name} ${locomotion(mon.data, 'drop')} out of your pack!`);
         if (yours) {
             await pline(`${siblings ? 'Their' : 'Its'} ${ing_suffix(cry_sound(mon))} ${
-                mon.data.msound === 0 || Deaf() ? 'seems' : 'sounds'} like "${
+                is_silent(mon.data) || Deaf() ? 'seems' : 'sounds'} like "${
                 game.flags?.female ? 'mommy' : 'daddy'}${egg.spe ? '.' : '?'}"`);
         } else if (mon.data.mlet === S_DRAGON && !Deaf()) {
             await verbalize('Gleep!');
@@ -705,7 +709,7 @@ export function attach_egg_hatch_timeout(egg, when) {
     /* C timeout.c:986 — stop previous timer, if any. */
     stop_timer(HATCH_EGG, obj_to_any(egg));
 
-    /* C timeout.c:993-999 — decide if and when to hatch. */
+    /* C timeout.c:994-1001 — decide if and when to hatch. */
     if (!when) {
         for (i = (MAX_EGG_HATCH_TIME - 50) + 1; i <= MAX_EGG_HATCH_TIME; i++) {
             if (rnd(i) > 150) {
@@ -715,7 +719,7 @@ export function attach_egg_hatch_timeout(egg, when) {
             }
         }
     }
-    /* C timeout.c:1000-1002 */
+    /* C timeout.c:1002-1004 */
     if (when) {
         /* start_timer owns both queue insertion and the TIMER_OBJECT timed
          * count; incrementing the flag alone loses the deadline, so a later
@@ -1200,6 +1204,9 @@ export function obj_stop_timers(obj) {
                 gt.timer_base = curr.next;
             if ((cleanup_func = timeout_funcs[curr.func_index].cleanup) !== 0)
                 cleanup_func(curr.arg, curr.timeout);
+            /* C timeout.c:2391-2392: memset + free; clear fields for GC parity */
+            curr.next = null;
+            curr.arg = null;
         } else {
             prev = curr;
         }
@@ -1495,10 +1502,12 @@ const propertynames = [
  * An out-of-range index is clamped to the terminator, so the name comes back
  * NULL and the caller's loop ends.  Returns [prop_num, prop_name] — the JS
  * stand-in for C's return-value + out-parameter pair. */
-export function property_by_index(idx) {
+export function property_by_index(idx, propertynum = null) {
     let i = idx | 0;
     if (i < 0 || i >= propertynames.length)
         i = propertynames.length - 1;
+    if (propertynum && typeof propertynum === 'object')
+        propertynum.value = propertynames[i][0];
     return propertynames[i];
 }
 
@@ -1509,7 +1518,7 @@ export function property_by_index(idx) {
  * 225 "wax candle", 226 "brass lantern", 227 "oil lamp", 228 "magic lamp",
  * 262 "Candelabrum of Invocation", 321 "oil" (POT_OIL). */
 const BURN_TALLOW_CANDLE = 224, BURN_WAX_CANDLE = 225;
-const BURN_BRASS_LANTERN = 226, BURN_OIL_LAMP = 227, BURN_MAGIC_LAMP = 228;
+const BURN_BRASS_LANTERN = 226, BURN_OIL_LAMP = 227, BURN_MAGIC_LAMP = 228, MAGIC_LAMP = 228;
 const BURN_CANDELABRUM = 262, BURN_POT_OIL = 321;
 
 export function Is_candle(otmp) {
@@ -1661,7 +1670,7 @@ function cleanup_burn(arg, expire_time) {
     obj.age = (obj.age | 0) + ((expire_time | 0) - curmoves());
     obj.lamplit = 0;
 
-    /* C:1842-1843.  burn_carried() is this file's OBJ_INVENT test (js/timeout.js:747):
+    /* C:1842-1843.  burn_carried() is this file's OBJ_INVENT test (js/timeout.js:1660):
      * it keeps C's `obj->where == OBJ_INVENT` and ADDS a gi.invent walk, because
      * this port does not stamp obj.where on every inventory path — the same
      * reason js/cmd.js:345 Shk_Your walks the chain. */
@@ -1681,7 +1690,7 @@ export function end_burn(obj, timer_attached) {
     }
 
     /* C:1811-1812 */
-    if ((obj.otyp | 0) === BURN_MAGIC_LAMP || artifact_light(obj))
+    if ((obj.otyp | 0) === MAGIC_LAMP || artifact_light(obj))
         timer_attached = false;
 
     if (!timer_attached) {
@@ -1708,6 +1717,9 @@ export async function nh_timeout_spell_protection() {
     }
 }
 
+const M1_NOLIMBS = 0x6000; /* C mondata.h:73 M1_NOLIMBS */
+const nolimbs = (ptr) => (((ptr?.mflags1 | 0) & M1_NOLIMBS) === M1_NOLIMBS);
+
 const _STONED_TEXTS = ['You are slowing down.', 'Your limbs are stiffening.',
     'Your limbs have turned to stone.', 'You have turned to stone.',
     'You are a statue.'];
@@ -1717,11 +1729,11 @@ const _STONED_TEXTS = ['You are slowing down.', 'Your limbs are stiffening.',
 export async function stoned_dialogue() {
     const u = game.u;
     const i = (u.uprops?.[STONED]?.intrinsic | 0) & TIMEOUT;
+    /* C timeout.c:141-148: if (i > 0L && i <= SIZE(stoned_texts)) */
     if (i > 0 && i <= _STONED_TEXTS.length) {
         let buf = _STONED_TEXTS[_STONED_TEXTS.length - i];
-        if ((((game.youmonst?.data?.mflags1) | 0) & 0x6000) === 0x6000
-            && buf.includes('limbs'))
-            buf = buf.replace('limbs', 'extremities');
+        if (nolimbs(game.youmonst?.data) && buf.includes('limbs'))
+            buf = buf.replace('limbs', 'extremities'); /* C timeout.c:146 strsubst */
         await urgent_pline(buf);
         /* nh_timeout runs AFTER the HEAD svm.moves++ (allmain.c:257, timeout.c:624),
          * so a --More-- this pline raises freezes T: at the CURRENT svm.moves, not
@@ -1776,11 +1788,11 @@ export async function slime_dialogue() {
         game.youmonst.mappearance = PM_GREEN_SLIME_E;
         newsym(u.ux, u.uy);
     }
+    /* C timeout.c:406-411 */
     if ((t % 2) !== 0 && i >= 0 && i < _SLIME_TEXTS.length) {
         let buf = _SLIME_TEXTS[_SLIME_TEXTS.length - i - 1];
-        if ((((game.youmonst?.data?.mflags1) | 0) & 0x6000) === 0x6000
-            && buf.includes('limbs'))
-            buf = buf.replace('limbs', 'extremities');
+        if (nolimbs(game.youmonst?.data) && buf.includes('limbs'))
+            buf = buf.replace('limbs', 'extremities'); /* C timeout.c:409 strsubst */
         if (buf.includes('%s')) {
             if (i === 4) { /* "you are turning green" */
                 if (!_eat_Blind()) await urgent_pline(buf.replace('%s', hcolor('green')));

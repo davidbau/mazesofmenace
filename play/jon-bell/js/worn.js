@@ -17,7 +17,7 @@ import {
     W_BALL, W_CHAIN, W_SADDLE, I_SPECIAL, INVIS, CLAIRVOYANT, BLINDED,
 } from './const.js';
 import { ARMOR_DATA } from './armor_data.js'; // relocate-fns
-import { Yname2, can_ride as can_ride_real, instapetrify as instapetrify_real, obj_extract_self_general as obj_extract_self, set_msg_xy as set_msg_xy_trap, surface } from './cmd.js'; // relocate-fns
+import { Yname2, can_ride, instapetrify as instapetrify_real, obj_extract_self_general as obj_extract_self, set_msg_xy as set_msg_xy_trap, surface } from './cmd.js'; // relocate-fns
 import { ACID_RES, ANTIMAGIC, COLD_RES, DISINT_RES, DISMOUNT_FELL, DISPLACED, FAST, FIRE_RES, FLYING, FUMBLING, JUMPING, LEVITATION, NON_PM, POISON_RES, PROTECTION, REFLECTING, SEE_INVIS, SHOCK_RES, SLEEP_RES, STEALTH, STONE_RES, TELEPAT, WWALKING } from './const.js'; // relocate-fns
 import { canseemon, newsym } from './display.js'; // relocate-fns
 import { obj_no_longer_held } from './do.js'; // relocate-fns
@@ -26,10 +26,10 @@ import { bimanual } from './do_wear.js'; // relocate-fns
 import { dismount_steed } from './dog.js'; // relocate-fns
 import { You } from './eat.js'; // relocate-fns
 import { s_suffix as _s_suffix } from './hacklib.js'; // relocate-fns
-import { arti_light_radius, artifact_light } from './light.js'; // relocate-fns
+import { arti_light_description, arti_light_radius, artifact_light } from './light.js'; // relocate-fns
 import { check_gear_next_turn, sliparm as sliparm_real } from './makemon.js';
 import { pmname } from './do_name.js';
-import { can_saddle as can_saddle_real } from './steed.js'; // relocate-fns
+import { can_saddle } from './steed.js'; // relocate-fns
 import { Monnam } from './mcastu.js'; // relocate-fns
 import { hcolor, s_suffix } from './mhitm.js'; // relocate-fns
 import { place_object } from './mklev.js'; // relocate-fns
@@ -52,7 +52,7 @@ import { is_youmonst } from './mhitm.js'; // relocate-fns
 import { see_wsegs as see_wsegs_real } from './worm.js'; // relocate-fns
 
 export function bypass_obj(obj) {
-    // C body (worn.c:1110):
+    // C body (worn.c:1118-1123):
     //     void bypass_obj(struct obj *obj) {
     //         obj->bypass = 1;
     //         svc.context.bypasses = TRUE;
@@ -61,7 +61,7 @@ export function bypass_obj(obj) {
     // asserts it — the mapstate-only state_after_diff cannot see a per-arg
     // struct-field mutation. This is the proving case for that instrument.
     obj.bypass = 1;
-    // svc.context.bypasses = TRUE (worn.c:1115). Modeled on game.context like
+    // svc.context.bypasses = TRUE (worn.c:1122). Modeled on game.context like
     // the other svc.context.* JS mirrors (js/dig.js / js/eat.js). Not in the
     game.context = game.context || {};
     game.context.bypasses = true;
@@ -274,8 +274,8 @@ export function find_mac(mtmp) {
     return base;
 }
 
-/* ── C mondata.h / obj.h predicates shared by m_dowear (C worn.c:748) and
- *    mon_break_armor (C worn.c:1168).  ONE module-scope definition on purpose:
+/* ── C mondata.h / obj.h predicates shared by m_dowear (C worn.c:757) and
+ *    mon_break_armor (C worn.c:1177).  ONE module-scope definition on purpose:
  *    these used to be declared separately inside EACH of those two functions
  *    with divergent bodies (js-binding-audit `sibling-diff`), which is exactly
  *    how a flag fix gets applied to one twin and not the other.  Values mirror
@@ -374,7 +374,7 @@ export async function m_dowear(mon, creation) {
     if (!MON_WEP(mon) || !bimanual(MON_WEP(mon)))
         await m_dowear_type(mon, W_ARMS, creation, false);
     await m_dowear_type(mon, W_ARMG, creation, false);
-    if (!slithy(mon.data) && mon.data.mlet !== 29 /* S_CENTAUR */)
+    if (!slithy(mon.data) && (mon.data.mlet | 0) !== _WORN_S_CENTAUR_W)
         await m_dowear_type(mon, W_ARMF, creation, false);
     if (can_wear_armor)
         await m_dowear_type(mon, W_ARM, creation, false);
@@ -476,18 +476,6 @@ function _mdw_extra_pref(mon, obj) {
 function _mdw_See_invisible() {
     const u = game.u || {};
     return !!(u.uprops?.[SEE_INVIS]?.intrinsic || u.uprops?.[SEE_INVIS]?.extrinsic);
-}
-
-/* C light.c:915-931 arti_light_description(obj) */
-function _mdw_arti_light_description(obj) {
-    switch (arti_light_radius(obj)) {
-    case 4: return 'radiantly'; /* blessed gold dragon scale mail */
-    case 3: return 'brilliantly'; /* blessed artifact, uncursed gold DSM */
-    case 2: return 'brightly'; /* uncursed artifact, cursed gold DSM */
-    case 1: return 'dimly'; /* cursed artifact, embedded scales */
-    default: break;
-    }
-    return 'strangely';
 }
 
 async function m_dowear_type(mon, flag, creation, racialexception) {
@@ -638,7 +626,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
                 else if (newarm.slice(0, 3).toLowerCase() === 'an ')
                     newarm = 'another ' + newarm.slice(3);
             }
-            pline(`${Monnam(mon)}${buf} puts on ${newarm}.`);
+            pline_mon_real(mon, `${Monnam(mon)}${buf} puts on ${newarm}.`);
             if (autocurse)
                 pline(`${s_suffix(Monnam(mon))} ${simpleonames(best)} `
                       + `${otense(best, 'glow')} ${hcolor(NH_BLACK_MDW)} for a moment.`);
@@ -666,7 +654,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
         begin_burn(best, false);
         vision_recalc(1);
         if (!creation && (best.lamplit | 0) && cansee(mon.mx | 0, mon.my | 0)) {
-            const adesc = _mdw_arti_light_description(best);
+            const adesc = arti_light_description(best);
 
             if (sawmon) /* could already see monster */
                 pline(`${Yname2(best)} ${otense(best, 'begin')} to shine ${adesc}.`);
@@ -978,49 +966,59 @@ function ume_altprop(o) {
  * imported from the frozen-shadow js/const.js. */
 const UME_MSLOW = 1, UME_MFAST = 2;
 
+/* ---------------------------------------------------------------------------
+ * mon_adjust_speed — C ref: worn.c:487-564
+ *   void mon_adjust_speed(struct monst *mon, int adjust, struct obj *obj)
+ *   adjust: positive => increase speed, negative => decrease
+ *   obj:    item to make known if the effect can be seen
+ *
+ * RNG: the body itself draws nothing on the core stream (Monnam()'s
+ * hallucination path uses the display stream), but the learnwand(obj) call at
+ * worn.c:560-562 can draw rn2(19) through makeknown -> exercise(A_WIS).
+ * --------------------------------------------------------------------------- */
 export function mon_adjust_speed(mon, adjust, obj) {
-    /* C worn.c:485-487 */
+    /* C worn.c:494-495 */
     let give_msg = !game.in_mklev;
     let petrify = false;
     const oldspeed = (mon.mspeed | 0);
 
     switch (adjust | 0) {
-    case 2:                                     /* C worn.c:490 */
+    case 2:                                     /* C worn.c:498 */
         mon.permspeed = UME_MFAST;
         give_msg = false;   /* special-case monster creation */
         break;
-    case 1:                                     /* C worn.c:494 */
+    case 1:                                     /* C worn.c:502 */
         if ((mon.permspeed | 0) === UME_MSLOW)
             mon.permspeed = 0;
         else
             mon.permspeed = UME_MFAST;
         break;
-    case 0:                                     /* C worn.c:500 — just check worn speed boots */
+    case 0:                                     /* C worn.c:508 — just check worn speed boots */
         break;
-    case -1:                                    /* C worn.c:502 */
+    case -1:                                    /* C worn.c:510 */
         if ((mon.permspeed | 0) === UME_MFAST)
             mon.permspeed = 0;
         else
             mon.permspeed = UME_MSLOW;
         break;
-    case -2:                                    /* C worn.c:508 */
+    case -2:                                    /* C worn.c:516 */
         mon.permspeed = UME_MSLOW;
         give_msg = false;   /* (not currently used) */
         break;
-    case -3:                                    /* C worn.c:512 — petrification */
+    case -3:                                    /* C worn.c:520 — petrification */
         /* take away intrinsic speed but don't reduce normal speed */
         if ((mon.permspeed | 0) === UME_MFAST)
             mon.permspeed = 0;
         petrify = true;
         break;
-    case -4:                                    /* C worn.c:518 — green slime */
+    case -4:                                    /* C worn.c:526 — green slime */
         if ((mon.permspeed | 0) === UME_MFAST)
             mon.permspeed = 0;
         give_msg = false;
         break;
     }
 
-    /* C worn.c:524-526 — worn speed boots override permspeed. */
+    /* C worn.c:533-538 — worn speed boots override permspeed. */
     let otmp;
     for (otmp = mon.minvent; otmp; otmp = otmp.nobj)
         if (otmp.owornmask && (MKOBJ_OC_OPROP[otmp.otyp | 0] | 0) === FAST)
@@ -1030,28 +1028,28 @@ export function mon_adjust_speed(mon, adjust, obj) {
     else
         mon.mspeed = (mon.permspeed | 0);
 
-    /* C worn.c:533-535 — no message if monster is immobile (temp or perm)
+    /* C worn.c:541-543 — no message if monster is immobile (temp or perm)
      * or unseen. */
     if (give_msg && ((mon.mspeed | 0) !== oldspeed || petrify)
         && (mon.data ? (mon.data.mmove | 0) : 0)
         && !(mon.mfrozen || mon.msleeping) && canseemon(mon)) {
-        /* C worn.c:537-538 — fast to slow (skipping intermediate state)
+        /* C worn.c:544-546 — fast to slow (skipping intermediate state)
          * or vice versa. */
         const howmuch = ((mon.mspeed | 0) + oldspeed === UME_MFAST + UME_MSLOW)
             ? "much " : "";
 
         if (petrify) {
-            /* C worn.c:543-544 */
+            /* C worn.c:548-552 — mimic the player's petrification countdown;
+               "slowing down" even if fast movement rate retained via worn
+               speed boots */
             if (game.flags && game.flags.verbose)
-                { set_msg_xy_trap(mon.mx, mon.my); pline(Monnam_t(mon) + " is slowing down."); } /* pline_mon worn.c:544 */
+                pline_mon_real(mon, Monnam_t(mon) + " is slowing down.");
         } else if ((adjust | 0) > 0 || (mon.mspeed | 0) === UME_MFAST) {
-            /* C worn.c:546-547 */
-            set_msg_xy_trap(mon.mx, mon.my); /* pline_mon worn.c:546 */
-            pline(Monnam_t(mon) + " is suddenly moving " + howmuch + "faster.");
+            /* C worn.c:553-555 */
+            pline_mon_real(mon, Monnam_t(mon) + " is suddenly moving " + howmuch + "faster.");
         } else {
-            /* C worn.c:549-550 */
-            set_msg_xy_trap(mon.mx, mon.my); /* pline_mon worn.c:549 */
-            pline(Monnam_t(mon) + " seems to be moving " + howmuch + "slower.");
+            /* C worn.c:556-558 */
+            pline_mon_real(mon, Monnam_t(mon) + " seems to be moving " + howmuch + "slower.");
         }
 
         if (obj)
@@ -1167,43 +1165,39 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {
         newsym(mon.mx, mon.my);
 }
 
-/* armcat_to_wornmask — C ref: nethack-c/src/worn.c:241-271 */
+/* armcat_to_wornmask — C ref: worn.c:249-278 */
 export function armcat_to_wornmask(cat) {
     let mask = 0;
     switch (cat) {
-    case 0: /* ARM_SUIT */
+    case _MDW_ARM_SUIT:
         mask = W_ARM;
         break;
-    case 1: /* ARM_SHIELD */
+    case _MDW_ARM_SHIELD:
         mask = W_ARMS;
         break;
-    case 2: /* ARM_HELM */
+    case _MDW_ARM_HELM:
         mask = W_ARMH;
         break;
-    case 3: /* ARM_GLOVES */
+    case _MDW_ARM_GLOVES:
         mask = W_ARMG;
         break;
-    case 4: /* ARM_BOOTS */
+    case _MDW_ARM_BOOTS:
         mask = W_ARMF;
         break;
-    case 5: /* ARM_CLOAK */
+    case _MDW_ARM_CLOAK:
         mask = W_ARMC;
         break;
-    case 6: /* ARM_SHIRT */
+    case _MDW_ARM_SHIRT:
         mask = W_ARMU;
         break;
     }
     return mask;
 }
 
-/* C ref: worn.c:1377-1417 extract_from_minvent(mon, obj, do_extrinsics, silently).
+/* C ref: worn.c:1376-1417 extract_from_minvent(mon, obj, do_extrinsics, silently).
  * "At its core this is just obj_extract_self(), but it also handles any updates
- * that need to happen if the gear is equipped."  Three THROWING STUBS of this
- * name exist (js/mklev.js:13129, js/steal.js:358, and the mklev one that
- * js/sp_lev.js routes around); this is the body, placed here because m_useupall
- * below is its first live caller and because update_mon_extrinsics already
- * lives in this file.  The other three call sites are deliberately NOT rewired
- * — each has its own callers to re-measure and that is a separate change.
+ * that need to happen if the gear is equipped."  This is the one body;
+ * js/mklev.js's extract_from_minvent forwards here.
  *
  * Gold dragon armor must stop shedding light while its worn mask is intact. */
 export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
@@ -1216,16 +1210,9 @@ export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     }
     if ((unwornmask & W_ARM) && obj.lamplit && artifact_light(obj))
         end_burn(obj, false);
-    /* The earlier obj_extract_self implementation was
-     * NOT C's mkobj.c:2557 switch — it walks only the gm.migrating_objs chain
-     * and silently returns for every other obj->where, so calling it here left
-     * the object in mon->minvent.  C's OBJ_MINVENT arm (mkobj.c:2575-2578) is
-     *     extract_nobj(obj, &obj->ocarry->minvent);
-     *     obj->ocarry = (struct monst *) 0;
-     * with extract_nobj (mkobj.c:2596-2614) setting where = OBJ_FREE and
-     * nobj = 0.  Spelled here for the OBJ_MINVENT case this function is
-     * defined for; widening obj_extract_self itself is a separate change with
-     * its own callers to re-measure. */
+    /* C worn.c:1402.  obj_extract_self is js/mklev.js's port of mkobj.c's
+     * switch; its OBJ_MINVENT arm (mkobj.c:2575-2578) does the
+     * extract_nobj(obj, &obj->ocarry->minvent) and clears obj->ocarry. */
     obj_extract_self(obj);
     obj.owornmask = 0;
     if (unwornmask) {
@@ -1247,13 +1234,13 @@ const W_WEP_TR = 0x00000100;
 
 function DEADMONSTER_TR(mon) { return !mon || (mon.mhp | 0) <= 0; }
 
-/* C ref: nethack-c/src/worn.c:1168 mon_break_armor */
+/* C ref: worn.c:1176-1335 mon_break_armor */
 export async function mon_break_armor(mon, polyspot) {
-    /* local helpers mirroring C mondata.h / other macros not yet ported.
+    /* local spellings of C mondata.h / obj.h macros used below.
        verysmall/nohands/slithy/WrappingAllowed live at module scope above —
        shared verbatim with m_dowear (they used to be a divergent second copy). */
     const MZ_SMALL = 1;
-    const S_CENTAUR = 29;
+    const S_CENTAUR = _WORN_S_CENTAUR_W;
     /* C objects.h MUMMY_WRAPPING otyp == 138 (js/oc_name_data.js index 138,
        js/armor_data.js:82).  Was 264, which is a food-class otyp, so the
        `otyp != MUMMY_WRAPPING` guard below was unconditionally true. */
@@ -1275,8 +1262,6 @@ export async function mon_break_armor(mon, polyspot) {
     function is_flimsy(obj) { return _mdw_is_flimsy(obj); }
     function breakarm(data) { return breakarm_real(data); }
     function sliparm(data) { return sliparm_real(data); }
-    function can_saddle(mon) { return can_saddle_real(mon); }
-    function can_ride(mon) { return can_ride_real(mon); }
     /* C worn.c:1032-1044.  Armor which survives a form change is removed
        from the monster inventory, put on the current square, and marked as
        bypassed when this is a polymorph pass so the enclosing object walk
@@ -1290,14 +1275,18 @@ export async function mon_break_armor(mon, polyspot) {
             bypass_obj(obj);
         newsym(mon.mx | 0, mon.my | 0);
     }
-    function Soundeffect(se, vol) { /* stub: not yet ported */ }
+    /* C sndprocs.h:272 Soundeffect(seid, vol) — compiled empty without
+       SND_LIB_INTEGRATED (as js/mon.js:2161); seffects.h ordinals. */
+    function Soundeffect(se, vol) { }
+    const se_clank = 40, se_cracking_sound = 46, se_ripping_sound = 136,
+          se_thud = 175;
     /* C ref: pline.c:435-452 — forwards to the module-level import.  This inner
        stub SHADOWED it and swallowed every call in the enclosing function. */
     function pline_mon(mon, fmt, ...args) {
         return pline_mon_real(mon, fmt, ...args);
     }
     /* C you.h:323-324 — evaluate the shared hallucinating pronoun selector
-       even when no armor is present; worn.c:1168 initializes both locals
+       even when no armor is present; worn.c:1184 initializes both locals
        before testing breakarm/sliparm. */
     function mhim(mon) {
         return ["him", "her", "it", "them"][pronoun_gender(mon, 2)];
@@ -1307,10 +1296,14 @@ export async function mon_break_armor(mon, polyspot) {
     }
     function touch_petrifies(data) { return (data.pmidx | 0) === PM_COCKATRICE || (data.pmidx | 0) === PM_CHICKATRICE; }
     function Stone_resistance() { return selftouch_Stone_resistance(); }
-    function Is_dragon_scales(obj) { const t = obj?.otyp | 0; return t >= 111 && t <= 120; }
-    function Is_dragon_mail(obj) { const t = obj?.otyp | 0; return t >= 101 && t <= 110; }
-    function Dragon_scales_to_pm(obj) { return PM_GRAY_DRAGON + ((obj?.otyp | 0) - 111); }
-    function Dragon_mail_to_pm(obj) { return PM_GRAY_DRAGON + ((obj?.otyp | 0) - 101); }
+    /* C obj.h Is_dragon_scales / Is_dragon_mail / Dragon_*_to_pm;
+       objects.h otyps (js/oc_name_data.js 101/110/111/120). */
+    const GRAY_DRAGON_SCALE_MAIL = 101, YELLOW_DRAGON_SCALE_MAIL = 110,
+          GRAY_DRAGON_SCALES = 111, YELLOW_DRAGON_SCALES = 120;
+    function Is_dragon_scales(obj) { const t = obj?.otyp | 0; return t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES; }
+    function Is_dragon_mail(obj) { const t = obj?.otyp | 0; return t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL; }
+    function Dragon_scales_to_pm(obj) { return PM_GRAY_DRAGON + ((obj?.otyp | 0) - GRAY_DRAGON_SCALES); }
+    function Dragon_mail_to_pm(obj) { return PM_GRAY_DRAGON + ((obj?.otyp | 0) - GRAY_DRAGON_SCALE_MAIL); }
     function MON_WEP(m) {
         /* C monst.h:210: MON_WEP(mon) is the wielded pointer, mon->mw. */
         return m.mw;
@@ -1332,7 +1325,7 @@ export async function mon_break_armor(mon, polyspot) {
                 || (Is_dragon_mail(otmp) && (mdat.pmidx | 0) === Dragon_mail_to_pm(otmp))) {
                 /* no message here */
             } else {
-                Soundeffect(0, 100);
+                Soundeffect(se_cracking_sound, 100);
                 if (vis)
                     pline_mon(mon, "%s breaks out of %s armor!",
                               Monnam_t(mon), ppronoun);
@@ -1350,7 +1343,7 @@ export async function mon_break_armor(mon, polyspot) {
                           cloak_simple_name(otmp));
                 await m_lose_armor(mon, otmp, polyspot);
             } else {
-                Soundeffect(0, 100);
+                Soundeffect(se_ripping_sound, 100);
                 if (vis)
                     pline_mon(mon, "%s %s tears apart!", _s_suffix(Monnam_t(mon)),
                           cloak_simple_name(otmp));
@@ -1374,7 +1367,7 @@ export async function mon_break_armor(mon, polyspot) {
         let passes_thru_clothes = !((mdat.msize | 0) <= MZ_SMALL);
         otmp = _which_armor(mon, W_ARM);
         if (otmp) {
-            Soundeffect(0, 50);
+            Soundeffect(se_thud, 50);
             if (vis)
                 pline_mon(mon, "%s armor falls around %s!",
                           _s_suffix(Monnam_t(mon)), pronoun);
@@ -1419,7 +1412,7 @@ export async function mon_break_armor(mon, polyspot) {
         }
         otmp = _which_armor(mon, W_ARMS);
         if (otmp) {
-            Soundeffect(0, 50);
+            Soundeffect(se_clank, 50);
             if (vis)
                 pline_mon(mon, "%s can no longer hold %s shield!",
                           Monnam_t(mon), ppronoun);

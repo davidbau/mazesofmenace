@@ -72,6 +72,7 @@ function new_light_core(x, y, range, type, id) {
     if (range > MAX_RADIUS || range < 0
         /* camera flash uses radius 0 and passes Null object */
         || (range === 0 && (type !== LS_OBJECT || id.a_obj != null))) {
+        impossible_sync("new_light_source:  illegal range %d", range);
         return null;
     }
     const ls = {
@@ -149,6 +150,11 @@ function delete_ls(ls) {
     if (curr) {
         ls.next = null;
         game.vision_full_recalc = 1;
+    } else {
+        const ptr = ls?.id?.a_obj ?? ls?.id?.a_monst;
+        const addr = ptr && typeof ptr === 'object'
+            ? 0x55d0c0de0000 + (((ptr.o_id ?? ptr.m_id) | 0) << 6) : 0;
+        impossible_sync("delete_ls not found, ls=%s", '0x' + addr.toString(16));
     }
 }
 
@@ -168,21 +174,23 @@ export function do_light_sources(cs_rows) {
          */
         if (ls.type === LS_OBJECT) {
             /* C writes THROUGH ls->x / ls->y: `get_obj_location(ls->id.a_obj,
-             * &ls->x, &ls->y, 0)`.  The boxes are copied back on success only,
-             * which is what C's out-params do — on failure C leaves ls->{x,y}
-             * zeroed and does not set LSF_SHOW, so they are never read. */
-            const xb = { value: ls.x }, yb = { value: ls.y };
-            if (ls.range === 0 /* camera flash; caller has set ls.{x,y} */
-                || get_obj_location(ls.id.a_obj, xb, yb, 0)) {
-                ls.x = xb.value; ls.y = yb.value;
+             * &ls->x, &ls->y, 0)`. On failure C leaves ls->{x,y} zeroed. */
+            if (ls.range === 0) {
+                /* camera flash; caller has set ls.{x,y} */
                 ls.flags |= LSF_SHOW;
+            } else {
+                const xb = { value: ls.x }, yb = { value: ls.y };
+                if (get_obj_location(ls.id.a_obj, xb, yb, 0)) {
+                    ls.flags |= LSF_SHOW;
+                }
+                ls.x = xb.value; ls.y = yb.value;
             }
         } else if (ls.type === LS_MONSTER) {
             const xb = { value: ls.x }, yb = { value: ls.y };
             if (get_mon_location(ls.id.a_monst, xb, yb, 0)) {
-                ls.x = xb.value; ls.y = yb.value;
                 ls.flags |= LSF_SHOW;
             }
+            ls.x = xb.value; ls.y = yb.value;
         }
 
         /* minor optimization: don't bother with duplicate light sources
@@ -255,12 +263,16 @@ export function light_sources_list() {
 
 /* C ref: light.c:421-476 save_light_sources(nhfp, range).
  *
- * C writes the matching sources to the level file and, in a FREEING mode,
- * unlinks them from gl.light_base; getlev() then reads them back.  This port
- * has no save-file byte model (see js/save.js's header), so the "write" is the
- * returned array and js/save.js#savelev stores it in its per-level snapshot.
- * The partition predicate is C's own, verbatim: keep the entry when
+ * C writes the matching sources to the level file when update_file(nhfp) is
+ * true, and under release_data(nhfp) unlinks them from gl.light_base; getlev()
+ * then reads them back. This port has no save-file byte model (see
+ * js/save.js's header), so the "write" is the returned array and
+ * js/save.js#savelev stores it in its per-level snapshot. The partition
+ * predicate is C's own, verbatim: keep the entry when
  * `is_global ^ (range == RANGE_LEVEL)` is false.
+ * save_light_sources() is only called by savelev (save.c:490) in
+ * WRITING|FREEING mode where release_data(nhfp) is true. Whole-save without
+ * release_data is handled separately by lights_save_snapshot().
  *
  * Camera flashes have no object identity and are discarded before saving. */
 export async function save_light_sources(range) {
@@ -431,8 +443,8 @@ export async function obj_adjust_light_radius(obj, new_radius) {
 export function arti_light_radius(obj) {
     let res;
 
-    /* C:894-896 sanity check [simplifies usage by bless()/curse()/&c] */
-    if (!obj.lamplit || !artifact_light(obj))
+    /* C light.c:892 sanity check (upstream comment: "simplifies usage by bless()/curse()/&c") */
+    if (!obj?.lamplit || !artifact_light(obj))
         return 0;
 
     res = (obj.blessed ? 3 : !obj.cursed ? 2 : 1);

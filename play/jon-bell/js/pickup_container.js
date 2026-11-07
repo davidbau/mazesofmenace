@@ -30,7 +30,8 @@ import { ECMD_OK, ECMD_TIME, OBJ_FREE, OBJ_INVENT,
          GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE,
          GETOBJ_SUGGEST, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
          NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, FOOT, ONAME_NO_FLAGS,
-         HAND, HALLUC, HALLUC_RES, LL_ACHIEVE } from './const.js';
+         HAND, HALLUC, HALLUC_RES, LL_ACHIEVE,
+         MENU_ITEMFLAGS_NONE } from './const.js';
 import { paranoid_ynq } from './paranoid.js';
 import { Ysimple_name2 } from './objnam.js';
 
@@ -46,13 +47,13 @@ import { impossible } from './pline.js';
 import { topl_force_break_now, flush_pending_messages } from './display.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_window } from './com_pager.js';
 import { pmatchi } from './strutil.js';
-import { menu_heading_text } from './tty_menu.js';
+import { menu_heading_text, ATR_NONE } from './tty_menu.js';
 import { menucolor_row } from './coloratt.js';
 import { nhgetch } from './input.js';
 import { weight } from './weight.js';
 import { doname, doname_with_price, simpleonames, cxname, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
-import { freeinv, snuff_lit, loot_xname as _loot_xname, useup, useupf, obj_here, obj_extract_self_general, getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
+import { freeinv, snuff_lit, loot_xname as _loot_xname, useup, useupf, obj_here, obj_extract_self_general, obj_extract_self_general as obj_extract_self, getObjFromGetobj, body_part, u_handsy, yname, count_unpaid } from './cmd.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { add_to_container, set_bknown, makemon, set_corpsenm, OC_USES_KNOWN } from './mklev.js';
 import { obj_is_burning } from './light.js';
@@ -73,7 +74,9 @@ import { touch_artifact_youmonst } from './wizcmds.js';
 import { Blind } from './vision.js';
 /* C ref: mkobj.h Is_box / obj.h welded(); W_ARMOR|W_ACCESSORY owornmask bits. */
 import { W_ARMOR, W_ACCESSORY } from './const.js';
+import { is_pick } from './dig.js';
 const ICE_BOX_OTYP = 216; /* objects.h ICE_BOX (js/pickup.js:153) */
+const LOADSTONE = 471; /* objects.h LOADSTONE (pickup.c:2751) */
 import { observe_object, discover_object } from './o_init.js';
 import { sellobj_state, sellobj, costly_spot, shk_your, addtobill, pick_pick,
          currency, shop_keeper, stolen_value, safe_qbuf } from './shk.js';
@@ -170,6 +173,11 @@ export async function observe_quantum_cat(box, makecat, givemsg) {
     }
 }
 
+/* C pickup.c:2720 ck_bag(struct obj *obj) */
+export function ck_bag(obj) {
+    return !!(game.current_container && obj !== game.current_container);
+}
+
 /* C pickup.c:2957 stash_ok(), the getobj classifier for use_container's
  * single-item stash action.  The active container remains selectable by an
  * explicitly typed inventory letter so in_container() can give its specific
@@ -177,7 +185,8 @@ export async function observe_quantum_cat(box, makecat, givemsg) {
 export function stash_ok(obj) {
     if (!obj)
         return GETOBJ_EXCLUDE;
-    if (!game.current_container || obj === game.current_container)
+    /* C pickup.c:2963 downplay the container being stashed into */
+    if (!ck_bag(obj))
         return GETOBJ_EXCLUDE_SELECTABLE;
     return GETOBJ_SUGGEST;
 }
@@ -200,10 +209,17 @@ export function mbag_explodes(obj, depthin) {
     if ((Is_mbag(obj) || typ === WAN_CANCELLATION_OTYP)
         && rn2(1 << Math.min(depthin | 0, 7)) <= (depthin | 0))
         return true;
-    for (let it = obj?.cobj; it; it = it.nobj)
-        if (mbag_explodes(it, (depthin | 0) + 1))
-            return true;
+    else if (Has_contents(obj)) {
+        for (let it = obj.cobj; it; it = it.nobj)
+            if (mbag_explodes(it, (depthin | 0) + 1))
+                return true;
+    }
     return false;
+}
+
+/* C pickup.c:2510 is_boh_item_gone() */
+export function is_boh_item_gone() {
+    return !rn2(13);
 }
 
 export async function mbag_item_gone(held, item, silent) {
@@ -223,12 +239,13 @@ export async function mbag_item_gone(held, item, silent) {
     return loss | 0;
 }
 
+/* C pickup.c:2515-2533 do_boh_explosion() */
 export async function do_boh_explosion(boh, onFloor) {
     boh.in_use = 1;
     for (let it = boh.cobj; it;) {
         const next = it.nobj;
-        if (!rn2(13)) {
-            obj_extract_self_general(it);
+        if (is_boh_item_gone()) {
+            obj_extract_self(it);
             await mbag_item_gone(!onFloor, it, true);
         } else {
             it.ox = game.u.ux | 0;
@@ -239,19 +256,21 @@ export async function do_boh_explosion(boh, onFloor) {
     }
 }
 
+/* C pickup.c:2540-2552 boh_loss() */
 async function boh_loss(container, held) {
-    if (!Is_mbag(container) || !container.cursed || !Has_contents(container))
-        return 0;
-    let loss = 0;
-    for (let it = container.cobj; it;) {
-        const next = it.nobj;
-        if (!rn2(13)) {
-            obj_extract_self_general(it);
-            loss += await mbag_item_gone(held, it, false);
+    if (Is_mbag(container) && container.cursed && Has_contents(container)) {
+        let loss = 0;
+        for (let it = container.cobj; it;) {
+            const next = it.nobj;
+            if (is_boh_item_gone()) {
+                obj_extract_self(it);
+                loss += await mbag_item_gone(held, it, false);
+            }
+            it = next;
         }
-        it = next;
+        return loss;
     }
-    return loss;
+    return 0;
 }
 
 function _box_xname(obj) {
@@ -303,7 +322,7 @@ function _extract_from_container(box, obj) {
 }
 
 /* ---------------------------------------------------------------------------
- * out_container — C ref: pickup.c:2721.  Take obj out of current_container and
+ * out_container — C ref: pickup.c:2726.  Take obj out of current_container and
  * add to the hero's inventory after touch and capacity checks. Returns -1
  * to stop looting, 0 when declined, and 1 when an item was removed.
  */
@@ -314,9 +333,9 @@ async function out_container(box, obj) {
         const touched = await touch_artifact_youmonst(obj);
         const blast = game._touch_artifact_blast_msg;
         game._touch_artifact_blast_msg = null;
-        if (blast) await force_more(blast);
+        if (blast) await pline(blast);
         /* touch_artifact (artifact.c:966) already printed the "evades your
-         * grasp!" line; C's out_container (pickup.c:2721) adds nothing. */
+         * grasp!" line; C's out_container (pickup.c:2726) adds nothing. */
         if (!touched) return 0;
     }
     if (await fatal_corpse_mistake(obj, false)) return -1;
@@ -324,7 +343,7 @@ async function out_container(box, obj) {
     const result = await lift_object(obj, box, cnt, false);
     if (result <= 0) return result;
     const count = cnt.v;
-    if (obj.quan !== count && obj.otyp !== 471 /* LOADSTONE */)
+    if (obj.quan !== count && obj.otyp !== LOADSTONE)
         obj = (await splitobj(obj, count));
     _extract_from_container(box, obj);
     box.owt = weight(box);
@@ -334,7 +353,8 @@ async function out_container(box, obj) {
         obj.oy = box.oy;
         await addtobill(obj, false, false, false);
     }
-    await pick_pick(obj);
+    if (is_pick(obj))
+        await pick_pick(obj);
     const otmp = await addinv(obj);
     await pickup_prinv(otmp, count, 'removing');
     if (isGold) await bot();
@@ -361,17 +381,18 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     /* {disp, canon} in display order — `disp` is the key C paints and accepts,
      * `canon` is what in_or_out_menu hands back to menu_loot. */
     const items = [];
-    const additem = (idx, text, selected = false) => {
+    const additem = (idx, text, selected = false, attr = ATR_NONE, itemflags = MENU_ITEMFLAGS_NONE) => {
         lines.push(`${sel[idx]} ${selected ? '*' : '-'} ${text}`);
         items.push({ disp: sel[idx], canon: LOOTCHARS[idx] });
     };
-    additem(1, `Look inside the ${boxname}`);
-    if (outokay) additem(2, 'take something out');
-    if (inokay)  additem(3, 'put something in');
-    if (outokay) additem(4, `${inokay ? 'both; ' : ''}take out, then put in`);
+    additem(1, `Look inside the ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
+    /* C pickup.c:3423-3428: if (outokay) add_menu(..., ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE) */
+    if (outokay) additem(2, 'take something out', false, ATR_NONE, MENU_ITEMFLAGS_NONE);
+    if (inokay)  additem(3, 'put something in', false, ATR_NONE, MENU_ITEMFLAGS_NONE);
+    if (outokay) additem(4, `${inokay ? 'both; ' : ''}take out, then put in`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     if (inokay) {
-        additem(5, `${outokay ? 'both reversed; ' : ''}put in, then take out`);
-        additem(6, `stash one item into the ${boxname}`);
+        additem(5, `${outokay ? 'both reversed; ' : ''}put in, then take out`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
+        additem(6, `stash one item into the ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
     }
     lines.push('');
     /* C pickup.c:3453-3457 preselects 'n' when another container remains. */
@@ -1263,7 +1284,7 @@ async function menu_loot_takeout(box, eligible) {
     const contents = eligible || (() => {
         const a = []; for (let o = box.cobj; o; o = o.nobj) a.push(o); return a;
     })();
-    /* C pickup.c:3363 `if (!put_in) gc.current_container->cknown = 1;` runs in
+    /* C pickup.c:3359-3360 `if (!put_in) gc.current_container->cknown = 1;` runs in
      * menu_loot before query_objlist, not here; kept for the eligible-empty
      * path's sake at the call site. */
     box.cknown = 1;
@@ -1410,7 +1431,7 @@ async function in_container(obj) {
         await Norep(`You cannot ${(box.otyp | 0) === ICE_BOX_OTYP ? 'refrigerate' : 'stash'} something you are wearing.`);
         return 0;
     }
-    if ((obj.otyp | 0) === 471 /* LOADSTONE */ && obj.cursed) {
+    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) {
         set_bknown(obj, 1);
         await pline(`The stone${obj.quan === 1 ? '' : 's'} won't leave your person.`);
         return 0;
@@ -1503,7 +1524,7 @@ async function in_container(obj) {
     }
 
     if (g.current_container) {
-    /* C:2699-2701 — You("put %s into %s.", doname(obj), the(xname(container))).
+    /* C:2696-2698 — You("put %s into %s.", doname(obj), the(xname(container))).
      * "the", not yname: C builds buf from the(xname()) even for a carried bag,
      * which is why the recorded line is "You put 1163 gold pieces into the
      * bag." while the menu above it said "your bag". */

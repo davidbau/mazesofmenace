@@ -219,6 +219,14 @@ export async function take_gold(state, rawEnv = {}) {
     }
 }
 
+// attrib.c adjattrib() calls encumber_msg() when it changes strength or
+// constitution during play.
+async function adjattribEnv(env) {
+    if (env.encumberMessage) return env;
+    const { encumber_msg } = await import('./pickup.js');
+    return { ...env, encumberMessage: encumber_msg };
+}
+
 async function sit_exercise(index, state, random) {
     const { exercise } = await import('./attrib.js');
     const options = {};
@@ -339,8 +347,9 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
     case 13: {
         await message('As you sit on the throne, your body and mind start to warp.', state, env);
         const { adjattrib } = await import('./attrib.js');
+        const attribEnv = await adjattribEnv(env);
         for (let ability = 0; ability < A_MAX; ++ability)
-            await adjattrib(ability, random.rn2(5) - 2, -1, state, env);
+            await adjattrib(ability, random.rn2(5) - 2, -1, state, attribEnv);
         break;
     }
     }
@@ -353,6 +362,11 @@ async function throne_sit_effect(state, rawEnv = {}) {
     const random = sit_water_random(rawEnv);
     const message = rawEnv.message
         ?? (await import('./tty_message.js')).ttyPline;
+    // attrib.c adjattrib() ends a Strength or Constitution change with
+    // pickup.c encumber_msg(), which attrib.js receives through env.
+    const { encumber_msg } = await import('./pickup.js');
+    const encumberMessage = rawEnv.encumberMessage
+        ?? ((subject) => encumber_msg(subject, { message }));
     const tx = u.ux;
     const ty = u.uy;
     const specialThrone = u.uz?.dnum === state.tower_dnum;
@@ -378,6 +392,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
                 ...rawEnv,
                 random,
                 message,
+                encumberMessage,
             });
             return;
         }
@@ -387,7 +402,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
             const { adjattrib } = await import('./attrib.js');
             await adjattrib(
                 random.rn2(A_MAX), -random.rn1(4, 3), 0, state,
-                { ...rawEnv, random, message },
+                await adjattribEnv({ ...rawEnv, random, message, encumberMessage }),
             );
             const { losehp } = await import('./hack.js');
             await losehp(random.rnd(10), 'cursed throne', KILLED_BY_AN,
@@ -399,7 +414,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
             const { adjattrib } = await import('./attrib.js');
             await adjattrib(
                 random.rn2(A_MAX), 1, 0, state,
-                { ...rawEnv, random, message },
+                await adjattribEnv({ ...rawEnv, random, message, encumberMessage }),
             );
             break;
         }
@@ -627,11 +642,10 @@ async function throne_sit_effect(state, rawEnv = {}) {
     if (!specialThrone && !random.rn2(3)) {
         let removeThrone = !state.wizard;
         if (state.wizard) {
-            const { tty_yn_function } = await import('./topl.js');
-            removeThrone = await tty_yn_function(
-                'Analyze throne?', 'yn', 'n', state,
-            ) === 'y';
+            const { y_n } = await import('./cmd.js');
+            removeThrone = await y_n('Analyze throne?', state) === 'y';
         }
+
         if (removeThrone) {
             const location = state.level?.at(tx, ty);
             if (location) {

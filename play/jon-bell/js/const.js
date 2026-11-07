@@ -78,6 +78,7 @@ export const THRONE = 29;
 export const SINK = 30;
 export const GRAVE = 31;
 export const ALTAR = 32;
+export const S_altar = 33; /* defsym.h:129 */
 export const ICE = 33;
 export const DRAWBRIDGE_DOWN = 34;
 export const AIR = 35;
@@ -303,8 +304,7 @@ export const SUPPRESS_SADDLE = 0x08;
 export const SUPPRESS_MAPPEARANCE = 0x10;
 export const SUPPRESS_NAME = 0x20;
 export const AUGMENT_IT = 0x40;
-export const EXACT_NAME = (SUPPRESS_IT | SUPPRESS_INVISIBLE
-    | SUPPRESS_HALLUCINATION | SUPPRESS_NAME);
+export const EXACT_NAME = 0x1F; /* hack.h:1021: SUPPRESS_IT|INVISIBLE|HALLUCINATION|SADDLE|MAPPEARANCE */
 
 // Game end type constants (include/hack.h enum game_end_types; src/end.c)
 // Runtime fields:
@@ -1160,6 +1160,8 @@ export const TREE_SWARM = 2;
 export const F_LOOTED = 1;
 export const F_WARNED = 2;
 export const D_WARNED = 16;
+export const S_ANT = 1;
+export const S_FUNGUS = 32; /* defsym.h:332 */
 export const S_LPUDDING = 1;
 export const S_LDWASHER = 2;
 export const S_LRING = 4;

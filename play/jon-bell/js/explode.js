@@ -11,9 +11,9 @@ import { is_demon, monPmname, nonliving, nonlivingMon } from './makemon.js';
 import { Monnam, cvt_adtyp_to_mseenres, monstseesu, monstunseesu } from './mcastu.js';
 import { is_youmonst, s_suffix, seemimic, ugolemeffects } from './mhitm.js';
 import { ignite_items } from './mhitu.js';
-import { mondead as mondead_zap, setmangry, wake_nearto } from './mon.js';
+import { Soundeffect, mondead as mondead_zap, setmangry, wake_nearto } from './mon.js';
 import { Resists_Elem, resists_magm } from './mondata.js';
-import { You_hear, impossible, pline } from './pline.js';
+import { You_hear, impossible, pline, pline_The } from './pline.js';
 import { PM_HEALER, PM_KNIGHT, PM_MONK } from './pm.generated.js';
 import { rehumanize as rehumanize_real } from './polyself.js';
 import { rndmonnam } from './priest.js';
@@ -26,7 +26,7 @@ import { cansee } from './vision.js';
 import { AD_ACID, AD_COLD, AD_DISN, AD_DRST, AD_ELEC, AD_FIRE, AD_MAGM, AD_RBRE, DEADMONSTER, NO_KILLER_PREFIX_ZAP, PHYS_EXPL_TYPE, PM_WIZARD, POT_OIL, RAY, SCROLL_CLASS, SCR_FIRE, WAND_CLASS, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP, _Halluc, _ZAP_HALF_PHDAM, _cm_Antimagic, _completely_burns, _expl_deaf, _expl_digests, _expl_is_vampshifter, _expl_mon_moving, _expl_uhim, _expl_uhis, _wand_Role_if, _zp_burn_away_slime, destroy_items, destroy_items_mon, oc_dir_of, resist, zap_over_floor } from './zap.js';
 import { nomul, stop_occupation } from './allmain.js'; // relocate-fns
 import { obj_extract_self_general } from './cmd.js'; // relocate-fns
-import { IS_SINK, MAY_DESTROY, MAY_FRACTURE, MAY_HITMON, MAY_HITYOU, N_DIRS, SHOPBASE, STATUE_TRAP, STONE, ZAP_POS, xdir, ydir } from './const.js'; // relocate-fns
+import { IS_SINK, LARGEST_INT, MAY_DESTROY, MAY_FRACTURE, MAY_HITMON, MAY_HITYOU, N_DIRS, SHOPBASE, STATUE_TRAP, STONE, ZAP_POS, xdir, ydir } from './const.js'; // relocate-fns
 import { newsym } from './display.js'; // relocate-fns
 import { flooreffects } from './do.js'; // relocate-fns
 import { _KO_BOULDER_OTYP, _KO_COIN_CLASS, _KO_EGG_OTYP, _KO_GLASS_MATERIAL, _dk_Maybe_Half_Phys, _km_bigmonst } from './dokick.js'; // relocate-fns
@@ -34,7 +34,7 @@ import { breaks } from './dothrow.js'; // relocate-fns
 import { sobj_at } from './invent.js'; // relocate-fns
 import { splitobj } from './makemon.js'; // relocate-fns
 import { ohitmon } from './mhitu.js'; // relocate-fns
-import { place_object } from './mklev.js'; // relocate-fns
+import { STATUE, place_object } from './mklev.js'; // relocate-fns
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { hideunder, maybe_unhide_at } from './mon.js'; // relocate-fns
 import { closed_door } from './monmove.js'; // relocate-fns
@@ -94,7 +94,18 @@ const _explosion_cmap = [
 ];
 
 /* C explode.c:17-22 enum explode_action. */
-const EXPL_NO_ACTION = 0, EXPL_MON = 1, EXPL_HERO = 2, EXPL_SKIP = 4;
+const EXPL_NONE = 0, EXPL_MON = 1, EXPL_HERO = 2, EXPL_SKIP = 4;
+
+/* C sndprocs.h:144-148 enum sound_effect_entries — seffects.h ordinals
+ * (se_zero_invalid = 0 first), the convention js/mon.js:2137 uses.  The
+ * Soundeffect() these feed is the empty no-soundlib macro (sndprocs.h:274). */
+const se_blast = 15, se_chain_shatters = 35, se_stone_breaking = 183, se_stone_crumbling = 184;
+
+/* C monst.h:272-273 resists_fire / resists_cold macros */
+const resists_fire = (mon) => Resists_Elem(mon, FIRE_RES);
+const resists_cold = (mon) => Resists_Elem(mon, COLD_RES);
+
+const POTION_CLASS = 8; /* objclass.h POTION_CLASS */
 
 /* C display.h:527 GLYPH_EXPLODE_DARK_OFF — js/glyphs.js:74 carries the same
  * 7157 as the base of the explosion glyph block. */
@@ -143,63 +154,63 @@ async function explosionmask(m, adtyp, olet) {
     if (is_you) {
         switch (adtyp) {
         case AD_PHYS:
-            return EXPL_NO_ACTION; /* C explode.c:33-36 */
+            return EXPL_NONE; /* C explode.c:33-36 */
         case AD_MAGM:
-            return _cm_Antimagic() ? EXPL_HERO : EXPL_NO_ACTION;
+            return _cm_Antimagic() ? EXPL_HERO : EXPL_NONE;
         case AD_FIRE:
-            return _expl_hero_resist(FIRE_RES) ? EXPL_HERO : EXPL_NO_ACTION;
+            return _expl_hero_resist(FIRE_RES) ? EXPL_HERO : EXPL_NONE;
         case AD_COLD:
-            return _expl_hero_resist(COLD_RES) ? EXPL_HERO : EXPL_NO_ACTION;
+            return _expl_hero_resist(COLD_RES) ? EXPL_HERO : EXPL_NONE;
         case AD_DISN: {
             const md = m ? m.data : null;
             const hit = (olet === WAND_CLASS)
                 ? (nonliving(md) || is_demon(md))
                 : _expl_hero_resist(DISINT_RES);
-            return hit ? EXPL_HERO : EXPL_NO_ACTION;
+            return hit ? EXPL_HERO : EXPL_NONE;
         }
         case AD_ELEC:
-            return _expl_hero_resist(SHOCK_RES) ? EXPL_HERO : EXPL_NO_ACTION;
+            return _expl_hero_resist(SHOCK_RES) ? EXPL_HERO : EXPL_NONE;
         case AD_DRST:
-            return _expl_hero_resist(POISON_RES) ? EXPL_HERO : EXPL_NO_ACTION;
+            return _expl_hero_resist(POISON_RES) ? EXPL_HERO : EXPL_NONE;
         case AD_ACID:
-            return _expl_hero_resist(ACID_RES) ? EXPL_HERO : EXPL_NO_ACTION;
+            return _expl_hero_resist(ACID_RES) ? EXPL_HERO : EXPL_NONE;
         default:
             await impossible('explosion type %d?', adtyp);
-            return EXPL_NO_ACTION;
+            return EXPL_NONE;
         }
     } else {
         switch (adtyp) {
         case AD_PHYS:
-            return EXPL_NO_ACTION; /* C explode.c:75-76 */
+            return EXPL_NONE; /* C explode.c:75-76 */
         case AD_MAGM:
-            return resists_magm(m) ? EXPL_MON : EXPL_NO_ACTION;
+            return resists_magm(m) ? EXPL_MON : EXPL_NONE;
         case AD_FIRE:
-            return Resists_Elem(m, FIRE_RES) ? EXPL_MON : EXPL_NO_ACTION;
+            return Resists_Elem(m, FIRE_RES) ? EXPL_MON : EXPL_NONE;
         case AD_COLD:
-            return Resists_Elem(m, COLD_RES) ? EXPL_MON : EXPL_NO_ACTION;
+            return Resists_Elem(m, COLD_RES) ? EXPL_MON : EXPL_NONE;
         case AD_DISN: {
             const md = m ? m.data : null;
             const hit = (olet === WAND_CLASS)
                 ? (nonliving(md) || is_demon(md) || _expl_is_vampshifter(m))
                 : !!Resists_Elem(m, DISINT_RES);
-            return hit ? EXPL_MON : EXPL_NO_ACTION;
+            return hit ? EXPL_MON : EXPL_NONE;
         }
         case AD_ELEC:
-            return Resists_Elem(m, SHOCK_RES) ? EXPL_MON : EXPL_NO_ACTION;
+            return Resists_Elem(m, SHOCK_RES) ? EXPL_MON : EXPL_NONE;
         case AD_DRST:
-            return Resists_Elem(m, POISON_RES) ? EXPL_MON : EXPL_NO_ACTION;
+            return Resists_Elem(m, POISON_RES) ? EXPL_MON : EXPL_NONE;
         case AD_ACID:
-            return Resists_Elem(m, ACID_RES) ? EXPL_MON : EXPL_NO_ACTION;
+            return Resists_Elem(m, ACID_RES) ? EXPL_MON : EXPL_NONE;
         default:
             await impossible('explosion type %d?', adtyp);
-            return EXPL_NO_ACTION;
+            return EXPL_NONE;
         }
     }
 }
 
 /* C explode.c:986-1012 adtyp_to_expltype(adtyp) — damage type to the explosion
  * type that colours the blast glyphs. */
-export function adtyp_to_expltype(adtyp) {
+export async function adtyp_to_expltype(adtyp) {
     switch (adtyp) {
     case AD_ELEC: /* "Electricity isn't magical ... Magical is the next best" */
     case AD_SPEL:
@@ -218,7 +229,7 @@ export function adtyp_to_expltype(adtyp) {
     case AD_PHYS: /* gas spore */
         return EXPL_NOXIOUS;
     default:
-        /* C: impossible("adtyp_to_expltype: bad explosion type %d", adtyp) */
+        await impossible('adtyp_to_expltype: bad explosion type %d', adtyp);
         return EXPL_FIERY;
     }
 }
@@ -409,7 +420,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 explmask[i][j] = EXPL_SKIP;
                 continue;
             }
-            explmask[i][j] = EXPL_NO_ACTION;
+            explmask[i][j] = EXPL_NONE;
 
             if (u_at(xx, yy))
                 explmask[i][j] = await explosionmask(game.youmonst, adtyp, olet);
@@ -472,6 +483,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
             generic = true;
         }
         if (!_expl_deaf() && olet !== SCROLL_CLASS) {
+            Soundeffect(se_blast, 75);
             await You_hear('a blast.');
             didmsg = true;
         }
@@ -569,9 +581,9 @@ export async function explode(x, y, type, dam, olet, expltype) {
                        reached, matching C's own parenthetical). RNG-free:
                        Resists_Elem walks uprops + mon_resistancebits +
                        artifact/worn items, no draws. */
-                    if (Resists_Elem(mtmp, COLD_RES) && adtyp === AD_FIRE)
+                    if (resists_cold(mtmp) && adtyp === AD_FIRE)
                         mdam *= 2;
-                    else if (Resists_Elem(mtmp, FIRE_RES) && adtyp === AD_COLD)
+                    else if (resists_fire(mtmp) && adtyp === AD_COLD)
                         mdam *= 2;
                     mtmp.mhp = (mtmp.mhp | 0) - (mdam + itemdmg);
                 }
@@ -703,7 +715,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     || game.iflags?.last_msg === PLNMSG_TOWER_OF_FLAME)
                     await pline('It is fatal.');
                 else
-                    await pline(`The ${str} is fatal.`);
+                    await pline_The('%s is fatal.', str);
                 /* If the fatal line overflowed the destruction message, C is
                  * blocked inside this pline before entering done().  Page that
                  * older line now; the fatal line left behind is freshly drawn
@@ -814,7 +826,7 @@ export async function mon_explodes(mon, mattk) {
            breath' type for the explosions. */
         type = -(((mattk.adtyp | 0) - 1) + 20);
     } else {
-        /* C: impossible("unknown type for mon_explode %d", adtyp); return; */
+        await impossible('unknown type for mon_explode %d', mattk.adtyp | 0);
         return;
     }
 
@@ -834,7 +846,7 @@ export async function mon_explodes(mon, mattk) {
     game.svk.killer.format = KILLED_BY_AN;
 
     await explode(mon.mx | 0, mon.my | 0, type, dmg, MON_EXPLODE,
-                  adtyp_to_expltype(mattk.adtyp | 0));
+                  await adtyp_to_expltype(mattk.adtyp | 0));
 
     game.svk.killer.name = ''; /* C explode.c:1066 — reset killer */
 }
@@ -858,7 +870,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
         await impossible('scattered object <%d,%d> not at scatter site <%d,%d>',
                          obj.ox, obj.oy, sx, sy);
 
-    /* C:738-741 shop_origin = shop_keeper(*in_rooms(sx,sy,SHOPBASE)) != 0 &&
+    /* C:744-745 shop_origin = shop_keeper(*in_rooms(sx,sy,SHOPBASE)) != 0 &&
      * costly_spot(sx,sy).  RNG-free query; safe to always compute. */
     const _sc_rooms = in_rooms(sx, sy, SHOPBASE);
     const _sc_shkp = shop_keeper(_sc_rooms.length ? _sc_rooms[0] : 0);
@@ -879,13 +891,14 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
              * ball then continues through the normal scatter loop, while a
              * chain starts the next object. */
             const wasChain = otmp === game.u?.uchain;
-            await pline('The chain shatters!');
+            Soundeffect(se_chain_shatters, 25);
+            await pline_The('chain shatters!');
             await unpunish();
             if (wasChain)
                 continue;
         }
         if (otmp.quan > 1) {
-            let qtmp = Math.min(otmp.quan - 1, 32767 /* LARGEST_INT */);
+            let qtmp = Math.min(otmp.quan - 1, LARGEST_INT);
             qtmp = rnd(qtmp);
             otmp = (await splitobj(otmp, qtmp));
         } else {
@@ -896,11 +909,14 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
         /* C explode.c:766-807 — boulders fracture into rocks and statues
          * crumble in place on a 9-in-10 roll. */
         if (mayFracture
-            && ((otmp.otyp | 0) === _KO_BOULDER_OTYP || (otmp.otyp | 0) === 476)
+            && ((otmp.otyp | 0) === _KO_BOULDER_OTYP || (otmp.otyp | 0) === STATUE)
             && rn2(10)) {
             if ((otmp.otyp | 0) === _KO_BOULDER_OTYP) {
                 if (cansee(sx, sy)) await pline('%s apart.', Tobjnam(otmp, 'break'));
-                else await You_hear('stone breaking.');
+                else {
+                    Soundeffect(se_stone_breaking, 100);
+                    await You_hear('stone breaking.');
+                }
                 await fracture_rock(otmp);
                 place_object(otmp, sx, sy);
                 otmp = sobj_at(_KO_BOULDER_OTYP, sx, sy);
@@ -912,7 +928,10 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                 const trap = t_at(sx, sy);
                 if (trap && trap.ttyp === STATUE_TRAP) deltrap(trap);
                 if (cansee(sx, sy)) await pline('%s.', Tobjnam(otmp, 'crumble'));
-                else await You_hear('stone crumbling.');
+                else {
+                    Soundeffect(se_stone_crumbling, 100);
+                    await You_hear('stone crumbling.');
+                }
                 await break_statue(otmp);
                 place_object(otmp, sx, sy);
             }
@@ -981,10 +1000,15 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     let hitvalu = 8 + (stmp.obj.spe | 0);
                     if (_km_bigmonst(game.youmonst?.data)) hitvalu++;
                     const hitu = await thitu(hitvalu, _dk_Maybe_Half_Phys(dam), stmp.obj, null);
-                    if (hitu && (stmp.obj.oclass | 0) === 8 /* POTION_CLASS */) {
+                    /* C explode.c:878 `if (!stmp->obj) stmp->stopped = TRUE;`
+                       — thitu() takes &stmp->obj; in C, its only `*objp = 0` is
+                       mthrowu.c:137-139 (potionhit on hit with POTION_CLASS).
+                       Because JS thitu() takes stmp.obj by value, clear stmp.obj
+                       when consumed by potionhit, then mirror C's check. */
+                    if (hitu && (stmp.obj.oclass | 0) === POTION_CLASS)
                         stmp.obj = null;
+                    if (!stmp.obj)
                         stmp.stopped = true;
-                    }
                     if (hitu) {
                         stmp.range -= 3;
                         await stop_occupation();

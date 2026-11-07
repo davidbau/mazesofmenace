@@ -48,11 +48,12 @@ import { change_luck } from './moveloop_preamble.js';
 import {
     free_exclusions, ledger_no, level_info, maxledgerno, save_exclusions,
 } from './dungeon.js';
+import { forget_temple_entry } from './priest.js';
 import { save_timers } from './timeout.js';
 import { initrack } from './track.js';
 import { vfsWriteFile } from './storage.js';
 import { clearTtyMessageWindow, displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
-import { tty_raw_print } from './tty_rawprint.js';
+import { tty_exit_nhwindows } from './wintty.js';
 import { save_waterlevel } from './mkmaze.js';
 import { rest_saved_level_regions } from './region.js';
 import { save_oracles } from './rumors.js';
@@ -135,9 +136,15 @@ export function saveobjchn(first, state) {
 // reset (900-902) has nothing left to do because do.c goto_level() (1607)
 // has already cleared that pointer, and the ustuck and usteed ids (903-906)
 // serve the saved-game path, which this port restores as an object graph.
-export function savemonchn(first, state) {
-    for (let mtmp = first; mtmp; mtmp = mtmp.nmon)
+//
+// When the chain is written (update_file(), 891-894), every priest forgets
+// its temple entry (priest.c forget_temple_entry()), so leaving the level
+// and coming back gives a fresh intone and entry message.
+export function savemonchn(first, state, writing = true) {
+    for (let mtmp = first; mtmp; mtmp = mtmp.nmon) {
+        if (writing && mtmp.ispriest) forget_temple_entry(mtmp);
         if (mtmp.minvent) saveobjchn(mtmp.minvent, state);
+    }
 }
 
 // C ref: save.c savemon() (861-870) and restore.c restmon() (350-357). A
@@ -242,12 +249,13 @@ export function savelev(ledger, state = game, options = {}) {
         : [];
 
     // C ref: save.c:542-547 savemonchn(fmon), then saveobjchn() for fobj and
-    // the buried list, in both the WRITING | FREEING and the FREEING mode.
-    // Only their svc.context pointer invalidation remains; see saveobjchn()
-    // above. gb.billobjs (547) is not level-local in this port.
-    savemonchn(state.level?.monlist, state);
+    // the buried list and gb.billobjs (547), in both the WRITING | FREEING
+    // and the FREEING mode. Only their svc.context pointer invalidation
+    // remains; see saveobjchn() above.
+    savemonchn(state.level?.monlist, state, !freeing);
     saveobjchn(state.level?.objlist, state);
     saveobjchn(state.level?.buriedobjlist, state);
+    saveobjchn(state.gb?.billobjs, state);
     const waterlevel = save_waterlevel(null, state, true);
 
     if (!freeing) {
@@ -259,6 +267,8 @@ export function savelev(ledger, state = game, options = {}) {
         state._savedLevels ??= {};
         state._savedLevels[ledger] = {
             level: state.level,
+            // save.c:547 saves the used-up unpaid objects with the level.
+            billobjs: state.gb?.billobjs ?? null,
             stairs: state.stairs,
             head_engr: state.head_engr,
             smeq: state.smeq ? [...state.smeq] : null,
@@ -292,9 +302,11 @@ export function savelev(ledger, state = game, options = {}) {
     // getlev() restores the saved ring when the hero returns.
     initrack(state);
 
-    // save.c:560-561. release_data() holds in both modes, and
-    // clear_level_structures() frees the departing level's exclusion zones.
+    // save.c:560-563. release_data() holds in both modes, and
+    // clear_level_structures() frees the departing level's exclusion zones;
+    // the level's used-up unpaid objects leave with it.
     free_exclusions(state);
+    if (state.gb) state.gb.billobjs = null;
 }
 
 // ── dosave / dosave0 — the #save command ──
@@ -324,7 +336,7 @@ export async function dosave(state = game) {
     clearTtyMessageWindow(state);
     // C y_n records its answer; declining save leaves it repeatable.
     if ((await yn_function('Really save?', 'yn', 'n', true, state))
-        === 'n'.charCodeAt(0)) {
+        === 'n') {
         clearTtyMessageWindow(state);
         if ((state.multi ?? 0) > 0) nomul(0, state);
     } else {
@@ -338,7 +350,10 @@ export async function dosave(state = game) {
 
             // C ref: save.c:63: finish the message window before farewell.
             await displayPendingTtyMessageWindow(state);
-            tty_raw_print(state, 'Be seeing you...');
+            // C ref: save.c:64 exit_nhwindows(). settty()'s end_screen()
+            // clears the screen before the farewell's raw_print(), even when
+            // an earlier raw_print() already started the raw output rows.
+            tty_exit_nhwindows('Be seeing you...', state);
 
             // C ref: save.c:65 nh_terminate(EXIT_SUCCESS), which captures
             // the farewell screen and does not return.
@@ -490,6 +505,10 @@ function serializeGameState(state) {
         urace: state.urace,
         // Level and dungeon state
         level: state.level,
+        // C ref: save.c savelev_core():547 saveobjchn(&gb.billobjs) writes
+        // the hero's level's used-up unpaid objects; getlev() reads them
+        // back at restore.c:1173.
+        billobjs: state.gb?.billobjs ?? null,
         // C ref: save.c savelev_core():517 save_stairs() writes the current
         // level's gs.stairs list, head first, after the map. rest_stairs()
         // in js/restore.js reads it back.

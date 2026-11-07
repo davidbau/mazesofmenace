@@ -15,7 +15,7 @@ import { mon_has_amulet } from './wizard.js';
 import { is_fshk } from './shk.js';
 import { defends_when_carried } from './artifact.js';
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
-import { objdescr_is as objdescr_is_real } from './o_init.js';
+import { objdescr_is } from './o_init.js';
 import { PM_AIR_ELEMENTAL, PM_BABY_GRAY_DRAGON, PM_CLAY_GOLEM, PM_DEATH, PM_DUST_VORTEX, PM_EARTH_ELEMENTAL, PM_ENERGY_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FOG_CLOUD, PM_GLASS_GOLEM, PM_GOLD_GOLEM, PM_ICE_VORTEX, PM_MARILITH, PM_SALAMANDER, PM_STEAM_VORTEX, PM_STONE_GOLEM, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_WATER_ELEMENTAL, PM_WINGED_GARGOYLE } from './pm.generated.js';
 import { rn2, rnd } from './rng.js';
 import './trap.js';
@@ -642,18 +642,12 @@ export function max_passive_dmg(mdef, magr) {
     function completelyrusts(ptr) {
         return pmidx_of(ptr) === PM_IRON_GOLEM_;
     }
-    /* C monst.h:270-279 — Resists_Elem(mon, X) over
-     * mon_resistancebits(mon) = data->mresists | mextrinsics | mintrinsics.
-     * Bits are monflag.h:62-69; note MR_ACID is 0x40, NOT the 0x08 that
-     * js/mhitu.js's local resists_acid_mu carries (0x08 is MR_DISINT). */
-    const MR_FIRE_ = 0x01, MR_COLD_ = 0x02, MR_ELEC_ = 0x10, MR_ACID_ = 0x40;
-    const resistancebits = (mon) =>
-        (((mon && mon.data) ? (mon.data.mresists | 0) : 0)
-         | ((mon && mon.mextrinsics) | 0) | ((mon && mon.mintrinsics) | 0));
-    function resists_acid(mtmp) { return (resistancebits(mtmp) & MR_ACID_) !== 0; }
-    function resists_cold(mtmp) { return (resistancebits(mtmp) & MR_COLD_) !== 0; }
-    function resists_fire(mtmp) { return (resistancebits(mtmp) & MR_FIRE_) !== 0; }
-    function resists_elec(mtmp) { return (resistancebits(mtmp) & MR_ELEC_) !== 0; }
+    /* C monst.h:270-279 resists_*(mon) == Resists_Elem(mon, X_RES): includes
+     * wielded-artifact and worn/carried-item protection, not just mresists. */
+    const resists_acid = (mtmp) => Resists_Elem(mtmp, ACID_RES);
+    const resists_cold = (mtmp) => Resists_Elem(mtmp, COLD_RES);
+    const resists_fire = (mtmp) => Resists_Elem(mtmp, FIRE_RES);
+    const resists_elec = (mtmp) => Resists_Elem(mtmp, SHOCK_RES);
 
     let multi2 = 0;
     let i;
@@ -1021,7 +1015,7 @@ export function breakarm(ptr) {
  */
 export function locomotion(ptr, def) {
     /* C: int locoindx = (*def != highc(*def)) ? 0 : 1; */
-    const firstChar = def.charCodeAt(0);
+    const firstChar = def.length ? def.charCodeAt(0) : 0; /* *def of "" is '\0' */
     let upperChar = firstChar;
     if (0x61 <= firstChar && firstChar <= 0x7a) upperChar &= ~0x20;
     const locoindx = (firstChar !== upperChar) ? 0 : 1;
@@ -1086,7 +1080,7 @@ export function locomotion(ptr, def) {
  */
 export function stagger(ptr, def) {
     /* C: int locoindx = (*def != highc(*def)) ? 2 : 3; */
-    const firstChar = def.charCodeAt(0);
+    const firstChar = def.length ? def.charCodeAt(0) : 0; /* *def of "" is '\0' */
     let upperChar = firstChar;
     if (0x61 <= firstChar && firstChar <= 0x7a) upperChar &= ~0x20;
     const locoindx = (firstChar !== upperChar) ? 2 : 3;
@@ -1525,9 +1519,6 @@ function mon_perma_blind(mdef) {
     return !!(mdef && !(mdef.mcansee | 0) && !(mdef.mblinded | 0)); /* monst.h:253 */
 }
 
-function objdescr_is(obj, desc) {
-    return objdescr_is_real(obj, desc);
-}
 
 // ── Helpers for name_to_monplus ─────────────────────────────────────────────
 function lowc(c) {

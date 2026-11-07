@@ -108,7 +108,6 @@ import {
     warning_of,
     glyph_to_cmap,
     glyph_to_obj,
-    hero_glyph_info,
     map_glyphinfo,
     map_monster_glyph_info,
     map_engraving,
@@ -174,7 +173,7 @@ import { consume_obj_charge, currency, money_cnt, useup, sobj_at } from './inven
 import { findgold } from './steal.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { makeplural } from './fruit.js';
-import { youFeel } from './pline.js';
+import { youFeel, youSee } from './pline.js';
 import { note_unported } from './unported.js';
 import { isBox, objectType } from './obj.js';
 import {
@@ -1515,11 +1514,17 @@ export async function use_crystal_ball(optr, state = game) {
                 );
                 break;
             case 4:
-                await ttyPline('You see goldfish swimming above fluorescent rocks.', state);
+                await ttyPline(
+                    youSee('goldfish swimming above fluorescent rocks.', state),
+                    state,
+                );
                 break;
             case 5:
                 await ttyPline(
-                    'You see tiny snowflakes spinning around a miniature farmhouse.',
+                    youSee(
+                        'tiny snowflakes spinning around a miniature farmhouse.',
+                        state,
+                    ),
                     state,
                 );
                 break;
@@ -1534,11 +1539,10 @@ export async function use_crystal_ball(optr, state = game) {
 
     if (state.flags?.verbose)
         await ttyPline('You may look for an object, monster, or special map symbol.', state);
-    const answer = await yn_function(
+    let ch = await yn_function(
         'What do you look for?', null, '\0', true, state,
     );
-    let ch = typeof answer === 'number'
-        ? String.fromCharCode(answer) : String(answer ?? '');
+
     const ghostSymbol = String.fromCharCode(
         DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_M + S_GHOST],
     );
@@ -1596,7 +1600,10 @@ export async function use_crystal_ball(optr, state = game) {
                         ];
                         const [name, where] = levels[rn2(levels.length)];
                         await ttyPline(
-                            `You see ${name}, ${level_distance(where, state)}.`,
+                            youSee(
+                                `${name}, ${level_distance(where, state)}.`,
+                                state,
+                            ),
                             state,
                         );
                         detected = 0;
@@ -1606,7 +1613,10 @@ export async function use_crystal_ball(optr, state = game) {
         }
         if (detected) {
             if (!rn2(100))
-                await ttyPline('You see the Wizard of Yendor gazing out at you.', state);
+                await ttyPline(
+                    youSee('the Wizard of Yendor gazing out at you.', state),
+                    state,
+                );
             else
                 await ttyPline('The vision is unclear.', state);
         }
@@ -2039,8 +2049,8 @@ async function defaultRevealFoundTrap(trap, env) {
     // show_glyph().  The discovered trap must survive the following docrt(),
     // including when WIN_STOP suppresses the message's --More-- wait.
     map_trap(trap, 1, env.state);
-    const heroGlyph = hero_glyph_info(env.state);
-    show_glyph_cell(env.state.u.ux, env.state.u.uy, heroGlyph);
+    // display.h display_self(): a visible steed is drawn in the hero's place.
+    display_self(env.state);
 }
 
 async function defaultWaitFoundTrap(env) {

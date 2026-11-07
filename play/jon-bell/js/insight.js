@@ -1,6 +1,6 @@
 // insight.js — C ref: insight.c.
 import { ceiling, surface, waterbody_name, youhiding_enlightenment } from './cmd.js';
-import { FLYING, TT_PIT } from './const.js';
+import { FLYING, TT_PIT, SPIKED_PIT } from './const.js';
 import { game } from './gstate.js';
 import { is_pool } from './look.js';
 import { ansimpleoname, simple_typename } from './objnam.js';
@@ -23,7 +23,7 @@ const M_AP_MONSTER_local = 3;        /* monst.h:55 */
 //   else You("are %s %s.", msgflag ? "already" : "now", buf);
 //
 // mappearance == STRANGE_OBJECT: "You are now mimicking a strange object."
-export function youhiding(via_enlghtmt, msgflag) {
+export function youhiding_buf() {
     const g = game;
     const u = g.u;
     let buf = 'hiding';
@@ -58,12 +58,17 @@ export function youhiding(via_enlghtmt, msgflag) {
             const trap = Array.isArray(traps)
                 ? traps.find(t => (t.tx | 0) === (u.ux | 0)
                               && (t.ty | 0) === (u.uy | 0)) : null;
-            buf += ' in a ' + (trap && (trap.ttyp | 0) === 12 /* SPIKED_PIT */
+            buf += ' in a ' + (trap && (trap.ttyp | 0) === SPIKED_PIT
                 ? 'spiked ' : '') + 'pit';
         } else {
             buf += ' on the ' + surface(u.ux, u.uy);
         }
     }
+    return buf;
+}
+
+export function youhiding(via_enlghtmt, msgflag) {
+    const buf = youhiding_buf();
     if (via_enlghtmt) {
         youhiding_enlightenment(buf, msgflag);
         return;

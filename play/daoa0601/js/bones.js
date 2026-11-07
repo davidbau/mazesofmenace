@@ -25,11 +25,11 @@ import { prepareBonesObjectForRestore, prepareBonesObjectForSave } from './bones
 import { sanitizeName } from './bones_name.js';
 import { decodeBonesPayload } from './bones_validation.js';
 import { encodeSavedGraph } from './saved_graph.js';
-import { hideMonsterUnder, monsterCanCarryObject, purgeDeadMonsters, removeMonsterFromGame, restoreMonsterShape, restoreMonsterInventoryOwnership } from './mon.js';
-import { repairBonesConnections, restoreLevelChains, hideMonsterOnRestore, restoreMonsterWormHeads, validMonsterWormBodies, } from './restore.js';
+import { hideMonsterOnRestore, hideMonsterUnder, monsterCanCarryObject, purgeDeadMonsters, removeMonsterFromGame, restoreMonsterShape, restoreMonsterInventoryOwnership } from './mon.js';
+import { repairBonesConnections, restoreLevelChains, restoreMonsterWormHeads, validMonsterWormBodies, } from './restore.js';
 import { restoreLevelPetHistory } from './save.js';
 import { endObjectBurn, restoreLevelTimers } from './timeout.js';
-import { restoreLevelRegions } from './region.js';
+import { restoreLevelRegions, resetRegionMonsterIds } from './region.js';
 import { fixShopDamage, pacifyShopkeeper, setShopResidency } from './shk.js';
 import { forgetEngravings, makeEngravingAt, restoreEngravings, sanitizeEngravings } from './engrave.js';
 import { addFruit } from './options.js';
@@ -49,7 +49,7 @@ import { setMonsterGivenName } from './do_name.js';
 import { MONSTER_ALIGNMENT, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM } from './monster_data.js';
 import { objectNoLongerHeldSynchronously } from './do.js';
 import { unpunishHero } from './read.js';
-import { depth, ledgerNo, maxLedgerNo } from './dungeon.js';
+import { depth, is_branchlev, ledgerNo, maxLedgerNo } from './dungeon.js';
 import { isRoom } from './map_types.js';
 import { hasPermanentIntrinsicProperty } from './properties.js';
 import { races, roles } from './role.js';
@@ -67,7 +67,7 @@ export function canMakeBones(state = game, random = rn2) {
     const ledger = ledgerNo(location, state);
     if (ledger <= 0 || ledger > maxLedgerNo(state))
         return false;
-    const branchLevel = isBranchLevel(location, state);
+    const branchLevel = !!is_branchlev(location, state);
     if (!levelAllowsBones(location, state))
         return false;
     if (state.u.uswallow)
@@ -81,6 +81,7 @@ export function canMakeBones(state = game, random = rn2) {
         return false;
     return !state.discover && !state.flags.explore;
 }
+// C bones.c:no_bones_level()
 export function levelAllowsBones(location, state = game) {
     const dungeon = state.dungeons[location.dnum];
     if (!dungeon?.bonetag)
@@ -90,19 +91,16 @@ export function levelAllowsBones(location, state = game) {
         return false;
     if (location.dlevel === dungeon.num_dunlevs)
         return false;
-    if (isBranchLevel(location, state) && location.dlevel > 1)
+    if (!!is_branchlev(location, state) && location.dlevel > 1)
         return false;
     return !Invocation_lev(location, state);
-}
-function isBranchLevel(location, state) {
-    const here = (end) => end.dnum === location.dnum
-        && end.dlevel === location.dlevel;
-    return state.branches.some(branch => here(branch.end1) || here(branch.end2));
 }
 // C refs: bones.c:savebones(), drop_upon_death(), and give_to_nearby_mon().
 const PM_HUMAN = 260;
 const PM_GHOST = 287;
 const S_MUMMY = 39;
+// Part of C bones.c:drop_upon_death(): clearing worn and wielded state
+// (C zeroes owornmask).
 function clearHeroCarriedState(object) {
     object.owornmask = 0;
     object.worn = false;
@@ -111,6 +109,8 @@ function clearHeroCarriedState(object) {
     object.alternate = false;
     object.ready = false;
 }
+// Part of C bones.c:give_to_nearby_mon(): the m_at() candidate lookup
+// (the port filters dead monsters inline).
 function monsterAt(x, y) {
     return (game.level?.monsters || []).find(monster => monsterHasMapPosition(monster, game) &&
         !monster.dead && (monster.mhp ?? 1) > 0
@@ -147,6 +147,7 @@ async function giveToNearbyMonster(object, x, y) {
     else
         placeObjectSynchronously(object, x, y);
 }
+// C bones.c:drop_upon_death()
 export async function dropHeroInventoryForBones(x, y, { carrier = null, container = null } = {}) {
     setTwoWeaponCombat(false);
     while ((game.inventory || []).length) {
@@ -177,6 +178,8 @@ export async function dropHeroInventoryForBones(x, y, { carrier = null, containe
     if (container)
         container.owt = objectWeight(container);
 }
+// Part of C bones.c:savebones(): makemon() under in_mklev so it accepts
+// the hero's square.
 async function makeBonesMonster(mnum, x, y, flags) {
     game.in_mklev = true;
     try {
@@ -186,6 +189,7 @@ async function makeBonesMonster(mnum, x, y, flags) {
         game.in_mklev = false;
     }
 }
+// Part of C bones.c:savebones(): the arisen mummy's wrapping gift.
 async function addMummyWrapping(monster) {
     if (MONSTER_SYMBOL[monster.mnum] !== S_MUMMY
         || (monster.minvent ?? []).some(object => object.otyp === MUMMY_WRAPPING)) {
@@ -321,6 +325,7 @@ export async function prepareBonesMonstersForSave() {
     }
     purgeDeadMonsters(level);
 }
+// C bones.c:fixuporacle()
 async function fixupOracle(oracle) {
     if (!Is_oracle_level(game.u.uz))
         return false;
@@ -343,6 +348,8 @@ async function fixupOracle(oracle) {
         chamber.rtype = DELPHI;
     return true;
 }
+// Part of C bones.c:getbones(): sanitize_name() over a restored
+// monster's given name.
 function sanitizeMonsterName(monster) {
     const name = monster?.mextra?.mgivenname
         || monster?.mgivenname
@@ -362,14 +369,17 @@ const HERO_RESISTANCES = Object.freeze([
     ['acidResistance', 0x40],
     ['stoneResistance', 0x80],
 ]);
+// Part of C bones.c:savebones(): the EBONES role index lookup.
 function roleIndex(state) {
     const index = roles.findIndex(role => role.key === state.urole?.key);
     return index < 0 ? 0 : index;
 }
+// Part of C bones.c:savebones(): the EBONES race index lookup.
 function raceIndex(state) {
     const index = races.findIndex(race => race.noun === state.urace?.noun);
     return index < 0 ? 0 : index;
 }
+// C mondata.c:give_u_to_m_resistances()
 export function giveHeroResistancesToMonster(monster, state = game) {
     let inherited = 0;
     for (const [property, bit] of HERO_RESISTANCES) {
@@ -379,6 +389,8 @@ export function giveHeroResistancesToMonster(monster, state = game) {
     monster.mintrinsics = (monster.mintrinsics ?? 0) | inherited;
     return inherited;
 }
+// Part of C bones.c:savebones(): the new monster block — level, HP,
+// gender, sleep, and the EBONES record.
 export function completeBonesMonster(monster, state = game) {
     requirePlayingGame(state);
     const finalRole = roleIndex(state);
@@ -407,6 +419,10 @@ export function completeBonesMonster(monster, state = game) {
     monster.mextra.ebones = ebones;
     return monster;
 }
+// Part of C restore.c:restmonchn(), restore.c:getlev(), bones.c:getbones():
+// bones monster-chain restore — restmonchn()'s ghostly propagate and
+// restshk()/restpriest() reassignment, getlev()'s peaceful/malign/hide
+// pass, getbones()'s sanitize_name and defunct purge.
 export async function restoreBonesMonsters(level, state) {
     // C restmonchn() admits the complete chain before getbones() starts
     // purging it. Inventory drops during purge must not affect admission
@@ -471,12 +487,16 @@ function bonesLevelId(location = game.u.uz) {
     const special = specialLevelAt(location);
     return `${tag}${role}.${special ? special.bonetag ?? '' : location.dlevel}`;
 }
+// Port only: browser-storage key for a bones level (C names a bones file).
 function bonesStorageKey(level = game.u.uz) {
     return `teleport-bones:${bonesLevelId(level)}`;
 }
+// Port only: storage probe standing in for C's open_bonesfile()
+// existence check.
 export function bonesLevelExists(level = game.u.uz) {
     return game.storage?.getItem(bonesStorageKey(level)) != null;
 }
+// C files.c:delete_bonesfile()
 export function deleteBonesLevel() {
     const storage = game.storage;
     if (!storage)
@@ -493,6 +513,8 @@ export function deleteBonesLevel() {
         return false;
     }
 }
+// Part of C bones.c:getbones(), bones.c:savebones(): the wizard y_n()
+// prompts with their screen flush.
 async function bonesPrompt(message, displayLevel = null) {
     await pline(message);
     const restoredLevel = game.level;
@@ -504,6 +526,8 @@ async function bonesPrompt(message, displayLevel = null) {
     game.nhDisplay?.setCursor(message.length, 0);
     return String.fromCharCode(await nhgetch()).toLowerCase();
 }
+// Part of C bones.c:savebones(), bones.c:getbones(): the minvent, fobj,
+// and buried chain enumeration around their resetobjs() calls.
 function eachTopLevelBonesObject(level, visit) {
     for (const monster of [...level.monsters].reverse()) {
         for (const object of monster.minvent || monster.inventory || [])
@@ -514,6 +538,7 @@ function eachTopLevelBonesObject(level, visit) {
     for (const object of level?.buriedObjects || [])
         visit(object);
 }
+// Port only: flatten the floor grid into C's fobj chain order.
 function bonesFloorObjects(level) {
     const objects = [];
     for (const column of level.objects)
@@ -521,6 +546,8 @@ function bonesFloorObjects(level) {
             objects.push(...(pile ?? []));
     return objects.sort((left, right) => (right._fobjOrder ?? 0) - (left._fobjOrder ?? 0));
 }
+// Part of C bones.c:savebones(), bones.c:getbones(): the recursive
+// contents walk over every saved or restored chain.
 function eachObjectInBonesGraph(level, visit) {
     const walk = (object) => {
         if (!object)
@@ -550,6 +577,8 @@ function resetBonesObjectList(objects, mode, ghostly = mode === 'save') {
     }
     return kept;
 }
+// Part of C bones.c:savebones(), bones.c:getbones(): the resetobjs()
+// passes over minvent, fobj, and buried.
 function resetBonesObjects(level, mode) {
     for (const monster of [...level.monsters].reverse()) {
         const inventory = resetBonesObjectList(monster.minvent || monster.inventory, mode);
@@ -665,6 +694,8 @@ export function saveBonesLevel(deathCause = '', when = recorderLocalEpochSeconds
         return false;
     }
 }
+// Part of C save.c:save_stairs(), save.c:savetrapchn(): destinations are
+// stored relative to the saved level; restore re-adds depth on load.
 // C save_stairs()/savetrapchn() store same-dungeon destinations relative
 // to the saved level. rest_stairs()/getlev() add the receiving level's depth.
 // Only the bones copy is shifted; live and cached maps retain absolute depths.
@@ -679,9 +710,11 @@ function shiftBonesDestinations(payload, location, adjustment) {
             trap.dst = { ...destination, dlevel: destination.dlevel + adjustment };
     }
 }
+// C restore.c:lookup_id_mapping()
 function remappedMonsterId(oldId, monsterIds) {
     return oldId !== undefined && Number.isInteger(oldId) ? monsterIds.get(oldId) : undefined;
 }
+// Part of C restore.c:restobjchn(): the ocontainer back-pointer repair.
 function repairContainedObjects(container) {
     for (const object of container.contents || []) {
         object.container = container;
@@ -690,6 +723,8 @@ function repairContainedObjects(container) {
         repairContainedObjects(object);
     }
 }
+// Part of C restore.c:reset_oattached_mids(): ghostly omonst zeroing and
+// omid remap; the port also remaps leashmon.
 function repairObjectMonsterIds(object, monsterIds) {
     const extra = object.oextra;
     const omid = extra?.omid;
@@ -716,6 +751,9 @@ function repairObjectMonsterIds(object, monsterIds) {
         object.oextra.omonst.mtame = 0;
     }
 }
+// Port only: re-point the port's duplicated monster-extension records at
+// the restored monster's fresh id (C sets parentmid == m_id when it
+// creates each extension).
 function repairMonsterExtensions(monster) {
     const edog = monster.edog || monster.mextra?.edog;
     if (edog) {
@@ -747,8 +785,8 @@ function repairMonsterExtensions(monster) {
     if (monster.mextra?.ebones)
         monster.mextra.ebones.parentmid = monster.m_id;
 }
-// C region.c:reset_region_mids(): bones region membership is remapped to
-// the renewed monster ids; a missing id drops out by slot swap.
+// Part of C restore.c:getlev(): the bones identity renewal, ending in
+// region.c:reset_region_mids() for each restored region.
 async function renewBonesIdentities(level, fruits) {
     // restmonchn() assigns every monster a fresh id; each monster inventory
     // is restored immediately afterward. getlev() then restores floor and
@@ -793,25 +831,13 @@ async function renewBonesIdentities(level, fruits) {
     }
     eachObjectInBonesGraph(level, object => repairObjectMonsterIds(object, monsterIds));
     eachTopLevelBonesObject(level, repairContainedObjects);
-    // C region.c:reset_region_mids(). Missing identities are removed by
-    // replacing their slot with the last member, as during region turns.
     for (const region of level.regions) {
         region.heroFault = false;
         region.heroInside = false;
-        let index = 0;
-        while (index < region.monsterIds.length) {
-            const mapped = remappedMonsterId(region.monsterIds[index], monsterIds);
-            if (mapped !== undefined) {
-                region.monsterIds[index++] = mapped;
-            }
-            else {
-                const last = region.monsterIds.pop();
-                if (last !== undefined && index < region.monsterIds.length)
-                    region.monsterIds[index] = last;
-            }
-        }
+        resetRegionMonsterIds(region, monsterIds);
     }
 }
+// Port only: re-seed the floor-chain order counter after a bones restore.
 function restoreBonesFloorOrder(level) {
     let newestOrder = game._fobjSerial ?? 0;
     eachObjectInBonesGraph(level, object => {
@@ -914,6 +940,8 @@ export async function getbones() {
     game._restoredBones = await finishBonesRestore(sourceDisplayLevel);
     return game._restoredBones;
 }
+// Part of C bones.c:getbones(): the tail — numbones++, the wizard
+// Unlink prompt, and delete_bonesfile().
 async function finishBonesRestore(displayLevel = null) {
     const roleplay = game.u.uroleplay;
     if (!roleplay)

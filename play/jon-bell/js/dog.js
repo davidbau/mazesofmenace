@@ -24,7 +24,7 @@ import { expels_gu } from './mhitu.js';           /* C mhitu.c:264 expels() */
 import { placebc } from './ball.js';                /* C ball.c:193 — unstuck()'s Punished arm */
 import { PM_KITTEN, PM_LITTLE_DOG, PM_PONY, PM_MEDUSA, PM_LONG_WORM, PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
 import { LS_MONSTER, GP_CHECKSCARY, GP_AVOID_MONPOS } from './const.js';
-import { Upolyd } from './const.js';
+import { Upolyd, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER } from './const.js';
 /* C light.c homes: del_light_source (light.c:98) and hack.c:97 monst_to_any.
  * Re-exported so this file's historical export surface is unchanged. */
 export { del_light_source, monst_to_any } from './light.js';
@@ -78,7 +78,7 @@ import { healmon } from './mon.js';
 /* C dog.c:271-274 — makedog's own call, on the starting pet, before christening.
  * see_monster_closeup's real body is js/mklev.js:10320 (C mon.c:5971). */
 import { see_monster_closeup } from './mon.js';
-import { carrying, body_part, set_msg_xy, dismount_steed as dismount_steed_real } from './cmd.js';
+import { carrying, body_part, set_msg_xy, dismount_steed } from './cmd.js';
 const EXPENSIVE_CAMERA = 229;
 /* C spellbook object type SPE_CREATE_FAMILIAR = 401 (objects.h X-macro; not
  * greppable, matches the value already duplicated at js/spell.js:75,
@@ -1138,7 +1138,7 @@ export function dealloc_monst(mon) {
  * mkobj.c:2527 implementation at the keepdogs() call site above. */
 
 /* steed.c:573-822 — use cmd.js's canonical async implementation. */
-export async function dismount_steed(how) { return await dismount_steed_real(how); }
+export { dismount_steed };
 export function keep_mon_accessible(mtmp) {
     if (mtmp.iswiz)
         return true;
@@ -1325,8 +1325,12 @@ export async function mon_leaving_level(mon) {
     mon.mtrapped = 0;
     await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
 
+    /* C mon.c:2706-2711: worm -> remove_worm (which clears the head's
+     * square too), else remove_monster(mx, my).  This port's
+     * remove_monster() is the _mapRemoved marker (js/worm.js remove_monster);
+     * it is set on both arms so the head stays off m_at() either way. */
     if (onmap || (mon.isgd && mx === 0 && my === 0)) {
-        mon._mapRemoved = true;
+        mon._mapRemoved = true; /* remove_monster(mx, my) */
         if (mon.wormno)
             remove_worm(mon);
     }
@@ -1334,15 +1338,14 @@ export async function mon_leaving_level(mon) {
     if (onmap) {
         mon.mundetected = 0; /* for migration */
         // C unhides departing mimics before pit effects and the final redraw.
-        const appearance = (mon.m_ap_type | 0) & 0x7;
-        if (appearance !== 0 && appearance !== 3)
+        if (M_AP_TYPE(mon) !== M_AP_NOTHING && M_AP_TYPE(mon) !== M_AP_MONSTER)
             seemimic(mon);
-        /* C mon.c:2720 — "if mon is pinned by a boulder, removing mon lets
+        /* C mon.c:2723 — "if mon is pinned by a boulder, removing mon lets
          * boulder drop". */
         await fill_pit(mx, my);
         newsym(mx, my);
     }
-    /* C mon.c:2724 — forget a remembered polearm target. */
+    /* C mon.c:2728 — forget a remembered polearm target. */
     if (game.context?.polearm && game.context.polearm.hitmon === mon)
         game.context.polearm.hitmon = null;
 }

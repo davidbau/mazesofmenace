@@ -7,7 +7,7 @@ import { PM_SHADE, PM_STONE_GOLEM } from './pm.generated.js';
 import { rn1, rnd } from './rng.js';
 import { pline } from './pline.js';
 import { Blind } from './vision.js';
-import { potionhit } from './potion.js';
+import { potionhit, POTION_CLASS } from './potion.js';
 import { body_part, ceiling } from './cmd.js';
 import { breaktest, breakmsg, breakobj, hitfloor } from './dothrow.js';
 import { dropy } from './do.js';
@@ -42,16 +42,19 @@ const stoneMissile = obj => {
 };
 
 
+/* objects.h otyps (values per js/oc_name_data.js); objclass.h SCROLL_CLASS. */
+const SLING = 87, RUBBER_HOSE = 78, SACK = 217, OILSKIN_SACK = 218, BAG_OF_HOLDING = 219,
+    BAG_OF_TRICKS = 220, KELP_FROND = 275, EUCALYPTUS_LEAF = 276, SPRIG_OF_WOLFSBANE = 283,
+    FORTUNE_COOKIE = 289, PANCAKE = 290, SCROLL_CLASS = 9;
+
+/* C dothrow.c:1220-1250 harmless_missile() */
 export function harmless_missile(obj) {
     const t = obj.otyp | 0;
-    /* SLING, EUCALYPTUS_LEAF, KELP_FROND, SPRIG_OF_WOLFSBANE,
-     * FORTUNE_COOKIE, PANCAKE. */
-    if ([87, 276, 275, 283, 289, 290].includes(t)) return true;
-    /* RUBBER_HOSE, BAG_OF_TRICKS. */
-    if (t === 78 || t === 220) return (obj.spe | 0) < 1;
-    /* SACK, OILSKIN_SACK, BAG_OF_HOLDING. */
-    if (t >= 217 && t <= 219) return !Has_contents(obj);
-    return (obj.oclass | 0) === 9 || (MKOBJ_OC_MATERIAL[t] | 0) === CLOTH;
+    if ([SLING, EUCALYPTUS_LEAF, KELP_FROND, SPRIG_OF_WOLFSBANE,
+         FORTUNE_COOKIE, PANCAKE].includes(t)) return true;
+    if (t === RUBBER_HOSE || t === BAG_OF_TRICKS) return (obj.spe | 0) < 1;
+    if (t === SACK || t === OILSKIN_SACK || t === BAG_OF_HOLDING) return !Has_contents(obj);
+    return (obj.oclass | 0) === SCROLL_CLASS || (MKOBJ_OC_MATERIAL[t] | 0) === CLOTH;
 }
 
 async function petrify(obj) {
@@ -88,7 +91,7 @@ export async function toss_up(obj, hitsroof) {
     } else action = 'almost hits';
     await pline(`${(await doname2(obj))} ${action} the ${ceiling(u.ux, u.uy)}, then falls back on top of your ${body_part(HEAD)}.`);
 
-    if ((obj.oclass | 0) === 8) {
+    if ((obj.oclass | 0) === POTION_CLASS) {
         await potionhit(you, obj, POTHIT_HERO_THROW);
     } else if (breaktest(obj)) {
         const blindinc = ((otyp === CREAM_PIE || otyp === BLINDING_VENOM)

@@ -3021,7 +3021,9 @@ export async function doset_simple() {
                 g._bot_disabled = oldBotDisabled;
             }
             g._status_blanked = entry.kind !== 'bool'; // windows.c:1861: submenu disables bot().
-            await drainTopline(); // wintty.c:1921: page notices before the next menu.
+            /* options.c:8661-8664,8727,9006: a boolean is parsed and bot()
+             * repaints before the next select_menu acknowledges its notices. */
+            if (entry.kind !== 'bool') await drainTopline();
             g._status_blanked = false;
             titleErased = false;   /* a pick ends select_menu; the next one repaints */
             if (entry.kind === 'bool') {
@@ -3203,7 +3205,7 @@ export async function doset_simple() {
     /* C options.c:8733 — doset_simple ends with give_opt_msg = TRUE, undoing
      * an earlier full doset()'s idlecheckpoint pick (options.c:5318). */
     option_state().give_opt_msg = true;
-    g._pending_message = '';
+    /* options.c:8733-8734 leaves notices from the final dismissal standing. */
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
 }

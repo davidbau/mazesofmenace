@@ -20,7 +20,7 @@ import { wake_nearto, setmangry } from './mon.js';
 import { isok } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
-import { newsym, Unaware, impossible_sync, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { newsym, _m_at, mon_overrides_region, Unaware, impossible_sync, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { You_feel, pline } from './pline.js';
 import { m_poisongas_ok } from './mon.js';
 import { is_pool_or_lava } from './look.js';
@@ -366,13 +366,17 @@ export function region_stats_snapshot() {
 /* C ref: fountain.c:224-227 glyph_at()/glyph_to_cmap().  The display glyph
  * at a square can still be the non-poison cloud glyph immediately after a
  * cloud is created, even though the underlying terrain remains a fountain.
- * Callers use this narrow predicate when reproducing that transient test. */
+ * Callers use this narrow predicate when reproducing that transient test.
+ * newsym() (display.c:991-995) shows the cloud only when no monster overrides
+ * the region (mon_overrides_region), so a sensed monster on the square leaves
+ * its own glyph in gbuf and the cloud test is false. */
 export function gas_cloud_at(x, y) {
     for (const reg of regions_list()) {
         if (reg.visible && reg.ttl !== -2
             && reg.inside_f === INSIDE_GAS_CLOUD
             && reg.glyph === cmap_to_glyph(S_cloud)
-            && inside_region(reg, x, y))
+            && inside_region(reg, x, y)
+            && !mon_overrides_region(_m_at(x, y), x, y))
             return true;
     }
     return false;

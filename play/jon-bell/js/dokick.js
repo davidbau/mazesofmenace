@@ -38,7 +38,7 @@ import { mon_yells } from './monmove.js';
 import { in_town } from './cmd.js';
 import { exercise, acurr, acurrstr, change_luck, adjalign as adjalign_dk } from './attrib.js';
 import { HALLUC, SHOPBASE, SDOOR, SCORR, CORR, ROOM, STAIRS, LADDER, IRONBARS, DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, D_TRAPPED, D_LOCKED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_TREE, IS_STWALL, IS_DOOR, ECMD_TIME, ECMD_CANCEL, ECMD_OK, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, DBWALL, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, KILLED_BY, G_GONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER, LA_DOWN, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, STONE, ICE, IS_WATERWALL, IS_DRAWBRIDGE, IS_WALL, W_NONDIGGABLE, isok, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH, NON_PM, MIGR_NOWHERE, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, ONAME, has_oname, has_mgivenname, In_mines, Is_stronghold, In_endgame, Is_botlevel, Has_contents, N_DIRS, xdir, ydir,
-is_hole, } from './const.js';
+is_hole, TRAPDOOR, NO_TRAP_FLAGS } from './const.js';
 /* prop.h BLINDED — the live key for the Blind macro (see _Blind_dk below). */
 import { BLINDED as DK_BLINDED } from './const.js';
 /* prop.h LEVITATION, rm.h IS_OBSTRUCTED, and the youprop.h Is_airlevel(uz)
@@ -90,7 +90,7 @@ import { enexto_out } from './teleport.js';
 // used to carry a second, throwing copy of the name, which made the local call
 // at dokick.js:937 (ship_object's `unpaid` test) throw at runtime; re-exported
 // rather than re-implemented so there is no second body to drift.
-import { obfree, is_unpaid, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, hot_pursuit as shk_hot_pursuit, stolen_value, subfrombill, contained_gold, donate_gold, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs } from './shk.js';
+import { obfree, is_unpaid, shop_keeper, add_damage, pay_for_damage, oid_price_adjustment, costly_spot as shk_costly_spot, hot_pursuit as shk_hot_pursuit, stolen_value, subfrombill, contained_gold, donate_gold, addtobill as shk_addtobill, delete_contents as shk_delete_contents, add_to_billobjs, picked_container as shk_picked_container } from './shk.js';
 import { in_rooms } from './hack.js';
 import { Shknam as shk_Shknam } from './shknam.js';
 import { make_happy_shk, make_angry_shk } from './shk.js';
@@ -144,7 +144,7 @@ import { rndorcname } from './mhitm.js';
 /* The two mkobj.c migration constructors; see the re-export note further down. */
 import { add_to_migration, mksobj_migr_to_species } from './mklev.js';
 import { stairway_find_from as stairway_find_from_real } from './stairs.js';
-import { setmangry, angry_guards as mklev_angry_guards } from './mon.js';
+import { setmangry, angry_guards } from './mon.js';
 import { weight } from './weight.js';
 import { weight_cap, inv_weight } from './hack.js';
 import { goodpos, chest_trap, activate_statue_trap, mintrap } from './trap.js';
@@ -171,8 +171,6 @@ import { unpunish } from './read.js';
 import { rnd_treefruit_at } from './mkobj.js';
 import { feel_newsym, feel_location } from './display.js';
 import { flooreffects } from './do.js';
-/* Historical alias, identical to the shared mkobj extraction above. */
-import { obj_extract_self_general } from './cmd.js';
 /* C mthrowu.c:325-431 ohitmon(mtmp, otmp, range, verbose) — thrown/scattered
  * object hits a MONSTER.  The one body lives in js/mhitu.js. */
 import { ohitmon } from './mhitu.js';
@@ -731,7 +729,7 @@ async function watchman_thief_arrest(mtmp) {
     if ((pm === PM_WATCHMAN || pm === PM_WATCH_CAPTAIN)
         && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
         await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
-        await mklev_angry_guards(false);
+        await angry_guards(false);
         return true;
     }
     return false;
@@ -745,7 +743,7 @@ async function watchman_door_damage(mtmp, x, y) {
         const loc = game.level.at(x, y);
         if (loc.looted & D_WARNED) {
             await mon_yells(mtmp, "Halt, vandal!  You're under arrest!");
-            await mklev_angry_guards(false);
+            await angry_guards(false);
         } else {
             await mon_yells(mtmp, "Hey, stop damaging that door!");
             loc.looted |= D_WARNED;
@@ -796,11 +794,13 @@ async function kick_door(x, y, avrg_attrib) {
             await b_trapped("door", FOOT);
         }
         else if ((acurr(u, A_STR) | 0) > 18 && !rn2(5) && !shopdoor) {
+            Soundeffect(se_kick_door_it_shatters, 50);
             void pline("As you kick the door, it shatters to pieces!");
             exercise(A_STR, true);
             maploc.doormask = D_NODOOR;
         }
         else {
+            Soundeffect(se_kick_door_it_crashes_open, 50);
             void pline("As you kick the door, it crashes open!");
             exercise(A_STR, true);
             maploc.doormask = D_BROKEN;
@@ -919,7 +919,7 @@ async function maybe_kick_monster(mon, x, y) {
         const g = game;
         g.context = g.context || {};
         const save_forcefight = g.context.forcefight;
-        /* C dokick.c:130-131 -- attack_checks() reads gb.bhitpos, and its
+        /* C dokick.c:131-132 -- attack_checks() reads gb.bhitpos, and its
          * cannot-see arm calls map_invisible() with it. */
         (g.gb || (g.gb = {})).bhitpos = { x: x | 0, y: y | 0 };
         if (!mon.mpeaceful || !canspotmon(mon))
@@ -945,7 +945,7 @@ async function kickdmg(mon, clumsy) {
     let dmg = Math.trunc((acurrstr(u) + (acurr(u, A_DEX) | 0)
                           + (acurr(u, A_CON) | 0)) / 15);
     let kick_skill = P_NONE;
-    /* C dokick.c:36 — this flag is set when martial knockback kills the
+    /* C dokick.c:39 — this flag is set when martial knockback kills the
      * target in a trap; it must remain mutable across the damage sequence. */
     let trapkilled = false;
 
@@ -1025,7 +1025,7 @@ async function kickdmg(mon, clumsy) {
             newsym(oldx, oldy);
             newsym(mdx, mdy);
             set_apparxy(mon);
-            if (await mintrap(mon, 0) === 2 /* Trap_Killed_Mon */)
+            if (await mintrap(mon, NO_TRAP_FLAGS) === Trap_Killed_Mon)
                 trapkilled = true;
         }
     }
@@ -1080,10 +1080,6 @@ async function kick_monster(mon, x, y) {
      * predicate was corrected, youmonst.mtimedone) -- fields that object does
      * not carry, so the guard was unconditionally false. */
     if (Upolyd(g.u) && _km_attacktype(g.youmonst?.data, _KM_AT_KICK)) {
-        /* C dokick.c:184-223 enters hmonas(), the same polymorphed attack
-         * loop used by ordinary attacks.  Reuse its canonical dispatcher so
-         * every form-specific attack, damage, and passive effect stays in one
-         * implementation. */
         await do_attack(mon, undefined, true);
         return;
     }
@@ -1210,6 +1206,11 @@ export async function container_impact_dmg(obj, x, y) {
                 change_luck(-2);
             if ((otmp.otyp | 0) === _KO_EGG_OTYP && (otmp.spe | 0) && ismnum(otmp.corpsenm))
                 change_luck(-1);
+            if ((otmp.otyp | 0) === _KO_EGG_OTYP) {
+                Soundeffect(se_egg_cracking, 25);
+            } else {
+                Soundeffect(se_glass_shattering, 25);
+            }
             await You_hear(`a muffled ${result}.`);
             if (costly) {
                 if (frominv && !otmp.unpaid)
@@ -1219,7 +1220,7 @@ export async function container_impact_dmg(obj, x, y) {
             if ((otmp.quan | 0) > 1) {
                 await useup(otmp);
             } else {
-                obj_extract_self_general(otmp);
+                obj_extract_self(otmp);
                 await obfree(otmp, null);
             }
             obj.cknown = 0;
@@ -1930,7 +1931,7 @@ export async function impact_drop(missile, x, y, dlev) {
             obj = obj2;
             continue;
         }
-        obj_extract_self_general(obj);
+        obj_extract_self(obj);
 
         if (costly) {
             /* C: stolen_value(obj, x, y,
@@ -1994,7 +1995,7 @@ export async function impact_drop(missile, x, y, dlev) {
                     await You_hear("a scream, \"Thief!\"");
                 }
                 hot_pursuit(shkp);
-                await mklev_angry_guards(false);
+                await angry_guards(false);
                 return;
             }
             if (eshk.debit > debit) {
@@ -2014,7 +2015,6 @@ export function down_gate(x, y) {
      * copies here used a private renumbering (RANDOM 1 / STAIRS_UP 2 /
      * LADDER_UP 3 / SSTAIRS 4) that ship_object()'s own MIGR_NOWHERE = 0
      * disagreed with. */
-    const TRAPDOOR = 14;
     g.gg = g.gg || {};
     g.gg.gate_str = null;
     /* this matches the player restriction in goto_level() */
@@ -2083,7 +2083,7 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
     /* SHOPBASE comes from const.js (mkroom.h:66 = 14); the local `= 12` copy
      * that used to be declared here shadowed it with a wrong value. */
     const BOULDER = 475, COIN_CLASS = 12;
-    /* C dokick.c:1717-1723 tests `objects[otyp].oc_material == GLASS`,
+    /* C dokick.c:1717-1728 tests `objects[otyp].oc_material == GLASS`,
      * `otyp == EXPENSIVE_CAMERA`, `otyp == MIRROR` and `otyp == EGG`.  All four
      * values here were from a stale index space, so the whole crash/splat
      * branch below was mis-wired: */
@@ -2271,9 +2271,8 @@ export function Shknam(shkp) { return shk_Shknam(shkp); }
  * (the kick-to-another-level path above) and js/mkmaze.js both resolve the ONE
  * body.  Same convention as is_unpaid / maybe_unhide_at below. */
 export { add_to_migration, mksobj_migr_to_species };
-/* mon.c:5710 angry_guards — expose the canonical mklev implementation rather
- * than retaining a throwing shadow for external callers. */
-export async function angry_guards(flag) { return await mklev_angry_guards(flag); }
+/* mon.c:5710 angry_guards */
+export { angry_guards };
 export function costly_spot(x, y) {
     return shk_costly_spot(x, y);
 }
@@ -2292,6 +2291,9 @@ export { obfree } from './shk.js';
  * opaque enum members and never compared, so their VALUES are unobservable --
  * they exist only so the call keeps C's shape. */
 const se_egg_splatting = 0, se_glass_crashing = 0;
+const se_egg_cracking = 0, se_glass_shattering = 0;
+const se_kick_door_it_shatters = 0, se_kick_door_it_crashes_open = 0;
+const Trap_Killed_Mon = 2;
 function Soundeffect(senum, vol) { /* audio only -- no state, no RNG */ }
 
 /* C pline.c:436 You_hear(line, ...)
@@ -2352,17 +2354,8 @@ export async function otransit_msg(otmp, nodrop, chainthere, num) {
  * unlandable: mon_leave walks a departing monster's minvent and calls this
  * for every container it carries, so a migrating monster with a sack would
  * have halted the replay instead of leaving the level. */
-export function picked_container(obj) {
-    const COIN_CLASS_PC = 12; /* objclass.h COIN_CLASS */
-    for (let otmp = obj?.cobj; otmp; otmp = otmp.nobj) {
-        if ((otmp.oclass | 0) === COIN_CLASS_PC)
-            continue;
-        if (otmp.no_charge)
-            otmp.no_charge = 0;
-        if (Has_contents(otmp))
-            picked_container(otmp);
-    }
-}
+/* C ref: shk.c:3085 picked_container(obj) — forward to canonical port in js/shk.js. */
+export const picked_container = shk_picked_container;
 /* C ref: shknam.c:855-897 shkname(mtmp) — the shopkeeper's own name from
  * ESHK(mtmp)->shknam, with any non-letter prefix character stripped (the
  * leading '-'/'+'/'=' markers that flag a player-name-derived shk name).

@@ -21,14 +21,14 @@ import { pline } from './pline.js'; /* was an undeclared global: every pline() c
 import { game } from './gstate.js';
 import { s_suffix as _s_suffix } from './hacklib.js';
 import { permonstTemplate, monPmname } from './makemon.js';
-import { NEUTRAL, MIN_QUEST_LEVEL, BUFSZ } from './const.js';
+import { NEUTRAL, MIN_QUEST_LEVEL, BUFSZ, A_LAWFUL, NHW_MENU, NHW_TEXT } from './const.js';
 /* C ref: obj.h OBJ_* chain ids + Has_contents(); questpgr.c:66-70
  * is_quest_artifact() lives in js/objnam.js (js/cmd.js's same-named export is a
  * throwing stub — the file-local-stub-shadows-real-port shape). */
 import { OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, Has_contents } from './const.js';
 import { is_quest_artifact, makesingular, makeplural as _makeplural,
          an as _an, An as _An } from './objnam.js';
-import { rank_of } from './rank_data.js';
+import { rank_of } from './botl.js';
 import { putmsghistory } from './display.js';
 import { roles as ROLES } from './roles.js';
 import { nhlib_load_toplevel_rng } from './nhlib.js';
@@ -3706,7 +3706,7 @@ So, have you succeeded in your quest for the Amulet of Yendor?"`,
  * it over every line), so the module is loaded once from com_pager_core — the
  * only async entry point into this path — and cached here.  Same dynamic-import
  * convention deliver_by_window() already uses for display_text_window. */
-let _cmdmod = null;
+var _cmdmod = null;
 export function bind_cmdmod(mod) {
     _cmdmod = mod;
 }
@@ -3730,9 +3730,9 @@ export function convert_arg(c) {
         }
         return String(t);
     }
-    /* C questpgr.c:299-301 — %D: align_gname(A_LAWFUL); A_LAWFUL == 1 */
+    /* C questpgr.c:299-301 — %D: align_gname(A_LAWFUL) */
     case 'D': {
-        const gname = _cmdmod?.align_gname(1);
+        const gname = _cmdmod?.align_gname(A_LAWFUL);
         if (gname == null) {
             _impossible('convert_arg: %D — cmd.js not loaded');
             return '';
@@ -3797,12 +3797,11 @@ export function convert_arg(c) {
     }
 }
 
-/* C botl.c:332 rank_of(lev, Role_switch, flags.female), through the one shared
- * table. */
+/* C questpgr.c:249 rank_of(u.ulevel, Role_switch, flags.female), through botl.js. */
 function _rank_of_hero(lev) {
     const r = _roleIdx();
     if (r < 0) return '';
-    return rank_of(r, lev | 0, _female());
+    return rank_of(lev | 0, r, _female());
 }
 /* C flag.h flags.female. */
 function _female() { return !!(game.flags?.female); }
@@ -3947,12 +3946,12 @@ async function deliver_by_window(text, how) {
     // C copynchars(): cap each input at BUFSZ-1, then skip one byte.
     for (let p = 0; p < s.length;) {
         const nl = s.indexOf('\n', p);
-        const line = s.slice(p, Math.min(nl < 0 ? s.length : nl, p + 255));
+        const line = s.slice(p, Math.min(nl < 0 ? s.length : nl, p + (BUFSZ - 1)));
         p += line.length + 1;
         lines.push(convert_line(line));
     }
     /* C questpgr.c:443: preserve the requested window type. */
-    if (how === 'menu') {
+    if (how === NHW_MENU || how === 'menu') {
         const { displayLookWindow } = await import('./look-window.js');
         await displayLookWindow(lines);
     } else {
@@ -3965,7 +3964,7 @@ export async function deliver_by_pline(text) {
     const s = String(text);
     for (let p = 0; p < s.length;) {
         const nl = s.indexOf('\n', p);
-        const line = s.slice(p, Math.min(nl < 0 ? s.length : nl, p + 255));
+        const line = s.slice(p, Math.min(nl < 0 ? s.length : nl, p + (BUFSZ - 1)));
         p += line.length + 1;
         const out = convert_line(line);
         await pline(out);
@@ -3997,7 +3996,22 @@ async function com_pager_core(section, msgid, showerror, rawtext) {
      * Position matters twice over: the rolls happen even when this section has
      * no such msgid (C reads the table only after nhl_init succeeds), and
      * qt_pager()'s role-then-"common" retry therefore pays them TWICE. */
+    /* C questpgr.c:488-492 */
+    if (typeof nhlib_load_toplevel_rng !== 'function') {
+        if (showerror) _impossible('com_pager: nhl_init() failed');
+        return false;
+    }
     nhlib_load_toplevel_rng();
+    /* C questpgr.c:494-498 */
+    if (typeof QUESTTEXT === 'undefined') {
+        if (showerror) _impossible('com_pager: quest.lua not found.');
+        return false;
+    }
+    /* C questpgr.c:502-506 */
+    if (!QUESTTEXT || typeof QUESTTEXT !== 'object') {
+        if (showerror) _impossible('com_pager: questtext in quest.lua is not a lua table');
+        return false;
+    }
     if (!QUESTTEXT[section]) {
         if (showerror) _impossible(`com_pager: questtext[${section}] in quest.lua is not a lua table`);
         return false;
@@ -4037,15 +4051,16 @@ async function com_pager_core(section, msgid, showerror, rawtext) {
     let synopsis = entry.synopsis;
     /* C questpgr.c:573-590 — by_pline promotes to by_window for multi-line or
      * over-long text, synthesizing a bracketed one-line synopsis. */
-    if (output === 0 && (text.includes('\n') || text.length >= 255)) {
+    if (output === 0 && (text.includes('\n') || text.length >= BUFSZ - 1)) {
         output = 2;
         if (!synopsis)
-            synopsis = `[${text.slice(0, 253).replace(/\n/g, ' ')}]`;
+            synopsis = `[${text.slice(0, BUFSZ - 1 - 2).replace(/\n/g, ' ')}]`;
     }
+    /* C questpgr.c:592-595 */
     if (output === 0 || output === 1)
         await deliver_by_pline(text);
     else
-        await deliver_by_window(text, output === 3 ? 'menu' : 'text');
+        await deliver_by_window(text, (output === 3) ? NHW_MENU : NHW_TEXT);
     /* C questpgr.c:597-606 — the synopsis bypasses message delivery but is
      * available for ^P recall. */
     if (synopsis)

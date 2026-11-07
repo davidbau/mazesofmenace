@@ -2251,10 +2251,8 @@ export async function dodrink(state = game) {
             // potion.js. A static import would create a circular
             // dependency that changes module initialization order.
             const { y_n } = await import('./cmd.js');
-            // yn_function() returns the raw keystroke byte, so the
-            // comparison is against 'y'.charCodeAt(0), not 'y'.
-            if (await y_n('Drink from the fountain?', state)
-                === 'y'.charCodeAt(0)) {
+            if (await y_n('Drink from the fountain?', state) === 'y') {
+
                 await drinkfountain(state);
                 return ECMD_TIME;
             }
@@ -2264,7 +2262,7 @@ export async function dodrink(state = game) {
         if (IS_SINK(typ) && can_reach_floor(false, state)) {
             const { y_n } = await import('./cmd.js');
             if (await y_n('Drink from the sink?', state)
-                === 'y'.charCodeAt(0)) {
+                === 'y') {
                 await drinksink(state);
                 return ECMD_TIME;
             }
@@ -2274,7 +2272,7 @@ export async function dodrink(state = game) {
         if (hero.uinwater && !hero.uswallow) {
             const { y_n } = await import('./cmd.js');
             if (await y_n('Drink the water around you?', state)
-                === 'y'.charCodeAt(0)) {
+                === 'y') {
                 await ttyPline('Do you know what lives in this water?', state);
                 return ECMD_TIME;
             }
@@ -3230,6 +3228,23 @@ function drinkEnvironment(state, rawEnv = {}) {
             message: rawEnv.hooks?.message ?? message,
             encumberMessage: rawEnv.hooks?.encumberMessage
                 ?? ((subject) => encumber_msg(subject, { message })),
+            // invent.c:941, reached when hold_potion()'s addinv() merges a
+            // mixture into a stack whose known flags it settles.
+            inventoryComparisonDiscovered:
+                rawEnv.hooks?.inventoryComparisonDiscovered
+                ?? (() => message(
+                    'You learn more about your items by comparing them.',
+                    state,
+                )),
+            // shk.c obfree() for a used-up potion: a lit potion of oil has a
+            // burn timer and a light source (timeout.c obj_stop_timers(),
+            // light.c del_light_source()).
+            stopObjectTimers: rawEnv.hooks?.stopObjectTimers
+                ?? ((obj, hookEnv) =>
+                    obj_stop_timers(obj, hookEnv.state, hookEnv)),
+            deleteObjectLightSource: rawEnv.hooks?.deleteObjectLightSource
+                ?? ((obj, hookEnv) =>
+                    del_light_source(LS_OBJECT, obj, hookEnv.state)),
         },
     };
 }
@@ -3352,7 +3367,7 @@ export async function dodip(state = game, rawEnv = {}) {
             const { y_n } = await import('./cmd.js');
             const prompt = 'Dip ' + (state.flags.verbose ? obuf : shortestName)
                 + ' into the fountain?';
-            if (await y_n(prompt, state) === 'y'.charCodeAt(0)) {
+            if (await y_n(prompt, state) === 'y') {
                 if (!isHands) obj.pickup_prev = 0;
                 await dipfountain(obj, state, env);
                 return ECMD_TIME;
@@ -3362,7 +3377,7 @@ export async function dodip(state = game, rawEnv = {}) {
             const { y_n } = await import('./cmd.js');
             const prompt = 'Dip ' + (state.flags.verbose ? obuf : shortestName)
                 + ' into the sink?';
-            if (await y_n(prompt, state) === 'y'.charCodeAt(0)) {
+            if (await y_n(prompt, state) === 'y') {
                 if (!isHands) obj.pickup_prev = 0;
                 await dipsink(obj, state, env);
                 return ECMD_TIME;
@@ -3373,7 +3388,7 @@ export async function dodip(state = game, rawEnv = {}) {
             const pooltype = waterbody_name(hero.ux, hero.uy, state);
             const prompt = 'Dip ' + (state.flags.verbose ? obuf : shortestName)
                 + ' into the ' + pooltype + '?';
-            if (await y_n(prompt, state) === 'y'.charCodeAt(0)) {
+            if (await y_n(prompt, state) === 'y') {
                 if (Levitation(state)) {
                     await floating_above(pooltype, state, env);
                 } else if (hero.usteed
@@ -3575,7 +3590,7 @@ export async function potion_dip(obj, potion, state = game, rawEnv = {}) {
                 return ECMD_TIME;
             }
         }
-        obj.odiluted = obj.otyp !== POT_WATER;
+        obj.odiluted = obj.otyp !== POT_WATER ? 1 : 0;
         if (obj.otyp === POT_WATER && !Hallucination(state)) {
             await message('The mixture bubbles'
                 + (Blind(state) ? '.' : ', then clears.'), state);

@@ -7,6 +7,7 @@ import { dry_a_towel } from './weapon.js';
 import { align_gname } from './pray.js';
 import { doquiver_core, set_twoweap, setuqwep, setuswapwep, setuwep, welded, weldmsg } from './wield.js';
 import { is_art } from './artifact.js';
+import { EXACT_NAME, FIRE_TRAP, FORCEBUNGLE, HURTLING, OBJ_FREE, OBJ_INVENT, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SUPPRESS_NAME } from './const.js';
 import { ARTICLE_A, ARTICLE_YOUR, AUGMENT_IT, A_CON, A_DEX, A_ORIGINAL, A_STR, BACKTRACK, BOLT_LIM, BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME, BURNING_OIL, CONFUSION, CQ_CANNED, CQ_REPEAT, DB_UNDER, DRAWBRIDGE_UP, D_ISOPEN, ECMD_CANCEL, ECMD_OK, ECMD_TIME, EF_DESTROY, EF_VERBOSE, ERODE_CRACK, ER_DESTROYED, ESHK, EXPL_FIERY, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, HMON_APPLIED, HMON_KICKED, HMON_THROWN, HOLE, Has_contents, IRONBARS, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, IS_SINK, IS_SOFT, IS_TREE, IS_WATERWALL, Is_airlevel, Is_juiblex_level, Is_waterlevel, KILLED_BY, LARGEST_INT, LAVAWALL, LOST_EXPLODING, LOST_THROWN, MM_IGNORELAVA, MM_IGNOREWATER, MM_NOMSG, MOAT, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEUTRAL, PIT, RLOC_MSG, SHOPBASE, SLT_ENCUMBER, SPIKED_PIT, STONE, STUNNED, SUPPRESS_SADDLE, TEST_MOVE, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, WEB, WT_SPLASH_THRESHOLD, WT_TOOMUCH_DIAGONAL, W_QUIVER as W_QUIVER_TO, engulfing_u, has_mgivenname, has_oname, is_hole, is_pit, isok, u_at } from './const.js';
 import { is_pick } from './dig.js';
 import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, _topl_more_pages, await_topl_more_dismiss, canseemon, canspotmon, flush_screen, force_more, getobj_never_mind, glyph_is_invisible_at, glyph_is_warning_at, map_invisible, newsym, obj_to_glyph, pline_flush_point, putmsghistory, sensemon, tmp_at, unmap_object, Unaware as wizard_Unaware } from './display.js';
@@ -31,7 +32,7 @@ import { transient_light_cleanup as _transient_light_cleanup, obj_is_burning, sh
 import { getdir } from './lock.js';
 import { closed_door } from './monmove.js';
 import { canletgo, monPmname, permonstTemplate, set_malign, splitobj, unsplitobj } from './makemon.js';
-import { which_armor as which_armor_worn } from './worn.js';
+import { which_armor } from './worn.js';
 import { Monnam } from './mcastu.js';
 import { Some_Monnam, hmon, passive_obj, s_suffix, seemimic, shade_miss, wakeup_attack, x_monnam } from './mhitm.js';
 import { hits_bars_mu } from './mhitu.js';
@@ -47,6 +48,7 @@ import { set_apparxy } from './monmove.js';
 import { An, The, distant_name as _fw_distant_name, xname as _fw_xname, Tobjnam as _objnam_Tobjnam, an, armor_simple_name, corpse_xname, helm_simple_name, killer_xname, makeplural as makeplural_objnam, mshot_xname, otense, singular, the, vtense } from './objnam.js';
 import { impossible as real_impossible } from './pline.js';
 import { PM_CYCLOPS, PM_FLOATING_EYE, PM_GRID_BUG, PM_HOMUNCULUS, PM_IMP } from './pm.generated.js';
+import { PM_CAVEMAN as PM_CAVE_DWELLER, PM_MONK, PM_NINJA, PM_RANGER, PM_ROGUE, PM_SAMURAI } from './pm.generated.js';
 import { potionbreathe, potionhit } from './potion.js';
 import { finish_quest } from './quest.js';
 import { in_out_region, m_in_out_region } from './region.js';
@@ -70,7 +72,7 @@ import { weight } from './weight.js';
 import { calc_capacity, inv_weight, near_capacity, weight_cap } from './hack.js';
 import { cutworm as cutworm_real } from './worm.js';
 import { boomhit, miss, obj_resists } from './zap.js';
-import { explode } from './explode.js';
+import { explode, explode_oil } from './explode.js';
 import { _Blind_dk } from './dokick.js'; // relocate-fns
 
 export async function dothrow() {
@@ -243,6 +245,9 @@ export async function dothrow() {
         } else {
             /* C topl.c:425-427,534-539: suppress the unanswered prompt, then
              * remember prompt + key2txt(answer), including '?' and '*'. */
+            // topl.c:424-425 custompline of query + space also updates gp.prevmsg
+            // (pline.c:282), independently of the suppressed history entry.
+            g._prevmsg = throwQbuf + ' ';
             const savedSuppress = g._topl_suppress_history;
             g._topl_suppress_history = true;
             try { itemRaw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
@@ -1317,11 +1322,13 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
 /* C ref: dothrow.c:1913-1949 omon_adj(struct monst *mon, struct obj *obj,
  * boolean mon_notices) — to-hit adjustment for a thrown/kicked object
  * against a monster target. */
+const MZ_MEDIUM = 2;            /* monflag.h */
+const HEAVY_IRON_BALL = 477;    /* objects.h (js/oc_name_data.js index) */
 export function omon_adj(mon, obj, mon_notices) {
     let tmp = 0;
 
     /* size of target affects the chance of hitting */
-    tmp += (mon.data.msize | 0) - 2; /* MZ_MEDIUM */
+    tmp += (mon.data.msize | 0) - MZ_MEDIUM;
     /* sleeping target is more likely to be hit */
     if (mon.msleeping) {
         tmp += 2;
@@ -1336,7 +1343,7 @@ export function omon_adj(mon, obj, mon_notices) {
     }
     /* some objects are more likely to hit than others */
     switch (obj.otyp | 0) {
-    case 477: /* HEAVY_IRON_BALL */
+    case HEAVY_IRON_BALL:
         if (obj !== game.u.uball)
             tmp += 2;
         break;
@@ -1366,14 +1373,14 @@ export async function return_throw_to_inv(obj, wep_mask, twoweap, oldslot) {
     if (split && (obj.o_id === split.parent_oid || obj.o_id === split.child_oid)) {
         obj.nobj = game.invent;
         game.invent = obj;
-        obj.where = 3; /* OBJ_INVENT */
+        obj.where = OBJ_INVENT;
         restored = await unsplitobj(obj);
         if (restored) {
             obj = restored;
         } else {
             game.invent = obj.nobj;
             obj.nobj = null;
-            obj.where = 0;
+            obj.where = OBJ_FREE;
         }
     }
     if (!restored) {
@@ -1849,7 +1856,7 @@ export async function throwit_mon_hit(obj, mon) {
     if (mon.isshk && (obj.where | 0) === THIT_OBJ_MINVENT && obj.ocarry === mon)
         return true;
     await snuff_candle(obj);
-    /* C:1490 gn.notonhead = (gb.bhitpos.x != mon->mx || gb.bhitpos.y != mon->my) */
+    /* C:1491 gn.notonhead = (gb.bhitpos.x != mon->mx || gb.bhitpos.y != mon->my) */
     const bp = game.bhitpos || { x: mon.mx | 0, y: mon.my | 0 };
     game.notonhead = (game.gn ||= {}).notonhead = ((bp.x | 0) !== (mon.mx | 0) || (bp.y | 0) !== (mon.my | 0));
     const obj_gone = await thitmonst(mon, obj);
@@ -1872,6 +1879,7 @@ export async function throwit_mon_hit(obj, mon) {
     return false;
 }
 
+const WAN_STRIKING = 417;       /* objects.h (js/oc_name_data.js index) */
 export async function hitfloor(obj, verbosely) {
     const u = game.u;
     const typ = game.level.at(u.ux, u.uy).typ;
@@ -1882,7 +1890,7 @@ export async function hitfloor(obj, verbosely) {
     if (IS_ALTAR(typ)) {
         await doaltarobj(obj);
     } else if (verbosely) {
-        const verb = obj.otyp === 417 /* WAN_STRIKING */ ? 'strike' : 'hit';
+        const verb = obj.otyp === WAN_STRIKING ? 'strike' : 'hit';
         let surf = surface(u.ux, u.uy);
         const trap = t_at(u.ux, u.uy);
         if (trap?.tseen) {
@@ -2047,7 +2055,7 @@ async function hurtle_step(arg, x, y, via_jumping) {
         if (_mh_touch_petrifies(mon.data) && !u.uarmu && !u.uarm && !u.uarmc)
             await instapetrify(`bumping into ${an(monPmname(mon.data.pmidx, NEUTRAL))}`);
         if (_mh_touch_petrifies(_hero_youmonst().data)
-            && !_mh_which_armor(mon, _MH_W_ARMU_ARM_ARMC))
+            && !which_armor(mon, _MH_W_ARMU_ARM_ARMC))
             await minstapetrify(mon, true);
         wake_nearto(x, y, 10);
         return false;
@@ -2077,10 +2085,13 @@ async function hurtle_step(arg, x, y, via_jumping) {
     /* dothrow.c:934-943 — pool/lava Norep messages.  is_pool_or_lava covers
      * both; a jump that lands short (stopping_short) stays silent. */
     if (flooreffects_is_pool(x, y) && !u.uinwater) {
-        /* dothrow.c:928-939; hurtle_jump's EWwalking |= I_SPECIAL (dothrow.c:747)
-           makes Wwalking true, so a jump never drowns here. */
+        /* dothrow.c:924-935.  C's hurtle_jump sets EWwalking |= I_SPECIAL
+           (dothrow.c:748); this port passes that bit as via_jumping instead,
+           so Wwalking = ((HWwalking || EWwalking) && !Is_waterlevel) is
+           spelled out here (youprop.h:260). */
         if (is_waterwall(x, y)
-            || !(_Levitation() || _Flying() || via_jumping
+            || !(_Levitation() || _Flying()
+                 || (via_jumping && !Is_waterlevel(u.uz))
                  || pooleffects_Wwalking())) {
             game.multi = 0;
             await drown();
@@ -2092,7 +2103,7 @@ async function hurtle_step(arg, x, y, via_jumping) {
                     && ((_lt.drawbridgemask | 0) & DB_UNDER) === DB_MOAT_WB));
             await _Norep(`You move over ${_moat ? 'a moat' : 'a pool'}.`);
         }
-    } else if (flooreffects_is_lava(x, y) && !stopping_short) {
+    } else if (is_lava(x, y) && !stopping_short) {     /* dothrow.c:936 */
         await _Norep('You move over some lava.');
     }
 
@@ -2101,8 +2112,10 @@ async function hurtle_step(arg, x, y, via_jumping) {
         if (ttmp.ttyp === MAGIC_PORTAL) {
             await dotrap(ttmp, 0);
             return false;
-        } else if (ttmp.ttyp === VIBRATING_SQUARE || ttmp.ttyp === 10 /* FIRE_TRAP */) {
-            if (ttmp.ttyp === VIBRATING_SQUARE) await pline('The ground vibrates as you pass it.');
+        } else if (ttmp.ttyp === VIBRATING_SQUARE) {
+            await pline('The ground vibrates as you pass it.');
+            await dotrap(ttmp, 0); /* doesn't print messages */
+        } else if (ttmp.ttyp === FIRE_TRAP) {
             await dotrap(ttmp, 0);
         } else if ((is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp)) && _bldr_Sokoban()) {
             if (!via_jumping) await dotrap(ttmp, 0);
@@ -2134,10 +2147,10 @@ export async function hurtle(dx, dy, range, verbose) {
     }
 
     // carried(o) — C ref: invent.c: return o.where == OBJ_INVENT
-    const carried = (o) => o != null && (o.where | 0) === 3; // OBJ_INVENT
+    const carried = (o) => o != null && (o.where | 0) === OBJ_INVENT;
 
     if (uball != null && !carried(uball)) {
-        await pline((wizard_Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a tug from the iron ball.');  // dothrow.c:1089
+        await pline((wizard_Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a tug from the iron ball.');  // dothrow.c:1091
         nomul(0);
         return;
     } else if (u.utrap) {
@@ -2192,10 +2205,7 @@ export function will_hurtle(mon, x, y) {
     return !!goodpos(x, y, mon, MM_IGNOREWATER | MM_IGNORELAVA);
 }
 
-/* C worn.c:1006-1035 — share the hero-slot and monster-inventory lookup. */
-function _mh_which_armor(mon, flag) {
-    return which_armor_worn(mon, flag);
-}
+/* C worn.c:1006-1035 which_armor — canonical port imported from worn.js */
 
 /* C rm.h:526-534 #define remove_monster(x, y) svl.level.monsters[x][y] = 0.
  * JS has no separate monster grid, but m_at()/newsym() treat _mapRemoved as
@@ -2211,6 +2221,8 @@ function _mh_remove_monster(x, y) {
     }
 }
 
+/* trap.h:99-103 mintrap() results */
+const Trap_Caught_Mon = 1, Trap_Killed_Mon = 2, Trap_Moved_Mon = 3;
 async function mhurtle_step(mon, x, y) {
     if (!isok(x, y))
         return false;
@@ -2234,10 +2246,9 @@ async function mhurtle_step(mon, x, y) {
         set_apparxy(mon);
         if (is_waterwall(x, y))
             return false;
-        const res = await mintrap(mon, 0x80 /* HURTLING, const.js */);
-        if (res === 2 /* Trap_Killed_Mon */
-            || res === 1 /* Trap_Caught_Mon */
-            || res === 3 /* Trap_Moved_Mon */)
+        const res = await mintrap(mon, HURTLING);
+        if (res === Trap_Killed_Mon || res === Trap_Caught_Mon
+            || res === Trap_Moved_Mon)
             return false;
         return true;
     }
@@ -2249,13 +2260,13 @@ async function mhurtle_step(mon, x, y) {
         await wakeup_attack(mtmp, !(game.context && game.context.mon_moving));
         /* check whether 'mon' is turned to stone by touching 'mtmp' */
         if (_mh_touch_petrifies(mtmp.data)
-            && !_mh_which_armor(mon, _MH_W_ARMU_ARM_ARMC)) {
+            && !which_armor(mon, _MH_W_ARMU_ARM_ARMC)) {
             await minstapetrify(mon, !(game.context && game.context.mon_moving));
             newsym(mon.mx, mon.my);
         }
         /* and whether 'mtmp' is turned to stone by being touched by 'mon' */
         if (_mh_touch_petrifies(mon.data)
-            && !_mh_which_armor(mtmp, _MH_W_ARMU_ARM_ARMC)) {
+            && !which_armor(mtmp, _MH_W_ARMU_ARM_ARMC)) {
             await minstapetrify(mtmp, !(game.context && game.context.mon_moving));
             newsym(mtmp.mx, mtmp.my);
         }
@@ -2266,7 +2277,7 @@ async function mhurtle_step(mon, x, y) {
         await stop_occupation();
         /* check whether 'mon' is turned to stone by touching poly'd hero */
         if (Upolyd(u) && _mh_touch_petrifies(_hero_youmonst().data)
-            && !_mh_which_armor(mon, _MH_W_ARMU_ARM_ARMC)) {
+            && !which_armor(mon, _MH_W_ARMU_ARM_ARMC)) {
             /* give poly'd hero credit/blame despite a monster causing it */
             await minstapetrify(mon, true);
             newsym(mon.mx, mon.my);
@@ -2275,11 +2286,7 @@ async function mhurtle_step(mon, x, y) {
         if (_mh_touch_petrifies(mon.data) && !(u.uarmu || u.uarm || u.uarmc)) {
             const str = `being hit by ${x_monnam(mon,
                 mon.mtame ? ARTICLE_YOUR : ARTICLE_A, 'hurtling',
-                0x1F /* EXACT_NAME, hack.h: SUPPRESS_IT|INVISIBLE|HALLUCINATION
-                        |SADDLE|MAPPEARANCE — NOT const.js's own EXACT_NAME
-                        export, which computes 0x27 (SUPPRESS_NAME swapped in
-                        for SADDLE|MAPPEARANCE, per js/mhitm.js:324) */
-                | 0x20 /* SUPPRESS_NAME, const.js */, false)}`;
+                EXACT_NAME | SUPPRESS_NAME, false)}`;
             await instapetrify(str);
             newsym(u.ux, u.uy);
         }
@@ -2327,7 +2334,7 @@ export async function mhurtle(mon, dx, dy, range) {
     await walk_path(mc, cc, mhurtle_step, mon);
     if (!DEADMONSTER(mon)) {
         if (t_at(mon.mx, mon.my))
-            await mintrap(mon, 0x04 /* FORCEBUNGLE, const.js */);
+            await mintrap(mon, FORCEBUNGLE);
         else
             await minliquid(mon);
     }
@@ -2366,6 +2373,7 @@ export function throwing_weapon(obj) {
 // fireassist defaults ON (iflags.fireassist = On in optlist.h).
 /* C ref: dothrow.c:381-454 autoquiver() — fill an empty quiver from inventory
  * (reached only with flags.autoquiver, dothrow.c:529-538). */
+const WEAPON_CLASS = 2;         /* objclass.h */
 async function autoquiver() {
     const g = game, u = g.u;
     if (u.uquiver) return;
@@ -2390,8 +2398,8 @@ async function autoquiver() {
             else omisc = otmp;
         } else if (is_missile(otmp)) {
             omissile = otmp;
-        } else if ((otmp.oclass | 0) === 2 /* WEAPON_CLASS */ && throwing_weapon(otmp)) {
-            if ((MKOBJ_OC_SKILL[t] | 0) === 1 /* P_DAGGER */ && !omissile) omissile = otmp;
+        } else if ((otmp.oclass | 0) === WEAPON_CLASS && throwing_weapon(otmp)) {
+            if ((MKOBJ_OC_SKILL[t] | 0) === P_DAGGER && !omissile) omissile = otmp;
             else if (t === OTYP_AKLYS) continue;
             else omisc = otmp;
         }
@@ -2457,7 +2465,6 @@ export async function dofire() {
     if (!uq) {
         const _fireassist = g.iflags?.fireassist !== false; /* iflags.fireassist = On (optlist.h default) */
         if (!g.flags?.autoquiver && uw && is_pole(uw)) {
-            /* use_pole IS ported now (above): C `return use_pole(uwep, TRUE)`. */
             const _upRes = await use_pole(uw, true);
             g.context = g.context || {};
             g.context.move = (_upRes & ECMD_TIME) ? 1 : 0;
@@ -2481,11 +2488,7 @@ export async function dofire() {
             g.context.move = 0;
             return ECMD_OK;
         }
-        /* C ref: dothrow.c:527 — the else rung.  GAP, named: rung 2
-         * (`uwep->otyp == BULLWHIP` -> use_whip) still falls through to this
-         * message.  use_whip DOES getdir() and so DOES consume a key, so the
-         * no-message treatment used for the polearm rung would desync here;
-         * neither choice is right and the existing one is left in place. */
+        /* C ref: dothrow.c:525-538 — the else rung, or the autoquiver arm. */
         if (g.flags?.autoquiver) {
             /* C ref: dothrow.c:529-538 — autoquiver arm */
             await autoquiver();
@@ -2565,6 +2568,17 @@ export async function dofire() {
             }
         }
         else {
+            /* C ref: dothrow.c:571-579 — the THIRD fireassist rung,
+             *     } else if ((olauncher = find_launcher(uquiver)) != 0) {
+             *         if (uwep && !flags.pushweapon) cmdq_add_ec(doswapweapon);
+             *         cmdq_add_ec(dowield); cmdq_add_key(olauncher->invlet);
+             *         cmdq_add_ec(dofire); return res;
+             * _find_launcher() is the find_launcher() port, used on the
+             * FF_FAITHFUL (scored) path.
+             *
+             * FALLING THROUGH IS C's OWN BEHAVIOUR when no launcher exists:
+             * dothrow.c:581 runs `altres = obj ? throw_obj(obj, shotlimit)
+             * : ECMD_CANCEL` for EVERY path out of the assist ladder. */
             const olauncher = FF_FAITHFUL ? _find_launcher(uq) : null;
             if (olauncher) {
                 /* C dothrow.c:571-577 — wield the launcher, then retry fire. */
@@ -2734,74 +2748,44 @@ function _throw_confused_or_stunned() {
 // C ref: dothrow.c:39-83.  skill = objects[ammo.otyp].oc_skill (can be negative).
 // P_DAGGER=1, P_SLING=21, P_SPEAR=17, P_SHURIKEN=24, P_BOW=20.
 function _multishot_class_bonus(pm, ammo, launcher) {
-    const P_DAGGER  = 1;
-    const P_SPEAR   = 17;
-    const P_SLING   = 21;
-    const P_SHURIKEN = 24;
-    const skill = ammo ? _oc_skill(ammo) : 0;
-    switch (pm) {
-    case 2: /* PM_CAVE_DWELLER (caveman/cavewoman) */
-        if (skill === -P_SLING || skill === P_SPEAR)
-            return 1;
-        break;
-    case 5: /* PM_MONK */
-        if (skill === -P_SHURIKEN)
-            return 1;
-        break;
-    case 8: /* PM_RANGER */
-        /* C ref: dothrow.c:59 — bonus for anything except daggers */
-        if (skill !== P_DAGGER)
-            return 1;
-        break;
-    case 7: /* PM_ROGUE */
-        if (skill === P_DAGGER)
-            return 1;
-        break;
-    /* PM_NINJA (no hero role in NH3.7 — treated as PM_SAMURAI fallthrough) */
-    case 9: /* PM_SAMURAI */
-        /* C ref: dothrow.c:73-77 — ya + yumi launcher → +1 */
-        if (ammo && ammo.otyp === OTYP_YA && launcher && launcher.otyp === OTYP_YUMI)
-            return 1;
-        break;
-    default:
-        break;
-    }
-    return 0;
+    const roleMnum = (pm === 2 || pm === PM_CAVE_DWELLER) ? PM_CAVE_DWELLER :
+        (pm === 5 || pm === PM_MONK) ? PM_MONK :
+        (pm === 8 || pm === PM_RANGER) ? PM_RANGER :
+        (pm === 7 || pm === PM_ROGUE) ? PM_ROGUE :
+        (pm === 9 || pm === PM_SAMURAI) ? PM_SAMURAI : pm;
+    return multishot_class_bonus(roleMnum, ammo, launcher);
 }
 
-// C ref: dothrow.c multishot_class_bonus() — exact port.
+// C ref: dothrow.c:38-83 multishot_class_bonus() — exact port.  pm is a
+// MONSTER index (C passes Role_switch or monsndx()), not a role index.
 export function multishot_class_bonus(pm, ammo, launcher) {
     let multishot = 0;
     const skill = _oc_skill(ammo);
-    const P_DAGGER  = 1;
-    const P_SPEAR   = 17;
-    const P_SLING   = 21;
-    const P_SHURIKEN = 24;
-    const P_DART    = 23;
+    const YA = OTYP_YA, YUMI = OTYP_YUMI;
 
     switch (pm) {
-    case 2: /* PM_CAVE_DWELLER */
+    case PM_CAVE_DWELLER:
         if (skill === -P_SLING || skill === P_SPEAR)
             multishot++;
         break;
-    case 5: /* PM_MONK */
+    case PM_MONK:
         if (skill === -P_SHURIKEN)
             multishot++;
         break;
-    case 8: /* PM_RANGER */
+    case PM_RANGER:
         if (skill !== P_DAGGER)
             multishot++;
         break;
-    case 7: /* PM_ROGUE */
+    case PM_ROGUE:
         if (skill === P_DAGGER)
             multishot++;
         break;
-    case 10: /* PM_NINJA — FALLTHROUGH to SAMURAI */
+    case PM_NINJA:
         if (skill === -P_SHURIKEN || skill === -P_DART)
             multishot++;
         /* FALLTHROUGH */
-    case 9: /* PM_SAMURAI */
-        if (ammo.otyp === OTYP_YA && launcher && launcher.otyp === OTYP_YUMI)
+    case PM_SAMURAI:
+        if (ammo.otyp === YA && launcher && launcher.otyp === YUMI)
             multishot++;
         break;
     default:
@@ -3036,8 +3020,8 @@ export function should_mulch_missile(obj) {
     if (otyp === OTYP_BOOMERANG)
         return 0;
 
-    /* C dothrow.c:1987 — the magical sling stones are ammo by oc_skill but
-     * should_mulch_missile excludes every object whose class metadata is magic. */
+    /* C dothrow.c:1984 — should_mulch_missile excludes every object whose
+     * own oc_magic flag is set. */
     if (MKOBJ_OC_MAGIC[otyp])
         return 0;
 
@@ -3132,15 +3116,6 @@ function _throwit_haseyes(mondata) {
     return (((mondata && mondata.mflags1) | 0) & 0x00001000) === 0;
 }
 
-/* C mondata.h:48 eyecount(ptr) — singular vs plural only (one eye: cyclops,
- * floating eye).  Same local-copy convention as _throwit_haseyes. */
-function _throwit_eyecount(mondata) {
-    if (!_throwit_haseyes(mondata))
-        return 0;
-    const mndx = (mondata && (mondata.pmidx ?? mondata.mnum)) | 0;
-    return (mndx === PM_CYCLOPS || mndx === PM_FLOATING_EYE) ? 1 : 2;
-}
-
 async function _throwit_breakmsg(obj, in_view) {
     if ((obj.oclass | 0) === 3 && (MKOBJ_OC_MATERIAL[obj.otyp] | 0) === 19) return; // C dothrow.c:2618: erode_obj prints cracks
     const POTION_CLASS = 8, POT_WATER = 322;
@@ -3192,36 +3167,6 @@ async function _throwit_breakmsg(obj, in_view) {
     }
 }
 
-/* C ref: explode.c:960-967 splatter_burning_oil(x, y, diluted_oil) —
- *     int dmg = d(diluted_oil ? 3 : 4, 4);
- *     explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
- * ZT_SPELL(ZT_FIRE) = ZT_SPELL(AD_FIRE-1) = 10+(2-1) = 11 (explode.c:964's own
- * comment; zap.c's ZT_SPELL macro is `10+(typ)` and AD_FIRE-1 = 2-1 = 1, so
- * 10+1=11 — the same kludge value explode.c hardcodes rather than importing
- * the macro). */
-const ZT_SPELL_O_FIRE = 11;
-
-async function _throwit_splatter_burning_oil(x, y, diluted_oil) {
-    const dmg = d(diluted_oil ? 3 : 4, 4);
-    await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
-}
-
-/* C ref: explode.c:970-979 explode_oil(struct obj *obj, x, y) — the lit
- * oil potion breaking mid-flight (thrown while burning):
- *     boolean diluted_oil = obj->odiluted;
- *     if (!obj->lamplit) impossible("exploding unlit oil");
- *     end_burn(obj, TRUE);
- *     obj->how_lost = LOST_EXPLODING;
- *     splatter_burning_oil(x, y, diluted_oil);
- * Called only from breakobj()'s POT_OIL branch when the caller has already
- * checked obj->lamplit, so the impossible() guard is C-unreachable here. */
-async function _throwit_explode_oil(obj, x, y) {
-    const diluted_oil = !!obj.odiluted;
-    end_burn(obj, true);
-    obj.how_lost = LOST_EXPLODING;
-    await _throwit_splatter_burning_oil(x, y, diluted_oil);
-}
-
 /* C dothrow.c:2457 release_camera_demon.  The monster constructor is
  * synchronous in this port; only the visibility message can suspend. */
 export async function release_camera_demon(obj, x, y) {
@@ -3260,7 +3205,7 @@ async function _throwit_breakobj(obj, x, y) {
     case POT_WATER: {
         obj.in_use = 1;
         if ((obj.otyp | 0) === POT_OIL && obj.lamplit) {
-            await _throwit_explode_oil(obj, x, y);
+            await explode_oil(obj, x, y);
         } else if (_throwit_next2u(x, y)) {
             const mdata = game.youmonst && game.youmonst.data;
             if (!_throwit_breathless(mdata) || _throwit_haseyes(mdata)) {
@@ -3269,7 +3214,6 @@ async function _throwit_breakobj(obj, x, y) {
                         await pline('You smell a peculiar odor...');
                     } else {
                         let eyes = body_part(EYE);
-                        if (_throwit_eyecount(mdata) !== 1)
                         // C dothrow.c:2512-2513: plural unless the form has one eye.
                         if (_eyecount(mdata) !== 1)
                             eyes = makeplural_objnam(eyes);
@@ -3326,7 +3270,7 @@ export async function hero_breaks(obj, x, y, breakflags) {
 }
 
 export async function breakmsg(obj, in_view) {
-    /* C dothrow.c:2613-2655.  Message-only phase; no RNG or object mutation. */
+    /* C dothrow.c:2611-2653.  Message-only phase; no RNG or object mutation. */
     if (is_crackable_bo(obj)) return;
     const POTION_CLASS = 8, WAND_CLASS = 11;
     const POT_WATER = 322, LENSES = 232, MIRROR = 230,
@@ -3377,14 +3321,14 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
                used to say 'matching this function's own sync-context pline()
                calls just above'; pline() is async-but-VACUOUS (no await
                anywhere in its transitive body), so calling it unawaited is
-               behaviourally a sync call.  _throwit_explode_oil is NOT: it
+               behaviourally a sync call.  explode_oil is NOT: it
                awaits explode(), which awaits drain_pending_death_in_place ->
                do_death_sequence -> really_done -> readKey.  It can suspend, so
                this call really does run C's dothrow.c:2503 AFTER breakobj()
                returns.
                THE BOUNDARY IS NOT HERE — see the async-boundary note above
                breakobj()'s header. */
-            await _throwit_explode_oil(obj, x, y);
+            await explode_oil(obj, x, y);
         } else if (_throwit_next2u(x, y)) {
             const mdata = game.youmonst && game.youmonst.data;
             if (!_throwit_breathless(mdata) || _throwit_haseyes(mdata)) {
@@ -3393,8 +3337,7 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
                         await pline('You smell a peculiar odor...');
                     } else {
                         let eyes = body_part(EYE);
-                        if (_throwit_eyecount(mdata) !== 1)
-                        if (_eyecount(mdata) !== 1)
+                        if (_eyecount(mdata) !== 1) /* C dothrow.c:2512 */
                             eyes = makeplural_objnam(eyes);
                         await Your('%s %s.', eyes, vtense(eyes, 'water'));
                     }

@@ -3,6 +3,9 @@ import { ESHK } from './const.js';
 import { pline } from './pline.js';
 import { currency } from './cmd.js';
 
+// C shk.c:630 credit_snap indices
+const BEFORE = 0, NOW = 1;
+
 /* C shk.c:628 credit_report: snapshot credit, debit and loan around an
  * operation, then report the first applicable change in that order. */
 export async function credit_report(shkp, idx, silent) {
@@ -10,10 +13,10 @@ export async function credit_report(shkp, idx, silent) {
     const snapshots = game._credit_report_snapshots
         ||= [[0, 0, 0], [0, 0, 0]];
     if (!idx) {
-        snapshots[0] = [0, 0, 0];
-        snapshots[1] = [0, 0, 0];
+        snapshots[BEFORE] = [0, 0, 0];
+        snapshots[NOW] = [0, 0, 0];
     } else {
-        idx = 1;
+        idx = NOW;
     }
     snapshots[idx] = [eshk.credit || 0, eshk.debit || 0, eshk.loan || 0];
     if (idx && !silent) {

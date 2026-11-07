@@ -128,6 +128,7 @@ import {
     RIGHT_SIDE,
     WOUNDED_LEGS,
     W_ACCESSORY,
+    W_BALL,
     W_ARMOR,
     W_SADDLE,
     W_QUIVER,
@@ -225,7 +226,7 @@ import { floating_above } from './fountain.js';
 import { artifact_has_invprop } from './artifacts.js';
 import { record_achievement } from './insight.js';
 import { game } from './gstate.js';
-import { livelog_printf } from './pline.js';
+import { livelog_printf, youSee } from './pline.js';
 import { dist2, s_suffix, upstart } from './hacklib.js';
 import { get_obj_location } from './light.js';
 import {
@@ -1489,12 +1490,14 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
             await ttyPline("You don't see anything happen to the sink.", state);
             break;
         case RIN_FREE_ACTION:
-            await ttyPline('You see the ring slide right down the drain!', state);
+            await ttyPline(
+                youSee('the ring slide right down the drain!', state), state);
             break;
         case RIN_SEE_INVISIBLE: {
             const sinkContents = heroHallucinating(state)
                 ? 'oxygen molecules' : 'air';
-            await ttyPline(`You see some ${sinkContents} in the sink.`, state);
+            await ttyPline(
+                youSee(`some ${sinkContents} in the sink.`, state), state);
             break;
         }
         case RIN_STEALTH:
@@ -1830,7 +1833,7 @@ export async function doddrop(state = game) {
 export async function better_not_try_to_drop_that(obj, state = game) {
     if (obj.otyp === CORPSE && !u_safe_from_fatal_corpse(obj, st_all, state)) {
         const prompt = `Drop the ${obj_pmname(obj, state)} corpse without ${body_part(HAND, state.youmonst)} protection on?`;
-        return await paranoid_ynq(true, prompt, false, state) !== 'y'.charCodeAt(0);
+        return await paranoid_ynq(true, prompt, false, state) !== 'y';
     }
     return false;
 }
@@ -1975,24 +1978,28 @@ export function preflight_dropx(obj, env = {}) {
         throw new UnsupportedDropError('special-level display');
     // dig.c:341 drops uwep directly; do.c:810 clears it in dropz after
     // extraction, shipping and altar handling. Admit only that primary mask.
-    const primaryWeapon = state.uwep === obj && obj.owornmask === W_WEP;
+    // The carried iron ball keeps its W_BALL mask through freeinv(); dropz()
+    // places it and calls ball.c drop_ball() (do.c:833-834).
+    const ballMask = state.uball === obj ? W_BALL : 0;
+    const primaryWeapon = state.uwep === obj
+        && (obj.owornmask & ~ballMask) === W_WEP;
     const secondaryWeapon = state.uswapwep === obj
         && Boolean(obj.owornmask & W_SWAPWEP);
     // worn.c:91-94 allows W_SWAPWEP and W_QUIVER on one object; do.c:814-818
     // clears both equipment pointers when that object is dropped.
-    const allowedWornMask = primaryWeapon ? W_WEP
-        : secondaryWeapon ? W_SWAPWEP | W_QUIVER : 0;
+    const allowedWornMask = (primaryWeapon ? W_WEP
+        : secondaryWeapon ? W_SWAPWEP | W_QUIVER : 0) | ballMask;
     if ((obj.owornmask & ~allowedWornMask) || (state.uwep === obj && !primaryWeapon)
         || (state.uquiver === obj && !secondaryWeapon)
-        || (state.uswapwep === obj && !secondaryWeapon)
-        || state.uball === obj) {
+        || (state.uswapwep === obj && !secondaryWeapon)) {
         throw new UnsupportedDropError('a worn or attached object');
     }
     // do.c:dropz() places a returned shop item before shk.c:sellobj()
-    // removes it from the bill. Admit that source path for a plain unpaid
-    // item on the resident keeper's costly square; retain the boundary for
-    // unpaid containers and drops outside the shop.
-    if (obj.unpaid && (obj.cobj || !costly_spot(u.ux, u.uy, state)))
+    // removes it from the bill. Admit that source path for an unpaid item,
+    // plain or a container (sellobj()'s dropped_container() and subfrombill()
+    // arms), on the resident keeper's costly square; retain the boundary for
+    // drops outside the shop.
+    if (obj.unpaid && !costly_spot(u.ux, u.uy, state))
         throw new UnsupportedDropError('an unpaid object');
 
     const { ux: x, uy: y } = u;
@@ -2527,8 +2534,7 @@ export async function dodown(state = game, env = {}) {
         && !u.uevent?.gehennom_entered) {
         await ttyPline('You are standing at the gate to Gehennom.', state);
         await ttyPline('Unspeakable cruelty and harm lurk down there.', state);
-        if (await y_n('Are you sure you want to enter?', state)
-            !== 'y'.charCodeAt(0))
+        if (await y_n('Are you sure you want to enter?', state) !== 'y')
             return ECMD_OK;
         await ttyPline('So be it.', state);
         u.uevent ??= {};
@@ -2547,8 +2553,7 @@ export async function dodown(state = game, env = {}) {
         let actn = u_locomotion('jump', state);
         if (state.youmonst.data.msize >= MZ_HUGE) {
             await ttyPline(`You don't fit ${down_or_thru} easily.`, state);
-            if (await y_n(`Try to squeeze ${down_or_thru}?`, state)
-                === 'y'.charCodeAt(0)) {
+            if (await y_n(`Try to squeeze ${down_or_thru}?`, state) === 'y') {
                 if (!rn2(3)) {
                     actn = 'manage to squeeze';
                     let damage = rnd(4);
@@ -2642,9 +2647,10 @@ export async function doup(state = game) {
         const answer = await y_n(
             'Beware, there will be no return!  Still climb?', state,
         );
-        if (answer !== 'y'.charCodeAt(0)) return ECMD_OK;
+        if (answer !== 'y') return ECMD_OK;
     }
     if (!(await next_to_u(state))) {
+
         await ttyPline('You are held back by your pet!', state);
         return ECMD_OK;
     }

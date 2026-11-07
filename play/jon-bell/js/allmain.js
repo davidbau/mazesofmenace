@@ -85,6 +85,24 @@ import { pline_flush_point, under_water, under_ground, recorder_localtime } from
 import { spoteffects } from './hack.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
+// C ref: mkobj.c:3250-3275 insane_obj_bits() via objlist_sanity(invent) only.
+// container walks and the other per-object checks are not ported.  fmt_ptr's
+// host address cannot be reproduced; o_id stands in for it.
+async function obj_sanity_check() {
+    for (let obj = game.invent; obj; obj = obj.nobj) {
+        const o_in_use = obj.in_use | 0, o_bypass = obj.bypass | 0;
+        const o_nomerge = obj.nomerge | 0;
+        if (!(o_in_use || o_bypass || o_nomerge)) continue;
+        const infobuf = 'flagged' + (o_in_use ? ' in_use' : '')
+            + (o_bypass ? ' bypass' : '') + (o_nomerge ? ' nomerge' : '');
+        game.iflags.override_ID = (game.iflags.override_ID | 0) + 1;
+        const objnm = await doname(obj);
+        game.iflags.override_ID--;
+        await impossible('%s obj %s %s: %s', infobuf,
+                         '0x' + (obj.o_id | 0).toString(16), 'invent', objnm);
+    }
+}
+
 // C ref: wizcmds.c:1449-1458 levl_sanity_check()
 async function levl_sanity_check() {
     if (game.u.uinwater) return; /* Underwater uses different vision */
@@ -175,8 +193,8 @@ import { maybe_shuffle_customizations } from './glyphs.js';
 import { topl_force_break_now, force_more_pages } from './display.js';
 import { friday_13th, getnow, phase_of_the_moon } from './calendar.js'; // relocate-fns
 import { pooleffects_breathless } from './cmd.js'; // relocate-fns
-import { A_WIS, ENERGY_REGENERATION, HALF_PHDAM, MAXULEV, MOD_ENCUMBER, REGENERATION, Upolyd } from './const.js'; // relocate-fns
-import { MONS, S_EEL_FF, UNENCUMBERED, _uasmon_mlet } from './fastforward.js';
+import { A_INT, A_WIS, ENERGY_REGENERATION, EXT_ENCUMBER, HALF_PHDAM, HVY_ENCUMBER, MAXULEV, MOD_ENCUMBER, NO_MM_FLAGS, REGENERATION, SLT_ENCUMBER, UNENCUMBERED, Upolyd } from './const.js'; // relocate-fns
+import { MONS, S_EEL_FF, _uasmon_mlet } from './fastforward.js';
 import { mcalcmove } from './mon.js'; // relocate-fns
 import { depth as dungeon_depth } from './dungeon.js'; // relocate-fns
 import { makemon } from './mklev.js'; // relocate-fns
@@ -1391,6 +1409,7 @@ async function faithful_moveloop_turn() {
             if (++monPass >= 100000) break; // safety: never spin on a broken move chain
         } while (monscanmove);
         g._inMovemonBlock = false;
+        g._movemonExitSeq = (g._movemonExitSeq | 0) + 1; /* display.js page frames */
         /* C allmain.c:216 `svc.context.mon_moving = FALSE;` */
         if (g.context) g.context.mon_moving = false;
         if (_turnTrace)
@@ -2290,6 +2309,9 @@ async function nh_timeout_fast() {
         await pline(`${Unaware() ? 'You dream that you feel' : 'You feel'} yourself slow down${Fast ? ' a bit' : ''}.`);
 }
 
+/* C timeout.c:354 SIZE(levi_texts) */
+const SIZE_LEVI_TEXTS = 2;
+
 /* C timeout.c:347-378 — the last two warnings before timed descent. */
 async function levitation_dialogue() {
     const u = game.u;
@@ -2301,7 +2323,7 @@ async function levitation_dialogue() {
     if (!ACCESSIBLE(game.level?.at(u.ux, u.uy)?.typ ?? 0) && !poolOrLava)
         return;
     const i = Math.trunc((timeout - 1) / 2);
-    if ((timeout % 2) && i > 0 && i <= 2) {
+    if ((timeout % 2) && i > 0 && i <= SIZE_LEVI_TEXTS) {
         if (i === 2) {
             await pline('You float slightly lower.');
         } else {
@@ -2456,6 +2478,8 @@ const FOOT_AM = 5;
 /* objects[] index of "corpse", from js/oc_name_data.js's OC_NAME table —
  * objects.h is an X-macro file with no `#define CORPSE` text to grep. */
 const CORPSE_AM = 265;
+/* objects.h ROCK */
+const ROCK = 474;
 async function slip_or_trip() {
     const g = game;
     const u = g.u;
@@ -2465,8 +2489,7 @@ async function slip_or_trip() {
     if (otmp && on_foot && !u.uinwater && is_pool(u.ux | 0, u.uy | 0))
         otmp = null;
     if (otmp && on_foot) {
-        /* C timeout.c:1234 — after look_here reported one item, refer to it
-         * by pronoun; this port previously always regenerated its full name. */
+        /* C timeout.c:1232-1247 — trip over something in particular. The PLNMSG_ONE_ITEM_HERE pronoun arm reads g.iflags.last_msg, matching C timeout.c:1240. */
         const oneItem = (g.iflags?.last_msg | 0) === PLNMSG_ONE_ITEM_HERE;
         let what;
         if (oneItem) {
@@ -2479,7 +2502,7 @@ async function slip_or_trip() {
              * identify a visible rock if present, otherwise say “something”. */
             let rock = null;
             for (let o = otmp; o; o = o.nexthere) {
-                if ((o.otyp | 0) === 474) {
+                if ((o.otyp | 0) === ROCK) {
                     rock = o;
                     break;
                 }
@@ -2922,6 +2945,7 @@ async function moveloop_core_faithful() {
             if (f) {
                 f.botl = g._pickupEncMorePending.botl || capture_pre_movemon_botl();
                 f.cap = g._pickupEncMorePending.oldcap | 0;
+                f.mmExit = g._movemonExitSeq | 0;
                 g._pickupEncPreFrame = f;
             }
         }
@@ -3063,7 +3087,21 @@ async function moveloop_core_faithful() {
                     // C cross-turn more(): the fresh pline pages the done_eating topline,
                     // freezing the PHYSICAL screen at the PRE-turn frame (the pet's move
                     // this turn is deferred until the --More-- releases) — C steps 5/6.
-                    const pmUhs = (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
+                    /* When the pline that raises this page is newuhs's OWN hunger message,
+                     * C prints it BEFORE `u.uhs = newhs; disp.botl = TRUE; bot()'
+                     * (eat.c:3468 vs :3503-3504), so its flush_screen() (pline.c:273-274)
+                     * finds botl clear and repaints nothing: the page freezes the LAST
+                     * paint — done_eating's bot() (eat.c:3504) — i.e. the PRE-update
+                     * hunger (rb192-arc-19209005-00195 step 1496: gecko meal ends,
+                     * "Burdened" with no "Hungry" under the --More--, "Hungry" back only
+                     * on the next frame).  _newuhsMsgUhs.uhs (set in newuhs's tail before
+                     * u.uhs = newhs) is exactly that pre-update value; any other pline of
+                     * this turn runs after the tail's bot(), so live u.uhs is right there
+                     * (the interrupt case the old comment described). */
+                    const _pmPageMsg = movemonMsg.split('  ')[0];
+                    const pmUhs = (g._newuhsMsgUhs && g._newuhsMsgUhs.msg === _pmPageMsg)
+                        ? (g._newuhsMsgUhs.uhs | 0)
+                        : (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null;
                     /* The interrupt pline's flush_screen()/bot() paints the NEW hunger (newuhs set
                      * botl) but HP as of the last flush, so only uhs is refreshed. */
                     if (g._occCurBotl && pmUhs != null) g._occCurBotl = { ...g._occCurBotl, uhs: pmUhs,
@@ -3225,7 +3263,7 @@ async function moveloop_core_faithful() {
             if (g.iflags.sanity_no_check) {
                 g.iflags.sanity_no_check = false;
             } else {
-                g.program_state.in_sanity_check++;
+                g.program_state.in_sanity_check++;                await obj_sanity_check(); // C wizcmds.c:1469
                 await mon_sanity_check(); // C wizcmds.c:1474
                 await bc_sanity_check();
                 await engraving_sanity_check();
@@ -3363,7 +3401,7 @@ async function moveloop_core_faithful() {
     // C ref: allmain.c:543-558 — a pending occupation (autodig's set_occupation(dig)
     // started inside the counted-move repeat loop) runs INSTEAD of rhack; no key is
     // read.  The dig driver below then plays that occupation turn.
-    const _occInsteadOfRhack = g.occupation === dig && (g.multi | 0) >= 0;
+    const _occInsteadOfRhack = (g.occupation === dig || g.occupation === 'engrave') && (g.multi | 0) >= 0;
     // C ref: allmain.c:573-599 — a counted command whose eat occupation has now
     // ended (the early return at :557 above leaves gm.multi > 0) takes the
     // `gm.multi > 0` repeat branch of THIS invocation instead of reading a key:
@@ -3723,6 +3761,13 @@ async function moveloop_core_faithful() {
              * clear here so C's allmain.c:556 callback is never reached. */
             if (g._studyStopMsg && g.occupation === learn)
                 g.occupation = null;
+            // C allmain.c:484 — `if (gm.multi >= 0 && go.occupation)`: a helpless
+            // hero (multi < 0, e.g. potionbreathe's nomul(-5)) neither runs the
+            // callback nor reaches monster_nearby() (allmain.c:503); the
+            // occupation stays set and the next moveloop_core runs another world
+            // block until multi counts back up to 0.
+            if ((g.multi | 0) < 0)
+                continue;
             // C allmain.c:556 — (*go.occupation)() == learn(); 0 ends the study.
             // learn()'s completion line ("You learn ..." / "You add ...") also
             // appends onto the study topline.
@@ -3762,6 +3807,15 @@ async function moveloop_core_faithful() {
             // unless guarded bot()/timebot() calls curs_on_u().  Drain deferred
             // update_topl pages without advancing the physical map otherwise;
             // display_nhwindow(WIN_MESSAGE) can still page it on a later turn.
+            // C allmain.c:509 — runmode_delay_output() after the occupation callback:
+            // with run=8 left by a just-ended travel, hack.c:2996-3016 sets time_botl
+            // and paints T: on every moves % 7 == 0 turn (see the tin driver above).
+            /* C allmain.c:509 — runmode_delay_output() after the occupation
+             * callback and monster_nearby(), before the return.  With run=8
+             * left by a just-ended travel, RUN_LEAP sets time_botl on every
+             * moves % 7 == 0 turn (hack.c:3007-3029), so the next iteration's
+             * allmain.c:474 timebot() paints T: mid-study (rb441 step 217). */
+            await runmode_delay_output();
             const repaintStudy = !!(g.disp?.botl || g.disp?.botlx || g.disp?.time_botl);
             await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
             await flush_screen(1, repaintStudy);
@@ -4041,7 +4095,8 @@ async function moveloop_core_faithful() {
         /* C allmain.c:453-471: finish this invocation's redraw tail before
          * vision_recalc(), which can itself draw hallucinated objects.
          * The next JS invocation resumes at rhack, past this tail. */
-        faithful_input_redraw();
+        /* an interrupted pick already ran this moveloop_core's tail in the loop */
+        if (!pickInterrupted) faithful_input_redraw();
         g._ff_input_tail_done = true;
         if (g.vision_full_recalc) {
             vision_recalc(0);
@@ -4485,6 +4540,12 @@ async function moveloop_core_faithful() {
                 let committedEnd = committed.length;
                 let ownerAfterEsc = false;
                 for (const seg of segs.slice(1)) {
+                    /* topl.c:257-300: the owner of an ESC'd more() turned WIN_STOP
+                     * live, so every later pline of this rhack is swallowed. */
+                    if (ownerAfterEsc) {
+                        committedEnd += 2 + seg.length;
+                        continue;
+                    }
                     if (_topl_joins_committed(committed, seg)) {
                         committed = committed + '  ' + seg;
                         ownerAfterEsc = false;
@@ -4592,6 +4653,7 @@ async function moveloop_core_faithful() {
                     g.iflags.sanity_no_check = false;
                 } else {
                     g.program_state.in_sanity_check++;
+                    await obj_sanity_check(); // C wizcmds.c:1469
                     await mon_sanity_check(); // C wizcmds.c:1474
                     await bc_sanity_check();
                     await engraving_sanity_check();
@@ -4756,6 +4818,7 @@ async function moveloop_core_faithful() {
                 g.iflags.sanity_no_check = false;
             } else {
                 g.program_state.in_sanity_check++;
+                await obj_sanity_check(); // C wizcmds.c:1469
                 await mon_sanity_check(); // C wizcmds.c:1474
                 await bc_sanity_check();
                 await engraving_sanity_check();
@@ -5055,7 +5118,10 @@ async function moveloop_core_faithful() {
         // C ref: allmain.c:582 — lookaround() (RNG-free run-stop predicate). May call
         // nomul(0) → end_running(TRUE), clearing multi.  For a counted command
         // (!run, !mv) lookaround does not stop anything (it keys on run/mv state).
-        await lookaround();
+        /* C allmain.c:515 `if (gm.multi > 0) { lookaround();`: a deferred savelife
+         * (end.js) zeroes multi mid-iteration where C has multi = -1, so C never
+         * reaches lookaround and context.run/travel survive the life-saving. */
+        if ((g.multi | 0) > 0) await lookaround();
         // C allmain.c:515-526: repaint/pacing precedes the stopped-run test.
         await runmode_delay_output();
         // C ref: allmain.c:584-588 — if lookaround cleared multi the repeat is over;
@@ -5308,7 +5374,7 @@ async function moveloop_sanity_check() {
         g.iflags.sanity_no_check = false;
         return;
     }
-    g.program_state.in_sanity_check++;
+    g.program_state.in_sanity_check++;    await obj_sanity_check(); // C wizcmds.c:1469
     await mon_sanity_check(); // C wizcmds.c:1474
     await bc_sanity_check();
     await engraving_sanity_check();
@@ -5342,6 +5408,7 @@ async function moveloop_core_impl() {
         } else {
             g.program_state.in_sanity_check++;
             await timer_sanity_check(); // C wizcmds.c:1473
+            await obj_sanity_check(); // C wizcmds.c:1469
             await mon_sanity_check(); // C wizcmds.c:1474
             await bc_sanity_check();
             await engraving_sanity_check(); // C wizcmds.c:1470 (after trap_sanity_check)
@@ -5841,7 +5908,7 @@ export async function maybe_generate_rnd_mon() {
         : (sl && dungeon_depth(u?.uz) > dungeon_depth(sl)) ? 50
             : 70;
     if (!rn2(modulus))
-        await makemon(null, 0, 0, 0);
+        await makemon(null, 0, 0, NO_MM_FLAGS);
 }
 
 const FAST_PROP = 64; /* C prop.h FAST = 64 */
@@ -5868,7 +5935,7 @@ export function u_calc_moveamt(wtcap = UNENCUMBERED) {
         : (((umnum | 0) >= 0 && (umnum | 0) < MONS.length)
             ? ((MONS[umnum | 0][9] ?? 0) | 0)
             : NORMAL_SPEED);
-    /* C ref: allmain.c:129-137 — Very_fast or Fast triggers rn2(3) */
+    /* C ref: allmain.c:125-133 — Very_fast or Fast triggers rn2(3) */
     const hFast = (u.uprops && u.uprops[FAST_PROP]) ? (u.uprops[FAST_PROP].intrinsic | 0) : 0;
     const eFast = (u.uprops && u.uprops[FAST_PROP]) ? (u.uprops[FAST_PROP].extrinsic | 0) : 0;
     /* Very_fast = (HFast & ~INTRINSIC) || EFast: speed potion/boots = timeout bits */
@@ -5876,25 +5943,25 @@ export function u_calc_moveamt(wtcap = UNENCUMBERED) {
     /* Fast = HFast || EFast: any fast source */
     const Fast = !!hFast || !!eFast;
     if (Very_fast) {
-        /* C allmain.c:131: gain a free action on 2/3 of turns (rn2(3) != 0) */
+        /* C allmain.c:127: gain a free action on 2/3 of turns (rn2(3) != 0) */
         if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
     } else if (Fast) {
-        /* C allmain.c:135: gain a free action on 1/3 of turns (rn2(3) == 0) */
+        /* C allmain.c:131: gain a free action on 1/3 of turns (rn2(3) == 0) */
         if (rn2(3) === 0) moveamt += NORMAL_SPEED;
     }
     }
-    /* C allmain.c:140-157 — encumbrance scaling of moveamt.
+    /* C allmain.c:136-153 — encumbrance scaling of moveamt.
      * Stage 1/2 pass wtcap=UNENCUMBERED (0) → no scaling (identity).
      * Stage 3 ports near_capacity; deferred per plan. */
     switch (wtcap) {
-        case 0: /* UNENCUMBERED */ break;
-        case 1: /* SLT_ENCUMBER */ moveamt -= Math.trunc(moveamt / 4); break;
-        case 2: /* MOD_ENCUMBER */ moveamt -= Math.trunc(moveamt / 2); break;
-        case 3: /* HVY_ENCUMBER */ moveamt -= Math.trunc((moveamt * 3) / 4); break;
-        case 4: /* EXT_ENCUMBER */ moveamt -= Math.trunc((moveamt * 7) / 8); break;
+        case UNENCUMBERED: break;
+        case SLT_ENCUMBER: moveamt -= Math.trunc(moveamt / 4); break;
+        case MOD_ENCUMBER: moveamt -= Math.trunc(moveamt / 2); break;
+        case HVY_ENCUMBER: moveamt -= Math.trunc((moveamt * 3) / 4); break;
+        case EXT_ENCUMBER: moveamt -= Math.trunc((moveamt * 7) / 8); break;
         default: break;
     }
-    /* C allmain.c:159-161 — bank moveamt into u.umovement */
+    /* C allmain.c:155-157 — bank moveamt into u.umovement */
     u.umovement = ((u.umovement || 0) + moveamt) | 0;
     if (u.umovement < 0) u.umovement = 0;
     g._umv_bonus = (moveamt >= 2 * NORMAL_SPEED);
@@ -5924,21 +5991,21 @@ export async function regen_hp(wtcap) {
     const u = game.u;
     if (!u)
         return;
-    /* encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved) — C allmain.c:700. */
+    /* encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved) — C allmain.c:629. */
     const encumbrance_ok = ((wtcap | 0) < MOD_ENCUMBER) || !(u.umoved | 0);
     let heal = 0;
-    /* C allmain.c:697 — boolean reached_full = FALSE. */
+    /* C allmain.c:628 — boolean reached_full = FALSE. */
     let reached_full = false;
     if (Upolyd(u)) {
-        /* C allmain.c:702-722 — the polymorphed hero heals u.mh, not u.uhp. */
+        /* C allmain.c:631-650 — the polymorphed hero heals u.mh, not u.uhp. */
         const mh = (u.mh | 0), mhmax = (u.mhmax | 0);
         if (mh < 1) {
-            /* C allmain.c:703-704 "shouldn't happen..." → rehumanize(). */
+            /* C allmain.c:632-633 "shouldn't happen..." → rehumanize(). */
             await rehumanize();
         } else if (_uasmon_mlet(u) === S_EEL_FF
                    && !_ff_is_pool(u.ux | 0, u.uy | 0) && !Is_waterlevel(u.uz)
                    && !_hero_breathless(u)) {
-            /* C allmain.c:707-713 — an eel out of water LOSES hp, and this is
+            /* C allmain.c:634-641 — an eel out of water LOSES hp, and this is
              * the ONLY Upolyd arm that draws RNG:
              *   if (u.mh > 1 && !Regeneration && rn2(u.mh) > rn2(8)
              *       && (!Half_physical_damage || !(svm.moves % 2L))) heal = -1;
@@ -5948,7 +6015,7 @@ export async function regen_hp(wtcap) {
                 && (!halfPhys || !((game.moves | 0) % 2)))
                 heal = -1;
         } else if (mh < mhmax) {
-            /* C allmain.c:714-717 — RNG-free regen: one hp every 20 moves. */
+            /* C allmain.c:642-645 — RNG-free regen: one hp every 20 moves. */
             if (u_can_regen(u)
                 || (encumbrance_ok && ((game.moves | 0) % 20) === 0))
                 heal = 1;
@@ -5956,14 +6023,14 @@ export async function regen_hp(wtcap) {
         if (heal) {
             (game.disp ||= {}).botl = 1;
             u.mh = mh + heal;
-            /* C allmain.c:717 — reached_full = (u.mh == u.mhmax). */
+            /* C allmain.c:649 — reached_full = (u.mh == u.mhmax). */
             reached_full = ((u.mh | 0) === mhmax);
         }
     } else {
-        /* C allmain.c:729 — !Upolyd branch. */
+        /* C allmain.c:653-671 — !Upolyd branch. */
         const uhp = (u.uhp | 0), uhpmax = (u.uhpmax | 0);
         if (uhp < uhpmax && (encumbrance_ok || u_can_regen(u))) {
-            /* C allmain.c:730 — heal = (u.ulevel + ACURR(A_CON)) > rn2(100). */
+            /* C allmain.c:659 — heal = (u.ulevel + ACURR(A_CON)) > rn2(100). */
             heal = ((u.ulevel | 0) + (acurr(u, A_CON) | 0)) > rn2(100) ? 1 : 0;
             if (u_can_regen(u))
                 heal += 1;
@@ -5977,7 +6044,7 @@ export async function regen_hp(wtcap) {
                 game._uhpRegenMoves = game.moves | 0;
                 if ((u.uhp | 0) > uhpmax)
                     u.uhp = uhpmax;
-                /* C allmain.c:738 — "stop voluntary multi-turn activity if now
+                /* C allmain.c:671 — "stop voluntary multi-turn activity if now
                  * fully healed": reached_full = (u.uhp == u.uhpmax). */
                 reached_full = ((u.uhp | 0) === uhpmax);
             }
@@ -6006,7 +6073,7 @@ export function regen_pw(wtcap) {
     const uen = (u.uen | 0), uenmax = (u.uenmax | 0);
     if (uen >= uenmax)
         return;
-    /* C allmain.c:674-677 — period depends on ulevel and Wizard role.
+    /* C allmain.c:604-606 — period depends on ulevel and Wizard role.
      * role.mnum: PM_WIZARD index — Healer is not Wizard, so factor=4. */
     /* PM_WIZARD is 343 in mons[], not the role ordinal 14. */
     const isWizard = (game.urole && (game.urole.mnum | 0) === 343);
@@ -6016,10 +6083,10 @@ export function regen_pw(wtcap) {
     /* C Energy_regeneration = HEnergy_regeneration || EEnergy_regeneration. */
     if (((wtcap | 0) < MOD_ENCUMBER && period !== 0 && (moves % period) === 0)
         || _has_prop(u, ENERGY_REGENERATION)) {
-        /* C allmain.c:678 — upper = (ACURR(A_WIS)+ACURR(A_INT))/15 + 1. */
-        let upper = ((acurr(u, A_WIS) | 0) + (acurr(u, 1 /*A_INT*/) | 0)) / 15 | 0;
+        /* C allmain.c:607 — upper = (ACURR(A_WIS)+ACURR(A_INT))/15 + 1. */
+        let upper = ((acurr(u, A_WIS) | 0) + (acurr(u, A_INT) | 0)) / 15 | 0;
         upper += 1;
-        /* C allmain.c:620 — EMagical_breathing is the extrinsic half only. */
+        /* C allmain.c:609 — EMagical_breathing is the extrinsic half only. */
         if ((u.uprops?.[MAGICAL_BREATHING]?.extrinsic | 0) !== 0)
             upper += 2;
         u.uen = uen + rn1(upper, 1);

@@ -34,10 +34,11 @@ import { m_at } from './uhitm.js';
 import { mon_pmname, rndmonnam as dn_rndmonnam,
          bogon_is_pname as dn_bogon_is_pname } from './do_name.js';
 import { just_an } from './objnam.js';
-import { check_special_room } from './cmd.js';
+import { check_special_room, ALGN_SINNED } from './cmd.js';
 import { halu_gname } from './pray.js';
 import { inhishop } from './shk.js';
 import { in_rooms } from './hack.js';
+import { impossible } from './steed.js';
 
 function _hero_invis_priest(u) {
     if (!u) return false;
@@ -50,7 +51,7 @@ function _hero_invis_priest(u) {
 import { Your } from './do_wear.js';
 import { mon_nam } from './uhitm.js';
 import { mattacku } from './mhitu.js';
-import { wakeup } from './mhitm.js';
+import { wakeup, AD_ELEC, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC } from './mhitm.js';
 import { resist_conflict } from './mondata.js';
 
 /**
@@ -149,9 +150,8 @@ export function in_your_sanctuary(mon, x, y) {
         const data = mon.data;
         if (!data) return false;
 
-        // Check is_minion: (data->mflags2 & M2_MINION) != 0
-        const M2_MINION = 0x00001000;
-        if ((data.mflags2 & M2_MINION) !== 0) {
+        // C priest.c:779: is_minion(mon->data)
+        if (is_minion(data)) {
             return false;
         }
 
@@ -167,8 +167,7 @@ export function in_your_sanctuary(mon, x, y) {
         y = mon.my;
     }
 
-    // Check alignment record: u.ualign.record <= ALGN_SINNED (-4)
-    const ALGN_SINNED = -4;
+    // C priest.c:783: u.ualign.record <= ALGN_SINNED
     if (!u.ualign || (u.ualign.record | 0) <= ALGN_SINNED) {
         return false;
     }
@@ -287,7 +286,7 @@ export function has_shrine(pri) {
 export function forget_temple_entry(priest) {
     const epri_p = priest.ispriest ? EPRI(priest) : null;
     if (!epri_p) {
-        /* impossible("attempting to manipulate shrine data for non-priest?") */
+        impossible("attempting to manipulate shrine data for non-priest?");
         return;
     }
     epri_p.intone_time = epri_p.enter_time = epri_p.peaceful_time =
@@ -387,9 +386,9 @@ export async function priestini(lvl, sroom, sx, sy, sanctum) {
  * tail (arti_light_radius / set_moreluck / weight / uwep weld) is unreachable. */
 import { uncurse, curse } from './mkobj.js';
 import { exercise } from './attrib.js'; // relocate-fns
-import { A_WIS, IS_DOOR } from './const.js'; // relocate-fns
+import { A_WIS, IS_DOOR, BZ_OFS_AD } from './const.js'; // relocate-fns
 import { s_suffix } from './hacklib.js'; // relocate-fns
-import { buzz } from './mcastu.js'; // relocate-fns
+import { buzz, BZ_M_SPELL, is_minion } from './mcastu.js'; // relocate-fns
 import { linedup } from './mthrowu.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { a_gname_at } from './pray.js'; // relocate-fns
@@ -414,6 +413,7 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
 
     let nix = omx;
     let niy = omy;
+    /* C priest.c:65-66: allowflags = mon_allowflags(mtmp); cnt = mfndpos(...). */
     const allowflags = mon_allowflags(mtmp); /* C priest.c:65 */
     const mfp = { cnt: 0, poss: [], info: [] };
     const real_cnt = mfndpos(mtmp, mfp, allowflags);
@@ -484,9 +484,14 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
             await m_break_boulder_mv(mtmp, nix, niy);
             return 1;
         } else if (ninfo & ALLOW_M) {
-            /* C priest.c:108-118: m_move_aggress(mtmp,nix,niy). */
-            const status = await m_move_aggress(mtmp, nix, niy);
-            return status === 2 ? -2 : 1;
+            /* C priest.c:108-118: m_move_aggress(mtmp,nix,niy); any other
+             * status falls through to the MON_AT test below. */
+            switch (await m_move_aggress(mtmp, nix, niy)) {
+            case 2:
+                return -2; /* died making the attack */
+            case 3:
+                return 1; /* attacked and spent this move */
+            }
         }
 
         /* C priest.c:120-121: if (MON_AT(nix,niy) || u_at(nix,niy)) return 0; */
@@ -494,15 +499,14 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
             return 0;
         /* C priest.c:122-124: remove_monster(omx,omy); place_monster(mtmp,nix,
          * niy); newsym(nix,niy).  JS idiom (matches dog_move/m_move): update
-         * mx/my + newsym old & new cell. */
+         * mx/my, then redraw only the new cell, as C does. */
         mtmp.mx = nix;
         mtmp.my = niy;
         newsym(nix, niy);
         if (mtmp.isshk && !in_his_shop && inhishop(mtmp))
             await check_special_room(false);
-        /* C priest.c:125-126: isshk && !in_his_shop && inhishop(mtmp) →
-         * check_special_room(FALSE).  inhishop re-check + room re-entry effect
-         * performed above once the shopkeeper has moved. */
+        /* C priest.c:125-126 (above): isshk && !in_his_shop && inhishop(mtmp)
+         * → check_special_room(FALSE), once the shopkeeper has moved. */
         return 1;
     }
     return 0;
@@ -705,8 +709,8 @@ export function priestname(mon, article, reveal_high_priest, pname) {
     const do_hallu = !!(((hp[HALLUC]?.intrinsic | 0) || (hp[HALLUC]?.extrinsic | 0))
               && !((hp[HALLUC_RES]?.intrinsic | 0) || (hp[HALLUC_RES]?.extrinsic | 0)));
     const mndx = (typeof mon.data?.pmidx === 'number') ? (mon.data.pmidx | 0) : (mon.data_mndx | 0);
-    const aligned_priest = mndx === PM_PRIEST;      /* PM_ALIGNED_CLERIC */
-    const high_priest = mndx === PM_HIGH_PRIEST;    /* PM_HIGH_CLERIC */
+    const aligned_priest = mndx === PM_ALIGNED_CLERIC;
+    const high_priest = mndx === PM_HIGH_CLERIC;
     /* C priest.c:311-312 — `char whatcode = '\0';` is an OUT-parameter here:
      *   const char *what = do_hallu ? rndmonnam(&whatcode) : mon_pmname(mon);
      * and :323 reads it back through bogon_is_pname(whatcode).  It used to be
@@ -833,7 +837,7 @@ export async function ghod_hitsu(priest) {
     const oldBuzzer = game.gb?.buzzer;
     game.gc_current_wand = 0;
     if (game.gb) game.gb.buzzer = 0;
-    await buzz(-15 /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)) */, 6, x, y, Math.sign(game.gt?.tbx || 0), Math.sign(game.gt?.tby || 0));
+    await buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 6, x, y, Math.sign(game.gt?.tbx || 0), Math.sign(game.gt?.tby || 0));
     if (game.gb) game.gb.buzzer = oldBuzzer;
     game.gc_current_wand = oldWand;
     exercise(A_WIS, false);

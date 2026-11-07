@@ -63,7 +63,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, freeinv, getpos, addinv_core1, carry_obj_effects, obj_to_let } from './cmd.js';
+import { get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, freeinv, getpos, addinv_core1, carry_obj_effects, obj_to_let, mergable as mergable_real } from './cmd.js';
 import { setuqwep } from './wield.js';
 import { hitfloor, hurtle, mhurtle } from './dothrow.js';
 import { dropx, dropy } from './do.js';
@@ -330,8 +330,11 @@ export async function touch_artifact_youmonst(otmp) {
                       || _ARTI_GIFT_ROLE[arti] === ((g.flags?.initrole ?? -1) | 0);
     const _roleCleared = arti === 1 /* ART_EXCALIBUR */
                          && ((g.flags?.initrole ?? -1) | 0) !== 4; /* Knight */
+    /* C artifact.c:924: oart->race != NON_PM && !Race_if(oart->race) */
+    const raceMatch = (arti === 5 && ((g.flags?.initrace ?? -1) | 0) === 4 /* orc */)
+                   || ((arti === 6 || arti === 7) && ((g.flags?.initrace ?? -1) | 0) === 1 /* elf */);
     const badclass = self_willed && (((p.role && !_roleCleared) && !roleMatch)
-                                     || p.race);
+                                     || (p.race && !raceMatch));
     /* C artifact.c:88-104 hack_artifacts(): "gift" artifacts of the hero's own
      * role (artifact.c:92-95) and the hero's quest artifact (:103) have their
      * alignment rewritten to the hero's initial alignment, so a Valkyrie
@@ -483,7 +486,7 @@ export async function wiz_smell() {
         const glyph = game.level.at(cc.x, cc.y).disp_cls;
         if (mptr) {
             if (isYou) await pline('You surreptitiously sniff under your %s.', body_part(ARM));
-            if (!usmellmon(mptr))
+            if (!(await usmellmon(mptr)))
                 await pline('%s to not give off any smell.', isYou ? 'You seem' : 'That monster seems');
             if (glyph !== GLYPHCLS_MON) map_invisible(cc.x, cc.y);
         } else {
@@ -721,90 +724,8 @@ async function _wish_doname(otmp, quanOverride) {
         otmp.quan = savequan;
     }
 }
-function _wish_mergable(into, obj) {
-    if (into === obj) return false;
-    if ((into.otyp | 0) !== (obj.otyp | 0)) return false;
-    if (obj.nomerge || into.nomerge) return false;
-    if (!oc_merge(obj.otyp)) return false;
-    /* C invent.c:4391-4393 — coins of the same kind will always merge */
-    if ((obj.oclass | 0) === COIN_CLASS_WZ) return true;
-    if ((obj.cursed | 0) !== (into.cursed | 0)) return false;
-    if ((obj.blessed | 0) !== (into.blessed | 0)) return false;
-    /* C invent.c:4398-4401 how_lost checks, then :4410 globs always merge
-     * once past them (the checks below do not apply to globs). */
-    if ((obj.how_lost | 0) === 4 || (into.how_lost | 0) === 4) return false; /* LOST_EXPLODING */
-    if ((into.how_lost | 0) !== 0 && (obj.how_lost | 0) !== (into.how_lost | 0)) return false;
-    if (obj.globby) return true;
-    /* C invent.c:4416-4417: billed and owned stacks remain separate. */
-    if ((obj.unpaid | 0) !== (into.unpaid | 0)
-        || (obj.no_charge | 0) !== (into.no_charge | 0)) return false;
-    if ((obj.spe | 0) !== (into.spe | 0)) return false;
-    /* C invent.c:4416-4418 — obroken/otrapped/lamplit must match; opoisoned
-     * is a union alias of otrapped, so a poisoned wish never joins a plain stack. */
-    if ((obj.obroken | 0) !== (into.obroken | 0)
-        || (obj.otrapped | 0) !== (into.otrapped | 0)
-        || (obj.lamplit | 0) !== (into.lamplit | 0)) return false;
-    /* C invent.c:4425 — dknown MUST match. */
-    if ((obj.dknown | 0) !== (into.dknown | 0)) return false;
-    /* C invent.c:4426-4427 — bknown mismatch blocks the merge when Blind or
-     * Hallucinating (and not a Priest); a blind hero's wished stack stays apart. */
-    if ((obj.bknown | 0) !== (into.bknown | 0) && !_wish_role_is_priest()
-        && (_wish_Blind() || _wish_Hallu())) return false;
-    /* FOOD oeaten/orotten match (mergable invent.c:4421) */
-    if ((obj.oclass | 0) === 7) {
-        if ((obj.oeaten | 0) !== (into.oeaten | 0)) return false;
-        if ((obj.orotten | 0) !== (into.orotten | 0)) return false;
-    }
-    /* C invent.c mergable(): erosion level and grease must match. */
-    if ((obj.oeroded | 0) !== (into.oeroded | 0)
-        || (obj.oeroded2 | 0) !== (into.oeroded2 | 0)
-        || (obj.greased | 0) !== (into.greased | 0)) return false;
-    /* C invent.c:4432-4435 — where erosion matters, oerodeproof must match
-     * (rknown only when Blind/Hallucinating, which a sighted wish never is). */
-    if (erosion_matters(obj)
-        && (((obj.oerodeproof | 0) !== (into.oerodeproof | 0))
-            || ((obj.rknown | 0) !== (into.rknown | 0) && _wish_Blind())))
-        return false;
-    /* C invent.c mergable(): corpses/eggs/tins merge only for the same
-     * monster type; hatching eggs never merge. */
-    const ot = obj.otyp | 0;
-    if (ot === 265 /* CORPSE */ || ot === 266 /* EGG */ || ot === 296 /* TIN */) {
-        if ((obj.corpsenm ?? -1) !== (into.corpsenm ?? -1)) return false;
-        if (ot === 266 && (obj.timed || into.timed)) return false;
-    }
-    /* C invent.c:4462-4465 — saved monster traits (e.g. a tame pet's corpse)
-     * or an omid never merge. */
-    if (obj.oextra?.omonst || obj.oextra?.omid
-        || into.oextra?.omonst || into.oextra?.omid) return false;
-    /* C invent.c:4467-4477 — if both are named, the names must match
-     * (a corpse needs equal name-presence too). */
-    const _nm1 = obj.oextra?.oname ?? '', _nm2 = into.oextra?.oname ?? '';
-    if (((_nm1.length !== _nm2.length)
-         && ((_nm1.length && _nm2.length) || ot === 265))
-        || (_nm1.length && _nm2.length && _nm1 !== _nm2)) return false;
-    /* C invent.c:4494 — an artifact never merges with a non-artifact (or a
-     * different artifact): a refused Magicbane wish is a plain athame. */
-    if ((obj.oartifact | 0) !== (into.oartifact | 0)) return false;
-    /* C invent.c:4442-4446 — revivable corpses never merge (is_reviver:
-     * mondata.h:170, S_TROLL or a Rider; MONS row[0] is mlet, S_TROLL = 46). */
-    if (ot === 265 /* CORPSE */ && (into.corpsenm ?? -1) >= LOW_PM) {
-        const n = into.corpsenm | 0;
-        if ((monsPack.mons[n][0] | 0) === 46
-            || n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE)
-            return false;
-    }
-    /* C invent.c:4485-4493 (MAIL_STRUCTURES, global.h:430) — SCR_MAIL with
-     * spe > 0 keeps its two o_id-parity flavors apart. */
-    if (ot === 364 /* SCR_MAIL */ && (obj.spe | 0) > 0
-        && ((obj.o_id | 0) % 2) !== ((into.o_id | 0) % 2)) return false;
-    /* C invent.c:4450 — candles merge only when their ages are within the same
-     * 25-turn bucket (TALLOW_CANDLE 224, WAX_CANDLE 225). */
-    if ((ot === 224 || ot === 225)
-        && Math.trunc((obj.age | 0) / 25) !== Math.trunc((into.age | 0) / 25)) return false;
-    /* C invent.c:4496 — known mismatch blocks only when Blind or Hallucinating */
-    if ((obj.known | 0) !== (into.known | 0) && (_wish_Blind() || _wish_Hallu()))
-        return false;
-    return true;
+async function _wish_mergable(into, obj) {
+    return await mergable_real(into, obj);
 }
 
 function _wish_merged_reconcile(into, obj) {
@@ -896,6 +817,7 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
                  * the post-addinv capacity before encumber_msg runs. */
                 const _postCap = _goldPrinv || _botlOwed;
                 f.cap = (_postCap ? newcap : paintedCap) | 0;
+                f.mmExit = g._movemonExitSeq | 0;
                 g._pickupEncPreFrame = f;
                 g._pickupEncMorePending = { oldcap: (_postCap ? newcap : paintedCap) | 0, prinvText: prinvLine,
                     /* the status row as of the last bot(): taken before SET_BOTL below */
@@ -1022,12 +944,23 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
      * the wished object's quantity folds into the existing node and NO new
      * invlet is consumed; C still prinv()s, but with the surviving (merged)
      * object and its existing letter. */
-    /* C invent.c:1100-1107 — merge with the quiver in preference to any other
-     * inventory slot, so a wished stack folds into the quivered one. */
-    const _wmerge = (g.u?.uquiver && _wish_mergable(g.u.uquiver, otmp)) ? g.u.uquiver
-        : (() => { for (let o = g.invent; o; o = o.nobj) if (_wish_mergable(o, otmp)) return o; return null; })();
+    /* C invent.c:1100-1114 — merge with the quiver in preference to any other
+     * inventory slot, then the chain; each test is a full mergable() call
+     * (async only on the never-taken unpaid path). */
+    let _wmerge = null;
+    if (g.u?.uquiver && (await _wish_mergable(g.u.uquiver, otmp))) {
+        _wmerge = g.u.uquiver;
+    } else {
+        for (let o = g.invent; o; o = o.nobj) {
+            if (await _wish_mergable(o, otmp)) { _wmerge = o; break; }
+        }
+    }
     for (let o = _wmerge; o; o = null) {
         if (o) {
+            /* C invent.c:1082 addinv_core0 — addinv_core1(obj) runs BEFORE the
+             * merge loop, so merged gold still sets disp.botl and the prinv
+             * pline's flush_screen runs bot() (repainting T: too). */
+            await addinv_core1(otmp);
             /* C invent.c:856-875 — reconcile knowledge dimensions; if a real
              * discovery happened, C fires the comparison pline
              * (invent.c:934-942, otmp->where==OBJ_INVENT and neither
@@ -1308,7 +1241,7 @@ const WISH_CARDINALS = ['zero', 'one', 'two', 'three', 'four', 'five'];
 
 async function wishcmdassist(triesleft) {
     const lines = WISHINFO_LINES.slice();
-    /* C zap.c:6208-6209 — the wishless-conduct note, shown while no wish has
+    /* C zap.c:6203-6204 — the wishless-conduct note, shown while no wish has
      * been granted yet.  u.uconduct.wishes is bumped below in makewish(). */
     if (!(game.u?.uconduct?.wishes | 0))
         lines.push('Doing so will preserve \'wishless\' conduct.');

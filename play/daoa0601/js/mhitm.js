@@ -8,12 +8,12 @@ import { setHeroGrip, isZombieMaker, zombieForm } from './mon.js';
 import { d, rn2, rnd } from './rng.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, monsterTypeName, requireMonsterData } from './monster_data.js';
-import { canSeeMonster, canSenseMonster, canSpotMonster, flush_screen, map_invisible, newsym, } from './display.js';
+import { canSeeMonster, canSenseMonster, canSpotMonster, flush_screen, map_invisible, monsterVisible, newsym, } from './display.js';
 import { formatHeardMessage, plineWithContinuation } from './pline.js';
 import { artifactById } from './artifact.js';
-import { M_AP_TYPE, PLNMSG_HIDE_UNDER, DOOR, D_CLOSED, D_LOCKED, IRONBARS, IS_OBSTRUCTED, IS_TREE, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, MM_IGNOREWATER, NEED_HTH_WEAPON, NEED_WEAPON, ismnum, M_AP_MONSTER, STRAT_WAITMASK, W_ARMG, NORMAL_SPEED, PIT, SPIKED_PIT, W_ARMC, W_ARMF, W_ARMH, } from './const.js';
+import { M_AP_TYPE, PLNMSG_HIDE_UNDER, DOOR, D_CLOSED, D_LOCKED, IRONBARS, IS_OBSTRUCTED, IS_TREE, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS, MM_IGNOREWATER, NEED_HTH_WEAPON, NEED_WEAPON, ismnum, M_AP_MONSTER, STRAT_WAITMASK, STRAT_WAITFORU, W_ARMG, NORMAL_SPEED, PIT, SPIKED_PIT, W_ARMC, W_ARMF, W_ARMH, } from './const.js';
 import { monsterIsHelpless, is_elf, is_orc, monsterHasEyes, monsterDigests, monsterEnfolds, monsterHatesSilver, monsterIsAmorphous, monsterIsNoncorporeal, monsterIsRider, monsterIsShade, monsterIsSlimeproof, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterPassesWalls, monsterPerceives, touchPetrifies, isHeroDefender, resistConflict, resistsBlnd, } from './mondata.js';
-import { heroIsUnaware } from './senses.js';
+import { heroIsUnaware, heroIsBlind } from './senses.js';
 import { heroIsDeaf } from './senses.js';
 import { findMonsterArmorClass } from './worn.js';
 import { revealMonsterAppearance } from './mon.js';
@@ -21,14 +21,14 @@ import { cloneMonster, finishMonsterGrowth, growMonster } from './makemon.js';
 import { splitMonster } from './potion.js';
 import { createElementalMonsterExplosion } from './explode.js';
 import { cansee } from './vision.js';
-import { applyMonsterGolemEffects, changeMonsterForm, finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, grantMonsterCorpseIntrinsic, healMonster, monstersInFmonOrder, paralyzeMonster, prepareMonsterPetrification, resolveMonsterLiquid, finishMonsterPetrification, monsterSubject, turnGolemToStone, } from './mon.js';
-import { staggerVerb } from './dothrow.js';
+import { applyMonsterGolemEffects, changeMonsterForm, finishEnvironmentalMonsterDeath, finishMonsterKilled, finishMonsterLiquidDeath, grantMonsterCorpseIntrinsic, healMonster, monstersInFmonOrder, prepareMonsterPetrification, resolveMonsterLiquid, finishMonsterPetrification, monsterSubject, turnGolemToStone, } from './mon.js';
 import { displayLiquidName, monsterName, monsterName as canonicalMonsterName, namelessMonsterName } from './do_name.js';
 import { possessiveName, dist2, distmin } from './hacklib.js';
 import { exposeEngulfedDefenderForDeath, monsterAtPosition, placeMonsterOnMap, removeMonsterFromMapAt, } from './steed.js';
-import { monsterObjectPronoun, monsterPossessive, monsterPolymorphsWhenStoned, monsterHasAcidResistance, monsterHasColdResistance, monsterHasFireResistance, monsterHasShockResistance, monsterHasStoneResistance, } from './mondata.js';
+import { monsterObjectPronoun, monsterPossessive, formCanBecomeStoneGolem, monsterStagger, monsterHasAcidResistance, monsterHasColdResistance, monsterHasFireResistance, monsterHasShockResistance, monsterHasStoneResistance, } from './mondata.js';
 import { monsterIsScaredAt, stopMonsterHeldByHero } from './monmove.js';
-import { swingMonsterWeapon } from './mhitu.js';
+import { mswings_verb } from './mhitu.js';
+import { isPolearm } from './object_properties.js';
 import { monsterWieldedWeapon, updateMonsterWeaponAfterPolymorph, wieldMonsterWeapon } from './weapon.js';
 import { weaponHitValue } from './weapon.js';
 import { getmattk } from './attack_selection.js';
@@ -402,6 +402,8 @@ export async function attackMonsterWithMonster(aggressor, defender, { state, ran
     }
     return report(struck ? M_ATTK_HIT : M_ATTK_MISS);
 }
+// Part of C mhitm.c:mattackm(): classifying which attack tuples are melee
+// slots.
 function monsterMeleeAttackSlot(attack, attackIndex) {
     const attackNames = {
         1: 'claw',
@@ -418,6 +420,8 @@ function monsterMeleeAttackSlot(attack, attackIndex) {
     const type = attackNames[attackType];
     return type ? { type, attackType, damageType, damn, damd, attackIndex } : null;
 }
+// Part of C mhitm.c:mattackm(): the black-pudding division after a landed
+// iron or metal weapon hit.
 // Contact can finish with a native MISS (for example, after life saving).
 // Unlike hero hits, this rule does not exclude missiles or require the
 // weapon to remain wielded. The caller supplies the contact's saved weapon.
@@ -483,6 +487,7 @@ export async function prepareMonsterCombatContact(aggressor, defender, attack, w
         await showSilverContact(aggressor, defender, weapon, subject, state, publish);
     return 'contact';
 }
+// Part of C mhitm.c:hitmm(): the attack-verb switch.
 function contactAction(aggressor, attack, artifact, subject, state) {
     switch (attack[0]) {
         case AT_BITE: return `${subject} bites`;
@@ -508,6 +513,8 @@ function contactAction(aggressor, attack, artifact, subject, state) {
             return artifact ? '' : `${subject} hits`;
     }
 }
+// Part of C mhitm.c:hitmm(): the target name, with mon_nam_too's reflexive
+// self case.
 function combatTargetName(defender, aggressor, state) {
     if (defender !== aggressor)
         return monsterName(defender, { state });
@@ -518,6 +525,7 @@ function combatTargetName(defender, aggressor, state) {
         default: return 'itself';
     }
 }
+// Part of C mhitm.c:hitmm(): the silver sear message.
 async function showSilverContact(aggressor, defender, weapon, subject, state, publish) {
     let target = combatTargetName(defender, aggressor, state);
     if (!monsterIsNoncorporeal(defender) && !monsterIsAmorphous(defender)) {
@@ -530,12 +538,14 @@ async function showSilverContact(aggressor, defender, weapon, subject, state, pu
     const simpleName = (weapon.quan ?? weapon.quantity ?? 1) === 1 ? noun : pluralizeObjectNoun(weapon, noun);
     await publish(`${possessiveName(subject)} ${simpleName} sears ${target}!`);
 }
+// Part of C mhitm.c:hitmm(): the default no-artifact "hits" verb.
 export async function showMonsterArtifactFallbackHit(aggressor, defender, { state = game, visible, publish = plineWithContinuation }) {
     if (!visible)
         return;
     const subject = monsterName(aggressor, { state, capitalized: true });
     await publish(`${subject} hits ${combatTargetName(defender, aggressor, state)}.`);
 }
+// C mhitm.c:gazemm():
 export async function resolveMonsterCombatGaze(attacker, defender, attack, { state = game, visible, random = rn2, rollDice = d, publish = plineWithContinuation, resolveDamage, }) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -593,12 +603,17 @@ export async function resolveMonsterCombatGaze(attacker, defender, attack, { sta
     }
     return resolveDamage(attacker, defender, attack);
 }
+// Port only: packs a gazemm native result code.
 function gazeResult(nativeResult, heroDied = false) {
     return { damage: 0, nativeResult, heroDied, skipBrainDrain: false };
 }
+// Part of C mhitm.c:gazemm(): the perceives-invisible guard; the perceives
+// macro port is monsterPerceives in mondata.ts.
 function perceivesInvisible(monster) {
     return monsterPerceives(monster.mnum);
 }
+// Part of C mhitm.c:gazemm(): the reflected-gaze message through
+// mon_reflects.
 // Native mon_reflects only identifies a worn shield or amulet when its
 // reflection is optically visible. Detection alone does not reveal the item.
 async function showGazeReflection(monster, state, publish) {
@@ -627,11 +642,14 @@ export function monsterCanEngulfMonster(attacker, defender, state) {
     return !!monsterPassesWalls(attacker.mnum)
         || !engulfSquareBlocked(state.level.at(attacker.mx, attacker.my), defender);
 }
+// Part of C mhitm.c:engulf_target(): the obstructed-terrain test for one
+// side of the swap.
 function engulfSquareBlocked(square, other) {
     return !square || IS_OBSTRUCTED(square.typ) || IS_TREE(square.typ)
         || (square.typ === DOOR && !!(square.doormask & (D_CLOSED | D_LOCKED)))
         || (square.typ === IRONBARS && !monsterIsWhirly(other));
 }
+// C mhitm.c:gulpmm():
 export async function resolveMonsterCombatEngulf(attacker, defender, attack, { state = game, visible, resolveDamage, publish = plineWithContinuation, random = rn2, rollOne = rnd, rollDice = d, }) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -736,12 +754,15 @@ export async function resolveMonsterCombatEngulf(attacker, defender, attack, { s
         state._monsterEngulf = previousEngulf;
     }
 }
+// Part of C dogmove.c:dog_move(): the pet's return-attack gate.
 function defenderCanAnswerPetAttack(aggressor, defender, state, random, calls) {
     return (recordRandom(random, calls, 4) !== 0 &&
         defender.mlstmv !== (state.moves ?? 1) &&
         !monsterIsScaredAt(defender, state, aggressor.mx, aggressor.my) &&
         distmin(defender.mx, defender.my, aggressor.mx, aggressor.my) <= 1);
 }
+// Part of C mhitm.c:fightm(): the movement gate for the defender's return
+// attack.
 function defenderCanAnswerMovementAttack(defender, random, calls) {
     if (recordRandom(random, calls, 4) === 0)
         return false;
@@ -751,6 +772,8 @@ function defenderCanAnswerMovementAttack(defender, random, calls) {
     defender.movement = remaining > NORMAL_SPEED ? remaining - NORMAL_SPEED : 0;
     return true;
 }
+// Part of C mhitm.c:fightm(), dogmove.c:dog_move(): the shared return-attack
+// dispatch.
 function defenderCanCounterattack(attack, state, random, calls) {
     if (!attack.struck || attack.defenderDied || monsterAttackStopsAggressor(attack))
         return false;
@@ -760,12 +783,17 @@ function defenderCanCounterattack(attack, state, random, calls) {
     return (attack.retaliationRule === 'pet' &&
         defenderCanAnswerPetAttack(attack.aggressor, attack.defender, state, random, calls));
 }
+// Part of C mhitm.c:fightm(): the M_ATTK_AGR_DIED stopping test the callers
+// of a melee attack apply inline.
 export function monsterAttackStopsAggressor(attack) {
     // Native explosion and passive results can stop an attacker which was
     // life-saved. Preserve that result independently of its current health.
     return !!(attack.aggressorDied || attack.fatalPassive
         || (attack.kind === 'monster-attack' && ((attack.nativeResult ?? 0) & M_ATTK_AGR_DIED)));
 }
+// Part of C mhitm.c:fightm(), dogmove.c:dog_move(): the mattackm invocation
+// with its return-attack tail; plain C callers use the mattackm port
+// directly.
 export async function beginMonsterMeleeAttack(aggressor, defender, state, random, rollDice, rollOne, calls, retaliationRule, selected = { x: defender.mx, y: defender.my }) {
     const target = {
         x: selected.x,
@@ -820,6 +848,7 @@ export async function fightNearbyMonster(monster, state, random, rollDice, rollO
     }
     return null;
 }
+// C mhitm.c:explmm():
 export async function resolveMonsterCombatExplosion(attacker, defender, attack, { state = game, visible, publish = plineWithContinuation, random = rn2, rollDice = d, rollOne = rnd, resolveDamage = (source, target, selected) => resolveMonsterCombatDamage(source, target, selected, { state, visible, publish, random, rollDice, rollOne }), }) {
     requirePlayingGame(state);
     if (attacker.mcan)
@@ -873,6 +902,7 @@ export async function resolveMonsterCombatExplosion(attacker, defender, attack, 
         await publish('You have a melancholy feeling for a moment, then it passes.');
     return { mask, heroDied: false, damage: outcome.damage };
 }
+// C mhitm.c:mdamagem():
 export async function resolveMonsterCombatDamage(attacker, defender, attack, { state = game, visible, weapon = null, dieRoll = 0, target = { x: defender.mx, y: defender.my }, notOnHead = state.notonhead, publish = plineWithContinuation, random = rn2, rollOne = rnd, rollDice = d, calls = [], }) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -1002,6 +1032,8 @@ export async function resolveMonsterCombatDamage(attacker, defender, attack, { s
 const PM_GREEN_SLIME = MONSTER_NAME.indexOf('green slime');
 const PM_WRAITH = MONSTER_NAME.indexOf('wraith');
 const PM_NURSE = MONSTER_NAME.indexOf('nurse');
+// Part of C mhitm.c:mdamagem(): the AD_DGST tail that runs after monkilled
+// confirms the meal died.
 // Called only after monkilled() confirms that the meal died. Wraith growth
 // replaces ordinary victim growth; every other meal permits it afterwards.
 export async function finishMonsterDigestion(attacker, { state, attackerSpecies, defenderSpecies, defenderShapechanger, publish = plineWithContinuation, growAttacker, }) {
@@ -1027,6 +1059,7 @@ export async function finishMonsterDigestion(attacker, { state, attackerSpecies,
     await grantMonsterCorpseIntrinsic(attacker, defenderSpecies, state);
     return { growNormally: true, heroDied: !!state.program_state.gameover };
 }
+// C mhitm.c:passivemm():
 export async function applyMonsterContactPassive(attacker, defender, { hit, weapon = null, state = game, random = rn2, rollDice = d, publish = plineWithContinuation, } = {}) {
     const passive = passiveAttack(defender);
     if (!passive)
@@ -1101,7 +1134,7 @@ export async function applyMonsterContactPassive(attacker, defender, { hit, weap
                     if (!attacker.mstun) {
                         attacker.mstun = 1;
                         if (visible)
-                            await publish(`${monsterName(attacker, { state, capitalized: true })} ${staggerVerb(attacker.mnum)}...`);
+                            await publish(`${monsterName(attacker, { state, capitalized: true })} ${makePlural(monsterStagger(attacker.mnum, 'stagger'))}...`);
                     }
                     damage = 0;
                     break;
@@ -1115,6 +1148,7 @@ export async function applyMonsterContactPassive(attacker, defender, { hit, weap
     return { stopped: true, fatal: true, damage, hit,
         ...(death.heroDied ? { heroDied: true } : {}) };
 }
+// C mhitm.c:paralyze_monst():
 async function paralyzeAttacker(attacker, defender, duration, { state, random, publish, visible, hit, }) {
     duration = Math.min(127, duration);
     if (defender.mnum === PM_FLOATING_EYE) {
@@ -1190,7 +1224,7 @@ export async function displaceMonster(aggressor, defender, state = game, { quiet
     const wearsGloves = (aggressor.minvent ?? []).some(object => (object.owornmask ?? 0) & W_ARMG);
     if (touchPetrifies(defender.mnum) && !monsterHasStoneResistance(aggressor)
         && !wearsGloves) {
-        if (!monsterPolymorphsWhenStoned(aggressor) && !quietly && bothSpotted)
+        if (!formCanBecomeStoneGolem(aggressor.mnum) && !quietly && bothSpotted)
             await publish(displacementMessage(aggressor, defender, true, state, random));
         const result = await petrifyMonsterAttacker(aggressor, {
             visible: !quietly && aggressorSpotted,
@@ -1220,6 +1254,7 @@ export async function displaceMonster(aggressor, defender, state = game, { quiet
     await flush_screen(0);
     return M_ATTK_HIT;
 }
+// Part of C mhitm.c:mdisplacem(): the swap message.
 function displacementMessage(aggressor, defender, trying, state, random) {
     const subject = monsterName(aggressor, { capitalized: true, state });
     const target = monsterName(defender, { state });
@@ -1240,6 +1275,31 @@ export async function petrifyMonsterAttacker(monster, { publish = plineWithConti
     if (creditHero)
         recordHeroKillConduct();
     return finishMonsterPetrification(monster, { ...options, publish });
+}
+// C mhitm.c:paralyze_monst(). Paralysis also interrupts eating and waiting.
+export function paralyzeMonster(monster, turns) {
+    monster.mcanmove = 0;
+    monster.mfrozen = Math.min(127, turns);
+    monster.meating = 0;
+    monster.mstrategy = (monster.mstrategy ?? 0) & ~STRAT_WAITFORU;
+}
+// C mhitm.c:mswingsm() when a defender is given, mhitu.c:mswings() otherwise.
+export async function swingMonsterWeapon(monster, weapon, state = game, { defender = null, publish = plineWithContinuation, random = rn2, } = {}) {
+    if (!state.flags.verbose || heroIsBlind(state)
+        || !monsterVisible(monster, state))
+        return;
+    const x = defender ? defender.mx : state.u.ux;
+    const y = defender ? defender.my : state.u.uy;
+    const bash = isPolearm(weapon)
+        && artifactById(weapon.oartifact, state)?.name !== 'Snickersnee'
+        && (monster.mx - x) ** 2 + (monster.my - y) ** 2 <= 2;
+    const subject = monsterName(monster, { state, capitalized: true });
+    const verb = mswings_verb(weapon, bash, random);
+    const quantity = weapon.quan > 1 ? 'one of ' : '';
+    const possessive = monsterPossessive(monster, { state, random });
+    const name = objectCombatName(weapon, { state, includeCorpseSpecies: false });
+    const target = defender ? ` at ${monsterName(defender, { state })}` : '';
+    await publish(`${subject} ${verb} ${quantity}${possessive} ${name}${target}.`);
 }
 // C mhitm.c:sleep_monst(). `mon' is hit by a sleep attack; returns true if
 // it is affected. The mimic-reveal, resistance and shield-effect halves of

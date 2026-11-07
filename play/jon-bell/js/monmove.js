@@ -3180,7 +3180,7 @@ export async function mpickstuff(mtmp) {
              * message is not printed, so it is called before the extract. */
             if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
                 const otmpname = await distant_obj_name(otmp); /* mon.c:1895 names otmp, not otmp3 */
-                if (game.flags?.verbose !== false) {
+                if (game.flags?.verbose) { /* C mon.c:1897 tests truthiness */
                     /* C mon.c:1897 pline_mon(mtmp, ...) = set_msg_xy(mx, my) + vpline */
                     set_msg_xy(mtmp.mx | 0, mtmp.my | 0);
                     void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
@@ -3499,7 +3499,7 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
 /* C ref: monflag.h:108 M1_REGEN — monster regenerates hit points */
 const M1_REGEN_MON_REGEN = 0x00800000;
 
-/* C ref: mon.c:4585 healmon().  The canonical body lives in mklev.js and is
+/* C ref: mon.c:4596 healmon().  The canonical body lives in mon.js and is
  * already used by the other healing callers; keep this export as a thin
  * compatibility wrapper for monmove's historical public surface. */
 export function healmon(mtmp, amt, overheal) {

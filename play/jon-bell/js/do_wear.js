@@ -37,7 +37,7 @@ function _hero_mflags1_dw() {
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline, livelog_printf } from './pline.js';
-import { You, Your as Your_real } from './pline.js';
+import { You, Your, You_feel } from './pline.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
@@ -66,13 +66,28 @@ import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js
 import { which_armor } from './worn.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
-import { cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok as equip_ok_cmd } from './cmd.js';
+import { cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok } from './cmd.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed } from './wield.js';
 import { dropx } from './do.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
 import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
-import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_TOOL,
+import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_RING, W_TOOL,
+         WORN_ARMOR, WORN_CLOAK, WORN_HELMET, WORN_SHIELD, WORN_GLOVES, WORN_BOOTS,
+         WORN_SHIRT, WORN_AMUL, WORN_BLINDF, LEFT_RING, RIGHT_RING,
+         PARANOID_REMOVE, FROMOUTSIDE,
          CMDQ_KEY, ECMD_FAIL, FOOT } from './const.js';
+const SMALL_SHIELD = 150, SHIELD_OF_DRAIN_RESISTANCE = 151,
+      SHIELD_OF_SHOCK_RESISTANCE = 152, ELVEN_SHIELD = 153,
+      URUK_HAI_SHIELD = 154, ORCISH_SHIELD = 155,
+      LARGE_SHIELD = 156, DWARVISH_ROUNDSHIELD = 157,
+      SHIELD_OF_REFLECTION = 158;
+const HAWAIIAN_SHIRT = 136, T_SHIRT = 137;
+const GRAY_DRAGON_SCALES = 111;
+const AKLYS = 80;
+const st_corpse = 0x02, st_petrifies = 0x04;
+function ParanoidRemove() {
+    return ((game.flags?.paranoia_bits | 0) & PARANOID_REMOVE) !== 0;
+}
 const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 /* C mkobj.c:1865 set_bknown() — the project's real one (js/mklev.js:11078).
  * mklev.js does not import this file, so there is no cycle. */
@@ -449,12 +464,9 @@ export function find_ac() {
         uac = sgn(uac) * AC_MAX;
     if (uac !== u.uac) {
         u.uac = uac;
-        /* C ref: do_wear.c:2511 — SET_BOTL() fires whenever uac changes.
-         * hack.h:1728 expands SET_BOTL() to event_log(...) + disp.botl = TRUE.
-         * This is observable at post_init snapshot time; bot() reset in W12.1
-         * clears disp.botl=0 before find_ac runs, so we must set it back here. */
+        /* C ref: do_wear.c:2510 — disp.botl = TRUE when uac changes. */
         if (g.disp)
-            g.disp.botl = 1;
+            g.disp.botl = true;
     }
 }
 /* C ref: do_wear.c:567-573 hard_helmet() — hard helms provide better protection
@@ -538,6 +550,7 @@ function armorMeta(obj) {
  * never feeds armoroff()'s nomovemsg, but keep the discovery-state branch
  * faithful for the other callers. */
 function cloak_simple_name(row, obj) {
+    if (!obj && row) obj = row;
     return cloak_simple_name_obj(obj);
 }
 /* C ref: objnam.c:5510 helm_simple_name(helmet) — !hard_helmet ? "hat" : "helm".
@@ -678,7 +691,32 @@ export async function Armor_gone() {
     await dragon_armor_handling(otmp, false, false);
     return 0;
 }
-export function Shield_off() { return takeoff_slot('uarms'); }
+export async function Shield_off() {
+    // C do_wear.c:735
+    if (game.context?.takeoff)
+        game.context.takeoff.mask = (game.context.takeoff.mask | 0) & ~W_ARMS;
+
+    // C do_wear.c:739-752
+    const otmp = game.u?.uarms;
+    if (otmp) {
+        switch (otmp.otyp) {
+        case SMALL_SHIELD:
+        case SHIELD_OF_DRAIN_RESISTANCE:
+        case SHIELD_OF_SHOCK_RESISTANCE:
+        case ELVEN_SHIELD:
+        case URUK_HAI_SHIELD:
+        case ORCISH_SHIELD:
+        case DWARVISH_ROUNDSHIELD:
+        case LARGE_SHIELD:
+        case SHIELD_OF_REFLECTION:
+            break;
+        default:
+            await equipment_impossible('Unknown type of %s (%d)', 'shield', otmp.otyp);
+            break;
+        }
+    }
+    return takeoff_slot('uarms');
+}
 export async function Helmet_off() {
     const u = game.u;
     const otmp = u ? u.uarmh : null;
@@ -874,7 +912,25 @@ export async function Boots_off() {
         g.context.takeoff.cancelled_don = false;
     return result;
 }
-export function Shirt_off()  { return takeoff_slot('uarmu'); }
+export async function Shirt_off() {
+    // C do_wear.c:780
+    if (game.context?.takeoff)
+        game.context.takeoff.mask = (game.context.takeoff.mask | 0) & ~W_ARMU;
+
+    // C do_wear.c:784-790
+    const otmp = game.u?.uarmu;
+    if (otmp) {
+        switch (otmp.otyp) {
+        case HAWAIIAN_SHIRT:
+        case T_SHIRT:
+            break;
+        default:
+            await equipment_impossible('Unknown type of %s (%d)', 'shirt', otmp.otyp);
+            break;
+        }
+    }
+    return takeoff_slot('uarmu');
+}
 /* C ref: youprop.h — a prop is "on" when intrinsic or extrinsic is set and it
  * is not blocked.  Mirrored locally from js/mcastu.js propOn()/Invis() (not
  * exported there); js/mklev.js Displaced_mv()/Invis_mv() is the same precedent. */
@@ -915,7 +971,7 @@ export async function toggle_displacement(obj, oldprop, on) {
         })()) {
         if (obj)
             makeknown_otyp(obj.otyp);
-        await pline(`You feel that monsters${on ? '' : ' no longer'} have difficulty pinpointing your location.`);
+        await You_feel(`that monsters${on ? '' : ' no longer'} have difficulty pinpointing your location.`); /* C do_wear.c:175 */
     }
 }
 /* C ref: do_wear.c:383 Cloak_off().  Unlike the other *_off callbacks this one
@@ -1106,12 +1162,18 @@ export async function Armor_on()  {
     return 0;
 }
 export async function Shield_on() {
-    // C do_wear.c:710-723; objects.h SMALL_SHIELD..SHIELD_OF_REFLECTION.
+    // C do_wear.c:711-724; objects.h SMALL_SHIELD..SHIELD_OF_REFLECTION.
     const otyp = game.u.uarms.otyp;
     switch (otyp) {
-    case 150: case 151: case 152: // small, drain resistance, shock resistance
-    case 153: case 154: case 155: // elven, Uruk-hai, orcish
-    case 156: case 157: case 158: // large, dwarvish roundshield, reflection
+    case SMALL_SHIELD:
+    case SHIELD_OF_DRAIN_RESISTANCE:
+    case SHIELD_OF_SHOCK_RESISTANCE:
+    case ELVEN_SHIELD:
+    case URUK_HAI_SHIELD:
+    case ORCISH_SHIELD:
+    case DWARVISH_ROUNDSHIELD:
+    case LARGE_SHIELD:
+    case SHIELD_OF_REFLECTION:
         break;
     default: await equipment_impossible('Unknown type of %s (%d)', 'shield', otyp);
     }
@@ -1394,10 +1456,11 @@ export async function Cloak_on() {
     return don_slot('uarmc');
 }
 export async function Shirt_on() {
-    // C do_wear.c:762-768; objects.h HAWAIIAN_SHIRT and T_SHIRT.
+    // C do_wear.c:763-769; objects.h HAWAIIAN_SHIRT and T_SHIRT.
     const otyp = game.u.uarmu.otyp;
     switch (otyp) {
-    case 136: case 137:
+    case HAWAIIAN_SHIRT:
+    case T_SHIRT:
         break;
     default: await equipment_impossible('Unknown type of %s (%d)', 'shirt', otyp);
     }
@@ -1642,6 +1705,8 @@ async function armor_or_accessory_off(obj) {
     if (obj.owornmask & W_ARMOR_C) {
         await armoroff(obj);
     } else if (obj === u.uright || obj === u.uleft) {
+        /* C do_wear.c:1809-1818: off_msg before removing ring, unlike amulet
+         * ("you were wearing a moonstone ring (on right hand)" vs redundant "being worn"). */
         await off_msg(obj);
         await Ring_off(obj);
     } else if (obj === u.uamul) {
@@ -1662,7 +1727,7 @@ async function armor_or_accessory_off(obj) {
  * currently makes handling the carried corpse safe. */
 async function better_not_take_that_off(gloves) {
     const corpse = carrying_stoning_corpse();
-    if (!corpse || u_safe_from_fatal_corpse(corpse, 0x02 | 0x04))
+    if (!corpse || u_safe_from_fatal_corpse(corpse, st_corpse | st_petrifies))
         return false;
     const question = `Take off your ${gloves_simple_name_obj(gloves)} despite carrying a dead ${obj_pmname(corpse)}?`;
     /* C calls paranoid_ynq(TRUE,...): even without ParanoidConfirm this is
@@ -1788,9 +1853,6 @@ const GETOBJ_EXCLUDE_INACCESS_CMD = -1;
  * is the same value (0); spelled locally so this cluster has no import-order
  * dependency on that file. */
 const GETOBJ_NOFLAGS_CMD = 0;
-async function equip_ok(obj, removing, accessory) {
-    return equip_ok_cmd(obj, removing, accessory);
-}
 /* C ref: do_wear.c:3446 wear_ok — getobj callback for 'W'. */
 async function wear_ok(obj) { return equip_ok(obj, false, false); }
 /* C ref: do_wear.c:3453 puton_ok — getobj callback for 'P'. */
@@ -1806,12 +1868,12 @@ export async function dotakeoff() {
     let otmp = which;
     if (!Narmorpieces && !Naccessories) {
         if (u.uskin)
-            await pline(`The ${u.uskin.otyp >= 111 ? 'dragon scales are' : 'dragon scale mail is'} merged with your skin!`);
+            await pline(`The ${u.uskin.otyp >= GRAY_DRAGON_SCALES ? 'dragon scales are' : 'dragon scale mail is'} merged with your skin!`);
         else
             await pline('Not wearing any armor or accessories.');
         return ECMD_OK;
     }
-    if (Narmorpieces !== 1 || ((game.flags.paranoia_bits | 0) & 0x0040)
+    if (Narmorpieces !== 1 || ParanoidRemove()
         || game.gi.item_action_in_progress)
         otmp = await getObjFromGetobj('take off', takeoff_ok, GETOBJ_NOFLAGS_CMD);
     if (!otmp) return ECMD_CANCEL;
@@ -2131,7 +2193,7 @@ export async function glibr() {
         if (canletgo(obj, '')) await dropx(obj);
     }
     obj = u.uwep;
-    if (obj && obj.otyp !== 80 /* AKLYS */ && !welded(obj)) {
+    if (obj && obj.otyp !== AKLYS && !welded(obj)) {
         const savequan = obj.quan;
         let thiswep = is_sword(obj) ? c_sword : weapon_descr(obj);
         if (otherwep && thiswep !== makesingular(otherwep)) otherwep = null;
@@ -2339,8 +2401,9 @@ export async function canwearobj(otmp, maskbox, noisy) {
             await silly_thing_dw('wear', otmp);
         err++;
     }
-    /* do_wear.c:2198-2205 — the welded(otmp) arm is #if 0'd out in C ("only
-     * weapons ... get welded to your hand, not armor"); not ported. */
+    /* do_wear.c:2197-2204 — the welded(otmp) arm is commented out in C (Unnecessary
+     * since now only weapons and special items like pick-axes get welded to your hand,
+     * not armor); not active in C. */
     return !err;                                        /* do_wear.c:2206 */
 }
 /* C mondata.h slithy(ptr) — (mflags1 & M1_SLITHY) != 0; monflag.h:104
@@ -3045,7 +3108,7 @@ export async function doremring() {
         await pline('Not wearing any accessories or armor.');
         return ECMD_OK;
     }
-    if (Naccessories !== 1 || ((game.flags.paranoia_bits | 0) & 0x0040)
+    if (Naccessories !== 1 || ParanoidRemove()
         || cmdq_peek(CQ_CANNED))
         otmp = await getObjFromGetobj('remove', remove_ok, GETOBJ_NOFLAGS_CMD);
     if (!otmp) return ECMD_CANCEL;
@@ -3193,56 +3256,39 @@ export function doffing(otmp) {
     const what = ((g.context && g.context.takeoff && g.context.takeoff.what) || 0) | 0;
     let result = false;
 
-    /* Import the WORN_* constants via computed values since they're not imported
-     * at module level. Use the W_* constants directly. */
-    const WORN_ARMOR_VAL = 0x00000001;   /* W_ARM */
-    const WORN_SHIRT_VAL = 0x00000040;   /* W_ARMU */
-    const WORN_CLOAK_VAL = 0x00000002;   /* W_ARMC */
-    const WORN_BOOTS_VAL = 0x00000020;   /* W_ARMF */
-    const WORN_HELMET_VAL = 0x00000004; /* W_ARMH */
-    const WORN_GLOVES_VAL = 0x00000010; /* W_ARMG */
-    const WORN_SHIELD_VAL = 0x00000008; /* W_ARMS */
-    const WORN_AMUL_VAL = 0x00010000;   /* W_AMUL */
-    const LEFT_RING_VAL = 0x00020000;   /* W_RINGL */
-    const RIGHT_RING_VAL = 0x00040000;  /* W_RINGR */
-    const WORN_BLINDF_VAL = 0x00080000; /* W_TOOL */
-    const W_WEP_VAL = 0x00000100;
-    const W_SWAPWEP_VAL = 0x00000400;
-    const W_QUIVER_VAL = 0x00000200;
-
     /* afternmv tags — these are stored as string tags in g.afternmv. */
     const afternmv = g.afternmv || '';
 
     /* Check each worn slot and its corresponding *_off tag. */
     if (otmp === u.uarm)
-        result = (afternmv === 'Armor_off' || what === WORN_ARMOR_VAL);
+        result = (afternmv === 'Armor_off' || what === WORN_ARMOR);
     else if (otmp === u.uarmu)
-        result = (afternmv === 'Shirt_off' || what === WORN_SHIRT_VAL);
+        result = (afternmv === 'Shirt_off' || what === WORN_SHIRT);
     else if (otmp === u.uarmc)
-        result = (afternmv === 'Cloak_off' || what === WORN_CLOAK_VAL);
+        result = (afternmv === 'Cloak_off' || what === WORN_CLOAK);
     else if (otmp === u.uarmf)
-        result = (afternmv === 'Boots_off' || what === WORN_BOOTS_VAL);
+        result = (afternmv === 'Boots_off' || what === WORN_BOOTS);
     else if (otmp === u.uarmh)
-        result = (afternmv === 'Helmet_off' || what === WORN_HELMET_VAL);
+        result = (afternmv === 'Helmet_off' || what === WORN_HELMET);
     else if (otmp === u.uarmg)
-        result = (afternmv === 'Gloves_off' || what === WORN_GLOVES_VAL);
+        result = (afternmv === 'Gloves_off' || what === WORN_GLOVES);
     else if (otmp === u.uarms)
-        result = (afternmv === 'Shield_off' || what === WORN_SHIELD_VAL);
+        result = (afternmv === 'Shield_off' || what === WORN_SHIELD);
     /* these 1-turn items don't need 'ga.afternmv' checks */
     else if (otmp === u.uamul)
-        result = (what === WORN_AMUL_VAL);
+        result = (what === WORN_AMUL);
     else if (otmp === u.uleft)
-        result = (what === LEFT_RING_VAL);
+        result = (what === LEFT_RING);
     else if (otmp === u.uright)
-        result = (what === RIGHT_RING_VAL);
+        result = (what === RIGHT_RING);
     else if (otmp === u.ublindf)
-        result = (what === WORN_BLINDF_VAL);
+        result = (what === WORN_BLINDF);
     else if (otmp === u.uwep)
-        result = (what === W_WEP_VAL);
+        result = (what === W_WEP);
     else if (otmp === u.uswapwep)
-        result = (what === W_SWAPWEP_VAL);
+        result = (what === W_SWAPWEP);
     else if (otmp === u.uquiver)
-        result = (what === W_QUIVER_VAL);
+        result = (what === W_QUIVER);
 
     return result;
 }
@@ -3480,17 +3526,16 @@ function adjust_attrib_dw(obj, which, val) {
     const observable = oldAttrib !== acurr(u, which);
     if (observable || !extremeattr_dw(which))
         learnring(obj, observable);
-    if (g.disp) g.disp.botl = 1;
+    if (g.disp) g.disp.botl = true;
 }
 
 
 export async function Ring_on(obj) {
     const u = game.u;
     const otyp = obj.otyp | 0;
-    const W_RING = 0x00060000;
     const oprop = MKOBJ_OC_OPROP[otyp] | 0;
     const prop = u.uprops?.[oprop];
-    let oldprop = prop?.extrinsic | 0;
+    let oldprop = (prop?.extrinsic | 0); /* C do_wear.c:1243 — raw extrinsic */
     /* C do_wear.c:1247-1254 — make sure ring isn't wielded; can't use
      * remove_worn_item() here because it has already been set worn in a ring
      * slot. */
@@ -3531,14 +3576,9 @@ export async function Ring_on(obj) {
         }
         case RIN_LEVITATION_OTYP: {
             const p = uprop_levitation_record();
-            /* C do_wear.c:1307: if (!oldprop && !HLevitation && !(BLevitation & FROMOUTSIDE)).
-             * oldprop = the extrinsic BEFORE setworn masked off the new ring bit;
-             * here the hero had no prior levitation so the float-up branch fires. */
-            const FROMOUTSIDE = 0x04000000;
+            /* C do_wear.c:1307: if (!oldprop && !HLevitation && !(BLevitation & FROMOUTSIDE)) */
             const HLev = p.intrinsic | 0;
             const BLevFromOutside = (p.blocked | 0) & FROMOUTSIDE;
-            /* oldprop: extrinsic minus the just-set ring mask (W_RING handling) */
-            const oldprop = ((p.extrinsic | 0) & ~(obj.owornmask | 0));
             if (!oldprop && !HLev && !BLevFromOutside) {
                 await float_up();
                 learnring(obj, true);
@@ -4108,9 +4148,7 @@ export function cancel_don() {
 
 export { You };
 
-export async function Your(line, ...args) {
-    return Your_real(line, ...args);
-}
+export { Your };
 
 /* yname — C objnam.c:2359-2374.
  *   yname(obj) { s = cxname(obj);
@@ -4146,10 +4184,8 @@ export function yname(obj) {
     return (prefix + name).slice(0, BUFSZ - 1);
 }
 export { xname };
-/* C shk.c:5862 shk_your — adapt the one-argument API to the shared port. */
-export function shk_your(obj) {
-    return ownership_prefix('', obj);
-}
+/* C shk.c:5862 shk_your — forward to the canonical port in js/shk.js. */
+export const shk_your = ownership_prefix;
 /* C do_wear.c:60-65 — describe the fingers, or the worn gloves when requested. */
 export function fingers_or_gloves(check_gloves) {
     const uarmg = game.u?.uarmg || null;

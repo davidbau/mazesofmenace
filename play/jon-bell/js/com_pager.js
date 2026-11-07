@@ -517,7 +517,7 @@ export function prompt_spilled_onto_row1() {
      * whose row_refresh repaints the map row. */
     return !!(rows && rows[0] && rows[1]
         && rows[0].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').length >= 78
-        && rows[1].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim() !== '--More--'
+        && !rows[1].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd().endsWith('--More--')
         && rows[1] !== render_map_row_clipped(0, COLNO - 1).str);
 }
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipArg, pwOverride,
@@ -679,16 +679,16 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
         if (screenRow === 22 || (rows3 && screenRow === 21)) {
             // Status line 1: render regardless of window coverage.
             if (statusClipCol === -1) {
-                /* A dismissed 22-row tty window erases this row completely;
-                 * the following status row is repainted independently. */
-                /* C leaves the title text from botl row 22 before the window
-                 * corner cleanup, but erases the cursor-forward/stat portion. */
+                /* wintty.c:3684-3687 clears the covered corner of this row;
+                 * windows.c:1861 keeps bot() disabled during dismissal. */
                 /* tty_dismiss_nhwindow -> docorner(cw->offx, ...) (wintty.c:3684)
                  * clears row 22 from the dismissed menu's offx, so the title
                  * keeps priorWinCol-2 columns.  The caller (itemactions) took
                  * priorWinCol from the pickinv window state it set. */
                 const priorCol = game._pickinv_window?.WIN_COL;
-                const title = _statusLine1().split('\x1b', 1)[0];
+                /* docorner's physical clip applies even without pickinv metadata;
+                 * rebuilding the title here resurrects the erased cells. */
+                const status = rowStatus(screenRow);
                 /* docorner() clears only offx..79, so every status cell left of
                  * priorWinCol-2 survives (title, cursor-forward gap, and any
                  * stat text that starts before the clip: "...S" of "St:"). */
@@ -697,9 +697,9 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                  * leaves no painted blanks at the row end. */
                 output += priorCol != null
                     ? (rows3
-                        ? _overlay_status_line(rowStatus(screenRow), Math.max(0, priorCol - 2), '').replace(/ +$/, '')
-                        : _overlay_status_line(_statusLine1(), Math.max(0, priorCol - 2), ''))
-                    : title;
+                        ? _overlay_status_line(status, Math.max(0, priorCol - 2), '').replace(/ +$/, '')
+                        : _overlay_status_line(status, Math.max(0, priorCol - 2), ''))
+                    : status;
                 output += '\n';
                 continue;
             }

@@ -12,6 +12,7 @@ import { MONSTER_NAME } from './monster_data.js';
 import { possessiveName, upstart } from './hacklib.js';
 import { makePlural, makeSingular, withIndefiniteArticle } from './objnam.js';
 import { heroIsBlind } from './senses.js';
+import { artifactByName } from './artifact.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { rn2 } from './rng.js';
 import { QUEST_LUA_SOURCE } from './quest_data.js';
@@ -77,6 +78,8 @@ async function prepareSection(section, messageId, state) {
         await lua.destroy();
     }
 }
+// Part of C questpgr.c:qt_pager(), com_pager(): resolves the role or
+// common section text.
 export async function prepareQuestText(messageId, state = game, common = false) {
     if (common)
         return prepareSection('common', messageId, state);
@@ -132,9 +135,11 @@ function roleMonsterName(mnum) {
         return '';
     return monsterHasProperName(mnum) ? name : `the ${name}`;
 }
+// C questpgr.c:ldrname().
 export function questLeaderName(g = game) {
     return roleMonsterName(g.urole?.ldrnum);
 }
+// C questpgr.c:neminame().
 export function questNemesisName(g = game) {
     return roleMonsterName(g.urole?.neminum);
 }
@@ -153,6 +158,31 @@ export function questHomebase(g = game) {
 export function questIntermed(g = game) {
     return g.urole?.intermediate ?? '';
 }
+// C questpgr.c:is_quest_artifact()
+export function isQuestArtifact(object, state = game) {
+    return !!object.oartifact
+        && object.oartifact === artifactByName(state.urole?.artifactName, state)?.id;
+}
+// C questpgr.c:find_qarti()
+// The caller walks the outer chain; this searches one object and its contents.
+export function objectContainsQuestArtifact(object, state) {
+    if (!object)
+        return false;
+    return isQuestArtifact(object, state)
+        || (object.contents ?? []).some(content => objectContainsQuestArtifact(content, state));
+}
+// C questpgr.c:find_quest_artifact()
+// The on_goal caller searches floor, monster inventory, and buried objects.
+export function levelContainsQuestArtifact(g = game) {
+    const level = g.level;
+    if ((level?.objects || []).flat(2).some(object => objectContainsQuestArtifact(object, g)))
+        return true;
+    if ((level?.buriedObjects || []).some(object => objectContainsQuestArtifact(object, g)))
+        return true;
+    return (level?.monsters || []).some(monster => !monster.dead && monster.mhp > 0 && (monster.minvent || [])
+        .some(object => objectContainsQuestArtifact(object, g)));
+}
+// Part of C questpgr.c:convert_arg(): the align_str word for %a/%A/%G.
 function alignmentName(alignment) {
     if (alignment === undefined)
         return 'neutral';
@@ -160,6 +190,8 @@ function alignmentName(alignment) {
 }
 // C hacklib.c:s_suffix(); %S/%s name formatting uses the shared
 // possessiveName port in hacklib.ts.
+// Part of C questpgr.c:convert_arg(): the u.ualignbase original-alignment
+// read.
 // The original alignment recorded at game start drives %a, %d, and %G.
 function originalAlignment(g) {
     return g.u?.ualignbase?.[1] ?? g.u?.ualign?.type ?? 0;

@@ -1,4 +1,6 @@
-// C calendar.c:getnow(), time_from_yyyymmddhhmmss(), and getlt().
+// C calendar.c:getnow(), time_from_yyyymmddhhmmss(), getlt(),
+// phase_of_the_moon(), and friday_13th().
+// Port only: the recording clock's local hour (C reads getlt() fields).
 export function recorderLocalHour(datetime) {
     const epoch = recorderLocalEpochSeconds(datetime) || Date.now() / 1000;
     return Number(new Intl.DateTimeFormat('en-US', {
@@ -42,6 +44,8 @@ export function recorderLocalDate(datetime) {
 }
 // New York daylight time (UTC-4) inherited by the recorder's fixed clock.
 const RECORDER_INHERITED_OFFSET_MS = -4 * 60 * 60 * 1000;
+// Port only: apply the recording clock's inherited New York DST offset to
+// its fixed timestamp.
 export function recorderLocalEpochSeconds(datetime) {
     if (!datetime || !/^\d{14}$/.test(datetime))
         return 0;
@@ -84,9 +88,27 @@ export function recorderTimestamp(epoch) {
         ...['month', 'day', 'hour', 'minute', 'second'].map(name => String(field(name)).padStart(2, '0'))]
         .join('');
 }
+// Port only: round-trip a saved time through the recording clock's
+// offset.
 // C save.c writes the local timestamp; restore.c reads it using the recording
 // clock's offset. A time saved across a DST boundary therefore shifts on restore.
 export function recorderRestoredTime(epoch) {
     return recorderLocalEpochSeconds(recorderTimestamp(epoch));
+}
+// C calendar.c:phase_of_the_moon()
+// Also C calendar.c:friday_13th(): both checks share the same local date.
+// C reads getlt(); the port reads the recording's local date.
+export function fixedCalendar(datetime) {
+    const date = recorderLocalDate(datetime);
+    if (!date)
+        return { moonphase: null, friday13: false };
+    const { year, month, day, weekday } = date;
+    const diy = Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86400000);
+    const goldn = ((year - 1900) % 19) + 1;
+    let epact = (11 * goldn + 18) % 30;
+    if ((epact === 25 && goldn > 11) || epact === 24)
+        epact++;
+    const moonphase = (Math.floor(((((diy + epact) * 6) + 11) % 177) / 22)) & 7;
+    return { moonphase, friday13: weekday === 5 && day === 13 };
 }
 //# sourceMappingURL=calendar.js.map

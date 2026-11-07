@@ -4,6 +4,10 @@
 // cfgfiles.ts (C cfgfiles.c).
 // C options.c:optfn_fruit()/initoptions()/fruitadd(): the named-fruit
 // option and registry live here, beside the rest of the option handlers.
+// C options.c:warning_opts()/assign_warnings(): the warnings option and its
+// symbol table live here.
+// C options.c:ask_do_tutorial(): the tutorial query lives here as
+// askTutorial().
 import { ILLOBJ_CLASS, COIN_CLASS, FOOD_CLASS } from './objclass.js';
 import { game } from './gstate.js';
 import { clearrolefilter, createCharacterFilters, setrolefilter } from './role.js';
@@ -13,7 +17,6 @@ import { changeCommandAutocompletions, countCommandAutocompletions, setCommandAu
 import { displayHelpFile, displayPagerText } from './pager.js';
 import { setConditionOption } from './botl.js';
 import { classifyStatusTerrain } from './hack.js';
-import { setWarningSymbols } from './warning_symbols.js';
 import { PosixRegex } from './posix_regex.js';
 import { rn2, rnd } from './rng.js';
 import { isTextOption, setTextOption, textOptionValue, cInteger, parsePickupTypes, optionError, featureAlertVersion, parseBoulderSymbolValue } from './option_values.js';
@@ -39,12 +42,12 @@ import { restoreMenuUnderlay, snapshotMenuUnderlay } from './wintty.js';
 import { NO_COLOR } from './terminal.js';
 import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP } from './const.js';
 import { OBJECT_CLASS_SYMBOLS } from './display.js';
-import { mungSpaces } from './hacklib.js';
+import { mungSpaces, fuzzyMatch } from './hacklib.js';
 import { DISCLOSURE_CATEGORIES, parseDisclosureSettings } from './end.js';
 import { setVanqOrder, vanquishedOptionValue } from './insight.js';
 import { C_ATR_INVERSE, C_ATR_NONE } from './color_attr.js';
-import { attributeName, colorAttrToString, colorName, cutConfigBytes, fuzzyMatch, matchAttributeName, matchColorName, parseColorAttr, parseMenuColoring, queryAttributeMenu, queryColorMenu } from './coloratt.js';
-import { BUFSZ, CLR_MAX, COLNO, Is_rogue_level, MENU_FULL, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PICK_NONE, PICK_ONE, PL_PSIZ, PARANOID_AUTOALL, PARANOID_BONES, PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT, PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP, PARANOID_WERECHANGE, STONE, } from './const.js';
+import { attributeName, colorAttrToString, colorName, cutConfigBytes, matchAttributeName, matchColorName, parseColorAttr, parseMenuColoring, queryAttributeMenu, queryColorMenu } from './coloratt.js';
+import { BUFSZ, CLR_MAX, COLNO, Is_rogue_level, MENU_FULL, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PICK_NONE, PICK_ONE, PL_PSIZ, PARANOID_AUTOALL, PARANOID_BONES, PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT, PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP, PARANOID_WERECHANGE, def_warnsyms, STONE, } from './const.js';
 // C include/optlist.h, recorder build: every option table entry in file
 // order — [name, alias, isBool, negateok, valok, dupeok, prefix].  The
 // flags drive parseoptions()'s generic checks; options the port does not
@@ -270,6 +273,7 @@ const OPTION_TABLE = [
     ['cond_', null, false, true, false, true, true, false, false],
     ['font', null, false, true, true, true, true, false, false],
 ];
+// C hacklib.c:lowc(): ASCII lowercasing of one byte.
 const asciiLower = (code) => code >= 65 && code <= 90 ? code + 32 : code;
 // C options.c:determine_ambiguities(): minmatch is one past the longest
 // common case-insensitive prefix with any other option name, clamped to
@@ -304,6 +308,7 @@ const OPTION_ENTRIES = (() => {
         index,
     }));
 })();
+// C hacklib.c:strncmpi(): case-insensitive prefix comparison.
 // C hacklib.c lowc()/strncmpi() over a leading run of the element.
 function asciiNameEqual(name, element, length) {
     if (length > name.length)
@@ -328,6 +333,8 @@ function lengthWithoutValue(element) {
         cut--;
     return cut;
 }
+// Part of C options.c:optfn_disclose(): the per-category values back into
+// the option string.
 // Serialize the six disclosure slots into the "prefix category" grammar
 // parseDisclosureSettings() reads, so option-time state survives like C's
 // end_disclose[] array; a slot never set stays unmentioned, and a fully
@@ -350,12 +357,15 @@ export const MENU_KEY_OPTIONS = {
     menu_deselect_page: true, menu_search: true, menu_shift_right: true,
     menu_shift_left: true,
 };
+// C hacklib.c:str_start_is(): case-insensitive leading-substring test.
 // C hacklib.c str_start_is(name, value, TRUE): the value is a leading
 // substring of the name, case-insensitively; an empty value matches.
 function ciPrefixOf(name, value) {
     return value.length <= name.length
         && name.slice(0, value.length).toLowerCase() === value.toLowerCase();
 }
+// Part of C options.c:illegal_menu_cmd_key(): the hacklib.c visctrl
+// spelling of a reserved byte.
 // C hacklib.c visctrl(): how diagnostics name a control or meta byte.
 export function visctrl(code) {
     let text = '';
@@ -377,6 +387,7 @@ const AUTOUNLOCK_TYPES = [
     ['kick', AUTOUNLOCK_KICK],
     ['force', AUTOUNLOCK_FORCE],
 ];
+// C options.c:illegal_menu_cmd_key(): reserved keys for menu commands.
 // options.c illegal_menu_cmd_key(): the reserved control, space, digit,
 // and letter keys ('@' excepted), then the default object-class symbols.
 export function menuCommandKeyError(key) {
@@ -410,6 +421,8 @@ const PARANOIA_ARGUMENTS = [
     ['swim', 1, PARANOID_SWIM], ['remove', 1, PARANOID_REMOVE], ['takeoff', 1, PARANOID_REMOVE],
     ['none', 4, 0], ['all', 3, ~0],
 ];
+// Part of C options.c:optfn_paranoid_confirmation(): the paranoid-bit value
+// parsing.
 function updateParanoiaBits(current, rawValue, addError) {
     // optfn_paranoid_confirmation() condenses the value, treats a leading
     // + or - as augmenting, matches arguments case-insensitively through
@@ -463,6 +476,7 @@ export function bindingFields(value) {
     }
     return fields.reverse();
 }
+// C options.c:txt2key(): a binding's text to its key byte.
 // txt2key() consumes bytes, not Unicode code points. Only the first decoded
 // escape is needed: Native returns the first byte of escapes()' output.
 export function bindingKeyCode(value) {
@@ -523,6 +537,7 @@ export function bindingKeyCode(value) {
     const decimal = key.match(/^\d{3}/);
     return decimal ? Number(decimal[0]) & 255 : 0;
 }
+// Part of C options.c:txt2key(): the backslash escape bytes.
 function escapeKeyCode(character) {
     switch (character) {
         case 'n': return 10;
@@ -532,12 +547,14 @@ function escapeKeyCode(character) {
         default: return character.charCodeAt(0);
     }
 }
+// Part of C options.c:optfn_number_pad(): apply the chosen numberpad mode.
 function setNumberPadOption(value, settings) {
     if (!settings.commandBindings.setNumberPad(value))
         return;
     settings.iflags.num_pad = value > 0;
     settings.iflags.num_pad_mode = value === -1 ? 1 : value > 0 ? value - 1 : 0;
 }
+// Part of C options.c:optfn_scores(): the top/around/own value parsing.
 function parseScoreOption(value, negated) {
     // string_for_opt() trims the value; an empty one is a missing parameter.
     const text = value?.trim();
@@ -625,6 +642,27 @@ export function parseAutopickupException(value, addError) {
         return compile(plain.text, false);
     addError('syntax error in AUTOPICKUP_EXCEPTION');
     return null;
+}
+// C options.c:ask_do_tutorial(). Empty acceptance rebuilds the menu with
+// an explanation; a selected answer or Escape ends the question.
+export async function askTutorial() {
+    let pass = 0;
+    for (;;) {
+        const items = [
+            { key: 'y', text: 'Yes, do a tutorial' },
+            { key: 'n', text: 'No, just start play' },
+            { text: '' },
+            { text: 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.' },
+        ];
+        if (pass++)
+            items.push({ text: "(Please choose 'y' or 'n'.)" });
+        const answer = await showInventoryWindow([{ items }], {
+            title: 'Do you want a tutorial?', pickMode: PICK_ONE,
+        });
+        if (answer.key === 0)
+            continue;
+        return answer.key === 'y'.charCodeAt(0);
+    }
 }
 // C options.c:parseoptions(): parse one OPTIONS= value list (or the whole
 // NETHACKOPTIONS string, from rcfile()'s environment call) element by
@@ -1546,6 +1584,8 @@ function configureCharacterOption(result, { facet, value, spelling, negated, pre
             break;
     }
 }
+// Part of C options.c:parseoptions(): split comma-separated OPTIONS into
+// elements, rightmost first.
 function configurationOptions(bytes) {
     const options = [];
     let start = 0;
@@ -1557,6 +1597,8 @@ function configurationOptions(bytes) {
     }
     return options.reverse();
 }
+// Part of C options.c:parseoptions(): strip surrounding whitespace from one
+// element.
 function trimConfigurationOption(bytes) {
     // C parseoptions() uses isspace() on individual bytes before parsing.
     const whitespace = (byte) => byte === 32
@@ -1645,6 +1687,7 @@ const NUMBER_PAD_CHOICES = [
     ' 4 (on, phone-style layout, MSDOS compatible)',
     "-1 (off, 'z' to move upper-left, 'y' to zap wands)",
 ];
+// Part of C options.c:optfn_number_pad(): the current mode's value string.
 function numberPadDescription() {
     const bindings = game.commandBindings;
     if (!bindings.numberPad)
@@ -1654,6 +1697,7 @@ function numberPadDescription() {
             ? '4=on, phone layout, MSDOS compatible' : '3=on, phone-style layout';
     return bindings.pcHack ? '2=on, MSDOS compatible' : '1=on';
 }
+// C options.c:handler_number_pad(): the number_pad mode menu.
 async function editNumberPad() {
     const selected = await showMultiSelectWindow({
         title: 'Select number_pad mode:', omitHeadings: true, pickOne: true,
@@ -1869,6 +1913,8 @@ const OPTION_HELP_COMPOUNDS = [
 ];
 const requestBooleanByName = new Map([...REQUEST_MENU_BOOLEAN_OPTIONS, ...WIZARD_MENU_BOOLEAN_OPTIONS]
     .map(option => [option[0].toLowerCase(), option]));
+// Port only: read one boolean option's current value across flags and
+// iflags.
 function requestBooleanValue(name) {
     const option = requestBooleanByName.get(name.toLowerCase());
     if (!option)
@@ -1886,6 +1932,7 @@ function requestBooleanValue(name) {
         return game.iflags[property] ?? fallback;
     return game.flags[property] ?? fallback;
 }
+// Port only: apply one boolean option to the parsed configuration.
 function setConfigurationBoolean(settings, option, value) {
     const [, property] = option;
     if (property === '_monTelecontrol')
@@ -1903,6 +1950,7 @@ function setConfigurationBoolean(settings, option, value) {
     if (property === 'hilite_pet' && value && settings.iflags.wc2_petattr === C_ATR_NONE)
         settings.iflags.wc2_petattr = C_ATR_INVERSE;
 }
+// Port only: apply one boolean option to the live game.
 function setRequestBoolean(option, value) {
     const [, property] = option;
     if (property === '_monTelecontrol')
@@ -1920,6 +1968,7 @@ function setRequestBoolean(option, value) {
     if (property === 'hilite_pet' && value && game.iflags.wc2_petattr === C_ATR_NONE)
         game.iflags.wc2_petattr = C_ATR_INVERSE;
 }
+// Port only: the identity rows of the full options menu.
 function requestMenuIdentity() {
     const role = game.urole?.name?.m || game.urole?.key || 'Rogue';
     const race = game.urace?.name || 'human';
@@ -1927,6 +1976,7 @@ function requestMenuIdentity() {
     const alignment = game.initAlignment?.name || 'neutral';
     return { role, race, gender, alignment };
 }
+// Part of C options.c:optfn_scores(): the current top/around/own string.
 function scoreDisplayDescription() {
     const top = game.flags.end_top ?? 3;
     const around = game.flags.end_around ?? 2;
@@ -1939,6 +1989,7 @@ function scoreDisplayDescription() {
         parts.push('own');
     return parts.join('/') || 'none';
 }
+// Part of C options.c:optfn_pettype(): the current pet preference.
 function preferredPetDescription() {
     const preference = game.preferred_pet ?? '';
     switch (preference) {
@@ -1986,6 +2037,7 @@ const SYMSET_LIST = [
     ['Enhanced2', 'Enhanced with more Unicode glyphs and 24-bit color', true, false],
     ['AmigaFont', 'Amiga hack.font line-drawing and effect characters', false, false],
 ];
+// Part of C files.c:read_sym_file(): the "default symbols" name match.
 // files.c:read_sym_file() accepts a name that matches no `start:` line only
 // when it fuzzymatches "Default symbols" (ignoring spaces, '-' and '_') or
 // is exactly "default"; that choice clears the set instead of loading one.
@@ -1993,6 +2045,7 @@ function isDefaultSymsetName(name) {
     return name.toLowerCase() === 'default'
         || name.toLowerCase().replace(/[ \-_]/g, '') === 'defaultsymbols';
 }
+// Part of C options.c:optfn_symset(): the loaded set's value string.
 // options.c:optfn_symset() get_val: the loaded set's name, ", active" while
 // the primary set is current, and the handling the set declared.
 export function symsetMenuValue() {
@@ -2003,6 +2056,7 @@ export function symsetMenuValue() {
     const handling = SYMSET_HANDLINGS[name.toLowerCase()] ?? null;
     return `${name}${active}${handling ? `, handler=${handling}` : ''}`;
 }
+// Part of C options.c:optfn_roguesymset(): the loaded set's value string.
 // options.c:optfn_roguesymset() get_val: the loaded set's name and
 // ", active" while the rogue set is current; no handler is reported.
 function rogueSymsetMenuValue() {
@@ -2011,18 +2065,23 @@ function rogueSymsetMenuValue() {
         return 'default';
     return `${name}${Is_rogue_level(game.u?.uz) ? ', active' : ''}`;
 }
+// Part of C options.c:optfn_menu_headings(): the current style's value
+// string.
 // options.c:optfn_menu_headings() get_val: color_attr_to_str() followed by
 // strNsubst() turning each blank into '-'.
 function menuHeadingsValue() {
     const style = game.iflags.menu_headings ?? { attr: C_ATR_INVERSE, color: NO_COLOR };
     return colorAttrToString(style).replace(/ /g, '-');
 }
+// Part of C options.c:optfn_statushilites(): the current delta's value
+// string.
 // options.c:optfn_statushilites() get_val.
 function statusHilitesValue() {
     const delta = game.iflags.hiliteDelta ?? 0;
     return delta ? `${delta} (on: highlight status for ${delta} turns)`
         : "0 (off: don't highlight status fields)";
 }
+// Part of C options.c:doset(): the full options menu sections.
 function requestMenuSections() {
     const { role, race, gender, alignment } = requestMenuIdentity();
     const choice = (name, text) => ({
@@ -2210,6 +2269,7 @@ const PICKUP_TYPE_ROWS = [
     ['n', '0', 'iron ball'],
     ['o', '_', 'iron chain'],
 ];
+// C options.c:handler_pickup_types(): the autopickup class editor.
 // options.c:optfn_pickup_types() prompts in traditional/combination mode;
 // windows.c:choose_classes_menu() owns the full/partial class picker.
 async function editPickupTypes(preserveStatus = false) {
@@ -2259,6 +2319,7 @@ async function editPickupTypes(preserveStatus = false) {
     if (parsed.invalid)
         await optionError("Unknown pickup_types parameter ''");
 }
+// C options.c:handle_add_list_remove(): the shared add/list/remove chooser.
 // options.c:handle_add_list_remove(): the shared add/list/remove chooser.
 // With nothing to act on, only "add" and "exit" are offered.
 async function chooseAddListRemove(kind, count) {
@@ -2283,6 +2344,7 @@ const MESSAGE_TYPE_CHOICES = [
     ['stop', MSGTYP_STOP, 'Prompt for more after the message'],
     ['norep', MSGTYP_NOREP, 'Do not repeat the message'],
 ];
+// C options.c:handler_msgtype(): the message-type rules editor.
 // options.c:handler_msgtype(), query_msgtype(). Rules take effect immediately;
 // every completed action returns to the add/list/remove chooser.
 async function editMessageTypes() {
@@ -2334,6 +2396,7 @@ async function editMessageTypes() {
         }
     }
 }
+// Part of C options.c:handler_msgtype(): one rule's listing row.
 function messageTypeRow(rule) {
     const choice = MESSAGE_TYPE_CHOICES.find(([, type]) => type === rule.type);
     if (!choice)
@@ -2345,6 +2408,7 @@ function messageTypeRow(rule) {
         ? `${cutConfigBytes(rule.patternText, limit - 3)}...` : rule.patternText;
     return `${prefix}${pattern}"`;
 }
+// C options.c:handler_autopickup_exception(): the exception rules editor.
 // options.c:handler_autopickup_exception().
 async function editAutopickupExceptions() {
     for (;;) {
@@ -2394,6 +2458,7 @@ async function editAutopickupExceptions() {
         }
     }
 }
+// C options.c:handler_menu_colors(): the menu-color rules editor.
 // options.c:handler_menu_colors().
 async function editMenuColors() {
     for (;;) {
@@ -2453,6 +2518,7 @@ async function editMenuColors() {
         }
     }
 }
+// Part of C options.c:handler_menu_colors(): one coloring's listing row.
 // handler_menu_colors(): `"pattern"="=color&attr` minus one leading quote of
 // the C suffix buffer, i.e. the pattern's closing quote is kept; the color
 // name's blank becomes '-', there is no attribute half for ATR_NONE, and an
@@ -2466,6 +2532,7 @@ function menuColoringRow(rule) {
         ? `${cutConfigBytes(rule.origstr, limit - 3)}...` : rule.origstr;
     return `"${shown}${suffix}`;
 }
+// C options.c:handler_menu_headings(): the color and attribute menus.
 // options.c:handler_menu_headings() via coloratt.c:query_color_attr(). The
 // style only changes when both menus are answered; a cancellation leaves it
 // untouched (the C handler assigns into iflags at the very end).
@@ -2480,6 +2547,7 @@ async function editMenuHeadings() {
         return;
     game.iflags.menu_headings = { attr, color };
 }
+// C options.c:handler_petattr(): the pet highlight attribute menu.
 // options.c:handler_petattr() commits and requests a redraw even when
 // the accepted attribute equals the current one. Escape changes nothing.
 async function editPetAttribute() {
@@ -2540,6 +2608,8 @@ const TOGGLE_BOOLEAN_NAMES = (() => {
         : left.toLowerCase() > right.toLowerCase() ? 1 : 0);
     return names;
 })();
+// C options.c:reset_needed_visuals(): the after-toggle redraw and status
+// flush.
 // options.c:reset_needed_visuals(), after the toggle message. Both reset
 // kinds redraw; only opt_need_redraw re-probes the gold symbol and re-glyphs
 // dark rooms, and no toggle path flushes the screen. A pending status
@@ -2555,6 +2625,8 @@ async function resetBooleanVisuals(pending) {
     if (game.context.botl)
         await bot();
 }
+// C options.c:toggle_bool_option(): toggle every set_in_game boolean
+// matching a prefix.
 // options.c:toggle_bool_option() behind #toggle(<prefix>): every set_in_game
 // boolean whose name starts with the text is toggled through the ordinary
 // option path, with the menu's visual refresh after each one. give_opt_msg
@@ -2620,6 +2692,8 @@ export async function toggleBooleanOptionPrefix(prefix) {
 }
 // C's HELP_IDX is distinct from the boolean 'help' option.
 const OPTIONS_MENU_HELP = 'options_menu_help';
+// Part of C options.c:doset(): the "Set what options?" menu and its
+// boolean toggling.
 async function doRequestMenuOptions() {
     let skipHelp = game.flags.cmdassist === false;
     let pending = NO_VISUAL_CHANGE;
@@ -2686,6 +2760,8 @@ async function doRequestMenuOptions() {
     await bot();
     game.context.move = 0;
 }
+// Part of C options.c:doset(): dispatch a selected option to its editor or
+// handler.
 async function editCompoundOption(name, fullMenu) {
     const previousVersion = game.flags.versinfo ?? 1;
     if (name === 'number_pad')
@@ -2752,6 +2828,7 @@ async function editCompoundOption(name, fullMenu) {
     }
     return false;
 }
+// C symbols.c:do_symset(): the symbol-set picker.
 // symbols.c:do_symset(): pick-list of every set the symbols file carries,
 // filtered by restrictions, with "Default Symbols" first and the current
 // choice preselected.  handler_symset() flags a redraw even when nothing
@@ -2803,6 +2880,8 @@ async function editSymset(rogueflag) {
     }
     return true;
 }
+// Part of C options.c:doset(): the boulder prompt routed back through
+// optfn_boulder.
 // doset() gives boulder no handler, so the menu prompts and re-runs
 // optfn_boulder() through parseoptions(); mid-game the new symbol lands in
 // both symbol sets' overrides and go.opt_need_redraw triggers doredraw().
@@ -2824,6 +2903,7 @@ async function editBoulderSymbol() {
     reglyphBoulderSymbols();
     return true;
 }
+// C options.c:handler_menustyle(): the menu-style picker.
 // Native options.c:handler_menustyle(). PICK_ONE retains the old selection
 // until a different entry is chosen or the user explicitly deselects it.
 async function editMenuStyle() {
@@ -2845,6 +2925,8 @@ async function editMenuStyle() {
         await plineWithContinuation(`'menustyle' ${changed ? 'changed to' : 'is still'} "${name}".`);
     }
 }
+// Part of C options.c:handler_menustyle(): the initial-letter to style
+// mapping.
 function menuStyleForInitial(initial) {
     if (initial === null)
         return undefined;
@@ -2857,10 +2939,12 @@ function menuStyleForInitial(initial) {
         default: return undefined;
     }
 }
+// Part of C options.c:handler_sortloot(): the sortloot mode letters.
 function isLootSortMode(mode) {
     return mode === 'n' || mode === 'l' || mode === 'f';
 }
 const SORT_LOOT_NAMES = { n: 'none', l: 'loot', f: 'full' };
+// C options.c:handler_sortloot(): the loot sorting type picker.
 async function editSortLoot() {
     const previous = game.flags.sortloot ?? 'l';
     const selection = await showInventoryWindow([{ items: Object.entries(SORT_LOOT_NAMES).map(([key, name]) => ({ key, text: name })),
@@ -2960,6 +3044,8 @@ export function addFruit(name, { preferred = false, initial = false, replacement
         state.context.current_fruit = fruit.fid;
     return fruit.fid;
 }
+// Part of C options.c:optfn_fruit(), fruitadd(): the per-byte sanitize_name
+// of a fruit copy.
 // C copynchars(altname, str, PL_FSIZ - 1) followed by sanitize_name():
 // optfn_fruit() (above) and fruitadd() (below) both cap the bytes and then
 // run bones.c:sanitize_name() over each byte of the native buffer — control
@@ -2976,12 +3062,15 @@ function sanitizeFruitCopy(name, iflags) {
         return byte > 127 && !iflags?.wc_eight_bit_input ? '_' : String.fromCharCode(byte);
     }).join('');
 }
+// Part of C options.c:fruitadd(): the highest_fruit_id scan.
 // fruitadd()'s highest_fruit_id and fruit_from_name()'s out-parameter share
 // this highest-fid scan over the registry.
 function highestFruitId(state) {
     return fruitRegistry(state).reduce((highest, fruit) => Math.max(highest, fruit.fid), 0);
 }
 const FRUIT_NAME_BYTES = 31; // PL_FSIZ includes the trailing NUL.
+// Part of C options.c:doset(), doset_simple(): the fruit prompt routed
+// through optfn_fruit.
 async function editFruitOption(giveMessage) {
     const name = await getLine('Set fruit to what?', (_ch, code) => code >= 32 && code < 127, { suppressStatus: true });
     if (!name)
@@ -2991,6 +3080,8 @@ async function editFruitOption(giveMessage) {
     if (!result.changed || giveMessage)
         await plineWithContinuation(result.message);
 }
+// Part of C options.c:doset_simple_menu(): the simple options menu
+// sections.
 // optlist.h assigns these options to the four simple-menu sections.
 const SIMPLE_OPTION_SECTIONS = [
     ['General', [
@@ -3034,6 +3125,8 @@ const SIMPLE_OPTION_SECTIONS = [
             ['time', 'display game turns in status line'],
         ]],
 ];
+// Part of C options.c:doset_simple_menu(): the simple options menu
+// sections.
 function simpleMenuSections() {
     const options = requestMenuSections().flatMap(section => section.items);
     return [
@@ -3071,6 +3164,7 @@ function simpleMenuSections() {
         }),
     ];
 }
+// C options.c:doset_simple(): the simple options menu loop.
 // options.c:doset_simple() applies one choice, refreshes its visuals, and
 // offers a fresh menu. PICK_ONE accepts a choice immediately.
 export async function doOptions(menuRequested = false) {
@@ -3128,6 +3222,8 @@ export function changeInventoryOrder(symbols, state = game) {
     state.flags.inv_order = change.order;
     return change.errors.length === 0;
 }
+// C options.c:change_inv_order(): validate and complete an inventory
+// order.
 export function planInventoryOrder(symbols, state = game) {
     const previous = inventoryClassOrder(state);
     const order = symbols.includes('$') ? [] : [COIN_CLASS];
@@ -3145,5 +3241,24 @@ export function planInventoryOrder(symbols, state = game) {
         }
     }
     return { order: [...order, ...previous.filter(oclass => !order.includes(oclass))], errors };
+}
+// ---------------------------------------------------------------------------
+// C options.c:warning_opts()/assign_warnings().
+// ---------------------------------------------------------------------------
+// C options.c:warning_opts()/assign_warnings(): the string-valued warnings
+// option; the numeric WARNINGS= statement lives in cfgfiles.ts.
+// Also C drawing.c:def_warnsyms: the fallback symbol table.
+export function setWarningSymbols(value, flags) {
+    const decoded = decodeOptionEscapes(value).split('\0', 1)[0] ?? '';
+    const previous = flags.warningSymbols;
+    flags.warningSymbols = def_warnsyms.map((warning, index) => decoded.charAt(index)
+        || previous?.charAt(index) || warning.ch).join('');
+}
+// Port only: the live warning-symbol table merged with its overrides (C
+// options.c warning_opts stores them).
+export function warningSymbols() {
+    return def_warnsyms.map((warning, index) => ({ ...warning,
+        ch: game.iflags.warningSymbols?.charAt(index) || warning.ch,
+    }));
 }
 //# sourceMappingURL=options.js.map

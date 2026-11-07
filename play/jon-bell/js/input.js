@@ -115,6 +115,9 @@ export async function nhgetch() {
         let text = String(game._pending_message);
         if (text.endsWith('--More--'))
             text = text.slice(0, -8);
+        /* C topl.c:538-539 tty_yn_function rewrites gt.toplines as prompt + answer. */
+        if (game._topl_answered && game._topl_answered.startsWith(text))
+            text = game._topl_answered;
         if (text.length > 0 && text !== game._topl_history_recall) {
             if (!game._msg_history)
                 game._msg_history = [];
@@ -124,6 +127,7 @@ export async function nhgetch() {
         }
     }
     game._topl_history_recall = null;
+    game._topl_answered = null;
     /* Direct prompt writers also replace any EMPTY-window residue. */
     if (game._pending_message) game._topl_empty_sticky = null;
     if (game._pending_message)

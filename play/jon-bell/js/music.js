@@ -5,7 +5,7 @@ import { newsym, canseemon } from './display.js';
 import { pline, Norep } from './pline.js';
 import { cansee, Blind } from './vision.js';
 import { exercise, acurr } from './attrib.js';
-import { resist, zapyourself, ubuzz, flash_str } from './zap.js';
+import { resist, zapyourself, ubuzz, flash_str, AD_COLD, AD_FIRE } from './zap.js';
 import { onscary, monflee } from './makemon.js';
 import { x_monnam, sleep_monst, slept_monst, Amonnam } from './mhitm.js';
 import { can_blow } from './mondata.js';
@@ -17,7 +17,7 @@ import { yn_function } from './cmd.js';
 import { getlin } from './windows.js';
 import { thesimpleoname, Tobjnam, an, the, xname } from './objnam.js';
 import { yname } from './do_wear.js';
-import { dist2 } from './hacklib.js';
+import { dist2, mungspaces, highc } from './hacklib.js';
 import { tamedog } from './dog.js';
 import { consume_obj_charge, Yname2, record_achievement, align_str } from './cmd.js';
 import { desecrate_altar } from './pray.js';
@@ -29,7 +29,7 @@ import {
     In_endgame, Is_astralevel, In_sokoban, In_V_tower, Is_stronghold,
     IS_DRAWBRIDGE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL,
     DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, W_NONDIGGABLE, isok,
-    ACH_TUNE, STRAT_WAITMASK,
+    ACH_TUNE, STRAT_WAITMASK, BZ_OFS_AD, KILLED_BY,
 } from './const.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
 import { fillholetyp_, liquid_flow_, close_drawbridge, open_drawbridge } from './dig.js';
@@ -43,7 +43,7 @@ import { flooreffects } from './do.js';
 import { rnl } from './rng.js';
 import { xkilled } from './uhitm.js';
 import { mon_nam } from './uhitm.js';
-import { You_hear, You_see } from './pline.js';
+import { You_hear, You_see, You, You_cant } from './pline.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { is_pit, has_mgivenname, ROOM, SHOPBASE, XKILL_NOMSG,
          ARTICLE_THE, SUPPRESS_SADDLE, NO_KILLER_PREFIX, TT_PIT, TT_BURIEDBALL,
@@ -58,12 +58,62 @@ import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER,
 import { altarmask_at } from './pray.js';
 import { getdir } from './lock.js';
 import { losehp } from './hack.js';
+import { Soundeffect } from './mon.js';
+
+/* C sndprocs.h:272-273 soundlib macros / audio effects */
+const se_scream = 'se_scream', se_tumbler_click = 'se_tumbler_click', se_gear_turn = 'se_gear_turn';
+const Hero_playnotes = (_ins, _str, _vol) => {}, BZ_U_WAND = (bz) => bz;
 
 /* objects.h tool ids, in table order (js/oc_name_data.js OC_NAME[]). */
 const WOODEN_FLUTE = 247, MAGIC_FLUTE = 248, TOOLED_HORN = 249,
       FROST_HORN = 250, FIRE_HORN = 251,
-      WOODEN_HARP = 253, MAGIC_HARP = 254,
-      BUGLE = 256, LEATHER_DRUM = 257, DRUM_OF_EARTHQUAKE = 258;
+      WOODEN_HARP = 253, MAGIC_HARP = 254, BELL = 255,
+      BUGLE = 256, LEATHER_DRUM = 257, DRUM_OF_EARTHQUAKE = 258,
+      BELL_OF_OPENING = 263;
+
+/* C music.c:901-944 obj_to_instr(obj) */
+export function obj_to_instr(obj) {
+    let ret_instr = 0; // ins_no_instrument
+
+    if (!obj) return ret_instr;
+    switch (obj.otyp | 0) {
+    case WOODEN_FLUTE:
+        ret_instr = 74; // ins_flute
+        break;
+    case MAGIC_FLUTE:
+        ret_instr = 76; // ins_pan_flute
+        break;
+    case TOOLED_HORN:
+        ret_instr = 70; // ins_english_horn
+        break;
+    case FROST_HORN:
+        ret_instr = 61; // ins_french_horn
+        break;
+    case FIRE_HORN:
+        ret_instr = 68; // ins_baritone_sax
+        break;
+    case BUGLE:
+        ret_instr = 57; // ins_trumpet
+        break;
+    case WOODEN_HARP:
+        ret_instr = 47; // ins_orchestral_harp
+        break;
+    case MAGIC_HARP:
+        ret_instr = 43; // ins_cello
+        break;
+    case BELL:
+    case BELL_OF_OPENING:
+        ret_instr = 113; // ins_tinkle_bell
+        break;
+    case DRUM_OF_EARTHQUAKE:
+        ret_instr = 117; // ins_taiko_drum
+        break;
+    case LEATHER_DRUM:
+        ret_instr = 118; // ins_melodic_tom
+        break;
+    }
+    return ret_instr;
+}
 
 /* objclass.h TOOL_CLASS — the oclass resist() scores an instrument's attack
  * level from (zap.c:6113 `case TOOL_CLASS: alev = 10;`). */
@@ -360,6 +410,7 @@ async function do_pit(x, y, tu_pit) {
                 if (cansee(x, y)) {
                     await pline(`${Monnam(mtmp)} falls into a chasm!`);
                 } else if (humanoid_(mtmp.data)) {
+                    Soundeffect(se_scream, 50);
                     await You_hear('a scream!');
                 }
             }
@@ -648,7 +699,6 @@ async function do_improvisation(instr) {
     }
 
     const improvisation = improvised_notes(same_old_song);
-    void improvisation; /* C nhUse(improvisation): only Hero_playnotes reads it */
 
     switch (itmp.otyp) { /* note: itmp.otyp might differ from instr->otyp */
     case MAGIC_FLUTE: /* Make monster fall asleep */
@@ -657,6 +707,7 @@ async function do_improvisation(instr) {
         await pline(`You ${!Deaf() ? "" : "seem to "}produce ${
             Hallucination() ? "piped" : "soft"}${
             same_old_song.value ? ", familiar" : ""} music.`);
+        Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
         await put_monsters_to_sleep((u.ulevel | 0) * 5);
         exercise(A_DEX, true);
         break;
@@ -667,6 +718,7 @@ async function do_improvisation(instr) {
                 same_old_song.value ? " a familiar tune" : ""}.`);
         else
             await pline(`You feel ${yname(instr)} ${do_spec ? "trill" : "toot"}.`);
+        Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
         if (do_spec)
             await charm_snakes((u.ulevel | 0) * 3);
         exercise(A_DEX, true);
@@ -685,15 +737,16 @@ async function do_improvisation(instr) {
             const damage = await zapyourself(instr, true);
             if (damage) {
                 const pronoun = game.flags?.female ? 'her' : 'him';
-                await losehp(damage, `using a magical horn on ${pronoun}self`, 1);
+                Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
+                await losehp(damage, `using a magical horn on ${pronoun}self`, KILLED_BY);
             }
         } else {
-            const adtyp = (instr.otyp | 0) === FROST_HORN ? 3 : 2;
+            const type = BZ_OFS_AD((instr.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE);
             if (!Blind())
-                await pline(`A ${flash_str(adtyp - 1, false)} blasts out of the horn!`);
+                await pline(`A ${flash_str(type, false)} blasts out of the horn!`);
+            Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
             game.gc_current_wand = instr; // C music.c:633 — identify the horn to zhitu().
-            game.gc_current_wand = instr; /* C music.c:633-635 */
-            await ubuzz(adtyp - 1, rn1(6, 6));
+            await ubuzz(BZ_U_WAND(type), rn1(6, 6));
             game.gc_current_wand = 0;
         }
         makeknown(instr.otyp);
@@ -704,6 +757,7 @@ async function do_improvisation(instr) {
                 same_old_song.value ? ", yet familiar," : ""} sound.`);
         else
             await pline("You blow into the horn.");
+        Hero_playnotes(obj_to_instr(itmp), improvisation, 80);
         await awaken_monsters((u.ulevel | 0) * 30);
         exercise(A_WIS, false);
         break;
@@ -713,6 +767,7 @@ async function do_improvisation(instr) {
                 same_old_song.value ? ", familiar" : ""} noise from ${yname(instr)}.`);
         else
             await pline("You blow into the bugle.");
+        Hero_playnotes(obj_to_instr(itmp), improvisation, 80);
         await awaken_soldiers(game.youmonst);
         exercise(A_WIS, false);
         break;
@@ -724,6 +779,7 @@ async function do_improvisation(instr) {
                 same_old_song.value ? " and familiar" : ""} music.`);
         else
             await pline("You feel very soothing vibrations.");
+        Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
         await charm_monsters(Math.trunc(((u.ulevel | 0) - 1) / 3) + 1);
         exercise(A_DEX, true);
         break;
@@ -738,6 +794,7 @@ async function do_improvisation(instr) {
                     : "twangs"}.`);
         else
             await pline("You feel soothing vibrations.");
+        Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
         if (do_spec)
             await calm_nymphs((u.ulevel | 0) * 3);
         exercise(A_DEX, true);
@@ -750,6 +807,7 @@ async function do_improvisation(instr) {
         consume_obj_charge(instr, true);
 
         await pline("You produce a heavy, thunderous rolling!");
+        Hero_playnotes(obj_to_instr(itmp), "C", 100);
         await pline(`The entire ${generic_lvl_desc()} is shaking around you!`);
         await do_earthquake(Math.trunc(((u.ulevel | 0) - 1) / 3) + 1);
         /* shake up monsters in a much larger radius... */
@@ -761,6 +819,7 @@ async function do_improvisation(instr) {
             if (!Deaf()) {
                 await pline(`You beat a ${
                     same_old_song.value ? "familiar " : ""}deafening row!`);
+                Hero_playnotes(obj_to_instr(itmp), "CCC", 100);
                 incr_HDeaf(rn1(20, 30));
             } else {
                 await pline("You pound on the drum.");
@@ -771,6 +830,7 @@ async function do_improvisation(instr) {
             await pline(`You ${
                 rn2(2) ? "butcher" : rn2(2) ? "manage" : "pull off"} ${
                 an(ROLL_FROM(beats))}.`);
+            Hero_playnotes(obj_to_instr(itmp), improvisation, 50);
         }
         await awaken_monsters((u.ulevel | 0) * (mundane ? 5 : 40));
         if (game.disp) game.disp.botl = 1;
@@ -789,13 +849,13 @@ export async function do_play_instrument(instr) {
     let c = 'y';
 
     if (u.uinwater) { /* youprop.h:279 Underwater = (u.uinwater) */
-        await pline("You can't play music underwater!");
+        await You_cant("play music underwater!");
         return ECMD_OK;
     } else if (((instr.otyp | 0) === WOODEN_FLUTE || (instr.otyp | 0) === MAGIC_FLUTE
                 || (instr.otyp | 0) === TOOLED_HORN || (instr.otyp | 0) === FROST_HORN
                 || (instr.otyp | 0) === FIRE_HORN || (instr.otyp | 0) === BUGLE)
                && !can_blow(game.youmonst)) {
-        await pline(`You are incapable of playing ${thesimpleoname(instr)}.`);
+        await You("are incapable of playing %s.", thesimpleoname(instr));
         return ECMD_OK;
     }
     if ((instr.otyp | 0) !== LEATHER_DRUM && (instr.otyp | 0) !== DRUM_OF_EARTHQUAKE
@@ -824,15 +884,23 @@ export async function do_play_instrument(instr) {
     else {
         tune = await getlin("What tune are you playing? [5 notes, A-G]");
         /* C music.c:794-796 mungspaces(buf); if (*buf == '\033') goto nevermind; */
-        tune = tune.trim().replace(/\s+/g, ' ');
+        tune = mungspaces(tune);
         if (tune[0] === '\x1b') {
             await pline("Never mind.");
             return ECMD_OK;
         }
-        tune = tune.replace(/\s+/g, '').toUpperCase().replace(/H/g, 'B');
+        /* convert to uppercase and change any "H" to the expected "B" */
+        let s = '';
+        for (let i = 0; i < tune.length; i++) {
+            let ch = highc(tune[i]);
+            if (ch === 'H') ch = 'B';
+            s += ch;
+        }
+        tune = s;
     }
-    await pline(!Deaf() ? `You extract a strange sound from ${the(xname(instr))}!`
-                         : `You can feel ${the(xname(instr))} emitting vibrations.`);
+    await You(!Deaf() ? "extract a strange sound from %s!"
+                      : "can feel %s emitting vibrations.", the(xname(instr)));
+    Hero_playnotes(obj_to_instr(instr), tune, 50);
     if (Is_stronghold(u.uz)) {
         exercise(A_WIS, true);
         const expected = String(game._tune || '');
@@ -872,8 +940,11 @@ export async function do_play_instrument(instr) {
                     else for (let j = 0; j < 5; j++) if (!matched[j] && tune[i] === expected[j] && tune[j] !== expected[j]) { tumblers++; matched[j] = true; break; }
                 }
                 if (tumblers) {
-                    if (gears) await You_hear('%d tumbler%s click and %d gear%s turn.', tumblers, tumblers === 1 ? '' : 's', gears, gears === 1 ? '' : 's');
-                    else await You_hear('%d tumbler%s click.', tumblers, tumblers === 1 ? '' : 's');
+                    Soundeffect(se_tumbler_click, 50);
+                    if (gears) {
+                        Soundeffect(se_gear_turn, 50);
+                        await You_hear('%d tumbler%s click and %d gear%s turn.', tumblers, tumblers === 1 ? '' : 's', gears, gears === 1 ? '' : 's');
+                    } else await You_hear('%d tumbler%s click.', tumblers, tumblers === 1 ? '' : 's');
                 } else if (gears) {
                     await You_hear('%d gear%s turn.', gears, gears === 1 ? '' : 's');
                 }

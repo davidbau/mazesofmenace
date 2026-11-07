@@ -3,7 +3,7 @@
 // C ref: nethack-c/src/eat.c — gethungry (line 3163), newuhs (line 3363).
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 import { rn2, rnd, rn1, d } from './rng.js';
-import { Blind as hero_Blind, vision_recalc, vision_recalc as vision_recalc_eat } from './vision.js';
+import { Blind as hero_Blind, vision_recalc } from './vision.js';
 import { ORGANISER_IS_MACOS } from './platform_identity.js';
 import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
          PM_SCORPION, PM_KNIGHT } from './pm.generated.js';
@@ -29,9 +29,9 @@ import { inv_cnt, reorder_invent } from './cmd.js';
 import { set_itimeout } from './potion.js';
 import { pline_The } from './pline.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
-import { canseemon, canspotmon, nh_sprintf, newsym, Unaware, You_with_output, Deaf as hero_Deaf, retouch_equipment, flush_pending_messages, _topl_merge_result, _topl_joins_snapshot, _topl_stash_result, _topl_record_join, capture_painted_frame_with_status, _topl_joins_committed, _topl_more_pages, TOPL_LIMIT } from './display.js';
+import { canseemon, canspotmon, newsym, Unaware, Deaf as hero_Deaf, retouch_equipment, flush_pending_messages, _topl_merge_result, _topl_joins_snapshot, _topl_stash_result, _topl_record_join, capture_painted_frame_with_status, _topl_more_pages } from './display.js';
 import { bot } from './botl.js';
-import { pline, You_hear, You_feel, You_cant, livelog_printf, urgent_pline } from './pline.js';
+import { pline, You, You_hear, You_feel, You_cant, livelog_printf, urgent_pline } from './pline.js';
 import { stop_occupation } from './allmain.js';
 import { is_pool_or_lava } from './look.js';
 import { end_running } from './hack.js';
@@ -145,7 +145,7 @@ import { obj_is_pname, getObjDescr } from './objnam.js';
 import { Ring_gone } from './do_wear.js';
 import { float_up } from './trap.js';
 import { set_mimic_blocking } from './sit.js';
-import { see_monsters, putmsghistory, curs_on_u, retouch_object_hero } from './display.js';
+import { see_monsters, curs_on_u, retouch_object_hero } from './display.js';
 import { revive_corpse, set_bknown } from './mklev.js';
 import { rescham } from './mon.js';
 import { perceives } from './mcastu.js';
@@ -169,7 +169,7 @@ import { Has_contents } from './const.js';
  * eat.c:3644's resume test unconditionally true. */
 import { u_at, M_AP_TYPE } from './const.js';
 import { unmul, nomul } from './allmain.js';
-import { carrying, feel_cockatrice, getobj, will_feel_cockatrice } from './invent.js'; // relocate-fns
+import { assigninvlet, carrying, feel_cockatrice, getobj, will_feel_cockatrice } from './invent.js'; // relocate-fns
 import { encumber_msg } from './pickup.js'; // relocate-fns
 import { check_capacity } from './hack.js'; // relocate-fns
 import { tinnable } from './apply.js'; // relocate-fns
@@ -1816,36 +1816,15 @@ function _eat_inv_cnt(incl_gold) {
 /* C ref: invent.c freeinv(obj) — extract_nobj(obj, &gi.invent); pickup_prev=0;
  * share freeinv_core() and update_inventory(), including non-food meals. */
 function _eat_freeinv(obj) { return freeinv_real(obj); }
-/* C ref: invent.c:694 assigninvlet(otmp).  Note the `if (i == otmp->invlet)
- * otmp->invlet = 0;` inside the inuse scan: the object splitobj() cloned still
- * carries the parent stack's letter, and that clause is what forces it to take
- * a fresh one.  The scan starts just after gl.lastinvnr and wraps, so a freed
- * letter is reused only once the cursor comes back around to it. */
+/* C ref: invent.c:694 assigninvlet(otmp).  Forwards to the one port in
+ * js/invent.js (invent.c audit a2_invent_30).  The hand copy this replaced
+ * was behaviorally identical — including the `if (i == otmp->invlet)
+ * otmp->invlet = 0;` clause inside the inuse scan that forces a splitobj()
+ * clone carrying its parent stack's letter to take a fresh one, and the
+ * wrap-from-gl.lastinvnr+1 free-slot cursor — so only the body count
+ * changes. */
 function _eat_assigninvlet(otmp) {
-    const g = game;
-    if ((otmp.oclass | 0) === 12 /* COIN_CLASS */) {
-        otmp.invlet = 0x24; /* GOLD_SYM */
-        return;
-    }
-    const inuse = new Array(52).fill(false);
-    for (let obj = g.invent; obj; obj = obj.nobj) {
-        if (obj === otmp) continue;
-        const i = obj.invlet | 0;
-        if (97 <= i && i <= 122) inuse[i - 97] = true;
-        else if (65 <= i && i <= 90) inuse[i - 65 + 26] = true;
-        if (i === (otmp.invlet | 0)) otmp.invlet = 0;
-    }
-    const cur = otmp.invlet | 0;
-    if (cur && ((97 <= cur && cur <= 122) || (65 <= cur && cur <= 90)))
-        return;
-    const last = (g._lastinvnr ?? 51) | 0;
-    let i;
-    for (i = last + 1; i !== last; i++) {
-        if (i === 52) { i = -1; continue; }
-        if (!inuse[i]) break;
-    }
-    otmp.invlet = inuse[i] ? 0x23 /* NOINVSYM */ : (i < 26 ? (97 + i) : (65 + i - 26));
-    g._lastinvnr = i;
+    return assigninvlet(otmp);
 }
 /* C ref: invent.c reorder_invent() — forwards to the shared port in js/cmd.js. */
 function _eat_reorder_invent() {
@@ -1859,6 +1838,9 @@ function _eat_reorder_invent() {
 function _eat_addinv_nomerge(obj) {
     return addinv_nomerge_real(obj);
 }
+/* include/hack.h:584 `invlet_basic = 52` — a..z then A..Z. */
+const invlet_basic = 52;
+
 async function touchfood(otmp) {
     if ((otmp.quan | 0) > 1) {
         if (!_eat_carried(otmp))
@@ -1874,7 +1856,7 @@ async function touchfood(otmp) {
     }
     if (_eat_carried(otmp)) {
         await _eat_freeinv(otmp);
-        if (inv_cnt(false) >= 52 /* invlet_basic */) { /* C eat.c:376 */
+        if (inv_cnt(false) >= invlet_basic) { /* C eat.c:377 */
             /* C eat.c:377-382 — a full pack cannot assign the bitten piece a
              * distinct inventory letter. Drop it without offering it to a
              * shopkeeper, then honor dropy's destructive terrain/trap result:
@@ -3613,18 +3595,14 @@ export async function opentin() {
     const t = _tin_ctx();
     if (!t.tin)
         return 0;
-    if (!_eat_carried(t.tin)) {
-        const u = game.u || {};
-        let here = false;
-        for (let o = game.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0]; o; o = o.nexthere)
-            if (o === t.tin) { here = true; break; }
-        if (!here || !can_reach_floor(true))
-            return 0;
-    }
+    const u = game.u || {};
+    if (!_eat_carried(t.tin)
+        && (!obj_here(t.tin, u.ux | 0, u.uy | 0) || !can_reach_floor(true)))
+        return 0;
     /* C eat.c:1710-1713 — give up after 50 turns. */
     t.usedtime = (t.usedtime | 0) + 1;
     if ((t.usedtime | 0) > 50) {
-        await pline('You give up your attempt to open the tin.');
+        await You('give up your attempt to open the tin.');
         return 0;
     }
     if ((t.usedtime | 0) < (t.reqtime | 0))
@@ -4246,7 +4224,8 @@ export async function mon_givit(mtmp, ptr) {
     }
     if (!prop || !should_givit(prop, ptr)) return;
 
-    /* mon_give_prop supports only elemental and poison resistance for pets. */
+    /* C mon.c:1735-1755 mon_give_prop gives pets only FIRE/COLD/SLEEP/DISINT/
+     * SHOCK/POISON resistance; any other intrinsic is ignored. */
     const props = {
         [FIRE_RES]: [0x01, 'shivers slightly.'],
         [COLD_RES]: [0x02, 'looks quite warm.'],
@@ -4570,134 +4549,13 @@ export function eatmupdate() {
     }
 }
 
-export async function You(line, ...args) {
-    return You_with_output(_put_eat_message, line, ...args);
-}
-// C pline.c:276 putmesg: retain the occupation's existing output channel.
-async function _put_eat_message(msg) {
-    try {
-    const _prevmsgAtEntry = game._prevmsg;
-    if (game.vision_full_recalc && !game._topl_win_stop && !game._topl_win_stop_armed)
-        vision_recalc(0);
-    /* topl.c:257 update_topl: while WIN_STOP is live (an ESC-dismissed --More--
-     * earlier this turn, not yet cleared by an nhgetch) the text only reaches
-     * gt.toplines and never the screen.  pline() owns that suppression. */
-    if (game._topl_win_stop || game._topl_win_stop_armed)
-        return pline(msg);
-    /* pline.c:266-272 — vpline() recalcs vision before its flush_screen(), so
-     * the frame a --More-- freezes carries post-recalc vision (RNG-free). */
-    if (game.vision_full_recalc)
-        vision_recalc(0);
-    /* C ref: pline.c:266-272 — vpline() recalculates vision BEFORE its
-     * flush_screen()/putmesg(), so the --More-- frame this message raises
-     * carries the post-recalc view (float_up's "You float over a pit." after
-     * the pit exit sets vision_full_recalc).  Same step display.js's pline()
-     * makes; this direct writer bypassed it. */
-    if (game.vision_full_recalc)
-        vision_recalc_eat(0);
-    /* update_topl/redotoplin leave the shown message TOPLINE_NEED_MORE
-     * (topl.c:138,201); pline() records that in _topl_unacknowledged
-     * (display.js), and this direct writer must too, so a following
-     * tty_yn_function more()s it first (topl.c:390-392). */
-    game._topl_unacknowledged = true;
-    if (game._pending_message) {
-        const prev = game._pending_message;
-        if (_topl_joins_committed(prev, msg)) {
-            /* C pline.c:273-277: flush before putmesg even when update_topl
-             * joins this message without raising a --More-- prompt. */
-            pline_flush_point();
-            game._pending_message = prev + '  ' + msg;
-            _topl_record_join(prev, game._pending_message);
-        } else {
-            const _pages = _topl_more_pages(prev, _topl_joins_snapshot(prev));
-            const _prevJoins = _topl_joins_snapshot(prev) || [];
-            /* pline.c:273-277: this pline's flush_screen()/bot() runs before
-             * update_topl's more(), so a page it raises over the WHOLE standing
-             * line shows THIS instant's map and status (unfaint's FAINTING, the
-             * pet's move since the wake-up pline), not the wake-up's frame. */
-            pline_flush_point();
-            _pline_flush_frame_record(prev.length, msg);
-            game._moreFullCtx = { full: prev + '  ' + msg, start: 0 };
-            let _morc;
-            try { _morc = await force_more(prev, undefined, false, true); }
-            finally { game._moreFullCtx = null; }
-            if (_morc === 27 && _pages && _pages.length >= 2
-                && !game._pending_message) {
-                const _lastPage = String(_pages[_pages.length - 1] || '');
-                /* The owner is the ONE pline whose update_topl raised the
-                 * ESC'd more() — the first pline of the last page.  Later
-                 * plines already joined into that page (unmul's "You regain
-                 * consciousness." after the faint) arrive under the live
-                 * WIN_STOP: they extend the hidden buffer, never the screen. */
-                const _pageAt = prev.lastIndexOf(_lastPage);
-                const _cut = _lastPage
-                    ? _prevJoins.find((j) => j > _pageAt && j < _pageAt + _lastPage.length)
-                    : undefined;
-                const _owner = (_cut !== undefined) ? prev.slice(_pageAt, _cut) : _lastPage;
-                const _buf = (game._topl_win_stop_buf != null)
-                    ? String(game._topl_win_stop_buf) : _lastPage;
-                if (_owner && msg.startsWith('You die')
-                    && _buf.length + 2 + msg.length < TOPL_LIMIT) {
-                    putmsghistory(_owner);
-                    game._topl_win_stop = false;
-                    game._topl_win_stop_armed = false;
-                    game._topl_win_stop_buf = null;
-                    game._prevmsg = _prevmsgAtEntry;
-                    return pline(msg);
-                }
-                game._topl_win_stop = true;
-                game._topl_win_stop_armed = false;
-                game._pending_message = _owner;
-                game._topl_win_stop_buf = (_owner
-                    && _buf.length + 2 + msg.length < TOPL_LIMIT)
-                    ? (_buf + '  ' + msg) : msg;
-                return;
-            }
-            /* The remainder force_more left standing is gt.toplines as C
-             * holds it at THIS pline (NEED_MORE, cury 0).  Re-run the same
-             * join test against it: the join arm (:262-279) appends with no
-             * page of its own; a failure owes one more() over the remainder
-             * (:268-275) before bp replaces it (:289-301). */
-            /* An earlier page's ESC can have set WIN_STOP during the drain;
-             * this later update_topl must sample skip again (topl.c:257). */
-            if (game._topl_win_stop) {
-                game._prevmsg = _prevmsgAtEntry;
-                return pline(msg);
-            }
-            const _standing = String(game._pending_message || '');
-            if (_standing && _topl_joins_committed(_standing, msg)) {
-                game._pending_message = _standing + '  ' + msg;
-                _topl_record_join(_standing, game._pending_message);
-                return;
-            }
-            if (_standing) {
-                /* pline.c:273-277: this pline's flush_screen()/bot() ran before
-                 * the more() it raises, so that page shows THIS instant's
-                 * status; select it against the line it would have joined. */
-                _pline_flush_frame_record(_standing.length, msg);
-                game._moreFullCtx = { full: _standing + '  ' + msg, start: 0 };
-                try { await force_more(_standing); } finally { game._moreFullCtx = null; }
-            }
-            game._prevmsg = _prevmsgAtEntry;
-            return pline(msg);
-        }
-    } else {
-        /* topl.c:257-301 — each pline is its own update_topl decision; record
-         * the join so the reserve rule can page between teleport/kick result
-         * and this line (teleport.c:1155 morehungry -> eat.c:3422). */
-        /* pline.c:274-277 — the flush before this message freezes the frame
-         * the overflow --More-- will show. */
-        if (game._resultMessage)
-            _pline_flush_frame_record(game._resultMessage.length, msg);
-        _emit_eat_pline(msg);
-    }
-    } finally {
-        // C pline.c:280-282: update these after putmesg and its MSGTYPE check.
-        // Keep this synchronous on paths where the caller does not await You.
-        if (game.iflags) game.iflags.last_msg = 0;
-        game._prevmsg = msg;
-    }
-}
+/* C pline.c:366-374: You() adds its prefix and uses the same vpline path
+ * as every other message.  The food occupation's deferred flavor messages
+ * remain in _emit_eat_pline; this export shares pline's paging and publication. */
+/* C pline.c:366-374: prefix the format and use the shared vpline path,
+ * including its paging, message history and screen publication.  Occupation
+ * flavor messages still use _emit_eat_pline at their own call sites. */
+export { You };
 export { safe_qbuf };
 export async function wield_tool(obj, verb) {
     /* C ref: wield.c:680 — share the canonical wield path. */

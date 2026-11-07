@@ -6,9 +6,9 @@ import { Deaf, Monnam, is_lminion, is_minion } from './mcastu.js';
 import { helpless } from './mhitm.js';
 import { wake_nearto } from './mon.js';
 import { pline, verbalize } from './pline.js';
-import { com_pager as quest_com_pager } from './questpgr.js';
+import { com_pager } from './questpgr.js';
 import { rn2 } from './rng.js';
-import { In_endgame, Is_rogue_level, MM_NOCOUNTBIRTH, MM_NOMSG } from './const.js'; // relocate-fns
+import { In_endgame, Is_rogue_level, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT } from './const.js'; // relocate-fns
 import { Inhell, permonstTemplate, role_maligntyp, set_malign } from './makemon.js'; // relocate-fns
 import { G_HELL_NC, G_NOHELL_NC, MONS_ROWS, PM_ARCHON_NC, S_DEMON, discard_minvent, makemon, monsym_isupper_nc, mvitals_genod_nc } from './mklev.js'; // relocate-fns
 import { mongone } from './mon.js'; // relocate-fns
@@ -17,17 +17,9 @@ import { rnd } from './rng.js'; // relocate-fns
 import { monster_census, msummon } from './sit.js'; // relocate-fns
 import { enexto_out } from './teleport.js'; // relocate-fns
 import { m_carrying } from './mthrowu.js'; // relocate-fns
+import { SetVoice } from './cmd.js';
 
-function com_pager(msgid) {
-    /* C questpgr.c:458-461,486: skip before loading Lua or drawing RNG. */
-    /* C questpgr.c:487 `L = nhl_init(&sbi)`: nhlib.lua's top-level
-     * shuffle(align), before the questtext lookup and its array roll. */
-    /* com_pager_core: pick a line — questpgr.c:566 nelems = rn2(nelems) + 1. */
-    /* questpgr.c:236-302 convert_arg(): %D is always A_LAWFUL, while %p is
-       svp.plname.  Keep replacement positional and non-recursive, as C's
-       convert_line does, so a player/deity name containing '%' is preserved. */
-    return quest_com_pager(msgid);
-}
+/* C questpgr.c:624 com_pager() directly imported from ./questpgr.js */
 
 export function has_aggravatables(mon) {
     const u = game.u;
@@ -55,7 +47,6 @@ export function mon_has_special(mtmp) {
     for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
         if (otmp.otyp === AMULET_OF_YENDOR
             || (otmp.oartifact | 0) >= 21 /* any_quest_artifact, obj.h:271 ART_ORB_OF_DETECTION */
-            || otmp.oartifact >= 21 /* obj.h:271 any_quest_artifact: ART_ORB_OF_DETECTION */
             || otmp.otyp === BELL_OF_OPENING
             || otmp.otyp === CANDELABRUM_OF_INVOCATION
             || otmp.otyp === SPE_BOOK_OF_THE_DEAD)
@@ -128,8 +119,10 @@ export function cuss(mtmp) {
         if (!rn2(5)) {
             pline(`${Monnam(mtmp)} laughs fiendishly.`);
         } else if (uhaveAmulet() && !rn2(random_insult.length)) {
+            SetVoice(mtmp, 0, 80, 0);
             verbalize(`Relinquish the amulet, ${random_insult[rn2(random_insult.length)]}!`);
         } else if (game.u.uhp < 5 && !rn2(2)) { /* Panic */
+            SetVoice(mtmp, 0, 80, 0);
             // the format-selecting rn2(2) precedes the insult draw.
             const panicked = rn2(2);
             const insult = random_insult[rn2(random_insult.length)];
@@ -137,8 +130,10 @@ export function cuss(mtmp) {
                 ? `Even now thy life force ebbs, ${insult}!`
                 : `Savor thy breath, ${insult}, it be thy last!`);
         } else if (mtmp.mhp < 5 && !rn2(2)) { /* Parthian shot */
+            SetVoice(mtmp, 0, 80, 0);
             verbalize(rn2(2) ? 'I shall return.' : "I'll be back.");
         } else {
+            SetVoice(mtmp, 0, 80, 0);
             const maledict = random_malediction[rn2(random_malediction.length)];
             const insult = random_insult[rn2(random_insult.length)];
             verbalize(`${maledict} ${insult}!`);
@@ -249,6 +244,8 @@ export function pick_nasty(difcap) {
     return res;
 }
 
+const G_UNIQ = 0x1000;
+
 /* C makemon.c:1514 unmakemon(mon, mmflags) — undo a makemon() that the caller
  * does not want after all; always returns null. */
 async function unmakemon(mon, mmflags) {
@@ -258,8 +255,8 @@ async function unmakemon(mon, mmflags) {
     if (mv) {
         if (countbirth && mv.born > 0 && mv.born < 255)
             mv.born -= 1;
-        if ((MONS_ROWS[mndx][3] | 0) & 0x1000 /* G_UNIQ */)
-            mv.mvflags &= ~0x01; /* ~G_EXTINCT */
+        if ((MONS_ROWS[mndx][3] | 0) & G_UNIQ) /* C makemon.c:1528 */
+            mv.mvflags &= ~G_EXTINCT; /* C makemon.c:1529 */
     }
     mon.mhp = 0; /* let discard_minvent() know that mon isn't being kept */
     await discard_minvent(mon, true);
@@ -388,9 +385,13 @@ const AT_MAGC_NC = 255;   /* monattk.h:29 */
  * the pmnames[] slot holding a form's canonical name. */
 const NEUTRAL_NC = 2;
 
-/* C mon.c mon_has_amulet(mon) — `m_carrying(mon, AMULET_OF_YENDOR)`. */
+/* C ref: wizard.c:105-114 mon_has_amulet(mtmp) */
 export function mon_has_amulet(mtmp) {
-    return m_carrying(mtmp, AMULET_OF_YENDOR_MH) ? 1 : 0;
+    for (let otmp = mtmp?.minvent; otmp; otmp = otmp.nobj) {
+        if ((otmp.otyp | 0) === AMULET_OF_YENDOR_MH)
+            return 1;
+    }
+    return 0;
 }
 
 /* objects.h AMULET() AMULET_OF_YENDOR.  (This file's other copy is declared

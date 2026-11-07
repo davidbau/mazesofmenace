@@ -7,8 +7,7 @@ import { artifact_exists } from './artifact.js';
 import { safe_oname } from './do_name.js';
 import { create_gas_cloud } from './region.js';
 import { xdir, ydir, G_GENOD } from './const.js';
-import { vamprises } from './teleport.js';
-import { tele_restrict as tele_restrict_real } from './teleport.js';
+import { vamprises, tele_restrict } from './teleport.js';
 import { spoteffects } from './hack.js';
 import { unmap_invisible, Deaf } from './display.js';
 import { There } from './pline.js';
@@ -49,7 +48,7 @@ import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tob
          makesingular } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
 import { m_move, set_apparxy } from './monmove.js';
-import { canspotmon, newsym, sensemon, _topline_more_pending, flush_pending_messages, canseemon, unmap_object, glyph_is_invisible_at, map_invisible, glyph_is_warning_at, Unaware, shieldeff, see_monsters, GLYPHCLS_OBJ, GLYPHCLS_INVIS, tp_sensemon } from './display.js';
+import { canspotmon, newsym, sensemon, _topline_more_pending, flush_pending_messages, canseemon, unmap_object, glyph_is_invisible_at, remembered_glyph_is_invisible, map_invisible, glyph_is_warning_at, Unaware, shieldeff, see_monsters, GLYPHCLS_OBJ, GLYPHCLS_INVIS, tp_sensemon } from './display.js';
 import { pline, livelog_printf, You_hear } from './pline.js';
 import { gethungry, eat_brains, eating_conducts, newuhs } from './eat.js';
 /* C attrib.c:316-408 poisoned() — canonical implementation lives in the
@@ -58,7 +57,7 @@ import { poisoned_u as poisoned_real } from './mhitu.js';
 /* Fire's inventory ignition is shared with the monster-defender path. */
 import { ignite_items as ignite_items_real } from './mhitu.js';
 import { digests_gu, enfolds_gu, noattacks_mndx } from './mhitu.js';
-import { exercise, acurr, adjalign, change_luck as change_luck_uh, get_artifact, ART_NONARTIFACT } from './attrib.js';
+import { exercise, acurr, adjalign, change_luck as change_luck_uh, get_artifact, ART_NONARTIFACT, arti_spfx, spec_m2 } from './attrib.js';
 import { P_SKILL } from './skills.js';
 import { P_DAGGER, P_KNIFE } from './const.js';
 import { near_capacity } from './hack.js';
@@ -113,7 +112,7 @@ import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { set_malign, levelDifficulty, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname, zombie_maker } from './makemon.js';
-import { pmname, Monnam as Monnam_dn } from './do_name.js';
+import { pmname, Monnam as Monnam_dn, mon_nam as mon_nam_dn } from './do_name.js';
 import { which_armor } from './worn.js';
 import { emits_light, permonstTemplate, set_mon_data } from './makemon.js';
 import { noteleport_level as noteleport_level_uh } from './teleport.js';
@@ -256,7 +255,7 @@ const MONS_MATTK = /** @type {{aatyp:number,adtyp:number,damn:number,damd:number
 const NATTK_UH = 6;          /* C monattk.h:9 NATTK */
 const AT_BOOM = 14;          /* C monattk.h:24 — explodes when killed */
 const AT_ENGL = 11;          /* C monattk.h:21 — engulf */
-import { tele, rloc, RLOC_NOMSG, u_teleport_mon as u_teleport_mon_real } from './teleport.js';
+import { tele, rloc, RLOC_NOMSG, u_teleport_mon } from './teleport.js';
 import { sticks, abuse_dog, tamedog, unstuck, initedog } from './dog.js';
 import { m_unleash } from './apply.js';
 import { christen_monst } from './mhitm.js';
@@ -416,10 +415,8 @@ export function dbon() {
  * C ref: monsters.h NAM() macro — same order as C mons[] array.
  * Used by mon_nam() / Monnam() helpers below for hit/miss/kill messages. */
 export const MONS_NAMES = ["giant ant","killer bee","soldier ant","fire ant","giant beetle","queen bee","acid blob","quivering blob","gelatinous cube","chickatrice","cockatrice","pyrolisk","jackal","fox","coyote","werejackal","little dog","dingo","dog","large dog","wolf","werewolf","winter wolf cub","warg","winter wolf","hell hound pup","hell hound","gas spore","floating eye","freezing sphere","flaming sphere","shocking sphere","kitten","housecat","jaguar","lynx","panther","large cat","tiger","displacer beast","gremlin","gargoyle","winged gargoyle","hobbit","dwarf","bugbear","dwarf lord","dwarf king","mind flayer","master mind flayer","manes","homunculus","imp","lemure","quasit","tengu","blue jelly","spotted jelly","ochre jelly","kobold","large kobold","kobold lord","kobold shaman","leprechaun","small mimic","large mimic","giant mimic","wood nymph","water nymph","mountain nymph","goblin","hobgoblin","orc","hill orc","mordor orc","uruk hai","orc shaman","orc captain","rock piercer","iron piercer","glass piercer","rothe","mumak","leocrotta","wumpus","titanothere","baluchitherium","mastodon","sewer rat","giant rat","rabid rat","wererat","rock mole","woodchuck","cave spider","centipede","giant spider","scorpion","lurker above","trapper","pony","white unicorn","gray unicorn","black unicorn","horse","warhorse","fog cloud","dust vortex","ice vortex","energy vortex","steam vortex","fire vortex","baby long worm","baby purple worm","long worm","purple worm","grid bug","xan","yellow light","black light","zruty","couatl","aleax","angel","ki rin","archon","bat","giant bat","raven","vampire bat","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","stalker","air elemental","fire elemental","earth elemental","water elemental","lichen","brown mold","yellow mold","green mold","red mold","shrieker","violet fungus","gnome","gnome lord","gnomish wizard","gnome king","giant","stone giant","hill giant","fire giant","frost giant","ettin","storm giant","titan","minotaur","jabberwock","keystone kop","kop sergeant","kop lieutenant","kop kaptain","lich","demilich","master lich","arch lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy","elf mummy","human mummy","ettin mummy","giant mummy","red naga hatchling","black naga hatchling","golden naga hatchling","guardian naga hatchling","red naga","black naga","golden naga","guardian naga","ogre","ogre lord","ogre king","gray ooze","brown pudding","green slime","black pudding","quantum mechanic","genetic engineer","rust monster","disenchanter","garter snake","snake","water moccasin","python","pit viper","cobra","troll","ice troll","rock troll","water troll","olog hai","umber hulk","vampire","vampire lord","vlad the impaler","barrow wight","wraith","nazgul","xorn","monkey","ape","owlbear","yeti","carnivorous ape","sasquatch","kobold zombie","gnome zombie","orc zombie","dwarf zombie","elf zombie","human zombie","ettin zombie","ghoul","giant zombie","skeleton","straw golem","paper golem","rope golem","gold golem","leather golem","wood golem","flesh golem","clay golem","stone golem","glass golem","iron golem","human","","","","elf","woodland elf","green elf","grey elf","elf lord","elvenking","doppelganger","shopkeeper","guard","prisoner","oracle","priest","high priest","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","medusa","wizard of yendor","croesus","ghost","shade","water demon","incubus","horned devil","erinys","barbed devil","marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","sandestin","balrog","juiblex","yeenoghu","orcus","geryon","dispater","baalzebub","asmodeus","demogorgon","death","pestilence","famine","mail daemon","djinni","jellyfish","piranha","shark","giant eel","electric eel","kraken","newt","gecko","iguana","baby crocodile","lizard","chameleon","crocodile","salamander","long worm tail","archeologist","barbarian","caveman","healer","knight","monk","","ranger","rogue","samurai","tourist","valkyrie","wizard","lord carnarvon","pelias","shaman karnov","hippocrates","king arthur","grand master","arch priest","orion","master of thieves","lord sato","twoflower","norn","neferet the green","minion of huhetotl","thoth amon","chromatic dragon","cyclops","ixoth","master kaen","nalzok","scorpius","master assassin","ashikaga takauji","lord surtur","dark one","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"];
-export function mon_nam(mtmp) {
-    return x_monnam(mtmp, ARTICLE_THE, null,
-                    has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
-}
+/* mon_nam — C ref: do_name.c:1041; the one body lives in js/do_name.js. */
+export function mon_nam(mtmp) { return mon_nam_dn(mtmp); }
 /* Monnam — C ref: do_name.c:1073; the one body lives in js/do_name.js. */
 export function Monnam(mtmp) { return Monnam_dn(mtmp); }
 /* Per-otyp weapon damage dice for small (wsdam) and large (wldam) targets.
@@ -1669,7 +1666,7 @@ function _ac_conf_hallu_stun() {
  * carries, cross-checked there against Snickersnee = 19 (js/uhitm.js's own
  * SR_ART_SNICKERSNEE). */
 const _AC_ART_STORMBRINGER = 2;
-function _ac_is_art(o, art) { return !!(o && (o.oartifact | 0) === art); }
+function _ac_is_art(o, art) { return is_art(o, art); }
 /* C youprop.h Protection_from_shape_changers.  js/const.js pins the property
  * slot (PROT_FROM_SHAPE_CHANGERS = 60); js/monmove.js:3037 already reads this
  * as always-false for want of a source, and js/timeout.js:650 is the only other
@@ -1759,10 +1756,14 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
             const otmp = await _mimic_object_from_map(mtmp, glyphotyp);
             const otmp_name = (otmp && (otmp.otyp | 0) !== 0 /* STRANGE_OBJECT */)
                 ? simpleonames(otmp) : 'strange object';
-            fmtbuf = `${_ac_is_plural(otmp) ? 'Those' : 'That'} ${otmp_name} `
+            fmtbuf = `${(otmp && _ac_is_plural(otmp)) ? 'Those' : 'That'} ${otmp_name} `
                    + `${otmp ? otense(otmp, 'are') : 'is'} %s!`;
-            otmp.where = 0; /* C uhitm.c:6240-6243: OBJ_FREE before dealloc. */
-            await _uh_dealloc_and_bump(otmp);
+            /* C uhitm.c:6239-6243: _mimic_object_from_map always makes a fake
+             * (fakeobj TRUE); free it only when it exists. */
+            if (otmp) {
+                otmp.where = 0; /* OBJ_FREE before dealloc. */
+                await _uh_dealloc_and_bump(otmp);
+            }
         } else if (cell?.disp_cls === 'mon') {
             /* C uhitm.c:6245-6251 — glyph_is_monster(glyph): the painted
              * disguise monster (mappearance), named via pmname(). */
@@ -1807,7 +1808,7 @@ export async function stumble_onto_mimic(mtmp) {
     await wakeup(mtmp, false); /* clears mimicking */
     /* C uhitm.c:6293-6296 — if the hero is blind, wakeup() will not have shown
      * the monster even though it is no longer concealed. */
-    if (!canspotmon(mtmp) && !glyph_is_invisible_at(mtmp.mx | 0, mtmp.my | 0))
+    if (!canspotmon(mtmp) && !remembered_glyph_is_invisible(mtmp.mx | 0, mtmp.my | 0))
         map_invisible(mtmp.mx | 0, mtmp.my | 0);
 }
 
@@ -2283,6 +2284,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         let _potHittxt = false;
         let _noDmgBonus = false;
         let barehandTrain = false;
+        let trainWeaponSkill = false;
         if (!uwep) {
             /* hmon_hitmon_barehands [uhitm.c:848]:
              *   hmd->dmg = rnd(!martial_bonus() ? 2 : 4);
@@ -2298,6 +2300,8 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
              * defenders draw rnd(martial ? 4 : 2). */
             dmg = ((mtmp.data?.pmidx | 0) === PM_SHADE) ? 0 : rnd(martial ? 4 : 2);
             barehandTrain = dmg > 1;
+            trainWeaponSkill = barehandTrain;
+            trainWeaponSkill = dmg > 1;
             const silverhit = { value: 0 };
             const mask = u.uarmg ? W_ARMG
                 : ((hmd.twohits < 2 ? W_RINGR : 0)
@@ -2312,6 +2316,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                 if (_rh.hittxt) _potHittxt = true;
             } else if (isWeaponClassHit) {
                 dmg = dmgval(uwep, mtmp);
+                trainWeaponSkill = dmg > 1;
             } else if ((uwep.oclass | 0) === POTION_CLASS) {
                 /* C uhitm.c:1421-1423 -> hmon_hitmon_potion (:1095-1115): the
                  * wielded potion is split/unwielded, freed from inventory and
@@ -2476,7 +2481,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         if ((game.flags?.initrole | 0) === 7 /* Rogue */
             && !Upolyd(u)
             && isWeaponClassHit && !isRangedMelee
-            && dmg > 1
+            && trainWeaponSkill
             && mtmp !== u.ustuck
             && !u.twoweap
             && (uwep?.oartifact | 0) !== 4 /* ART_CLEAVER */
@@ -2488,7 +2493,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         /* C uhitm.c:967-1012 — the else-if after the Rogue backstab arm: a
          * dieroll of 2 with a two-handed (or Samurai katana) weapon at
          * Skilled+ can shatter the defender's non-flimsy wielded weapon. */
-        else if (isWeaponClassHit && !isRangedMelee && dmg > 1
+        else if (isWeaponClassHit && !isRangedMelee && trainWeaponSkill
                  && mtmp !== u.ustuck && !u.twoweap
                  && (uwep?.oartifact | 0) !== 4 /* ART_CLEAVER */
                  && (dieroll | 0) === 2 && uwep
@@ -2569,7 +2574,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
          * artifact_hit -- both are exclusive to hmon_hitmon_weapon_melee. */
         const useWeaponSkillHit = (!uwep && (hmd.mdat?.pmidx | 0) !== PM_SHADE)
             || (isWeaponClassHit && !isRangedMelee);
-        let trainWeaponSkill = useWeaponSkillHit && (uwep ? dmgvalResult > 1 : barehandTrain);
+        trainWeaponSkill = useWeaponSkillHit && trainWeaponSkill;
         let artiHittxt = _potHittxt;
         if (uwep && isWeaponClassHit && !isRangedMelee && (uwep.oartifact | 0)) {
             const ah = await artifact_hit(null /* &gy.youmonst */, mtmp, uwep,
@@ -2978,7 +2983,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                 let _explDone = false;
                 if (_explAd === AD_COLD || _explAd === AD_FIRE || _explAd === AD_ELEC) {
                     await explode_uh(u.ux, u.uy, (_explAd - 1) + 20, _explTmp,
-                                     MON_EXPLODE, adtyp_to_expltype_uh(_explAd));
+                                     MON_EXPLODE, await adtyp_to_expltype_uh(_explAd));
                     if (DEADMONSTER(mtmp)) {
                         _sumIExpl = M_ATTK_DEF_DIED; /* C uhitm.c:4920 */
                         _explDone = true;
@@ -3623,6 +3628,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         /* C find_roll_to_hit: once per hitum, after leprechaun evasion. */
         check_caitiff(mtmp);
         const _oldumort = u.umortality | 0; /* C hitum oldumort */
+        const _secondwep = (u && u.twoweap) ? (u.uswapwep || null) : null;
         await _swing(u && u.uwep, false, false, false, _twohits);
 
         /* C uhitm.c:794-814 — the second swing.  C's full guard is
@@ -3630,9 +3636,6 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
          *     || !malive || m_at(x, y) != mon)
          * Stormbringer's forced attack never uses the secondary weapon. */
         if (_twohits && !game.go?.override_confirmation && malive && !_swingDied && game.multi >= 0 && (u.umortality | 0) <= _oldumort && m_at(_atkx, _atky) === mtmp) {
-            /* C: secondwep = u.twoweap ? uswapwep : NULL — the bare-handed
-             * double_punch case swings with no weapon. */
-            const _secondwep = (u && u.twoweap) ? (u.uswapwep || null) : null;
             /* C uhitm.c:798 re-runs find_roll_to_hit: the first hit may have
              * set mflee/mstun (abuse_dog, knockback), changing tmp. */
             _find_roll_to_hit();
@@ -3674,7 +3677,7 @@ function double_punch() {
     return false;
 }
 const NORMAL_SPEED_UH = 12;   /* C monmove.h NORMAL_SPEED */
-const AT_BUTT_UH = 4, AT_WEAP_UH = 254, AT_MAGC_UH = 255; /* monattk.h */
+const AT_BUTT_UH = 4, AT_BREA_UH = 12, AT_WEAP_UH = 254, AT_MAGC_UH = 255; /* monattk.h */
 const AD_PHYS_UH = 0, AD_BLND_UH = 11, AD_DRLI_UH = 15, AD_STON_UH = 18,
       AD_SLIM_UH = 40, AD_WRAP_UH = 28;                   /* monattk.h */
 const S_EEL_UH = 57;          /* C monsym.h S_EEL */
@@ -4632,13 +4635,15 @@ export function skill_name(skill) {
 
     /* Positive index: look up object name */
     if (idx > 0) {
-        /* getObjName() is built from discovery-name tables and omits the
-         * fixed-name pick-axe.  C's table entry is PICK_AXE itself. */
-        return getObjName(idx) ?? ((idx === 259 || idx === 261) ? OC_NAME[idx] : null) ?? "unknown";
+        /* getObjName() is a direct OC_NAME lookup that returns null for objects
+         * without an OC_NAME entry, and that the fixed-name pick-axe is therefore
+         * missing from it.  C's table entry is PICK_AXE itself. */
+        const PICK_AXE = 259, UNICORN_HORN = 261;
+        return getObjName(idx) ?? ((idx === PICK_AXE || idx === UNICORN_HORN) ? OC_NAME[idx] : null) ?? "unknown";
     }
 
-    /* P_BARE_HANDED_COMBAT (index 35): use barehands_or_martial */
-    if (skill === 35) { /* P_BARE_HANDED_COMBAT */
+    /* P_BARE_HANDED_COMBAT: use barehands_or_martial */
+    if (skill === P_BARE_HANDED_COMBAT) {
         const martial = _uh_martial_bonus() ? 1 : 0;
         return barehands_or_martial[martial];
     }
@@ -4815,6 +4820,12 @@ export function weapon_descr(obj) {
     return makesingular(descr);
 }
 
+/* shade_glare(obj) — C ref: artifact.c:555-571.
+ * Decide whether this obj is effective when attacking against shades; does
+ * not consider the bonus for blessed objects versus undead.
+ *   1. any silver object is effective                       -> TRUE
+ *   2. non-silver artifacts with SPFX_DFLAG2 && mtype == M2_UNDEAD -> TRUE
+ *   3. otherwise harmless to shades                         -> FALSE */
 const SHADE_GLARE_SILVER_MAT = 14; /* objclass.h:20 enum obj_material_types */
 
 function shade_glare(obj) {
@@ -4823,7 +4834,10 @@ function shade_glare(obj) {
     /* C artifact.c:560-561: any silver object is effective */
     if (sr_oc_material(obj.otyp | 0) === SHADE_GLARE_SILVER_MAT)
         return true;
-    /* C artifact.c:563-566 — see KNOWN GAP above */
+    /* C artifact.c:563-566: non-silver artifacts with bonus against undead */
+    const arti = get_artifact(obj);
+    if (arti !== ART_NONARTIFACT && (arti_spfx(arti) & SPFX_DFLAG2_UH) && (spec_m2(obj) === M2_UNDEAD))
+        return true;
     return false;
 }
 
@@ -6240,7 +6254,7 @@ function mlifesaver(mon) {
  * mondead/mondied sequence; retain how for corpse suppression and pet elegies. */
 export async function monkilled(mon, msg, adtyp) {
     const pd = mon.data;
-    const nocorpse = adtyp === 26 /* AD_DGST */ || adtyp === -242 /* -AD_RBRE */
+    const nocorpse = adtyp === AD_DGST || adtyp === -AD_RBRE
         || (adtyp === AD_FIRE && completelyburns(pd));
     await monkilled_trap(mon, msg, nocorpse);
     if (!DEADMONSTER(mon)) return; /* life-saved */
@@ -6269,6 +6283,7 @@ const AD_FIRE = 2;
 /* AD_RUST constant */
 const AD_RUST = 24;
 const AD_DCAY = 34; /* monattk.h:76 */
+const AD_RBRE = 242; /* monattk.h:89 */
 
 export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
@@ -6441,7 +6456,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
         await ignite_items_real(mdef.minvent);
     } else if (mdef === game.youmonst) {
         /* mhitu */
-        hitmsg_je(magr, mattk);
+        await hitmsg(magr, mattk);
         if (!mhitm_mgc_atk_negated(magr, mdef, true)) {
             pline("You're %s!", on_fire_local(pd, mattk));
             if (completelyburns(pd)) { /* paper or straw golem */
@@ -6870,10 +6885,7 @@ const AD_TLPT = 23;
  * also disagrees with C — see the note at teleport.js:526-535 — so this must
  * NOT be imported from const.js). */
 
-/* C teleport.c:2261-2292 — use the canonical monster-teleport body. */
-async function u_teleport_mon(mdef, give_feedback) {
-    return await u_teleport_mon_real(mdef, give_feedback);
-}
+/* C teleport.c:2261-2292 — u_teleport_mon imported directly from ./teleport.js */
 
 export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
@@ -7406,8 +7418,8 @@ const AD_DRST = 7, AD_DRDX = 30, AD_DRCO = 31; /* monattk.h:49,72,73 */
 
 function xdrainenergym(mon, givemsg) {
     if ((mon.mspec_used | 0) < 20 /* limit draining */
-        && (attacktype(mon.data, 255 /* AT_MAGC */)
-            || attacktype(mon.data, 12 /* AT_BREA */))) {
+        && (attacktype(mon.data, AT_MAGC_UH)
+            || attacktype(mon.data, AT_BREA_UH))) {
         mon.mspec_used = (mon.mspec_used | 0) + d(2, 2);
         if (givemsg)
             pline_mon(mon, '%s seems lethargic.', Monnam(mon));
@@ -7948,8 +7960,11 @@ async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
     }
     const uagr = is_youmonst(magr);
     if (!uagr && magr.mcan) return;
-    if (uagr ? !_ac_blind() : canseemon(mdef))
-        await pline('%s %s for a moment.', Monnam(mdef), makeplural(stagger(mdef.data, 'stagger')));
+    if (uagr) {
+        if (!_ac_blind())
+            await pline('%s %s for a moment.', Monnam(mdef), makeplural(stagger(mdef.data, 'stagger')));
+    } else if (canseemon(mdef))
+        await pline_mon(mdef, '%s %s for a moment.', Monnam(mdef), makeplural(stagger(mdef.data, 'stagger')));
     mdef.mstun = 1;
     await mhitm_ad_phys(magr, mattk, mdef, mhm);
     if (mhm.done) /* C uhitm.c:4401-4402, 4419-4420 */
@@ -8958,9 +8973,7 @@ function Role_if(pm) {
  * mhitm_ad_heal (C uhitm.c:4363) and mhitm_ad_tlpt (C uhitm.c:2945) — are
  * `(void) rloc(...)` in C, i.e. the return is discarded; they are wired to the
  * real synchronous rloc with no await and no async cascade. */
-function tele_restrict(magr) {
-    return tele_restrict_real(magr);
-}
+
 /* C pline.c verbalize(): emit the spoken line quoted on the topline. */
 
 /* C mondata.h:69

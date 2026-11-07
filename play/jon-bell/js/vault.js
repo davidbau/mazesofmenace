@@ -15,7 +15,7 @@ import { unset_seenv, Deaf } from './display.js';
 import {
     ROOMOFFSET, VAULT, EGD,
     RLOC_NOMSG, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
-    VAULT_GUARD_TIME, ROOM, CORR, STONE, HWALL, DOOR, VWALL,
+    VAULT_GUARD_TIME, GD_EATGOLD, GD_DESTROYGOLD, ROOM, CORR, STONE, HWALL, DOOR, VWALL,
     COLNO, ROWNO, u_at, isok, SCORR, IN_SIGHT, COULD_SEE,
     IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, IS_OBSTRUCTED,
     MM_EGD, MM_NOMSG, M_AP_OBJECT, M_AP_NOTHING, A_LAWFUL, NEED_HTH_WEAPON, IS_WALL,
@@ -24,10 +24,13 @@ import {
     ARTICLE_A, STRANGLED,
 } from './const.js';
 import { rn2 } from './rng.js';
+import { m_carrying } from './mthrowu.js';
+
+const TIN_WHISTLE = 245; /* objects.h tin whistle (u_init.js:719) */
 import { PM_GUARD, PM_CROESUS } from './pm.generated.js';
 import { newmextra, set_malign, mhe, monPmname } from './makemon.js';
 import { pmname } from './do_name.js';
-import { makemon, make_grave, place_object, remove_object, obj_extract_self } from './mklev.js';
+import { newegd, makemon, make_grave, place_object, remove_object, obj_extract_self } from './mklev.js';
 import { xy_set_wall_state } from './display.js';
 import { mungspaces } from './hacklib.js';
 import { mongone, setmangry } from './mon.js';
@@ -153,7 +156,7 @@ export function gd_sound() {
 export function vault_gd_watching(activity) {
     const guard = findgd();
     if (guard && guard.mx && guard.mcansee && m_canseeu(guard)
-        && (activity === 1 || activity === 2))
+        && (activity === GD_EATGOLD || activity === GD_DESTROYGOLD))
         EGD(guard).witness = activity;
 }
 
@@ -647,16 +650,7 @@ export async function invault() {
     }
 }
 
-export function newegd(mtmp) {
-    if (!mtmp.mextra)
-        mtmp.mextra = newmextra();
-    if (!EGD(mtmp)) {
-        mtmp.mextra.egd = {};
-        for (const k of Object.keys(mtmp.mextra.egd))
-            delete mtmp.mextra.egd[k];
-        mtmp.mextra.egd.parentmid = mtmp.m_id;
-    }
-}
+export { newegd }; /* one C-faithful body lives in js/mklev.js (vault.c:23-33) */
 
 /* C ref: vault.c:203-215 findgd() — the fmon scan.
  *
@@ -864,6 +858,10 @@ async function restfakecorr(grd) {
 /* C ref: vault.c:155-171 parkguard(grd) — move guard (dead or alive) to <0,0>
  * until the temporary corridor has been removed. */
 function parkguard(grd) {
+    /* C vault.c:159-160: the polearm target must not be a parked guard */
+    const polearm = game.svc?.context?.polearm;
+    if (polearm && grd === polearm.hitmon)
+        polearm.hitmon = 0;
     if (grd.mx | 0) {
         remove_monster(grd.mx | 0, grd.my | 0);
         newsym(grd.mx | 0, grd.my | 0);
@@ -961,8 +959,8 @@ async function gd_mv_monaway(grd, nx, ny) {
     if (!mtmp || mtmp === grd)
         return;
     /* C vault.c:738-744: clear the destination by relocating its occupant;
-     * if no legal square exists, send it to limbo.  rloc() is synchronous in
-     * this port, matching the guard movement call site's synchronous contract. */
+     * if no legal square exists, send it to limbo.  rloc() is async in this
+     * port (js/teleport.js) and is awaited here. */
     if (!Deaf()) {
         SetVoice(grd, 0, 80, 0);
         await verbalize('Out of my way, scum!');
@@ -999,10 +997,7 @@ async function gd_letknow(grd) {
      * `cansee` alone is insufficient because the guard may be invisible or
      * undetected.  mon_visible is display.h's exact predicate. */
     if (!cansee(grd.mx | 0, grd.my | 0) || !mon_visible(grd)) {
-        let hasWhistle = false;
-        for (let obj = grd.minvent; obj; obj = obj.nobj)
-            if ((obj.otyp | 0) === 245) { hasWhistle = true; break; }
-        await You_hear(hasWhistle ? "the shrill sound of a guard's whistle."
+        await You_hear(m_carrying(grd, TIN_WHISTLE) ? "the shrill sound of a guard's whistle."
                                  : "angry shouting.");
         return;
     }
@@ -1013,6 +1008,9 @@ async function gd_letknow(grd) {
           ? `You see ${name} approaching.`
           : `You are confronted by ${name}.`);
 }
+
+/* C objclass.h:28 enum obj_material_types */
+const GOLD = 15;
 
 /* C mon.c:1827-1842 mpickgold() — consume the coin pile at the monster's square
  * and put it on the monster inventory chain. */
@@ -1029,7 +1027,7 @@ async function mpickgold(grd) {
             set_msg_xy(grd === game.youmonst ? 0 : grd.mx,
                        grd === game.youmonst ? 0 : grd.my);
             await pline('%s picks up some %s.', Monnam(grd),
-                        mat_idx === 15 /* GOLD */ ? 'gold' : 'money');
+                        mat_idx === GOLD ? 'gold' : 'money');
         }
         newsym(grd.mx | 0, grd.my | 0);
     }
@@ -1056,8 +1054,10 @@ async function gd_pick_corridor_gold(grd, goldx, goldy) {
     const seen = cansee(goldx | 0, goldy | 0);
     if (underHero) {
         const gold = g_at(goldx | 0, goldy | 0);
-        if (!gold)
+        if (!gold) {
+            impossible("vault guard: no gold at hero's feet?");
             return;
+        }
         const guardDist = (guardx - game.u.ux) ** 2 + (guardy - game.u.uy) ** 2;
         if (guardDist > 2 && seen) {
             let best = { x: guardx, y: guardy };
@@ -1487,5 +1487,5 @@ export function vault_summon_gd() {
     if (!vault_occupied(u.urooms))
         return;
     if (findgd()) return;
-    u.uinvault = 29; /* VAULT_GUARD_TIME - 1 */
+    u.uinvault = VAULT_GUARD_TIME - 1;
 }

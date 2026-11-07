@@ -8,7 +8,7 @@ import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { OC_NAME } from './oc_name_data.js';
 import { MKOBJ_SVB_BASES } from './mkobj_data.js';
-import { PM_WIZARD } from './pm.generated.js';
+import { PM_WIZARD, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
 import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
@@ -17,7 +17,7 @@ import { cast_chain_lightning, shieldeff, flush_screen, newsym, show_glyph_cell,
 import { pline } from './pline.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { d } from './rng.js';
-import { mkinvokearea } from './mklev.js';
+import { mkinvokearea, SPBOOK_CLASS } from './mklev.js';
 import { CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING } from './objclass_ranges.js';
 import { ACH_INVK } from './const.js';
 import { record_achievement } from './cmd.js';
@@ -279,6 +279,21 @@ const A_DEX = 3;
 const A_CON = 4;
 const A_CHA = 5;
 
+// C monflag.h / mondata.h
+const M1_ANIMAL = 0x00040000;
+const is_animal = (pm) => !!((pm?.mflags1 | 0) & M1_ANIMAL);
+const M2_UNDEAD = 0x00000002;
+const is_undead = (ptr) => !!((ptr?.mflags2 | 0) & M2_UNDEAD);
+const is_vampshifter = (mon) => {
+    const c = mon?.cham | 0;
+    return c === PM_VAMPIRE || c === PM_VAMPIRE_LORD || c === PM_VLAD_THE_IMPALER;
+};
+const S_VORTEX = 22;
+const AD_WRAP = 28;
+const AT_ENGL = 11;
+const is_whirly = (pm) => !!(pm && ((pm.mlet | 0) === S_VORTEX || (pm.pmidx | 0) === PM_AIR_ELEMENTAL));
+const enfolds = (pm) => !!(pm && dmgtype_fromattack(pm, AD_WRAP, AT_ENGL));
+
 // ── Skill level constants ────────────────────────────────────────────────────
 // C ref: nethack-c/include/skills.h P_UNSKILLED..P_GRAND_MASTER
 const P_ISRESTRICTED = 0;
@@ -430,7 +445,7 @@ function percent_success(spellSlot) {
      * rewritten from P_DIVINATION_SPELL to P_CLERIC_SPELL at game start.
      * Apply the same rewrite here so percent_success / spelltypemnemonic
      * return CLERIC for light when the hero is a Priest. */
-    if (initrole === ROLE_CLERIC && otyp === 372 /* SPE_LIGHT */) {
+    if (initrole === ROLE_CLERIC && otyp === SPE_LIGHT) {
         skill_type = P_CLERIC_SPELL;
     }
     const spellev = spellBook.sp_lev; // C spell.c:2240,2251: spellev(spell)
@@ -502,16 +517,9 @@ function percent_success(spellSlot) {
     // chance = 11 * statused / 2
     let chance = Math.trunc(11 * statused / 2);
 
-    // skill in this spell's school — C P_SKILL(skilltype) lookup.
-    // C ref: weapon.c:1732-1786 skill_init().  Until per-skill state is fully
-    // ported, derive the starting skill from initrole + skill_type for the
-    // role-specific spell schools that are set in skill_init:
-    //   ROLE_HEALER, ROLE_MONK → P_HEALING_SPELL = P_BASIC
-    //   ROLE_CLERIC          → P_CLERIC_SPELL  = P_BASIC
-    //   ROLE_WIZARD          → P_ATTACK_SPELL, P_ENCHANTMENT_SPELL = P_BASIC
-    // Other spell schools default to P_UNSKILLED if the role's Skill_X table
-    // lists them (handled via the Skill_X parse in u_init.js), else RESTRICTED.
-    // above are the only deviation from "everything UNSKILLED".
+    // skill in this spell's school — C P_SKILL(skilltype) lookup (spell.c:2237).
+    // spell_skill() reads u.weapon_skills (the P_SKILL equivalent) and uses the
+    // initrole-based defaults only when no skill row exists.
     const skill = spell_skill(skill_type);
     const skill_level = Math.max(skill, P_UNSKILLED) - 1; /* unskilled => 0 */
 
@@ -769,10 +777,10 @@ function spelleffects_rng(spellSlot) {
 //       if (spellknow(i)) decrnknow(i);   // sp_know--
 export function age_spells() {
     const book = game.spl_book || [];
-    for (let i = 0; i < book.length; i++) {
+    for (let i = 0; i < MAXSPELL && i < book.length; i++) {
         const sb = book[i];
-        /* spellid(i)==NO_SPELL terminates the scan (C MAXSPELL early-out). */
-        if (!sb || sb.sp_id == null || sb.sp_id === 0 /* NO_SPELL */) break;
+        /* spellid(i) != NO_SPELL sentinel check (C spell.c:678). */
+        if (!sb || sb.sp_id == null || sb.sp_id === NO_SPELL) break;
         if (sb.sp_know) sb.sp_know = (sb.sp_know | 0) - 1;
     }
 }
@@ -925,8 +933,7 @@ async function deadbook(book2) {
         iter_mons((m) => mons.push(m));
         const u = game.u;
         for (const mtmp of mons) {
-            if ((((mtmp.data.mflags2 | 0) & 0x2) /* M2_UNDEAD */
-                 || mtmp.cham === 226 || mtmp.cham === 227 || mtmp.cham === 228 /* is_vampshifter */)
+            if ((is_undead(mtmp.data) || is_vampshifter(mtmp))
                 && cansee(mtmp.mx, mtmp.my)) {
                 mtmp.mpeaceful = true;
                 const dx = u.ux - mtmp.mx, dy = u.uy - mtmp.my;
@@ -1014,8 +1021,8 @@ export async function learn() {
     let i = 0;
     for (; i < MAXSPELL; i++) {
         const sb = spl[i];
-        const id = sb ? (sb.sp_id | 0) : 0;
-        if (id === booktype || id === 0 /* NO_SPELL */) break;
+        const id = sb ? (sb.sp_id | 0) : NO_SPELL;
+        if (id === booktype || id === NO_SPELL) break;
     }
     if (i >= MAXSPELL) {
         await impossible("Too many spells memorized!");
@@ -1067,21 +1074,9 @@ export async function learn() {
         else await pline(`You add ${splname} to your repertoire, as '${spellet(i)}'.`);
     }
     // C spell.c:438-447 — if (i < MAXSPELL) makeknown((int) booktype).
-    // makeknown(x) == discover_object(x, TRUE, TRUE, TRUE) (hack.h:1535).  With
-    // credit_hero=TRUE, discover_object fires exercise(A_WIS, TRUE) (o_init.c:481)
-    // — but ONLY the first time this spellbook TYPE is discovered (the C
-    // `!oc_name_known && mark_as_known` guard).  This is the SECOND exercise the
-    // rn2(19)=11), fired AFTER the completion pline's --More-- closes and before
-    // moveloop_core's monster_nearby().  The JS discover_object (o_init.js) does
-    // not credit wisdom, so replicate the makeknown(credit_hero) semantics here:
-    // fire exercise iff the type is not yet known, then mark it known.
+    // makeknown(x) == discover_object(x, TRUE, TRUE, TRUE) (hack.h:1530).
     if (i < MAXSPELL && booktype >= 0) {
-        const g2 = game;
-        const alreadyKnown = !!(g2._oc_name_known && g2._oc_name_known[booktype]);
-        if (!alreadyKnown) {
-            exercise(A_WIS, true); // o_init.c:481 — credit_hero discover exercise
-        }
-        discover_object(booktype, true, true);
+        discover_object(booktype, true, true, true);
         if (faded_to_blank) update_inventory();
     }
     if (book.cursed && await cursed_book(book)) {
@@ -1110,7 +1105,7 @@ async function cursed_book(bp) {
     case 2:
         /* C spell.c:126 make_blinded(BlindedTimeout + rn1(100, 250), TRUE).
          * BlindedTimeout is u.uprops[BLINDED].intrinsic & TIMEOUT. */
-        make_blinded(((g.u?.uprops?.[BLINDED]?.intrinsic | 0) & 0x00ffffff)
+        make_blinded(((g.u?.uprops?.[BLINDED]?.intrinsic | 0) & TIMEOUT)
                      + rn1(100, 250), true);
         break;
     case 3:
@@ -1407,7 +1402,7 @@ function _wizard() { return !!(game.flags && game.flags.debug); }
 // iflags.menu_tab_sep is off, spell.c:2110), widening the row to 65.
 //
 // UPSTREAM BUG, PORTED AS-IS (Cardinal Rule 1): spell.c:2118-2122 indexes every
-// other field of the row by `splnum` (the sort-mapped slot from spell.c:2117
+// other field of the row by `splnum` (the sort-mapped slot from spell.c:2119
 // `splnum = !gs.spl_orderindx ? i : gs.spl_orderindx[i]`), but spell.c:2125
 // indexes the wizard turns column by the LOOP variable `i`.  The two diverge
 // only once gs.spl_orderindx is non-NULL, which C does at spell.c:1930-1971
@@ -1458,7 +1453,7 @@ function format_spell_row_raw(i, splnum) {
 async function dospellmenu(prompt, splaction) {
     const g = game;
     const spl_book = g.spl_book || [];
-    /* C spell.c:2117 — sorting changes display order independently of the
+    /* C spell.c:2119 — sorting changes display order independently of the
      * casting letters stored in the spellbook. */
     const spl_orderindx = g.spl_orderindx || null;
 
@@ -1483,7 +1478,7 @@ async function dospellmenu(prompt, splaction) {
         items.push({
             accel: spellet(splnum),
             raw: format_spell_row_raw(i, splnum),
-            a_int: splnum + 1, /* C ref: spell.c:2128 "must be non-zero" */
+            a_int: splnum + 1, /* C ref: spell.c:2127 "must be non-zero" */
             /* C ref: spell.c:2129-2131 MENU_ITEMFLAGS_SELECTED; tty draws '*' */
             sel: splnum === splaction,
         });
@@ -1493,7 +1488,7 @@ async function dospellmenu(prompt, splaction) {
     let how = 'PICK_ONE';
     if (splaction === SPELLMENU_VIEW) {
         if (items.length < 2) {
-            /* C ref: spell.c:2138-2140 — spellid(1) == NO_SPELL, i.e. only one
+            /* C ref: spell.c:2135 — spellid(1) == NO_SPELL, i.e. only one
              * spell => nothing to swap with => PICK_NONE. */
             how = 'PICK_NONE';
         } else {
@@ -1879,11 +1874,11 @@ async function rejectcasting() {
     return false;
 }
 
-/* C spell.c:115; command-queue keys are numeric characters. */
+/* C spell.c:119,122; command-queue keys are numeric characters. */
 function spell_let_to_idx(ilet) {
-    let idx = ilet - 97;
+    let idx = ilet - 'a'.charCodeAt(0);
     if (idx >= 0 && idx < 26) return idx;
-    idx = ilet - 65;
+    idx = ilet - 'A'.charCodeAt(0);
     if (idx >= 0 && idx < 26) return idx + 26;
     return -1;
 }
@@ -1909,9 +1904,9 @@ async function getspell(spell_no) {
     if (game.flags.menu_style === MENU_TRADITIONAL) {
         let lets;
         if (nspells === 1) lets = 'a';
-        else if (nspells < 27) lets = `a-${String.fromCharCode(97 + nspells - 1)}`;
+        else if (nspells < 27) lets = `a-${String.fromCharCode('a'.charCodeAt(0) + nspells - 1)}`;
         else if (nspells === 27) lets = 'a-zA';
-        else lets = `a-zA-${String.fromCharCode(65 + nspells - 27)}`;
+        else lets = `a-zA-${String.fromCharCode('A'.charCodeAt(0) + nspells - 27)}`;
         const qbuf = `Cast which spell? [${lets} *?]`;
         for (let retry_limit = 0; ; ++retry_limit) {
             if (retry_limit === 10) {
@@ -1931,6 +1926,9 @@ async function getspell(spell_no) {
                 continue;
             }
             spell_no.value = idx;
+            /* C topl.c:545-548 leaves the answered prompt physically on the
+             * topline until the next parse() clears WIN_MESSAGE. */
+            game._topl_sticky = qbuf;
             return true;
         }
     }
@@ -1960,7 +1958,7 @@ export async function dowizcast() {
     menu.end_menu('Cast which spell?');
     const selected = await menu.select_menu(PICK_ONE);
     if (selected.count <= 0)
-        return 0;
+        return ECMD_OK;
     return await spelleffects(selected.picks[0], false, true);
 }
 
@@ -2239,13 +2237,21 @@ function can_center_spell_location(x, y) {
     return isok(x, y) && !!cansee(x, y) && !IS_STWALL(game.level.at(x, y).typ | 0);
 }
 
+/* C display.h:624 cmap_to_glyph(cmap_idx) for S_goodpos */
+const S_goodpos = 87;
+function cmap_to_glyph(cmap_idx) {
+    const S_digbeam = 78, GLYPH_CMAP_C_OFF = 4083;
+    return (cmap_idx - S_digbeam) + GLYPH_CMAP_C_OFF;
+}
+
 /* C spell.c:1627-1651 — getpos's valid-position overlay for aimed spells. */
 function display_spell_target_positions(on_off) {
     const u = game.u;
+    const dist = 10;
     if (on_off) {
-        tmp_at(DISP_BEAM, 4092 /* cmap_to_glyph(S_goodpos) */);
-        for (let dx = -10; dx <= 10; dx++) {
-            for (let dy = -10; dy <= 10; dy++) {
+        tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
+        for (let dx = -dist; dx <= dist; dx++) {
+            for (let dy = -dist; dy <= dist; dy++) {
                 const x = u.ux + dx, y = u.uy + dy;
                 if (x === u.ux && y === u.uy) continue;
                 if (can_center_spell_location(x, y)) tmp_at(x, y);
@@ -2436,27 +2442,18 @@ export async function book_cursed(book) {
     // C ref: spell.c:345-350
     // if (book->cursed && gm.multi >= 0
     //     && go.occupation == learn && svc.context.spbook.book == book)
+    if (book?.cursed && (g.multi | 0) >= 0
+        && g.occupation === learn && g.context?.spbook?.book === book) {
+        // C ref: spell.c:347 pline("%s shut!", Tobjnam(book, "slam"));
+        const objname = Tobjnam_real(book, 'slam');
+        await pline(`${objname} shut!`);
 
-    if (!book.cursed) return;
-    if (g.multi < 0) return;
+        // C ref: spell.c:348 set_bknown(book, 1);
+        set_bknown_real(book, 1);
 
-    // C compares against the actual learn occupation function installed by
-    // study_book_learn(), not a per-call placeholder.  A fresh stub here made
-    // this entire interruption branch unreachable.
-    if (g.occupation !== learn) return;
-
-    // but accessed plainly without guards as per C source
-    if (g.context.spbook.book !== book) return;
-
-    // C ref: spell.c:347 pline("%s shut!", Tobjnam(book, "slam"));
-    const objname = Tobjnam_real(book, 'slam');
-    await pline(`${objname} shut!`);
-
-    // C ref: spell.c:348 set_bknown(book, 1);
-    set_bknown_real(book, 1);
-
-    // C spell.c:349; allmain.c:687-695 also prints "You stop studying."
-    await stop_occupation();
+        // C spell.c:349; allmain.c:687-695 also prints "You stop studying."
+        await stop_occupation();
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -2506,7 +2503,6 @@ export function spell_skilltype(booktype) {
 export function skill_based_spellbook_id() {
     if (game.urole?.mnum !== PM_WIZARD)
         return;
-    const SPBOOK_CLASS = 10;
     for (let booktype = MKOBJ_SVB_BASES[SPBOOK_CLASS];
          booktype < MKOBJ_SVB_BASES[SPBOOK_CLASS + 1]; booktype++) {
         const skill = spell_skilltype(booktype);
@@ -2537,7 +2533,7 @@ export async function cast_protection() {
     const gain = loglev - Math.trunc(protection / (4 - Math.min(3, natac)));
     if (gain <= 0) {
         await pline('Your skin feels warm for a moment.');
-        return;
+        return ECMD_OK;
     }
     if (!Blind()) {
         const golden = hcolor('golden');
@@ -2548,9 +2544,9 @@ export async function cast_protection() {
             const typ = game.level.at(u.ux, u.uy).typ;
             const atmosphere = pm && u.uswallow
                 ? (pm.pmidx === PM_FOG_CLOUD ? 'mist'
-                    : pm.mlet === 22 || pm.pmidx === PM_AIR_ELEMENTAL ? 'maelstrom'
-                    : dmgtype_fromattack(pm, 28 /* AD_WRAP */, 11 /* AT_ENGL */) ? 'folds'
-                    : (pm.mflags1 & 0x00040000 /* M1_ANIMAL */) ? 'maw' : 'ooze')
+                    : is_whirly(pm) ? 'maelstrom'
+                    : enfolds(pm) ? 'folds'
+                    : is_animal(pm) ? 'maw' : 'ooze')
                 : u.uinwater ? hliquid('water') : typ === CLOUD ? 'cloud'
                     : IS_TREE(typ) ? 'vegetation' : IS_STWALL(typ) ? 'stone' : 'air';
             await pline(`The ${atmosphere} around you begins to shimmer with ${an(golden)} haze.`);
@@ -2560,6 +2556,7 @@ export async function cast_protection() {
     u.uspmtime = spell_skill(spell_skilltype(SPE_PROTECTION)) === P_EXPERT ? 20 : 10;
     if (!u.usptime) u.usptime = u.uspmtime;
     find_ac();
+    return ECMD_OK;
 }
 
 async function study_book_already_known(spellName) {
@@ -2573,6 +2570,10 @@ async function study_book_already_known(spellName) {
     }
     /* C ref: pline + tty more() chain — pline sets the topline; the subsequent
      * y_n in C calls topl.c more() to clear the line.  Mirror that loop. */
+    /* C pline.c:266-274 vpline() runs flush_screen() (display.c:2236 bot())
+     * before the You() above, so a pending botl (getobj's SET_BOTL, a just-
+     * advanced moves) is painted behind the --More--. */
+    await flush_screen(0);
     await topline_more_loop(msg);
     const ynPrompt = 'Refresh your memory anyway? [yn] (n)';
     /* C topl.c:420 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY)
@@ -2585,12 +2586,20 @@ async function study_book_already_known(spellName) {
         g._pending_message = ynPrompt;
         await flush_screen(1);
         set_cursor(ynPrompt.length + 1, 0); /* C TTY: cursor past prompt + trailing space */
-        const key = await nhgetch();
+        /* C topl.c:420-425 SUPPRESS_HISTORY: the answered prompt (toplines, topl.c:539)
+         * reaches history once, at the next flush, not the bare prompt. */
+        const savedSuppress = g._topl_suppress_history;
+        g._topl_suppress_history = true;
+        let key;
+        try { key = await nhgetch(); } finally { g._topl_suppress_history = savedSuppress; }
         const c = String.fromCharCode(key);
-        if (c === '\x1b') break;                          /* ESC → default 'n' */
-        if (c === '\r' || c === '\n' || c === ' ') break; /* activator → default 'n' */
+        if (c === '\x1b' || c === '\r' || c === '\n' || c === ' ') {
+            g._topl_answered = `${ynPrompt} n`;           /* ESC/activator → default 'n' */
+            break;
+        }
         const lc = c.toLowerCase();
         if (lc === 'y' || lc === 'n') {                   /* valid yn answer */
+            g._topl_answered = `${ynPrompt} ${lc}`;
             refresh = (lc === 'y');                       /* spell.c:571 only 'n' returns 0 */
             break;
         }
@@ -2720,9 +2729,9 @@ export function losespells() {
     /* C spell.c:1769-1771 — n counts up to the first NO_SPELL slot; spl_book
      * may be padded with empty (sp_id 0) rows, so length is not n. */
     let n = 0;
-    while (n < MAXSPELL && n < spl.length && spl[n] && (spl[n].sp_id | 0) !== 0 /* NO_SPELL */)
+    while (n < MAXSPELL && n < spl.length && spl[n] && (spl[n].sp_id | 0) !== NO_SPELL)
         n++;
-    /* C has no n == 0 early-out: rn2(0 + 1) still draws (spell.c:1778). */
+    /* C has no n == 0 early-out: rn2(0 + 1) still draws (spell.c:1777). */
     let nzap = rn2(n + 1);
     if (_Confusion() !== 0) {
         const i2 = rn2(n + 1);
@@ -2736,7 +2745,7 @@ export function losespells() {
     for (let i = 0; nzap > 0; i++) {
         if (rn2(n - i) < nzap) {
             spl[i].sp_know = 0;
-            exercise(2 /* A_WIS */, false);
+            exercise(A_WIS, false);
             nzap--;
         }
     }

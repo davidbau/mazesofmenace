@@ -192,6 +192,7 @@ import {
     stop_timer,
 } from './timeout.js';
 import {
+    clearTtyMessageWindow,
     displayPendingTtyMessageWindow,
     ttyPline,
     tty_message_menu,
@@ -1203,9 +1204,7 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
             oneloop = true;
         } else {
             const prompt = qbuf + (buf ? ` [${buf} or ?*]` : ' [*]');
-            ilet = String.fromCharCode(
-                await yn_function(prompt, null, '\0', false, state),
-            );
+            ilet = await yn_function(prompt, null, '\0', false, state);
         }
 
         if (digit(ilet)) {
@@ -1612,9 +1611,9 @@ export async function askchain(
                 // state for this caller to consume after it returns '#'.
                 const responseSet = takeoff || ident || candidate.quan < 2
                     ? 'ynaq' : 'yn#aq';
-                response = String.fromCharCode(await yn_function(
+                response = await yn_function(
                     qbuf, responseSet, 'n', false, state,
-                ));
+                );
             } else {
                 response = 'y';
             }
@@ -1739,7 +1738,13 @@ export async function ggetobj(
                         ailets += obj.invlet;
                 }
             }
-            const displayed = await display_inventory(ailets, true, state);
+            // display_pickinv() returns '\033' when select_menu() is
+            // cancelled and '\0' when nothing was picked (invent.c:3414);
+            // only the cancel ends ggetobj().
+            const displayed = await display_inventory(ailets, true, state, {
+                cancelValue: '\x1b',
+                emptyValue: null,
+            });
             if (displayed === '\x1b') return 0;
             continue;
         }
@@ -5465,11 +5470,13 @@ export async function dotypeinv(state = game, hooks = {}) {
             if (!classes.includes(symbol)) choices.push(symbol);
         }
         if (classCount > 1) {
-            const answer = await yn_function(
+            selectedType = await yn_function(
                 prompt, choices.join(''), '\0', true, state,
             );
-            selectedType = answer ? String.fromCharCode(answer) : '\0';
             if (selectedType === '\0') {
+                // invent.c:3933: Escape answers the default '\0', and
+                // clear_nhwindow(WIN_MESSAGE) takes the prompt off.
+                clearTtyMessageWindow(state);
                 return resetDotypeContext(state);
             }
         } else if (anyUnpaid) selectedType = 'u';
@@ -5627,7 +5634,7 @@ async function doorganize_core(obj, state = game, hooks = {}) {
     for (let tryCount = 1; ; ++tryCount) {
         letValue = isgold
             ? GOLD_SYM
-            : String.fromCharCode(await yn_function(qbuf, null, '\0', true, state));
+            : await yn_function(qbuf, null, '\0', true, state);
         if (letValue === '?' || letValue === '*') {
             const displayed = await display_used_invlets(
                 splitting ? obj.invlet : 0,
@@ -5759,15 +5766,16 @@ export async function adjust_split(state = game, hooks = {}) {
     let splitAmount = obj.quan === 2 ? 1 : 0;
     if (obj.quan > 2) {
         const first = await yn_function('Split off how many?', null, '\0', true, state);
-        const firstDigit = String.fromCharCode(first);
-        if (!digit(firstDigit)) {
+        if (!digit(first)) {
             await ttyPline(Never_mind, state);
             return ECMD_CANCEL;
         }
         const count = { value: 0 };
+        // get_count() takes its first key as the code readchar() returns.
         const result = await get_count(
-            null, first, 0, count, GC_ECHOFIRST | GC_CONDHIST, state,
+            null, first.charCodeAt(0), 0, count, GC_ECHOFIRST | GC_CONDHIST, state,
         );
+
         const answer = result.key ? String.fromCharCode(result.key) : '';
         if (!answer || answer === '\x1b' || !quitchars.includes(answer)) {
             await ttyPline(Never_mind, state);

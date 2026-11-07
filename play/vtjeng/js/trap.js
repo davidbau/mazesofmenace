@@ -202,7 +202,7 @@ import {
     drawbridgeFlags, drawbridgeUnder, is_ice, is_lava, is_pool,
     is_waterwall,
 } from './dbridge.js';
-import { getdir, xytodir } from './cmd.js';
+import { getdir, xytodir, ynq } from './cmd.js';
 import {
     Monnam, capitalizedMonsterName, mon_nam, monsterCommonName, mon_pmname,
     noit_Monnam, y_monnam, YMonnam, rndcolor, hliquid, hcolor, rndmonnam,
@@ -267,7 +267,7 @@ import {
 } from './invent.js';
 import { get_obj_location } from './light.js';
 import { water_damage_chain } from './trap_water_damage.js';
-import { Is_box, stumble_on_door_mimic, ynq } from './lock.js';
+import { Is_box, stumble_on_door_mimic } from './lock.js';
 import { rndmonnum_adj, set_malign } from './makemon.js';
 import { makemon, makemon_runtime } from './makemon_create.js';
 import {
@@ -2306,15 +2306,19 @@ export async function climb_pit(state = game) {
 }
 
 // C ref: trap.c trapname() (7100-7155). The display RNG chooses the name;
-// only the extra role/rank entry also spends a core rn2(3).
+// only the extra role/rank entry also spends a core rn2(3). The display draw
+// uses `state`'s own stream unless the caller injects one, so a monster-turn
+// planning clone advances its copy rather than the live game's.
 export function trapname(ttyp, override = false, state = game,
-                         random = { rn2, rn2_on_display_rng }) {
+                         random = { rn2 }) {
     const hallu = state.u?.uprops?.[HALLUC];
     const resistance = state.u?.uprops?.[HALLUC_RES];
     if (hallu?.intrinsic && !(resistance?.intrinsic || resistance?.extrinsic)
         && !override) {
         const totalNames = TRAPNUM + halu_trapnames.length;
-        const nameidx = random.rn2_on_display_rng(totalNames + 1);
+        const displayRandom = random.rn2_on_display_rng
+            ?? ((bound) => rn2_on_display_rng(bound, state));
+        const nameidx = displayRandom(totalNames + 1);
         if (nameidx === totalNames) {
             const female = Upolyd(state) ? state.u.mfemale : state.flags.female;
             const title = random.rn2(3)

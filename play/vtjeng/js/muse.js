@@ -229,7 +229,7 @@ import { mintrap, seetrap, wearing_iron_shoes } from './trap_effects.js';
 import { makeplural } from './fruit.js';
 import { s_suffix, upstart } from './hacklib.js';
 import { mpickobj, remove_worn_item } from './steal.js';
-import { ttyNorep, ttyPline } from './tty_message.js';
+import { ttyNorep, ttyPline, ttyUrgentPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { doorlock } from './lock.js';
 import { cansee, couldsee, recalc_block_point, unblock_point } from './vision.js';
@@ -331,7 +331,7 @@ function activeHeroProperty(state, property) {
 // C ref: muse.c precheck() (59-161). Preliminary checks before a monster uses
 // an item: milky/smoky potion occupants and cursed-wand backfire. Returns 0 if
 // nothing happened, 1 if the monster died, 2 if it was incapacitated.
-async function precheck(mon, obj, state, env = {}) {
+async function precheck(mon, obj, state, env = {}, selection = null) {
     if (!obj) return 0;
     const random = { d, rn1, rn2, rnd, rne, rnl, rnz, ...(env.random ?? {}) };
     const vis = cansee(mon.mx, mon.my, state);
@@ -448,8 +448,13 @@ async function precheck(mon, obj, state, env = {}) {
             await monkilled(mon, '', M.AD_RBRE, state, env);
             return 1;
         }
-        // gm.m.has_defense = gm.m.has_offense = gm.m.has_misc = 0;
-        // Only one needed to be set to 0 but the others are harmless
+        // C zeroes gm.m.has_defense, has_offense and has_misc, so the
+        // caller's switch takes its `case 0` ("an exploded wand") and the
+        // monster goes on with its turn. The port keeps the offensive choice
+        // in state.m_offense and passes the defensive and miscellaneous
+        // choices as `selection`.
+        if (state.m_offense) state.m_offense.has_offense = 0;
+        if (selection) selection.kind = 0;
     }
     return 0;
 }
@@ -761,10 +766,10 @@ export async function mcureblindness(mon, verbos, state) {
 // gt.trapx/gt.trapy.
 export async function use_defensive(mtmp, selection, state, env = {}) {
     const otmp = selection.object;
-    const kind = selection.kind;
 
-    const i = await precheck(mtmp, otmp, state, env);
+    const i = await precheck(mtmp, otmp, state, env, selection);
     if (i !== 0) return i;
+    const kind = selection.kind;
 
     const vis = cansee(mtmp.mx, mtmp.my, state);
     const vismon = canseemon(mtmp, state);
@@ -1037,7 +1042,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         const t = t_at(trapx, trapy, state);
         if (vis) {
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} into a ${trapname(t.ttyp)}!`,
+                `${capitalizedMonsterName(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} into a ${trapname(t.ttyp, false, state)}!`,
                 state);
         }
         reveal_trap(t, vis, state, { redraw: (x, y) => newsym(x, y) });
@@ -1139,7 +1144,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         const t = t_at(trapx, trapy, state);
         if (vis) {
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} onto a ${trapname(t.ttyp)}!`,
+                `${capitalizedMonsterName(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} onto a ${trapname(t.ttyp, false, state)}!`,
                 state);
         }
         reveal_trap(t, vis, state, { redraw: (x, y) => newsym(x, y) });
@@ -1504,7 +1509,7 @@ export async function mloot_container(mon, container, vismon, rawEnv = {}) {
 //   mon.c m_useup       -- consumed object stays in monster inventory
 export async function use_misc(mtmp, selection, state, env = {}) {
     const otmp = selection.object;
-    const i = await precheck(mtmp, otmp, state, env);
+    const i = await precheck(mtmp, otmp, state, env, selection);
     if (i !== 0) return i;
     const vis = cansee(mtmp.mx, mtmp.my, state);
     const vismon = canseemon(mtmp, state);
@@ -1695,6 +1700,8 @@ export async function use_misc(mtmp, selection, state, env = {}) {
     case 'bullwhip': {
         // MUSE_BULLWHIP -- attempt to disarm hero
         const The_whip = vismon ? 'The bullwhip' : 'A whip';
+        const message = env.message ?? ttyPline;
+        const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
         let where_to = rn2(4);
         let obj = state.uwep;
 
@@ -1714,24 +1721,27 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         if (vismon)
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} flicks a bullwhip towards your ${hand_buf}!`,
-                state);
+                state, env);
         if (obj.otyp === O.HEAVY_IRON_BALL) {
-            await ttyPline(
+            await message(
                 `${The_whip} fails to wrap around ${the_weapon}.`, state);
             return 1;
         }
-        // C: urgent_pline -- behaves like pline for message delivery
-        await ttyPline(
-            `${The_whip} wraps around ${the_weapon} you're wielding!`, state);
+        // C: urgent_pline -- shown even after Escape suppressed messages.
+        await urgentMessage(
+            `${The_whip} wraps around ${the_weapon} you're wielding!`,
+            state,
+            env,
+        );
         if (welded(obj, state)) {
-            await ttyPline(
+            await message(
                 `${!is_plural(obj, state) ? 'It is' : 'They are'} welded to your ${hand_buf}${!obj.bknown ? '!' : '.'}`,
                 state);
             /* welded() takes care of obj->bknown = 1 */
             where_to = 0;
         }
         if (!where_to) {
-            await ttyPline('The whip slips free.', state); /* not The_whip */
+            await message('The whip slips free.', state); /* not The_whip */
             return 1;
         } else if (where_to === 3 && mon_hates_silver(mtmp)
                    && objectType(obj, state).oc_material === O.SILVER) {
@@ -1745,14 +1755,14 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         case 1: /* onto floor beneath mon */
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} from your ${hand_buf}!`,
-                state);
+                state, env);
             const placement = place_object(obj, mtmp.mx, mtmp.my, { state });
             if (placement && typeof placement.then === 'function') await placement;
             break;
         case 2: /* onto floor beneath you */
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} to the ${surface(state.u.ux, state.u.uy, state)}!`,
-                state);
+                state, env);
             // do.c dropz() always redraws the landing square and updates
             // burden. These are the same caller-owned hooks as pickup.c
             // tipcontainer().
@@ -1767,12 +1777,13 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         case 3: /* into mon's inventory */
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} snatches ${the_weapon}!`,
-                state);
+                state, env);
             await mpickobj(mtmp, obj, { state });
             break;
         }
         return 1;
     }
+    case 0:
     case undefined:
         return 0; /* i.e. an exploded wand */
     default:
@@ -2925,6 +2936,8 @@ export async function use_offensive(mtmp, rawEnv = {}) {
         }
         return mtmp.mhp < 1 ? 1 : 2;
     }
+    case 0:
+        return 0; /* i.e. an exploded wand */
     default: {
         const impossible = env.impossible;
         if (typeof impossible === 'function') {

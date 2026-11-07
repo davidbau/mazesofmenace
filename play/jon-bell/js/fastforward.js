@@ -734,7 +734,7 @@ function _is_sanctum(uz) {
     return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
 }
 
-export async function dosounds_rng() {
+export async function dosounds() {
     const lf = game.level && game.level.flags;
     if (!lf)
         return;
@@ -892,6 +892,7 @@ export async function dosounds_rng() {
             return;
     }
 }
+export const dosounds_rng = dosounds;
 /* C ref: allmain.c:413 u_wipe_engr condition — rn2(40 + ACURR(A_DEX)*3).
  * ACURR(A_DEX) = clamp(u.abon.a[DEX] + u.atemp.a[DEX] + u.acurr.a[DEX], 3, 25)
  * (attrib.c:1206 acurr()) — must go through the canonical acurr() helper,
@@ -956,7 +957,7 @@ export async function vomiting_dialogue_ff() {
 export async function choke_dialogue_ff() {
     const u = game.u;
     const p = u?.uprops?.[STRANGLED];
-    if (!p || !(p.intrinsic | 0)) return;
+    if (!p || !((p.intrinsic | 0) || (p.extrinsic | 0))) return;
     const i = (p.intrinsic | 0) & TIMEOUT;
     const choke_texts = ['You find it hard to breathe.', "You're gasping for air.",
         'You can no longer breathe.', "You're turning %s.", 'You suffocate.'];

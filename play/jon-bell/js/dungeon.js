@@ -141,18 +141,29 @@ export function dname_to_dnum(s) {
     throw new Error(`Couldn't resolve dungeon number for name "${s}".`);
 }
 
-/* C ref: dungeon.c:1890-1905 dungeon_branch(s) — the branch record whose end2
- * lands in dungeon `s`.  svb.branches is game._dungeon_branches (the
+/* C ref: dungeon.c:1877-1885 dungeon_branch() — the end2 scan, keyed by dnum.
+ * dungeon.c:1164 caches dname_to_dnum("The Quest") in quest_dnum, and
+ * knox_level.dnum is the same resolution for "Fort Ludios" by the time
+ * mk_knox_portal runs, so callers already holding a dnum (mklev.js) enter
+ * through this core instead of re-resolving a name; the name-taking twin
+ * below is the C signature.  svb.branches is game._dungeon_branches (the
  * RNG-correct table print_dungeon() walks); game.branches is allmain.js's
  * hand-built stand-in and is only the fallback, the same precedence
- * builds_up() above uses. */
-export function dungeon_branch(s) {
-    const dnum = dname_to_dnum(s);
+ * builds_up() above uses.  Not-found: C panic()s — mklev.c:2631's assert
+ * relies on dungeon_branch never returning Null — so this throws; it never
+ * returns null where a caller could mistake that for "no branch". */
+export function dungeon_branch_dnum(dnum) {
     for (const br of (game._dungeon_branches || game.branches || []))
-        if (br && br.end2 && (br.end2.dnum | 0) === dnum)
+        if (br && br.end2 && (br.end2.dnum | 0) === (dnum | 0))
             return br;
     /* C: panic("dgn_entrance: can't find entrance to %s", s) */
-    throw new Error(`dgn_entrance: can't find entrance to ${s}`);
+    throw new Error(`dgn_entrance: can't find entrance (dnum ${dnum})`);
+}
+
+/* C ref: dungeon.c:1870-1886 dungeon_branch(s) — dname_to_dnum(s), then the
+ * shared end2 scan above. */
+export function dungeon_branch(s) {
+    return dungeon_branch_dnum(dname_to_dnum(s));
 }
 
 /* C ref: dungeon.c:1896-1903 at_dgn_entrance(s) —

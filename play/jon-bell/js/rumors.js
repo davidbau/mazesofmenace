@@ -1,6 +1,6 @@
 // rumors.js — C ref: rumors.c.
 import { exercise } from './attrib.js';
-import { display_text_window, verbalize } from './cmd.js';
+import { display_text_window, verbalize, SetVoice } from './cmd.js';
 import { A_WIS } from './const.js';
 import { rumor_file_open, rumor_rnd_line } from './display.js';
 import { is_fainted } from './eat.js';
@@ -17,6 +17,7 @@ import { xcrypt } from './hacklib.js'; // relocate-fns
    tags the fortune-cookie-only rumors with this prefix.  17 of the 397 false
    rumors carry it; no true rumor does. */
 const cookie_marker = '[cookie] ';
+const voice_oracle = 0x0008; /* C sndprocs.h:164 */
 
 // C ref: rumors.c:117 getrumor(truth, rumor_buf, exclude_cookie)
 //
@@ -72,7 +73,7 @@ export async function getrumor(truth, exclude_cookie) {
         await lifecycle_impossible("Can't find non-cookie rumor?");
     else if (!game.in_mklev)
         exercise(A_WIS, adjtruth > 0);
-    /* C rumors.c:177-186 — the reading paths keep a cookie rumor but show it
+    /* C rumors.c:180-189 — the reading paths keep a cookie rumor but show it
        without its marker. */
     if (!exclude_cookie && rumor_buf.startsWith(cookie_marker))
         rumor_buf = rumor_buf.slice(cookie_marker.length);
@@ -104,6 +105,7 @@ export async function outrumor(truth, mechanism) {
                     (!rn2(4) ? 'offhandedly '
                              : (!rn2(3) ? 'casually '
                                         : (rn2(2) ? 'nonchalantly ' : ''))));
+        SetVoice(null, 0, 80, voice_oracle);
         await verbalize('%s', line);
         /* [WIS exercised by getrumor()] */
         return;
@@ -227,6 +229,8 @@ export async function outoracle(special, delphi) {
         g.oracle_loc = [SPECIAL_ORACLE, ...ORACLE_RECORDS];
         g.oracle_cnt = g.oracle_loc.length;
         g.oracle_flg = 1;
+        if (g.oracle_cnt === 0)
+            return;
     }
     if (g.oracle_cnt <= 1 && !special)
         return; /*(shouldn't happen)*/
@@ -243,8 +247,10 @@ export async function outoracle(special, delphi) {
     else
         lines.push('The message reads:');
     lines.push('');
-    for (const l of rec)
+    for (const l of rec) {
+        if (l === '---') break; /* C rumors.c:680 stop at terminator */
         lines.push(l);
+    }
     await display_text_window(lines);   /* display_nhwindow(tmpwin, TRUE) */
 }
 
@@ -264,6 +270,7 @@ export function init_rumors(file) {
             return true;
         }
     }
+    /* C rumors.c:105 (void) dlb_fclose(fp) — no-op; file cursor is an in-memory object */
     game.true_rumor_size = -1;
     return false;
 }

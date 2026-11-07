@@ -3,7 +3,7 @@
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
 import { ledger_no } from './bones.js';
-import { You, Your as Your_real, You_feel as You_feel_real } from './pline.js';
+import { You, Your, You_feel as You_feel_real } from './pline.js';
 import { a_monnam } from './mhitm.js';
 import { make_blinded, resist, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { explode, explode_oil } from './explode.js';
@@ -93,9 +93,9 @@ import { gloves_simple_name } from './objnam.js';
  * the bottom of this file).  Same tables js/uhitm.js and js/lock.js read. */
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 
-import { getObjName, discover_object, observe_object, objdescr_is as objdescr_is_real } from './o_init.js';
+import { getObjName, discover_object, observe_object, objdescr_is } from './o_init.js';
 import './lock.js';
-import { surface as surface_cmd, body_part, trycall_noprompt, reorder_invent } from './cmd.js';
+import { surface as surface_cmd, body_part, reorder_invent } from './cmd.js';
 import { trycall as trycall_cmd } from './do.js';
 import { attacktype_fordmg, splitobj, mhe } from './makemon.js';
 import { mhis_mon } from './mhitu.js';
@@ -108,7 +108,6 @@ import { P_SKILL } from './skills.js';
 import { P_RIDING, P_BASIC } from './const.js';
 import { obj_extract_self } from './mklev.js';
 import { freeinv, useupall } from './cmd.js';
-import { setnotworn } from './worn.js';
 import { _pickup_burden_level } from './wizcmds.js';
 import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
 import { makeplural as makeplural_objnam } from './objnam.js';
@@ -524,7 +523,7 @@ async function peffect_water(otmp) {
             if (ismnum(u.ulycn)) {
                 /* C potion.c:736 indexes the canonical mons[] name table. */
                 const lycanNames = monPmnamesPack.pmnames?.[u.ulycn | 0];
-                Your('affinity to %s disappears!',
+                await Your('affinity to %s disappears!',
                      makeplural(lycanNames?.[1 /* NEUTRAL */] || lycanNames?.[2] || 'your lycanthropic form'));
                 /* C potion.c:736 `gy.youmonst.data == &mons[u.ulycn]` — a
                    permonst POINTER identity test against the mons[] row for
@@ -542,7 +541,7 @@ async function peffect_water(otmp) {
             await losehp(maybe_half_phys_pot(d(2, 6)), 'potion of holy water', 0 /* KILLED_BY_AN */);
         } else if (otmp.cursed) {
             /* C potion.c:743-748: cursed, hates blessings → proud */
-            You_feel('quite proud of yourself.');
+            await You_feel('quite proud of yourself.');
             healup(d(2, 6), 0, 0, 0);
             if (ismnum(u.ulycn) && !Upolyd(u))
                 await you_were_real();
@@ -551,8 +550,8 @@ async function peffect_water(otmp) {
     } else {
         if (otmp.blessed) {
             /* C potion.c:751-758: blessed, likes blessings → awe */
-            You_feel('full of awe.');
-            make_sick(0n, null, true, 3 /* SICK_ALL */);
+            await You_feel('full of awe.');
+            await make_sick(0n, null, true, 3 /* SICK_ALL */);
             exercise(A_WIS, true);
             exercise(A_CON, true);
             if (ismnum(u.ulycn))
@@ -563,7 +562,7 @@ async function peffect_water(otmp) {
                 await pline(`This burns like ${hliquid('acid')}!`);
                 await losehp(maybe_half_phys_pot(d(2, 6)), 'potion of unholy water', 0 /* KILLED_BY_AN */);
             } else
-                You_feel('full of dread.');
+                await You_feel('full of dread.');
             if (ismnum(u.ulycn) && !Upolyd(u))
                 await you_were_real();
             exercise(A_CON, false);
@@ -702,9 +701,6 @@ function _mborn(mndx) {
 }
 /* C objnam.c OBJ_DESCR(objects[obj->otyp]) comparison — the SHUFFLED
  * appearance, not the type name.  getObjDescr() takes an otyp. */
-function objdescr_is(obj, desc) {
-    return objdescr_is_real(obj, desc);
-}
 /* C potion.c:2811 verbalize(...) — pline the quoted speech.  Same one-line
  * stand-in js/vault.js:278 and js/mklev.js:17353 already carry; there is no
  * sound driver in this port, so SetVoice is a no-op exactly as it is in
@@ -809,32 +805,9 @@ export async function djinni_from_bottle(obj) {
         break;
     }
 }
-function useup_potion(obj) {
-    if (obj.quan != null && (obj.quan | 0) > 1) {
-        /* C invent.c:1324 useup(): obj->in_use = FALSE on the quan>1 decrement
-         * path (the remaining stack is no longer the in-use single being drunk). */
-        obj.in_use = false;
-        obj.quan = (obj.quan | 0) - 1;
-        obj.owt = weight(obj);
-        return;
-    }
-    let prev = null;
-    for (let o = game.invent; o; prev = o, o = o.nobj) {
-        if (o === obj) {
-            /* C invent.c:1312 useupall(): setnotworn(obj) before freeinv() — a
-             * quaffed potion that was wielded must clear uwep. */
-            setnotworn(obj);
-            if (prev) prev.nobj = o.nobj; else game.invent = o.nobj;
-            obj.nobj = null;
-            /* Bump bridge objs_deleted.count to match C delobj counter. */
-            const store = game.__bridge__ || (game.__bridge__ = {});
-            const key = 'objs_deleted.count';
-            const cur = store[key] !== undefined ? Number(store[key]) : 0;
-            store[key] = String(cur + 1);
-            return;
-        }
-    }
-}
+/* (useup_potion, a local useup() copy whose only caller was the deleted
+ * strange_feeling_sync twin, is removed with it; the live quaff paths use
+ * cmd.js's useup.) */
 
 /* The drink prompt's '?'/'*' answer goes through the ONE shared port of C's
  * `redo_menu` arm (invent.c:1960-1999) + display_pickinv (invent.c:3269), both
@@ -1921,9 +1894,7 @@ export function eyecount(mondata) {
 function makeplural(word) {
     return makeplural_objnam(word);
 }
-async function Your(msg, ...args) {
-    return Your_real(msg, ...args);
-}
+/* C ref: pline.c:380-388 Your(msg, ...) — canonical port imported from js/pline.js. */
 async function You_feel(msg, ...args) {
     return You_feel_real(msg, ...args);
 }
@@ -2283,19 +2254,11 @@ async function strange_feeling(obj, txt) {
         await trycall(obj);
     await useup(obj);
 }
-/* potionbreathe() is synchronous in this port; avoid detaching the async
- * prompt-capable helper from that caller. */
-function strange_feeling_sync(obj, txt) {
-    if (game.flags?.beginner || !txt)
-        pline(`You have a ${_potion_Hallucination() ? 'normal' : 'strange'} feeling for a moment, then it passes.`);
-    else
-        pline(txt);
-    if (obj) {
-        if (obj.dknown)
-            trycall_noprompt(obj);
-        useup_potion(obj);
-    }
-}
+/* (strange_feeling_sync, a synchronous degraded twin of strange_feeling that
+ * routed trycall() to the old no-prompt stub, is deleted: potionbreathe() is
+ * async now and does its own docall at its tail (potion.c:2110-2115), so the
+ * twin had no caller left.  Every strange_feeling caller uses the awaited
+ * trycall() above.) */
 /* C potion.c:83-86  incr_itimeout(long *which, int incr)
  *     set_itimeout(which, itimeout_incr(*which, incr));
  * MUTATES the pointed-at property word.  `which` is a {value} ref here (the
@@ -2415,8 +2378,14 @@ function _bumpObjsDeleted() {
     const cur = store[key] !== undefined ? Number(store[key]) : 0;
     store[key] = String(cur + 1);
 }
-/* C invent.c useup()/useupall() — consume one (or the whole stack) from invent. */
-function _useup(obj) {
+/* C invent.c useup()/useupall() — consume one (or the whole stack) from invent.
+ * The last one goes through the real useupall() — freeinv() + obfree() ->
+ * dealloc_obj(), which (mkobj.c:2765-2780) stops the object's timers and
+ * deletes its light source.  A bare freeinv() here left a BURNING potion of
+ * oil used up by the potion.c:2648 lit-oil dip with its light source still
+ * linked, and dosave0()'s light-source pass then failed on the OBJ_FREE
+ * object, taking dosave()'s docrt() arm instead of "Be seeing you...". */
+async function _useup(obj) {
     if (obj && obj.quan != null && (obj.quan | 0) > 1) {
         /* C invent.c:1324 useup(): clear in_use on the quan>1 decrement path.
          * Not a deletion (quan>1 survives), so no objs_deleted bump here —
@@ -2426,28 +2395,13 @@ function _useup(obj) {
         obj.owt = weight(obj);
         return;
     }
-    _freeinv(obj);
+    await useupall(obj);
     _bumpObjsDeleted();
 }
 /* C invent.c:1312 useupall() — "use up ALL of an item regardless of its
  * quantity": freeinv() + obfree() unconditionally, so this ALWAYS deletes and
  * ALWAYS bumps, even for a quan>1 stack. */
-function _useupall(obj) { _freeinv(obj); _bumpObjsDeleted(); }
-/* C invent.c freeinv() — unlink from invent WITHOUT freeing (obfree is a
- * separate step its two callers above take).  _hold_potion's own direct call
- * (potion.c:2596-2597) is the relocate-to-re-add case C's plain freeinv()
- * covers, so no bump belongs here — only at the two true-deletion callers. */
-function _freeinv(obj) {
-    let prev = null;
-    for (let o = game.invent; o; prev = o, o = o.nobj) {
-        if (o === obj) {
-            if (prev) prev.nobj = o.nobj; else game.invent = o.nobj;
-            obj.nobj = null;
-            return;
-        }
-    }
-}
-
+async function _useupall(obj) { await useupall(obj); _bumpObjsDeleted(); }
 /* C potion.c:2242-2263 — preserve the current burden allowance while a
  * transformed potion is extracted and reinserted.  The shared inventory path
  * owns merging, slot exhaustion, fumbling drops, and the pickup message. */
@@ -2756,7 +2710,7 @@ async function potion_dip(obj, potion) {
                 return ECMD_TIME;
             } else if (obj.otyp !== save_otyp) {
                 makeknown(POT_POLYMORPH);
-                _useup(potion);
+                await _useup(potion);
                 await prinv(null, obj, 0);
                 return ECMD_TIME;
             } else {
@@ -2788,7 +2742,7 @@ async function potion_dip(obj, potion) {
         }
         await pline(`${qbuf} ${simpleonames(obj)} ${_otense(obj, 'mix')} with `
             + `${(potion.quan | 0) > 1 ? 'one of ' : ''}${thesimpleoname(potion)}...`);
-        _useup(potion); /* now gone */
+        await _useup(potion); /* now gone */
 
         if (await _dip_potion_explosion(obj, amt + rnd(9)))
             return ECMD_TIME;
@@ -2823,7 +2777,7 @@ async function potion_dip(obj, potion) {
                 break;
             }
             default:
-                _useupall(obj);
+                await _useupall(obj);
                 await pline(`The mixture ${!_potion_Blind() ? 'glows brightly and ' : ''}evaporates.`);
                 return ECMD_TIME;
             }
@@ -2945,7 +2899,7 @@ async function potion_dip(obj, potion) {
             /* C potion.c:2687-2691 */
             exercise(A_WIS, wisx);
             if (potion.dknown) discover_object(potion.otyp | 0, true, true, true);
-            _useup(potion);
+            await _useup(potion);
             return ECMD_TIME;
         }
     }
@@ -2964,7 +2918,7 @@ async function potion_dip(obj, potion) {
              * same generic-fireball shape js/zap.js's dobuzz already calls
              * explode() with.  explode() IS a full port (js/zap.js); the
              * comment claiming otherwise was wrong. */
-            _useup(potion);
+            await _useup(potion);
             await explode(game.u.ux | 0, game.u.uy | 0, 11, d(6, 6), 0, EXPL_FIERY);
             exercise(A_WIS, false);
             return ECMD_TIME;
@@ -2983,7 +2937,7 @@ async function potion_dip(obj, potion) {
             obj.age = (obj.age | 0)
                 + Math.trunc((!potion.odiluted ? 4 : 3) * (potion.age | 0) / 2);
             if ((obj.age | 0) > 1500) obj.age = 1500;
-            _useup(potion);
+            await _useup(potion);
             exercise(A_WIS, true);
         }
         if (potion.dknown) discover_object(POT_OIL, true, true, true);
@@ -3971,7 +3925,7 @@ async function peffect_restore_ability(otmp) {
         const lim = amax[di] | 0;
         if ((abase[di] | 0) < lim) {
             abase[di] = lim;
-            aexe[di] = Math.max(aexe[di] | 0, 0);
+            aexe[i] = Math.max(aexe[i] | 0, 0);
             if (g.disp)
                 g.disp.botl = 1;
             if (!otmp.blessed)

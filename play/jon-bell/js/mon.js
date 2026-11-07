@@ -3,7 +3,7 @@ import { adjalign } from './attrib.js';
 import { SetVoice, coord_desc, disturb_buried_zombies, fire_damage_chain, flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_pudding_merge_message, is_mines_prize as is_mines_prize_real, is_soko_prize as is_soko_prize_real, may_passwall, obj_to_any, set_msg_xy, surface, um_dist, water_damage_chain as water_damage_chain_ml, wizdeadorgone } from './cmd.js';
 import { mwelded } from './wield.js';
 import { flooreffects } from './do.js';
-import { ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, BOLT_LIM, BUSTDOOR, COLNO, CORPSTAT_BURIED, CORPSTAT_FEMALE, CORPSTAT_INIT, CORPSTAT_MALE, CORPSTAT_NONE, CORPSTAT_SPE_VAL, DB_LAVA, DB_MOAT, DB_UNDER, DISMOUNT_GENERIC, DISPLACED, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_LOCKED, EXPL_FIERY, FIRE_RES, FLYING, FOUNTAIN, HATCH_EGG, HEADSTONE, INVIS, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_TREE, IS_WATERWALL, In_endgame, Is_earthlevel, Is_juiblex_level, Is_rogue_level, Is_stronghold, Is_waterlevel, LAVAPOOL, LAVAWALL, LEVITATION, LOW_PM, LS_MONSTER, MAGICAL_BREATHING, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK, HALLUC as MK_HALLUC, INVIS as MK_INVIS, TELEPAT as MK_TELEPAT, MOAT, MON_DETACH, MON_ENDGAME_FREE, MON_FLOOR, M_POISONGAS_BAD, M_POISONGAS_MINOR, M_POISONGAS_OK, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, NEED_WEAPON, NOGARLIC, NOTONL, NO_WEAPON_WANTED, OPENDOOR, PLNMSG_GROWL, PLNMSG_HIDE_UNDER, POISON_RES, POOL, RLOC_NOMSG, ROOM, ROWNO, SHOPBASE, STONE, STONE_RES, STRAT_CLOSE, STRAT_WAITFORU, SUPPRESS_SADDLE, TAINT_AGE, TELEP_TRAP, TEMPLE, TRAPNUM, UNLOCKDOOR, Upolyd, WATER, W_AMUL, W_ARM, W_ARMG, W_ARMS, W_NONDIGGABLE, XKILL_NOMSG, engulfing_u, is_pit, ismnum, isok, u_at } from './const.js';
+import { ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, BOLT_LIM, BUSTDOOR, COLNO, CORPSTAT_BURIED, CORPSTAT_FEMALE, CORPSTAT_INIT, CORPSTAT_MALE, CORPSTAT_NONE, CORPSTAT_SPE_VAL, DB_LAVA, DB_MOAT, DB_UNDER, DISMOUNT_GENERIC, DISPLACED, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_LOCKED, EXPL_FIERY, FIRE_RES, FLYING, FOUNTAIN, HATCH_EGG, HEADSTONE, INVIS, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_TREE, IS_WATERWALL, In_endgame, Is_earthlevel, Is_juiblex_level, Is_rogue_level, Is_stronghold, Is_waterlevel, LAVAPOOL, LAVAWALL, LEVITATION, LOW_PM, LS_MONSTER, MAGICAL_BREATHING, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK, HALLUC as MK_HALLUC, INVIS as MK_INVIS, TELEPAT as MK_TELEPAT, MOAT, MON_DETACH, MON_ENDGAME_FREE, MON_FLOOR, M_POISONGAS_BAD, M_POISONGAS_MINOR, M_POISONGAS_OK, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, NO_NC_FLAGS, NEED_WEAPON, NOGARLIC, NOTONL, NO_WEAPON_WANTED, OPENDOOR, PLNMSG_GROWL, PLNMSG_HIDE_UNDER, POISON_RES, POOL, RLOC_NOMSG, ROOM, ROWNO, SHOPBASE, STONE, STONE_RES, STRAT_CLOSE, STRAT_WAITFORU, SUPPRESS_SADDLE, TAINT_AGE, TELEP_TRAP, TEMPLE, TRAPNUM, UNLOCKDOOR, Upolyd, WATER, W_AMUL, W_ARM, W_ARMG, W_ARMS, W_NONDIGGABLE, XKILL_NOMSG, engulfing_u, is_pit, ismnum, isok, u_at } from './const.js';
 import { bury_an_obj, is_pick } from './dig.js';
 import { unpunish } from './read.js';
 import { Deaf as Deaf_live, GLYPHCLS_INVIS, canseemon, canspotmon, newsym, sensemon, swallowed, unmap_object } from './display.js';
@@ -21,7 +21,7 @@ import { dist2, s_suffix as lifesave_s_suffix } from './hacklib.js';
 import { ENV } from './hostenv.js';
 import { del_light_source, new_light_source } from './light.js';
 import { monst_to_any } from './hack.js';
-import { is_pool_or_lava } from './look.js';
+import { is_pool, is_pool_or_lava } from './look.js'; /* C dbridge.c is_pool */
 import { closed_door } from './monmove.js';
 import { may_dig } from './hack.js';
 import { MAXMONNO, attacktype_fordmg, check_gear_next_turn, dmgtype_fromattack, emits_light, grow_up, nonliving as lifesave_nonliving, m_in_air, mbirth_limit, monGeno, mondied as mondied_ml, monflee, name_to_mon as name_to_mon_wf, name_to_monclass as name_to_monclass_wf, newMonHp, newmextra, olfaction, onscary, permonstTemplate, set_mon_data, zombie_maker } from './makemon.js';
@@ -29,7 +29,7 @@ import { removed_from_icebox } from './pickup.js';
 import { which_armor } from './worn.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { aggravate as aggravate_real } from './wizard.js';
-import { AT_BOOM, AT_EXPL, hliquid as hliquid_ml, is_youmonst, new_mgivenname, noit_mon_nam, noname_monnam, seemimic, update_inventory, x_monnam, y_monnam } from './mhitm.js';
+import { AT_BOOM, AT_EXPL, AT_GAZE, M1_ANIMAL, hliquid as hliquid_ml, is_youmonst, new_mgivenname, noit_mon_nam, noname_monnam, seemimic, update_inventory, x_monnam, y_monnam } from './mhitm.js';
 import { growl } from './sounds.js';
 import { Resists_Elem, attacktype, big_to_little, little_to_big, locomotion, mon_hates_silver, on_fire as on_fire_ml, poly_when_stoned } from './mondata.js';
 import { digests_gu, expels_gu, mon_mattk_raw } from './mhitu.js';
@@ -44,7 +44,7 @@ import { mungspaces, online2, upstart } from './hacklib.js';
 import { save_mtraits } from './mkobj.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { can_fog, mon_allowflags as mon_allowflags_mv, mon_track_clear, set_apparxy } from './monmove.js';
-import { discover_object as lifesave_discover_object, objdescr_is as objdescr_is_real } from './o_init.js';
+import { discover_object as lifesave_discover_object, objdescr_is } from './o_init.js';
 import { The as The_rc, ansimpleoname, distant_name as distant_name_nc, doname as doname_nc, is_quest_artifact, makeplural, oname, quest_info, vtense, xname } from './objnam.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { impossible as lifecycle_impossible } from './pline.js';
@@ -342,11 +342,15 @@ function newebones(mtmp) {
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!mtmp.mextra.ebones)
-        mtmp.mextra.ebones = {};
+        mtmp.mextra.ebones = { parentmid: mtmp.m_id };
 }
 
 export async function mongone(mdef) {
     mdef.mhp = 0;
+    /* C mon.c:3271-3274: a dead vault guard is kept at <0,0> until his
+     * temporary corridor has been removed.  grddead() (js/vault.js) is the
+     * real port, backed by the real clear_fcorr(), so the early return is
+     * taken exactly when C takes it. */
     if (mdef.isgd && !await grddead(mdef))
         return;
     /* C mon.c:3267-3282: mhp is 0 but the grid still holds mdef until
@@ -968,7 +972,7 @@ async function m_respond_shrieker(mtmp) {
 /* Unported helper for m_respond medusa case */
 async function m_respond_medusa(mtmp) {
     const attks = mon_mattk_raw(mtmp.data?.pmidx ?? mtmp.mnum) || [];
-    const raw = attks.find(a => a && (a[0] | 0) === 15);
+    const raw = attks.find(a => a && (a[0] | 0) === AT_GAZE);
     if (!raw)
         return;
     const mattk = { aatyp: raw[0] | 0, adtyp: raw[1] | 0,
@@ -1126,10 +1130,7 @@ export function see_monster_closeup(mtmp, photo) {
                    Wizard of Yendor; experienced() won't yield a reasonable
                    value for those */
                 && mndx === (mtmp.data.pmidx | 0)) {
-                let tmp = experience(mtmp, 0);
-                exp_log("owner=photo move=%ld mndx=%d level=%d exp=%ld gain=%d",
-                        game.moves, mndx, game.u.ulevel, game.u.uexp, tmp);
-                more_experienced(tmp, 0);
+                more_experienced(experience(mtmp, 0), 0);
                 newexplevel();
             }
         }
@@ -1160,7 +1161,7 @@ export function hideunder(mtmp) {
         /* undetected stays FALSE: trapped, or on/in/under a non-pit trap */
     } else if ((mtmp.data.mlet | 0) === S_EEL) {
         /* aquatic creatures only hide under water, not under objects */
-        undetected = dbridge_is_pool(x, y) && !Is_waterlevel(game.u.uz)
+        undetected = is_pool(x, y) && !Is_waterlevel(game.u.uz)
             && (!game.u.uinwater || !couldsee(x, y));
         /* C mon.c:4749-4752 — assigned on `seeit` alone, NOT on `undetected`. */
         if (seeit) {
@@ -1386,22 +1387,8 @@ export function maybe_unhide_at(x, y) {
         && (((((mtmp.data.mflags1 | 0) & M1_CONCEAL) !== 0)
              && (!(game.level?.levelObjects?.[x]?.[y] ?? null) || trapped
                  || !can_hide_under_obj(game.level?.levelObjects?.[x]?.[y] ?? null)))
-            || ((mtmp.data.mlet | 0) === S_EEL && !dbridge_is_pool(x, y))))
+            || ((mtmp.data.mlet | 0) === S_EEL && !is_pool(x, y))))
         hideunder(mtmp);
-}
-
-/* C ref: dbridge.c:45-58 is_pool(x,y) — POOL, MOAT, WATER, or is_moat(x,y).
- * is_moat is Juiblex-level-specific and not ported elsewhere in this repo
- * (see js/look.js _is_pool_local); same gap preserved here. Shared by
- * hideunder() and maybe_unhide_at(). */
-function dbridge_is_pool(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    const typ = loc.typ | 0;
-    if (typ === POOL || typ === MOAT || typ === WATER) return true;
-    return typ === DRAWBRIDGE_UP
-        && !Is_juiblex_level(game.u?.uz)
-        && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_MOAT;
 }
 
 /* C ref: mondata.h macros used only by m_poisongas_ok (mon.c:311) — local
@@ -1440,7 +1427,7 @@ export function m_poisongas_ok(mtmp) {
     const px = is_you ? game.u.ux : mtmp.mx;
     const py = is_you ? game.u.uy : mtmp.my;
     if (((mtmp.data.mlet | 0) === 57 /* S_EEL */ || Is_waterlevel(game.u.uz))
-        && dbridge_is_pool(px, py))
+        && is_pool(px, py))
         return M_POISONGAS_OK;
     /* exclude monsters with poison gas breath attack:
        adult green dragon and Chromatic Dragon (and iron golem,
@@ -1460,7 +1447,7 @@ export function m_poisongas_ok(mtmp) {
               const p = game.u.uprops?.[POISON_RES];
               return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
           })()
-        : Resists_Elem(mtmp, POISON_RES); /* C mon.c:354: includes equipment. */
+        : Resists_Elem(mtmp, POISON_RES); /* C mon.c:355: includes equipment. */
     if (poisonRes) return M_POISONGAS_MINOR;
     return M_POISONGAS_BAD;
 }
@@ -1514,7 +1501,6 @@ export async function mcalcdistress() {
 export function mon_animal_list(construct) {
     if (construct) {
         const SPECIAL_PM = monsPack.special_pm;
-        const M1_ANIMAL = 0x00040000;
         const LOW_PM = 0;
         const animal_temp = [];
         let n = 0;
@@ -1693,9 +1679,11 @@ export async function meatcorpse(mtmp) {
 
         await m_consume_obj(mtmp, otmp);
         /* in case it polymorphed or died */
+        /* C tests the data pointer for NULL; mnum 0 (giant ant) is a valid
+         * form, so the death test must read mtmp.data, not the index. */
         ptr = mtmp.mnum;
         if (ptr !== original_mnum)
-            return !ptr ? 2 : 1;
+            return !mtmp.data ? 2 : 1;
 
         /* Engulf & devour is instant, so don't set meating */
         if (mtmp.minvis)
@@ -1709,6 +1697,8 @@ export async function meatcorpse(mtmp) {
 /* constant: se_masticating_sound (sounds.h enum) — Soundeffect is a no-op
  * stub, so the exact value carries no observable behavior. */
 const se_masticating_sound = 0;
+/* C monflag.h:97 M1_NOEYES (no shared export in js/). */
+const M1_NOEYES = 0x00001000;
 
 function flesh_petrifies(ptr) {
     const n = ptr?.pmidx ?? ptr?.mnum ?? ptr?.mndx;
@@ -1844,10 +1834,10 @@ export async function m_consume_obj(mtmp, otmp) {
 
     if (poly || slimer)
         await newcham(mtmp, slimer ? PM_GREEN_SLIME : null,
-                vis ? NC_SHOW_MSG : 0);
+                vis ? NC_SHOW_MSG : NO_NC_FLAGS);
     if (grow && (ispet ? (mtmp.m_lev | 0) < ((mtmp.data?.mlevel | 0) + 15) : true))
         await grow_up(mtmp, null);
-    /* C mon.c:1429-1434 — petrifying food either turns a golem into a stone
+    /* C mon.c:1432-1441 — petrifying food either turns a golem into a stone
      * golem or creates a statue/rock through monstone(). */
     if (mstone) {
         if (poly_when_stoned(mtmp.data))
@@ -1860,11 +1850,12 @@ export async function m_consume_obj(mtmp, otmp) {
     }
     if (heal)
         healmon(mtmp, mtmp.mhpmax | 0, 0);
-    /* C muse.c:2872 mcureblindness(): restore sight and report visible eyes. */
+    /* C muse.c:2872 mcureblindness(): restore sight and report visible eyes;
+     * the haseyes() test is !(mflags1 & M1_NOEYES), monflag.h:97. */
     if ((eyes || heal) && !mtmp.mcansee) {
         mtmp.mcansee = 1;
         mtmp.mblinded = 0;
-        if (canseemon(mtmp) && !((mtmp.data.mflags1 | 0) & 0x1000 /* M1_NOEYES */))
+        if (canseemon(mtmp) && !((mtmp.data.mflags1 | 0) & M1_NOEYES))
             await pline_mon(mtmp, '%s can see again.', Monnam(mtmp));
     }
     /* C mon.c:1446 quickmimic(): eating a mimic corpse ends a pet's
@@ -1901,9 +1892,6 @@ function mhealup(otmp) {
 /* C o_init.c:352-363 — compare an object's randomized unidentified
  * description.  getObjDescr owns the shuffled description table; null objects
  * and objects without an appearance simply cannot match. */
-function objdescr_is(otmp, str) {
-    return objdescr_is_real(otmp, str);
-}
 
 /* C sndprocs.h:272 Soundeffect(seid, vol) — compiled empty without
  * SND_LIB_INTEGRATED; the tty game has no soundlib, so a no-op is faithful.
@@ -2555,10 +2543,9 @@ async function possibly_unwield_nc(mon, polyspot) {
         mon.weapon_check = NEED_WEAPON;
 }
 
-/* C mon.c:5806-5919 usmellmon().  This is deliberately synchronous: newcham
- * is synchronous and the display layer's pline() records the message before
- * its returned promise can suspend. */
-export function usmellmon(mdat) {
+/* C mon.c:5796-5919 usmellmon().  Each message is a blocking pline (vpline
+ * flushes the map before a --More--), so callers await it. */
+export async function usmellmon(mdat) {
     if (!mdat || !olfaction(game.youmonst?.data))
         return false;
 
@@ -2567,12 +2554,12 @@ export function usmellmon(mdat) {
     switch (mndx) {
     case PM_ROTHE:
     case PM_MINOTAUR:
-        pline('You notice a bovine smell.');
+        await pline('You notice a bovine smell.');
         return true;
     case PM_CAVEMAN: /* C PM_CAVE_DWELLER */
     case PM_BARBARIAN:
     case PM_NEANDERTHAL:
-        pline('You smell body odor.');
+        await pline('You smell body odor.');
         return true;
     case PM_HORNED_DEVIL:
     case PM_BALROG:
@@ -2588,17 +2575,17 @@ export function usmellmon(mdat) {
     case PM_WERERAT:
     case PM_WEREWOLF:
     case PM_OWLBEAR:
-        pline("You detect an odor reminiscent of an animal's den.");
+        await pline("You detect an odor reminiscent of an animal's den.");
         return true;
     case PM_STEAM_VORTEX:
-        pline('You smell steam.');
+        await pline('You smell steam.');
         return true;
     case PM_GREEN_SLIME:
-        pline('Something stinks.');
+        await pline('Something stinks.');
         return true;
     case PM_VIOLET_FUNGUS:
     case PM_SHRIEKER:
-        pline('You smell mushrooms.');
+        await pline('You smell mushrooms.');
         return true;
     case PM_WHITE_UNICORN:
     case PM_GRAY_UNICORN:
@@ -2613,23 +2600,23 @@ export function usmellmon(mdat) {
     if (nonspecific) {
         switch (mdat.mlet | 0) {
         case 4: /* S_DOG */
-            pline('You notice a dog smell.');
+            await pline('You notice a dog smell.');
             return true;
         case 30: /* S_DRAGON */
-            pline('You smell a dragon!');
+            await pline('You smell a dragon!');
             return true;
         case 32: /* S_FUNGUS */
-            pline('Something smells moldy.');
+            await pline('Something smells moldy.');
             return true;
         case 21: /* S_UNICORN */
-            pline('You detect a%s odor reminiscent of a stable.',
+            await pline('You detect a%s odor reminiscent of a stable.',
                   mndx === PM_PONY ? 'n' : ' strong');
             return true;
         case 52: /* S_ZOMBIE */
-            pline('You smell rotting flesh.');
+            await pline('You smell rotting flesh.');
             return true;
         case 57: /* S_EEL */
-            pline('You smell fish.');
+            await pline('You smell fish.');
             return true;
         case 15: { /* S_ORC */
             const M2_ORC = 0x00000080;
@@ -2638,7 +2625,7 @@ export function usmellmon(mdat) {
             const heroIsOrc = Upolyd(game.u)
                 ? currentFormIsOrc
                 : ((game.urace?.mnum | 0) === PM_ORC);
-            pline(heroIsOrc ? 'You notice an attractive smell.'
+            await pline(heroIsOrc ? 'You notice an attractive smell.'
                             : 'A foul stench makes you feel a little nauseated.');
             return true;
         }
@@ -2872,7 +2859,7 @@ export async function newcham(mtmp, mdat, ncflags) {
             if (seenorsensed) /* could see or sense it before */
                 await pline_mon(mtmp, "%s disappears!", oldname);
             /* C mon.c:5465: smell the new form when it cannot be spotted. */
-            usmellmon(newdata);
+            await usmellmon(newdata);
         } else if (!seenorsensed) { /* couldn't see/sense before, can now */
             const mnm = x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_A,
                                   null, 0, false);
@@ -3150,7 +3137,7 @@ async function minliquid_core(mtmp) {
     const mf1 = ptr.mflags1 | 0, mlet = ptr.mlet | 0;
     const inlava = is_lava_here
         && !((mf1 & M1_FLY_ML) !== 0 || mlet === S_EYE_ML || mlet === S_LIGHT_ML);
-    const inpool = dbridge_is_pool(mx, my)
+    const inpool = is_pool(mx, my)
         && (!((mf1 & M1_FLY_ML) !== 0 || mlet === S_EYE_ML || mlet === S_LIGHT_ML)
             || Is_waterlevel(game.u?.uz));
     /* C mon.c:1120 `boolean waterwall = is_waterwall(mtmp->mx, mtmp->my)`;
@@ -3321,13 +3308,6 @@ async function minliquid_core(mtmp) {
         return 0;
     }
     return 1;
-}
-
-/* C rnd.c:487 exp_log() writes the optional diagnostic experience log only.
- * It has no gameplay, display, or RNG effect, so the close-up photograph path
- * can safely continue when that diagnostic sink is unavailable. */
-function exp_log(fmt, ...args) {
-    return undefined;
 }
 
 // monflag.h bitflags used by mfndpos's own mondata.h-macro predicates.

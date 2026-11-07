@@ -52,7 +52,7 @@ import { spot_time_left } from './timeout.js'; // relocate-fns
 import { dotrap, float_down } from './trap.js'; // relocate-fns
 import { Blind } from './vision.js'; // relocate-fns
 import { COLNO, NO_ROOM, ROOMOFFSET, ROWNO, SHARED, SHARED_PLUS, SHOPBASE } from './const.js'; // relocate-fns
-import { bad_rock, cant_squeeze_thru } from './cmd.js'; // relocate-fns
+import { bad_rock, cant_squeeze_thru, doorless_door } from './cmd.js'; // relocate-fns
 import { D_BROKEN, D_NODOOR, IS_DOOR, Is_rogue_level, PASSES_WALLS } from './const.js'; // relocate-fns
 import { PM_GRID_BUG } from './pm.generated.js'; // relocate-fns
 import { block_door } from './shk.js'; // relocate-fns
@@ -972,13 +972,8 @@ export function in_rooms(x, y, typewanted) {
     return buf;
 }
 
-/* C ref: hack.c:3977-3990 doorless_door(x,y).  js/cmd.js keeps the same port
- * but does not export it, so this is a local copy of the same six lines. */
 function _gp_doorless_door(x, y) {
-    if (!IS_DOOR(lev_typ(x, y))) return false;
-    if (Is_rogue_level(game.u?.uz)) return false;
-    const loc = lev_flags(x, y);
-    return !((loc ? loc.doormask | 0 : 0) & ~(D_NODOOR | D_BROKEN));
+    return doorless_door(x, y);
 }
 
 function _gp_Passes_walls() { return _gp_uprop_he(PASSES_WALLS); }

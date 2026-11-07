@@ -3608,13 +3608,10 @@ async function accessory_or_armor_on(obj, state = game) {
                     // unported for this prompt, so FALSE omits an otherwise
                     // unobservable recording. The prompt and accepted
                     // characters are identical.
-                    // yn_function returns a character code (number), so
-                    // convert to a one-character string for the switch.
-                    const answer = String.fromCharCode(
-                        await yn_function(
-                            qbuf, 'rl', '\0', false, state,
-                        ),
+                    const answer = await yn_function(
+                        qbuf, 'rl', '\0', false, state,
                     );
+
                     switch (answer) {
                     case '\0':
                     case '\x1b': /* ESC */
@@ -3712,8 +3709,10 @@ async function accessory_or_armor_on(obj, state = game) {
         }
     }
 
-    // C ref: do_wear.c:2355-2356. Artifact touch precedes every slot write.
-    if (obj.oartifact) {
+    // C ref: do_wear.c:2355-2356. The touch test precedes every slot write,
+    // for any object: a silver one burns a silver-hating hero (artifact.c
+    // retouch_object()'s Hate_silver arm), not only an artifact.
+    {
         const selected = { obj };
         if (!await retouch_object(selected, false, state)) return ECMD_TIME;
         obj = selected.obj;

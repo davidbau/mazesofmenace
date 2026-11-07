@@ -1,9 +1,9 @@
 // fountain.js — C ref: fountain.c.
 import { discover_artifact } from './artifact.js';
 import { acurr, adjattrib, exercise, losestr } from './attrib.js';
-import { body_part, body_part as body_part_cmd, enlightenment_menu, in_town, useup, water_damage_chain } from './cmd.js';
+import { body_part, body_part as body_part_cmd, enlightenment_menu, in_town, mbodypart, surface, useup, water_damage_chain } from './cmd.js';
 import { money_cnt } from './hack.js';
-import { ARM, A_CON, A_DEX, A_STR, A_WIS, BLINDED, DEAF, ER_GREASED, ER_NOTHING, FACE, FIRE_RES, FOUNTAIN, FROMOUTSIDE, GLIB, G_GONE, HAND, INVIS, IS_FOUNTAIN, KILLED_BY, KILLED_BY_AN, LEVITATION, LL_ARTIFACT, MAGICENLIGHTENMENT, MM_NOMSG, M_SEEN_FIRE, ONAME_KNOW_ARTI, ONAME_VIA_DIP, POLY_NOFLAGS, POOL, ROOM, SEE_INVIS, S_LRING, nothing_seems_to_happen, u_at } from './const.js';
+import { ARM, A_CON, A_DEX, A_STR, A_WIS, BLINDED, DEAF, ER_GREASED, ER_NOTHING, FACE, FIRE_RES, FOUNTAIN, FROMOUTSIDE, GLIB, G_GONE, HAND, HEAD, INVIS, IS_FOUNTAIN, KILLED_BY, KILLED_BY_AN, LEVITATION, LL_ARTIFACT, MAGICENLIGHTENMENT, MM_NOMSG, M_SEEN_FIRE, ONAME_KNOW_ARTI, ONAME_VIA_DIP, POLY_NOFLAGS, POOL, ROOM, SEE_INVIS, S_LRING, TT_INFLOOR, TT_LAVA, nothing_seems_to_happen, u_at } from './const.js';
 import { canspotmon, flush_screen, force_more_pages, newsym } from './display.js';
 import { trycall as trycall_cmd } from './do.js';
 import { rndmonnam } from './do_name.js';
@@ -15,7 +15,7 @@ import { morehungry, newuhs } from './eat.js';
 import { game, wizard } from './gstate.js';
 import { distmin } from './hacklib.js';
 import { mhe, monflee } from './makemon.js';
-import { a_monnam, hcolor, hliquid, monstunseesu, update_inventory } from './mhitm.js';
+import { Amonnam, a_monnam, hcolor, hliquid, monstunseesu, update_inventory } from './mhitm.js';
 import { mhis_mon } from './mhitu.js';
 import { del_engr_at, makemon, mkgold, mkobj, mkobj_at, mksobj_at, rnd_class } from './mklev.js';
 import { sobj_at } from './invent.js';
@@ -95,7 +95,12 @@ function _acurr(u, i) {
 }
 
 export async function floating_above(what) {
-    await pline(`You are floating high above the ${what}.`);
+    const u = game.u || {};
+    let umsg = `are floating high above the ${what}.`;
+    if (u.utrap && (u.utraptype === TT_INFLOOR || u.utraptype === TT_LAVA)) {
+        umsg = `are trapped in the ${surface(u.ux, u.uy)}.`;
+    }
+    await pline(`You ${umsg}`);
 }
 
 /* ---------------------------------------------------------------------------
@@ -103,22 +108,28 @@ export async function floating_above(what) {
  * Checks fountain depletion. RNG: rn2(3) or FOUNTAIN_IS_WARNED check.
  * ---------------------------------------------------------------------------
  */
+/* C mondata.h:53 nolimbs(ptr) — ((mflags1 & M1_NOLIMBS) == M1_NOLIMBS) */
+const _M1_NOLIMBS = 0x00006000;
+function _mon_nolimbs(ptr) {
+    return (((ptr?.mflags1) | 0) & _M1_NOLIMBS) === _M1_NOLIMBS;
+}
+
 function _watchman_warn_fountain(mtmp) {
     if (!_pot_is_watch(mtmp) || !couldsee(mtmp.mx | 0, mtmp.my | 0)
         || !mtmp.mpeaceful)
         return false;
     if (_pot_deaf()) {
-        /* C fountain.c:190 — the ordinary watchman has limbs, so it waves
-         * its arms earnestly rather than yelling.  No RNG or state change. */
-        const pronoun = mtmp.female ? 'her' : mtmp.male ? 'his' : 'its';
-        const arm = body_part_cmd(mtmp, ARM);
-        void pline(`${a_monnam(mtmp)} earnestly waves ${pronoun} ${makeplural_objnam(arm)}!`);
+        /* C fountain.c:186-194 — Deaf hero: watchman gestures instead of yelling.
+         * Watchman's limbs determine whether the monster shakes head or waves arms. */
+        const limbless = _mon_nolimbs(mtmp?.data);
+        const verb = limbless ? 'shakes' : 'waves';
+        const his = mhis_mon(mtmp);
+        const part = limbless ? mbodypart(mtmp, HEAD) : makeplural_objnam(mbodypart(mtmp, ARM));
+        void pline(`${Amonnam(mtmp)} earnestly ${verb} ${his} ${part}!`);
         return true;
     }
-    /* C: pline("%s yells:", Amonnam(mtmp)); verbalize("Hey, stop using that
-     * fountain!");  Amonnam is a_monnam with the first letter capitalised. */
-    const nm = a_monnam(mtmp);
-    void pline(`${nm ? nm.charAt(0).toUpperCase() + nm.slice(1) : nm} yells:`);
+    /* C: pline("%s yells:", Amonnam(mtmp)); verbalize("Hey, stop using that fountain!"); */
+    void pline(`${Amonnam(mtmp)} yells:`);
     void pline(`"Hey, stop using that fountain!"`);
     return true;
 }
@@ -170,17 +181,11 @@ export async function dryup(x, y, isyou) {
        being created and unblock_point() when going away, then this
        glyph hackery wouldn't be necessary
        [C's own comment, fountain.c:220-222]
-       KNOWN GAP — the glyph-buffer arm.  C reads gg.gbuf[y][x] via glyph_at()
-       (display.c:2478) and suppresses the message when that square is currently
-       showing S_cloud.  js/ has no gbuf: display.js recomputes the map from the
-       level each flush, and glyph_at/glyph_is_cmap/S_cloud do not exist
-       anywhere in the port (they were referenced here and nowhere defined, so
-       this line was a ReferenceError the first time a fountain dried).  Nothing
-       in js/ creates a cloud, so glyph_to_cmap(glyph) != S_cloud holds for every
-       square this port can reach and the condition reduces to cansee() alone —
-       which is C's behaviour everywhere except under a live cloud.  Restore the
-       full test when the glyph buffer is ported; the message is the only
-       observable and no RNG rides on it. */
+       C reads gg.gbuf[y][x] via glyph_at() (fountain.c:224-227) and
+       suppresses the message when that square is currently showing S_cloud
+       (!glyph_is_cmap(glyph) || glyph_to_cmap(glyph) != S_cloud).
+       In JS, gas_cloud_at(x, y) checks for a visible S_cloud region at (x, y),
+       mirroring C's suppression under a cloud while cansee(x, y) checks visibility. */
     if (cansee(x, y) && !gas_cloud_at(x, y))
         await pline('The fountain dries up!');
     set_levltyp(x, y, ROOM); /* updates level.flags.nfountains */
@@ -590,10 +595,8 @@ async function gush(x, y, poolcnt) {
         return;
 
     /* C:147-148 `if (!((*(int *) poolcnt)++)) pline(...)` — the message fires on
-     * the FIRST pool only, and the counter increments either way.  pline() is
-     * declared async here but its body contains no await, so this call completes
-     * synchronously; do_clear_area() invokes this callback synchronously and
-     * cannot await, and awaiting is not needed to keep C's ordering. */
+     * the FIRST pool only, and the counter increments either way.
+     * do_clear_area_async() awaits each step so async gush() executes sequentially. */
     if (!(poolcnt.n++))
         await pline('Water gushes forth from the overflowing fountain!');
 

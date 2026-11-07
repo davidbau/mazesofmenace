@@ -117,7 +117,7 @@ import {
     displayPendingTtyMessageWindow, ttyPline,
 } from './tty_message.js';
 import { fruitname, makeplural } from './fruit.js';
-import { livelog_printf, verbalize } from './pline.js';
+import { livelog_printf, verbalize, youSee } from './pline.js';
 import { Fire_resistance } from './zap.js';
 import { Glib } from './wield.js';
 import { fingers_or_gloves } from './do_wear.js';
@@ -592,7 +592,7 @@ export async function dryup(x, y, isyou, state = game, env = {}) {
         if (isyou && state.wizard) {
             const { y_n } = await import('./cmd.js');
             if (await y_n('Dry up fountain?', state)
-                === 'n'.charCodeAt(0)) return;
+                === 'n') return;
         }
 
         // C ref: fountain.c:223-228. "The fountain dries up!" if visible
@@ -630,7 +630,7 @@ const F_WARNED = 2;
 // the hero is standing on a fountain and answers 'y' to the prompt.
 export async function drinkfountain(state = game, env = {}) {
     const message = env.message ?? ttyPline;
-    const random = env.random ?? { d, rn1, rn2, rnd, rne };
+    const random = env.random ?? { d, rn1, rn2, rnd, rne, rnl };
     const liquidEnv = { state, displayRandom: env.displayRandom };
 
     // C rm.h overlays blessedftn on horizontal for fountain terrain. The
@@ -847,7 +847,7 @@ export async function drinkfountain(state = game, env = {}) {
                 }
             } else {
                 await message(
-                    'You see an image of someone stalking you.', state);
+                    youSee('an image of someone stalking you.', state), state);
                 await message('But it disappears.', state);
             }
             state.u.uprops[SEE_INVIS].intrinsic |= FROMOUTSIDE;
@@ -1319,7 +1319,8 @@ export async function sink_backs_up(x, y, state = game, env = {}) {
 
     const location = state.level.at(x, y);
     if (!(location.flags & S_LRING)) {
-        if (!blind) await message('You see a ring shining in its midst.', state);
+        if (!blind)
+        await message(youSee('a ring shining in its midst.', state), state);
         mkobj_at(RING_CLASS, x, y, true, { ...env, state, random });
         newsym(x, y);
         await exercise(A_DEX, true, state, random, {

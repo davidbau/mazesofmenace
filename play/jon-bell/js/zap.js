@@ -6,7 +6,7 @@ import { monhp_per_lvl, dmgtype_fromattack, container_weight, emits_light, monfl
 import { dealloc_monst, dealloc_mextra, relmon, wary_dog, tamedog } from './dog.js';
 import { place_monster } from './steed.js';
 import { mdrop_obj_md } from './mklev.js';
-import { W_SADDLE } from './const.js';
+import { W_SADDLE, STRAT_WAITMASK } from './const.js';
 import { place_wsegs } from './worm.js';
 import { new_light_source, del_light_source } from './light.js';
 import { monst_to_any } from './hack.js';
@@ -61,7 +61,7 @@ import { x_monnam } from './mhitm.js';
 import { resists_blnd as resists_blnd_real, resists_drli as resists_drli_mon, resists_blnd_by_arti } from './mondata.js';
 import { impossible } from './pline.js';
 import { INFRAVISION, WARN_OF_MON } from './const.js';
-import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
+import { BLINDED, HALLUC, HALLUC_RES, WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, MSLOW, ANIMATE_SPELL, LIFESAVED } from './const.js';
 import { ENGRAVE, HEADSTONE, ARM } from './const.js';
 import { In_mines } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS } from './const.js';
@@ -271,7 +271,7 @@ import { XKILL_NOMSG, XKILL_NOCONDUCT } from './uhitm.js';
 import { u_teleport_mon, tele } from './teleport.js';
 /* C zap.c:263-333 bhitm's WAN_POLYMORPH/SPE_POLYMORPH/POT_POLYMORPH case needs
  * newcham (mon.c:5277, the real body — js/mklev.js:16429) and bypass_obj
- * (worn.c:1110, js/worn.js) — both real, fully-ported exported bodies. */
+ * (worn.c:1119, js/worn.js) — both real, fully-ported exported bodies. */
 import { vegetarian } from './mklev.js';
 import { newcham } from './mon.js';
 import { bypass_obj } from './worn.js';
@@ -1207,7 +1207,7 @@ function _is_metallic(obj) {
  */
 export function zappable(obj) {
     const spe = (obj ? obj.spe : 0) | 0;
-    if (spe < 0 || (spe === 0 && rn2(121)))
+    if (spe < 0 || (spe === 0 && rn2(WAND_WREST_CHANCE)))
         return 0;
     if (spe === 0)
         pline("You wrest one last charge from the worn-out wand."); /* zap.c:2519 */
@@ -1484,7 +1484,7 @@ export async function revive(corpse, by_hero) {
 
 /* C zap.c:1142-1152. Explicit turning restarts even an expired egg timer. */
 function revive_egg(obj) {
-    if (obj.otyp === 266 /* EGG */ && obj.corpsenm !== NON_PM
+    if (obj.otyp === EGG && obj.corpsenm !== NON_PM
         && !dead_species(obj.corpsenm, true))
         attach_egg_hatch_timeout(obj, 0);
 }
@@ -1496,7 +1496,7 @@ export async function unturn_dead(mon) {
     let res = 0;
     for (let obj = is_u ? game.invent : mon.minvent, next; obj; obj = next) {
         next = obj.nobj;
-        if (obj.otyp === 266) revive_egg(obj);
+        if (obj.otyp === EGG) revive_egg(obj);
         if (obj.otyp !== CORPSE) continue;
         let corpse = '', owner = '';
         if (youseeit) {
@@ -1996,11 +1996,17 @@ export async function zapnodir(obj) {
             await findit();
             break;
         case WAN_STASIS:
-            /* C zap.c:2561-2563: svl.level.flags.stasis_until = svm.moves + rn1(21,10) */
+        {
+            /* C zap.c:2559-2567: tmp_until = svm.moves + rn1(21,10); for
+             * multiple zaps keep the longest duration rather than latest:
+             * stasis_until is raised only when tmp_until exceeds it. */
+            const tmp_until = (g.moves | 0) + rn1(21, 10);
             if (!g.level) g.level = {};
             if (!g.level.flags) g.level.flags = {};
-            g.level.flags.stasis_until = (g.moves | 0) + rn1(21, 10);
+            if (tmp_until > (g.level.flags.stasis_until | 0))
+                g.level.flags.stasis_until = tmp_until;
             break;
+        }
         case WAN_CREATE_MONSTER:
             /* C zap.c:2565-2570: create_critters(rn2(23) ? 1 : rn1(7,2), 0, FALSE)
              * create_critters is async in this port (its makemon is), so the
@@ -2048,6 +2054,11 @@ const ZT_FIRE = 1;        /* AD_FIRE - 1 */
 const ZT_MAGIC_MISSILE = 0;
 const ZT_COLD = 2, ZT_SLEEP = 3, ZT_DEATH = 4, ZT_LIGHTNING = 5,
       ZT_POISON_GAS = 6, ZT_ACID = 7;
+/* C zap.c ZT_SPELL(x) / ZT_BREATH(x) macros */
+const ZT_SPELL = (x) => 10 + x, ZT_BREATH = (x) => 20 + x;
+/* C monflag.h G_NOCORPSE/G_UNIQ; objects.h EGG, SPE_CURE_SICKNESS */
+const G_NOCORPSE = 0x0010, G_UNIQ = 0x1000;
+const EGG = 266, SPE_CURE_SICKNESS = 386;
 /* C zap.c:13 #define MAGIC_COOKIE 1000 — zhitm()'s sentinel damage value for
  * "this disintegration ray killed the target outright" (dobuzz's u.uswallow
  * branch tests tmp==MAGIC_COOKIE to blow a hole rather than just damaging). */
@@ -2092,7 +2103,8 @@ function spell_hit_bonus(skill) {
     if (dex < 4) hit_bon -= 3;
     else if (dex < 6) hit_bon -= 2;
     else if (dex < 8) hit_bon -= 1;
-    else if (dex >= 14) hit_bon += dex - 14;
+    else if (dex < 14) hit_bon -= 0; /* C zap.c:3536 */
+    else hit_bon += dex - 14;
     return hit_bon;
 }
 
@@ -2217,7 +2229,7 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             await destroy_items(game.youmonst, AD_ELEC, orig_dam);
         break;
     case ZT_SLEEP:
-        /* C zap.c:4447-4456.  Sleep ray — deals no hp damage; instead it puts
+        /* C zap.c:4454-4463.  Sleep ray — deals no hp damage; instead it puts
          * the hero to sleep for d(nd,25) turns via fall_asleep(). */
         if (_uhas(SLEEP_RES)) {
             shieldeff_real(game.u?.ux | 0, game.u?.uy | 0);
@@ -2246,12 +2258,12 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             await erode_armor({ u }, ERODE_CORRODE);
         break;
     case ZT_POISON_GAS:
-        /* C zap.c:4519; poisoned_u owns attrib.c's resistance, wet-towel
+        /* C zap.c:4526 poisoned(); poisoned_u owns attrib.c's resistance, wet-towel
          * half-gas damage, fatal/attribute rolls, and in-place lifesaving. */
         await poisoned_u('blast', A_DEX, 'poisoned blast', 15, false);
         break;
     case ZT_DEATH: {
-        const deathBreath = abstyp === 24; /* ZT_BREATH(ZT_DEATH) */
+        const deathBreath = abstyp === ZT_BREATH(ZT_DEATH);
         if (deathBreath) {
             const disnProt = inventory_resistance_check(AD_DISN);
             if (_uhas(DISINT_RES)) {
@@ -2287,7 +2299,7 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         game.svk.killer ||= {};
         game.svk.killer.format = KILLED_BY_AN;
         game.svk.killer.name = fltxt || '';
-        u.ugrave_arise = (type | 0) === -24 ? -3 : NON_PM;
+        u.ugrave_arise = (type | 0) === -ZT_BREATH(ZT_DEATH) ? -3 : NON_PM;
         // C enters done() synchronously here.  With a lifesaving amulet,
         // done() appends "But wait..." before the pending hit page is read;
         // ordinary deaths retain the existing armor-message flush.
@@ -2498,6 +2510,9 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
 
         if (mon) {
             if (fireball) break;
+            /* C zap.c:4867-4868: even a missed hero ray ends waiting. */
+            if (type >= 0)
+                mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITMASK;
             g.notonhead = (mon.mx !== g.bhitpos.x || mon.my !== g.bhitpos.y);
             if (!forcemiss && zap_hit(find_mac(mon), spell_type)) {
                 /* C zap.c:4873-4884 — a hit can bounce off the target instead
@@ -2680,6 +2695,7 @@ export function start_melt_ice_timeout(x, y, min_time) {
 }
 
 const COIN_CLASS_BURY = 12;
+function debugpline2(_fmt, _x, _y) {}
 export async function bury_objs(x, y) {
     const rooms = in_rooms(x, y, SHOPBASE);
     const shkp = shop_keeper(rooms.length ? rooms[0] : 0);
@@ -2688,6 +2704,9 @@ export async function bury_objs(x, y) {
 
     let otmp = (game.level && game.level.levelObjects
                 && game.level.levelObjects[x]) ? game.level.levelObjects[x][y] : null;
+    if (otmp) {
+        debugpline2('bury_objs: at <%d,%d>', x, y);
+    }
     while (otmp) {
         let otmp2;
         if (costly && !(game.context && game.context.mon_moving)) {
@@ -2951,7 +2970,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
     if (!exploding_wand_typ) {
         const ztype = zaptype(type); /* 0..29 for both hero and monsters */
 
-        if (ztype < 10 /* ZT_SPELL(0) */)
+        if (ztype < ZT_SPELL(0))
             zapverb = 'bolt'; /* wand zap */
         else if (ztype < 20 /* ZT_BREATH(0) */)
             zapverb = 'spell';
@@ -2994,7 +3013,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
             break;
         case ZT_DEATH:
             /* death spells/wands don't disintegrate */
-            if (Math.abs(type) !== 20 + ZT_DEATH /* ZT_BREATH(ZT_DEATH) */) {
+            if (Math.abs(type) !== ZT_BREATH(ZT_DEATH)) {
                 def_case = true;
                 break;
             }
@@ -3521,7 +3540,7 @@ export async function _zhitm(mon, type, nd) {
         if (!rn2(3)) tmp += (await destroy_items_mon(mon, AD_ELEC, orig_dmg));
         break;
     case ZT_POISON_GAS:
-        /* C zap.c:4358-4362 */
+        /* C zap.c:4366-4372 */
         if (Resists_Elem(mon, POISON_RES) || defended(mon, AD_DRST)) {
             sho_shieldeff = true;
             break;
@@ -3529,7 +3548,7 @@ export async function _zhitm(mon, type, nd) {
         tmp = d(nd, 6);
         break;
     case ZT_ACID:
-        /* C zap.c:4364-4368 */
+        /* C zap.c:4373-4383 */
         if (Resists_Elem(mon, ACID_RES) || defended(mon, AD_ACID)) {
             sho_shieldeff = true;
             break;
@@ -3553,7 +3572,7 @@ export async function _zhitm(mon, type, nd) {
         await sleep_monst(mon, d(nd, 25), (type === ZT_SLEEP) ? WAND_CLASS : 0);
         break;
     case ZT_DEATH: { /* C zap.c:4292-4337 — death ray/disintegration */
-        const breath = Math.abs(type) === (20 + ZT_DEATH);
+        const breath = Math.abs(type) === ZT_BREATH(ZT_DEATH);
         if (!breath) {
             /* A death ray heals Death and is absorbed by nonliving, demonic,
              * vampire-shifting, or magic-resistant monsters. */
@@ -3619,8 +3638,8 @@ export async function _zhitm(mon, type, nd) {
     /* C zap.c:4382-4384 — resist saving throw (only for type >= 0, tmp > 0).
      * resist(mon, type < ZT_SPELL(0) ? WAND_CLASS : '\0', 0, NOTELL). */
     if (tmp > 0 && type >= 0) {
-        const resist_oclass = (type < 10 /* ZT_SPELL(0) */) ? WAND_CLASS : 0 /* '\0' */;
-        if (await resist(mon, resist_oclass, 0, 0 /* NOTELL */)) tmp = Math.trunc(tmp / 2);
+        const resist_oclass = (type < ZT_SPELL(0)) ? WAND_CLASS : 0 /* '\0' */;
+        if (await resist(mon, resist_oclass, 0, NOTELL)) tmp = Math.trunc(tmp / 2);
     }
     if (tmp < 0) tmp = 0;
     mon.mhp = (mon.mhp | 0) - tmp;
@@ -3691,8 +3710,8 @@ async function _buzz_hit_monster(mon, type, nd, fltyp, sayhit) {
             await monkilled_trap(mon, flash_str(fltyp));
         }
     } else {
-        /* normal non-fatal hit — hit message + wakeup. */
-        if (sayhit || canspotmon(mon)) {
+        /* normal non-fatal hit — hit message + wakeup (C zap.c:4935: canseemon, not canspotmon). */
+        if (sayhit || canseemon(mon)) {
             /* C zap.c:3561-3567 hit(): name the target only when verbose and
              * the hero can see bhitpos or spot the monster; else "it". */
             const verbosely = game.flags?.verbose
@@ -3719,11 +3738,22 @@ async function _buzz_hit_monster(mon, type, nd, fltyp, sayhit) {
  * artifacts, random object resistance, and the worn lifesaving amulet. */
 export async function disintegrate_mon(mon, type, fltxt) {
     const amulet = mlifesaver(mon);
-    if (canseemon(mon)) {
-        if (!amulet)
-            await pline(`${Monnam(mon)} is disintegrated!`);
-        else
-            await hit(fltxt, mon, '!');
+    /* C's m_at() reads the monster grid, and mhp is already < 1 here yet the
+     * monster stays on the grid until mondead()'s m_detach.  The pline's
+     * vision_recalc (pline.c:266-272) therefore still finds it: a light source
+     * dying earlier in the ray (fire elemental) leaves the target warned-of
+     * (digit), not repainted from memory. */
+    const zeroHp = (mon.mhp | 0) < 1 && !mon._zeroHpOnGrid;
+    if (zeroHp) mon._zeroHpOnGrid = true;
+    try {
+        if (canseemon(mon)) {
+            if (!amulet)
+                await pline(`${Monnam(mon)} is disintegrated!`);
+            else
+                await hit(fltxt, mon, '!');
+        }
+    } finally {
+        if (zeroHp) mon._zeroHpOnGrid = false;
     }
 
     for (let obj = mon.minvent, next; obj; obj = next) {
@@ -3940,6 +3970,16 @@ async function _zp_speed_up(duration) {
     await speed_up(duration);
 }
 
+/* C mondata.h:174 unique_corpstat(ptr) — (((ptr)->geno & G_UNIQ) != 0L). */
+const G_UNIQ_ZD = 0x1000;
+function unique_corpstat(ptr) {
+    return (((ptr?.geno) | 0) & G_UNIQ_ZD) !== 0;
+}
+const S_digbeam = 78;
+function cmap_to_glyph(cmap_idx) {
+    return _bh_cmap_to_glyph(cmap_idx);
+}
+
 export async function zap_dig() {
     const g = game;
     const u = g.u || {};
@@ -3953,8 +3993,8 @@ export async function zap_dig() {
             const dig = _expl_digests(mtmp);
             if (dig)
                 await pline(`You pierce ${s_suffix(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)} wall!`);
-            /* unique_corpstat(): geno & G_UNIQ (0x1000) */
-            if (((mtmp.data?.geno | 0) & 0x1000) !== 0)
+            /* C dig.c:1575 unique_corpstat(mtmp->data) */
+            if (unique_corpstat(mtmp.data))
                 mtmp.mhp = ((mtmp.mhp | 0) + 1) >> 1;
             else
                 mtmp.mhp = 1; /* almost dead */
@@ -4011,7 +4051,7 @@ export async function zap_dig() {
         return;
     }
     /* C dig.c:1623 */
-    tmp_at(DISP_BEAM, 4083 /* cmap_to_glyph(S_digbeam) */);
+    tmp_at(DISP_BEAM, cmap_to_glyph(S_digbeam));
 
     /* C dig.c:1624-1737 — dig loop. */
     while (--digdepth >= 0) {
@@ -4690,7 +4730,7 @@ async function stone_to_flesh_obj(obj) {
     let res = 1; /* affected object by default */
 
     const material = MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0;
-    if (material !== STF_MINERAL && material !== 20 /* GEMSTONE */)
+    if (material !== STF_MINERAL && material !== GEMSTONE)
         return 0;
     /* Heart of Ahriman usually resists; ordinary items rarely do */
     if (obj_resists(obj, 2, 98))
@@ -4753,7 +4793,7 @@ async function stone_to_flesh_obj(obj) {
                 if ((ptr.mlet | 0) === STF_S_GOLEM && (ptr.pmidx | 0) !== PM_FLESH_GOLEM)
                     await newcham(mon, permonstTemplate(PM_FLESH_GOLEM),
                         NC_VIA_WAND_OR_SPELL);
-            } else if (((ptr.geno | 0) & (0x0010 /* G_NOCORPSE */ | 0x1000 /* G_UNIQ */)) !== 0) {
+            } else if (((ptr.geno | 0) & (G_NOCORPSE | G_UNIQ)) !== 0) {
                 /* didn't revive but can't leave corpse either */
                 res = 0;
             } else {
@@ -4792,7 +4832,7 @@ async function stone_to_flesh_obj(obj) {
     void obj;
 
     if (smell) {
-        /* C zap.c:2081-2093: monks and anyone who hasn't broken vegetarian
+        /* C zap.c:2097-2109: monks and anyone who hasn't broken vegetarian
          * conduct (or isn't currently in a carnivorous form) smell "the odor
          * of meat"; a non-monk carnivore who has already eaten meat smells
          * something "delicious". */
@@ -4988,7 +5028,7 @@ export async function bhito(obj, otmp) {
     case WAN_UNDEAD_TURNING:
     case SPE_TURN_UNDEAD: {
         // C zap.c:2332-2390; revive() owns the glow and shop charge.
-        if (obj.otyp === 266 /* EGG */) {
+        if (obj.otyp === EGG) {
             revive_egg(obj);
         } else if (obj.otyp === CORPSE) {
             const by_u = !g.context?.mon_moving;
@@ -5429,7 +5469,7 @@ async function zap_steed(obj) {
         steedhit = true;
         break;
     }
-    case 386 /* SPE_CURE_SICKNESS */:
+    case SPE_CURE_SICKNESS:
     case WAN_MAKE_INVISIBLE:
     case WAN_CANCELLATION:
     case SPE_CANCELLATION:
@@ -5606,7 +5646,7 @@ async function zap_updown(obj) {
                 if (is_pool(u.ux, u.uy) || is_ice(u.ux, u.uy))
                     await pline('Nothing happens.');
                 else
-                    await pline(`Blood ${_is_lava_zap(u.ux, u.uy) ? 'boil' : 'pool'}s ${_uhas(48) ? 'beneath' : 'at'} your ${makeplural(body_part(FOOT))}.`);
+                    await pline(`Blood ${_is_lava_zap(u.ux, u.uy) ? 'boil' : 'pool'}s ${_uhas(LEVITATION) ? 'beneath' : 'at'} your ${makeplural(body_part(FOOT))}.`);
             }
         }
         break;
@@ -5661,7 +5701,7 @@ export async function weffects(obj) {
         const udz = (g.u.dz | 0);
         zapsetup();                       /* C zap.c:3437 — reset obj_zapped */
         if (g.u.uswallow) {
-            /* C zap.c:3438-3439: (void) bhitm(u.ustuck, obj); — no range draw */
+            /* C zap.c:3443: (void) bhitm(u.ustuck, obj); — no range draw */
             await bhitm(g.u.ustuck, obj);
         } else if (udz) {
             /* C zap.c:3446: disclose = zap_updown(obj); */
@@ -5687,6 +5727,8 @@ export async function weffects(obj) {
             const bz = (Math.abs(otyp - WAN_MAGIC_MISSILE) % 10);
             await ubuzz(bz /* BZ_U_WAND */, (otyp === WAN_MAGIC_MISSILE) ? 2 : 6);
         }
+        else
+            impossible('weffects: unexpected spell or wand'); /* C zap.c:3466 */
         if (game._pendingDeath)
             return;
         disclose = true;
@@ -6048,7 +6090,7 @@ async function _bhitm_wand(mtmp, obj) {
     }
     if (otyp === WAN_SLOW_MONSTER || otyp === SPE_SLOW_MONSTER) {
         /* C zap.c:218-232: slowing a whirly engulfer expels the hero. */
-        if (!await resist(mtmp, (obj.oclass | 0), 0, 0 /* NOTELL */)) {
+        if (!await resist(mtmp, (obj.oclass | 0), 0, NOTELL)) {
             if (mtmp.data.mlet === 13 && M_AP_TYPE(mtmp)) seemimic(mtmp);
             mon_adjust_speed(mtmp, -1, obj);
             check_gear_next_turn(mtmp);
@@ -6084,7 +6126,7 @@ async function _bhitm_wand(mtmp, obj) {
     if (otyp === WAN_SPEED_MONSTER) {
         /* C zap.c:233-242: resist(), mon_adjust_speed(+1); helpful_gesture
          * is set unconditionally (wake but don't anger a peaceful). */
-        if (!await resist(mtmp, (obj.oclass | 0), 0, 0 /* NOTELL */)) {
+        if (!await resist(mtmp, (obj.oclass | 0), 0, NOTELL)) {
             if (mtmp.data.mlet === 13 && M_AP_TYPE(mtmp))
                 seemimic(mtmp); /* C zap.c:235-236 */
             mon_adjust_speed(mtmp, 1, obj);
@@ -6172,7 +6214,7 @@ async function _bhitm_wand(mtmp, obj) {
              * (mcorpsenm set below); don't affect it again. */
         } else if (resists_magm(mtmp)) {
             await shieldeff_mon(mtmp);
-        } else if (!await resist(mtmp, (obj.oclass | 0), 0, 0 /* NOTELL */)) {
+        } else if (!await resist(mtmp, (obj.oclass | 0), 0, NOTELL)) {
             const polyspot = (otyp !== _BHITM_POT_POLYMORPH);
             const give_msg = !_Halluc() && (canseemon(mtmp) || engulfing_u(mtmp));
 
@@ -6318,7 +6360,7 @@ async function _bhitm_wand(mtmp, obj) {
         dmg = spell_damage_bonus(dmg);
         if (resists_drli_mon(mtmp)) {
             await shieldeff_mon(mtmp);
-        } else if (!(await resist(mtmp, (obj.oclass | 0), dmg, 0 /* NOTELL */))
+        } else if (!(await resist(mtmp, (obj.oclass | 0), dmg, NOTELL))
                    && !DEADMONSTER(mtmp)) {
             mtmp.mhp -= dmg;
             mtmp.mhpmax -= dmg;
@@ -6653,11 +6695,12 @@ export async function wish_history_menu() {
 export function wish_history_has() { return wish_history[0] !== null; }
 
 /**
- * Flush all wish history entries (DEBUG-only in C).
- * C source: nethack-c/src/zap.c:6251
+ * Flush all wish history entries.
+ * C source: zap.c:6259-6270
  */
 export function wish_history_flush() {
-    // In C, this is wrapped in #ifdef DEBUG, but we port it faithfully.
+    // C wraps the body in #ifdef DEBUG; patchlevel.h:36 defines DEBUG
+    // unconditionally, so the body is live in the released game.
     // The function loops through wish_history, frees each entry, and resets the index.
     for (let idx = 0; idx < MAX_WISH_HISTORY; ++idx) {
         if (wish_history[idx] !== null) {

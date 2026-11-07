@@ -5,13 +5,13 @@
 import { game } from './gstate.js';
 import { YMonnam } from './mhitm.js';
 import { impossible_sync } from './display.js';
-import { pline } from './pline.js';
+import { pline, You } from './pline.js';
 import { MONS_NAMES, use_skill, m_at as monster_at } from './uhitm.js';
 import { isok, MON_FLOOR, W_SADDLE, P_RIDING, DISMOUNT_FELL,
          ARTICLE_YOUR, SUPPRESS_SADDLE, NON_PM } from './const.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js';
 import { monPmname } from './makemon.js';
-import { which_armor as which_armor_worn } from './worn.js';
+import { which_armor } from './worn.js';
 import { mksobj } from './mklev.js';
 import { mpickobj } from './steal.js';
 import { fully_identify_obj, can_ride, dismount_steed,
@@ -38,9 +38,9 @@ export async function poly_steed(steed, oldshape) {
     }
 }
 
-/* C steed.c:17 — caller has already checked mounted reach and riding skill. */
+/* C steed.c:16-20 rider_cant_reach — caller has decided hero can't reach while mounted. */
 export async function rider_cant_reach() {
-    await pline("You aren't skilled enough to reach from %s.", y_monnam_real(game.u.usteed));
+    await You("aren't skilled enough to reach from %s.", y_monnam_real(game.u.usteed));
 }
 
 /* C steed.c:827-849 maybewakesteed — called before saddling or mounting. */
@@ -154,10 +154,7 @@ export function impossible(msg, ...args) { impossible_sync(msg, ...args); }
 /* C panic() logs and returns in this replay terminal; preserve control flow. */
 function panic(msg) { impossible(msg); }
 
-/* local: which_armor — C worn.c:998 — walk minvent for owornmask & flag */
-function which_armor(mon, flag) {
-    return which_armor_worn(mon, flag);
-}
+/* C worn.c:1006-1035 which_armor — canonical port imported from worn.js */
 
 /* mpickobj — C ref: nethack-c/src/steal.c:616.  The real port now lives in
  * js/mklev.js (imported above).  The local stub that used to sit here — a bare

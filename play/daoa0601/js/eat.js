@@ -1,16 +1,17 @@
-// Hero eating and nutrition. Ports from eat.c.
+// Hero eating and nutrition. Ports from eat.c: is_edible(), eat_ok(),
+// floorfood(), and the rest of the eating mechanics.
 import { RANDOM_CLASS, WEAPON_CLASS, RING_CLASS, AMULET_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, COIN_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS, } from './objclass.js';
-import { objectPropertyName, oc_nutrition, objectDelay, objectCharged, AMULET_OF_STRANGULATION, AMULET_OF_YENDOR, APPLE, AXE, CANDY_BAR, CARROT, CLOVE_OF_GARLIC, CORPSE, CRAM_RATION, CREAM_PIE, EGG, EUCALYPTUS_LEAF, FAKE_AMULET_OF_YENDOR, FLINT, FOOD_RATION, FORTUNE_COOKIE, GLOB_OF_GREEN_SLIME, GOLD_PIECE, LEASH, LEMBAS_WAFER, LUMP_OF_ROYAL_JELLY, MEAT_RING, OBJECT_NAMES, ORANGE, PANCAKE, PEAR, PICK_AXE, RIN_PROTECTION, RIN_SLOW_DIGESTION, SCR_SCARE_MONSTER, SLIME_MOLD, SPRIG_OF_WOLFSBANE, TIN, TIN_OPENER, TRIDENT, TRIPE_RATION, } from './object_data.js';
+import { objectPropertyName, oc_nutrition, objectDelay, objectCharged, objectUnique, AMULET_OF_STRANGULATION, AMULET_OF_YENDOR, APPLE, AXE, BEARTRAP, CANDY_BAR, CARROT, CLOVE_OF_GARLIC, CORPSE, CRAM_RATION, CREAM_PIE, EGG, EUCALYPTUS_LEAF, FAKE_AMULET_OF_YENDOR, FLINT, FOOD_RATION, FORTUNE_COOKIE, GLOB_OF_GREEN_SLIME, GOLD_PIECE, LEASH, LEMBAS_WAFER, LUMP_OF_ROYAL_JELLY, MEAT_RING, OBJECT_NAMES, ORANGE, PANCAKE, PEAR, PICK_AXE, RIN_PROTECTION, RIN_SLOW_DIGESTION, SCR_SCARE_MONSTER, SLIME_MOLD, SPRIG_OF_WOLFSBANE, TIN, TIN_OPENER, TRIDENT, TRIPE_RATION, } from './object_data.js';
 import { heroCannotVomit, sameMonsterRace, monsterCanTeleport, monsterControlsTeleport, poisonous, acidic, your_race, carnivorous, herbivorous, is_dwarf, is_elf, is_orc, is_shapeshifter, metallivorous, monsterHasProperName, monsterIsGiant, monsterIsHumanoid, monsterIsMindless, monsterIsNoncorporeal, monsterIsRider, monsterIsUndead, monsterPerceives, fleshPetrifies, formCanBecomeStoneGolem, heroResistsStoning, heroWouldPetrifyFromFlesh, } from './mondata.js';
 import { setHeroPetrificationTimeout, makeDeaf, startHeroSickness, showInvisibilityMessage, makeConfused, makeHallucinated, makeStunned, drinkPotion, makeBlinded, setSlipperyHands, cureHeroSicknessWithMessages, heroIsSick, heroIsSliming, startHeroSliming, makeHeroVomiting, } from './potion.js';
 import { eatPetrifyingEgg, heroIsPetrifying } from './stoning.js';
-import { removeHeroAccessory, armorSimpleName } from './do_wear.js';
-import { finishHeroHelplessness } from './allmain.js';
+import { removeHeroAccessory, armorSimpleName, heroIsStrangled } from './do_wear.js';
+import { stopHeroOccupation } from './allmain.js';
 import { artifactById, artifactByName, touchArtifactByHero } from './artifact.js';
 import { adjustAttribute, adjustHeroAlignment, attributeChangeMessage, currentAttribute, currentStrength, exerciseAttribute, exerciseWisdom, extrinsicPropertyMask, gainHeroStrength, intrinsicPropertyMask, poisonHeroStrengthAndHp } from './attrib.js';
 import { bot } from './botl.js';
 import { commandResultCancelled, commandResultSpentTime, currentMulti, setMulti, setOccupation, paranoidQuery } from './cmd.js';
-import { ALTAR, A_CHA, A_CON, A_DEX, A_INT, A_LAWFUL, A_STR, A_WIS, CHOKING, DIED, DISMOUNT_FELL, EXPL_FIERY, FAINTED, FAINTING, GD_EATGOLD, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HEALTHY_TIN, HOMEMADE_TIN, HUNGRY, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, LUCKMIN, MON_FLOOR, M_AP_NOTHING, M_AP_OBJECT, M_ATTK_AGR_DIED, M_ATTK_HIT, M_ATTK_MISS, NOT_HUNGRY, PARANOID_EATING, POISONING, RANDOM_TIN, ROTTEN_TIN, SATIATED, SICK_VOMITABLE, SPINACH_TIN, STARVED, STARVING, STONING, TIMEOUT, Upolyd, WEAK, W_AMUL, W_ARMOR, W_RING, W_SADDLE, W_TOOL, FINGER, LIGHT_HEADED, STOMACH, NOSE, LL_CONDUCT, } from './const.js';
+import { ALTAR, A_CHA, A_CON, A_DEX, A_INT, A_LAWFUL, A_STR, A_WIS, BEAR_TRAP, CHOKING, DIED, DISMOUNT_FELL, EXPL_FIERY, FAINTED, FAINTING, GD_EATGOLD, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, HEALTHY_TIN, HOMEMADE_TIN, HUNGRY, IRONBARS, Is_airlevel, Is_waterlevel, KILLED_BY, KILLED_BY_AN, LUCKMIN, MON_FLOOR, M_AP_NOTHING, M_AP_OBJECT, M_ATTK_AGR_DIED, M_ATTK_HIT, M_ATTK_MISS, NOT_HUNGRY, PARANOID_EATING, POISONING, RANDOM_TIN, ROTTEN_TIN, SATIATED, SICK_VOMITABLE, SPINACH_TIN, STARVED, STARVING, STONING, TT_BEARTRAP, TIMEOUT, Upolyd, WEAK, W_AMUL, W_ARMOR, W_NONDIGGABLE, W_RING, W_SADDLE, W_TOOL, FINGER, LIGHT_HEADED, STOMACH, NOSE, LL_CONDUCT, } from './const.js';
 import { reviveCorpseImmediately } from './do.js';
 import { impossible } from './diagnostics.js';
 import { canSeeMonster, canSpotMonster, flush_screen, newsym, see_monsters, refreshHeroSeeing, curs_on_u } from './display.js';
@@ -23,32 +24,30 @@ import { addExperience, checkExperienceLevel, gainExperienceLevel } from './expe
 import { explode } from './explode.js';
 import { useUpFloorObject, stack_object } from './invent.js';
 import { heroCanReachFloor } from './engrave.js';
-import { isEdibleFood, selectFoodToEat } from './food_selection.js';
 import { nonrottingCorpse, veganCorpse, vegetarianCorpse } from './food_traits.js';
 import { game, requireGameLevel, requireInitializedGame, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { nomul, loseHeroHp, chewIronBars, stopRun, exceedsActionCapacity, nearCapacity } from './hack.js';
+import { nomul, loseHeroHp, chewIronBars, stopRun, exceedsActionCapacity, nearCapacity, finishHeroHelplessness } from './hack.js';
 import { possessiveName } from './hacklib.js';
 import { heroAcidBreathAttack, hitHeroWithRay, meltIce } from './zap.js';
 import { hasNonArtifactConflict } from './hero_conflict.js';
 import { gainCorpseDisplacement } from './hero_displacement.js';
-import { removeWornHeroItem } from './hero_equipment.js';
-import { freeInventoryObject, useUpInventoryStack, addInventoryItem, chooseInventoryObject, consumeInventoryItem, inventoryItemDescription } from './invent.js';
+import { removeWornHeroItem } from './steal.js';
+import { freeInventoryObject, useUpInventoryStack, addInventoryItem, chooseInventoryObject, consumeInventoryItem, inventoryItemDescription, feelPetrifyingCorpse, willFeelPetrifyingCorpse } from './invent.js';
 import { heroIsInvisible, invisibilityIsBlocked, syncHeroInvisibility } from './hero_invisibility.js';
 import { retouchEquipment, retouchHeroObject } from './artifact.js';
 import { heroIsUnaware, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { putHeroToSleep } from './timeout.js';
-import { changeHeroSex, heroIsBreathless, heroSpecies, heroHasNoHands, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, heroMonsterForm, polymonHero, polymorphHero, returnHeroToHumanForm, heroIsSlimeproof, body_part } from './polyself.js';
+import { changeHeroSex, heroIsBreathless, heroSpecies, heroHasNoHands, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, heroMonsterForm, polymonHero, polymorphHero, returnHeroToHumanForm, heroIsSlimeproof, heroFormClings, heroIsFlying, body_part } from './polyself.js';
 import { releaseObjectLeash } from './apply.js';
 import { recordLiteracy } from './literacy.js';
-import { objectQuantity, splitObjectStack, objectWeight, objectIsRottable } from './mkobj.js';
-import { objectIsMetallic } from './object_properties.js';
+import { mksobj, objectQuantity, splitObjectStack, objectWeight, objectIsFlammable, objectIsRottable } from './mkobj.js';
+import { objectIsMetallic, objectIsOrganic, objectIsRustprone } from './object_properties.js';
 import { finishEnvironmentalMonsterDeath, prepareMonsterPetrification, restoreNaturalMonsterShapes } from './mon.js';
 import { makeMonsterFlee } from './monmove.js';
 import { AD_BLND, AD_HALU, AD_POLY, AD_STUN, AT_ENGL, AT_MAGC } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_CONVEYS, MONSTER_FLAGS1, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, MONSTER_SYMBOL, monsterTypeName, requireMonsterData, PM_GREEN_SLIME, } from './monster_data.js';
 import { learnObjectType, objectMaterial, observeObject, recordObjectKnowledge } from './o_init.js';
 import { corpseName, definiteName, killerObjectName, makePlural, objectHasPersonalName, objectName, objectNameIsPlural, observeObjectForNaming, ownedObjectName, pluralizeObjectNoun, withIndefiniteArticle } from './objnam.js';
-import { stopHeroOccupation } from './occupation.js';
 import { pline as immediatePline, pline1, plineWithContinuation as pline, plineWithContinuation, recordGameLogEvent, formatFeltMessage, publishHeardMessage, } from './pline.js';
 import { altarWrath } from './pray.js';
 import { grantIntrinsicProperty, hasCarriedProperty, hasIntrinsicProperty, hasInvokedProperty, hasPermanentIntrinsicProperty, hasTimedProperty, hasWornProperty, propertyIsActive, propertyIsBlocked, propertyTimeout, refreshProperty, removePermanentIntrinsicProperty, setPropertyTimeout } from './properties.js';
@@ -59,13 +58,13 @@ import { readCookieFortune } from './rumors.js';
 import { SELL_DONTSELL, SELL_NORMAL, chargeAlteredUnpaidObject, costlySpot, setSellDisposition } from './shk.js';
 import { dismountHero } from './steed.js';
 import { surfaceName } from './dungeon.js';
-import { isIceAt } from './dbridge.js';
+import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
 import { attrcurse } from './throne.js';
 import { flushPendingTopline } from './topl.js';
 import { vaultGdWatching } from './vault.js';
 import { catchLycanthropyFromCorpse, purifyHeroLycanthropy, wereBeastForSpecies } from './were.js';
 import { isWeldedPrimary, uqwepgone, uswapwepgone, uwepgone, wieldTool } from './wield.js';
-import { captureLevitationState, floatHeroUp, triggerBoobyTrap, selfTouchPetrifyingWeapons } from './trap.js';
+import { captureLevitationState, floatHeroUp, triggerBoobyTrap, selfTouchPetrifyingWeapons, deleteTrap, resetUtrap } from './trap.js';
 const G_UNIQ = 0x1000;
 const PM_WIZARD = MONSTER_NAME.indexOf('Wizard of Yendor');
 const PM_HIGH_CLERIC = MONSTER_NAME.indexOf('high cleric');
@@ -117,6 +116,7 @@ const RESISTANCES = [
 ];
 const CANDIDATES = [...RESISTANCES, 'telepathy', 'teleportation', 'teleportControl'];
 const S_FUNGUS = 32;
+// Port only: otyp lookup by object name for the amulet/potion constants.
 const type = (name) => OBJECT_NAMES.indexOf(name);
 const ADORNMENT = type('adornment'), STRENGTH = type('gain strength');
 const CONSTITUTION = type('gain constitution'), ACCURACY = type('increase accuracy');
@@ -134,6 +134,32 @@ const ANIMAL_INGREDIENTS = new Set([PANCAKE, FORTUNE_COOKIE, CREAM_PIE, CANDY_BA
 const RUST_MONSTER = MONSTER_NAME.indexOf('rust monster');
 const PAPER = 5;
 const SCR_MAIL = OBJECT_NAMES.indexOf('mail');
+const FIRE_ELEMENTAL = MONSTER_NAME.indexOf('fire elemental');
+const GELATINOUS_CUBE = MONSTER_NAME.indexOf('gelatinous cube');
+const GHOUL = MONSTER_NAME.indexOf('ghoul');
+// C hands_obj represents the terrain being eaten, not an inventory object.
+export const IRON_BARS_FOOD = Object.freeze({ kind: 'iron-bars' });
+// C eat.c:is_edible() reads the metallivorous() macro for the current form.
+export function heroEatsMetal(state = game) {
+    return metallivorous(heroSpecies(state));
+}
+// C eat.c:is_edible(). Decide whether a particular object can be eaten by
+// the possibly polymorphed character; not used for monster checks.
+export function isEdibleFood(object, state = game) {
+    if (!object || objectUnique(object.otyp))
+        return false;
+    const form = heroSpecies(state);
+    if (form === FIRE_ELEMENTAL && objectIsFlammable(object, state))
+        return true;
+    if (heroEatsMetal(state) && objectIsMetallic(object, state)
+        && (form !== RUST_MONSTER || objectIsRustprone(object, state)))
+        return true;
+    if (form === GHOUL)
+        return object.otyp === CORPSE && !veganCorpse(object.corpsenm) || object.otyp === EGG;
+    if (form === GELATINOUS_CUBE && objectIsOrganic(object, state) && !object.contents?.length)
+        return true;
+    return object.oclass === FOOD_CLASS;
+}
 // C eat.c:init_uhunger(). Hunger weakens temporary, not innate, strength.
 export async function init_uhunger(state = game, publish = plineWithContinuation) {
     requirePlayingGame(state);
@@ -296,6 +322,7 @@ export async function touchfood(food, { state = game } = {}) {
     requirePreparedFood(food);
     return food;
 }
+// Port only: narrow an object whose oeaten field has been initialized.
 // Port boundary: narrow an object whose oeaten field has been initialized.
 export function requirePreparedFood(food) {
     if (food.oeaten === undefined)
@@ -368,6 +395,7 @@ export async function eatfood(_occupation, state = game) {
         state._occupation = null;
     return !choked && !state.program_state.gameover;
 }
+// Port only: require the shared context.victual food-meal state.
 // Port boundary: require the shared context.victual food-meal state.
 function currentFoodMeal(state) {
     const meal = state.context.victual;
@@ -375,6 +403,7 @@ function currentFoodMeal(state) {
         throw new Error('No food meal is active');
     return meal;
 }
+// Port only: require the food retained by context.victual.
 // Port boundary: require the food retained by context.victual.
 function currentMealFood(meal) {
     if (!meal.piece)
@@ -413,6 +442,8 @@ async function done_eating(state, showMessage) {
     await consumeFoodObject(food, { state });
     state.context.victual = null;
 }
+// Part of C eat.c:done_eating(), eat.c:consume_tin(): the carried() ?
+// useup() : useupf() removal expression.
 // Shared carried()/useup()/useupf() expression used by meal and tin owners.
 export async function consumeFoodObject(food, { all = false, state = game } = {}) {
     requireLiveGame(state);
@@ -451,6 +482,8 @@ function incrementFood(message, state) {
         recordGameLogEvent(message, { state, flags: LL_CONDUCT });
     return first;
 }
+// Part of C eat.c:eating_conducts(), eat.c:violated_vegetarian(): the shared
+// u.uconduct field increment.
 // Shared u.uconduct field increment expression in eat.c.
 function incrementConduct(key, state) {
     const conduct = state.u.uconduct;
@@ -1118,6 +1151,7 @@ export function tin_variety(tin, display = false) {
         variety = HOMEMADE_TIN;
     return variety;
 }
+// Part of C eat.c:consume_tin(): checked tintxts[r] table access.
 // C eat.c tintxts[] access with a checked preparation index.
 function tinPreparation(variety) {
     const preparation = preparations[variety];
@@ -1253,6 +1287,7 @@ async function consume_tin(message, { state }) {
     if (tin)
         await use_up_tin(tin, { state });
 }
+// Port only: require the tin retained by context.tin.
 // Port boundary: require the tin retained by context.tin.
 function currentTin(state) {
     const tin = currentTinOpening(state).tin;
@@ -1260,6 +1295,7 @@ function currentTin(state) {
         throw new Error('The tin being opened has already been consumed');
     return tin;
 }
+// Port only: require corpsenm before reading tin contents.
 // Port boundary: require corpsenm before reading tin contents.
 function tinSpecies(tin) {
     if (tin.corpsenm === undefined)
@@ -1291,6 +1327,7 @@ export async function opentin(opening, state = game) {
     state.context.move = state.program_state.gameover ? 0 : 1;
     return true;
 }
+// Port only: require the shared context.tin opening state.
 // Port boundary: require the shared context.tin opening state.
 function currentTinOpening(state) {
     const opening = state.context.tin;
@@ -1361,6 +1398,8 @@ export async function start_tin(tin, { state = game } = {}) {
     state.context.move = state.program_state.gameover ? 0 : 1;
     return { started: true, completed: duration === 0, heroDied: !!state.program_state.gameover };
 }
+// Part of C eat.c:costly_tin(), eat.c:start_tin(): the splitobj(tin, 1)
+// expression.
 // Shared splitobj(tin, 1) expression in costly_tin() and start_tin().
 function splitTin(tin, state) {
     const split = splitObjectStack(tin, 1, state);
@@ -1409,6 +1448,7 @@ export async function rottenfood(food, { state = game } = {}) {
     }
     return false;
 }
+// Port only: require corpsenm before indexing monster data.
 // Port boundary: require corpsenm before indexing monster data.
 function corpseSpecies(food) {
     if (food.corpsenm === undefined)
@@ -2682,6 +2722,110 @@ export async function newuhs(increasing, { state = game } = {}) {
         if (!died)
             await newuhs(false, { state });
     }
+}
+// C eat.c:floorfood().
+// Also C eat.c:eat_ok(): inlined as the inventory chooser callback at the
+// end (edible suggested, gold excluded for its own message, others
+// selectable).
+export async function selectFoodToEat({ state = game } = {}) {
+    requireLiveGame(state);
+    requirePlayingGame(state);
+    if (heroIsStrangled(state)) {
+        await pline("If you can't breathe air, how can you consume solids?");
+        return null;
+    }
+    let declinedFloorFood = false;
+    if (canSelectFloorFood(state)) {
+        const metallic = heroEatsMetal(state);
+        const hero = state.u;
+        if (metallic) {
+            const trap = state.level.traps.find(candidate => candidate.tx === hero.ux
+                && candidate.ty === hero.uy && candidate.ttyp === BEAR_TRAP && candidate.tseen);
+            if (trap) {
+                const held = hero.utrap && hero.utraptype === TT_BEARTRAP;
+                const answer = await askFloorFood(`There is a bear trap here (${held ? 'holding you' : 'armed'}); eat it?`);
+                if (answer === 'q')
+                    return null;
+                if (answer === 'y') {
+                    deleteTrap(trap, state);
+                    if (held)
+                        await resetUtrap(true, state);
+                    const object = await mksobj(BEARTRAP, true, false);
+                    object.ox = hero.ux;
+                    object.oy = hero.uy;
+                    if (exceedsActionCapacity(state)) {
+                        await pline(`You only manage to ${held ? 'free yourself from' : 'disarm'} the bear trap.`);
+                        await dropObjectAtHero(object, { state });
+                        return null;
+                    }
+                    return object;
+                }
+                declinedFloorFood = true;
+            }
+            const location = state.level.at(hero.ux, hero.uy);
+            if (!location)
+                throw new Error('Food selection requires a map cell at the hero position.');
+            if (location.typ === IRONBARS) {
+                const undiggable = location.wall_info & W_NONDIGGABLE;
+                if (undiggable || hero.uhunger > 1500) {
+                    await pline(`There are iron bars here but you ${undiggable ? 'cannot' : 'are too full to'} eat them.`);
+                }
+                else {
+                    const digging = state.context.digging;
+                    const resume = digging?.chew && digging.pos.x === hero.ux && digging.pos.y === hero.uy
+                        && digging.level.dnum === hero.uz.dnum && digging.level.dlevel === hero.uz.dlevel;
+                    const answer = await askFloorFood(`There are iron bars here; ${resume ? 'resume eating' : 'eat'} them?`);
+                    if (answer === 'y')
+                        return IRON_BARS_FOOD;
+                    if (answer === 'q')
+                        return null;
+                }
+                declinedFloorFood = true;
+            }
+            const coins = state.level.objects[hero.ux]?.[hero.uy]?.find(object => object.otyp === GOLD_PIECE);
+            if (coins && hero.umonnum !== RUST_MONSTER) {
+                const quantity = objectQuantity(coins);
+                const answer = await askFloorFood(quantity === 1 ? 'There is 1 gold piece here; eat it?'
+                    : `There are ${quantity} gold pieces here; eat them?`);
+                if (answer === 'y')
+                    return coins;
+                if (answer === 'q')
+                    return null;
+                declinedFloorFood = true;
+            }
+        }
+        for (const object of state.level.objects[hero.ux]?.[hero.uy] || []) {
+            if (object.oclass === COIN_CLASS || !isEdibleFood(object, state))
+                continue;
+            if (willFeelPetrifyingCorpse(object, { state })) {
+                await feelPetrifyingCorpse(object, { state });
+                return null;
+            }
+            observeObjectForNaming(object, { state });
+            const one = objectQuantity(object) === 1;
+            const answer = await askFloorFood(`There ${one ? 'is' : 'are'} ${await inventoryItemDescription(object)} here; eat ${one ? 'it' : 'one'}?`);
+            if (answer === 'y')
+                return object;
+            if (answer === 'q')
+                return null;
+            declinedFloorFood = true;
+        }
+    }
+    return chooseInventoryObject('eat', object => isEdibleFood(object, state)
+        ? GETOBJ_SUGGEST : object.oclass === COIN_CLASS ? GETOBJ_EXCLUDE : GETOBJ_EXCLUDE_SELECTABLE, { hands: declinedFloorFood ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE });
+}
+// Part of C eat.c:floorfood(): the skipfloor gate (menu flag, reach, steed,
+// liquid).
+function canSelectFloorFood(state) {
+    if (state.iflags.menu_requested || !heroCanReachFloor(state, { checkPit: true }) || state.u.usteed)
+        return false;
+    const liquid = isPoolAt(state.u.ux, state.u.uy, state) || isLavaAt(state.u.ux, state.u.uy, state);
+    return !liquid || !(propertyIsActive('waterWalking', state) || heroFormClings(state)
+        || heroIsFlying(state) && !heroIsBreathless(state));
+}
+// Part of C eat.c:floorfood(): the yn_function(..., ynqchars, 'n') prompts.
+function askFloorFood(prompt) {
+    return promptYesNoQuit(`${prompt}`, 'n');
 }
 // C eat.c:vomit().
 export async function vomit({ state = game, publish = immediatePline, angerAltar = altarWrath, melt = meltIce, random = rn2, rollDice = d, } = {}) {

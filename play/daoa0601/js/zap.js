@@ -27,12 +27,13 @@ import { displayColorName, displayLiquidName, monsterName, randomDisplayMonsterN
 import { possessiveName, mungSpaces } from './hacklib.js';
 import { commandResultCancelled } from './cmd.js';
 import { removeHeroAccessory, wearHeroAccessory, objectIsHardHelmet, applyArmorOnEffects, armorSlotFor, wearHeroArmor, isEyewear, wearEyewear } from './do_wear.js';
-import { removeHeroEquipment, removeWornHeroItem } from './hero_equipment.js';
+import { removeWornHeroItem } from './steal.js';
 import { rechargeRing, unpunishHero } from './read.js';
 import { finishHeroDeath } from './end.js';
 import { consumeInventoryItem, inventoryItemDescription, delobj, inventoryClassOrder, lootSortMode, objectClassHeading, sortObjects } from './invent.js';
 import { useUpInventoryStack, prepareInventoryAddition, finishInventoryAddition, finishInventoryRemoval, displayBuriedInventory, probedContentsTitle, engulfedHeroMenuSection } from './invent.js';
-import { cleanupTransientLight, lightRoom, showTransientLight } from './light.js';
+import { cleanupTransientLight, showTransientLight } from './light.js';
+import { lightRoom } from './read.js';
 import { buryFloorObjectsAt, formatDraftMessage, zapDigWithObject } from './dig.js';
 import { CANDELABRUM_OF_INVOCATION } from './mklev.js';
 import { randomEngraving } from './engrave.js';
@@ -45,7 +46,7 @@ import { applySupportedPotionVapor } from './potion.js';
 import { heroHasNoHands, heroFormHidesUnderObjects, body_part } from './polyself.js';
 import { createPoisonGasCloud } from './region.js';
 import { dryFountainAt } from './fountain.js';
-import { stopHeroOccupation } from './occupation.js';
+import { stopHeroOccupation } from './allmain.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import { promptDirection } from './cmd.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
@@ -56,7 +57,7 @@ import { AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, AD_DRST, AD_ACID,
 import { showInventoryWindow } from './windows.js';
 import { useUpFloorObject } from './invent.js';
 import { changeMonsterForm, copyPetData, normalizeMonsterShape, wakeMonster, maybeUnhideAt, revealMonsterAppearance, checkMonsterGearNextTurn, } from './mon.js';
-import { setMonsterPermanentInvisibility, bypassObjectList, nextUnbypassedObject, bypassObject, adjustMonsterSpeed, monsterSpeedMessage, destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory, } from './worn.js';
+import { setMonsterPermanentInvisibility, bypassObjectList, nextUnbypassedObject, bypassObject, adjustMonsterSpeed, monsterSpeedMessage, destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory, removeHeroEquipment, } from './worn.js';
 import { redrawMonsterWormSegments } from './worm.js';
 import { monsterHasMagicResistance } from './trap.js';
 import { finishHeroMonsterKill, finishHeroLiquidMonsterDeath } from './mon.js';
@@ -178,6 +179,7 @@ import { BAG_OF_HOLDING } from './object_data.js';
 import { enexto } from './teleport.js';
 import { markQuestLeaderAlive } from './quest.js';
 import { bodyGenderFlags, PM_DOPPELGANGER, PM_HUMAN_ZOMBIE, revivalReplacement } from './read.js';
+import { isQuantumBox } from './quantum_cat.js';
 import { monsterIsEel } from './mondata.js';
 import { requireInitializedHero } from './hero_types.js';
 const NODIR = 1, IMMEDIATE = 2;
@@ -214,6 +216,7 @@ const LARGEST_INT = 32767;
 const PM_CROCODILE = MONSTER_NAME.indexOf('crocodile');
 const PM_FLESH_GOLEM = MONSTER_NAME.indexOf('flesh golem');
 const LOW_BOOTS = OBJECT_NAMES.indexOf('low boots');
+// C obj.h:Is_box()
 const isBox = (object) => object.otyp === CHEST || object.otyp === LARGE_BOX;
 const WAN_OPENING = OBJECT_NAMES.indexOf('opening');
 const WAN_LOCKING = OBJECT_NAMES.indexOf('locking');
@@ -532,6 +535,7 @@ function knownInvisible(monster, state = game) {
     const distance = (monster.mx - hero.ux) ** 2 + (monster.my - hero.uy) ** 2;
     return distance <= BOLT_LIM ** 2;
 }
+// Part of C zap.c:bhitm(): apply monster invisibility and its observable messages.
 export async function makeMonsterInvisible(monster) {
     const wasInvisible = !!monster.minvis;
     const wasVisible = canSeeMonster(monster);
@@ -555,6 +559,7 @@ export async function makeMonsterInvisible(monster) {
     await wakeMonster(monster, { attacked: true });
     return identified;
 }
+// Part of C zap.c:bhitm(): apply speed or slowing magic, including whirly engulfers.
 export async function affectMonsterSpeed(monster, kind, source, state, options) {
     const attackLevel = source === 'wand' ? 12 : state.u?.ulevel ?? 1;
     const resisted = monsterResistsEffect(monster, attackLevel, options.random);
@@ -583,9 +588,11 @@ export async function affectMonsterSpeed(monster, kind, source, state, options) 
     await wakeMonster(monster, { attacked: kind === 'slow' });
     return observed;
 }
+// Port only: test whether a monster survives a magic effect.
 function survived(monster) {
     return !monster.dead && (monster.mhp ?? 0) > 0;
 }
+// Part of C zap.c:bhitm(): recognize a long worm already polymorphed during this attack.
 function alreadyChangedThisAttack(monster) {
     const corpseSpecies = monster.mcorpsenm;
     const extraCorpseSpecies = monster.mextra?.mcorpsenm;
@@ -593,6 +600,7 @@ function alreadyChangedThisAttack(monster) {
         || (extraCorpseSpecies !== undefined && Number.isInteger(extraCorpseSpecies)
             && extraCorpseSpecies >= 0);
 }
+// Part of C zap.c:bhitm(): mark a newly polymorphed long worm for bypass handling.
 function markNewLongWorm(monster, state) {
     if (monster.mnum !== PM_LONG_WORM)
         return;
@@ -601,6 +609,7 @@ function markNewLongWorm(monster, state) {
     monster.mextra.mcorpsenm = PM_LONG_WORM;
     state.context.bypasses = true;
 }
+// Part of C zap.c:bhitm(): resist polymorph, roll system shock, or change the monster's form.
 export async function polymorphMonsterFromMagic(monster, { state = game, targetSpotted = false, wakeMonster, publish = plineWithContinuation, showShield, finishDeath, attackLevel = POTION_ATTACK_LEVEL, polyspot = false, } = {}) {
     if (monster.mnum === PM_LONG_WORM
         && alreadyChangedThisAttack(monster)) {
@@ -677,6 +686,7 @@ export async function polymorphMonsterFromMagic(monster, { state = game, targetS
         killed,
     };
 }
+// Part of C zap.c:bhitm(): revive carried corpses and damage or frighten an undead target.
 export async function turnMonsterWithUndeadMagic(monster, source, state, options) {
     const inventory = monster.minvent || monster.inventory || [];
     const revived = await turnCarriedObjects(inventory, state);
@@ -714,15 +724,18 @@ export async function turnMonsterWithUndeadMagic(monster, source, state, options
     await options.wakeMonster(monster);
     return false;
 }
+// Port only: test whether a wand target is still alive.
 function alive(monster) {
     return !monster.dead && monster.mhp > 0;
 }
+// Part of C zap.c:bhitm(): reveal a mimic posing as a box or door before locking or opening.
 async function revealLockMimic(monster, state) {
     if (M_AP_TYPE(monster) === M_AP_OBJECT && [CHEST, LARGE_BOX].includes(monster.mappearance ?? -1)
         || M_AP_TYPE(monster) === M_AP_FURNITURE
             && (monster.mappearance ?? -1) >= 13 && (monster.mappearance ?? -1) <= 16)
         await revealMimicIdentity(monster, { state });
 }
+// Part of C mhitm.c:sleep_monst(), mhitm.c:slept_monst(): apply resisted magical sleep and release a sleeping holder's grip.
 async function sleepMonsterWithMagic(monster, duration, state) {
     if (!monster.msleeping && !monster.mfrozen && [M_AP_FURNITURE, M_AP_OBJECT].includes(M_AP_TYPE(monster)))
         await revealMonsterAppearance(monster);
@@ -738,6 +751,7 @@ async function sleepMonsterWithMagic(monster, duration, state) {
         await releaseHeroFromMonster(monster, { state });
     }
 }
+// Part of C zap.c:bhitm(): magical opening drops a target's saddle.
 async function dropSaddle(monster, state) {
     const saddle = (monster.minvent || monster.inventory || []).find(object => (object.owornmask ?? 0) & W_SADDLE);
     if (!saddle)
@@ -749,6 +763,7 @@ async function dropSaddle(monster, state) {
     await removeObjectFromMonsterInventory(monster, saddle, state);
     await landFloorObject(saddle, monster.mx, monster.my, { state });
 }
+// Part of C zap.c:resist(): halve resisted damage, apply it, and handle a lethal hit.
 async function damageMonster(monster, damage, attackLevel, tell, state) {
     const resisted = monsterResistsEffect(monster, attackLevel);
     if (resisted) {
@@ -762,6 +777,7 @@ async function damageMonster(monster, damage, attackLevel, tell, state) {
         await finishHeroMonsterKill(monster, monster.mx, monster.my);
     return resisted;
 }
+// Part of C zap.c:bhitm(): drain life and reduce the surviving monster's level and maximum HP.
 async function drainMonster(monster, attackLevel, state) {
     let damage = monsterHitPointsPerLevel(monster);
     if (state.urole.key === 'knight' && state.u.uhave?.questart)
@@ -783,14 +799,17 @@ async function drainMonster(monster, attackLevel, state) {
             await plineWithContinuation(`${monsterName(monster, { capitalized: true })} suddenly seems weaker!`);
     }
 }
+// C mon.c:shieldeff_mon()
 async function shieldMonster(monster, state) {
     await shieldeff(monster.mx, monster.my, state);
     if (cansee(monster.mx, monster.my))
         await plineWithContinuation(`${monsterName(monster, { capitalized: true })} resists!`);
 }
 // Part of C zap.c:bhitm(): the stone-to-flesh monster branch.
-// zap.c:stone-to-flesh on a monster: mkobj.c stone_object_type() and
-// stone_furniture_type() decide which mimicked shapes revert to a mimic.
+// Also C mkobj.c:stone_object_type(): the mimicked-object type test is inlined here.
+// Also C mkobj.c:stone_furniture_type(): the mimicked-furniture type test is inlined here.
+// zap.c stone-to-flesh on a monster: mkobj.c stone_object_type and
+// stone_furniture_type decide which mimicked shapes revert to a mimic.
 async function fleshMonster(monster, state) {
     if (monsterIsGolem(monster.mnum)) {
         const name = monsterName(monster, { capitalized: true });
@@ -852,17 +871,12 @@ export function probeObjectChain(inventory, { state = game } = {}) {
         observeObject(object, state);
         if (isContainer(object) || object.otyp === STATUE) {
             object.lknown = true;
-            if (!schroedingersBox(object))
+            if (!isQuantumBox(object))
                 object.cknown = true;
         }
         else if (object.otyp === TIN)
             object.known = true;
     }
-}
-// Probing reveals object descriptions and immediate container contents.
-// C refs: zap.c probe_objchain(), probe_monster(), and bhito(WAN_PROBING).
-function schroedingersBox(object) {
-    return object.otyp === LARGE_BOX && object.spe === 1;
 }
 // C zap.c:probe_monster().
 export async function probeMonster(monster, { state = game, onHead = true, x = monster.mx, y = monster.my, publish = plineWithContinuation, } = {}) {
@@ -892,9 +906,10 @@ export async function probeMonster(monster, { state = game, onHead = true, x = m
     const engulfer = state.u.uswallow && state.u.ustuck === monster ? monster : null;
     await showProbedObjectInventory(inventory, `${possessiveName(name)} possessions:`, { state, engulfer });
 }
-// C query_objlist(): PICK_NONE still gives each object a menu identifier,
+// Part of C pickup.c:query_objlist(): display a probed inventory with class headings and optional engulfed-hero row.
+// C query_objlist: PICK_NONE still gives each object a menu identifier,
 // so tty assigns letters. INVORDER_SORT adds headings even for one item.
-// An engulfer's list closes with query_objlist(INCLUDE_HERO)'s fake hero
+// An engulfer's list closes with the INCLUDE_HERO fake hero
 // row (pickup.c:1146-1164).
 export async function showProbedObjectInventory(objects, title, { state = game, groupByClass = true, engulfer = null, } = {}) {
     const sorted = sortObjects(objects, { mode: lootSortMode({ state }), state });
@@ -979,17 +994,20 @@ function getContainerLocation(corpse, state) {
     const location = objectLocation(outer, state);
     return location ? { ...location, directContainer, nesting, outer } : null;
 }
+// Port only: resolve a container from direct ownership or the timer object graph.
 function parentContainer(object, state) {
     if (object?.container)
         return object.container;
     return objectsInTimerGraph(state).find(candidate => candidate !== object && candidate.contents?.includes(object));
 }
+// Port only: resolve an object's monster carrier from ownership links or inventory membership.
 function carryingMonster(object, state) {
     if (object?.ocarry)
         return object.ocarry;
     return (state.level?.monsters || []).find(monster => monster.m_id === object?.carrierMid
         || (monster.minvent || monster.inventory || []).includes(object));
 }
+// Part of C zap.c:revive(): locate a corpse in hero inventory, on the floor, buried, or carried by a monster.
 function objectLocation(object, state) {
     if (object?.where === 'inventory') {
         return { x: state.u?.ux, y: state.u?.uy, monsterCarrier: null };
@@ -1194,7 +1212,7 @@ export async function revive(corpse, state, { byHero = false } = {}) {
     };
 }
 // Part of C zap.c:montraits(): the validated trait-field copy, without inventory or body ownership.
-// Monster state restored from a corpse or statue. C zap.c:montraits().
+// Monster state restored from a corpse or statue by the native montraits path.
 // Both arguments have the same trait contract; the target's type determines
 // which values the saved record may supply. Inventory/body ownership is restored
 // separately below, and only the saved record's own fields are copied.
@@ -1204,6 +1222,7 @@ function copyRestoredTraits(monster, saved) {
             monster[key] = saved[key];
     }
 }
+// Part of C zap.c:montraits(): restore saved traits while retaining the new body's identity, position, inventory, and worm state.
 export function restoreMonsterTraits(monster, saved, { rollOne = rnd, randomBelow = rn2, } = {}) {
     if (!monster || !saved)
         return monster;
@@ -1307,10 +1326,12 @@ export function restoreMonsterTraits(monster, saved, { rollOne = rnd, randomBelo
     }
     return monster;
 }
+// Port only: require a corpse's monster species before revival.
 export function requireCorpseSpecies(corpse) {
     if (typeof corpse.corpsenm !== 'number')
         throw new TypeError('Corpse revival requires a monster species.');
 }
+// Port only: narrow a revival location to one with a direct container.
 export function isContainerLocation(location) {
     return 'directContainer' in location;
 }
@@ -1361,6 +1382,7 @@ export async function turnCarriedObjects(inventory, state = game) {
         await encumber_msg(state);
     return revived;
 }
+// Part of C zap.c:bhito(): temporarily clear norevive for magical revival and restore it on failure.
 export async function reviveCorpseByMagic(corpse, state = game, { byHero = true } = {}) {
     if (!corpse)
         return null;
@@ -1445,6 +1467,7 @@ export async function cancelObjectMagic(object, { state = game } = {}) {
     unblessObjectState(object);
     uncurseObjectState(object);
 }
+// Part of C zap.c:cancel_item(): remove a carried item's worn enchantment bonuses.
 function removeWornBonuses(object, state) {
     if (object.where !== 'inventory')
         return;
@@ -1513,6 +1536,7 @@ export async function drainObjectEnchantment(object, { random = rn2, byHero = fa
     }
     return true;
 }
+// Part of C zap.c:drain_item(): subtract one point of a worn item's enchantment bonuses.
 function drainWornBonuses(object, state) {
     const name = OBJ_NAME(object.otyp);
     const worn = object.owornmask ?? 0;
@@ -1592,6 +1616,7 @@ async function polyUse(objects, kind, minimumWeight, state) {
         await delobj(object, state);
     }
 }
+// Part of C zap.c:polyuse(): bill or charge for destroyed shop material.
 async function billDestroyedMaterial(object, state) {
     if (!costlySpot(object.ox, object.oy, state))
         return;
@@ -1785,6 +1810,7 @@ export async function poly_obj(object, id = STRANGE_OBJECT, { state = game } = {
     await delobj(object, state);
     return replacement;
 }
+// Part of C zap.c:poly_obj(): create the replacement and transfer quantity, charges, blessing, erosion, and leash state.
 async function createReplacement(object, id, state) {
     let replacement;
     if (id === STRANGE_OBJECT) {
@@ -1844,6 +1870,7 @@ async function createReplacement(object, id, state) {
     await deleteObjectContents(replacement, state);
     return replacement;
 }
+// Part of C zap.c:poly_obj(): preserve a hero-laid egg and choose a viable hatchling.
 function makeHeroLaidEgg(object, state) {
     if (object.otyp === EGG)
         stopObjectTimers(object, state);
@@ -1859,6 +1886,7 @@ function makeHeroLaidEgg(object, state) {
         }
     }
 }
+// Part of C zap.c:poly_obj(): copy erosion only when the replacement material is vulnerable.
 function copyErosion(source, target, state) {
     if (!erosionMatters(target))
         return;
@@ -1871,6 +1899,8 @@ function copyErosion(source, target, state) {
     if (primary || secondary)
         target.oerodeproof = !!source.oerodeproof;
 }
+// Part of C zap.c:poly_obj(): adjust replacement stacks and class-specific charges or type restrictions.
+// Also C mkobj.c:fixup_oil(): the potion-age and dilution adjustment is inlined here.
 function finishReplacementType(source, target, id, state) {
     if (target.quan > 1 && (!objectMerge(target.otyp)
         || (id === STRANGE_OBJECT && target.quan > rn2(1000))))
@@ -1922,6 +1952,7 @@ function finishReplacementType(source, target, id, state) {
             break;
     }
 }
+// Part of C zap.c:poly_obj(): anger a shopkeeper whose merchandise was transformed.
 async function angerObjectOwner(old, replacement, location, state) {
     const shopRelevant = old.unpaid || (replacement && replacement.where !== 'inventory');
     if (!location || !shopRelevant)
@@ -1943,6 +1974,7 @@ async function angerObjectOwner(old, replacement, location, state) {
             hotPursuitShopkeeper(keeper, state);
     }
 }
+// Port only: require the monster species represented by a corpse, statue, or figurine.
 function representedSpecies(object) {
     if (object.corpsenm === undefined)
         throw new Error(`Object ${object.o_id} has no represented monster species`);
@@ -1996,6 +2028,7 @@ export async function stone_to_flesh_obj(object, { state = game } = {}) {
     await newsym(x, y);
     return affected;
 }
+// Part of C zap.c:stone_to_flesh_obj(): animate a statue or figurine, or fall back to a corpse.
 async function animateStoneObject(object, x, y, golem, state) {
     let species = representedSpecies(object);
     let monster;
@@ -2158,6 +2191,7 @@ export async function hitObjectWithWand(object, wand, { state = game } = {}) {
         learnWand(wand, { state });
     return affected;
 }
+// Part of C zap.c:bhito(): reveal object and container information with probing magic.
 export async function probeObject(object, { state = game } = {}) {
     let learned = !object.dknown;
     observeObject(object, state);
@@ -2171,7 +2205,7 @@ export async function probeObject(object, { state = game } = {}) {
         }
         if (!object.contents?.length)
             await plineWithContinuation(`${definiteObjectAction(object, 'are', state)} empty.`);
-        else if (schroedingersBox(object)) {
+        else if (isQuantumBox(object)) {
             const cat = heroIsHallucinating(state) ? randomDisplayMonsterName() : 'cat';
             await plineWithContinuation(`You aren't sure whether ${name} has ${withIndefiniteArticle(cat)} or its corpse inside.`);
             object.cknown = false;
@@ -2193,6 +2227,7 @@ export async function probeObject(object, { state = game } = {}) {
     }
     return learned;
 }
+// Part of C zap.c:bhito(): polymorph a floor object or destroy it through system shock.
 export async function polymorphFloorObject(object, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
@@ -2219,6 +2254,7 @@ export async function polymorphFloorObject(object, { state = game } = {}) {
     await newsym(replacement.ox, replacement.oy);
     return { affected: true, learned: false };
 }
+// Part of C zap.c:bhito(): revive eggs or corpses hit by undead-turning magic.
 export async function turnObjectWithUndeadMagic(object, state = game) {
     if (object.otyp === EGG) {
         reviveEgg(object, state);
@@ -2242,6 +2278,7 @@ export async function turnObjectWithUndeadMagic(object, state = game) {
     }
     return true;
 }
+// Part of C zap.c:bhito(): report a revived floor corpse and identify observable undead-turning magic.
 async function reviveFloorCorpse(object, state) {
     const x = object.ox, y = object.oy, species = object.corpsenm ?? -1;
     const corpseName = singularObjectName(object, state);
@@ -2479,6 +2516,7 @@ export async function dozap() {
     await finishWandUse(wand);
     game.context.move = 1;
 }
+// Part of C zap.c:dozap(): turn an exhausted, wrested wand to dust.
 async function finishWandUse(wand) {
     if (!wand || wand.spe >= 0)
         return;
@@ -2689,6 +2727,7 @@ export async function zapHeroWithObject(object, { ordinary = true, state = game 
         learnWand(object, { state });
     return { damage: heroDied ? 0 : damage, heroDied };
 }
+// Part of C zap.c:zapyourself(): apply fire, cold, or lightning self-damage and inventory effects.
 async function elementalSelfZap(kind, damageType, memory, resistance, state) {
     const hero = state.u;
     const damage = d(12, 6);
@@ -2721,6 +2760,7 @@ async function elementalSelfZap(kind, damageType, memory, resistance, state) {
         await igniteItems(state.inventory, { state, publish: pline });
     return resisted ? 0 : damage;
 }
+// Part of C zap.c:cancel_monst(): cancel the hero's inventory and polymorphed form.
 export async function cancelHeroMagic(state = game) {
     requirePlayingGame(state);
     for (const object of [...state.inventory]) {
@@ -2742,6 +2782,7 @@ export async function cancelHeroMagic(state = game) {
     else
         await returnHeroToHumanForm(state);
 }
+// Part of C zap.c:zapyourself(): restore flesh to the hero and carried objects, then merge transformed stacks.
 async function restoreFlesh(source, state) {
     if (state.u.umonnum === STONE_GOLEM)
         await polymonHero(FLESH_GOLEM);
@@ -2951,6 +2992,7 @@ async function zapVertically(source, state) {
     }
     return disclose;
 }
+// Part of C zap.c:zap_updown(): affect drawbridges, falling rocks, and floor holes with striking or locking.
 async function strikeOrLockVertically(source, x, y, trap, state) {
     const striking = [WAN_STRIKING, SPE_FORCE_BOLT].includes(source.otyp);
     const { dz = 0 } = state.u, location = state.level.at(x, y);
@@ -3009,6 +3051,7 @@ async function strikeOrLockVertically(source, x, y, trap, state) {
     }
     return false;
 }
+// Part of C zap.c:zap_updown(): describe stone-to-flesh magic directed at the ceiling or floor.
 async function fleshOnTerrain(x, y, state) {
     const { dz = 0 } = state.u;
     if (Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz) || state.underwater || state.u.uinwater
@@ -3023,6 +3066,7 @@ async function fleshOnTerrain(x, y, state) {
             await plineWithContinuation(`Blood ${isLavaAt(x, y, state) ? 'boils' : 'pools'} ${state.u.levitating ? 'beneath' : 'at'} your ${makePlural(body_part(FOOT, state))}.`);
     }
 }
+// Part of C zap.c:zap_updown(): probe the ceiling, floor pile, terrain, and buried inventory.
 async function probeVertically(source, x, y, state) {
     let found = 0;
     if ((state.u.dz ?? 0) < 0)
@@ -3107,6 +3151,7 @@ export async function applyWandEffect(source, { state = game } = {}) {
             addExperience(0, 10, state);
     }
 }
+// Part of C zap.c:weffects(), music.c:do_improvisation(): choose ray type and strength for a spell, wand, or horn.
 // Actual source objects retain spell strength and horn death attribution.
 export async function zapRayWithObject(object, { state = game } = {}) {
     requirePlayingGame(state);
@@ -3226,6 +3271,7 @@ export async function zapMapAt(x, y, source, { state = game } = {}) {
     if (learned)
         learnWand(source, { state });
 }
+// Part of C zap.c:zap_map(): transform, erase, relocate, or soften an engraving.
 async function zapEngraving(x, y, source, state) {
     const engraving = engravingAt(x, y, state.level);
     if (!engraving || engraving.engr_type === HEADSTONE)
@@ -3260,6 +3306,7 @@ async function zapEngraving(x, y, source, state) {
             break;
     }
 }
+// Part of C zap.c:zap_map(): open, close, or destroy a horizontal drawbridge target.
 async function zapDrawbridge(x, y, source, state) {
     const originalType = state.level.requireAt(x, y).typ;
     const bridge = findDrawbridgeAt(x, y, state);
@@ -3291,6 +3338,7 @@ async function zapDrawbridge(x, y, source, state) {
     }
     return false;
 }
+// Port only: compare the port's structured glyph values for probing feedback.
 function sameGlyph(left, right) {
     if (left === right)
         return true;
@@ -3310,6 +3358,7 @@ function sameGlyph(left, right) {
             return glyphCharacter(left) === glyphCharacter(right);
     }
 }
+// Part of C zap.c:zap_map(): reveal terrain, secret doors, corridors, and traps with probing.
 async function probeTerrain(x, y, trap, learned, state) {
     const location = state.level.requireAt(x, y);
     const oldType = location.lastseentyp, oldGlyph = glyphAt(x, y, state);
@@ -3353,6 +3402,7 @@ async function probeTerrain(x, y, trap, learned, state) {
     }
     return learned;
 }
+// Port only: read the character from a structured glyph when present.
 function glyphCharacter(glyph) {
     return glyph && 'ch' in glyph && typeof glyph.ch === 'string' ? glyph.ch : undefined;
 }
@@ -3465,9 +3515,11 @@ async function bhit(source, range, state, flashDirection) {
         await payForShopDamage('destroy', { state });
     return false;
 }
+// Port only: validate ray coordinates against the native map dimensions.
 export function rayPositionIsValid(x, y) {
     return x >= 1 && x < COLNO && y >= 0 && y < ROWNO;
 }
+// Part of C zap.c:dobuzz(), zap.c:bhit(): test traversable zap terrain and closed doors.
 export function rayPositionIsOpen(x, y, state = game) {
     if (!rayPositionIsValid(x, y))
         return false;
@@ -3694,6 +3746,7 @@ async function damageRayMonster(monster, nativeType, dice, { state, publish, ran
         hit.noCorpse = true;
     return hit;
 }
+// Part of C zap.c:maybe_destroy_item(): describe how many items burn, shatter, or explode.
 function destructionMessage(object, damageType, count, quantity, state = game) {
     const one = count === 1;
     const prefix = one ? (quantity === 1 ? '' : 'One of ')
@@ -3718,6 +3771,7 @@ function destructionMessage(object, damageType, count, quantity, state = game) {
     const verb = one ? 'catches fire and burns' : 'catch fire and burn';
     return `${prefix}${name} ${verb}!`;
 }
+// Part of C zap.c:maybe_destroy_item(): choose damage from a destroyed item stack.
 function itemDamage(object, damageType, rollOne) {
     if (damageType === INVENTORY_DAMAGE.COLD)
         return rollOne(4);
@@ -3729,12 +3783,14 @@ function itemDamage(object, damageType, rollOne) {
         return Math.trunc(((object.owt ?? 1) + 19) / 20);
     return 1;
 }
+// Part of C zap.c:destroy_items(): derive the maximum affected stack count from incoming damage.
 function destructionLimit(sourceDamage, random) {
     let limit = Math.trunc(sourceDamage / 5);
     if (sourceDamage % 5 > random(5))
         limit++;
     return Math.max(0, Math.min(MAX_ITEMS_DESTROYED, limit));
 }
+// Part of C zap.c:destroy_items(): choose eligible inventory stacks while maintaining bypass state.
 function chooseStacks(objects, damageType, limit, random, state) {
     const chosen = Array.from({ length: limit }, () => null);
     let eligible = 0;
@@ -3751,6 +3807,7 @@ function chooseStacks(objects, damageType, limit, random, state) {
     }
     return chosen.slice(0, Math.min(eligible, limit)).filter((object) => object !== null);
 }
+// Part of C zap.c:maybe_destroy_item(): consume destroyed items from a monster's stack.
 async function removeMonsterQuantity(monster, object, count, state, publish) {
     const quantity = object.quan ?? object.quantity ?? 1;
     const remaining = quantity - count;
@@ -3762,6 +3819,7 @@ async function removeMonsterQuantity(monster, object, count, state, publish) {
     }
     await destroyObjectFromMonsterInventory(monster, object, state, { publish });
 }
+// Part of C zap.c:destroy_items(): the monster-carried inventory branch, including per-item destruction effects.
 export async function destroyMonsterInventoryByElement(monster, damageType, sourceDamage, { state = game, publish = plineWithContinuation, random = rn2, rollOne = rnd, visible = false, } = {}) {
     const limit = destructionLimit(sourceDamage, random);
     if (!limit)
@@ -3817,8 +3875,9 @@ export async function destroyMonsterInventoryByElement(monster, damageType, sour
     bypassObjectList(monster.minvent ?? monster.inventory ?? [], false, state);
     return damage;
 }
+// Part of C zap.c:zhitm(), zap.c:zhitu(), zap.c:dobuzz(), zap.c:zap_over_floor(): decode the ray's elemental effect from its type.
 // Native ray types encode the source in the tens digit and the effect in
-// units: zap.c decodes the attack type with zaptype(type) % 10 (zap.c:4245,
+// units: zap.c decodes the attack type as zaptype modulo 10 (zap.c:4245,
 // 4788, 5154).
 export function rayDamageType(type) {
     const effects = [AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE,
@@ -3828,6 +3887,7 @@ export function rayDamageType(type) {
         throw new RangeError(`Invalid native ray type ${type}`);
     return damage;
 }
+// Part of C zap.c:zhitm(): select the target monster's resistance for the ray element.
 function rayResistance(monster, damageType, state) {
     if (damageType === AD_MAGM)
         return monsterHasMagicResistance(monster);
@@ -4066,12 +4126,15 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
         return { hit: true, damageType, ...(await applyRayDamage(context, 0, '')) };
     }
 }
+// Port only: invoke hero inventory destruction with fire damage.
 export function destroyFireInventory(sourceDamage, options = {}) {
     return destroyInventoryByElement(INVENTORY_DAMAGE.FIRE, sourceDamage, options);
 }
+// Port only: invoke hero inventory destruction with cold damage.
 export function destroyColdInventory(sourceDamage, options = {}) {
     return destroyInventoryByElement(INVENTORY_DAMAGE.COLD, sourceDamage, options);
 }
+// Port only: invoke hero inventory destruction with electrical damage.
 export function destroyElectricInventory(sourceDamage, options = {}) {
     return destroyInventoryByElement(INVENTORY_DAMAGE.ELECTRIC, sourceDamage, options);
 }
@@ -4082,6 +4145,7 @@ export function heroHasHalfSpellDamage(state = game) {
         || (state.u?.halfSpellDamageTurns ?? 0) > 0
         || heroHasCarriedArtifactFlag('SPFX_HSPDAM', state));
 }
+// Port only: find a breath attack in the hero form's attack metadata.
 export function heroBreathAttack(state = game, damageType = null) {
     const form = heroMonsterForm(state);
     if (form == null)
@@ -4089,16 +4153,19 @@ export function heroBreathAttack(state = game, damageType = null) {
     return (MONSTER_ATTACKS[form] || []).find(([attackType, attackDamage]) => attackType === AT_BREA
         && (damageType == null || attackDamage === damageType)) || null;
 }
+// Part of C zap.c:zhitu(): combine the hero's intrinsic, extrinsic, and artifact ray defenses.
 function heroResistsRay(state, property, element) {
     return !!state.u[property] || propertyIsActive(property, state)
         || heroHasArtifactDefense(element, state);
 }
+// Part of C zap.c:zhitu(): let watching monsters learn or forget the hero's resistance.
 function noteRayResistance(context, resisted) {
     const observe = resisted ? monstersObserveHeroResistance : monstersForgetHeroResistance;
     const damageType = !context.source.endsWith('breath') && context.damageType === AD_DISN
         ? AD_MAGM : context.damageType;
     observe(seenResistanceForDamage(damageType), context.state, (monster) => monsterHasLineOfSightToHero(monster, context.state));
 }
+// Part of C zap.c:zhitu(): apply half spell damage and construct the ray's death attribution.
 async function applyRayDamage(context, damage, name, resisted = false) {
     const { state, publish, die, source, sourceMonster } = context;
     const breath = source.endsWith('breath');
@@ -4114,13 +4181,16 @@ async function applyRayDamage(context, damage, name, resisted = false) {
     const heroDied = await loseHeroHp(damage, killer, { state, publish, die });
     return { resisted, damage, heroDied };
 }
+// Part of C hack.h:BZ_OFS_AD(): map random dragon breath to its effective fire element.
 export function effectiveBreathDamage(damageType) {
     // BZ_OFS_AD(AD_RBRE) maps the Chromatic Dragon's hero breath to fire.
     return damageType === AD_RBRE ? AD_FIRE : damageType;
 }
+// Port only: read a hero armor slot from the game and hero references.
 function wornObject(state, slot) {
     return state[slot] || state.u?.[slot] || null;
 }
+// Port only: show a shield effect at the hero's position.
 function shieldHero(state) {
     return shieldeff(state.u.ux, state.u.uy, state);
 }
@@ -4158,11 +4228,13 @@ export async function burnFloorObjectsAt(x, y, { state = game, giveFeedback = fa
         await repaint(x, y);
     return burned;
 }
+// Part of C zap.c:burn_floor_objects(): select scrolls, books, and green slime globs.
 function floorObjectBurns(object) {
     return object?.otyp === GLOB_OF_GREEN_SLIME
         || object?.oclass === SCROLL_CLASS
         || object?.oclass === SPBOOK_CLASS;
 }
+// Part of C zap.c:burn_floor_objects(): consume burned floor items with hero-caused billing when applicable.
 async function removeBurnedFloorQuantity(object, count, state, heroCaused, publish) {
     const quantity = object.quan ?? object.quantity ?? 1;
     if (!heroCaused && count < quantity) {
@@ -4176,6 +4248,7 @@ async function removeBurnedFloorQuantity(object, count, state, heroCaused, publi
     else
         await delobj(object, state);
 }
+// Part of C zap.c:burn_floor_objects(): describe burned objects with local or distant naming.
 function floorBurnMessage(object, destroyed, state) {
     if (object.ox === state.u.ux && object.oy === state.u.uy)
         observeObjectForNaming(object, { state });
@@ -4249,6 +4322,7 @@ async function disintegrateMonster(monster, state) {
     }
     return { damage: MAGIC_COOKIE, disintegrated: true, noCorpse: true };
 }
+// Port only: find a monster inventory object by worn-slot mask.
 function monsterWornObject(monster, mask) {
     const inventory = monster.minvent || monster.inventory || [];
     return inventory.find(object => ((object.owornmask ?? 0) & mask) !== 0)
@@ -4336,16 +4410,20 @@ export async function dobuzz(nativeType, dice, direction, { state = game, source
         state.bhitpos = savedHitPosition;
     }
 }
+// Port only: look up a ray target in the current level's monster map.
 export function rayMonsterAt(x, y, state = game) {
     return state.level ? monsterAtPosition(state.level, x, y) : null;
 }
+// Part of C zap.c:dobuzz(): test a ray against the target monster's armor class.
 export function rayHitsMonster(monster, random = rn2, rollOne = rnd, { state = game, spellType = 0, } = {}) {
     return zapHit(findMonsterArmorClass(monster), spellType, state, random, rollOne);
 }
+// Part of C zap.c:dobuzz(): test a ray against the hero's armor class.
 export function rayHitsHero(state = game, random = rn2, rollOne = rnd) {
     const armorClass = typeof state.u.uac === 'number' && Number.isFinite(state.u.uac) ? state.u.uac : 10;
     return zapHit(armorClass, 0, state, random, rollOne);
 }
+// Part of C zap.c:dobuzz(): traverse, display, reflect, and bounce a ray across the map.
 export async function runRay({ state = game, direction, range, beamType, originX = state.u.ux, originY = state.u.uy, random = rn2, canSee = (x, y) => cansee(x, y), onCell, stopAtObstacle = false, onObstacle = null, onBounce = async () => undefined, onVanish = async () => undefined, }) {
     let dx = DIRECTION_X[direction] || 0;
     let dy = DIRECTION_Y[direction] || 0;
@@ -4420,6 +4498,7 @@ export async function runRay({ state = game, direction, range, beamType, originX
     }
     return undefined;
 }
+// Port only: flush a ray animation frame and preserve its display cursor.
 export async function captureRayTraversalFrame(state = game) {
     const frameCursor = lastDirtyMapCursor();
     const messageCursor = state._pending_message
@@ -4431,11 +4510,13 @@ export async function captureRayTraversalFrame(state = game) {
         state.nhDisplay?.setCursor(...messageCursor);
     await state.animationFrame?.();
 }
+// Part of C zap.c:dobuzz(): update the temporary beam glyph for the current direction and position.
 export async function paintRayCell(effect, x, y, dx, dy, beamType) {
     const glyph = zapdir_to_glyph(dx, dy, beamType);
     effect.changeGlyph(glyph);
     await effect.draw(x, y);
 }
+// Part of C zap.c:dobuzz(): choose the bounceback chance for stone, mine walls, or other terrain.
 function rayBouncebackChance(valid, location, state) {
     if (!valid || location?.typ === STONE)
         return 10;
@@ -4443,6 +4524,7 @@ function rayBouncebackChance(valid, location, state) {
         return 20;
     return 75;
 }
+// Part of C zap.c:dobuzz(): apply floor effects and dispatch monster or hero hits at one ray square.
 async function hitRayCell({ x, y, dx, dy, remainingRange }, context) {
     const { state, attack, damageType, publish, random, rollDice, rollOne, finishMonsterKill, } = context;
     let floor = { absorbed: false, rangeChange: 0 };
@@ -4525,6 +4607,7 @@ async function hitRayCell({ x, y, dx, dy, remainingRange }, context) {
     }
     return { absorbed: damageType !== AD_DRST && floor.absorbed, rangeChange, reflected };
 }
+// Part of C zap.c:dobuzz(): apply a hero ray inside an engulfer.
 async function hitSwallowingMonster(context) {
     const { state, attack, publish, random, rollDice, rollOne } = context;
     const engulfer = state.u.ustuck;
@@ -4552,6 +4635,7 @@ async function hitSwallowingMonster(context) {
     }
     return { used: true, heroDied: !!state.program_state?.gameover, hits: 1 };
 }
+// Part of C zap.c:dobuzz(): select a monster or occasionally the hero's steed at the ray square.
 function rayTargetAt(x, y, remainingRange, context) {
     const { state, random } = context;
     const monster = rayMonsterAt(x, y, state);
@@ -4565,6 +4649,7 @@ function rayTargetAt(x, y, remainingRange, context) {
         return steed;
     return null;
 }
+// Part of C zap.c:dobuzz(): describe a visible monster reflecting the ray.
 async function showMonsterReflection(monster, context) {
     const { state, publish } = context;
     if (!cansee(monster.mx, monster.my))
@@ -4579,6 +4664,7 @@ async function showMonsterReflection(monster, context) {
     await publish(`But it reflects from ${possessiveName(monsterName(monster, { state }))} ${reflection.noun}!`);
     discoverHeroReflectionSource(reflection, state);
 }
+// Part of C zap.c:dobuzz(): resolve the hero's hit, reflection, near miss, and occupation interruption.
 async function hitHeroOnRay(x, y, rayDx, rayDy, context) {
     const { state, damageType, publish, random, rollOne } = context;
     const canSeeHero = (monster) => monsterHasLineOfSightToHero(monster, state);
@@ -4628,6 +4714,7 @@ async function hitHeroOnRay(x, y, rayDx, rayDy, context) {
     }
     return { hit, reflected, heroDied };
 }
+// Part of C zap.c:dobuzz(): resolve hit messages, rider recovery, disintegration, death, and waking.
 async function finishMonsterRayHit(monster, hit, { state, displayName, finishMonsterKill, publish, random, source = 'hero-breath', deathContext = null, sayHit = true, x, y, }) {
     const visible = canSeeMonster(monster);
     // Native Monnam chooses a fresh hallucinated identity only when a
@@ -4720,6 +4807,7 @@ async function finishMonsterRayHit(monster, hit, { state, displayName, finishMon
         return wakeMonster(monster, { attacked: source.startsWith('hero-') });
     return { heroDied: false };
 }
+// Part of C zap.c:disintegrate_mon(): discard inventory that does not survive disintegration.
 async function destroyDisintegratedMonsterInventory(monster, state, random) {
     const lifeSaver = wornMonsterLifeSaver(monster) ?? null;
     const inventory = [...(monster.minvent || monster.inventory || [])];
@@ -4729,6 +4817,7 @@ async function destroyDisintegratedMonsterInventory(monster, state, random) {
         await destroyObjectFromMonsterInventory(monster, object, state);
     }
 }
+// Part of C zap.c:disintegrate_mon(): test item resistance, quest artifacts, and the worn life-saving amulet.
 function objectSurvivesDisintegration(object, lifeSaver, state, random) {
     if ([BLACK_DRAGON_SCALE_MAIL, BLACK_DRAGON_SCALES]
         .includes(object.otyp))
@@ -4741,10 +4830,12 @@ function objectSurvivesDisintegration(object, lifeSaver, state, random) {
         return true;
     return false;
 }
+// Part of C zap.c:dobuzz(): roll the lightning flash duration before testing blindness resistance.
 async function blindHeroWithLightning({ state, attack, rollDice, publish }) {
     // dobuzz rolls the duration even when flashburn resists blindness.
     await flashBurn(rollDice(attack[2], 50), true, { state, publish });
 }
+// Part of C zap.c:zap_over_floor(): distinguish elemental floor effects and death from disintegration.
 function floorKind(damageType, nativeType) {
     if (damageType === AD_FIRE)
         return 'fire';
@@ -4758,15 +4849,19 @@ function floorKind(damageType, nativeType) {
         return 'acid';
     return 'breath';
 }
+// Port only: read a cell's current sight bit for ray-floor presentation.
 function cellIsVisible(state, x, y) {
     return !state.blind && !!((state.viz_array?.[y]?.[x] ?? 0) & 0x2);
 }
+// Port only: prefix a displayed ray name with its definite article.
 function raySubject(value) {
     return `The ${value}`;
 }
+// Port only: narrow a direction string to a supported ray direction.
 function isRayDirection(value) {
     return value !== undefined && Object.hasOwn(DIRECTIONS, value);
 }
+// Part of C zap.c:flash_str(): select the ordinary ray name from its source and damage type.
 export function realRayName(damageType, kind) {
     const name = names[kind][damageType - 1];
     if (name === undefined)
@@ -4832,6 +4927,7 @@ export async function meltIce(x, y, { announce = plineWithContinuation, message 
         }
     }
 }
+// Part of C zap.c:melt_ice(): find a boulder above the thawing square.
 function floorBoulderAt(x, y) {
     return requireGameLevel(game).objects[x]?.[y]?.find(object => object.otyp === BOULDER);
 }
@@ -4987,6 +5083,7 @@ export async function applyRayFloorFeatures(kind, x, y, state = game, { rayNoun 
     }
     return { absorbed, rangeChange, shopDamage };
 }
+// Part of C zap.c:zap_over_floor(): restart an existing ice-melt timer after a cold hit.
 function firmExistingIce(x, y, state = game) {
     const timer = state.level?.levelTimers?.find(candidate => candidate.x === x && candidate.y === y
         && candidate.kind === LEVEL_TIMER_KIND.MELT_ICE_AWAY);
@@ -4996,10 +5093,12 @@ function firmExistingIce(x, y, state = game) {
     stopLevelTimer(x, y, LEVEL_TIMER_KIND.MELT_ICE_AWAY, state);
     startMeltIceTimer(x, y, remaining, state);
 }
+// Port only: locate a living monster on a liquid-effect square.
 function liquidMonsterAt(x, y, state = game) {
     return state.level?.monsters?.find(monster => monsterHasMapPosition(monster, state) &&
         (monster.mhp ?? 1) > 0 && monster.mx === x && monster.my === y) || null;
 }
+// Part of C zap.c:zap_over_floor(): reveal a hidden swimmer when water freezes or evaporates.
 async function revealStrandedSwimmer(x, y, state = game) {
     const monster = liquidMonsterAt(x, y, state);
     if (!monster || !monster.mundetected
@@ -5008,6 +5107,7 @@ async function revealStrandedSwimmer(x, y, state = game) {
     monster.mundetected = 0;
     await newsym(x, y);
 }
+// Part of C zap.c:zap_over_floor(): freeze water or solidify lava, updating occupants and ice timers.
 async function freezeLiquidAt(x, y, state, publish) {
     const location = state.level?.at(x, y);
     if (!location)
@@ -5094,6 +5194,7 @@ async function freezeLiquidAt(x, y, state, publish) {
     // A visibility reset here would erase an active ray at the hero.
     return -3;
 }
+// Part of C zap.c:zap_over_floor(): create steam, evaporate pools, and resolve newly exposed pits.
 async function evaporatePoolAt(x, y, state, publish, heroCaused) {
     const location = state.level?.at(x, y);
     if (!location || !isPoolAt(x, y, state))
@@ -5139,6 +5240,7 @@ async function evaporatePoolAt(x, y, state, publish, heroCaused) {
     }
     return rangeChange;
 }
+// Part of C zap.c:zap_over_floor(): choose the visible elemental door-destruction message.
 function destroyedDoorMessage(kind) {
     if (kind === RAY_FIRE)
         return 'The door is consumed in flames!';
@@ -5365,6 +5467,7 @@ async function destroyChosenItem(object, damageType, { state, publish, random, r
         await exerciseAttribute(A_STR, false, state);
     return { damage, heroDied };
 }
+// Part of C zap.c:maybe_destroy_item(): determine whether fire or shock resistance prevents item-destruction damage.
 function heroResists(state, damageType) {
     if (heroHasArtifactDefense(damageType, state))
         return true;
@@ -5375,11 +5478,13 @@ function heroResists(state, damageType) {
         return !!(hero.shockResistance);
     return false;
 }
+// Port only: recognize a worn ring through slot references or its worn mask.
 function isWornRing(object, state) {
     return object === state.uleft || object === state.uright
         || object === state.u?.uleft || object === state.u?.uright
         || ((object?.owornmask ?? 0) & W_RING) !== 0;
 }
+// Part of C zap.c:maybe_destroy_item(): protect worn rings from shock with nonmetallic gloves.
 function glovesBlockRingShock(object, state) {
     if (!isWornRing(object, state))
         return false;
@@ -5388,6 +5493,7 @@ function glovesBlockRingShock(object, state) {
         return false;
     return !objectIsMetallic(gloves);
 }
+// Part of C zap.c:maybe_destroy_item(): name the destroyed item responsible for lethal damage.
 function destroyedItemKiller(object, damageType, count) {
     let killer;
     if (damageType === INVENTORY_DAMAGE.COLD)
@@ -5431,6 +5537,7 @@ export async function destroyInventoryByElement(damageType, sourceDamage, { stat
     bypassObjectList(state.inventory, false, state);
     return result;
 }
+// Part of C zap.c:destroy_items(): defer levitation, flight, and form-changing water items.
 function deferHeroItemDestruction(object, state) {
     const property = objectPropertyName(object.otyp);
     return (!!object.owornmask && (property === 'levitation' || property === 'flying'))
@@ -5582,6 +5689,7 @@ export async function makeWish() {
     game.u.ublesscnt = (game.u.ublesscnt || 0) + 50 + rn2(100);
     game.context.move = 0;
 }
+// Part of C zap.c:makewish(): choose the wished object's slipping, dropping, or materializing message.
 function wishDropMessage(object) {
     const hero = game.u;
     const airLevel = Is_airlevel(hero.uz);
@@ -5607,18 +5715,23 @@ export function displayRayName(damageType, kind, { state = game, random = rn2 } 
         return realRayName(damageType, kind);
     return `blast of ${rndHallublast(random)}`;
 }
+// Port only: invoke the shared floor-effect port with fire damage.
 export function applyFireToFloorAt(x, y, state = game) {
     return applyRayFloorFeatures(RAY_FIRE, x, y, state);
 }
+// Port only: test a monster's resistance bits against an elemental mask.
 export function monsterHasElementalResistance(monster, mask) {
     return !!(monsterResistanceBits(monster) & mask);
 }
+// Port only: invoke monster inventory destruction with cold damage.
 export function destroyColdMonsterInventory(monster, sourceDamage, options = {}) {
     return destroyMonsterInventoryByElement(monster, INVENTORY_DAMAGE.COLD, sourceDamage, options);
 }
+// Port only: invoke monster inventory destruction with fire damage.
 export function destroyFireMonsterInventory(monster, sourceDamage, options = {}) {
     return destroyMonsterInventoryByElement(monster, INVENTORY_DAMAGE.FIRE, sourceDamage, options);
 }
+// Port only: expose the ray-damage result without the caller-owned hit aftermath.
 // The numeric result is native zhitm's applied damage, including MAGIC_COOKIE
 // for disintegration. The caller owns death, wake-up, and hit messages.
 export async function hitMonsterWithRay(monster, nativeType, dice, { state = game, publish = plineWithContinuation, random = rn2, rollDice = d, rollOne = rnd, } = {}) {
@@ -5628,14 +5741,17 @@ export async function hitMonsterWithRay(monster, nativeType, dice, { state = gam
     });
     return hit.damage;
 }
+// Port only: find an acid breath attack in the hero form's metadata.
 export function heroAcidBreathAttack(state = game) {
     return heroBreathAttack(state, AD_ACID);
 }
+// Port only: dispatch a directional light ray through the shared beam traversal.
 export async function doBlindingRay(object, { dx, dy }, { state = game } = {}) {
     requireLiveGame(state);
     requirePlayingGame(state);
     return bhit(object, COLNO, state, { x: dx, y: dy });
 }
+// Port only: present a hero-caused corpse revival and its buried-revival effects.
 export async function reviveCorpseForHero(corpse, state = game) {
     const result = await revive(corpse, state, { byHero: true });
     await finishBuriedRevival(result, state);

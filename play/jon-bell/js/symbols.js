@@ -493,7 +493,7 @@ const SYMF_OFF_O = 105, SYMF_OFF_M = 105 + 18, SYMF_OFF_W = 105 + 18 + 61,
  * OBJCLASS and MONSYMS names in defsym.h order, then the SYM_OTH slots.
  * match_sym() scans forward, so the MONSYM S_invisible ('I', idx M+37)
  * shadows the SYM_OTH S_invisible exactly as in C. */
-const LOADSYMS = (() => {
+export const LOADSYMS = (() => {
     const out = [
         { range: SYM_CONTROL, idx: 0, name: 'start' }, { range: SYM_CONTROL, idx: 0, name: 'begin' },
         { range: SYM_CONTROL, idx: 1, name: 'finish' }, { range: SYM_CONTROL, idx: 2, name: 'handling' },

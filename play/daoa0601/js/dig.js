@@ -9,7 +9,7 @@ import { bringLeashedFollowers, leashAttachedToMonster, releaseMonsterLeash, rel
 import { publishMonsterYelp } from './sounds.js';
 import { objectIsHardHelmet } from './do_wear.js';
 import { adjustHeroAlignment, currentAttribute, exerciseAttribute } from './attrib.js';
-import { A_CHA, A_CON, A_INT, A_LAWFUL, A_STR, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align, BEAR_TRAP, COLNO, CORR, COULD_SEE, DBWALL, DB_LAVA, DB_MOAT, DB_UNDER, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_ALTAR, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAILED, DIGCHECK_PASSED, DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_PASSED_PITONLY, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, EXPL_MAGICAL, FOUNTAIN, F_WARNED, HOLE, IN_SIGHT, IRONBARS, IS_ALTAR, IS_DOOR, IS_FURNITURE, IS_GRAVE, IS_OBSTRUCTED, IS_ROOM, IS_STWALL, IS_THRONE, IS_TREE, IS_WALL, Is_airlevel, Is_botlevel, Is_earthlevel, Is_stronghold, Is_waterlevel, KILLED_BY, LANDMINE, LAVAPOOL, MAGIC_PORTAL, MIGR_RANDOM, MM_NOMSG, MON_OFFMAP, MOAT, OBJECT_TIMER_KIND, PIT, POOL, RLOC_NOMSG, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, SHOP_WALL_COST, SINK, STONE, THRONE, TRAPDOOR, TRAP_EXPLODE, TT_BURIEDBALL, TT_INFLOOR, TT_PIT, Upolyd, VIBRATING_SQUARE, W_NONDIGGABLE, is_hole, is_magical_trap, is_pit, xdir, ydir, FOOT, HEAD, STOMACH } from './const.js';
+import { A_CHA, A_CON, A_INT, A_LAWFUL, A_STR, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align, BEAR_TRAP, COLNO, CORR, COULD_SEE, DBWALL, DB_LAVA, DB_MOAT, DB_UNDER, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_ALTAR, DIGCHECK_FAIL_BOULDER, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_OBJ_POOL_OR_TRAP, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_TOOHARD, DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAILED, DIGCHECK_PASSED, DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_PASSED_PITONLY, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, EXPL_MAGICAL, FOUNTAIN, F_WARNED, HOLE, IN_SIGHT, IRONBARS, IS_ALTAR, IS_DOOR, IS_FURNITURE, IS_GRAVE, IS_OBSTRUCTED, IS_ROOM, IS_STWALL, IS_THRONE, IS_TREE, IS_WALL, Is_airlevel, Is_earthlevel, Is_stronghold, Is_waterlevel, KILLED_BY, LANDMINE, LAVAPOOL, MAGIC_PORTAL, MIGR_RANDOM, MM_NOMSG, MON_OFFMAP, MOAT, OBJECT_TIMER_KIND, PIT, POOL, RLOC_NOMSG, ROOM, ROWNO, SCORR, SDOOR, SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, SHOP_WALL_COST, SINK, STONE, THRONE, TRAPDOOR, TRAP_EXPLODE, TT_BURIEDBALL, TT_INFLOOR, TT_PIT, Upolyd, VIBRATING_SQUARE, W_NONDIGGABLE, is_hole, is_magical_trap, is_pit, xdir, ydir, FOOT, HEAD, STOMACH } from './const.js';
 import { isok } from './cmd.js';
 import { currency } from './invent.js';
 import { destroyDrawbridge, findDrawbridgeAt, isIceAt, isLavaAt, isMoatAt, isPoolAt } from './dbridge.js';
@@ -42,7 +42,7 @@ import { MONSTER_GENO, MONSTER_NAME, MONSTER_SIZE } from './monster_data.js';
 import { definiteName, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName, withIndefiniteArticle } from './objnam.js';
 import { BEARTRAP, BOULDER, CORPSE, HEAVY_IRON_BALL, LAND_MINE, LEASH, POT_OIL, ROCK, STATUE } from './object_data.js';
 import { greatestErosion, isAxe, isBimanualObject, isPick, objectIsOrganic } from './object_properties.js';
-import { stopHeroOccupation } from './occupation.js';
+import { stopHeroOccupation } from './allmain.js';
 import { formatFeltMessage, formatHeardMessage, pline, plineWithContinuation } from './pline.js';
 import { heroIsFlying, body_part, mbodypart } from './polyself.js';
 import { altarWrath, desecrateAltar } from './pray.js';
@@ -55,8 +55,8 @@ import { addShopDamage, costlySpot, deleteObject, makeAngryShopkeeper, payForSho
 import { shopkeeperName } from './shknam.js';
 import { hasShopkeeperData } from './shop_types.js';
 import { monsterHasMapPosition } from './steed.js';
-import { randomMonsterRelocation } from './teleport.js';
-import { ceilingName, depth, levelHasCeiling, levelAtDepth, surfaceName } from './dungeon.js';
+import { randomMonsterRelocation, teleportPetVictim } from './teleport.js';
+import { Is_botlevel, ceilingName, depth, levelHasCeiling, levelAtDepth, surfaceName } from './dungeon.js';
 import { CLR_WHITE } from './terminal.js';
 import { scheduleObjectTimer, stopObjectTimer } from './timeout.js';
 import { cansee, monsterHasLineOfSightToHero, unblock_point, vision_note_blocker_change } from './vision.js';
@@ -94,6 +94,8 @@ const DIG_ACTIONS = [
 ];
 // C dig.c d_target[] for "You hit the <target>..." messages.
 const DIG_TARGETS = ['', 'rock', 'statue', 'boulder', 'door', 'tree'];
+// Port only: m_at() lookups with the call sites' MON_AT()/DEADMONSTER()
+// checks.
 function monsterAt(x, y, state) {
     return state.level?.monsters?.find(monster => monsterHasMapPosition(monster, state) &&
         (monster.mhp ?? 1) > 0 && monster.mx === x && monster.my === y) || null;
@@ -155,6 +157,7 @@ export function diggingTimeToHole(state = game) {
         throw new Error('Active digging requires a digging context.');
     return Math.trunc((250 - digging.effort) / 20);
 }
+// Port only: ensures the svc.context.digging record exists.
 export function ensureDiggingContext(state) {
     if (!state.context.digging)
         state.context.digging = {
@@ -165,10 +168,13 @@ export function ensureDiggingContext(state) {
         };
     return state.context.digging;
 }
+// Part of C dig.c:dig(), dig.c:use_pick_axe(): the on_level() digging-context
+// test.
 function onDiggingLevel(digging, state) {
     const uz = state.u.uz;
     return !!uz && digging.level.dnum === uz.dnum && digging.level.dlevel === uz.dlevel;
 }
+// Part of C dig.c:dig(): the memset of svc.context.digging.
 // C memset(&svc.context.digging, 0, ...) after a completed or aborted dig.
 export function clearDiggingContext(state) {
     const digging = state.context?.digging;
@@ -187,10 +193,12 @@ export function clearDiggingContext(state) {
 }
 // weapon.c's abon() lives in weapon.js (heroAttackBonus); dig.c's digmon()
 // reads the same strength/dexterity ladder for digging effort.
+// Part of C dig.c:dig(): the Maybe_Half_Phys() damage halving.
 function maybeHalfPhysical(damage, state) {
     return state.u.halfPhysicalDamage
         ? Math.ceil(damage / 2) : damage;
 }
+// Part of C display.c:feel_newsym(): local copy; the owner is display.ts.
 async function feelNewsym(x, y, state) {
     // C display.c feel_newsym(): blind heroes feel the changed location.
     if (heroIsBlind(state))
@@ -641,22 +649,28 @@ export async function continueHeroDigging(state = game) {
 const S_ZOMBIE = 52;
 const S_MUMMY = 39;
 const MZ_HUGE = 4;
+// Part of C dig.c:dig_check(), dig.c:dighole(): the sobj_at(BOULDER) lookup.
 function boulderAt(x, y, state) {
     return (state.level?.objects?.[x]?.[y] || []).find(object => object.otyp === BOULDER) || null;
 }
+// Part of C dig.c:digactualhole(): the level.objects[x][y] pile accesses.
 function pileAt(x, y, state) {
     return state.level?.objects?.[x]?.[y] || [];
 }
+// Part of C dig.c:dig_check(), dig.c:dighole(): the is_pool_or_lava() test.
 function isPoolOrLava(x, y, state) {
     return isPoolAt(x, y, state) || isLavaAt(x, y, state);
 }
+// Part of C dig.c:digactualhole(): the Levitation || Flying test.
 function heroIsAirborne(state) {
     return !!(state.u?.levitating || state.u?.levitation
         || state.u?.flying);
 }
+// Part of C dig.c:digactualhole(): the flags.verbose gate.
 function verbose(state) {
     return state.flags?.verbose !== false;
 }
+// Part of C dig.c:digactualhole(): align_str() word for the altar message.
 function alignmentWord(alignment) {
     if (alignment > 0)
         return 'lawful';
@@ -1124,26 +1138,6 @@ export async function digActualHole(x, y, madeBy, ttyp, { state = game } = {}) {
         }
     }
 }
-// C teleport.c:teleport_pet(mtmp, FALSE).  A steed never follows; a cursed
-// leash yelps and holds the pet; any other leash goes slack and releases it.
-async function teleportPetVictim(monster, state) {
-    if (monster === state.u?.usteed)
-        return false;
-    if (!monster.mleashed)
-        return true;
-    const leash = leashAttachedToMonster(monster, state);
-    if (!leash) {
-        await releaseMonsterLeash(monster, false, { state });
-        return true;
-    }
-    if (leash.cursed) {
-        await publishMonsterYelp(monster);
-        return false;
-    }
-    await plineWithContinuation('Your leash goes slack.');
-    await releaseMonsterLeash(monster, false, { state });
-    return true;
-}
 // C dig.c:liquid_flow().  The caller has already changed the terrain type.
 export async function liquidFlow(x, y, typ, trap, fillMessage, { state = game } = {}) {
     if (!isPoolOrLava(x, y, state))
@@ -1268,6 +1262,7 @@ export async function digUpGrave(coordinate = null, { state = game } = {}) {
 // ---------------------------------------------------------------------------
 // Liquid which can flow into a newly opened hole (hole)
 // ---------------------------------------------------------------------------
+// Part of C dig.c:fillholetyp(): the is_moat/is_pool/is_lava classification.
 function nearbyTerrain(x, y, state) {
     if (isMoatAt(x, y, state))
         return 'moat';
@@ -1277,6 +1272,7 @@ function nearbyTerrain(x, y, state) {
         return 'lava';
     return null;
 }
+// C dig.c:fillholetyp().
 export function liquidForHole(x, y, state = game, { fillIfAny = false, random = rn2 } = {}) {
     let pools = 0;
     let moats = 0;
@@ -1509,6 +1505,7 @@ export async function zapDigWithObject(_object, { state = game } = {}) {
     if (shopDoor || shopWall)
         await payForShopDamage(shopDoor ? 'destroy' : 'dig into', { state });
 }
+// Part of C dig.c:zap_dig(): piercing an engulfer.
 async function pierceEngulfer(monster, state) {
     if (monsterIsWhirly(monster))
         return;
@@ -1524,6 +1521,7 @@ async function pierceEngulfer(monster, state) {
         ? Math.trunc((monster.mhp + 1) / 2) : 1;
     await expelHero(monster, { state, message: !digesting });
 }
+// Part of C dig.c:zap_dig(): the vertical beam branch (falling rock, hole).
 async function digVertically(state, direction) {
     const hero = state.u;
     if (Is_airlevel(hero.uz) || Is_waterlevel(hero.uz)
@@ -1601,6 +1599,8 @@ async function floodConnectedPits(trap, liquid, state) {
         }
     }
 }
+// Part of C dig.c:adj_pit_checks(), dig.c:pit_flow(): clears the rm.flags
+// union before reuse.
 function clearTerrainFlags(location) {
     location.flags = 0;
     location.doormask = 0;
@@ -1612,6 +1612,7 @@ function clearTerrainFlags(location) {
     location.icedpool = 0;
     location.emptygrave = 0;
 }
+// C mkobj.c:add_to_buried().
 export function addBuriedObject(object, x, y, state = game) {
     if (!object)
         return object;
@@ -1652,6 +1653,7 @@ export async function buryFloorObjectsAt(x, y, state = game, { publish = plineWi
     }
     return buried;
 }
+// C dig.c:bury_an_obj().
 export async function buryObject(object, state = game, { publish = plineWithContinuation, } = {}) {
     const level = requireGameLevel(state);
     if (object === state.uball) {
@@ -1688,12 +1690,14 @@ export async function buryObject(object, state = game, { publish = plineWithCont
     addBuriedObject(object, x, y, state);
     return { outcome: 'buried', next };
 }
+// Port only: drops an object from its floor pile for burial.
 function removeFloorReference(object, state) {
     const pile = state.level?.objects?.[object.ox]?.[object.oy];
     const index = pile?.indexOf(object) ?? -1;
     if (pile && index >= 0)
         pile.splice(index, 1);
 }
+// Part of C dig.c:bury_an_obj(): the ROT_ORGANIC start_timer.
 function scheduleBuriedRot(object, underIce, state) {
     const canRot = underIce
         ? object.oclass === POTION_CLASS
@@ -1768,6 +1772,7 @@ export async function buriedBallToPunishment(state = game) {
     await newsym(x, y);
     return true;
 }
+// C dig.c:mdig_tunnel().
 export async function digMonsterTunnel(monster, state, { random = rn2, rollOne = rnd, publish = plineWithContinuation, } = {}) {
     requireLiveGame(state);
     const pile = rollOne(12);
@@ -1881,16 +1886,19 @@ export async function freeHeroFromBuriedBall(state = game) {
 }
 const GRID_BUG = MONSTER_NAME.indexOf('grid bug');
 const LONG_WORM = MONSTER_NAME.indexOf('long worm');
+// Port only: asserts a chosen direction for use_pick_axe().
 function requirePickAxeDirection(hero) {
     if (hero.dx === undefined || hero.dy === undefined || hero.dz === undefined)
         throw new Error('Using a pick-axe requires a chosen direction.');
 }
+// Port only: bounds-checked levl[x][y] access for digging targets.
 function diggingLocation(x, y, state) {
     const location = requireGameLevel(state).at(x, y);
     if (!location)
         throw new Error(`Digging target (${x}, ${y}) is outside the map.`);
     return location;
 }
+// Part of C uhitm.c:do_attack(): the confused/stunned/hallucinating gate.
 function impaired(state) {
     const hero = state.u;
     return (hero.confused ||
@@ -1933,6 +1941,8 @@ function prepareDiggingDirections(tool, state) {
     }
     return keys.join('').split('\0')[0] ?? '';
 }
+// Part of C shk.c:tended_shop(): the in_rooms(SHOPBASE) resident test
+// reached from do_attack().
 function tendedShopAt(monster, state) {
     const level = requireGameLevel(state);
     return roomsAt(level, monster.mx, monster.my, SHOPBASE).some((roomno) => {
@@ -1941,6 +1951,8 @@ function tendedShopAt(monster, state) {
         return keeper && !keeper.dead && (keeper.mhp ?? 1) > 0;
     });
 }
+// Part of C uhitm.c:do_attack(): the pick-axe attack path; the shared port
+// lives in uhitm.ts.
 async function attackWithTool(tool, monster, attackMonster, payShopkeeper, state, struckAt) {
     const hero = state.u;
     const safe = state.flags?.safe_dog !== false &&
@@ -1991,11 +2003,13 @@ async function attackWithTool(tool, monster, attackMonster, payShopkeeper, state
         await attackMonster(monster, struckAt, verdict);
     return true;
 }
+// Part of C dig.c:use_pick_axe(): the losehp(Maybe_Half_Phys()) wrapper.
 async function hurtHero(amount, killer, state) {
     if (state.u.halfPhysicalDamage)
         amount = Math.trunc((amount + 1) / 2);
     await loseHeroHp(amount, killer, { state, killerFormat: KILLED_BY });
 }
+// Part of C dig.c:use_pick_axe(): striking an undiggable target (web, bars).
 async function strikeUndiggable(tool, x, y, state) {
     const hero = state.u;
     const location = diggingLocation(x, y, state);

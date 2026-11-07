@@ -10,7 +10,7 @@ import {
     quitchars,
 } from './const.js';
 import { game } from './gstate.js';
-import { ATR_INVERSE, ATR_NONE, NO_COLOR } from './terminal.js';
+import { ATR_NONE, NO_COLOR } from './terminal.js';
 import {
     TOPLINE_EMPTY,
     TOPLINE_NEED_MORE,
@@ -89,6 +89,18 @@ export function addtopl(text, state = game) {
     }
     display.setCursor(column, display.cursorRow ?? 0);
     display.clearToEol();
+}
+
+// The physical rows addtopl() above leaves when it writes `text` from column
+// 0: topl_putsym() moves to a new row before column CO-1, so each row holds
+// CO-1 characters.
+export function addtoplRows(text, columns) {
+    const chars = [...String(text)];
+    const width = Math.max(1, columns - 1);
+    const rows = [];
+    for (let start = 0; start < chars.length || !rows.length; start += width)
+        rows.push(chars.slice(start, start + width).join(''));
+    return rows;
 }
 
 // C ref: topl.c update_topl()'s line splitting and byte cursor rules.
@@ -178,6 +190,28 @@ function rememberSuppressedMessage(state, message, columns) {
     if (state.nhDisplay) state.nhDisplay.toplines = toplines;
 }
 
+// C's gt.toplines holds the newlines update_topl() inserts at spaces
+// (topl.c:284-297) only when the line came through update_topl().
+// hooked_tty_getlin() rebuilds it with strcpy() and strcat() on every key
+// (getline.c:80), so redotoplin()'s putsyms() wraps that copy, and the
+// history entry remember_topl() later copies from it, at the terminal edge,
+// splitting words.  JavaScript keeps every top line unsplit and records the
+// last copy getline wrote in state._ttyUnsplitToplines; text equal to that
+// copy is laid out without the update_topl() split.  An entry from an
+// earlier getlin is laid out as an update_topl() line, which differs from C
+// only when it is at least CO bytes long.
+export function toplineRows(text, columns, state = game) {
+    const line = String(text ?? '');
+    if (!line || line !== state._ttyUnsplitToplines)
+        return wrapTtyTopline(line, columns);
+    // topl_putsym() wraps when curx reaches CO - 1.
+    const width = Math.max(1, columns - 1);
+    const rows = [];
+    for (let start = 0; start < line.length; start += width)
+        rows.push(line.slice(start, start + width));
+    return rows;
+}
+
 // C ref: topl.c redotoplin().  Wrapped text invokes more() after painting.
 export async function redotoplin(text, state = game) {
     const display = state.nhDisplay;
@@ -188,7 +222,7 @@ export async function redotoplin(text, state = game) {
     // the same bytes on its terminal.
     state._pending_message = text;
     display.topMessage = text;
-    const lines = wrapTtyTopline(text, display.cols);
+    const lines = toplineRows(text, display.cols, state);
     for (let row = 0; row < lines.length && row < display.rows; ++row) {
         display.setCursor(0, row);
         for (let col = 0; col < lines[row].length && col < display.cols; ++col)
@@ -211,7 +245,11 @@ export async function more(state = game) {
         await dismissPendingTtyMessage(state, {
             alwaysPrompt: true,
             dismissMore: display.dismiss_more ?? 0,
-            promptAttr: state.flags?.standout ? ATR_INVERSE : ATR_NONE,
+            // more() brackets the marker with standoutbeg()/standoutend()
+            // when flags.standout is set. Those write the terminal's SO/SE
+            // strings through xputs(), which recorder patch 006 does not copy
+            // into its capture buffer, so the judged marker has no attribute.
+            promptAttr: ATR_NONE,
             returnResponse: true,
         });
     } finally {
@@ -629,7 +667,8 @@ export async function tty_yn_function(query, resp, def, state = game) {
     state._ttyPreviousMessage = prompt;
 
     // Every key below is the byte readchar() returns, as on the unrestricted
-    // arm; `def` arrives as the one-character string its callers spell.
+    // arm; `def` arrives as the one-character string its callers spell, and
+    // clean_up converts the answer to the same form.
     const defByte = def ? def.charCodeAt(0) : 0;
     let q;
     let doprev = false;
@@ -768,7 +807,9 @@ export async function tty_yn_function(query, resp, def, state = game) {
     }
     display.inread = Math.max(0, display.inread - 1);
     if (display.intr) --display.intr;
-    return q;
+    // C returns `char q`; see js/cmd.js yn_function() for the rule on
+    // answer types.
+    return String.fromCharCode(q & 0xFF);
 }
 
 export function show_topl(text, state = game) {

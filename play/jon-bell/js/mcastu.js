@@ -1335,7 +1335,7 @@ function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 function BZ_VALID_ADTYP(adtyp) { return adtyp >= 1 && adtyp <= 8; }
 function BZ_OFS_AD(adtyp) { return adtyp - 1; }
 /* C hack.h:1486 BZ_M_SPELL(bztyp) = (-10 - (bztyp)): monster spells are NEGATIVE. */
-function BZ_M_SPELL(ofs) { return -10 - ofs; }
+export function BZ_M_SPELL(ofs) { return -10 - ofs; }
 
 // C zap.c:4765 buzz — canonical port in js/zap.js
 export { buzz };

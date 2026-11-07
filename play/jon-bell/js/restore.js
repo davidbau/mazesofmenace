@@ -297,6 +297,9 @@ async function restgamestate(state) {
     game.ga.A_second_hint = 0;
     // decl.c:177 already_found_flag is process-local (save.c omits it).
     game.ga.already_found_flag = 0;
+    /* decl.c:808 gw.wailmsg is process-local (save.c omits it): hack.c:4217's
+     * once-per-50-moves wail throttle starts at 0 in the restoring process. */
+    game.wailmsg = 0;
     game.gb ||= {};
     game.gb.bhitpos = { x: 0, y: 0 };
     game.bhitpos = game.gb.bhitpos;

@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { ANY_TYPE, ANY_SHOP, OROOM, SHOPBASE } from './const.js';
 import { IS_DOOR, SDOOR, isok } from './const.js';
-import { ALTAR, AM_SHRINE, ANTHOLE, BARRACKS, BEEHIVE, BUFSZ, COCKNEST, CORR, COURT, FILL_NORMAL, FODDERSHOP, G_GONE, ICE, IS_ROOM, IS_WALL, In_endgame, LEPREHALL, MORGUE, POOL, ROOM, ROOMOFFSET, SPACE_POS, SWAMP, TEMPLE, THRONE, ZOO } from './const.js'; // relocate-fns
+import { ALTAR, AM_SHRINE, ANTHOLE, BARRACKS, BEEHIVE, BUFSZ, COCKNEST, CORR, COURT, FILL_NORMAL, FODDERSHOP, G_GONE, ICE, IS_ROOM, IS_WALL, In_endgame, LEPREHALL, MORGUE, NO_MM_FLAGS, POOL, ROOM, ROOMOFFSET, SPACE_POS, SWAMP, S_FUNGUS, TEMPLE, THRONE, ZOO } from './const.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { wizard } from './gstate.js'; // relocate-fns
 import { dist2, distmin } from './hacklib.js'; // relocate-fns
@@ -14,7 +14,7 @@ import { mongets } from './m_initweap.js'; // relocate-fns
 import { Inhell, is_ndemon, levelDifficulty, mkclass, mkclassAligned, permonstTemplate, set_malign } from './makemon.js'; // relocate-fns
 import { A_NONE, CHEST, CORPSE, FOOD_CLASS, GOLD_PIECE, LARGE_BOX, LUMP_OF_ROYAL_JELLY, MM_ASLEEP, MM_NOGRP, PM_GHOST, PM_SOLDIER, PM_WRAITH, RANDOM_CLASS, SPBOOK_CLASS, STATUE, S_DEMON, S_GIANT, S_GNOME, S_KOBOLD, S_ORC, S_TROLL, S_VAMPIRE, S_ZOMBIE, WAND_CLASS, _shtypes, add_to_container, del_engr_at, make_grave, makemon, mk_tt_object, mkgold, mkobj, mkobj_at, mksobj, mksobj_at, occupied, topologize, weight } from './mklev.js'; // relocate-fns
 import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
-import { PM_ELECTRIC_EEL, PM_GIANT_EEL, PM_PIRANHA } from './pm.generated.js'; // relocate-fns
+import { PM_COCKATRICE, PM_ELECTRIC_EEL, PM_GIANT_EEL, PM_KILLER_BEE, PM_LEPRECHAUN, PM_PIRANHA, PM_QUEEN_BEE } from './pm.generated.js'; // relocate-fns
 import { priestini } from './priest.js'; // relocate-fns
 import { pushRngLogEntry, rn1, rn2, rnd } from './rng.js'; // relocate-fns
 import { induced_align } from './sp_lev.js'; // relocate-fns
@@ -280,7 +280,7 @@ async function mk_zoo_thronemon(tx, ty) {
         : (i > 5) ? PM_ELVEN_MONARCH
             : (i > 2) ? PM_DWARF_RULER
                 : PM_GNOME_RULER;
-    const mon = await makemon(pm, tx, ty, 0 /* NO_MM_FLAGS */);
+    const mon = await makemon(pm, tx, ty, NO_MM_FLAGS);
     if (mon) {
         mon.msleeping = 1;
         mon.mpeaceful = 0;
@@ -416,13 +416,13 @@ export async function fill_zoo(sroom) {
                     mdat = morguemon();
                     break;
                 case BEEHIVE:
-                    mdat = (sx === tx && sy === ty) ? 5 /* PM_QUEEN_BEE */ : 1 /* PM_KILLER_BEE */;
+                    mdat = (sx === tx && sy === ty) ? PM_QUEEN_BEE : PM_KILLER_BEE;
                     break;
                 case LEPREHALL:
-                    mdat = 63 /* PM_LEPRECHAUN */;
+                    mdat = PM_LEPRECHAUN;
                     break;
                 case COCKNEST:
-                    mdat = 10 /* PM_COCKATRICE  */;
+                    mdat = PM_COCKATRICE;
                     break;
                 case ANTHOLE:
                     mdat = antholemon();
@@ -664,7 +664,7 @@ export function has_upstairs(sroom) {
 }
 
 // C ref: mkroom.c:1051 invalid_shop_shape() — consumes no RNG.
-function invalid_shop_shape(sroom) {
+async function invalid_shop_shape(sroom) {
     const g = game;
     const door = (g.level?.doors ?? [])[sroom.fdoor | 0];
     if (!door)
@@ -681,8 +681,10 @@ function invalid_shop_shape(sroom) {
             }
         }
     }
-    if (insidect < 1)
-        return true; /* C: impossible(...); return TRUE */
+    if (insidect < 1) {
+        await lifecycle_impossible("invalid_shop_shape: no squares inside door?");
+        return true;
+    }
     if (insidect === 1) {
         insidect = 0;
         for (let x = Math.max(insidex - 1, sroom.lx); x <= Math.min(insidex + 1, sroom.hx); x++) {
@@ -731,7 +733,7 @@ async function mkshop() {
         if (has_dnstairs(r) || has_upstairs(r))
             continue;
         if ((r.doorct | 0) === 1 || (ep != null && ep.length <= BUFSZ / 2 && (r.doorct | 0) !== 0)) {
-            if (invalid_shop_shape(r))
+            if (await invalid_shop_shape(r))
                 continue;
             sroom = r;
             break;
@@ -895,11 +897,11 @@ async function mkswamp() {
                         if (!eelct || !rn2(4)) {
                             await makemon(rn2(5) ? PM_GIANT_EEL
                                 : rn2(2) ? PM_PIRANHA : PM_ELECTRIC_EEL,
-                                sx, sy, 0);
+                                sx, sy, NO_MM_FLAGS);
                             eelct++;
                         }
                     } else if (!rn2(4)) { /* swamps tend to be moldy */
-                        await makemon(mkclass(32 /* S_FUNGUS */, 0), sx, sy, 0);
+                        await makemon(mkclass(S_FUNGUS, 0), sx, sy, NO_MM_FLAGS);
                     }
                 }
             }
@@ -944,7 +946,7 @@ export async function mkundead(mm, revive_corpses, mm_flags) {
             if (cc) {
                 /* mkroom.c:469-471 */
                 let otmp;
-                if (!revive_corpses || !(otmp = sobj_at(265 /* CORPSE */, cc.x, cc.y))
+                if (!revive_corpses || !(otmp = sobj_at(CORPSE, cc.x, cc.y))
                     || !(await revive(otmp, false)))
                     await mklev_makemon(mdat, cc.x, cc.y, mm_flags);
             }

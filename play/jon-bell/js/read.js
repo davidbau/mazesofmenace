@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import { reassign, update_inventory } from './inventory_refresh.js';
 import { impossible } from './pline.js';
 import { snuff_light_source, artifact_light, arti_light_radius } from './light.js';
-import { maybe_adjust_light } from './mkobj.js';
+import { maybe_adjust_light, uncurse as uncurse_obj } from './mkobj.js';
 import { end_burn } from './timeout.js';
 import { putmsghistory, getobj_never_mind, obj_to_glyph, msgtype_suppressed } from './display.js';
 import { bot as bot_read } from './botl.js';
@@ -72,6 +72,7 @@ const MAGIC_MARKER = 242;
 const TINNING_KIT = 238;
 const EXPENSIVE_CAMERA = 229;
 const OIL_LAMP = 227;
+const MAGIC_LAMP = 228;
 const BRASS_LANTERN = 226;
 const CRYSTAL_BALL = 231;
 const HORN_OF_PLENTY = 252;
@@ -195,10 +196,6 @@ function cap_spe(obj) {
  * C ref: nethack-c/src/read.c p_glow1/2/3 — no RNG.
  * ---------------------------------------------------------------------------
  */
-function _p_glow_observe(obj) {
-    if (obj && !Blind())
-        observe_object(obj);
-}
 function _p_glow_Blind() {
     return Blind(); /* youprop.h:103 includes !BBlinded (artifact lenses) */
 }
@@ -208,19 +205,16 @@ function _p_glow_color(color) {
 }
 async function p_glow1(obj) {
     /* C read.c:669 */
-    _p_glow_observe(obj);
     await pline(`${Yobjnam2(obj, _p_glow_Blind() ? 'vibrate' : 'glow')} briefly.`);
 }
 async function p_glow2(obj, color) {
     /* C read.c:675-676 */
     const Blind = _p_glow_Blind();
-    _p_glow_observe(obj);
     await pline(`${Yobjnam2(obj, Blind ? 'vibrate' : 'glow')}${Blind ? '' : ' '}${Blind ? '' : _p_glow_color(color)} for a moment.`);
 }
 async function p_glow3(obj, color) {
     /* C read.c:682-684 */
     const Blind = _p_glow_Blind();
-    _p_glow_observe(obj);
     await pline(`${Yobjnam2(obj, Blind ? 'vibrate' : 'glow')} feebly${Blind ? '' : ' '}${Blind ? '' : _p_glow_color(color)} for a moment.`);
 }
 /* ---------------------------------------------------------------------------
@@ -529,7 +523,7 @@ export async function recharge(obj, curse_bless) {
                         }
                         else {
                             await p_glow2(obj, 'amber');
-                            _uncurse(obj); /* C read.c:948 */
+                            await _uncurse(obj); /* C read.c:948 */
                         }
                     }
                     else {
@@ -800,7 +794,7 @@ const NH_BLACK = 1;
 const NH_SILVER = 17;
 const NH_GOLDEN = 18;
 const NH_BLUE = 6;
-const SCROLL_CLASS_OC = 9;
+const SCROLL_CLASS = 9, SCROLL_CLASS_OC = 9;
 
 /* C ref: spell.c:107-114 spellet — letter for spell slot i. */
 function spellet(i) {
@@ -835,8 +829,12 @@ async function topline_more_loop(msg) {
     await flush_screen(1);
     /* Cursor just past end of "--More--" (col = msg.length + 8). */
     set_cursor(full.length, 0);
+    const hist0 = (g._msg_history ||= []).length;
     while (true) {
         const key = await nhgetch();
+        /* C topl.c:209-247 more() re-reads without re-remembering the line: only the
+         * dismissing key lets the message reach history, once. */
+        if (!(key === 32 || key === 10 || key === 13 || key === 27)) g._msg_history.length = hist0;
         if (key === 32 /* space */ || key === 10 /* \n */ ||
             key === 13 /* \r */    || key === 27 /* ESC */) {
             return key;
@@ -885,7 +883,7 @@ export async function doread() {
      * EXCLUDE and not listed.  Build the suggested-letter string by walking the
      * real gi.invent (game.invent), in invent order, collecting the invlet of
      * each readable item.  C ref: invent.c getobj letter-bucket build. */
-    const SCROLL_CLASS = 9, SPBOOK_CLASS_OC = 10;
+    const SPBOOK_CLASS_OC = 10;
     /* objects.h ordinals, resolved by NAME against js/oc_name_data.js
      * (OC_NAME.indexOf('blank paper') === 365 is the SCROLL, lastIndexOf === 407
      * the SPELLBOOK); the two spellbook neighbours agree with js/spell.js:77
@@ -2033,9 +2031,8 @@ function _bless(otmp) {
     otmp.blessed = 1;
     _bc_side_effects(otmp);
 }
-function _uncurse(otmp) {
-    otmp.cursed = 0;                             /* C mkobj.c:1829 */
-    _bc_side_effects(otmp);
+async function _uncurse(otmp) {
+    await uncurse_obj(otmp);                     /* C mkobj.c:1823 incl. lamplit light bracket */
 }
 async function _curse(otmp) {
     if ((otmp.oclass | 0) === COIN_CLASS_OC)
@@ -2213,7 +2210,7 @@ async function seffect_enchant_armor(sobjp) {
             if (!otmp.blessed)
                 _bless(otmp);
         } else if (otmp.cursed) {
-            _uncurse(otmp);
+            await _uncurse(otmp);
         }
         otmp.known = 1;                                 /* C read.c:1244 */
         await setworn(otmp, W_ARM);
@@ -2237,7 +2234,7 @@ async function seffect_enchant_armor(sobjp) {
     else if (sblessed && !otmp.blessed)
         _bless(otmp);
     else if (!scursed && otmp.cursed)
-        _uncurse(otmp);
+        await _uncurse(otmp);
     if (s) {                                            /* C read.c:1270 */
         const oldspe = otmp.spe | 0;
         otmp.spe = oldspe + s;
@@ -2317,7 +2314,7 @@ async function chwepon(otmp, amount) {
                 /* cursed tin opener is wielded in right hand */
                 buf = `Your right ${body_part_fr(HAND_FR)} tingles.`;
             }
-            _uncurse(uwep);
+            await _uncurse(uwep);
         } else {
             buf = `Your ${makeplural(body_part_fr(HAND_FR))} `
                 + `${(amount >= 0) ? 'twitch' : 'itch'}.`;
@@ -2343,7 +2340,7 @@ async function chwepon(otmp, amount) {
             uwep.owt = weight(uwep);
         }
         if (uwep.cursed)
-            _uncurse(uwep);
+            await _uncurse(uwep);
         if (uwep.unpaid)
             await _alter_cost(uwep, 0);
         if (otyp !== STRANGE_OBJECT)
@@ -2405,7 +2402,7 @@ async function chwepon(otmp, amount) {
     uwep.spe = (uwep.spe | 0) + amount;
     if (amount > 0) {
         if (uwep.cursed)
-            _uncurse(uwep);
+            await _uncurse(uwep);
         /* update shop bill to reflect new higher price */
         if (uwep.unpaid)
             await _alter_cost(uwep, 0);
@@ -2562,7 +2559,7 @@ async function seffect_remove_curse(sobj) {
                 } else if (obj.cursed) {
                     if (shop_h2o)
                         await costly_alteration(obj, COST_UNCURS);
-                    _uncurse(obj);                      /* C read.c:1571 */
+                    await _uncurse(obj);                      /* C read.c:1571 */
                     /* C read.c:1575-1576 — a cursed-known item becoming
                      * known-uncursed identifies the scroll. */
                     if (obj.bknown && otyp === SCR_REMOVE_CURSE)
@@ -2576,7 +2573,7 @@ async function seffect_remove_curse(sobj) {
                 await _blessorcurse(obj, 2);
                 obj.bknown = 0;
             } else if (obj.cursed) {
-                _uncurse(obj);
+                await _uncurse(obj);
                 if (!_Blind()) {
                     await pline(`${Yobjnam2(obj, 'glow')} ${hcolor_real('amber')}.`);
                     obj.bknown = _Hallucination() ? 0 : 1;
@@ -2660,13 +2657,13 @@ async function seffect_destroy_armor(sobjp) {
         if (!otmp) {
             await _strange_feeling(sobj, 'Your bones itch.');  /* read.c:1333 */
             sobjp.obj = null;   /* C read.c:1334 — useup() in strange_feeling() */
-            exercise(A_STR, false);                            /* read.c:1335 */
-            exercise(A_CON, false);                            /* read.c:1336 */
+            exercise(A_STR, false);                            /* read.c:1336 */
+            exercise(A_CON, false);                            /* read.c:1337 */
             return;
         }
         const old_erodeproof = ((otmp.oerodeproof | 0) !== 0);
         const new_erodeproof = scursed;
-        otmp.oerodeproof = 0;   /* C read.c:1343 — "for messages" */
+        otmp.oerodeproof = 0;   /* C read.c:1342 — "for messages" */
         await p_glow2(otmp, NH_PURPLE);
         if (old_erodeproof && !new_erodeproof) {
             /* restore old_erodeproof before shop charges */
@@ -2685,7 +2682,7 @@ async function seffect_destroy_armor(sobjp) {
                 otmp.spe = (otmp.spe | 0) + -1;
                 adj_abon(otmp, -1);
             }
-            make_stunned((_HStun() & TIMEOUT) + rn1(10, 10), true); /* read.c:1360 */
+            make_stunned((_HStun() & TIMEOUT) + rn1(10, 10), true); /* read.c:1361 */
         } else if (await disintegrate_arm(otmp)) {
             g._gk_known = true;
             return;
@@ -3483,7 +3480,6 @@ async function seffect_food_detection(sobjp) {
 
 /* C read.c:687-724 charge_ok() — getobj classifier for the object to charge. */
 export function charge_ok(obj) {
-    const MAGIC_LAMP = 228;
     if (!obj) return GETOBJ_EXCLUDE;
     if (obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
     if (obj.oclass === RING_CLASS && obj.otyp >= RIN_BASE && obj.otyp <= RIN_LAST_CHARGED
@@ -3550,12 +3546,17 @@ function can_center_cloud(x, y) {
 }
 
 /* C ref: read.c:1088-1112 display_stinking_cloud_positions */
+const S_goodpos = 87;
+function cmap_to_glyph(cmap_idx) {
+    return (cmap_idx - 78) + 4083;
+}
 function display_stinking_cloud_positions(on_off) {
     const u = game.u;
+    const dist = 6;
     if (on_off) {
-        tmp_at(DISP_BEAM, 4092 /* cmap_to_glyph(S_goodpos) */);
-        for (let dx = -6; dx <= 6; dx++)
-            for (let dy = -6; dy <= 6; dy++) {
+        tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
+        for (let dx = -dist; dx <= dist; dx++)
+            for (let dy = -dist; dy <= dist; dy++) {
                 const x = u.ux + dx, y = u.uy + dy;
                 if (x === u.ux && y === u.uy) continue;
                 if (can_center_cloud(x, y)) tmp_at(x, y);
@@ -3645,7 +3646,7 @@ async function do_stinking_cloud(sobj, mention_stinking) {
         if (_Hallucination())
             await pline('Ugh... someone cut the cheese.');
         else
-            await pline(`${sobj.oclass === SCROLL_CLASS_OC ? 'The scroll crumbles with' : 'You smell'} a whiff of rotten eggs.`);
+            await pline(`${sobj.oclass === SCROLL_CLASS ? 'The scroll crumbles with' : 'You smell'} a whiff of rotten eggs.`);
         return;
     }
     create_gas_cloud(cc.x, cc.y, 15 + 10 * bcsign(sobj), 8 + 4 * bcsign(sobj));
@@ -4138,7 +4139,7 @@ async function seffect_confuse_monster(sobj) {
     const g = game;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    /* C read.c:1401  boolean confused = (Confusion != 0);  `g.Confusion` is a
+    /* C read.c:1404  boolean confused = (Confusion != 0);  `g.Confusion` is a
      * spelling nothing in js/ assigns — see _Confusion() above. */
     const confused = (_Confusion() != 0);
     const altfeedback = (_Blind() || _Invisible());
@@ -4222,7 +4223,7 @@ async function seffect_amnesia(sobj) {
         await pline("Who was that Maud person anyway?");
     else
         await pline("Thinking of Maud you forget everything else.");
-    exercise(2 /* A_WIS */, false);
+    exercise(A_WIS, false);
 }
 
 
@@ -4302,14 +4303,26 @@ const M1_AMORPHOUS_RD = 0x00000004, M1_UNSOLID_RD = 0x00100000; /* monflag.h:87,
 function _amorphous(d) { return ((d.mflags1 | 0) & M1_AMORPHOUS_RD) !== 0; }
 function _unsolid(d) { return ((d.mflags1 | 0) & M1_UNSOLID_RD) !== 0; }
 
-/* C ref: read.c:1020 forget(int howmuch) — forget skills, and (if
+/* C ref: read.c:1020-1040 forget(int howmuch) — forget skills, and (if
  * howmuch & ALL_SPELLS) spells too, after a scroll of amnesia. */
 function forget(howmuch) {
     if (howmuch & ALL_SPELLS)
         losespells();
-    /* C read.c:1029 drain_weapon_skill(rnd(howmuch ? 5 : 3)) — the rnd() is
+    /* C read.c:1031 drain_weapon_skill(rnd(howmuch ? 5 : 3)) — the rnd() is
      * evaluated as drain_weapon_skill's ARGUMENT, before the call. */
     drain_weapon_skill(rnd(howmuch ? 5 : 3));
+
+    /* C read.c:1033-1039: forget having seen monsts */
+    const u = game.u;
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp !== u?.usteed && mtmp !== u?.ustuck)
+            mtmp.meverseen = 0;
+    }
+    const mig = (game.gm && game.gm.migrating_mons !== undefined)
+        ? game.gm.migrating_mons : game.migrating_mons;
+    for (let mtmp = mig; mtmp; mtmp = mtmp.nmon) {
+        mtmp.meverseen = 0;
+    }
 }
 
 
@@ -4475,6 +4488,7 @@ export function show_map_spot(loc, x, y, cnf) {
         unblock_point(x, y); /* C detect.c:1390 */
     }
     const oldCls = loc.disp_cls;
+    const oldRemembered = loc.remembered_glyph;
     const oldGlyph = { ch: loc.disp_glyph_ch ?? loc.disp_ch, color: loc.disp_glyph_color ?? loc.disp_color, decgfx: loc.disp_glyph_decgfx ?? !!loc.disp_decgfx,
                        cls: oldCls, attr: loc.disp_attr | 0,
                        /* the glyph NUMBER carries piletop-ness (MG_OBJPILE) */
@@ -4510,12 +4524,20 @@ export function show_map_spot(loc, x, y, cnf) {
                             objpile_attr(oldGlyph.objpile), oldCls,
                             false, oldGlyph.otyp, oldGlyph.corpsenm, oldGlyph.ttyp, null,
                             oldGlyph.objpile);
-            if (game.level?.flags?.hero_memory)
+            /* lev->glyph = oldglyph keeps the glyph ID: a hallucinated object memory
+             * (random_obj_to_glyph) must not be re-derived from otyp later. */
+            if (game.level?.flags?.hero_memory && oldRemembered && oldRemembered.cls === oldCls
+                && oldRemembered.otyp === oldGlyph.otyp && oldRemembered.ch === oldGlyph.ch)
+                loc.remembered_glyph = oldRemembered;
+            else if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: oldGlyph.ch, color: oldGlyph.color,
                                          decgfx: oldGlyph.decgfx, cls: oldCls,
                                          otyp: oldGlyph.otyp,
                                          objpile: oldGlyph.objpile,
-                                         corpsenm: oldGlyph.corpsenm, ttyp: oldGlyph.ttyp };
+                                         /* null (no species) must read as undefined: a hallucinated
+                                          * rock-class STATUE glyph (display.h random_obj_to_glyph)
+                                          * is told from a real statue by having no corpsenm */
+                                         corpsenm: oldGlyph.corpsenm ?? undefined, ttyp: oldGlyph.ttyp };
         }
     }
     if (!cnf && (loc.roomno | 0) >= ROOMOFFSET)
@@ -4979,12 +5001,14 @@ async function create_particular_creation(d) {
         /* put_saddle_on_mon carries C's can_saddle and existing-saddle guards. */
         if (d.saddled)
             await put_saddle_on_mon(null, mtmp);
+        const M1_HIDE = 0x00000100, M1_CONCEAL = 0x00000080;
+        const S_MIMIC = 13, S_EEL = 57;
         const mflags1 = mtmp.data?.mflags1 | 0;
         const mlet = mtmp.data?.mlet | 0;
         if (d.hidden
-            && (((mflags1 & 0x100) && mlet !== 13) /* is_hider, !S_MIMIC */
-                || ((mflags1 & 0x80) && !!g.level.levelObjects?.[mx]?.[my])
-                || (mlet === 57 && is_pool(mx, my))))
+            && (((mflags1 & M1_HIDE) && mlet !== S_MIMIC) /* is_hider, !S_MIMIC */
+                || ((mflags1 & M1_CONCEAL) && !!g.level.levelObjects?.[mx]?.[my])
+                || (mlet === S_EEL && is_pool(mx, my))))
             mtmp.mundetected = 1;
         if (d.sleeping)
             mtmp.msleeping = 1;

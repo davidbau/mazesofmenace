@@ -66,7 +66,7 @@ import { findgold } from './makemon.js';
 import { droppables } from './dogmove.js';
 import { extract_from_minvent } from './worn.js';
 import { obfree } from './dokick.js';
-import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense, is_quest_artifact as is_quest_artifact_real } from './objnam.js';
+import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense, is_quest_artifact } from './objnam.js';
 import { end_burn } from './timeout.js';
 import { goodpos } from './trap.js';
 import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, touch_artifact_mon } from './mklev.js';
@@ -120,8 +120,8 @@ const ROCK_CLASS = 14; // C objclass.h: boulders and statues
  * else defined it, so dipfountain's fate-28 gold loss (fountain.c:510) could
  * not be ported at all. */
 export function somegold(lmoney) {
-    /* C: LARGEST_INT is the 16-bit-era int cap (global.h); the clamp cannot
-     * fire for any amount this port can hold. */
+    /* C: LARGEST_INT is the 16-bit-era int cap (global.h, 32767); a pile of
+     * that much gold or more is clamped to it, as in C. */
     const LARGEST_INT = 0x7fff;
     let igold = (lmoney >= LARGEST_INT) ? LARGEST_INT : (lmoney | 0);
     if (igold < 50)
@@ -526,8 +526,7 @@ export async function rloco(obj) {
  * non-special minvent node.  Imported from js/zap.js at the head of this file;
  * see the note there for why the zap body and not js/dogmove.js's. */
 
-/* artifact.c: quest artifact predicate — use objnam.js's role-aware body. */
-function is_quest_artifact(obj) { return is_quest_artifact_real(obj); }
+/* artifact.c: quest artifact predicate — imported from objnam.js */
 
 
 

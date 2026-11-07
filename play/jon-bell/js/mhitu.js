@@ -84,7 +84,7 @@ import { make_slimed } from './potion.js';
 import { polymon as polymon_polyself, polyself as polyself_real } from './polyself.js';
 /* C end.c:1023 done(), run at C's own position inside the attack loop. */
 import { drain_pending_death_in_place } from './fastforward.js';
-import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, PROTECTION, W_AMUL, MM_IGNOREWATER, MM_IGNORELAVA, } from './const.js';
+import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, COLD_RES as COLD_RES_MGP, DISINT_RES as DISINT_RES_MGP, SHOCK_RES as SHOCK_RES_MGP, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, PROTECTION, W_AMUL, MM_IGNOREWATER, MM_IGNORELAVA, } from './const.js';
 /* C exper.c:207 losexp(drainer) — mhitm_ad_drli's hero-defender arm. */
 import { losexp } from './exper.js';
 /* C attrib.c:509 exercise(i, incr) — mhitm_ad_phys_u's AT_HUGS "already
@@ -150,7 +150,7 @@ import { mksobj, split_mon_ml as split_mon, WEAPON_CLASS, TOOL_CLASS } from './m
 /* C mthrowu.c:190 drop_throw -> stackobj(obj) (mkobj.c:2170). */
 import { stackobj } from './sp_lev.js';
 import { worm_move } from './worm.js';
-import { nomul, unmul, stop_occupation as real_stop_occupation } from './allmain.js';
+import { nomul, unmul, stop_occupation } from './allmain.js';
 import { night, midnight } from './calendar.js';
 import { is_were as is_were_real, new_were as new_were_real,
          were_summon as were_summon_real, set_ulycn as set_ulycn_real } from './were.js';
@@ -176,7 +176,7 @@ import { ureflects as ureflects_mm } from './makemon.js';
  * by filename; the mhitm.js one is the real body. */
 import { poly_when_stoned as poly_when_stoned_mh } from './mondata.js';
 /* C timeout.c:955-980 fall_asleep(how_long,wakeup_msg) — RNG-free. */
-import { fall_asleep as fall_asleep_to } from './timeout.js';
+import { fall_asleep } from './timeout.js';
 /* C mondata.c:1557-1568 monstseesu(seenres) — RNG-free. The real port lives
  * in js/mcastu.js (which already imports mdamageu FROM this file, so this
  * closes an existing cycle rather than opening a new one). js/mhitm.js also
@@ -218,7 +218,8 @@ import { Is_waterlevel as Is_waterlevel_mu, Is_airlevel as Is_airlevel_mu, LEVIT
 import { observe_object as observe_object_mu } from './o_init.js';
 import { hold_another_object } from './invent.js';
 import { dropy } from './do.js';
-import { LAST_REAL_GEM, LAST_GLASS_GEM } from './objclass_ranges.js';
+import { LAST_REAL_GEM, LAST_GLASS_GEM, CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING,
+         SPE_BOOK_OF_THE_DEAD } from './objclass_ranges.js';
 /* C objnam.c:2424 simpleonames(obj) — minimal_xname made plural for quan>1.
  * RNG-free; C evaluates it twice in the u_catch_thrown_obj call, once per
  * argument, so calling it once and reusing the string is faithful. */
@@ -302,7 +303,7 @@ import { W_ARMG as W_ARMG_MU } from './const.js';
  * must use the REAL vision test, so import it under an alias rather than let
  * the stub shadow it; the gaze arms are left on the stub, out of scope here. */
 import { couldsee as couldsee_mu } from './vision.js';
-import { dist2, s_suffix } from './hacklib.js';
+import { dist2, s_suffix, strsubst } from './hacklib.js';
 import { acurr } from './attrib.js';
 import { weight as weight_mu } from './weight.js';
 import { calc_capacity } from './hack.js';
@@ -408,13 +409,6 @@ function resists_blnd(mon) { return resists_blnd_real_mu(mon); }
 // overflowed 71 columns, and the resulting --More-- chain ate the next 500
 // recorded keys.
 //
-// The 'studying' arm keeps its emit-only shape verbatim (its deferred clear is
-// coordinated with stop_occupation_learn in js/allmain.js via g._studyStopMsg,
-// other occupation gets C's whole function, which is what this file should have
-// been calling all along.
-async function stop_occupation() {
-    await real_stop_occupation();
-}
 function DEADMONSTER(mon) { return !!(mon && mon.mhp <= 0); }
 /* make_confused's C home is potion.c:88; this used to be an EXPORTED empty body
  * and it was the copy js/potion.js and js/spell.js imported, so every store any
@@ -427,7 +421,6 @@ import { make_stunned } from './potion.js';
 export function make_blinded(dur, vis) {
     return make_blinded_real_mu(dur, vis);
 }
-async function fall_asleep(dur, vis) { return await fall_asleep_to(dur, vis); }
 const u_slow_down = u_slow_down_uh;
 /* mdamageu — C ref: nethack-c-v5/upstream/src/mhitu.c:1902-1927.
  * Apply n points of damage to the hero. No RNG consumed (showdamage is
@@ -908,15 +901,10 @@ export function noattacks_mndx(mndx) {
  * passivemm's "find first AT_NONE slot" loop. */
 export function mon_mattk_raw(mndx) {
     /* C mon.c:5922-5961 adj_erinys mutates this species' attacks in mons[].
-     * Read the shared mutable row, including newly enabled attack slots. */
+     * Read the shared mutable row (_KB_MATTK IS monKbMattkPack.mattk, the
+     * object rows attrib.js mutates), including newly enabled attack slots. */
     if (mndx === PM_ERINYS)
         return _KB_MATTK[mndx].map(a => [a.aatyp, a.adtyp, a.damn, a.damd]);
-    /* C mon.c:5935-5960 adj_erinys mutates mons[PM_ERINYS].mattk.
-     * attrib.js applies those changes to the shared object rows; read them
-     * live rather than using this module's initial attack tuples. */
-    if (mndx === PM_ERINYS)
-        return monKbMattkPack.mattk[mndx].map(
-            (a) => [a.aatyp, a.adtyp, a.damn, a.damd]);
     const row = (mndx >= 0 && mndx < MON_MATTK.length) ? MON_MATTK[mndx] : 0;
     return row ? row : null;
 }
@@ -1529,14 +1517,16 @@ function hurtle_u(dx, dy, range) {
 function mon_give_prop_mu(mtmp, prop) {
     let msg = null, intrinsic = 0;
     switch (prop) {
-    case 1: msg = "%s shivers slightly."; intrinsic = 0x01; break;
-    case 2: msg = "%s looks quite warm."; intrinsic = 0x02; break;
-    case 3: msg = "%s looks wide awake."; intrinsic = 0x04; break;
-    case 4: msg = "%s looks very firm."; intrinsic = 0x08; break;
-    case 5: msg = "%s crackles with static electricity."; intrinsic = 0x10; break;
-    case 6: msg = "%s looks healthy."; intrinsic = 0x20; break;
-    default: return;
+    case FIRE_RES_MU: msg = "%s shivers slightly."; break;
+    case COLD_RES_MGP: msg = "%s looks quite warm."; break;
+    case SLEEP_RES_MU: msg = "%s looks wide awake."; break;
+    case DISINT_RES_MGP: msg = "%s looks very firm."; break;
+    case SHOCK_RES_MGP: msg = "%s crackles with static electricity."; break;
+    case POISON_RES_MU: msg = "%s looks healthy."; break;
+    default: return; /* can't give it */
     }
+    /* prop.h res_to_mr(r): MR_* bit for FIRE_RES..STONE_RES. */
+    intrinsic = (FIRE_RES_MU <= prop && prop <= STONE_RES_MU) ? (1 << (prop - 1)) : 0;
     const ptr = mtmp.data || {};
     if (((ptr.mresists | 0) | (mtmp.mintrinsics | 0)) & intrinsic)
         msg = null;
@@ -2186,18 +2176,19 @@ async function worn_item_removal(mon, obj) {
                       : objbuf.startsWith('a ') ? 2
                         : 0;
     if (strip_art) {
-        /* C:305 — "an iron chain (attached to you)" becomes "the ...", not
+        /* C:313 — "an iron chain (attached to you)" becomes "the ...", not
          * "your ...", when the caller passed uchain. */
         objbuf = ((obj === g.u.uchain) ? 'the ' : 'your ') + objbuf.slice(strip_art);
     }
     objbuf = objbuf.replace(' (being worn)', '');
     objbuf = objbuf.replace(' (alternate weapon; not wielded)', '');
-    /* C:319-322 — strsubst(p + 2, "on", "from"), i.e. only the "on" that opens
-     * a "(on left hand)" / "(on right hand)" suffix. */
-    const p = objbuf.indexOf(' (on ');
+    /* C:316-318 — p = strstri(objbuf, " (on ") is CASE-INSENSITIVE, then
+     * strsubst(p + 2, "on", "from") replaces the first case-sensitive "on"
+     * at or after p + 2. */
+    const p = objbuf.toLowerCase().indexOf(' (on ');
     if (p >= 0 && (objbuf.startsWith('left ', p + 5)
                    || objbuf.startsWith('right ', p + 5)))
-        objbuf = objbuf.slice(0, p + 2) + 'from' + objbuf.slice(p + 4);
+        objbuf = objbuf.slice(0, p + 2) + strsubst(objbuf.slice(p + 2), 'on', 'from');
 
     const verb = ((obj.owornmask | 0) & W_WEAPONS_MU) ? 'disarms'
                : ((obj.owornmask | 0) & W_ACCESSORY_MU) ? 'removes'
@@ -2208,27 +2199,8 @@ async function worn_item_removal(mon, obj) {
     await remove_worn_item_mu(obj, true);
 }
 
-/* C apply.c:711-724 — a leash which is stolen is detached from its pet before
- * the object leaves the hero's inventory.  `leashmon` is the object's
- * corpsenm alias; the monster list is the authoritative place to clear the
- * matching mleashed bit.  This is deliberately synchronous: steal() is called
- * from the synchronous monster attack path, and update_inventory() is the
- * corresponding synchronous C routine. */
-function o_unleash_mu(otmp) {
-    if (!otmp)
-        return;
-    const leashmon = otmp.leashmon | 0;
-    if (leashmon) {
-        for (let m = game.fmon; m; m = m.nmon) {
-            if ((m.m_id | 0) === leashmon) {
-                m.mleashed = 0;
-                break;
-            }
-        }
-    }
-    otmp.leashmon = 0;
-    update_inventory();
-}
+/* C steal.c:494 o_unleash() is apply.c:711's, ported in js/apply.js. */
+import { o_unleash } from './apply.js';
 
 async function steal(mtmp, objnambuf) {
     const g = game, u = g.u;
@@ -2379,7 +2351,7 @@ async function steal(mtmp, objnambuf) {
     if (otmp.otyp === LEASH_MU && otmp.leashmon) {
         if (monkey_business && otmp.cursed)
             return cant_take();
-        o_unleash_mu(otmp);
+        o_unleash(otmp);
     }
 
     const was_doffing = doffing_mu(otmp);
@@ -2523,8 +2495,10 @@ export async function stealarm_mu() {
             for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
                 if (mtmp.m_id !== g.stealmid)
                     continue;
-                if (DEADMONSTER(mtmp))
-                    break;
+                if (DEADMONSTER(mtmp)) {
+                    await impossible_breath('stealarm(): dead monster stealing');
+                    break; /* C: goto botm */
+                }
                 if (!dmgtype(mtmp.data, AD_SITM_) || mdistu(mtmp) > 2)
                     break;
                 if (otmp.unpaid) {
@@ -2532,7 +2506,7 @@ export async function stealarm_mu() {
                     await subfrombill_real(otmp, shops.length ? shop_keeper_real(shops[0]) : null);
                 }
                 freeinv_mu(otmp);
-                pline(`${Monnam(mtmp)} steals ${await doname_mu(otmp)}!`);
+                await pline(`${Monnam(mtmp)} steals ${await doname_mu(otmp)}!`);
                 await mpickobj_mu(mtmp, otmp);
                 await monflee(mtmp, 0, false, false);
                 if (!tele_restrict_mu(mtmp))
@@ -2549,6 +2523,10 @@ export async function stealarm_mu() {
 /* C ref: steal.c:688-766 stealamulet(mtmp) — AD_SAMU (the Wizard and quest
  * nemeses).  Targets any quest artifact (obj.h:271 oartifact >= 21), else the
  * Amulet / Bell / Book / Candelabrum the hero carries. */
+const AMULET_OF_YENDOR_MU = 213;      /* objects.h AMULET(), LAST_AMULET */
+const FAKE_AMULET_OF_YENDOR_MU = 212; /* the slot before AMULET_OF_YENDOR */
+const BELL_MU = 255;                  /* objects.h TOOL() BELL (js/mklev.js BELL) */
+const M1_TPORT_MU = 0x02000000;       /* monflag.h:110 */
 async function stealamulet_mu(mtmp) {
     const g = game;
     const isQA = (o) => (o.oartifact | 0) >= 21; /* ART_ORB_OF_DETECTION */
@@ -2562,10 +2540,10 @@ async function stealamulet_mu(mtmp) {
     }
     if (!otmp) {
         const uh = g.u?.uhave || {};
-        if (uh.amulet) { real = 213; fake = 212; }
-        else if (uh.bell) { real = 263; fake = 255; }
-        else if (uh.book) { real = 409; }
-        else if (uh.menorah) { real = 262; }
+        if (uh.amulet) { real = AMULET_OF_YENDOR_MU; fake = FAKE_AMULET_OF_YENDOR_MU; }
+        else if (uh.bell) { real = BELL_OF_OPENING; fake = BELL_MU; }
+        else if (uh.book) { real = SPE_BOOK_OF_THE_DEAD; }
+        else if (uh.menorah) { real = CANDELABRUM_OF_INVOCATION; }
         else return;
         const match = (o) => (o.otyp | 0) === real
             || ((o.otyp | 0) === fake && fake && !mtmp.iswiz);
@@ -2600,8 +2578,8 @@ async function stealamulet_mu(mtmp) {
     freeinv_mu(otmp);
     const buf = await doname_mu(otmp);
     await mpickobj_mu(mtmp, otmp);
-    pline(`${Some_Monnam_mu(mtmp)} steals ${buf}!`);
-    if (((mtmp.data?.mflags1 | 0) & 0x02000000) /* M1_TPORT: can_teleport */
+    await pline(`${Some_Monnam_mu(mtmp)} steals ${buf}!`);
+    if (((mtmp.data?.mflags1 | 0) & M1_TPORT_MU) /* can_teleport(mtmp->data) */
         && !tele_restrict_mu(mtmp))
         await rloc(mtmp, RLOC_MSG_MU);
     encumber_msg_mu();
@@ -2610,40 +2588,9 @@ async function stealamulet_mu(mtmp) {
 /* C ref: steal.c:165-208 stealarm(void) — the afternmv continuation scheduled by
  * steal()'s armor arm (steal.c:556-560) once the undressing countdown ends. */
 export async function stealarm() {
-    const g = game;
-    if (g.stealoid && g.stealmid) {
-        let nextobj;
-        for (let otmp = g.invent; otmp; otmp = nextobj) {
-            nextobj = otmp.nobj;
-            if (otmp.o_id === g.stealoid) {
-                for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-                    if (mtmp.m_id === g.stealmid) {
-                        if (DEADMONSTER(mtmp)) {
-                            /* C impossible("stealarm(): dead monster stealing") */
-                            break;
-                        }
-                        if (!dmgtype(mtmp.data, AD_SITM_)
-                            || mdistu(mtmp) > 2)
-                            break;
-                        if (otmp.unpaid) {
-                            const shops = g.u?.ushops || '';
-                            await subfrombill_real(otmp, shops.length ? shop_keeper_real(shops[0]) : null);
-                        }
-                        freeinv_mu(otmp);
-                        pline(`${Monnam(mtmp)} steals ${(await doname_mu(otmp))}!`);
-                        await mpickobj_mu(mtmp, otmp);
-                        await monflee(mtmp, 0, false, false);
-                        if (!tele_restrict_mu(mtmp))
-                            await rloc(mtmp, RLOC_MSG_MU);
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-    }
-    g.stealoid = g.stealmid = 0;
-    return 0;
+    /* One C stealarm(); the body is stealarm_mu() above (allmain.js reaches
+     * the afternmv continuation under both names). */
+    return stealarm_mu();
 }
 
 export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
@@ -2855,10 +2802,10 @@ async function mhitm_ad_poly_u(mtmp, mattk, mhm) {
                     await pline('You are subjected to a freakish metamorphosis.');
                     await polyself_real(0);
                 } else if (u.umonnum !== u.ulycn) {
-                    await pline('You feel an unnatural urge coming on.');
+                    await You_feel_mu('an unnatural urge coming on.');
                     await you_were();
                 } else {
-                    await pline('You feel a natural urge coming on.');
+                    await You_feel_mu('a natural urge coming on.');
                     await you_unwere(false);
                 }
                 mhm.damage = 0;
@@ -5757,7 +5704,7 @@ async function gulpmu(mtmp, mattk) {
                           : enfolds_gu(mndx) ? 'folds itself around you'
                             : 'engulfs you'}!`);
         }
-        await real_stop_occupation();
+        await stop_occupation();
         /* C: reset_occupations() — "behave as if you had moved". */
         reset_occupations();
         if (u.utrap | 0) { /* C mhitu.c:1352-1355 */
@@ -6001,7 +5948,7 @@ async function gulpmu(mtmp, mattk) {
             return M_ATTK_HIT;
     }
     if (tmp)
-        await real_stop_occupation();
+        await stop_occupation();
 
     if (!(u.uswallow | 0)) {
         ; /* life-saving has already expelled swallowed hero */
@@ -7128,7 +7075,7 @@ export async function expels(mtmp, data, flag) { return expels_gu(mtmp, data?.pm
 
 export function mtrapped_in_pit(magr) {
     let ttmp = null;
-    if (magr && (magr === game.youmonst || magr === game.u || magr.m_id === 1)) {
+    if (magr && (magr === game.youmonst || magr === game.u || is_youmonst_mu(magr))) {
         const u = game.u || {};
         ttmp = ((u.utrap | 0) && (u.utraptype | 0) === TT_PIT)
             ? t_at(u.ux | 0, u.uy | 0) : null;

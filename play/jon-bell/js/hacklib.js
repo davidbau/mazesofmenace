@@ -554,13 +554,9 @@ export function strncmpi(s1, s2, n) {
 // ── Helper: chrcasecpy / strcasecpy (C hacklib.c) ────────────────────────────
 // chrcasecpy: return src char with the case of dst char (when both alphabetic).
 export function chrcasecpy(oc, ic) {
-    // C: if oc is uppercase letter and ic lowercase -> highc(ic);
-    //    if oc is lowercase letter and ic uppercase -> lowc(ic); else ic.
-    const ocl = letter(oc), icl = letter(ic);
-    if (ocl && icl) {
-        if (highc(oc) === oc) return highc(ic); // dst upper -> upper
-        if (lowc(oc) === oc) return lowc(ic);   // dst lower -> lower
-    }
+    // C hacklib.c:300-317 uses ASCII case ranges.  letter() also accepts
+    if (oc >= 'a' && oc <= 'z') return lowc(ic);
+    if (oc >= 'A' && oc <= 'Z') return highc(ic);
     return ic;
 }
 

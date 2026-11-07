@@ -44,7 +44,8 @@ import { config_error_add } from './cfgfiles.js';
 import { OC_USES_KNOWN } from './mklev.js';
 import { ARTILIST, quest_info, simple_typename } from './objnam.js';
 import { ARTI_PROPS, ARTI_GIFT_ROLE } from './wizcmds.js';
-import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
+import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, BUFSZ } from './const.js';
+import { update_inventory } from './inventory_refresh.js';
 import { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, OCLASS_NAME, INV_ORDER, align_str } from './cmd.js';
 
 /* C ref: include/objects.h:80-108 — MARKER(FIRST_OBJECT, LAST_GENERIC + 1),
@@ -87,6 +88,7 @@ const EMERALD = 445;
 const TURQUOISE = 446;
 const AQUAMARINE = 448;
 const FLUORITE = 457;
+const SLIME_MOLD = 285;
 /* C o_init.c:54-81 — setgemprobs(d_level *dlev)
  * Level-dependent gem probability reset.  dlev==null means lev=0 (game init).
  * Mutates MKOBJ_OC_PROB and MKOBJ_OCLASS_PROB_TOTALS in place to mirror the
@@ -250,6 +252,10 @@ function shuffle(N, descrIdx) {
         const sw = descrIdx[j];
         descrIdx[j] = descrIdx[i];
         descrIdx[i] = sw;
+        /* C o_init.c:134-136 swaps oc_tough here too.  Only RING() rows carry
+         * a nonzero tuf bit (objects.h:736-739 HARDGEM(mohs)); every other
+         * shuffled range has tuf=0, so shuffle_all() applies the permutation
+         * to game._objTough for the RING range only. */
     }
 }
 /* Runtime oc_tough values are shuffled with descriptions by C's shuffle().
@@ -303,8 +309,8 @@ export function shuffle_all() {
     /* Runtime objects[].oc_material after shuffle.  C o_init.c:141-146 swaps
      * oc_material in lockstep with oc_descr_idx, but ONLY when shuffle()'s
      * `domaterial` argument is TRUE — which shuffle_all passes for the whole
-     * CLASS ranges and NOT for the four armor sub-type ranges (o_init.c:330 vs
-     * :343).  So the material travels with the description exactly as the colour
+     * CLASS ranges and NOT for the four armor sub-type ranges (o_init.c:339 vs
+     * :344).  So the material travels with the description exactly as the colour
      * does, and DOMATERIAL below is that TRUE/FALSE split, not a guess.
      *
      * RNG-neutral: the swap consumes no draws.  Read it through the runtime map
@@ -433,11 +439,13 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered, credi
             const A_WIS = 2;
             if (credit_hero)
                 exercise(A_WIS, true);
-            /* C o_init.c:486-489: !in_moveloop => initial inventory,
+            /* C o_init.c:486-491: !in_moveloop => initial inventory,
              * gameover => final disclosure */
-            if ((g.program_state?.in_moveloop | 0) && !g.program_state?.gameover
-                && (MKOBJ_OC_CLASS[oindx | 0] | 0) === 13 /* GEM_CLASS */)
-                gem_learned(oindx); /* could affect price of unpaid gems */
+            if ((g.program_state?.in_moveloop | 0) && !g.program_state?.gameover) {
+                if ((MKOBJ_OC_CLASS[oindx | 0] | 0) === GEM_CLASS)
+                    gem_learned(oindx); /* could affect price of unpaid gems */
+                update_inventory();
+            }
         }
         if (trace)
             pushRngLogEntry(`^discover_state[otyp=${oindx | 0} class=${oclass} added=${list.includes(oindx) ? 1 : 0}`
@@ -471,9 +479,9 @@ export async function undiscover_object(oindx) {
     if (at >= 0)
         list.splice(at, 1);
     else
-        await impossible('named object not in disco'); // C o_init.c:517
+        await impossible('named object not in disco'); // C o_init.c:518
     /* C o_init.c:520-521 */
-    if ((MKOBJ_OC_CLASS[idx] | 0) === 13 /* GEM_CLASS */)
+    if ((MKOBJ_OC_CLASS[idx] | 0) === GEM_CLASS)
         gem_learned(idx); /* ok, it's actually been unlearned */
 }
 
@@ -639,7 +647,7 @@ function sortloot_descr(otyp) {
     const oclass = MKOBJ_OC_CLASS[otyp];
     const obj = { otyp, oclass, dknown: 1,
         known: game._oc_name_known?.[otyp] || !OC_USES_KNOWN[otyp] ? 1 : 0,
-        corpsenm: -1, spe: otyp === 285 ? game.context.current_fruit : 0 };
+        corpsenm: -1, spe: otyp === SLIME_MOLD ? game.context.current_fruit : 0 };
     const { subclass, disco } = _sortloot_classify(obj);
     const order = game.flags.sortpack ? (game.flags.inv_order || INV_ORDER)
         : [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16];
@@ -652,15 +660,15 @@ function sortloot_descr(otyp) {
 // player-assigned name must be truncated to fit BUFSZ, then append the quote.
 function disco_append_typename(buf, dis) {
     const typnm = _disco_typename(dis);
-    if (buf.length + typnm.length < 256) {
+    if (buf.length + typnm.length < BUFSZ) {
         buf += typnm;
     } else {
         const p = typnm.lastIndexOf('(');
         if (p > 0 && typnm[p - 1] === ' ' && typnm.indexOf(')', p) >= 0) {
             const suffix = typnm.slice(p - 1);
-            buf += typnm.slice(0, 255 - buf.length - suffix.length) + suffix;
+            buf += typnm.slice(0, BUFSZ - 1 - (buf.length + suffix.length)) + suffix;
         } else {
-            buf += typnm.slice(0, 255 - buf.length);
+            buf += typnm.slice(0, BUFSZ - 1 - buf.length);
         }
     }
     return _disco_append_price_quote(buf, dis);
@@ -674,13 +682,11 @@ export function discovery_line(dis, buf = game._oc_encountered?.[dis] ? '  ' : '
 
 // C o_init.c:740-760.  Arrays stand in for putstr's destination window and
 // the owned sorted_lines vector; draining it models the C free/reset loop.
-export function disco_output_sorted(lines, sorted_lines, special = false) {
-    if (!sorted_lines.length) return;
-    if (special && game.flags.discosort === 'a')
-        lines.push(menu_heading_attr_text('Discovered items'));
+// lootsort strips the 6-char sortloot key: p[6] = p[0]; p += 6.
+export function disco_output_sorted(lines, sorted_lines, lootsort) {
     sorted_lines.sort(discovered_cmp);
     for (const line of sorted_lines) {
-        lines.push(game.flags.discosort === 's' ? line[0] + line.slice(7) : line);
+        lines.push(lootsort ? line[0] + line.slice(7) : line);
     }
     sorted_lines.length = 0;
 }
@@ -690,7 +696,7 @@ export function discovery_entries(oclass) {
         .filter(dis => dis && _interesting_to_discover(dis)).map(dis => discovery_line(dis));
     if (game.flags.discosort === 'o') return lines;
     const result = [];
-    disco_output_sorted(result, lines);
+    disco_output_sorted(result, lines, game.flags.discosort === 's');
     return result;
 }
 
@@ -807,8 +813,11 @@ export async function dodiscovered() {
         lines.push(`  ${name} [${algnstr} ${simple_typename(otyp)}]`);
         ct++;
     }
+    /* C o_init.c:782-784 */
+    const alphabyclass = g.flags.discosort === 'c';
+    const alphabetized = g.flags.discosort === 'a' || alphabyclass;
+    const lootsort = g.flags.discosort === 's';
     for (const oclass of classes) {
-        if (g.flags.discosort !== 'a') disco_output_sorted(lines, sorted_lines);
         const list = disco[oclass];
         if (!list || list.length === 0)
             continue;
@@ -820,17 +829,28 @@ export async function dodiscovered() {
                 continue;
             ct++;
             if (oclass !== prev_class) {
-                const header = OCLASS_NAME[oclass];
-                if (header && g.flags.discosort !== 'a')
-                    lines.push(menu_heading_attr_text(header));
-                prev_class = oclass;
+                if ((alphabyclass || lootsort) && sorted_lines.length) {
+                    /* output previous class (C o_init.c:831-835) */
+                    disco_output_sorted(lines, sorted_lines, lootsort);
+                }
+                if (!alphabetized || alphabyclass) {
+                    /* header for new class */
+                    lines.push(menu_heading_attr_text(OCLASS_NAME[oclass]));
+                    prev_class = oclass;
+                }
             }
             /* C o_init.c:844: buf = oc_encountered ? "  " : "* " */
             const prefix = enc[dis] ? '  ' : '* ';
-            (g.flags.discosort === 'o' ? lines : sorted_lines).push(discovery_line(dis, prefix));
+            (!alphabetized && !lootsort ? lines : sorted_lines).push(discovery_line(dis, prefix));
         }
     }
-    disco_output_sorted(lines, sorted_lines, uniqueHeader || !!g.artidisco?.[0]);
+    if (ct !== 0 && sorted_lines.length) {
+        /* C o_init.c:857-866: a header only when relics/artifacts preceded
+         * an all-classes alphabetized list. */
+        if ((uniqueHeader || g.artidisco?.[0]) && alphabetized && !alphabyclass)
+            lines.push(menu_heading_attr_text('Discovered items'));
+        disco_output_sorted(lines, sorted_lines, lootsort);
+    }
     if (ct === 0) {
         /* C: You("haven't discovered anything yet..."); (a pline, not a window) */
         await pline("You haven't discovered anything yet...");

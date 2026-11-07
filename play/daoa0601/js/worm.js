@@ -12,7 +12,11 @@ import { mcalcmove } from './mon.js';
 import { monsterName } from './do_name.js';
 import { d, rn2, rnd } from './rng.js';
 import { goodPosition } from './teleport.js';
+import { cansee } from './vision.js';
+import { dist2 } from './hacklib.js';
+import { performMonsterHeroAttack } from './mhitu.js';
 const PM_LONG_WORM = MONSTER_NAME.indexOf('long worm');
+// Port only: require an initialized worm body before traversing it.
 // A reserved worm slot owns both the visible tail and its hidden head.
 function requireWormBody(monster) {
     if (monster.wormno === undefined || !monster.wormHead
@@ -99,6 +103,7 @@ export async function cutWorm(monster, x, y, sliceOrChop, { state = game, random
         delete monster.wormDetachedSegments;
     }
 }
+// C worm.c:get_wormno()
 function nextWormNumber(state) {
     const used = new Set((state.level?.monsters || [])
         .map(monster => monster.wormno)
@@ -160,6 +165,7 @@ export async function clearMonsterWormFromMap(monster) {
     monster.wormHead.x = 0;
     return count;
 }
+// Part of C worm.c:remove_worm(): clear one segment's occupancy and redraw it.
 async function clearWormSquare(point) {
     // C removes the map slot even if another monster has replaced this
     // segment. A displaced live head is separate from the hidden segment.
@@ -183,10 +189,30 @@ export async function removeMonsterWormBody(monster) {
             monster.mextra.mcorpsenm = -1;
     }
 }
+// C worm.c:wormhitu(). Visible segments are stored head-outward; native
+// wtails walks toward the head and excludes its hidden dummy segment.
+export async function performWormTailAttacks(worm, state, options) {
+    const segments = worm.wormSegments;
+    if (!segments)
+        throw new Error(`Worm ${worm.m_id} has no tail list.`);
+    for (let index = segments.length - 1; index >= 0; index--) {
+        const segment = segments[index];
+        if (!segment)
+            throw new Error(`Worm ${worm.m_id} has no tail segment ${index}.`);
+        if (dist2(segment.x, segment.y, state.u.ux, state.u.uy) >= 3)
+            continue;
+        // Keep the real head position: mattacku() still uses its range and
+        // apparent hero position, including after knockback or a passive.
+        const result = await performMonsterHeroAttack(worm, state, options);
+        if (result.nativeResult === 1 || result.heroDied)
+            return result;
+    }
+    return { nativeResult: 0, heroDied: false };
+}
 // Part of C worm.c:initworm(): the body allocation before arrival places any segments.
-// C get_wormno() + initworm(): reserve the body before arrival can restore a
+// Native get_wormno and initworm reserve the body before arrival can restore a
 // shapechanger. Tail segments have no map occupancy until rloc places them.
-// C worm.c:create_worm_tail().
+// Also C worm.c:create_worm_tail(): the tail-segment allocation is inlined here.
 export function initializeUnplacedMonsterWormBody(monster, segmentCount, { state = game } = {}) {
     if (!Number.isInteger(segmentCount) || segmentCount < 0)
         throw new RangeError('A worm body needs a nonnegative integer tail length.');
@@ -197,6 +223,7 @@ export function initializeUnplacedMonsterWormBody(monster, segmentCount, { state
     monster.wormGrowTime = 0;
     return monster.wormno !== 0;
 }
+// Port only: combine worm-body reservation and randomized tail placement for callers.
 // Ordinary births reserve the body first, then roll and place their tail.
 // An explicit count also serves callers rebuilding a known tail on the map.
 export async function initializeMonsterWormBody(monster, { allowTail = true, segmentCount = null, state = game, random = rn2, } = {}) {
@@ -208,6 +235,7 @@ export async function initializeMonsterWormBody(monster, { allowTail = true, seg
     await placeMonsterWormTailRandomly(monster, requestedSegments, { state, random });
     return true;
 }
+// C worm.c:place_worm_tail_randomly()
 export async function placeMonsterWormTailRandomly(monster, requestedSegments, { state = game, random = rn2, } = {}) {
     monster.wormHead = { x: monster.mx, y: monster.my };
     monster.wormSegments = [];
@@ -242,6 +270,13 @@ export async function placeMonsterWormTailRandomly(monster, requestedSegments, {
         oldX = next.x;
         oldY = next.y;
     }
+}
+// C worm.c:worm_known(). A head-only relocation leaves the hidden segment
+// behind until worm_move() or place_wsegs() updates it.
+export function wormKnown(monster) {
+    const head = monster.wormHead;
+    return !!head && cansee(head.x, head.y)
+        || (monster.wormSegments ?? []).some(segment => segment.x && cansee(segment.x, segment.y));
 }
 // C worm.c:redraw_worm()
 // Native redraw_worm includes the head's dummy segment after the tail.

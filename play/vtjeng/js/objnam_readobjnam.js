@@ -2139,13 +2139,14 @@ function readobjnam_typfnd(d, normalized) {
                     ));
                 if (answer && typeof answer.then === 'function') {
                     return answer.then((response) => {
-                        if (response !== 'y'.charCodeAt(0)) d.cnt = rn1cnt;
+                        if (response !== 'y') d.cnt = rn1cnt;
                         d.otmp.owt *= d.cnt;
                         d.cnt = 0;
                         return readobjnam_typfnd_finish(d, normalized);
                     });
                 }
-                if (answer !== 'y'.charCodeAt(0)) d.cnt = rn1cnt;
+                if (answer !== 'y') d.cnt = rn1cnt;
+
             } else if (d.cnt > rn1cnt) {
                 d.cnt = rn1cnt;
             }
@@ -2457,7 +2458,7 @@ function readobjnam_finish_after_buc(d, normalized) {
 
     if (d.isgreased) d.otmp.greased = 1;
     if (d.isdiluted && d.otmp.oclass === POTION_CLASS)
-        d.otmp.odiluted = d.otmp.otyp !== POT_WATER;
+        d.otmp.odiluted = d.otmp.otyp !== POT_WATER ? 1 : 0;
 
     // C ref: objnam.c:5343 consumes the rn2 before reading wizard mode because
     // the disjunction is ordered that way in the source.

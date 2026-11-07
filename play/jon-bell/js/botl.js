@@ -1,7 +1,7 @@
 // botl.js — C ref: botl.c.
 import { money_cnt } from './hack.js';
 import { CONFUSION, Is_rogue_level, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SICK, SLIMED, gs } from './const.js';
-import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, suppress_map_output } from './display.js';
+import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
@@ -192,8 +192,10 @@ export function reset_status_hilites() {
     /* botl.c:2321-2331: only sets update_all + botlx; the fields are re-evaluated
      * against the new rules when the next bot() delivers them, so a page
      * raised before that bot() still shows the old colours. */
-    if (game.iflags?.hilite_delta)
+    if (game.iflags?.hilite_delta) {
         game._statusHilitesReset = true;
+        if (game.iflags._blTerrain) game.iflags._blTerrain.updateAll = true;
+    }
     game.disp.botlx = true;
 }
 
@@ -279,6 +281,8 @@ export async function bot() {
             fields.level = game.u.ulevel | 0;
             if (game.flags?.showexp) fields.experience = game.u.uexp || 0;
         }
+        /* botl.c:1514-1614: BL_XP chg/percent evaluation happens per bot(). */
+        status_xp_bot_eval();
         /* C botl.c:259-268: a status paint replaces the pre-cast Pw still
          * visible behind a spell's menu. Later menus retain this new paint. */
         game._spellPwStale = null;
