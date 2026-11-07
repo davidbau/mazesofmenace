@@ -219,6 +219,7 @@ export async function getlin(prompt) {
         if (!g._msg_history) g._msg_history = [];
         const h = g._msg_history;
         h.push(line);
+        (g._getlin_hist ||= new Set()).add(line); /* unwrapped gt.toplines: ^P hard-wraps it */
         /* getline.c:223-226 empties gt.toplines only when suppress_history;
          * otherwise ^P's first recall (topl.c:46,106) shows "query answer". */
         g._toplEmptyAfterSuppress = false;

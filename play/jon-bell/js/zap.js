@@ -155,7 +155,7 @@ import { erosion_matters, is_flammable, is_rustprone, is_crackable, is_corrodeab
 /* C objnam.c:347 distant_name — use the canonical object naming body. */
 async function distant_name(otmp, func) { return await distant_name_real(otmp, func); }
 import { polyself, polymon, rehumanize as rehumanize_real } from './polyself.js';
-import { speed_up, healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, set_itimeout } from './potion.js';
+import { speed_up, healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, set_itimeout, make_blinded } from './potion.js';
 import { dryup } from './fountain.js';
 import { is_youmonst } from './mhitm.js';
 import { poly_when_stoned } from './mondata.js';
@@ -547,18 +547,18 @@ export function obj_unpolyable(obj) {
 /* BLINDED is prop.h's property index (15); take it from const.js rather than
  * repeating the literal the ZT_LIGHTNING miss arm below spells out as _uhas(15). */
 const _TIMEOUT_MASK = 0x00ffffff; /* prop.h:135 TIMEOUT */
-function _blind_prop() {
+export function _blind_prop() {
     const u = game.u || (game.u = {});
     if (!u.uprops) u.uprops = {};
     if (!u.uprops[BLINDED])
         u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     return u.uprops[BLINDED];
 }
-function _Blind() {
+export function _Blind() {
     const p = _blind_prop();
     return !!(((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
 }
-function _BlindedTimeout() {
+export function _BlindedTimeout() {
     return (_blind_prop().intrinsic | 0) & _TIMEOUT_MASK;
 }
 /* The three HBlinded accessors, exported so callers outside this module read
@@ -589,7 +589,7 @@ export function incr_HBlinded(incr) {
 /* C ref: nethack-c/src/potion.c:55-79 itimeout / set_itimeout, applied to
  * HBlinded.  itimeout clamps to [0, TIMEOUT]; set_itimeout clears the timeout
  * bits and ORs the clamped value back in, preserving FROMOUTSIDE/FROMFORM. */
-function _set_HBlinded(val) {
+export function _set_HBlinded(val) {
     const p = _blind_prop();
     /* C potion.c:56-79 clamps the long before storing timeout bits.  A
      * signed 32-bit coercion first would turn a large duration negative. */
@@ -597,7 +597,7 @@ function _set_HBlinded(val) {
     set_itimeout(which, val);
     p.intrinsic = which.value;
 }
-function toggle_blindness() {
+export function toggle_blindness() {
     const up = game.u?.uprops;
     const Stinging = game.u?.uwep && ((up?.[WARN_OF_MON]?.extrinsic | 0) & W_WEP);
     game.disp = game.disp || {};
@@ -647,95 +647,8 @@ function _Halluc() {
     const h = up?.[HALLUC];
     return !!(h?.intrinsic);
 }
-export function make_blinded(xtime, talk) {
-    const old = _BlindedTimeout();
-    const u_could_see = !_Blind();
-    /* probe ahead exactly as C does (potion.c:267-272) */
-    _set_HBlinded(xtime ? 1 : 0);
-    const can_see_now = !_Blind();
-    _set_HBlinded(old);
-
-    /* C potion.c:274-275 — `if (Unaware) talk = FALSE;`.  Unaware is
-     * youprop.h's (gm.multi < 0 && (unconscious() || is_fainted())), the same
-     * expression _u_resists_blnd() below already reads. */
-    if (((game.multi | 0) < 0) && (unconscious() || is_fainted()))
-        talk = false;
-
-    if (can_see_now && !u_could_see) {  /* potion.c:277 regaining sight */
-        if (talk) {
-            /* pline() has no await in its body, so an unawaited call from this
-             * synchronous function commits the message in full — the same
-             * shape js/mhitu.js:258 Your1() already relies on. When it follows
-             * a deferred command result, merge the channels below so later
-             * messages can trigger the normal tty overflow boundary. */
-            const _priorResult = game._resultMessage;
-            if (_Halluc())
-                pline("Far out!  Everything is all cosmic again!");
-            else
-                pline("You can see again.");
-            /* pline() now adopts an otherwise-idle result channel itself.
-             * Only fold the two channels here when that result is still
-             * separate; if pline() already consumed it, prepending the saved
-             * copy would print the food message twice. */
-            if (_priorResult && game._resultMessage === _priorResult
-                && game._pending_message) {
-                const _hint = _topl_joins_snapshot(_priorResult) || undefined;
-                const _merged = _topl_merge_result(_priorResult,
-                    game._pending_message, _hint);
-                game._resultMessage = null;
-                game._pending_message = _merged;
-            }
-        }
-    }
-    /* C potion.c:283-297 — clearing temporary blindness without toggling.
-     * This is reached when external blindness (here, a blindfold) means the
-     * timeout can clear while `Blind` remains true. */
-    else if (old && !xtime && talk) {
-        const hero = game.youmonst?.data || {};
-        const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
-        const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
-        if (!hasEyes || permanentlyBlind) {
-            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
-        } else if ((_blind_prop().extrinsic | 0) !== 0) { // C youprop.h:96 EBlinded
-            const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
-            const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
-            pline(`Your ${eyes} momentarily ${vtense(eyes, "itch")}.`);
-        } else {
-            pline(`Your vision seems to brighten for a moment but is ${_Halluc() ? "sadder" : "normal"} now.`);
-        }
-    }
-
-    if (u_could_see && !can_see_now) {  /* potion.c:300 losing sight */
-        if (talk) {
-            if (_Halluc())
-                pline("Oh, bummer!  Everything is dark!  Help!");
-            else
-                pline("A cloud of darkness falls upon you.");
-        }
-        if (game.u?.uball)              /* Punished — youprop.h */
-            set_bc(0);
-    }
-    else if (!old && xtime && talk) { // v5 potion.c:309-324
-        const hero = game.youmonst?.data || {};
-        const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
-        const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
-        if (!hasEyes || permanentlyBlind) {
-            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
-        } else if ((_blind_prop().extrinsic | 0) !== 0) {
-            const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
-            const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
-            pline(`Your ${eyes} momentarily ${vtense(eyes, "twitch")}.`);
-        } else {
-            pline(`Your vision seems to dim for a moment but is ${_Halluc() ? "happier" : "normal"} now.`);
-        }
-    }
-
-    _set_HBlinded(xtime);               /* potion.c:326 */
-
-    if (u_could_see !== can_see_now) {   /* potion.c:328 `u_could_see ^ can_see_now` */
-        toggle_blindness();
-    }
-}
+/* make_blinded: C potion.c:260-331 — the one body lives in js/potion.js. */
+export { make_blinded };
 export async function _u_resists_blnd() {
     /* C mondata.c:268 resists_blnd(&youmonst) in full: the Blind/Unaware arm,
      * the AD_BLND attack arm, Sunsword, and the Blnd_resist catchall
@@ -1071,7 +984,7 @@ function _Yname2(obj) {
 /* C monflag.h:95,97 — M1_BREATHLESS / M1_NOEYES, read off the hero's current
  * form exactly as js/potion.js:2050-2055 does for the same two predicates. */
 const M1_BREATHLESS_ZAP = 0x00000400;
-const M1_NOEYES_ZAP = 0x00001000;
+export const M1_NOEYES_ZAP = 0x00001000;
 function _breathless_hero() {
     return (((game.youmonst && game.youmonst.data && game.youmonst.data.mflags1) | 0)
             & M1_BREATHLESS_ZAP) !== 0;

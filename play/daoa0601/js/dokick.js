@@ -26,7 +26,7 @@ import { game, requireGameLevel, requireInitializedGame, requirePlayingGame, req
 import { flyKickedObject } from './thrown_object.js';
 import { monsterProjectileDisplay } from './mthrowu.js';
 import { killerObjectName, objectNameIsPlural, observeObjectForNaming, corpseName, objectCombatName, objectDescription, makePlural, rndClass, withIndefiniteArticle } from './objnam.js';
-import { mksobj, mkgold, unlinkObject, splitObjectStack, objectWeight, placeCreatedObject, placeObject, remove_object, isContainer } from './mkobj.js';
+import { addToMigration, mksobj, mkgold, unlinkObject, splitObjectStack, objectWeight, placeCreatedObject, placeObject, remove_object, isContainer } from './mkobj.js';
 import { vision_recalc, vision_reset, cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { convertSecretDoor, findTrap } from './detect.js';
 import { heroPolyGender, heroSpecies, body_part } from './polyself.js';
@@ -47,7 +47,7 @@ import { breakChestLock, maybeResetPick } from './lock.js';
 import { breakFloorObject, hurtleHero, hitMonsterWithKickedObject } from './dothrow.js';
 import { inventoryItemDescription, delobj, currency, stack_object } from './invent.js';
 import { costlyAdjacent, costlySpot, addShopObjectToBill, removeObjectAndContentsFromBill, findObjectOwner, stolenValue, costlyGold, donateGold, objectIsUnpaid, pickedContainer, hotPursuitShopkeeper, deleteObject, insideShopRoomAt, makeAngryShopkeeper, containedGold, makeShopkeeperHappy, addShopDamage, payForShopDamage, shopDig } from './shk.js';
-import { scatterFloorObjects } from './scatter.js';
+import { scatterFloorObjects } from './explode.js';
 import { objectMaterial } from './o_init.js';
 import { addObjectToMonsterInventory, removeWornHeroItem } from './steal.js';
 import { hasShopkeeperData } from './shop_types.js';
@@ -1555,23 +1555,6 @@ function pileImpact(state, object, x, y) {
     }
     return { count, chainThere };
 }
-// C mkobj.c:add_to_migration(). The destination codes are dokick.c's
-// drop_to() overloads.
-function addToMigration(object, gate, state) {
-    object.no_charge = false;
-    if (isContainer(object))
-        maybeResetPick(object, state);
-    object.where = 'migrating';
-    object.migration = {
-        destination: { ...gate.destination },
-        source: { ...(state.u?.uz || { dnum: 0, dlevel: 1 }) },
-        arrival: gate.arrival,
-    };
-    object.ox = gate.destination.dnum;
-    object.oy = gate.destination.dlevel;
-    state.migratingObjects ||= [];
-    state.migratingObjects.unshift(object);
-}
 // C dokick.c:otransit_msg().
 async function publishTransitMessage(object, gate, stays, impact, publish, state) {
     const plural = objectNameIsPlural(object, state);
@@ -1792,7 +1775,6 @@ async function deliverAtPassage(object, migration, state, position, publish, ran
         await newsym(position.x, position.y);
         return;
     }
-    const { scatterFloorObjects } = await import('./scatter.js');
     await scatterFloorObjects(position.x, position.y, rollOne(2), {
         state,
         onlyObject: landed,

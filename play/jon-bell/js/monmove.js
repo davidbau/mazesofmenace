@@ -1912,6 +1912,12 @@ export async function m_move(mtmp, after) {
     /* C monmove.c:1769-1773: wormno skips special movement, including dog_move. */
     if (!(mtmp.wormno | 0) && (mtmp.mtame | 0)) {
         /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
+        /* C monmove.c:1762-1773: `ptr` and can_tunnel are fixed before dog_move,
+         * so a pet that polymorphs on a trap this move (new form not a tunneler)
+         * still reaches postmov's dig arm with the OLD form's can_tunnel. */
+        const _pi = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+        const _prow = (_pi >= 0 && _pi < _MONS_MV.length) ? _MONS_MV[_pi] : null;
+        const _pmf1 = _prow ? (_prow[6] >>> 0) : 0;
         const res = await dog_move(mtmp, after);
         const _pdidsee = res === MMOVE_MOVED_MV && !!cansee(mtmp.mx | 0, mtmp.my | 0);
         await notice_mon(mtmp);
@@ -1974,9 +1980,6 @@ export async function m_move(mtmp, after) {
          * i.e. after mintrap and after the door block.  This is what finally puts
          * the pet's glyph on its destination cell. */
         if (res === MMOVE_MOVED_MV) {
-            const _pi = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-            const _prow = (_pi >= 0 && _pi < _MONS_MV.length) ? _MONS_MV[_pi] : null;
-            const _pmf1 = _prow ? (_prow[6] >>> 0) : 0;
             /* C monmove.c:1762-1763: on the pet path can_tunnel is plain
              * tunnels(ptr) — the needspick/Conflict demotion (monmove.c:1911)
              * runs only after the mtame dispatch, so it never applies here. */

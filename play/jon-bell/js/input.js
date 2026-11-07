@@ -109,11 +109,16 @@ export async function nhgetch() {
      * this: topl.c:84-85 putstr(gt.toplines) is a blank row when it is empty. */
     const _suppressHist = !!(game._topl_suppress_history || game._topl_suppress_once);
     game._topl_suppress_once = false;
-    if (game._pending_message)
+    const _wasToplEmpty = !!game._toplEmptyAfterSuppress;
+    /* A ^P recall (redotoplin) repaints the topline without touching gt.toplines. */
+    if (game._pending_message && game._pending_message !== game._topl_history_recall)
         game._toplEmptyAfterSuppress = _suppressHist;
     /* C topl.c:189 remember_topl()/:441 a newly shown line restarts the ^P walk
      * at gt.toplines (cw->maxcol = cw->maxrow); a recall itself does not. */
-    if (game._pending_message && game._pending_message !== game._topl_history_recall)
+    /* A SUPPRESS_HISTORY line goes through remember_topl() (wintty.c:2294), which
+     * returns early on an EMPTY gt.toplines (topl.c:176) — no maxcol reset. */
+    if (game._pending_message && game._pending_message !== game._topl_history_recall
+        && !(_suppressHist && _wasToplEmpty))
         game._prevmsg_next = null;
     if (game._pending_message && !_suppressHist) {
         let text = String(game._pending_message);

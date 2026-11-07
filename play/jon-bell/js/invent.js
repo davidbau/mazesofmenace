@@ -23,7 +23,7 @@ import { near_capacity } from './hack.js';
 import { setuqwep } from './wield.js';
 import { _pickup_burden_level, touch_artifact_youmonst } from './wizcmds.js';
 import { setnotworn, setworn } from './worn.js';
-import { _sortloot_within_class, fully_identify_obj as fully_identify_obj_cmd, ggetobj, useup } from './cmd.js'; // relocate-fns
+import { _sortloot_within_class, fully_identify_obj, ggetobj, useup } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { _topl_joins_committed, docrt, flush_screen, obj_to_glyph, status_r1_menu_docrt, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
@@ -31,11 +31,11 @@ import { doname_with_price, not_fully_identified } from './objnam.js'; // reloca
 import { map_menu_cmd } from './options.js'; // relocate-fns
 import { set_cursor, topline_more_loop } from './read.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
-import { body_part, carrying as carrying_real, getObjFromGetobj, instapetrify as instapetrify_eat, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js'; // relocate-fns
+import { body_part, carrying, getObjFromGetobj, instapetrify as instapetrify_eat, will_feel_cockatrice } from './cmd.js'; // relocate-fns
 import { HAND } from './const.js'; // relocate-fns
 import { poly_when_stoned as poly_when_stoned_eat } from './mondata.js'; // relocate-fns
 import { corpse_xname, killer_xname, makeplural } from './objnam.js'; // relocate-fns
-import { currency as cmd_currency, _delobj_useupf as delobj_core } from './cmd.js'; // relocate-fns
+import { currency, _delobj_useupf as delobj_core } from './cmd.js'; // relocate-fns
 import { display_minventory, force_decor, instapetrify, mbodypart } from './cmd.js'; // relocate-fns
 import { ECMD_OK, ECMD_TIME, ICE, Is_airlevel, Is_waterlevel, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, PLNMSG_ONE_ITEM_HERE, STOMACH, STONE_RES, is_pit } from './const.js'; // relocate-fns
 import { s_suffix } from './hacklib.js'; // relocate-fns
@@ -81,7 +81,7 @@ const OBJ_FREE = 0, OBJ_INVENT = 3;
  * reused only once the cursor comes back around to it.  RNG-free.
  *
  * THE one port (invent.c audit a2_invent_30): the file-local hand copies
- * js/cmd.js _adj_assigninvlet and js/eat.js _eat_assigninvlet forward here
+ * js/cmd.js doorganize calls this directly and js/eat.js _eat_assigninvlet forwards here
  * rather than carrying the body a second and third time.
  * ------------------------------------------------------------------------ */
 export function assigninvlet(otmp) {
@@ -581,13 +581,8 @@ function count_unidentified(chain) {
     return n;
 }
 
-/* C ref: invent.c:2636 fully_identify_obj(otmp) — make an object actually
- * identified; no display updating.  makeknown(otyp) → discover_object(credit
- * hero=TRUE) → exercise(A_WIS) → rn2(19). */
-function fully_identify_obj(otmp) {
-    /* invent.c:2636 — the full body (observe_object, set_cknown_lknown, egg) lives in cmd.js */
-    fully_identify_obj_cmd(otmp);
-}
+/* C ref: invent.c:2637 fully_identify_obj(otmp) — the single port is
+ * js/cmd.js's fully_identify_obj (imported above); no local copy. */
 
 /* C ref: invent.c:2650 identify(otmp) — identify one object and give immediate
  * feedback via prinv (the "n - a blessed scroll of enchant weapon." line). */
@@ -980,7 +975,8 @@ async function _identify_objlist_menu_body(promptText) {
     return picked;
 }
 
-export function carrying(otyp) { return carrying_real(otyp); }
+/* C invent.c:1495 carrying() — single port in js/cmd.js. */
+export { carrying };
 
 export async function getobj(verb, callback, flags) {
     return await getObjFromGetobj(verb, callback, flags);
@@ -997,11 +993,11 @@ export async function feel_cockatrice(obj, force) {
     await instapetrify_eat(`touching ${killer_xname(obj)} bare-handed`);
 }
 
-export function will_feel_cockatrice(obj, force) {
-    return will_feel_cockatrice_real(obj, force);
-}
+/* C invent.c:4334 will_feel_cockatrice() — single port in js/cmd.js. */
+export { will_feel_cockatrice };
 
-export function currency(amt) { return cmd_currency(amt); }
+/* C invent.c:1546 currency() — single port in js/cmd.js. */
+export { currency };
 
 /* C invent.c:1430 delobj() — use the canonical object extraction/deallocation
  * path, including resistance, map redraw, and nested-container cleanup. */
@@ -1022,18 +1018,8 @@ function _Underwater() {
     return !!(game.u && game.u.uinwater);
 }
 
-/* C ref: invent.c:4333 will_feel_cockatrice(otmp, force_touch).  Forwards to
- * js/cmd.js's real port (imported above as will_feel_cockatrice_real).  The
- * local mirror this replaced read Blind via js/vision.js's Blind() while the
- * real port reads the same expression through cmd.js's _u_blind() — both are
- * (HBlinded || EBlinded) && !BBlinded (youprop.h:103), so the answers never
- * diverged; only the body count did. */
-function _will_feel_cockatrice_lk(otmp, force_touch) {
-    return will_feel_cockatrice_real(otmp, force_touch);
-}
-
 async function _feel_cockatrice_lk(otmp, force_touch) {
-    if (!_will_feel_cockatrice_lk(otmp, force_touch)) return;
+    if (!will_feel_cockatrice(otmp, force_touch)) return;
     const name = corpse_xname(otmp, null, CXN_PFX_THE);
     if (poly_when_stoned(game.youmonst?.data))
         await pline(`You touched ${name} with your bare ${makeplural(body_part(HAND))}.`);
@@ -1173,7 +1159,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
             await There('are %s%s objects here.', word, picked_some ? ' more' : '');
         }
         for (let o = otmp; o; o = o.nexthere) {
-            if ((o.otyp | 0) === _CORPSE_OTYP && _will_feel_cockatrice_lk(o, false)) {
+            if ((o.otyp | 0) === _CORPSE_OTYP && will_feel_cockatrice(o, false)) {
                 const quan = o.quan == null ? 1 : (o.quan | 0);
                 const subj = obj_cnt > 1 ? 'Including' : (quan > 1 ? "They're" : "It's");
                 const heroData = (g.youmonst && g.youmonst.data) ? g.youmonst.data : null;
@@ -1201,7 +1187,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = LOOKHERE_NOFLAGS) 
         let felt = false;
         let o = otmp;
         for (; o; o = o.nexthere) {
-            if ((o.otyp | 0) === _CORPSE_OTYP && _will_feel_cockatrice_lk(o, false)) {
+            if ((o.otyp | 0) === _CORPSE_OTYP && will_feel_cockatrice(o, false)) {
                 felt = true;
                 lines.push(`${(await doname(o))}...`);
                 break;

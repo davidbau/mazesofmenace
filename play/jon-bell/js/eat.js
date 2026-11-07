@@ -707,6 +707,14 @@ export async function doeat() {
     return ECMD_TIME;
 }
 export async function newuhs(incr) {
+    try {
+        return await newuhs_body(incr);
+    } finally {
+        game._hsRestored = false;
+    }
+}
+
+async function newuhs_body(incr) {
     const g = game;
     const u = g.u;
     if (!u)
@@ -738,6 +746,9 @@ export async function newuhs(incr) {
          * newhs comparison below decides the single end-of-meal status update. */
         u.uhs = g._save_hs | 0;
         g._saved_hs = false;
+        /* u.uhs was restored without SET_BOTL: flushes during the message
+         * plines below still show the last bot() paint (eat.c:3404-3407). */
+        g._hsRestored = true;
     }
     /* C eat.c:3411-3448 — FAINTING branch. */
     if (newhs === FAINTING) {
@@ -863,7 +874,13 @@ export async function newuhs(incr) {
             end_running(true);
             break;
         }
-        if (_hsMsg) g._newuhsMsgUhs = { uhs: (u.uhs | 0), msg: _hsMsg };
+        if (_hsMsg) g._newuhsMsgUhs = { uhs: ((g._hsRestored && g._botlPaintedUhs != null
+            && !(g.disp && ((g.disp.botl | 0) || (g.disp.botlx | 0))))
+            ? g._botlPaintedUhs : u.uhs) | 0, msg: _hsMsg };
+        /* with no botl pending the pline's flush_screen() paints nothing (display.c:2285-2288),
+         * so the --More-- keeps the last bot() paint: the mid-meal u.uhs, not the restored save_hs */
+        if (_hsMsg) g._newuhsMsgUhs = { uhs: ((g.disp && (g.disp.botl || g.disp.botlx)) || g._botlPaintedUhs == null
+            ? (u.uhs | 0) : (g._botlPaintedUhs | 0)), msg: _hsMsg };
         u.uhs = newhs;
         /* C hack.h SET_BOTL() */
         if (g.disp)

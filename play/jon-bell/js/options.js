@@ -32,7 +32,7 @@ import { add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './co
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './windows.js';
 import { mungspaces } from './hacklib.js';
-import { nh_sprintf } from './display.js';
+import { nh_sprintf, docorner_status_rows } from './display.js';
 import { pline } from './pline.js';
 import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
 // C options.c:6768 match_optname compares names case-insensitively; keep
@@ -1785,7 +1785,16 @@ export async function handler_autopickup_exception(preserveStatus = false) {
             game._status_blanked = false;
             if (pattern[0] === '\x1b') return 1;
             // apebuf is 2 + BUFSZ; getlin starts at byte 1 and byte 256 is NUL.
-            if (pattern) add_autopickup_exception(`"${pattern.slice(0, 255)}"`);
+            if (pattern) {
+                /* interactive 'O': config_erradd plines each error at once (cfgfiles.c:1556-1563) */
+                const base = (game._config_errors ||= []).length;
+                add_autopickup_exception(`"${pattern.slice(0, 255)}"`);
+                for (const m of game._config_errors.splice(base)) {
+                    if (typeof m !== 'string') continue;
+                    await pline('%s%s', m, /[.!?]$/.test(m) ? '' : '.');
+                }
+                await drainTopline(); /* the menu reopening forces the pending topline's --More-- */
+            }
             continue;
         }
         const menu = new TtyMenu({ overlay: true,
@@ -2713,6 +2722,7 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased
             winLines, col, undefined, preserveStatus ? undefined : 0);
         set_cursor(col + '(end)'.length + 1, winLines.length - 1);
         game._pending_message = '';
+        game._pickupMenuCorner = { col, rows: winLines.length };
         return;
     }
     const out = lines.slice(0, SCREEN_ROWS);
@@ -2773,6 +2783,14 @@ async function numberPadSubmenu() {
 // class symbols toggle selection in place; Enter/space confirm, ESC cancels.
 // On confirm, write the selected symbols (in PICKUP_CLASSES order) to
 // game.flags.pickup_types.  Consumes NO RNG.
+/* wintty.c:3715-3719 docorner() on dismissal: the overlay's rows reach the
+ * status rows, so cl_end() erases them from offx until bot() repaints. */
+function pickupMenuDismissCorner() {
+    const c = game._pickupMenuCorner;
+    game._pickupMenuCorner = null;
+    if (c) docorner_status_rows(c.col - 1, c.rows + 1);
+}
+
 async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = false) {
     const g = game;
     /* C ref: options.c:3330-3352 optfn_pickup_types(do_set) — under
@@ -2873,9 +2891,11 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
         if (key === 27 /* ESC */) {
+            pickupMenuDismissCorner();
             return; // cancel: leave flag unchanged
         }
         if (key === 10 || key === 13 || key === 32 /* Enter / space confirm */) {
+            pickupMenuDismissCorner();
             break;
         }
         if (key === 0x3a /* ':' MENU_SEARCH — a menu command, never a selector */) {
@@ -4120,7 +4140,7 @@ export async function doset() {
                      * handler_pickup_types -> the object-class picker. */
                     await drainTopline();
                     await optfn_pickup_types_handler(statusRefreshed);
-                    statusRefreshed = false;
+                    statusRefreshed = !game._statusBlankAfterDocrt; // a pline since the Options dismissal repainted the status rows
                 } else if (ent.row.name === 'autopickup exceptions') {
                     await drainTopline();
                     await handler_autopickup_exception(statusRefreshed);
@@ -4345,10 +4365,18 @@ export async function doset() {
                         if (op) {
                             const previous = g.flags.inv_order || [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
                             const order = op.includes('$') ? [] : [12];
+                            const base = (g._config_errors ||= []).length;
                             for (let i = 0; i < op.length; i++) {
                                 const oc = def_char_to_objclass(op.charCodeAt(i));
-                                if (oc !== 18 && previous.includes(oc) && !op.includes(op[i], i + 1))
-                                    order.push(oc);
+                                if (oc === 18) config_error_add("Not an object class '%c'", op.charCodeAt(i));
+                                else if (!previous.includes(oc)) config_error_add("Object class '%c' not allowed", op.charCodeAt(i));
+                                else if (op.includes(op[i], i + 1)) config_error_add("Duplicate object class '%c'", op.charCodeAt(i));
+                                else order.push(oc);
+                            }
+                            /* 'O' has config_error_ready clear: config_erradd plines each (cfgfiles.c:1556-1563) */
+                            for (const m of g._config_errors.splice(base)) {
+                                if (typeof m !== 'string') continue;
+                                await pline('%s%s', m, /[.!?]$/.test(m) ? '' : '.');
                             }
                             g.flags.inv_order = order.concat(previous.filter(oc => !order.includes(oc)));
                         }

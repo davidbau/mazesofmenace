@@ -6,29 +6,28 @@
 import { A_DEX, M_AP_OBJECT, M_AP_TYPE, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL, MFAST, MM_NOWAIT, Upolyd, ismnum, KILLED_BY, M_ATTK_HIT, M_ATTK_MISS, MM_ANGRY, MM_NOMSG, MONSEEN_TELEPAT, HEAD, EYE } from './const.js';
 import { AD_CLRC, AD_COLD, AD_FIRE, AD_MAGM, AD_SPEL, AT_MAGC, AD_SPC2 } from './monster_attack_types.js';
 import { recordRandom } from './monster_action_types.js';
-import { MONSTER_ATTACKS, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, SPECIAL_PM, monsterTypeName } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_GENO, MONSTER_LEVEL, MONSTER_NAME, SPECIAL_PM } from './monster_data.js';
 import { erodeWornArmor, heroHasFreeAction, heroIsDisplaced } from './do_wear.js';
 import { withIndefiniteArticle, makePlural, makeSingular, verbForSubject } from './objnam.js';
 import { canSeeMonster, canSpotMonster, map_invisible, newsym, shieldeff, howMonsterSeen } from './display.js';
 import { game, requirePlayingGame } from './gstate.js';
-import { castMonsterSpellRay } from './breath_ray.js';
+import { castMonsterSpellRay, monsterLinedUpWithPerceivedHero } from './mthrowu.js';
 import { displayRayName } from './zap.js';
-import { monsterLinedUpWithPerceivedHero } from './mthrowu.js';
 import { currentAttribute, loseHeroStrength } from './attrib.js';
 import { clearHeroSliming, makeBlinded } from './potion.js';
 import { engravingAt, wipeEngravingAt } from './engrave.js';
 import { applyRayFloorFeatures, destroyElectricInventory, destroyFireInventory, heroHasHalfSpellDamage, flashBurn } from './zap.js';
-import { burnHeroArmorByFire, igniteItems } from './trap.js';
+import { burnArmorByFire, igniteItems } from './trap.js';
 import { finishHeroDeathAfterMonsterMessage, finishHeroDeath, finishMonsterAttackDeath } from './end.js';
 import { discoverHeroReflectionSource, ureflects } from './muse.js';
-import { rndcurse } from './throne.js';
+import { rndcurse } from './sit.js';
 import { returnHeroToHumanForm, body_part, heroSpecies } from './polyself.js';
 import { formatFeltMessage, formatHeardMessage, plineWithContinuation } from './pline.js';
 import { heroHasInvoluntaryDelay } from './cmd.js';
 import { endVoluntaryMultiTurn, nomul, loseHeroHp } from './hack.js';
 import { d, rn2, rnd } from './rng.js';
 import { adjustMonsterSpeed, monsterSpeedMessage, setMonsterPermanentInvisibility } from './worn.js';
-import { monsterName as canonicalMonsterName, randomBogusMonsterName } from './do_name.js';
+import { monsterName as canonicalMonsterName, randomBogusMonsterName, monsterTypeName } from './do_name.js';
 import { makemonNear } from './mklev.js';
 import { heroIsBlind, heroIsBlinded, heroIsDeaf, heroDetectsMonsters, heroIsHallucinating, heroIsUnaware } from './senses.js';
 import { makemonAt, mkclassAligned, setMonsterMalign } from './makemon.js';
@@ -506,7 +505,7 @@ async function mcastFirePillar(ctx) {
     }
     // burnarmor() retries until it hits a worn slot; it keeps the global
     // die, as the deferred resolver did.
-    await burnHeroArmorByFire(state, ctx.publish, ctx.calls, rn2);
+    await burnArmorByFire(state.u, state, ctx.publish, ctx.calls, rn2);
     const items = await destroyFireInventory(originalDamage, {
         state,
         publish: ctx.publish,

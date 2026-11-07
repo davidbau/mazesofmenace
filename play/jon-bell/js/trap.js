@@ -3502,7 +3502,7 @@ async function trapeffect_dart_trap_mon(mtmp, trap) {
     const seen = (trap.once | 0) && trap.tseen;
     if (seen && !rn2(15)) {
         /* C trap.c:1298-1306: trap triggers but nothing happens; deltrap. */
-        return await mon_missile_trap_gone(mtmp, trap, `${Monnam(mtmp)} triggers a trap but nothing happens.`);
+        return await mon_missile_trap_gone(mtmp, trap, () => `${Monnam(mtmp)} triggers a trap but nothing happens.`);
     }
     trap.once = 1;
     const otmp = await t_missile(OTYP_DART, trap);
@@ -3739,11 +3739,13 @@ async function trapeffect_fire_trap(trap, _trflags) {
  * missile/rock trap that "fires" nothing — optional message when seen, then
  * deltrap + newsym, and Trap_Is_Gone.  The port returned Trap_Is_Gone without
  * the deltrap, so the trap stayed in the level and mfndpos kept rejecting it. */
-async function mon_missile_trap_gone(mtmp, trap, msg) {
+async function mon_missile_trap_gone(mtmp, trap, message) {
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     const see_it = cansee(mtmp.mx | 0, mtmp.my | 0);
+    /* C trap.c:1227-1230,1297-1300,1381-1384: name the monster only
+     * inside the visibility guard; hallucinated names consume display RNG. */
     if (in_sight && see_it)
-        await pline_mon(mtmp, msg);
+        await pline_mon(mtmp, message());
     deltrap(trap);
     newsym(mtmp.mx | 0, mtmp.my | 0);
     return Trap_Is_Gone;
@@ -3751,7 +3753,7 @@ async function mon_missile_trap_gone(mtmp, trap, msg) {
 async function trapeffect_rocktrap_mon(mtmp, trap) {
     const seen = (trap.once | 0) && trap.tseen;
     if (seen && !rn2(15)) {
-        return await mon_missile_trap_gone(mtmp, trap, `A trap door above ${mon_nam(mtmp)} opens, but nothing falls out!`);
+        return await mon_missile_trap_gone(mtmp, trap, () => `A trap door above ${mon_nam(mtmp)} opens, but nothing falls out!`);
     }
     trap.once = 1;
     const otmp = await t_missile(OTYP_ROCK, trap);
@@ -3768,7 +3770,7 @@ async function missile_trap_mon(mtmp, trap, otyp, tlev) {
         pushRngLogEntry(`^missile_trap_mon[id=${mtmp.m_id|0} otyp=${otyp|0} tlev=${tlev|0} pos=${mtmp.mx|0},${mtmp.my|0}]`);
     const seen = (trap.once | 0) && trap.tseen;
     if (seen && !rn2(15)) {
-        return await mon_missile_trap_gone(mtmp, trap, `${Monnam(mtmp)} triggers a trap but nothing happens.`);
+        return await mon_missile_trap_gone(mtmp, trap, () => `${Monnam(mtmp)} triggers a trap but nothing happens.`);
     }
     trap.once = 1;
     const otmp = await t_missile(otyp, trap);

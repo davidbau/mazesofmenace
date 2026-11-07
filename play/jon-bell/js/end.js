@@ -1377,6 +1377,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
                 continue;
             } else if (doprev) {
                 doprev = false;
+                g._prevmsg_next = null; /* topl.c:456 cw->maxcol = cw->maxrow */
                 continue;
             }
             if (key === 27) {

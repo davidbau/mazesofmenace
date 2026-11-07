@@ -63,7 +63,7 @@ import { place_object, remove_object, add_to_container, newomid } from './mklev.
 import { online2 } from './hacklib.js';
 import { cansee } from './vision.js';
 import { holetime } from './dig.js';
-import { carrying, count_unpaid, currency as currency_real, um_dist, mbodypart as mbodypart_real, body_part as body_part_real, merge_choice, inv_cnt, getpos, record_achievement, check_special_room } from './cmd.js';
+import { carrying, count_unpaid, currency, um_dist, mbodypart as mbodypart_real, body_part as body_part_real, merge_choice, inv_cnt, getpos, record_achievement, check_special_room } from './cmd.js';
 import { dropy, obj_no_longer_held } from './do.js';
 import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
 import { addinv } from './invent.js';
@@ -4165,16 +4165,8 @@ async function home_shk(shkp, killkops) {
      * FALSE, as do the three JS callers.  No JS kops_gone exists to call. */
     await after_shk_move(shkp);
 }
-/* C invent.c:1545 currency(amount) —
- *     res = Hallucination ? ROLL_FROM(currencies) : "zorkmid";
- *     if (amount != 1L) res = makeplural(res);
- * The real general port is js/cmd.js's currency() (currency_real, imported
- * above) — it draws rn2(SIZE(currencies)) via the ROLL_FROM/Hallucination
- * arm and calls makeplural_objnam(), closing exactly the KNOWN GAP this
- * file's previous local body documented (no rn2 draw when hallucinating).
- * js/dokick.js also has a `currency` but it is a throwing stub, not a
- * candidate. */
-export function currency(amount) { return currency_real(amount); }
+/* C invent.c:1546 currency(amount) — single port in js/cmd.js (imported above). */
+export { currency };
 
 // C mondata.h likes_gold/likes_gems/likes_objs/likes_magic — bit tests against
 // mons[mndx].mflags2 (row[7] of js/makemon_mons.json), plus is_armed() for

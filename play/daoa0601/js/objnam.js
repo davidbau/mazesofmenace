@@ -9,15 +9,14 @@ import { objectProb, objectMaterial, observeObject, objectTypeKnown, OBJ_DESCR }
 import { artifactById, artifactByName, artifactExistCount, findArtifact, nameArtifact, uncreateArtifact, artifactEmitsLight, artifactGlowColor, artifactGlowVerb, wieldedArtifactWarns } from './artifact.js';
 import { objectOwnershipPrefix, deleteObject, deleteObjectContents, getCostOfShopItem, objectIsUnpaid, unpaidObjectCost, priceQuoteSuffix, recordObjectPriceQuote } from './shk.js';
 import { rn2, rnd } from './rng.js';
-import { impossible } from './diagnostics.js';
-import { displayColorName, lookupNovelTitle, monsterName, objectMonsterName } from './do_name.js';
+import { displayColorName, lookupNovelTitle, monsterName, objectMonsterName, monsterTypeName } from './do_name.js';
 import { currency } from './invent.js';
 import { eggHasMonsterSpecies } from './egg_impact.js';
 import { garmentInscription, candyWrapperText, hawaiianMotif } from './read.js';
 import { CORPSTAT_GENDER, MV_KNOWS_EGG, P_BOW, W_AMUL, W_ARMOR, W_BALL, W_CHAIN, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEP, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, Align2amask, ALTAR, BEAR_TRAP, BUFSZ, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_RANDOM, CORR, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER, DBWALL, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DOOR, DRAWBRIDGE_UP, F_LOOTED, FOUNTAIN, G_GENOD, G_NOCORPSE, GRAVE, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_DRAWBRIDGE, IS_FURNITURE, IS_WALL, is_hole, Is_rogue_level, LANDMINE, LAVAPOOL, LAVAWALL, Luck, M_AP_OBJECT, M_AP_TYPE, MAGIC_PORTAL, MOAT, P_HAMMER, P_POLEARMS, PL_PSIZ, POOL, QBUFSZ, ROCKTRAP, ROOM, ROWNO, SCORR, SDOOR, SINK, SPE_LIM, S_LDWASHER, S_LPUDDING, S_LRING, THRONE, T_LOOTED, TRAPNUM, TREE, TREE_LOOTED, TREE_SWARM, TT_LAVA, VWALL, WATER, WM_MASK, W_NONDIGGABLE, W_NONPASSWALL, WT_IRON_BALL_INCR, OBJECT_TIMER_KIND, LEVEL_TIMER_KIND, HAND } from './const.js';
 import { mkobj, mksobj, set_corpsenm, unlinkObject, objectWeight, objectIsFlammable, objectIsRottable, isContainer, placeCreatedObject, } from './mkobj.js';
-import { plineWithContinuation } from './pline.js';
-import { MONSTER_BODY_META, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, monsterClassSymbol, monsterTypeName } from './monster_data.js';
+import { plineWithContinuation, impossible } from './pline.js';
+import { MONSTER_BODY_META, MONSTER_GENO, MONSTER_NAME, MONSTER_SOUND, monsterClassSymbol } from './monster_data.js';
 import { ordinalSuffix, possessiveName } from './hacklib.js';
 import { tin_variety_txt, set_tin_variety, tin_details, consume_oeaten, obj_nutrition } from './eat.js';
 import { isBimanualObject, is_boots, is_gloves, isLauncherAmmunition, isMissileObject, isPoisonableObject, isWeaponTool, is_damageable, objectIsRustprone, objectIsCorrodeable, objectIsCrackable } from './object_properties.js';
@@ -149,15 +148,14 @@ export function fruitFromName(name, { exact = false, state = game } = {}) {
     }
     return result;
 }
-// Port only: the per-game fruit list (C gf.ffruit) and preferred name.
-// C gf.ffruit and svp.pl_fruit: the fruit chain and the preferred name only
-// exist after options initialization; naming before that is a port error.
+// C gf.ffruit: the per-game fruit chain; the name only exists after
+// options initialization, so naming before that is a port error.
 export function fruitRegistry(state) {
     if (!state.fruits)
         throw new Error('Fruit registry has not been initialized');
     return state.fruits;
 }
-// Port only: the preferred fruit name (C svp.pl_fruit).
+// C svp.pl_fruit: the preferred fruit name, validated.
 export function preferredFruitName(state) {
     if (state.fruitName === undefined)
         throw new Error('Preferred fruit has not been initialized');
@@ -908,10 +906,6 @@ export function unseenObjectNoun(object) {
             return object?.name || OBJ_NAME(object?.otyp) || 'object';
     }
 }
-// Port only: read the per-game shuffled description.
-function currentDescription(otyp) {
-    return OBJ_DESCR(otyp);
-}
 // C objnam.c:erosion_matters(): used to prevent rust on items where rust
 // makes no difference.  A weptool counts; an ordinary non-weapon tool does
 // not become proof merely because its material could otherwise decay.
@@ -1204,7 +1198,7 @@ export function wishedObjectPresentation(object) {
     // individual object's charge/enchantment `known` bit.  Keep the wished
     // object's appearance only while its concrete type is still unknown.
     const description = game._knownObjectTypes?.has(otyp)
-        ? null : currentDescription(otyp);
+        ? null : OBJ_DESCR(otyp);
     let name;
     if (otyp === SLIME_MOLD) {
         name = fruitFromIndex(object.spe)?.fname || 'fruit';
@@ -1257,14 +1251,16 @@ export function wishedObjectPresentation(object) {
             ? OBJECT_SPELL_CATEGORY[otyp] : undefined,
     };
 }
-// Port only: checked read of an object type's native name.
+// C OBJ_NAME(objects[otyp]): the native name, with the port's
+// required-name validation.
 function requireObjectName(otyp) {
     const name = OBJ_NAME(otyp);
     if (!name)
         throw new RangeError(`Object type ${otyp} has no native name`);
     return name;
 }
-// Port only: checked lookup of a required artifact.
+// Part of C objnam.c:readobjnam(): the required artifact lookup, with the
+// port's validation.
 function requiredArtifact(name, state) {
     const artifact = artifactByName(name, state);
     if (!artifact)
@@ -2440,13 +2436,14 @@ function describeWishedDoor(location, secret) {
 function setLooted(location, flags) {
     setMapFlags(location, flags);
 }
-// Port only: clear the aliased terrain flag fields.
+// Part of C objnam.c:wizterrainwish(): lev->flags = 0 — rm.h overlays the
+// one field the port stores five deep.
 function clearMapFlags(location) {
     setMapFlags(location, 0);
 }
-// Port only: write the five aliased terrain flag fields at once (C rm.h
-// views them as one).
-// C rm.h stores these terrain-specific views in the same five flag bits.
+// Part of C objnam.c:wizterrainwish(): the lev->flags/altarmask/looted
+// writes — rm.h overlays all five views on the one C field, so every
+// wizterrainwish write fans out to the port's five aliased fields.
 function setMapFlags(location, flags) {
     location.flags = location.doormask = location.wall_info = location.icedpool = flags;
     location.looted = location.ladder = location.drawbridgemask = location.altarmask = flags;

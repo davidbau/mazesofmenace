@@ -1,9 +1,10 @@
 // mthrowu.js — the mthrowu.c owner: missiles and rays a monster launches at
 // the hero or at another monster. thitu(), drop_throw(), monmulti(),
 // monshoot(), ohitmon(), ucatchgem(), u_catch_thrown_obj(), m_throw(),
-// return_from_mtoss(), thrwmm(), spitmm()/spitmu(), breamm(), thrwmu(),
-// breamu(), blocking_terrain(), linedup() and m_lined_up(), and the iron
-// bars a missile meets: hit_bars() and hits_bars().
+// return_from_mtoss(), thrwmm(), spitmm()/spitmu(), breamm(),
+// breathwep_name(), thrwmu(), breamu(), blocking_terrain(), linedup() and
+// m_lined_up(), and the iron bars a missile meets: hit_bars() and
+// hits_bars().
 import { WEAPON_CLASS, RING_CLASS, POTION_CLASS, GEM_CLASS, VENOM_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS } from './objclass.js';
 import { OBJ_NAME } from './object_data.js';
 import { objectSkill, ACID_VENOM, BLINDING_VENOM, BOULDER, CORPSE, CREAM_PIE, CREDIT_CARD, EGG, ELVEN_ARROW, ELVEN_BOW, ENORMOUS_MEATBALL, HEAVY_IRON_BALL, LENSES, LOCK_PICK, MAGIC_WHISTLE, MEAT_STICK, OBJECT_NAMES, POT_ACID, SKELETON_KEY, STATUE, TALLOW_CANDLE, TIN_WHISTLE, WAR_HAMMER, WAX_CANDLE, WAN_STRIKING, } from './object_data.js';
@@ -11,9 +12,8 @@ import { currentAttribute, currentStrength, poisonHero } from './attrib.js';
 import { artifactToHitBonus, applyArtifactHit } from './artifact.js';
 import { snuffCandle } from './apply.js';
 import { applyMonsterBlindness, prepareHeroThrownBlindness, finishHeroThrownBlindness, } from './blinding_attack.js';
-import { breatheFromMonster, breathWeaponName } from './breath_ray.js';
 import { endVoluntaryMultiTurn, calcCapacity } from './hack.js';
-import { isPolearm, isLauncherAmmunition, launcherMatchesAmmo, isPoisonableObject } from './object_properties.js';
+import { isPolearm, isLauncherAmmunition, is_launcher, launcherMatchesAmmo, isPoisonableObject } from './object_properties.js';
 import { returningWeaponRangeSquared, rollPhysicalWeaponDamage, rollPhysicalWeaponDamageAgainstHero, monsterWieldedWeapon, selectMonsterRangedWeapon, unwieldMonsterWeapon, wieldMonsterWeapon, } from './weapon.js';
 import { willWeld } from './wield.js';
 import { heroHasFreeHand } from './engrave.js';
@@ -24,7 +24,6 @@ import { clearDescriptionKnowledge, linkObjectToMonsterInventory, unlinkMonsterO
 import { destroyObjectFromMonsterInventory, findMonsterArmorClass } from './worn.js';
 import { A_DEX, A_STR, BOLT_LIM, COULD_SEE, D_CLOSED, D_LOCKED, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_WATERWALL, LAVAWALL, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, M_ATTK_HIT, M_ATTK_MISS, MGIVENNAME, M_SEEN_REFL, NEED_RANGED_WEAPON, NEED_WEAPON, NON_PM, P_BOW, P_CROSSBOW, P_DAGGER, P_DART, P_KNIFE, P_SHURIKEN, P_SLING, P_SPEAR, SINK, SLT_ENCUMBER, Upolyd, W_NONDIGGABLE, W_WEP, WT_IRON_BALL_INCR, ARM, HAND, FOOT } from './const.js';
 import { isok } from './cmd.js';
-import { impossible } from './diagnostics.js';
 import { canSeeMonster, canSpotMonster, newsym, flush_screen, lastDirtyMapCursor, transientObjectGlyph, TemporaryMapEffect, } from './display.js';
 import { game, requireInitializedGame, requireLiveGame, requirePlayingGame, requireGameLevel } from './gstate.js';
 import { dist2, distmin, possessiveName } from './hacklib.js';
@@ -53,7 +52,7 @@ import { learnObjectType, observeObject, objectMaterial } from './o_init.js';
 import { shipObject } from './dokick.js';
 import { stopHeroOccupation } from './allmain.js';
 import { hitMonsterWithSupportedPotion } from './potion.js';
-import { rayDamageType, buzz } from './zap.js';
+import { rayDamageType, buzz, ubuzz, effectiveBreathDamage } from './zap.js';
 import { displayRayName } from './zap.js';
 import { capitalizedDefiniteName } from './objnam.js';
 import { rayHitMessage, rayMissMessage } from './zap.js';
@@ -61,7 +60,7 @@ import { d, rn2, rnd } from './rng.js';
 import { heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
 import { hitByPetrifyingEgg } from './stoning.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
-import { formatHeardMessage, plineWithContinuation, publishHeardMessage, set_msg_xy } from './pline.js';
+import { formatHeardMessage, plineWithContinuation, publishHeardMessage, set_msg_xy, impossible } from './pline.js';
 import { requirePerceivedHero, dissolveBars } from './monmove.js';
 // Port only: finite-number type guard for decoded projectile options.
 function isFiniteNumber(value) {
@@ -79,6 +78,15 @@ const LAST_GLASS_GEM = OBJECT_NAMES.indexOf('worthless piece of violet glass');
 // Port only: null-safe OBJ_NAME read.
 export function objectTypeName(object) {
     return object ? OBJ_NAME(object.otyp) || '' : '';
+}
+// C mthrowu.c:m_has_launcher_and_ammo(): a wielded launcher with matching
+// ammo.
+export function monsterHasLauncherAndAmmo(monster) {
+    const launcher = monsterWieldedWeapon(monster);
+    if (!launcher || !is_launcher(launcher))
+        return false;
+    const inventory = monster.minvent || monster.inventory || [];
+    return inventory.some(ammo => launcherMatchesAmmo(ammo, launcher));
 }
 // C mthrowu.c:thitu(). The hero is struck by a missile thrown or shot by a
 // monster: accuracy and damage rolls, poison, blinding payload, and the
@@ -911,6 +919,47 @@ async function reportDryThroat(source, state, publish) {
         if (message)
             await publish(message);
     }
+}
+const DIRECTIONS = Object.freeze({
+    h: [-1, 0], l: [1, 0], j: [0, 1], k: [0, -1],
+    y: [-1, -1], u: [1, -1], b: [-1, 1], n: [1, 1],
+});
+// Part of C polyself.c:dobreathe(): the hero's ubuzz(BZ_U_BREATH(...))
+// breath ray.
+export async function breatheInDirection(direction, { attack, state = game, sourceMonster = null, ...options } = {}) {
+    if (!attack)
+        return { used: false, heroDied: false, hits: 0 };
+    const type = 20 + effectiveBreathDamage(attack[1]) - 1;
+    return (sourceMonster ? buzz : ubuzz)(sourceMonster ? -type : type, attack[2], direction, {
+        ...options, state, sourceMonster,
+    });
+}
+// Part of C mcastu.c:buzzmu(): the buzz(BZ_M_SPELL(...)) monster-spell
+// ray.
+// A null sourceMonster is divine retribution, not a hero-caused ray.
+export async function castMonsterSpellRay(direction, originX, originY, attack, options = {}) {
+    return buzz(-(10 + attack[1] - 1), attack[2], direction, {
+        ...options, originX, originY,
+    });
+}
+// Part of C mthrowu.c:breamm(): aiming the monster's breath at its
+// target.
+export async function breatheFromMonster(sourceMonster, target, options = {}) {
+    const dx = Math.sign(target.mx - sourceMonster.mx);
+    const dy = Math.sign(target.my - sourceMonster.my);
+    const direction = Object.entries(DIRECTIONS).find(([, delta]) => delta[0] === dx && delta[1] === dy)?.[0];
+    if (!direction)
+        return { used: false, heroDied: false, hits: 0 };
+    return breatheInDirection(direction, {
+        sayHit: false, sayMiss: false, ...options, sourceMonster,
+        originX: sourceMonster.mx, originY: sourceMonster.my,
+    });
+}
+// C mthrowu.c:breathwep_name(): ordinary breath names; callers handle hallucination.
+export function breathWeaponName(damageType) {
+    return ['', 'fragments', 'fire', 'frost', 'sleep gas',
+        'a disintegration blast', 'lightning', 'poison gas', 'acid',
+        'strange breath #8', 'strange breath #9'][damageType] || 'strange breath';
 }
 // C mthrowu.c:breamm(): monster target.
 // Also C mondata.c:get_atkdam_type(): inlined here.

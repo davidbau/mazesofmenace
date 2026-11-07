@@ -67,7 +67,7 @@ import { identify_pack } from './invent.js';
 /* C sit.c:582 uses You()->pline immediately; the deferred eat.js You()
  * leaves the aura in _resultMessage and paints it on a later frame. */
 import { You as You_rc } from './do_wear.js';
-import { Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info, an } from './objnam.js';
+import { Tobjnam, Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info, an } from './objnam.js';
 import { curse, unbless } from './mkobj.js';
 import { spec_ability, adjattrib, change_luck, exercise } from './attrib.js';
 import { hcolor, Amonnam } from './mhitm.js';
@@ -1282,7 +1282,6 @@ export { mon_has_amulet } from './wizard.js';
  * Unported helpers (stubs)
  * ---------------------------------------------------------------------------
  */
-export function Tobjnam(obj, verb) { return Tobjnam_rc(obj, verb); }
 /* You: LOCAL EMPTY STUB DELETED — re-pointed to js/do_wear.js's real, async
  * body (pline.c:372 You()), the general-purpose immediate-pline copy that
  * shares pline's own _plineVFmt formatter.  js/eat.js's copy (imported above

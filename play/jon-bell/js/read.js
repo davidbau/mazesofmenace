@@ -735,7 +735,7 @@ import { doname as doname_er, xname as xname_er } from './objnam.js';
 import { hard_helmet as hard_helmet_er } from './do_wear.js';
 import { sokoban_guilt as sokoban_guilt_er } from './trap.js';
 import { map_invisible as map_invisible_er } from './display.js';
-import { In_quest as In_quest_er, In_endgame as In_endgame_er, Is_earthlevel as Is_earthlevel_er, PASSES_WALLS as PASSES_WALLS_er, HALF_PHDAM as HALF_PHDAM_er, AIR as AIR_ER, DOOR as DOOR_ER, D_CLOSED as D_CLOSED_ER, D_LOCKED as D_LOCKED_ER, HEAD as HEAD_ER, DEAF as DEAF_ER, IS_OBSTRUCTED, W_ARMH as W_ARMH_ER } from './const.js';
+import { In_quest as In_quest_er, In_endgame as In_endgame_er, Is_earthlevel as Is_earthlevel_er, PASSES_WALLS as PASSES_WALLS_er, HALF_PHDAM as HALF_PHDAM_er, AIR as AIR_ER, CLOUD as CLOUD_ER, DOOR as DOOR_ER, D_CLOSED as D_CLOSED_ER, D_LOCKED as D_LOCKED_ER, HEAD as HEAD_ER, DEAF as DEAF_ER, IS_OBSTRUCTED, W_ARMH as W_ARMH_ER } from './const.js';
 import { mon_nam as mon_nam_er } from './uhitm.js';
 import { obfree as obfree_er } from './shk.js';
 import { do_genocide, do_class_genocide } from './sit.js';
@@ -3375,7 +3375,10 @@ function _sense_trap(trap, x, y, src_cursed) {
         map_trap(dummytrap, 1);
         atHero = x === (u.ux | 0) && y === (u.uy | 0);
     }
-    if (atHero) game._sensed_at_hero = true;
+    /* glyph_at(u.ux,u.uy) tracks the LAST paint on the hero's square, so a
+     * later statue-as-monster paint there undoes an earlier object paint. */
+    if ((trap ? trap.tx : x) === (u.ux | 0) && (trap ? trap.ty : y) === (u.uy | 0))
+        game._sensed_at_hero = atHero;
 }
 export { _sense_trap as sense_trap };
 
@@ -4717,7 +4720,7 @@ async function seffect_earth(sobj) {
         }
     }
 }
-const IS_AIR_ER = (typ) => (typ | 0) === AIR_ER;
+const IS_AIR_ER = (typ) => (typ | 0) === AIR_ER || (typ | 0) === CLOUD_ER;
 function closed_door_er(x, y) {
     const t = game.level.at(x, y);
     return !!t && ((t.typ | 0) === DOOR_ER) && (((t.doormask | 0) & (D_CLOSED_ER | D_LOCKED_ER)) !== 0);

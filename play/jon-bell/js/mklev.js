@@ -52,7 +52,7 @@ import { cant_revive } from './read.js';
 import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL, } from './mkobj_erosion_meta.js';
-import { GameMap, newobj } from './game.js';
+import { GameMap, newobj, freed_obj_chunks } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, rnl as rnl_mc, d as d_ml, pushRngLogEntry } from './rng.js';
 import { put_saddle_on_mon, place_monster, poly_steed } from './steed.js';
 import { minimal_monnam } from './do_name.js';
@@ -2202,6 +2202,8 @@ export function dobjsfree() {
             throw new Error(`dobjsfree: obj where=${otmp.where}, not OBJ_DELETED`);
         obj_extract_self(otmp);
         dealloc_obj_real(otmp);
+        otmp.freed_chunk = true;
+        freed_obj_chunks.push(otmp); /* free(): chunk awaits reuse by newobj() */
     }
 }
 export function add_to_buried(obj) {

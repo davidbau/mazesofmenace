@@ -5,7 +5,7 @@ import { game, wizard, discover } from './gstate.js';
 import { ledger_no } from './bones.js';
 import { You, Your, You_feel } from './pline.js';
 import { a_monnam } from './mhitm.js';
-import { make_blinded, resist, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
+import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, toggle_blindness, M1_NOEYES_ZAP, resist, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { explode, explode_oil } from './explode.js';
 import { spoteffects } from './hack.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
@@ -33,6 +33,8 @@ import { monstseesu as monstseesu_real } from './mcastu.js';
 import { burn_away_slime } from './timeout.js';
 import { aggravate } from './wizard.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
+import { _topl_joins_snapshot, _topl_merge_result } from './display.js';
+import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
 import { key2txt, mime_action, pair_of, readchar } from './cmd.js';
 import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
@@ -4952,3 +4954,94 @@ export function bottlename() {
     const names = hallu ? _hbottlenames : _bottlenames;
     return names[rn2(names.length)];
 }
+
+export function make_blinded(xtime, talk) {
+    const old = _BlindedTimeout();
+    const u_could_see = !_Blind();
+    /* probe ahead exactly as C does (potion.c:267-272) */
+    _set_HBlinded(xtime ? 1 : 0);
+    const can_see_now = !_Blind();
+    _set_HBlinded(old);
+
+    /* C potion.c:274-275 — `if (Unaware) talk = FALSE;`.  Unaware is
+     * youprop.h's (gm.multi < 0 && (unconscious() || is_fainted())), the same
+     * expression _u_resists_blnd() below already reads. */
+    if (((game.multi | 0) < 0) && (unconscious() || is_fainted()))
+        talk = false;
+
+    if (can_see_now && !u_could_see) {  /* potion.c:277 regaining sight */
+        if (talk) {
+            /* pline() has no await in its body, so an unawaited call from this
+             * synchronous function commits the message in full — the same
+             * shape js/mhitu.js:258 Your1() already relies on. When it follows
+             * a deferred command result, merge the channels below so later
+             * messages can trigger the normal tty overflow boundary. */
+            const _priorResult = game._resultMessage;
+            if (_Halluc())
+                pline("Far out!  Everything is all cosmic again!");
+            else
+                pline("You can see again.");
+            /* pline() now adopts an otherwise-idle result channel itself.
+             * Only fold the two channels here when that result is still
+             * separate; if pline() already consumed it, prepending the saved
+             * copy would print the food message twice. */
+            if (_priorResult && game._resultMessage === _priorResult
+                && game._pending_message) {
+                const _hint = _topl_joins_snapshot(_priorResult) || undefined;
+                const _merged = _topl_merge_result(_priorResult,
+                    game._pending_message, _hint);
+                game._resultMessage = null;
+                game._pending_message = _merged;
+            }
+        }
+    }
+    /* C potion.c:283-297 — clearing temporary blindness without toggling.
+     * This is reached when external blindness (here, a blindfold) means the
+     * timeout can clear while `Blind` remains true. */
+    else if (old && !xtime && talk) {
+        const hero = game.youmonst?.data || {};
+        const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
+        const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
+        if (!hasEyes || permanentlyBlind) {
+            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
+        } else if ((_blind_prop().extrinsic | 0) !== 0) { // C youprop.h:96 EBlinded
+            const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
+            const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
+            pline(`Your ${eyes} momentarily ${vtense(eyes, "itch")}.`);
+        } else {
+            pline(`Your vision seems to brighten for a moment but is ${_Halluc() ? "sadder" : "normal"} now.`);
+        }
+    }
+
+    if (u_could_see && !can_see_now) {  /* potion.c:300 losing sight */
+        if (talk) {
+            if (_Halluc())
+                pline("Oh, bummer!  Everything is dark!  Help!");
+            else
+                pline("A cloud of darkness falls upon you.");
+        }
+        if (game.u?.uball)              /* Punished — youprop.h */
+            set_bc(0);
+    }
+    else if (!old && xtime && talk) { // v5 potion.c:309-324
+        const hero = game.youmonst?.data || {};
+        const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
+        const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
+        if (!hasEyes || permanentlyBlind) {
+            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
+        } else if ((_blind_prop().extrinsic | 0) !== 0) {
+            const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
+            const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
+            pline(`Your ${eyes} momentarily ${vtense(eyes, "twitch")}.`);
+        } else {
+            pline(`Your vision seems to dim for a moment but is ${_Halluc() ? "happier" : "normal"} now.`);
+        }
+    }
+
+    _set_HBlinded(xtime);               /* potion.c:326 */
+
+    if (u_could_see !== can_see_now) {   /* potion.c:328 `u_could_see ^ can_see_now` */
+        toggle_blindness();
+    }
+}
+

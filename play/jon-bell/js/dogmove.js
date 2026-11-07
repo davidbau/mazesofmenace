@@ -4633,7 +4633,8 @@ export async function quickmimic(mtmp) {
         const gl = () => {
             const l = game.level?.at(x, y);
             return l ? [l.disp_ch, l.disp_color, l.disp_cls, l.disp_obj_otyp,
-                        l.disp_obj_corpsenm, l.disp_attr].join('|') : '';
+                        l.disp_obj_corpsenm, l.disp_attr, l.disp_mon_pm, l.disp_mon_kind,
+                        l.disp_mon_female].join('|') : '';
         };
         const prev_glyph = gl();
         const apt = mtmp.m_ap_type | 0, app = mtmp.mappearance | 0;

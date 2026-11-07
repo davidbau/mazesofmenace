@@ -536,6 +536,7 @@ export class NethackGame {
                 && !game.iflags?.toptenwin
                 && (wizardScoreNoticePending
                     || String(game._screen_output || '').startsWith('\nSince you were in wizard mode,'));
+            let blankFrame = false;
             if (wizardScoreNotice) {
                 nhGame._screens.push('\nSince you were in wizard mode, the score list will not be checked.');
                 /* A death teardown leaves C's cursor on row 2; an escaped
@@ -544,13 +545,15 @@ export class NethackGame {
                     ? (game._wizardScoreNoticePending | 0)
                     : (game._endHow === 0 ? 2 : 4), 1]);
                 game._wizardScoreNoticePending = false;
+            } else if (!/[^\n]/.test(game._screen_output || '')) {
+                blankFrame = true;
             } else {
                 nhGame._screens.push(game._screen_output || '');
                 nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
                     : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             }
-            nhGame._nomuxSpill = nomuxOverflowApply(nhGame._nomuxSpill, nhGame._screens[nhGame._screens.length - 1]);
-            const spillCursor = nomuxOverflowCursor(nhGame._nomuxSpill);
+            if (!blankFrame) nhGame._nomuxSpill = nomuxOverflowApply(nhGame._nomuxSpill, nhGame._screens[nhGame._screens.length - 1]);
+            const spillCursor = blankFrame ? null : nomuxOverflowCursor(nhGame._nomuxSpill);
             if (spillCursor) nhGame._cursors[nhGame._cursors.length - 1] = spillCursor;
             nhGame._rngSlices.push(slice);
             // Keep the marker through stale brown-mold frames; clear it only
@@ -570,8 +573,13 @@ export class NethackGame {
             routeFrameTick();
         };
     }
-    getScreens() { return this._screens; }
-    getCursors() { return this._cursors; }
+    _trailingEmptyCaptures() {
+        let n = this._screens.length;
+        while (n > 0 && this._screens[n - 1] === '') n--;
+        return n;
+    }
+    getScreens() { const n = this._trailingEmptyCaptures(); return n === this._screens.length ? this._screens : this._screens.slice(0, n); }
+    getCursors() { const n = this._trailingEmptyCaptures(); return n === this._cursors.length ? this._cursors : this._cursors.slice(0, n); }
     getRngLog() { return getRngLog(); }
 }
 export async function gameFromSession(sessionData) {

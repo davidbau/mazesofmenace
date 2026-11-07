@@ -183,6 +183,7 @@ async function read_yn(prompt, acceptQ) {
                  * tty_clear_nhwindow(WIN_MESSAGE) + addtopl(prompt); doprev
                  * stays 0, so the next key answers the re-added prompt. */
                 await doprev_message();
+                g._prevmsg_next = null; /* topl.c:441 cw->maxcol = cw->maxrow */
                 g._pending_message = shown;
                 await flush_screen(1);
                 if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);
@@ -195,6 +196,7 @@ async function read_yn(prompt, acceptQ) {
             doprev = true;
             continue;
         } else if (doprev) {
+            g._prevmsg_next = null; /* topl.c:456 cw->maxcol = cw->maxrow */
             g._pending_message = shown;
             await flush_screen(1);
             if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);

@@ -55,7 +55,7 @@ import { in_out_region, m_in_out_region } from './region.js';
 import { d, rn2, rnd, rnl } from './rng.js';
 import { hot_pursuit, make_angry_shk, obfree, sellobj, contained_gold as shk_contained_gold, costly_spot as shk_costly_spot, donate_gold as shk_donate_gold, is_unpaid as shk_is_unpaid, shop_keeper as shk_shop_keeper, subfrombill as shk_subfrombill, shkcatch } from './shk.js';
 import { in_rooms as shk_in_rooms } from './hack.js';
-import { Tobjnam } from './sit.js';
+import { Tobjnam } from './objnam.js';
 import { skill_name } from './skills.js';
 import { stackobj } from './sp_lev.js';
 import { isqrt } from './hacklib.js';

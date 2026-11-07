@@ -25,8 +25,12 @@ for (const [alias, field] of Object.entries({
 // C newobj() followed by *obj = <initial value>.  This is a shallow struct
 // copy, not a copy of objects reached through its pointers (including oextra).
 // The caller supplies zero-initialization or an existing struct as C does.
+export const freed_obj_chunks = [];
 export function newobj(...fields) {
-    return Object.assign(Object.create(objProto), ...fields);
+    const chunk = freed_obj_chunks.pop(); /* malloc reuses the newest freed chunk */
+    const obj = Object.assign(Object.create(objProto), ...fields);
+    if (chunk) chunk.occupant = obj;
+    return obj;
 }
 
 // C you.h: struct you. Worn slots are globals in C, not members of this

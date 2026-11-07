@@ -3820,7 +3820,8 @@ async function unlink_mon(mtmp, onmap) {
     if ((mtmp.mx | 0) > 0 && emits_light(mtmp.data))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
     mtmp.mtrapped = 0;
-    await unstuck(mtmp);
+    mtmp._dyingInGrid = onmap;
+    try { await unstuck(mtmp); } finally { mtmp._dyingInGrid = false; }
     /* C mon.c:2708 mon_leaving_level(): `if (mon->wormno) remove_worm(mon);
      * else remove_monster(mx, my);` — a killed long worm's body leaves the grid. */
     if (mtmp.wormno)

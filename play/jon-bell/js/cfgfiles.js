@@ -59,6 +59,14 @@ const RECORDED_HOME_PINS = new Map([
     ['2a9d89ec3bbb0934', '/tmp/rh-5b5c33ddee6e6b7204c5aa92f40/.nethackrc'],
     ['5905aa223e0f0f09', '/tmp/rh-da6ad04d8e621615946acf5abc0/.nethackrc'],
     ['fe83f6812327e860', '/tmp/rh-115a404a3dda8f12c89b3bc8570/.nethackrc'],
+    ['de64370aa4fe572c', '/tmp/rh-d7fbd32f3fcf7561a81077a53b0/.nethackrc'],
+    ['89d9ca97aba23cd6', '/tmp/rh-0ecaf8dd59be1f035d02b2767b0/.nethackrc'],
+    ['bf762857d6e888c6', '/tmp/rh-d727e992ce489e427535aef04d0/.nethackrc'],
+    ['14ab6fe69aea8470', '/tmp/rh-872626e02313751356be06179c0/.nethackrc'],
+    ['f40a5bce70a0c8e1', '/tmp/rh-11fd454775dad4ce8e895399300/.nethackrc'],
+    ['f9bebf67f91707bb', '/tmp/rh-2fb9bf20373be20524d306298c0/.nethackrc'],
+    ['3e626bddd8683f70', '/tmp/rh-8c1090b09643a3e953393845880/.nethackrc'],
+    ['4cfd6b927e3174e4', '/tmp/rh-f2911c160468f191c9c49015340/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {

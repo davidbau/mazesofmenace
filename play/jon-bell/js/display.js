@@ -95,7 +95,7 @@ import { u_at, is_pit, BEAR_TRAP, WEB } from './const.js';
 /* C ref: include/align.h:29-39 — altar_to_glyph's alignment-mask tests. */
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
 import { SICK, STONED, STRANGLED, SLIMED, SICK_VOMITABLE, SICK_NONVOMITABLE } from './const.js';
-import { BLINDED, CONFUSION, STUNNED, WOUNDED_LEGS, INFRAVISION, WARNING, WARN_OF_MON, FLYING, LEVITATION, HALLUC, HALLUC_RES, DEAF, Is_rogue_level, Is_waterlevel, Is_airlevel, LA_DOWN, In_mines, In_sokoban, Is_knox_level } from './const.js';
+import { BLINDED, CONFUSION, STUNNED, WOUNDED_LEGS, INFRAVISION, WARNING, WARN_OF_MON, FLYING, LEVITATION, HALLUC, HALLUC_RES, DEAF, GLIB, Is_rogue_level, Is_waterlevel, Is_airlevel, LA_DOWN, In_mines, In_sokoban, Is_knox_level } from './const.js';
 
 function _display_hallucinating() {
     const u = game.u;
@@ -5485,7 +5485,7 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
     let sgr = '\x1b[7m';
     if (game.iflags?.hilite_delta) {
         const hpField = `HP:${curhp}(${maxhp0})`;
-        const hh = _status_hp_temp_rule(curhp, maxhp0)
+        const hh = (_hs ? _hs.hpTempRule : _status_hp_temp_rule(curhp, maxhp0))
             || _status_field_hilites(hpField).get(0);
         if (hh && hh.color !== NO_COLOR) sgr = `\x1b[7;${ANSI_COLOR[hh.color] ?? ANSI_DEFAULT}m`;
     }
@@ -5579,7 +5579,6 @@ export function _hilite_status_wrap(row) {
         const r = _hilite_pick(fld, v);
         /* tty term_start_attr fuses the attribute with the colour (\e[1;35m)
          * and term_end_attr closes the run with \e[0m. */
-        return r ? `\x1b[${r.bold ? '1;' : ''}${r.col}m${text}\x1b[${r.bold ? 0 : 39}m` : text;
         if (r?.attr) /* term_end_attr closes an attribute run with \e[0m */
             return `\x1b[${[[ATR_INVERSE, 7], [ATR_BOLD, 1], [ATR_UNDERLINE, 4]]
                 .filter(([b]) => r.attr & b).map(([, c]) => c).concat(r.col).join(';')}m${text}\x1b[0m`;
@@ -6148,6 +6147,9 @@ function _status_hp_crit_rule_active(cur, max) {
 }
 function _status_field_hilites(row) {
     const cells = _status_hunger_hilites(row);
+    /* C botl.c:1051-1065,2499-2531: BL_GOLD uses the same absolute
+     * threshold evaluation as other numeric fields, with its live symbol. */
+    const labels = { ..._HL_FIELD_LABEL, gold: `${gold_status_char()}:` };
     let titleHl = null;
     const critLabels = new Set();
     /* C botl.c:2784-2810 status_hilite_add_threshold() appends every rule
@@ -6180,7 +6182,7 @@ function _status_field_hilites(row) {
         const fname = status_fieldname(parts[0].trim());
         /* botl.c BL_HPMAX / BL_ENEMAX: the parenthesized maximum is its own field */
         const maxLabel = { 'hitpoints-max': 'HP:', 'power-max': 'Pw:' }[fname];
-        const label = maxLabel ?? _HL_FIELD_LABEL[fname];
+        const label = maxLabel ?? labels[fname];
         if (!label) continue;
         const fm = new RegExp(`(?:^| )(${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\S*)`).exec(row);
         if (!fm) continue;
@@ -6270,7 +6272,7 @@ function _status_field_hilites(row) {
     /* the title field heads the first status row only (row 2 starts at Dlvl:) */
     if (titleHl && /\bSt:\d/.test(row) && !(game.iflags?.wc2_hitpointbar && row.startsWith('[')))
         for (let c = 0; c < 30; c++) result.set(c, titleHl);
-    for (const [field, label] of Object.entries(_HL_FIELD_LABEL)) {
+    for (const [field, label] of Object.entries(labels)) {
         const fm = new RegExp(`(?:^| )(${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\S*)`).exec(row);
         if (!fm) continue;
         const text = fm[1], start = fm.index + fm[0].length - text.length;
@@ -6418,10 +6420,18 @@ export function status_xp_bot_eval() {
     h.val = val;
 }
 const _STATUS_FIELDS_BEFORE_GOLD = new Set(['strength', 'dexterity', 'constitution',
-    'intelligence', 'wisdom', 'charisma']);
+    'intelligence', 'wisdom', 'charisma', 'carrying-capacity']);
 /* Fields whose chg is evaluated at every bot() paint (botl.c:1514-1614) by
  * _status_temp_bot_eval(); [fname, regex, span, value]. */
 const _STATUS_BOT_FIELDS = [
+    /* botl.c:1100-1110: even an empty hunger/cap field has an integer value.
+     * Track the empty state too, so its first visible text is a change. */
+    ..._HL_TEXT_FIELDS.map((tf) => [tf.fld,
+        new RegExp(tf.fld === 'hunger'
+            ? '(?:Xp:\\d+(?:/\\d+)?|HD:\\d+)(?: T:\\d+)?(?: (Satiated|Hungry|Weak|Fainting|Fainted|Starved))?'
+            : '(?:Xp:\\d+(?:/\\d+)?|HD:\\d+)(?: T:\\d+)?(?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (Burdened|Stressed|Strained|Overtaxed|Overloaded))?'),
+        (m) => [m.index + m[0].length - (m[1] || '').length, (m[1] || '').length],
+        (m) => tf.vals.indexOf(m[1] || '')]),
     /* BL_HPMAX "(%s)" (botl.c:722): no percent_matters, plain value
      * direction; the field is the parenthesised maximum after HP. */
     ['hitpoints-max', /HP:-?\d+\((\d+)\)/, (m) => [m.index + m[0].length - m[1].length - 2,
@@ -6621,7 +6631,7 @@ function _str2condbits(str) {
 /* C botl.c:3144-3166 conditionbitmask2str(): conditions[].text[0] names in
  * table order joined by '+', replaced wholesale by the LAST alias (the i=1
  * start skips "strangled") whose bitmask equals the value. */
-function _condbitmask2str(bm) {
+export function _condbitmask2str(bm) {
     let alias = null;
     for (let i = 1; i < _COND_ALIAS_BITS.length; i++)
         if (_COND_ALIAS_BITS[i][1] === bm) alias = _COND_ALIAS_BITS[i][0];
@@ -6695,7 +6705,11 @@ export function gather_condition_hilite_lines() {
  * inverse yellow strength rule (attr codes first, then the colour).  Grid
  * cells are written from the plain row, so only the text output is decorated. */
 function _status_sgr_open(h) {
-    const codes = [];
+    /* get_hilite() selects one rule (botl.c:2395-2409); tty_putstatusfield
+     * ends the previous attributes before beginning it (wintty.c:5213-5240).
+     * A temporary rule must replace attributes embedded by the persistent
+     * formatter, rather than inherit them (for example gold's bold rule). */
+    const codes = [0];
     /* wintty.c:4955 Begin_Attr order: bold, dim, italic, uline, blink, inverse */
     if (h.attr & ATR_BOLD) codes.push(1);
     if (h.attr & 8) codes.push(2);
@@ -6974,6 +6988,12 @@ function _live_lev(u) {
     const lp = u && u.uprops && u.uprops[LEVITATION];
     return !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0)) && !(lp.blocked | 0);
 }
+/* C botl.c:1149-1203 condtests[].enabled (cond_<name> options, default per
+ * condopt_info opt_in): the cond_menu() result lands in flags.cond_*. */
+function _condEn(name, dflt) {
+    const v = game.flags?.['cond_' + name];
+    return v === undefined ? dflt : !!v;
+}
 export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen,
                                    halluFrozen, confFrozen, flyFrozen, sickTypeFrozen, levFrozen,
                                    slimedFrozen, inLavaFrozen, wLegsFrozen, strangledFrozen, busyFrozen, grabFrozen, stonedFrozen, rideFrozen) {
@@ -7057,7 +7077,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
             : (!_botlPending && game._botlPaintedBlind != null) ? !!game._botlPaintedBlind
             : (!!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
                 && !(bp.blocked | 0));
-        if (blinded)
+        if (blinded && _condEn('blind', true))
             s += ' Blind';
     }
     /* C ref: botl.c:1192 condtests[bl_conf].test = (Confusion) ? TRUE : FALSE,
@@ -7075,7 +7095,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     {
         const confused = (confFrozen !== undefined) ? !!confFrozen
             : (game._botlPaintedConfused ?? !!(u.uprops?.[CONFUSION]?.intrinsic | 0));
-        if (confused)
+        if (confused && _condEn('conf', true))
             s += ' Conf';
     }
     {
@@ -7083,7 +7103,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         const deaf = (deafFrozen !== undefined) ? !!deafFrozen
             : !!((dp?.intrinsic | 0) || (dp?.extrinsic | 0) || (u.HDeaf | 0)
                  || (u.uroleplay && u.uroleplay.deaf));
-        if (deaf)
+        if (deaf && _condEn('deaf', true))
             s += ' Deaf';
     }
     {
@@ -7095,7 +7115,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
                    /* youprop.h Flying: (u.usteed && is_flyer(u.usteed->data)) */
                    || (u.usteed && ((u.usteed.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */)))
                && !(fp?.blocked | 0));
-        if (flying)
+        if (flying && _condEn('fly', true))
             s += ' Fly';
     }
     {
@@ -7104,7 +7124,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
          * caller, which uses the last status paint. */
         const hallucinating = (halluFrozen !== undefined) ? !!halluFrozen
             : (game._botlPaintedHallu ?? _hallucinating_dsp());
-        if (hallucinating)
+        if (hallucinating && _condEn('hallucinat', true))
             s += ' Hallu';
     }
     /* C ref: botl.c:983 condtests[bl_lev].test = (Levitation) ? TRUE : FALSE,
@@ -7122,13 +7142,13 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
          * after its pline, so the page's status still says Lev. */
         const levitating = (levFrozen !== undefined) ? levFrozen
             : (game._botlPaintedLev ?? _live_lev(u));
-        if (levitating)
+        if (levitating && _condEn('levitate', true))
             s += ' Lev';
     }
     /* C steed.c:657 clears u.usteed before its liquid-fall messages, but
      * flags botl only at :814.  display.c:2236 therefore retains the last
      * botl.c:1198 bl_ride paint during those messages. */
-    if (rideFrozen ?? !!u.usteed)
+    if ((rideFrozen ?? !!u.usteed) && _condEn('ride', true))
         s += ' Ride';
     {
         /* `stunFrozen` is the value bot() painted at a frozen --More-- pline,
@@ -7137,7 +7157,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         const sp = u.uprops && u.uprops[STUNNED];
         const stunned = (stunFrozen !== undefined) ? stunFrozen
             : (!!sp && (sp.intrinsic | 0) !== 0);
-        if (stunned)
+        if (stunned && _condEn('stun', true))
             s += ' Stun';
     }
     /* C botl.c:1198 test_if_enabled(bl_bareh) = (!uarmg && !uwep); rank 20
@@ -7152,6 +7172,10 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     }
     if (busyFrozen !== undefined ? busyFrozen : _busy_condition())
         s += ' Busy';
+    /* C botl.c:1204 test_if_enabled(bl_slippery) = Glib; opt_in, rank 20,
+     * sorting after sleep and before submerged/tethered (useroption order). */
+    if (_condEn('slip', false) && ((u.uprops?.[GLIB]?.intrinsic | 0) !== 0))
+        s += ' Slip';
     /* C botl.c:1154-1163: bl_tethered (opt_in) is u.utraptype == TT_BURIEDBALL;
      * bl_trapped (opt_in) is any other u.utrap, tethered/in-lava lumped in
      * only when their own condition is disabled.  Rank 20, after barehanded. */
@@ -8423,6 +8447,9 @@ function _topl_wordwrap(text, width) {
      * therefore keeps its earlier blanks on the upper row and the rest leads
      * the next row (a recorded topline wrapping "following:  -More"). */
     const plain = String(text || '');
+    /* ^P recall of a getlin line: redotoplin's putsyms() hard-wraps (topl.c:121-142). */
+    if (game._topl_recall_hardwrap && width === TOPL_CO - 1 && plain.length >= TOPL_CO)
+        return _topl_hardwrap(plain);
     if (width === TOPL_CO - 1 && plain.length >= TOPL_CO && !/[\x1b\x0e\x0f]/.test(plain)) {
         const rows = [];
         let rest = plain;
@@ -8782,12 +8809,18 @@ function _capture_botl(paint = false) {
             : (game._botlStaleHp !== undefined && !Upolyd) ? game._botlStaleHp : u.uhp,
         uhpmax: hpPaint ? hpPaint.uhpmax
             : (game._botlStaleHp !== undefined && !Upolyd) ? game._botlStaleHpmax : u.uhpmax,
+        /* wintty.c:4536-4543,5158-5165: the bar keeps the color delivered
+         * with BL_HP.  A deferred page must retain that paint's temporary
+         * rule along with its HP, even if a later paint changes the rule. */
+        hpTempRule: hpPaint ? hpPaint.hpTempRule
+            : _status_hp_temp_rule(Upolyd ? u.mh : u.uhp, Upolyd ? u.mhmax : u.uhpmax),
         gold: game._tutorialStatusOverride?.gold ?? game._botlGoldStale
             ?? money_cnt(game.invent ?? null),
         /* botl.c:1564-1584: the gold field's label is part of the painted
          * field cache; a status_reassess() (polyself.c set_uasmon) after this
          * pline must not relabel a page frozen at this paint. */
-        goldLabel: game._goldLabelCache?.label,
+        goldLabel: gold_status_char(game._tutorialStatusOverride?.gold ?? game._botlGoldStale
+            ?? money_cnt(game.invent ?? null)),
         mh: hpPaint ? hpPaint.mh
             : (game._botlStaleHp !== undefined && Upolyd) ? game._botlStaleHp : u.mh,
         mhmax: hpPaint ? hpPaint.mhmax
@@ -8806,7 +8839,7 @@ function _capture_botl(paint = false) {
             ? (game._botlPaintedLevel | 0) : (u.ulevel | 0),
         uexp: (game._botlPaintedExp != null)
             ? game._botlPaintedExp : (u.uexp ?? 0n),
-        uhs: game._saved_hs
+        uhs: (game._saved_hs || game._hsRestored)
             && !(_d && ((_d.botl | 0) || (_d.botlx | 0)))
             ? (game._botlPaintedUhs != null ? (game._botlPaintedUhs | 0) : (game._save_hs | 0))
             : (u.uhs | 0),
@@ -10776,10 +10809,23 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
             /* The raising pline's own recorded flush has HP as of that bot() call;
              * the live values can be later (done_eating's cpostfx nurse heal
              * runs after "You finish eating" but before this page is drained). */
+            /* The frames' offsets are into the window's whole accumulated
+             * topline, so a later page's committed line (the flavor line paged
+             * first) starts after its own record's boundary, not at 0: the
+             * raising pline is the one recorded at committed's end there
+             * (cpostfx's "You feel a change coming over you." flushed before
+             * polyself's newman() rescaled HP, polyself.c:386-397). */
+            const _own = (g._plineFlushFrames || []).findLast((f) => f.msg === committed);
+            const _end = (_own ? (_own.off | 0) + 2 : 0) + committed.length;
             const _rec = (g._plineFlushFrames || []).findLast(
-                (f) => f.off === committed.length && f.botl
+                (f) => f.off === _end && f.botl
                 && (f.moves | 0) >= (g.moves | 0));
-            const _live = _rec ? _rec.botl : _capture_botl();
+            /* The occupation driver selects the incoming pline's paint in
+             * _occCurBotl. Later pages keep offsets into the entire message
+             * window, so committed.length need not find that record again.
+             * Keep its selected paint instead of sampling effects which C
+             * runs after this more() (eat.c:556-563, pline.c:273-276). */
+            const _live = _rec ? _rec.botl : (g._occCurBotl || _capture_botl());
             g._paintedSnapshot.botl = { ...g._paintedSnapshot.botl, uhs: (framesUhs | 0),
                 ...(_live ? { uhp: _live.uhp, uhpmax: _live.uhpmax, mh: _live.mh, mhmax: _live.mhmax } : {}) };
             /* Keep the attributes from the incoming pline's recorded flush.
@@ -11321,11 +11367,13 @@ async function _flush_screen_body(mode, repaint = true) {
      * re-join the dismissed pages (and lose their join record) in front of the
      * new plines.  Drop the snapshot: the live remainder now owns the line.
      * DISPLAY-ONLY: no RNG, no game state. */
+    /* Identical later plines do not keep this earlier occurrence alive:
+     * topl.c:246 makes the acknowledged page TOPLINE_EMPTY, and :281-282
+     * replaces it with the incoming message even when its text repeats. */
     const _resHeadPaged = hadMore && fullTopl && game._resultMessage
         && String(game._resultMessage) !== fullTopl
         && fullTopl.startsWith(game._resultMessage + '  ')
-        && consumed >= String(game._resultMessage).length + 2
-        && !String(game._pending_message || '').startsWith(game._resultMessage);
+        && consumed >= String(game._resultMessage).length + 2;
     if (hadMore && fullTopl && (game._resultMessage === fullTopl || _resHeadPaged)) {
         game._resultMessage = null;
         game._resultMessageJoins = null;
@@ -11851,11 +11899,19 @@ async function _pline_body(msg, alreadyFlushed, putmesg = null, ...args) {
          * BEHIND it (topl.c:257-301) instead of being plined ahead of it. */
         /* The same holds for movemon's messages (allmain.c:212): no nhgetch
          * has acknowledged the occupation's topline before that world turn. */
+        /* topl.c:257-301 holds ONE gt.toplines: the per-turn merge already
+         * copied this committed line into the result channel, so moving it to
+         * the pending channel must not leave that copy to page a second time
+         * (an impossible() per eating turn paged "Please report..." twice). */
+        if (game._resultMessage === game._occ_committed_topl.text) {
+            game._resultMessage = null;
+            game._resultMessageJoins = null;
+        }
         game._pending_message = game._occ_committed_topl.text;
         game._occ_committed_topl = null;
     }
     else if (game.occupation == null && game._occ_committed_topl?.postMeal
-        && game._inMovemonBlock && !game._pending_message && !game._resultMessage) {
+        && (game._inMovemonBlock || game._inDosounds) && !game._pending_message && !game._resultMessage) {
         game._pending_message = game._occ_committed_topl.text;
         game._occ_committed_topl = null;
     }

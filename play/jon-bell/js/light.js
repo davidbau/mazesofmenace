@@ -19,10 +19,11 @@
 // around them.  Without do_light_sources() this port had no TEMP_LIT at all,
 // so those nine cells fell through to the hero's Warning glyphs and blank
 
+import { freed_obj_chunks } from './game.js';
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
-    RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED, OBJ_DELETED,
+    RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, OBJ_CONTAINED, OBJ_DELETED,
     BURIED_TOO, CONTAINED_TOO, u_at, PLNMSG_OBJ_GLOWS,
 } from './const.js';
 import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
@@ -57,6 +58,25 @@ function mon_is_local(mon) { return (mon?.mx | 0) > 0; }
 
 function ls_obj_is_local(obj) {
     return (obj.where | 0) === OBJ_DELETED ? false : obj_is_local(obj);
+}
+
+/* A dangling light-source object that was free()d (dealloc_obj_real zeroes it,
+ * so where == OBJ_FREE) is read back through its stale pointer by dosave0()'s
+ * obj_is_local() (timeout.c:2560); a `where` outside that switch ends in
+ * panic("obj_is_local").  Malloc reuse is modeled as a LIFO of freed chunks
+ * that newobj() pops: the stale pointer then reads the `where` of whatever
+ * object now occupies the chunk. */
+export async function dangling_light_check() {
+    for (let ls = light_base; ls; ls = ls.next) {
+        let o = ls.type === LS_OBJECT ? ls.id.a_obj : null;
+        if (!o || !o.freed_chunk)
+            continue;
+        while (o.occupant)
+            o = o.occupant;
+        if (![OBJ_INVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_MINVENT, OBJ_MIGRATING,
+              OBJ_BURIED].includes(o.where | 0))
+            await (await import('./dog.js')).panic('obj_is_local');
+    }
 }
 
 

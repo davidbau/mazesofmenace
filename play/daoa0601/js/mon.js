@@ -6,19 +6,20 @@ import { SCROLL_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, RANDOM_CLASS, FOOD_CLA
 import { OBJ_DESCR, objectTypeColor } from './o_init.js';
 import { objectBaseWeight, objectBimanual, AXE, BATTLE_AXE, BOULDER, CARROT, CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FIGURINE, GLOB_OF_GRAY_OOZE, GLOB_OF_GREEN_SLIME, ICE_BOX, PICK_AXE, TIN, AMULET_OF_STRANGULATION, BOOMERANG, BULLWHIP, CLUB, ELVEN_SPEAR, GRAPPLING_HOOK, GRAY_DRAGON_SCALES, IRON_CHAIN, LEASH, LEATHER_ARMOR, LEATHER_CLOAK, BELL_OF_OPENING, QUARTERSTAFF, RIN_SLOW_DIGESTION, ROCK, SADDLE, SCR_BLANK_PAPER, SCR_SCARE_MONSTER, SMALL_SHIELD, STATUE, UNICORN_HORN, WORM_TOOTH, WORTHLESS_PIECE_OF_VIOLET_GLASS, WORTHLESS_PIECE_OF_WHITE_GLASS, } from './object_data.js';
 import { game, requireInitializedGame, requirePlayingGame, requireGameLevel, requireLiveGame } from './gstate.js';
-import { formatFeltMessage, formatHeardMessage, formatSeenMessage, plineWithContinuation, plineWithContinuation as pline, publishHeardMessage, recordGameLogEvent, } from './pline.js';
+import { formatFeltMessage, formatHeardMessage, formatSeenMessage, plineWithContinuation, plineWithContinuation as pline, publishHeardMessage, recordGameLogEvent, impossible, } from './pline.js';
 import { adjustMonsterSpeed, monsterSpeedMessage, setMonsterPermanentInvisibility, bypassObject, clearBypasses, removeObjectFromMonsterInventory, adjustMonsterClothingAfterPolymorph, findMonsterArmorClass, applyMonsterEquipmentProperties, initializeMonsterArmor, } from './worn.js';
-import { DISCARDED_CALL_LOG } from './monster_action_types.js';
-import { isAccessibleAt, canMonsterHideUnderObjectAt, interruptOccupationForMonster, makeMonsterFlee, monsterCanBreakBoulder, monsterHasKey, monsterIsScaredAt, monsterSightingBeforeAction, monsterCanFog, requirePerceivedHero, presentMonsterAction, runMonsterAction, runMonsterEveryturnEffects, monsterWantsFloorObject, setMonsterApparentHeroPosition } from './monmove.js';
+import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
+import { beginMonsterDochug, isAccessibleAt, canMonsterHideUnderObjectAt, interruptOccupationForMonster, makeMonsterFlee, monsterCanBreakBoulder, monsterHasKey, monsterIsScaredAt, monsterSightingBeforeAction, monsterCanFog, requirePerceivedHero, presentMonsterAction, runMonsterEveryturnEffects, monsterWantsFloorObject, setMonsterApparentHeroPosition } from './monmove.js';
+import { fightNearbyMonster } from './mhitm.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { ALLOW_ALL, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_SANCT, ALLOW_SSM, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_WALL, A_CHA, BUSTDOOR, COLNO, D_BROKEN, D_CLOSED, D_LOCKED, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, LAVAWALL, NOGARLIC, NOTONL, NO_WEAPON_WANTED, OPENDOOR, RLOC_MSG, RLOC_NOMSG, ROWNO, SHOPBASE, TELEP_TRAP, TEMPLE, TRAPNUM, UNLOCKDOOR, W_ARMS, W_NONDIGGABLE, W_NONPASSWALL, WT_TOOMUCH_DIAGONAL, FOUNTAIN, G_GENOD, MON_FLOOR, MSLOW, STRAT_WAITFORU, WATER, COULD_SEE, IN_SIGHT, MMOVE_DIED, M_AP_MONSTER, M_AP_NOTHING, MGIVENNAME, M_AP_TYPE, MIGR_APPROX_XY, MIGR_RANDOM, MON_LIMBO, PLNMSG_HIDE_UNDER, M_AP_FURNITURE, M_AP_OBJECT, IS_WALL, SDOOR, TREE, LARGEST_INT, MAX_CARR_CAP, WT_HUMAN, ROOM, STRAT_WAITMASK, Is_rogue_level, is_pit, NORMAL_SPEED, ACH_MEDU, BOLT_LIM, CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_INIT, CORPSTAT_MALE, DISMOUNT_GENERIC, DOOR, G_NOCORPSE, GPCOORDS_MAP, GPCOORDS_NONE, In_endgame, MFAST, MON_DETACH, NON_PM, W_ARM, W_ARMC, W_ARMG, W_ARMU, engulfing_u, ismnum, thats_enough_tries, MON_OFFMAP, STOMACH, LL_ACHIEVE, LL_KILLEDPET, LL_UMONST, } from './const.js';
 import { isok } from './cmd.js';
 import { dryFountainAt } from './fountain.js';
 import { canSeeMonster, canSpotMonster, newsym, canSenseMonster, unmap_invisible, swallowed, see_monsters, flashGlyphAt, transientMonsterGlyph, shieldeff } from './display.js';
 import { splitMonster } from './potion.js';
-import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM, monsterClassSymbol, monsterTypeName, requireMonsterData } from './monster_data.js';
-import { displayLiquidName, formatMonsterName, monsterName, namelessMonsterName, setMonsterGivenName } from './do_name.js';
-import { possessiveName, dist2, ordinalSuffix, pointsOnline } from './hacklib.js';
+import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM, monsterClassSymbol, requireMonsterData } from './monster_data.js';
+import { displayLiquidName, formatMonsterName, monsterName, namelessMonsterName, setMonsterGivenName, monsterTypeName } from './do_name.js';
+import { possessiveName, dist2, distmin, ordinalSuffix, pointsOnline } from './hacklib.js';
 import { monsterHasFireResistance, monsterHasSeductionAttack, monsterHasStoneResistance, monsterCorrodesBars, monsterPassesBars, monsterLocomotion, monsterFireDescription, formCanBecomeStoneGolem, nameToMonster, resolveMonsterClass, monsterHasPoisonResistance, setMonsterSpecies, monsterKnowsTrap, acidic, cant_drown, is_male, is_minion, is_neuter, is_orc, is_shapeshifter, lays_eggs, metallivorous, monsterCanTeleport, is_dwarf, is_elf, monsterIsAnimal, monsterIsFemale, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsSlithy, monsterIsSwimmer, monsterPerceives, needspick, notake, polyok, regenerates, strongmonst, tunnels, monsterCanEngulf, monsterDigests, monsterGrowthFamilyMatch, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsCovetous, monsterIsDisplacer, monsterIsEel, monsterIsFloater, monsterIsFlyer, monsterIsGolem, monsterIsHuman, monsterIsKop, monsterIsNoncorporeal, monsterIsNonliving, monsterIsAlwaysHostile, monsterIsPlainHuman, monsterIsQuestGuardian, monsterIsPlayerMonster, monsterIsRider, monsterIsSlimeproof, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterOlderForm, monsterPassesWalls, monsterSpeciesSticks, monsterThrowsRocks, monsterYoungerForm, speciesEatsCorpses, heroResistsStoning, touchPetrifies, fleshPetrifies, resistConflict, heroHasOlfaction, } from './mondata.js';
 import { killEgg, objectsInTimerGraph, stopObjectTimer } from './timeout.js';
 import { d, rn2, rnd, rn1, rnl } from './rng.js';
@@ -39,7 +40,8 @@ import { splitObjectStack, mkcorpstat, mkgold, mksobj, mkobj, discardMonsterInve
 import { unpunishHero } from './read.js';
 import { capitalizedDefiniteName } from './objnam.js';
 import { heroSpecies, heroFormSticks, heroIsAmphibious, dragonFormForArmor, heroMonsterForm, body_part, heroHasProtectionFromShapeChangers } from './polyself.js';
-import { cansee, couldsee, hasLightSources, monsterHasLineOfSightToHero, vision_recalc, monsterEmitsLight, vision_note_blocker_change } from './vision.js';
+import { cansee, couldSeeFromHero, couldsee, monsterHasLineOfSightToHero, vision_recalc, monsterEmitsLight, vision_note_blocker_change } from './vision.js';
+import { hasLightSources } from './light.js';
 import { monsterSentenceSubject, publishMonsterGrowl } from './sounds.js';
 import { adjustHeroAlignment, changeHeroLuck, currentAttribute } from './attrib.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -51,7 +53,6 @@ import { heroIsDisplaced } from './do_wear.js';
 import { GAS_OK, monsterGasTolerance, visibleRegionAt, createPoisonGasCloud } from './region.js';
 import { hasTrack } from './track.js';
 import { inHeroSanctuary, ghodHitsu, priestIsCoaligned, templeRoomAt } from './priest.js';
-import { impossible } from './diagnostics.js';
 import { wereChange, isHumanWereMonster, isWereMonster, transformWereMonster } from './were.js';
 import { badRock, disturbBuriedZombies, roomsAt, loseHeroHp, heroLocomotion, mayDig, finishDestinationSpotEffects, monsterCannotSqueezeThrough } from './hack.js';
 import { deleteEngravingAt, hasCompletedEngraving } from './engrave.js';
@@ -544,9 +545,9 @@ export function undeadToCorpse(mndx) {
 function isFiniteNumber(value) {
     return typeof value === 'number' && Number.isFinite(value);
 }
-// Port only: iteration in fmon order; JS appends while C prepends to fmon.
-// JS stores monsters in creation order by appending to level.monsters.
-// C's makemon() prepends to fmon, so all scheduler traversals are reversed.
+// C mon.c fmon traversal (for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)):
+// makemon() prepends to fmon while the port appends to level.monsters,
+// so scheduler traversals reverse the array.
 export function monstersInFmonOrder(monsters = []) {
     return Array.from(monsters).reverse();
 }
@@ -1267,7 +1268,8 @@ export async function maybeUnhideAt(x, y, state = game) {
     if (!hidden)
         await newsym(x, y);
 }
-// Port only: hero-shaped adapter for the shared hiding-place test.
+// Part of C mon.c:maybe_unhide_at(): the &gy.youmonst argument shape
+// (u.uundetected/u.utrap) for the shared hiding-place test.
 function heroHidingActor(state) {
     return {
         species: heroSpecies(state), x: state.u.ux, y: state.u.uy,
@@ -1275,7 +1277,8 @@ function heroHidingActor(state) {
         stoneResistant: heroResistsStoning(state),
     };
 }
-// Port only: monster adapter for the shared hiding-place test.
+// Part of C mon.c:maybe_unhide_at()/hideunder(): the monst argument
+// shape for the shared hiding-place test.
 function monsterHidingActor(monster, state) {
     return {
         species: monster.mnum, x: monster.mx, y: monster.my,
@@ -1356,6 +1359,76 @@ export function checkMonsterGearNextTurn(monster) {
     if (!monster)
         return;
     monster.misc_worn_check = (monster.misc_worn_check ?? 0) | I_SPECIAL;
+}
+// C mon.c:movemon_singlemon(): one monster's scheduled turn in the movemon
+// pass.
+export async function runMonsterAction(monster, state, random = rn2, rollDice = d, rollOne = rnd) {
+    const calls = DISCARDED_CALL_LOG;
+    // C mon.c:movemon_singlemon() debits movement before restrap().
+    // These early returns belong only to is_hider() (M1_HIDE): a cobra
+    // with M1_CONCEAL remains active after hiding beneath an object and
+    // can spend another movement ration in this same movemon() pass.
+    const restrapped = await attemptMonsterRestrap(monster, state, { random, calls });
+    const isHider = !!(monsterIsHider(monster?.mnum));
+    if (isHider &&
+        (restrapped ||
+            M_AP_TYPE(monster) === M_AP_FURNITURE ||
+            M_AP_TYPE(monster) === M_AP_OBJECT ||
+            monster.mundetected)) {
+        return {
+            monster,
+            calls,
+            movement: {
+                oldx: monster.mx,
+                oldy: monster.my,
+                x: monster.mx,
+                y: monster.my,
+                moved: false,
+                hidden: true,
+            },
+        };
+    }
+    // Eels get one pre-dochug opportunity to hide again.  A stranded eel
+    // still owns the 1-in-4 probe, but hideunder() fails on dry terrain.
+    const eel = monsterIsEel(monster.mnum);
+    const nextToHero = distmin(monster.mx, monster.my, state?.u?.ux ?? monster.mx, state?.u?.uy ?? monster.my) <=
+        1;
+    if (eel &&
+        !monster.mundetected &&
+        (monster.mflee || !nextToHero) &&
+        !canSeeMonster(monster) &&
+        recordRandom(random, calls, 4) === 0 &&
+        await hideMonsterUnder(monster, state)) {
+        return {
+            monster,
+            calls,
+            movement: {
+                oldx: monster.mx,
+                oldy: monster.my,
+                x: monster.mx,
+                y: monster.my,
+                moved: false,
+                hidden: true,
+            },
+        };
+    }
+    // C movemon_singlemon(): a successful fightm bypasses dochug entirely.
+    // m_canseeu uses hero invisibility and underwater state, not monster eyes.
+    const inSight = !state?.viz_array || !!((state.viz_array?.[monster.my]?.[monster.mx] ?? 0) & 0x2);
+    const heroInvisible = heroIsInvisible(state);
+    const perceivesInvisible = monsterPerceives(monster.mnum);
+    if (heroHasConflict(state) &&
+        !monster.iswiz &&
+        (!heroInvisible || perceivesInvisible) &&
+        !state.u.uinwater &&
+        couldSeeFromHero(state, monster.mx, monster.my) &&
+        inSight &&
+        dist2(monster.mx, monster.my, state.u.ux, state.u.uy) <= BOLT_LIM * BOLT_LIM) {
+        const conflictFight = await fightNearbyMonster(monster, state, random, rollDice, rollOne, calls);
+        if (conflictFight?.heroDied || conflictFight?.consumed)
+            return { monster, calls, conflictFight };
+    }
+    return beginMonsterDochug(monster, state, random, rollDice, rollOne);
 }
 // Part of C mon.c:movemon(): the iter_mons_safe loop over
 // movemon_singlemon.
@@ -1974,7 +2047,9 @@ export function naturalMonsterSpeed(monster) {
     return monster.mmove !== undefined && Number.isFinite(monster.mmove)
         ? monster.mmove : MONSTER_MOVE[monster.mnum] ?? 0;
 }
-// Port only: initializes the movement fields the C struct zero-initializes.
+// Part of C makemon.c:makemon(): *mtmp = cg.zeromonst clears movement and
+// mspeed; mmove copies the species' rate.  Restored monsters replay this
+// for fields the port leaves absent.
 export function initializeMonsterMovement(monster) {
     if (!monster)
         return monster;
@@ -2010,11 +2085,15 @@ export async function consumeMonsterFloorObjects(monster, state, { originalSpeci
         died, leftLevel, heroDied: !!state.program_state.gameover,
     };
 }
-// Port only: the meal-interrupt level test; C returns between the calls.
+// Part of C monmove.c:postmov(): the "forced off the level" half of the
+// meal returns — C's meatobj()/meatcorpse() return 3 when the monster
+// migrated or was removed between the dispatches.
 function leftMealLevel(monster, { state, level }) {
     return !!monster.migrating || state.level !== level || !level.monsters.includes(monster);
 }
-// Port only: the shared meal-interrupt test (dead, game over, or gone).
+// Part of C monmove.c:postmov(): the meal dispatch guard — C's
+// meatmetal() == 2 / meatobj() >= 2 / meatcorpse() >= 2 returns, modeled
+// as interrupt checks between the port's dispatches.
 function mealInterrupted(monster, context) {
     return !!context.state.program_state.gameover || !!monster.dead || monster.mhp <= 0
         || leftMealLevel(monster, context);
@@ -2448,10 +2527,6 @@ export async function removeMonsterFromGame(monster) {
     if (game.u.usteed === monster)
         await dismountHero(DISMOUNT_GENERIC);
     return { removed: true, dropped, discarded, x, y };
-}
-// Port only: entry for a monster removed after granting a wish.
-export async function removeWishGrantingMonster(monster) {
-    return await removeMonsterFromGame(monster);
 }
 // Part of C mon.c:corpse_chance(): rolling the AT_BOOM damage.
 // ── C mon.c:corpse_chance() AT_BOOM checks and the contained
@@ -3066,7 +3141,7 @@ async function reviveShiftedVampire(monster, { visible, spotted, disintegrated, 
         completedDeath: doorDeath,
     };
 }
-// Port only: reads the mvitals died counter.
+// C mvitals[mndx].died: the per-species death counter read.
 export function monsterDeathCount(mnum, state = game) {
     return state.mvitals?.[mnum]?.died ?? 0;
 }
@@ -3081,10 +3156,6 @@ export function recordMonsterDeath(monster, state = game) {
     if (mnum === PM_MAIL_DAEMON)
         vital.mvflags = (vital.mvflags ?? 0) | G_GENOD;
     return vital.died;
-}
-// Port only: whether any deaths were tallied (bones bookkeeping).
-export function hasRecordedMonsterDeaths(state = game) {
-    return (state.mvitals || []).some(vital => (vital?.died ?? 0) > 0);
 }
 // C mondead(): a dying steam vortex leaves a cloud of steam behind.
 const PM_STEAM_VORTEX = MONSTER_NAME.indexOf('steam vortex');
@@ -3356,7 +3427,8 @@ async function resolveMonsterDeath(monster, state, { deathMessage = null, sadFee
 }
 const VAMPIRE_FORMS = new Set([226, 227, 228]);
 const TORSO_ARMOR = W_ARM | W_ARMC | W_ARMU;
-// Port only: capitalized name subject for the petrification messages.
+// C Monnam(mtmp): the capitalized monster-name subject — monsterName()
+// (do_name.ts) is the mon_nam()/Monnam() port.
 export function monsterSubject(monster) {
     return monsterName(monster, { capitalized: true });
 }
@@ -5072,7 +5144,7 @@ export async function seeMonsterCloseup(monster, { photo = false, onHead = true,
         await checkExperienceLevel();
     }
 }
-// Port only: resolves a species' mvitals record.
+// Part of C mon.c:see_monster_closeup(): the mvitals[] record access.
 function speciesVitals(state, species) {
     const vitals = state.mvitals || (state.mvitals = []);
     return vitals[species] ?? (vitals[species] = { mvflags: 0, born: 0, died: 0 });

@@ -68,7 +68,7 @@ import { d, rn1, rn2, rnd, rnz } from './rng.js';
 import { ROLE_PM_MNUM } from './roles.js';
 import { savelev } from './save.js';
 import { fix_shop_damage, sellobj, sellobj_state, is_unpaid as shk_is_unpaid } from './shk.js';
-import { Tobjnam } from './sit.js';
+import { Tobjnam } from './objnam.js';
 import { stackobj } from './sp_lev.js';
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js';
 import { stucksteed } from './steed.js';
@@ -1698,6 +1698,26 @@ async function final_level() {
     await _fl_gain_guardian_angel();
 }
 
+/* C do.c:1837-1841 `vision_reset(); ... docrt(); flush_screen(-1);` — the
+ * cls() in docrt (display.c:1745) is display_nhwindow + clear_nhwindow(WIN_MAP),
+ * and the tty clears the WHOLE terminal there, status rows included.  do.c:1720's
+ * flush_screen(-1) still holds delay_flushing on until do.c:1841, so a pline
+ * raised inside docrt (see_monsters -> newsym's impossible "attempting screen
+ * update for <0,0>", display.c:934) pages over that blank terminal: its
+ * pline.c:274 flush paints neither gbuf nor bot(), and the status rows stay
+ * as cls() left them (blank). */
+async function _goto_level_docrt(g) {
+    const heldBotl = g._botlPaintHeld;
+    g._physBlankToDocrt = true;
+    g._botlPaintHeld = true;  /* display.c:2225: delayed flushes run no bot() */
+    try {
+        await docrt();
+    } finally {
+        g._physBlankToDocrt = false;
+        g._botlPaintHeld = heldBotl;
+    }
+}
+
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -2588,8 +2608,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             g._levtele_menu = false;
             g._status_blanked = false;
         }
-        g._physBlankToDocrt = false;
-        await docrt();
+        await _goto_level_docrt(g);
         g.vision_full_recalc = 0;
     } else {
         // C do.c:1851-1854 — C calls vision_reset() then docrt() UNCONDITIONALLY for
@@ -2660,8 +2679,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             g._levtele_menu = false;
             g._status_blanked = false;
         }
-        g._physBlankToDocrt = false;
-        await docrt();
+        await _goto_level_docrt(g);
         g.vision_full_recalc = 0;
     }
     g._botlPaintHeld = false; /* docrt's more() above was the last frozen frame */

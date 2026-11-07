@@ -132,7 +132,7 @@ import { exercise, adjalign, acurr, adjattrib, C_ATTR_TO_DISP, attrmax, getAbase
 /* C artifact.c artilist[] columns + get_artifact()/spec_m2(), hosted in
  * js/attrib.js next to the spfx column that was already there. */
 import { get_artifact, ART_NONARTIFACT, spec_ability, spec_m2, arti_spfx, arti_cspfx, arti_defn_adtyp, arti_cary_adtyp, arti_inv_prop } from './attrib.js';
-import { ARTILIST, actualoname, quest_info, Ysimple_name2, ysimple_name as _objnam_ysimple_name } from './objnam.js';
+import { ARTILIST, actualoname, quest_info, Ysimple_name2, ysimple_name } from './objnam.js';
 import { artiname, exist_artifact } from './artifact.js';
 import { ARTI_PROPS, ARTI_GIFT_ROLE, artifact_alignment } from './wizcmds.js';
 import { wiz_smell } from './wizcmds.js';
@@ -357,7 +357,7 @@ import { xname as _fw_xname, distant_name as _fw_distant_name, doname_vague_quan
 /* C ref: objnam.c:4651 singular(otmp, func) — throw_obj's volley message names
  * a one-item volley in the singular (dothrow.c:247). */
 import { singular } from './objnam.js';
-import { Tobjnam as _objnam_Tobjnam, The as _objnam_The } from './objnam.js';
+import { Tobjnam, Tobjnam as _objnam_Tobjnam, The as _objnam_The } from './objnam.js';
 import { arti_light_radius, light_sources_list } from './light.js';
 import { maybe_adjust_light } from './mkobj.js';
 import { obj_is_burning } from './light.js';
@@ -367,7 +367,7 @@ import { the as _the_objnam } from './objnam.js';
 /* itemactions (iactions.c) formats its title with the(cxname(otmp)) and four of
  * its rows with simpleonames(otmp); both pluralise on quan, which the file-local
  * partial namer _cxname_base() below never did. */
-import { simpleonames, simpleonames as _ia_simpleonames, cxname as _ia_cxname } from './objnam.js';
+import { simpleonames, simpleonames as _ia_simpleonames, cxname, cxname as _ia_cxname } from './objnam.js';
 import { stone_luck as _fw_stone_luck } from './attrib.js';
 import { OC_USES_KNOWN, wipeout_text } from './mklev.js';
 import { ordin } from './hacklib.js';
@@ -409,7 +409,7 @@ import { FAST as _FW_FAST, FROMFORM as _FW_FROMFORM,
 /* otyp / oclass ids read out of js/oc_name_data.js by name (objects.h is an
  * X-macro file, so these are not greppable in the C tree). */
 const _FW_AMULET_CLASS = 5, _FW_LUCKSTONE = 470, _FW_BOULDER = 475, _FW_SLIME_MOLD = 285;
-import { Tobjnam, ndemon, lminion, dlord } from './sit.js';
+import { ndemon, lminion, dlord } from './sit.js';
 import { MM_EMIN } from './const.js';
 import { PM_EARTH_ELEMENTAL, PM_SHOPKEEPER, PM_GUARD, PM_PRIEST } from './pm.generated.js';
 /* js/cmd.js declares its OWN throwing `shop_keeper` stub at the light-source
@@ -8904,6 +8904,10 @@ export async function doprev_message(liveTopline) {
         let morc;
         do {
             const text = _blankFirst ? '' : history[g._prevmsg_next];
+            /* topl.c:121-142 redotoplin putsyms() hard-wraps at CO-1; only update_topl
+             * word-wrapped (with '\n') the lines it stored.  A getlin line (getline.c:97)
+             * was never word-wrapped. */
+            g._topl_recall_hardwrap = text.length > 79 && !text.includes('\n') && !!g._getlin_hist?.has(text);
             if (_pmw === 's' && !_blankFirst) {
                 g._prevmsg_next--;
                 if (g._prevmsg_next < 0) g._prevmsg_next = history.length - 1;
@@ -8917,7 +8921,12 @@ export async function doprev_message(liveTopline) {
                 await flush_screen(1);
                 morc = 0;
             }
-        } while (morc === 16);
+        } while (morc === 16 && _pmw === 's');
+        g._topl_recall_hardwrap = false;
+        /* C topl.c:42-74: combination's do { ... } while (morc == C('p')) re-runs
+         * the whole maxcol chain, so ^P at this --More-- recalls the NEXT older
+         * line (or opens the window), not the same line again. */
+        if (_pmw === 'c' && morc === 16) return doprev_message(liveTopline);
         return ECMD_OK;
     }
     // C topl.c:27-41 full / 75-96 reversed: 'f' (and the combination window)
@@ -10115,8 +10124,7 @@ function _japanese_item_name(otyp) {
  * worn-status suffix; that decoration is doname()'s job (_doinv_format_item
  * below, which calls this for its name half).  Split out unchanged so
  * pager.c:1826's singular(invobj, xname) can reuse it — see singular_xname(). */
-/* C objnam.c:1921-1928 — cxname includes the monster species for corpses. */
-export function cxname(obj) { return _ia_cxname(obj); }
+export { cxname };
 function _inv_xname(obj) {
     {
         const p = game.u?.uprops?.[BLINDED];
@@ -19804,11 +19812,10 @@ function _what_gives(propidx) {
     }
     return null;
 }
-/* C objnam.c:2391 ysimple_name(obj) — the js/objnam.js port (nextobuf()
- * included); kept async for the existing awaiting callers. */
-export async function ysimple_name(obj) {
-    return _objnam_ysimple_name(obj);
-}
+/* C objnam.c:2391-2398 ysimple_name — the one js/objnam.js body (nextobuf()
+ * included), re-exported for lock.js/write.js/uhitm.js; awaiting a sync
+ * result is harmless for the existing awaiting callers. */
+export { ysimple_name };
 /* C monattk.h:44-48 — the attack damage types item_resistance_message uses. */
 const AD_FIRE_ENL = 2, AD_COLD_ENL = 3, AD_DISN_ENL = 5, AD_ELEC_ENL = 6, AD_ACID_ENL = 8;
 /* C zap.c:5653-5671 adtyp_to_prop(dmgtyp) — AD_foo to the property index. */
@@ -40173,15 +40180,6 @@ function _adj_extract_nobj_invent(obj) {
     obj.where = 0; /* OBJ_FREE */
 }
 
-/* C invent.c:694 assigninvlet() without addinv's side effects; used when
- * #adjust bumps an existing stack into a newly available slot.  Forwards to
- * the one port in js/invent.js (invent.c audit a2_invent_30) — the hand copy
- * this replaced was behaviorally identical to it (verified line by line
- * against invent.c:694-727), so only the body count changes. */
-function _adj_assigninvlet(obj) {
-    return assigninvlet_invent(obj);
-}
-
 /* C ref: invent.c:4981 doorganize() — the #adjust command, "inventory organizer
  * by Del Lamb". */
 export async function doorganize() {
@@ -40440,7 +40438,8 @@ async function doorganize_core(obj) {
     g.invent = obj;
     reorder_invent();
     if (bumped) {
-        _adj_assigninvlet(bumped);
+        /* C invent.c:5271 assigninvlet(bumped) — the one port, js/invent.js */
+        assigninvlet_invent(bumped);
         bumped.nobj = g.invent;
         bumped.where = 3;
         g.invent = bumped;
@@ -42560,7 +42559,8 @@ export async function quest_chat(mtmp) {
         await chat_with_guardian();
         break;
     default:
-        impossible(`quest_chat: Unknown quest character ${mon_nam(mtmp)}.`);
+        await real_impossible(`quest_chat: Unknown quest character ${mon_nam(mtmp)}.`);
+        await real_impossible("quest_chat: Unknown quest character %s.", mon_nam(mtmp));
     }
 }
 /* C ref: quest.c:403-424 nemesis_speaks() */

@@ -86,6 +86,7 @@ import { PM_SAMURAI } from './pm.generated.js';
 import { bury_objs } from './zap.js';
 import { can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
 import { addinv_core0 } from './invent.js';
+import { obfree } from './shk.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
          LL_CONDUCT, LL_WISH, LL_ARTIFACT, Upolyd } from './const.js';
@@ -1006,6 +1007,11 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                  * when topl.c:262-264's width check leaves room for --More--. */
                 await pline('You learn more about your items by comparing them.');
             }
+            /* C invent.c:944 -> shk.c:1254-1264: merging frees the incoming
+             * stack and preserves its o_id if it has a higher price adjustment.
+             * Globs already free the absorbed object in obj_absorb. */
+            if (!otmp.globby)
+                await obfree(otmp, o);
             const _c2msgs = [];
             o.pickup_prev = 1;
             addinv_core2(o, _c2msgs);

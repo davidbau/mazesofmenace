@@ -736,6 +736,10 @@ function _is_sanctum(uz) {
 }
 
 export async function dosounds() {
+    game._inDosounds = true;
+    try { await dosounds_body(); } finally { game._inDosounds = false; }
+}
+async function dosounds_body() {
     const lf = game.level && game.level.flags;
     if (!lf)
         return;

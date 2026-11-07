@@ -44,7 +44,7 @@ import { upstart } from './hacklib.js';
 import { in_rooms } from './hack.js';
 import { g_at, um_dist, set_msg_xy } from './cmd.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { freeinv as freeinv_real } from './cmd.js';
+import { freeinv } from './cmd.js';
 import { add_to_minv, obfree } from './dokick.js';
 import { mnexto, rloc, enexto_out, tele } from './teleport.js';
 import { m_at, mon_wield_item } from './uhitm.js';
@@ -713,7 +713,7 @@ import { sticks } from './mondata.js'; // relocate-fns
 import { assign_level } from './dungeon.js'; // relocate-fns
 export { Your };
 export { currency } from './cmd.js';
-export function freeinv(obj) { return freeinv_real(obj); }
+export { freeinv }; /* C invent.c:1403 — single port in js/cmd.js */
 /* C mon.c:3955 mnexto — re-export canonical body from js/teleport.js */
 export { mnexto };
 /* mongone's real body is js/mklev.js (C home mon.c:3253).  This file's

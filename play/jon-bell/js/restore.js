@@ -37,11 +37,12 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN } from './const.js';
+import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS } from './const.js';
+import { set_residency } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
-import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './calendar.js';
+import { phase_of_the_moon, friday_13th, getnow } from './calendar.js';
 import { impossible } from './pline.js';
 import { minimal_monnam } from './do_name.js';
 import { describe_level_buf } from './dungeon.js';
@@ -126,6 +127,38 @@ export async function getlev(lev) {
      * rest_track.  All of it is the departing level's own containers, which
      * clear_level_structures() replaced rather than mutated. */
     g.level = snap.level;
+    // C mkroom.c:851-918 save_room/rest_room: subrooms are written by
+    // parent-room traversal, then assigned consecutive slots on restore.
+    // levl[].roomno is NOT renumbered, even when that changes its room type.
+    const records = [];
+    const saveRoom = (room) => {
+        records.push({ ...room, sbrooms: [...(room.sbrooms || [])] });
+        for (let i = 0; i < (room.nsubrooms | 0); i++) saveRoom(room.sbrooms[i]);
+    };
+    for (let i = 0; i < (g.level.nroom | 0); i++) saveRoom(g.level.rooms[i]);
+    const subrooms = [];
+    let record = 0, nsubroom = 0;
+    const readRoom = (room) => {
+        Object.assign(room, records[record++]);
+        for (let i = 0; i < (room.nsubrooms | 0); i++) {
+            const child = subrooms[nsubroom] ||= {};
+            room.sbrooms[i] = child;
+            readRoom(child);
+            (subrooms[nsubroom++] ||= {}).resident = null;
+        }
+    };
+    for (let i = 0; i < (g.level.nroom | 0); i++) {
+        readRoom(g.level.rooms[i]);
+        g.level.rooms[i].resident = null;
+    }
+    g.level._nsubroom = nsubroom;
+    subrooms[nsubroom] = { hx: -1 };
+    g.level._subrooms = subrooms;
+    g.level.rooms.length = MAXNROFROOMS + 1;
+    for (let i = 0; i < subrooms.length; i++) {
+        subrooms[i].roomnoidx = MAXNROFROOMS + 1 + i;
+        g.level.rooms[MAXNROFROOMS + 1 + i] = subrooms[i];
+    }
     restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
     {
@@ -206,6 +239,7 @@ export async function getlev(lev) {
     /* C restore.c:1177-1180 — the grid clear, ahead of the fmon loop. */
     worm_seg_clear_level();
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.isshk) set_residency(mtmp, false); // C restore.c:1183
         /* restore.c:1194-1195 — place_monster() is the fmon chain here (see the
          * note above); place_wsegs() is the part the chain cannot carry. */
         if (mtmp.wormno)
@@ -310,9 +344,9 @@ async function restgamestate(state) {
     for (const k of Object.keys(game.youmonst))
         delete game.youmonst[k];
     game.youmonst.cham = game.u.mcham;
-    // C restore.c:615-617: parsing the saved local date can change the epoch.
-    if (state.__ubirthday !== undefined)
-        game.u.ubirthday = time_from_yyyymmddhhmmss(state.__ubirthday);
+    /* C restore.c:615-617: in C, localtime() and mktime() preserve ubirthday
+     * across save/restore. state.u restored above preserves game.u.ubirthday
+     * without timezone roundtrip drift. */
     // C restore.c:625 — time while the game was saved is not playing time.
     (game.urealtime ||= { realtime: 0, finish_time: 0 }).start_timing = getnow();
     /* C restore.c:627 runs set_uasmon() before restobjchn()/setworn() (686-689):

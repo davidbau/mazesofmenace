@@ -1735,7 +1735,14 @@ export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
             return true;
         if (!game.iflags?.debug_fuzzer) {
             const q = `<${mon.mx},${mon.my}> is not considered viable; force anyway?`;
-            if ((await yn_function(q, 'yn', 'n', true)) === 'y')
+            const ans = await yn_function(q, 'yn', 'n', true);
+            /* hack.h y_n(): the answered prompt stays on the topline (end.js y_n) */
+            /* hack.h:1329 y_n(): the answered prompt stays on the topline */
+            if (!game.gi?.in_doagain) {
+                game._topl_sticky = `${q} [yn] (n)`;
+                game._topl_empty_sticky = game._topl_sticky;
+            }
+            if (ans === 'y')
                 return true;
         }
     }

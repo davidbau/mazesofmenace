@@ -7,7 +7,7 @@ import { yyyymmddhhmmss } from './calendar.js';
 import { pline, There } from './pline.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN } from './const.js';
 import { setworn } from './worn.js';
-import { save_light_sources, lights_save_snapshot } from './light.js';
+import { save_light_sources, lights_save_snapshot, dangling_light_check } from './light.js';
 import { save_engravings, clear_level_structures } from './mklev.js';
 import { dmonsfree } from './mon.js';
 import { forget_temple_entry } from './priest.js';
@@ -335,6 +335,7 @@ export async function dosave0() {
         change_luck(-1);
     if (g.flags?.friday13)
         change_luck(1);
+    await dangling_light_check(); /* save_light_sources -> obj_is_local panic */
     try {
         // C save.c:168 -> savelev_core(:483-488): purge before writing.
         if ((g.iflags.purge_monsters | 0) > 0)
