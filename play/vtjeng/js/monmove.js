@@ -27,7 +27,6 @@
 import {
     ACCESSIBLE,
     ACCFOOD,
-    AGGRAVATE_MONSTER,
     ALLOW_ALL,
     ALLOW_BARS,
     ARM,
@@ -49,14 +48,12 @@ import {
     BOLT_LIM,
     BUSTDOOR,
     COLNO,
-    CONFLICT,
     CORR,
     DART_TRAP,
     DB_ICE,
     DB_LAVA,
     DB_MOAT,
     DB_UNDER,
-    DISPLACED,
     Upolyd,
     engulfing_u,
     DOOR,
@@ -70,7 +67,6 @@ import {
     D_WARNED,
     FIRE_TRAP,
     G_GENOD,
-    HALF_SPDAM,
     HEAD,
     HOLE,
     ICE,
@@ -126,7 +122,6 @@ import {
     PIT,
     POISON_RES,
     POLY_TRAP,
-    PROT_FROM_SHAPE_CHANGERS,
     P_AXE,
     P_PICK_AXE,
     ROCKTRAP,
@@ -142,7 +137,6 @@ import {
     SQSRCHRADIUS,
     STAIRS,
     STATUE_TRAP,
-    STEALTH,
     STONE,
     STONE_RES,
     STRAT_ARRIVE,
@@ -454,7 +448,6 @@ import {
     tele_restrict,
 } from './teleport.js';
 import { displayPendingTtyMessageWindow, ttyNorep, ttyPline } from './tty_message.js';
-import { note_unported } from './unported.js';
 import { gd_move } from './vault.js';
 import { cuss, tactics } from './wizard.js';
 import { block_point, cansee, clear_path, couldsee, m_canseeu, recalc_block_point, vision_recalc } from './vision.js';
@@ -471,7 +464,9 @@ import * as M from './monsters.js';
 import * as O from './objects.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
 import {
-    Blind_telepat, Deaf, Hallucination, Invis, Unaware,
+    Aggravate_monster, Blind_telepat, Conflict, Deaf, Displaced,
+    Half_spell_damage, Hallucination, Invis, Protection_from_shape_changers,
+    Stealth, Unaware,
 } from './youprop.js';
 
 
@@ -491,16 +486,6 @@ function movementEnv(env = {}) {
     };
 }
 
-// `blockedMatters` spells the `&& !B<prop>` conjunct that youprop.h writes for
-// six properties only: BLINDED, CLAIRVOYANT, INVIS, STEALTH, LEVITATION and
-// FLYING, at :90, :181, :197, :209, :239 and :252. Every other macro is bare
-// intrinsic-or-extrinsic -- Displaced at :204, Conflict at :218 -- and passing
-// the flag for one of those would test a field no C path sets.
-function propertyActive(state, property, blockedMatters = false) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic)
-        && (!blockedMatters || !value?.blocked);
-}
 
 function doorMask(location) {
     // rm.h's doormask is struct rm's `flags`.
@@ -526,7 +511,7 @@ function mdistu(mon, state) {
 async function msg_mon_movement(mtmp, omx, omy, env = {}) {
     const state = env.state ?? game;
     const msg = collectMonsterMovementMessage(mtmp, omx, omy, state);
-    if (msg && !env.planning) {
+    if (msg) {
         const message = env.message ?? ttyPline;
         await message(msg, state, env);
     }
@@ -596,7 +581,7 @@ export function m_avoid_kicked_loc(monster, x, y, state = game) {
         && monster.mcansee
         && !monster.mconf
         && !monster.mstun
-        && !propertyActive(state, CONFLICT)
+        && !Conflict(state.u)
         && isok(kicked?.x, kicked?.y)
         && x === kicked.x
         && y === kicked.y
@@ -612,7 +597,7 @@ export function m_avoid_soko_push_loc(monster, x, y, state = game) {
         || (!monster.mpeaceful && !monster.mtame)
         || monster.mconf
         || monster.mstun
-        || propertyActive(state, CONFLICT)
+        || Conflict(state.u)
         || dist2(x, y, state.u.ux, state.u.uy) !== 4) {
         return false;
     }
@@ -756,7 +741,7 @@ async function mind_blast(mtmp, env = {}) {
     }
     await message('A wave of psychic energy pours over you!', state, env);
     if (mtmp.mpeaceful
-        && (!propertyActive(state, CONFLICT) || resist_conflict(mtmp, state, random))) {
+        && (!Conflict(state.u) || resist_conflict(mtmp, state, random))) {
         await message('It feels quite soothing.', state, env);
     } else if (!state.u?.uinvulnerable) {
         const m_sen = sensemon(mtmp, state);
@@ -780,8 +765,7 @@ async function mind_blast(mtmp, env = {}) {
             await message(`It locks on to your ${source}!`, state, env);
             let dmg = random.rnd(15);
             // C ref: youprop.h Half_spell_damage
-            const halfSpdam = state.u?.uprops?.[HALF_SPDAM];
-            if (halfSpdam?.intrinsic || halfSpdam?.extrinsic)
+            if (Half_spell_damage(state.u))
                 dmg = Math.trunc((dmg + 1) / 2);
             await losehp(dmg, 'psychic blast', KILLED_BY_AN, state, env);
         }
@@ -859,23 +843,12 @@ export function m_postmove_effect(mtmp, env = {}) {
 // monmove.c:m_move() passes m_postmove_effect() the same game context as its
 // other movement helpers. C's region.c:create_gas_cloud() gets display and
 // vision operations from global game state; its JS port requires them at this
-// call boundary. The planning pass owns a cloned level, so silence display
-// effects and isolate the borrowed vision buffers before block_point().
+// call boundary.
 function postmoveRegionEnv(env, state) {
-    const planning = Boolean(env.planning);
     return {
         ...env,
         state,
         blockPoint: (x, y) => {
-            if (planning) {
-                if (typeof env.admitPlannedVisionChange !== 'function') {
-                    throw new TypeError(
-                        'planned postmove gas requires '
-                        + 'admitPlannedVisionChange',
-                    );
-                }
-                env.admitPlannedVisionChange(x, y, state);
-            }
             return typeof env.blockPoint === 'function'
                 ? env.blockPoint(x, y, state, env)
                 : block_point(x, y, state);
@@ -883,14 +856,12 @@ function postmoveRegionEnv(env, state) {
         canSee: (x, y) => typeof env.canSee === 'function'
             ? env.canSee(x, y, state, env)
             : cansee(x, y, state),
-        newsym: planning ? () => {}
-            : (x, y) => typeof env.newsym === 'function'
-                ? env.newsym(x, y, state, env)
-                : newsym(x, y),
-        message: planning ? async () => {}
-            : (text) => typeof env.message === 'function'
-                ? env.message(text, state, env)
-                : ttyPline(text, state),
+        newsym: (x, y) => typeof env.newsym === 'function'
+            ? env.newsym(x, y, state, env)
+            : newsym(x, y),
+        message: (text) => typeof env.message === 'function'
+            ? env.message(text, state, env)
+            : ttyPline(text, state),
     };
 }
 
@@ -1125,14 +1096,12 @@ export async function m_break_boulder(mtmp, x, y, env = {}) {
 // picking_lock() and is_digging() are occupation predicates from lock.c and
 // dig.c; watch_dig() owns the digging warning and arrest branch in dig.c.
 //
-// dochug() passes no message operation, so this one picks the live TTY or,
-// on a planning clone, a silent one; mon_yells() and stop_occupation() both
-// print through it.
+// dochug() passes no message operation, so this one picks the TTY;
+// mon_yells() and stop_occupation() both print through it.
 async function watch_on_duty(mtmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, message };
     if (mtmp.mpeaceful
         && in_town(state.u.ux + (state.u.dx ?? 0),
@@ -1514,7 +1483,7 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
                 );
                 let displacedX = nx;
                 let displacedY = ny;
-                if (propertyActive(state, DISPLACED) && monsterSeesHero
+                if (Displaced(state.u) && monsterSeesHero
                     && monster.mux === nx && monster.muy === ny) {
                     displacedX = state.u.ux;
                     displacedY = state.u.uy;
@@ -1781,7 +1750,7 @@ export { is_vampshifter };
 export function can_fog(monster, state = game) {
     return !(state.mvitals?.[PM_FOG_CLOUD]?.mvflags & G_GENOD)
         && is_vampshifter(monster)
-        && !propertyActive(state, PROT_FROM_SHAPE_CHANGERS)
+        && !Protection_from_shape_changers(state.u)
         && !stuff_prevents_passage(monster, state);
 }
 
@@ -1797,11 +1766,9 @@ async function vamp_shift(mon, ptr, domsg, env = {}) {
             ...env,
             ncflags: domsg ? NC_SHOW_MSG : NO_NC_FLAGS,
         }) ? 1 : 0;
-        if (!env.planning) {
-            const displayMessageWindow = env.displayMessageWindow
-                ?? displayPendingTtyMessageWindow;
-            await displayMessageWindow(env.state);
-        }
+        const displayMessageWindow = env.displayMessageWindow
+            ?? displayPendingTtyMessageWindow;
+        await displayMessageWindow(env.state);
     }
     return reslt;
 }
@@ -1860,7 +1827,7 @@ export function onscary(x, y, monster, state = game) {
     if (sobj_at(SCR_SCARE_MONSTER, x, y, state)) return true;
 
     const engraving = sengr_at('Elbereth', x, y, true, state);
-    const imageAtSquare = propertyActive(state, DISPLACED)
+    const imageAtSquare = Displaced(state.u)
         && monster.mux === x && monster.muy === y;
     return Boolean(engraving
         && ((state.u?.ux === x && state.u?.uy === y)
@@ -1939,11 +1906,10 @@ export async function bee_eat_jelly(mon, obj, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
-    // delobj() repaints the jelly's square through objectEnv.redraw, which a
-    // monster turn's planning pass silences.
+    // delobj() repaints the jelly's square through objectEnv.redraw.
     const objectEnv = objectGenerationEnv({
         ...env, state, random, message,
-        redraw: env.planning ? () => {} : (env.redraw ?? newsym),
+        redraw: env.redraw ?? newsym,
     });
     const mtmp = find_pmmonst(PM_QUEEN_BEE, state);
 
@@ -2029,7 +1995,6 @@ function isSokoPrize(obj, state) {
 // Source monflee's pline_mon/verbalize output, shared with instrument fear.
 // The decision and its random draws remain in monflee below.
 export async function monfleeMessage(monster, detail, env = {}) {
-    if (env.planning) return;
     const state = env.state ?? game;
     const message = env.message ?? ttyPline;
     let text;
@@ -2187,7 +2152,7 @@ export async function disturb(monster, env = {}) {
         || dist2(monster.mx, monster.my, state.u.ux, state.u.uy) > 100) {
         return 0;
     }
-    const stealthyHero = propertyActive(state, STEALTH, true);
+    const stealthyHero = Stealth(state.u);
     if (stealthyHero && !isSpecies(monster, PM_ETTIN, state)) return 0;
     if (typeof env.wakeMessage !== 'function')
         throw new TypeError('disturb requires a wakeMessage operation');
@@ -2198,7 +2163,7 @@ export async function disturb(monster, env = {}) {
         || monster.data?.mlet === S_LEPRECHAUN;
     if (hardToWake && random.rn2(50)) return 0;
 
-    const readilyAwakened = propertyActive(state, AGGRAVATE_MONSTER)
+    const readilyAwakened = Aggravate_monster(state.u)
         || monster.data?.mlet === S_DOG
         || monster.data?.mlet === S_HUMAN;
     if (!readilyAwakened) {
@@ -2291,7 +2256,7 @@ export function set_apparxy(monster, env = {}) {
 
     const notseen = !monster.mcansee
         || (Invis(state.u) && !perceives(monster.data));
-    const notthere = propertyActive(state, DISPLACED)
+    const notthere = Displaced(state.u)
         && !isSpecies(monster, PM_DISPLACER_BEAST, state);
     let displacement;
     if (u.uinwater) {
@@ -2350,14 +2315,9 @@ export function set_apparxy(monster, env = {}) {
     monster.muy = my;
 }
 
+
 // ---- monmove.c dochug(), ordinary-monster path, and its pre-move
 // ---- AT_WEAP weapon gate ----
-function activeProperty(state, property, blockedMatters = true) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic)
-        && (!blockedMatters || !value?.blocked);
-}
-
 function requireDochugOperation(env, name) {
     const operation = env[name];
     if (typeof operation !== 'function')
@@ -2369,7 +2329,7 @@ function requireDochugOperation(env, name) {
 // wield state remain owned by weapon.js through the injected operation.
 export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    if ((monster.mpeaceful && !activeProperty(state, CONFLICT, false))
+    if ((monster.mpeaceful && !Conflict(state.u))
         || !range.inrange
         || dist2(
             monster.mx,
@@ -2444,8 +2404,7 @@ export async function dochug(monster, rawEnv = {}) {
         rawEnv,
         'castUndirectedSpell',
     );
-    // C ref: monmove.c:714 and :722. The dry run that precedes a live monster
-    // turn replaces these so the conversation stays silent and reads no key.
+    // C ref: monmove.c:714 and :722. A caller may replace these.
     const questStatCheck = rawEnv.questStatCheck ?? quest_stat_check;
     const questTalk = rawEnv.questTalk ?? quest_talk;
     const distanceAndFear = rawEnv.distanceAndFear ?? distfleeck;
@@ -2455,11 +2414,8 @@ export async function dochug(monster, rawEnv = {}) {
     const wieldPreMoveWeapon = rawEnv.wieldPreMoveWeapon
         ?? wield_pre_move_weapon;
     const relocateRandomMonster = rawEnv.relocateRandomMonster ?? rloc;
-    // C's Hallucination arms below repaint the live monster once. The
-    // JavaScript preflight repeats dochug() on a clone before that live pass,
-    // so its redraw must not spend the module-global display RNG or paint the
-    // live map.
-    const redraw = rawEnv.planning ? () => {} : (rawEnv.redraw ?? newsym);
+    // C's Hallucination arms below repaint the monster once.
+    const redraw = rawEnv.redraw ?? newsym;
     const env = { ...rawEnv, state, random, unsupported };
     const hallucinating = () => Hallucination(state.u);
 
@@ -2509,17 +2465,12 @@ export async function dochug(monster, rawEnv = {}) {
         // monster consumes this draw regardless of whether it can teleport.
         if (!random.rn2(40) && can_teleport(monster.data) && !monster.iswiz
             && !noteleport_level(monster, state)) {
-            // C ref: teleport.c rloc() and rloc_to_core().  The clone-only
-            // pass must use the clone's map and random stream while keeping
-            // display and message effects silent; the live pass uses the
-            // ordinary display and message owners.  rloc() returns FALSE when
-            // no destination exists, and leppie_stash() follows only after a
-            // successful relocation, in the same order as C.
+            // C ref: teleport.c rloc() and rloc_to_core().  rloc() returns
+            // FALSE when no destination exists, and leppie_stash() follows
+            // only after a successful relocation, in the same order as C.
             const relocation = await relocateRandomMonster(monster, RLOC_MSG, {
                 ...env,
-                newsym: rawEnv.planning
-                    ? () => {}
-                    : (rawEnv.newsym ?? ((x, y) => newsym(x, y))),
+                newsym: rawEnv.newsym ?? ((x, y) => newsym(x, y)),
                 onscary: rawEnv.onscary
                     ?? ((x, y, subject, relocationEnv) => onscary(
                         x,
@@ -2532,14 +2483,12 @@ export async function dochug(monster, rawEnv = {}) {
                         subject,
                         relocationEnv,
                     )),
-                message: rawEnv.planning
-                    ? async () => {}
-                    : (rawEnv.message ?? ttyPline),
+                message: rawEnv.message ?? ttyPline,
             });
             if (relocation)
                 await leppie_stash(monster, {
                     ...env,
-                    redraw: rawEnv.planning ? () => {} : rawEnv.redraw,
+                    redraw: rawEnv.redraw,
                 });
             return 0;
         }
@@ -2565,7 +2514,7 @@ export async function dochug(monster, rawEnv = {}) {
     // behind the current boundary but wired for completeness.
     if (monster === state.u?.ustuck
         && monster.mpeaceful && !monster.mconf
-        && !activeProperty(state, CONFLICT, false)) {
+        && !Conflict(state.u)) {
         await release_hero(monster, env);
         return 0;
     }
@@ -2574,8 +2523,7 @@ export async function dochug(monster, rawEnv = {}) {
     setApparentHero(monster, env);
     // C ref: monmove.c:782-790. Covetous monsters choose and execute their
     // wizard.c strategy before range/fear is calculated. Every relocation and
-    // object operation receives this turn's environment so planning clones
-    // cannot redraw or message the live game.
+    // object operation receives this turn's environment.
     if (is_covetous(monster.data)) {
         await tactics(monster, {
             ...env,
@@ -2593,8 +2541,8 @@ export async function dochug(monster, rawEnv = {}) {
             noteleportLevel: noteleport_level,
             inhishop,
             inhistemple,
-            newsym: rawEnv.planning ? () => {} : newsym,
-            message: rawEnv.planning ? async () => {} : (rawEnv.message ?? ttyPline),
+            newsym,
+            message: rawEnv.message ?? ttyPline,
         });
         if (monster.mstate) return 0;
         setApparentHero(monster, env);
@@ -2638,24 +2586,10 @@ export async function dochug(monster, rawEnv = {}) {
         } else {
             const demonTalk = rawEnv.demonTalk
                 ?? (await import('./minion.js')).demon_talk;
-            const conversationMessage = rawEnv.planning
-                ? async () => {}
-                : (rawEnv.message ?? ttyPline);
-            // The elapsed-turn preflight shares the live TTY input queue
-            // through planningState(). A real bribe() -> getlin() here would
-            // dismiss pending messages and consume the player's next keys
-            // before moveloop_core() replays this monster action on live
-            // state. Model the planning-only offer as an empty line instead:
-            // that follows demon_talk()'s ordinary refusal/anger continuation
-            // without borrowing the live input queue. The live source path
-            // still reads the actual offer below.
-            const conversationInput = rawEnv.planning
-                ? async () => ''
-                : rawEnv.getlin;
             if (await demonTalk(monster, state, {
                 ...env,
-                message: conversationMessage,
-                getlin: conversationInput,
+                message: rawEnv.message ?? ttyPline,
+                getlin: rawEnv.getlin,
             })) return 1;
         }
     }
@@ -2664,9 +2598,7 @@ export async function dochug(monster, rawEnv = {}) {
     if (is_watch(monster.data)) {
         await watch_on_duty(monster, env);
     } else if (is_mind_flayer(monster.data) && !random.rn2(20)) {
-        const message = env.planning
-            ? async () => {}
-            : (rawEnv.message ?? ttyPline);
+        const message = rawEnv.message ?? ttyPline;
         await mind_blast(monster, { ...env, random, message });
         setApparentHero(monster, env);
         range = await distanceAndFear(monster, { ...env, monFlee });
@@ -2703,7 +2635,7 @@ export async function dochug(monster, rawEnv = {}) {
         || (monster.data.mlet === S_LEPRECHAUN && !findgold(state.invent)
             && (findgold(monster.minvent) || random.rn2(2)))
         || (is_wanderer(monster.data) && !random.rn2(4))
-        || (activeProperty(state, CONFLICT, false) && !monster.iswiz)
+        || (Conflict(state.u) && !monster.iswiz)
         || (!monster.mcansee && !random.rn2(4))
         || monster.mpeaceful;
     let status = MMOVE_NOTHING;
@@ -2732,8 +2664,8 @@ export async function dochug(monster, rawEnv = {}) {
         if (status === MMOVE_MOVED) {
             // C ref: monmove.c:934-936. A confused holder can wander beyond
             // adjacency; release it immediately, before helpless/ranged gates.
-            // unstuck() receives this caller's RNG and state, which preserves
-            // cooldown draws in live play and mutates only the planning clone.
+            // unstuck() receives this caller's RNG and state, which keeps its
+            // cooldown draws on this caller's stream.
             if (monster === state.u.ustuck && !m_next2u(monster, state))
                 await unstuck(monster, state, env);
             // C ref: monmove.c:938-939. A walking monster's footfalls hasten
@@ -2778,7 +2710,7 @@ export async function dochug(monster, rawEnv = {}) {
     // only thinks it is near.
     if (status !== MMOVE_DONE
         && (!monster.mpeaceful
-            || (activeProperty(state, CONFLICT, false)
+            || (Conflict(state.u)
                 && !resist_conflict(monster, state, random)))) {
         if (((range.inrange && !range.scared) || panicattk)
             && !noattacks(monster.data)
@@ -2793,8 +2725,7 @@ export async function dochug(monster, rawEnv = {}) {
     if (state.program_state?.gameover) return 0;
 
     // C ref: monmove.c:980-982. Nearby quest monsters speak after their
-    // movement/attack work, unless helpless; the planning caller supplies a
-    // silent pager and a fixed answer for any prompt.
+    // movement/attack work, unless helpless.
     if (!helpless(monster) && range.nearby)
         await questTalk(monster, { ...env, state });
 
@@ -2806,11 +2737,9 @@ export async function dochug(monster, rawEnv = {}) {
         && couldsee(monster.mx, monster.my, state)
         && !monster.minvis
         && !random.rn2(5)) {
-        // The speculative scan keeps C's RNG and wake-up effects on its
-        // clone. Only the live pass may print or consume message-page keys.
         await cuss(monster, state, {
             ...env,
-            message: env.planning ? async () => {} : (rawEnv.message ?? ttyPline),
+            message: rawEnv.message ?? ttyPline,
         });
     }
     return 0;
@@ -2912,9 +2841,8 @@ export function mon_would_consume_item(monster, obj, rawEnv = {}) {
 }
 
 // C refs: monmove.c postmov(); mon.c meatmetal(), meatcorpse(), and
-// mpickstuff(). Clone-only planning runs this read-only selector before any
-// live action; the live postmov() adapter repeats its selection and PRNG calls
-// after movement output, track updates, and redraws.
+// mpickstuff(). The postmov() adapter runs this selector, with its PRNG
+// calls, after movement output, track updates, and redraws.
 export function select_postmove_object_action(
     monster,
     x,
@@ -3213,8 +3141,7 @@ async function maybe_spin_web(mtmp, env) {
                 if (cansee(mtmp.mx, mtmp.my, state)) {
                     // C: pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
                     // YMonnam() and messageAt() preserve the source naming
-                    // and location; postmov supplies a no-op message during
-                    // planning so this branch cannot paint the live terminal.
+                    // and location through the caller's message seam.
                     const mbuf = canspotmon(mtmp, state)
                         ? YMonnam(mtmp, state, env)
                         : 'Something';
@@ -3270,19 +3197,13 @@ export async function postmov(
     const env = { ...rawEnv, state };
     const random = rawEnv.random ?? coreRandom;
     const unsupported = requireMoveOperation(rawEnv, 'unsupported');
-    // pline() and newsym().  The planning scan replays the same turn against
-    // the live display afterwards, so a dry run must produce neither.
-    const message = env.planning
-        ? async () => {}
-        : (rawEnv.message ?? ttyPline);
-    const norepMessage = env.planning
-        ? async () => {}
-        : (rawEnv.norepMessage ?? ttyNorep);
-    const redraw = env.planning ? () => {} : (rawEnv.redraw ?? newsym);
+    // pline() and newsym().
+    const message = rawEnv.message ?? ttyPline;
+    const norepMessage = rawEnv.norepMessage ?? ttyNorep;
+    const redraw = rawEnv.redraw ?? newsym;
     // vision.c recalc_block_point() and vision_recalc(), which UnblockDoor
     // calls in that order.  recalc_block_point() already takes the state it
-    // derives from; the cloned monster scan substitutes vision_recalc() so
-    // that it can name the buffers to fill and paint nothing.
+    // derives from; a caller may substitute either.
     const recalcBlockPoint = rawEnv.recalcBlockPoint ?? recalc_block_point;
     const visionRecalc = rawEnv.visionRecalc ?? vision_recalc;
     // C's `ptr` parameter, refreshed from mtmp->data after the mintrap() call
@@ -3568,20 +3489,14 @@ export async function postmov(
         if (state.u?.uswallow && state.u?.ustuck === monster
             && (monster.mx !== omx || monster.my !== omy)) {
             // C updates the hero and stomach display through these two owners.
-            // `swallowed()` currently paints only the live game; a planning
-            // caller can provide a clone-safe operation.  The source call is
-            // therefore made directly on live turns and through that seam on
-            // planned turns, with the unported display-only arm recorded when
-            // no clone operation exists.
+            // A caller may supply its own swallowed() operation.
             state.u.ux0 = state.u.ux;
             state.u.uy0 = state.u.uy;
             u_on_newpos(monster.mx, monster.my, state);
             if (typeof rawEnv.swallowed === 'function') {
                 await rawEnv.swallowed(false, state, env);
-            } else if (!env.planning) {
-                await swallowed(false, state);
             } else {
-                note_unported('display.c swallowed clone redraw');
+                await swallowed(false, state);
             }
         } else {
             // gd_move() returns 1 after gd_move_cleanup() parks a vault
@@ -3602,9 +3517,7 @@ export async function postmov(
         if (state.level?.objects?.[monster.mx]?.[monster.my]
             && monster.mcanmove) {
             // Object interaction helpers are called after the movement
-            // redraw, but still use the same output seams as postmov.  In a
-            // planning clone this keeps their discarded-callee branches and
-            // source messages from reaching the live terminal.
+            // redraw, but still use the same output seams as postmov.
             const consumptionEnv = { ...env, message, redraw };
             if (metallivorous(species)) {
                 const eaten = await meatmetal(monster, consumptionEnv);
@@ -3702,8 +3615,7 @@ export async function itsstuck(monster, rawEnv = {}) {
     if (sticks(state.youmonst?.data)
         && monster === state.u?.ustuck
         && !state.u?.uswallow) {
-        const message = rawEnv.message
-            ?? (rawEnv.planning ? async () => {} : ttyPline);
+        const message = rawEnv.message ?? ttyPline;
         const result = message(
             messageAt(
                 `${capitalizedMonsterName(monster, state)} cannot escape from you!`,
@@ -3744,18 +3656,14 @@ export async function m_move(monster, rawEnv = {}) {
     // then the meating countdown, then the hides_under() early return, then
     // set_apparxy(), then the tame dispatch.
     //
-    // The two seams postmov() resolves for its own mintrap() call: the cloned
-    // planning scan must write neither the message window nor the map, and it
-    // replays the same turn against the live display afterwards.
+    // The two seams postmov() resolves for its own mintrap() call.
     if (monster.mtrapped) {
-        const redraw = env.planning ? () => {} : (rawEnv.redraw ?? newsym);
+        const redraw = rawEnv.redraw ?? newsym;
         const trapResult = await mintrap(monster, NO_TRAP_FLAGS, {
             ...env,
             heroDeaf: (hookState) => Deaf(hookState.u),
             mInAir: m_in_air,
-            message: env.planning
-                ? async () => {}
-                : (rawEnv.message ?? ttyPline),
+            message: rawEnv.message ?? ttyPline,
             redraw,
             youHear,
         });
@@ -3894,22 +3802,14 @@ export async function m_move(monster, rawEnv = {}) {
     // branch just as C does.
     if (monster.data?.pmidx === PM_MAIL_DAEMON && !monster.wormno) {
         if (!Deaf(state.u) && canseemon(monster, state)) {
-            // The clone scan must consume the verbalize branch without
-            // writing the live message window.  The live pass keeps the
-            // caller's injected message seam (or ttyPline) exactly as C.
-            const message = env.planning
-                ? async () => {}
-                : (rawEnv.message ?? ttyPline);
+            // The caller's injected message seam (or ttyPline) prints it.
+            const message = rawEnv.message ?? ttyPline;
             await verbalize("I'm late!", state, {
                 message,
             });
         }
         // mongone() redraws the vacated square through its creation hooks.
-        // Bind that hook to the same planning/live display seam as the
-        // verbalize call; otherwise a planning clone repaints the live map.
-        const redraw = env.planning
-            ? () => {}
-            : (rawEnv.redraw ?? rawEnv.hooks?.newsym ?? newsym);
+        const redraw = rawEnv.redraw ?? rawEnv.hooks?.newsym ?? newsym;
         mongone(monster, {
             ...env,
             state,
@@ -3924,14 +3824,13 @@ export async function m_move(monster, rawEnv = {}) {
     // C ref: monmove.c:1840-1849. Tengu evaluates its natural teleport roll
     // before tele_restrict(), so a noteleport level still consumes rn2(5) and
     // then falls through to ordinary movement when the restriction applies.
-    // The relocation callers receive the same planning-safe display and
-    // coordinate operations as the source rloc()/mnexto() paths.
+    // The relocation callers receive the same display and coordinate
+    // operations as the source rloc()/mnexto() paths.
     const relocate = async (subject, useNext) => {
         const relocateRandom = rawEnv.rloc ?? ((target, flags) =>
             rloc(target, flags, {
                 ...env,
-                message: env.planning ? async () => {}
-                    : (rawEnv.message ?? ttyPline),
+                message: rawEnv.message ?? ttyPline,
                 newsym: rawEnv.redraw ?? newsym,
                 onscary: rawEnv.onscary
                     ?? ((x, y, target) => onscary(x, y, target, state)),
@@ -3942,8 +3841,7 @@ export async function m_move(monster, rawEnv = {}) {
         const relocateNextTo = rawEnv.mnexto ?? ((target, flags) =>
             mnexto(target, flags, {
                 ...env,
-                message: env.planning ? async () => {}
-                    : (rawEnv.message ?? ttyPline),
+                message: rawEnv.message ?? ttyPline,
                 newsym: rawEnv.redraw ?? newsym,
                 onscary: rawEnv.onscary
                     ?? ((x, y, target) => onscary(x, y, target, state)),
@@ -3958,9 +3856,7 @@ export async function m_move(monster, rawEnv = {}) {
         if (!random.rn2(5) && !monster.mcan) {
             const restricted = rawEnv.teleRestrict
                 ? await rawEnv.teleRestrict(monster, env)
-                : env.planning
-                    ? noteleport_level(monster, state)
-                    : await tele_restrict(monster, state);
+                : await tele_restrict(monster, state);
             if (!restricted) {
                 if (monster.mhp < 7 || monster.mpeaceful || random.rn2(2))
                     await relocate(monster, false);
@@ -4084,7 +3980,7 @@ export async function m_move(monster, rawEnv = {}) {
     // pet and a monster that finished an item search both carry the value the
     // capability block set.
     if (canTunnel && needspick(monster.data)
-        && (!monster.mpeaceful || propertyActive(state, CONFLICT))
+        && (!monster.mpeaceful || Conflict(state.u))
         && dist2(monster.mx, monster.my, monster.mux, monster.muy) <= 8) {
         canTunnel = false;
     }
@@ -4101,17 +3997,6 @@ export async function m_move(monster, rawEnv = {}) {
         // a defensive escape before giving up.
         const escape = find_defensive(monster, true, env);
         if (escape) {
-            // As in dochug()'s pre-move item use, the clone cannot run
-            // use_defensive() silently; stop the dry run at its boundary so
-            // the live scan performs the escape and the plan resumes after it.
-            if (env.planning) {
-                if (typeof env.requestPlanningInput !== 'function') {
-                    throw new TypeError(
-                        'planned use_defensive requires a planning boundary',
-                    );
-                }
-                env.requestPlanningInput('muse.c use_defensive');
-            }
             if (await use_defensive(monster, escape, state, env))
                 return MMOVE_DONE;
         }
@@ -4203,9 +4088,7 @@ export async function m_move(monster, rawEnv = {}) {
         if (is_unicorn(monster.data) && random.rn2(2)) {
             const restricted = rawEnv.teleRestrict
                 ? await rawEnv.teleRestrict(monster, env)
-                : env.planning
-                    ? noteleport_level(monster, state)
-                    : await tele_restrict(monster, state);
+                : await tele_restrict(monster, state);
             if (!restricted) {
                 await relocate(monster, false);
                 // C returns MMOVE_MOVED directly here; postmov() belongs to
@@ -4284,7 +4167,7 @@ export async function m_move(monster, rawEnv = {}) {
     // common case where the accessibility flag is off or the monster is not
     // noticed, so that tests counting microtask yields stay stable.
     const movementMsg = collectMonsterMovementMessage(monster, oldX, oldY, state);
-    if (movementMsg && !env.planning) {
+    if (movementMsg) {
         const msgFn = rawEnv.message ?? ttyPline;
         await msgFn(movementMsg, state, env);
     }
@@ -4303,7 +4186,7 @@ export async function m_move(monster, rawEnv = {}) {
         || monster.data?.mlet === S_EEL) {
         maybe_unhide_at(monster.mx, monster.my, state, {
             ...env,
-            redraw: env.planning ? () => {} : (rawEnv.redraw ?? newsym),
+            redraw: rawEnv.redraw ?? newsym,
         });
     }
     mon_track_add(monster, oldX, oldY);
@@ -4380,9 +4263,8 @@ export function can_hide_under_obj(headObject, state = game) {
 }
 
 // C ref: monmove.c dissolve_bars() (2170-2180). Remove iron bars at (x,y),
-// replacing with the appropriate terrain type and redrawing. A monster's
-// planning pass supplies its own newsym(), so the square is not repainted on
-// the live display before the live pass changes it.
+// replacing with the appropriate terrain type and redrawing. A caller may
+// supply its own newsym().
 export async function dissolve_bars(x, y, state = game, rawEnv = {}) {
     const redraw = rawEnv.newsym ?? newsym;
     const loc = state.level.at(x, y);

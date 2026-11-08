@@ -267,7 +267,6 @@ import { doextversion } from './version.js';
 import {
     t_at,
     trapname,
-    Levitation,
 } from './trap.js';
 import { cansee, couldsee, howmonseen } from './vision.js';
 import { spot_time_left } from './timeout.js';
@@ -277,7 +276,8 @@ import {
 } from './cmd.js';
 import {
     Blind, Detect_monsters, EDetect_monsters, EHalluc_resistance,
-    Hallucination, Infravision, Invis, See_invisible, Unblind_telepat,
+    Hallucination, Infravision, Invis, Levitation, See_invisible,
+    Unblind_telepat,
 } from './youprop.js';
 
 export const WHAT_IS_A_LOCATION = 'a monster, object or location';
@@ -1149,8 +1149,7 @@ function descriptionDisplayCharacter(glyphInfo) {
 
 // C ref: pager.c waterbody_name() (560-612). `SURFACE_AT()` is the shared
 // dungeon owner, so a raised drawbridge is named for what lies beneath it.
-// The optional environment carries the display RNG used by hliquid(); this
-// keeps hallucinated descriptions in planning clones off the live stream.
+// The optional environment carries the display RNG used by hliquid().
 export function waterbody_name(x, y, state = game, env = {}) {
     if (!isok(x, y)) return 'drink';
     const loc = state.level?.at?.(x, y);
@@ -1199,7 +1198,7 @@ export function ice_descr(x, y, state = game) {
     const nearDistance = range * range * 2 - range;
     const distant = dist2(x, y, state.u.ux, state.u.uy) > nearDistance;
     const unseen = !cansee(x, y, state)
-        && (!u_at(x, y, state) || Levitation(state));
+        && (!u_at(x, y, state) || Levitation(state.u));
     if ((distant || unseen) && !state.gd?.decor_levitate_override)
         return waterbody_name(x, y, state);
 

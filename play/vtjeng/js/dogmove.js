@@ -14,7 +14,6 @@ import {
     APPORT,
     CADAVER,
     COLNO,
-    CONFLICT,
     COST_CONTENTS,
     COST_DEGRD,
     D_CLOSED,
@@ -45,7 +44,6 @@ import {
     NEED_HTH_WEAPON,
     NEED_WEAPON,
     N_DIRS,
-    PROT_FROM_SHAPE_CHANGERS,
     ROWNO,
     STONE_RES,
     UNDEF,
@@ -207,7 +205,9 @@ import { pline_mon, youFeel } from './pline.js';
 import { beg, domonnoise } from './sounds.js';
 import { stop_occupation } from './allmain.js';
 import { mattacku } from './mhitu.js';
-import { Deaf, Hallucination } from './youprop.js';
+import {
+    Conflict, Deaf, Hallucination, Protection_from_shape_changers,
+} from './youprop.js';
 
 const SQSRCHRADIUS = 5;
 const FARAWAY = COLNO + 2;
@@ -270,16 +270,6 @@ function petMoveOperation(rawEnv, name) {
     return operation;
 }
 
-// C ref: youprop.h:218 Conflict, `(HConflict || EConflict)`. Two disjuncts and
-// no blocking term. youprop.h gives a `blocked` alias to six properties only
-// -- BLINDED, CLAIRVOYANT, INVIS, STEALTH, LEVITATION and FLYING, at :90,
-// :181, :197, :209, :239 and :252 -- and CONFLICT is not among them, so no C
-// path writes the field. dog_move() reads Conflict at dogmove.c:1017, :1046,
-// :1122 and :1127; js/mon.js:392 keeps the same two-disjunct copy.
-function conflictActive(state) {
-    const conflict = state.u?.uprops?.[CONFLICT];
-    return Boolean(conflict?.intrinsic || conflict?.extrinsic);
-}
 
 
 
@@ -338,8 +328,8 @@ function nearestVisibleGoal(monster, state, clearArea) {
 
 // C ref: dogmove.c droppables(). Return the first carried object this pet
 // does not reserve as its wielded weapon or one preferred utility tool.
-// `env.state` is the state the caller plays on; a planned pet move passes the
-// planning clone, so which_armor() must read that, not the live game.
+// `env.state` is the state the caller plays on, so which_armor() must read
+// that, not the global game.
 export function droppables(monster, env = {}) {
     const species = monster.data;
     const weapon = monster.mw;
@@ -660,9 +650,6 @@ export async function dog_eat(mtmp, obj, x, y, devour, rawEnv = {}) {
                 // mon.c:m_consume_obj discards this result. Leashed pets now
                 // follow quickmimic's source-ordered dismount and appearance
                 // path whether the pet is ordinary or currently the steed.
-                // The monster-turn planner replays this caller to predict the
-                // move. Keep the live steed and TTY untouched until execution.
-                if (subject === state.u.usteed && env.planning) return;
                 await quickmimic(subject, env);
             },
         });
@@ -682,17 +669,13 @@ const QUICK_MIMIC_CHOICES = Object.freeze([
     Object.freeze([0, 0, TRIPE_RATION, M_AP_OBJECT]),
 ]);
 
-function activeHeroProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
 // C ref: dogmove.c quickmimic() (1481-1530). The source table and retry loop
 // are complete; leashes are released after the changed appearance is drawn.
 export async function quickmimic(mtmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const wasLeashed = mtmp.mleashed;
-    if (activeHeroProperty(state, PROT_FROM_SHAPE_CHANGERS)
+    if (Protection_from_shape_changers(state.u)
         || !mtmp.meating) return;
     if (mtmp === state.u?.usteed) {
         // C dismounts the original monster before it changes the appearance.
@@ -812,8 +795,7 @@ export async function dog_invent(monster, edog, heroDistance, rawEnv = {}) {
     if (typeof random.rn2 !== 'function')
         throw new TypeError('dog_invent random injection requires rn2');
     const operationEnv = { ...rawEnv, state, random };
-    // pline_xy() and newsym() on the carry arm. A planning scan overrides both
-    // with no-ops, because it re-runs the same turn against the live display.
+    // pline_xy() and newsym() on the carry arm; a caller may override both.
     const message = rawEnv.message ?? ttyPline;
     const redraw = rawEnv.redraw ?? newsym;
     const findDroppable = inventoryOperation(
@@ -1346,9 +1328,9 @@ export async function dog_move(monster, after, rawEnv = {}) {
     if (monster === state.u.usteed) {
         const resistConflict = env.resistConflict
             ?? ((subject) => resist_conflict(subject, state, random));
-        if (conflictActive(state) && !resistConflict(monster, env)) {
+        if (Conflict(state.u) && !resistConflict(monster, env)) {
             if (env.dismountSteed) await env.dismountSteed(DISMOUNT_THROWN, env);
-            else if (!env.planning) {
+            else {
                 // steed.js imports finish_meating from this module, so load
                 // its canonical dismount only when this source arm is reached.
                 const { dismount_steed } = await import('./steed.js');
@@ -1432,13 +1414,12 @@ export async function dog_move(monster, after, rawEnv = {}) {
         env,
     );
     if (approach === -2) return MMOVE_NOTHING;
-    if (conflictActive(state)) {
+    if (Conflict(state.u)) {
         const resistConflict = env.resistConflict
             ?? ((subject) => resist_conflict(subject, state, random));
         if (!resistConflict(monster, env) && !edog) {
             if (env.loseGuardianAngel) await env.loseGuardianAngel(monster, env);
-            else if (!env.planning)
-                await lose_guardian_angel(monster, state, env);
+            else await lose_guardian_angel(monster, state, env);
             return MMOVE_DIED;
         }
     }
@@ -1489,13 +1470,13 @@ export async function dog_move(monster, after, rawEnv = {}) {
                 + Math.trunc(5 * monster.mhp / monster.mhpmax) - 2;
             if (occupant.m_lev >= balk
                 || (occupant.mtame && monster.mtame
-                    && !conflictActive(state))
+                    && !Conflict(state.u))
                 || max_passive_dmg(occupant, monster, state) >= monster.mhp
                 || ((monster.mhp * 4 < monster.mhpmax
                     || occupant.data?.msound === MS_GUARDIAN
                     || occupant.data?.msound === MS_LEADER)
                     && occupant.mpeaceful
-                    && !conflictActive(state))) {
+                    && !Conflict(state.u))) {
                 continue;
             }
             const hazardousTarget = (

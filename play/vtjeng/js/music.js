@@ -3,12 +3,11 @@
 // (sndprocs.h:273); their arguments, including obj_to_instr, are not evaluated.
 import {
     ACH_TUNE, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align,
-    ARTICLE_THE, COLNO, CONFUSION, D_NODOOR, DEAF, DOOR,
-    DRAWBRIDGE_DOWN, ECMD_OK, ECMD_TIME, FOUNTAIN, FUMBLING, GRAVE, IS_DRAWBRIDGE, KILLED_BY,
+    ARTICLE_THE, COLNO, D_NODOOR, DEAF, DOOR,
+    DRAWBRIDGE_DOWN, ECMD_OK, ECMD_TIME, FOUNTAIN, GRAVE, IS_DRAWBRIDGE, KILLED_BY,
     CORR, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, NO_KILLER_PREFIX,
     PIT, ROWNO, ROOM, SCORR, SDOOR, SHOPBASE, SINK, STRAT_WAITMASK,
-    SUPPRESS_SADDLE, STUNNED, THRONE, TT_BURIEDBALL, TT_PIT, XKILL_NOMSG,
-    UNCHANGING, Upolyd, has_mgivenname, is_pit, plur, u_at,
+    SUPPRESS_SADDLE, THRONE, TT_BURIEDBALL, TT_PIT, XKILL_NOMSG, Upolyd, has_mgivenname, is_pit, plur, u_at,
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { acurr, exercise } from './attrib.js';
@@ -51,7 +50,7 @@ import { in_rooms } from './rooms.js';
 import { add_damage } from './shk.js';
 import { set_levltyp } from './terrain.js';
 import {
-    Flying, Levitation, maketrap, reset_utrap, set_utrap,
+    maketrap, reset_utrap, set_utrap,
     selftouch, t_at,
 } from './trap.js';
 import { mselftouch } from './trap_effects.js';
@@ -64,13 +63,10 @@ import { flash_str, resist, ubuzz, zapyourself } from './zap.js';
 import { canseemon } from './display.js';
 import { youFeel } from './pline.js';
 import {
-    Blind, Deaf, Hallucination, Maybe_Half_Phys,
+    Blind, Confusion, Deaf, Flying, Fumbling, HConfusion, HStun,
+    Hallucination, Levitation, Maybe_Half_Phys, Stunned, Unchanging,
 } from './youprop.js';
 
-function property(state, index) {
-    const p = state.u.uprops[index];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
 
 // C ref: music.c awaken_scare() (45-60). The waiting arm excludes scare
 // checks, including their resistance draw, even when the sound is scary.
@@ -327,7 +323,7 @@ export async function do_pit(x, y, tuPit, state = game, rawEnv = {}) {
             await message('Your chain breaks!', state);
             await reset_utrap(true, state);
         }
-        if (Levitation(state) || Flying(state) || is_clinger(state.youmonst.data)) {
+        if (Levitation(state.u) || Flying(state.u) || is_clinger(state.youmonst.data)) {
             if (!tuPit) {
                 await message('A chasm opens up under you!', state);
                 await message("You don't fall in!", state);
@@ -339,7 +335,7 @@ export async function do_pit(x, y, tuPit, state = game, rawEnv = {}) {
                 'fell into a chasm', NO_KILLER_PREFIX, state, env);
             await selftouch('Falling, you', state, env);
         } else if (u.utrap && u.utraptype === TT_PIT) {
-            const fumbling = property(state, FUMBLING);
+            const fumbling = Fumbling(state.u);
             const keepFooting = (!fumbling || !random.rn2(5))
                 && (!random.rnl(state.urole?.mnum === PM_ARCHEOLOGIST ? 3 : 9)
                     || (acurr(state, A_DEX) > 7 && random.rn2(5)));
@@ -499,7 +495,7 @@ const beats = ['stepper', 'one drop', 'slow two', 'triple stroke roll',
 // Return the string and C's boolean out-parameter together.
 export function improvised_notes(state = game, random = coreRandom) {
     state.context ??= {};
-    if (!(property(state, UNCHANGING) && state.context.jingle)) {
+    if (!(Unchanging(state.u) && state.context.jingle)) {
         const count = random.rnd(5); // C char jingle[6], excluding its NUL.
         let notes = '';
         for (let i = 0; i < count; i++) notes += 'ABCDEFG'[random.rn2(7)];
@@ -513,8 +509,8 @@ export function improvised_notes(state = game, random = coreRandom) {
 export async function do_improvisation(instr, state = game, env = {}) {
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
-    const stunned = Boolean(state.u.uprops[STUNNED]?.intrinsic);
-    const confused = Boolean(state.u.uprops[CONFUSION]?.intrinsic);
+    const stunned = Boolean(Stunned(state.u));
+    const confused = Boolean(Confusion(state.u));
     let special = !(stunned || confused);
     const itmp = { ...instr, oextra: null };
     let mundane = false;
@@ -572,7 +568,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
         } else {
             // BZ_OFS_AD(AD_COLD/AD_FIRE) = adtyp-1; BZ_U_WAND leaves it unchanged.
             const type = instr.otyp === FROST_HORN ? 2 : 1;
-            if (!(Blind(state.u)))
+            if (!Blind(state.u))
                 await message(`A ${flash_str(type, false, state)} blasts out of the horn!`, state);
             // gc.current_wand already lives at state.current_wand in zap.js.
             state.current_wand = instr;
@@ -663,7 +659,7 @@ export async function do_play_instrument(instr, state = game, env = {}) {
         return ECMD_OK;
     }
     if (instr.otyp !== LEATHER_DRUM && instr.otyp !== DRUM_OF_EARTHQUAKE
-        && !(state.u.uprops[STUNNED]?.intrinsic || state.u.uprops[CONFUSION]?.intrinsic
+        && !(HStun(state.u) || HConfusion(state.u)
             || Hallucination(state.u))) c = await ynq('Improvise?', state);
     if (c === 'q') {
         await message('Never mind.', state);

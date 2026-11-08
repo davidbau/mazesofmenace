@@ -91,7 +91,6 @@ import {
     CLAIRVOYANT,
     COLD_RES,
     CONFLICT,
-    CONFUSION,
     DEAF,
     DISINT_RES,
     DISPLACED,
@@ -115,7 +114,6 @@ import {
     G_EXTINCT,
     G_GENOD,
     G_GONE,
-    GLIB,
     HALF_PHDAM,
     HALF_SPDAM,
     HALLUC_RES,
@@ -126,7 +124,6 @@ import {
     INTRINSIC,
     In_endgame,
     In_quest,
-    Is_waterlevel,
     INFRAVISION,
     INVIS,
     INVULNERABLE,
@@ -138,7 +135,6 @@ import {
     LEFT_SIDE,
     LEG,
     LEVITATION,
-    LIFESAVED,
     LL_ACHIEVE,
     LL_ARTIFACT,
     LL_DIVINEGIFT,
@@ -180,29 +176,24 @@ import {
     POLYMORPH,
     POLYMORPH_CONTROL,
     PROT_FROM_SHAPE_CHANGERS,
-    PROTECTION,
     REFLECTING,
     REGENERATION,
     SEARCHING,
     SEE_INVIS,
     SHOCK_RES,
-    SICK,
     SICK_NONVOMITABLE,
     SICK_RES,
     SICK_VOMITABLE,
     SLEEP_RES,
     SLEEPY,
-    SLIMED,
     TIMEOUT,
     SLOW_DIGESTION,
     SLT_ENCUMBER,
     STEALTH,
     STONE_RES,
-    STONED,
     STR18,
     STRANGLED,
     STRAT_WAITMASK,
-    STUNNED,
     TT_BURIEDBALL,
     TT_INFLOOR,
     TT_LAVA,
@@ -217,7 +208,6 @@ import {
     UNCHANGING,
     UNENCUMBERED,
     Upolyd,
-    VOMITING,
     VANQ_ALPHA_MIX,
     VANQ_ALPHA_SEP,
     VANQ_COUNT_H_L,
@@ -230,12 +220,10 @@ import {
     WARN_UNDEAD,
     W_AMUL,
     W_ARMOR,
-    W_ARTI,
     W_RING,
     W_SADDLE,
     W_TOOL,
     WARNING,
-    WOUNDED_LEGS,
     WWALKING,
     ARTICLE_THE,
 } from './const.js';
@@ -281,15 +269,12 @@ import { fingers_or_gloves, stuck_ring } from './do_wear.js';
 import { magic_negation } from './mhitu.js';
 import {
     amphibious,
-    breathless,
     hates_silver,
     hides_under,
     is_clinger,
     is_male,
     is_female,
     is_neuter,
-    is_flyer,
-    is_swimmer,
     dmgtype,
     dmgtype_fromattack,
     haseyes,
@@ -300,13 +285,11 @@ import {
     is_rider,
     lays_eggs,
     type_is_pname,
-    defended,
 } from './mondata.js';
 import {
     AD_ACID,
     AD_COLD,
     AD_DGST,
-    AD_DISE,
     AD_DISN,
     AD_ELEC,
     AD_FIRE,
@@ -377,19 +360,29 @@ import { RIGHT_HANDED } from './u_init.js';
 import {
     t_at,
     trapname,
-    Flying,
 } from './trap.js';
 import { digests } from './dothrow.js';
 import { dxdy_to_dist_descr } from './getpos.js';
 import { item_what, u_adtyp_resistance_obj } from './zap.js';
 import { count_wsegs, wseg_at } from './worm.js';
 import {
-    BBlinded, BClairvoyant, BInvis, Blind, Blind_telepat, BlindedTimeout,
-    Blindfolded, Blindfolded_only, Blnd_resist, Clairvoyant, Deaf,
-    Detect_monsters, EBlinded, EClairvoyant, EInvis,
-    HBlinded, HClairvoyant, HDetect_monsters, HInvis, Half_physical_damage, Halluc_resistance,
-    Hallucination, Infravision, Invis, Searching, See_invisible,
-    Undead_warning, Warn_of_mon, Warning,
+    Acid_resistance, Adornment, Aggravate_monster, Antimagic, BBlinded,
+    BClairvoyant, BFlying, BInvis, BLevitation, BStealth, Blind,
+    Blind_telepat, BlindedTimeout, Blindfolded, Blindfolded_only, Blnd_resist,
+    Breathless, Clairvoyant, Cold_resistance, Conflict, Deaf, Detect_monsters,
+    Disint_resistance, Displaced, Drain_resistance, EBlinded, EClairvoyant,
+    EInvis, EStealth, EWounded_legs, Fast, Fire_resistance, Fixed_abil,
+    Flying, Free_action, Fumbling, Glib, HBlinded, HClairvoyant, HConfusion,
+    HDetect_monsters, HInvis, HProtection, HSleepy, HStealth, HStun,
+    Half_physical_damage, Half_spell_damage, Halluc_resistance, Hallucination,
+    Hunger, Infravision, Invis, Invulnerable, Jumping, Lev_at_will,
+    Levitation, Lifesaved, Passes_walls, Poison_resistance, Polymorph,
+    Polymorph_control, Protection, Protection_from_shape_changers, Reflecting,
+    Regeneration, Searching, See_invisible, Shock_resistance, Sick,
+    Sick_resistance, Sleep_resistance, Sleepy, Slimed, Slow_digestion,
+    Stealth, Stone_resistance, Stoned, Strangled, Swimming, Teleport_control,
+    Teleportation, Unchanging, Undead_warning, Very_fast, Vomiting,
+    Warn_of_mon, Warning, Wounded_legs, Wwalking,
 } from './youprop.js';
 
 // C ref: insight.c trap_predicament() (233-270). The pager self-look
@@ -448,30 +441,6 @@ const attrname = Object.freeze([
     'strength', 'intelligence', 'wisdom',
     'dexterity', 'constitution', 'charisma',
 ]);
-
-// C ref: youprop.h. This asks only whether a property is present as an
-// intrinsic or an extrinsic. Several macros read more than those two fields,
-// so a new output path must check youprop.h before reusing this helper rather
-// than assuming the answers agree:
-//
-// - Two macros read a term that makes them TRUE where this helper is FALSE:
-//   `Deaf` (youprop.h:125) also reads u.uroleplay.deaf, and `Flying`
-//   (youprop.h:253) also reads `u.usteed && is_flyer(u.usteed->data)`. Only
-//   these two can let a condition slip past a guard built on this helper.
-// - Every other macro's extra terms only remove TRUEs, so this helper is a
-//   superset of the macro. `Blind` (:103), `Hallucination` (:120),
-//   `Levitation` (:240) and `Wwalking` (:260) each subtract a blocking term;
-//   `Fixed_abil` (:385) is the extrinsic alone; and Stunned, Confusion, Sick,
-//   Stoned, Strangled, Vomiting, Glib and Slimed are the intrinsic alone.
-//
-// A guard that only has to notice an unported condition may use the superset
-// deliberately, because refusing early is safe. A guard whose answer selects
-// between two ported outputs may not, and neither may a guard for one of the
-// two macros in the first bullet.
-function hasProperty(state, propidx) {
-    const property = state.u.uprops?.[propidx];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
 // C ref: insight.c enlght_combatinc() (160-199).  Status and attributes use
 // the same magnitude buckets, including the defensive two-thirds scaling and
@@ -924,7 +893,7 @@ function one_characteristic(mode, final, attrindx, state, lines) {
     // something keeping a ring of sustain ability on.
     if (Upolyd(state.u)) {
         hide_innate_value = true;
-    } else if (state.u.uprops?.[FIXED_ABIL]?.extrinsic) {
+    } else if (Fixed_abil(state.u)) {
         if (stuck_ring(state.uleft, RIN_SUSTAIN_ABILITY, state)
             || stuck_ring(state.uright, RIN_SUSTAIN_ABILITY, state))
             hide_innate_value = true;
@@ -1182,7 +1151,7 @@ function weapon_insight(final, state, lines) {
 function walking_on_water(state, levitation, flying) {
     const { u } = state;
     return !u.uinwater && !levitation && !flying
-        && hasProperty(state, WWALKING) && !Is_waterlevel(u.uz, state)
+        && Wwalking(state)
         && is_pool_or_lava(u.ux, u.uy, state);
 }
 
@@ -1196,19 +1165,17 @@ function status_enlightenment(mode, final, state, lines) {
     const E = (index) => Number(prop(index).extrinsic ?? 0);
     const B = (index) => Number(prop(index).blocked ?? 0);
     const active = (index) => Boolean(H(index) || E(index));
-    const levitation = active(LEVITATION) && !B(LEVITATION);
-    const flying = active(FLYING)
-        || Boolean(u.usteed && is_flyer(u.usteed.data));
-    const actualFlying = flying && !B(FLYING);
+    const levitation = Levitation(u);
+    const actualFlying = Flying(u);
     const blind = Blind(u);
     const blindfoldedOnly = Blindfolded_only(u);
     const hallucinating = Hallucination(u);
     const deaf = Deaf(u);
-    const woundedLegs = Boolean(H(WOUNDED_LEGS) || E(WOUNDED_LEGS));
-    const glib = Boolean(H(GLIB));
-    const fumbling = Boolean(H(FUMBLING) || E(FUMBLING));
-    const sleepy = Boolean(H(SLEEPY) || E(SLEEPY));
-    const hunger = Boolean(H(HUNGER) || E(HUNGER));
+    const woundedLegs = Wounded_legs(u);
+    const glib = Boolean(Glib(u));
+    const fumbling = Fumbling(u);
+    const sleepy = Sleepy(u);
+    const hunger = Hunger(u);
     const magic = Boolean(mode & MAGICENLIGHTENMENT);
     const riding = Boolean(u.usteed
         && !(final === ENL_GAMEOVERDEAD
@@ -1238,10 +1205,7 @@ function status_enlightenment(mode, final, state, lines) {
     if (levitation) {
         // Lev_at_will is HLevitation with only I_SPECIAL/TIMEOUT or an
         // artifact W_ARTI.  The state carries the same source bits.
-        const atWill = (((H(LEVITATION) & I_SPECIAL) !== 0)
-            || ((E(LEVITATION) & W_ARTI) !== 0))
-            && (H(LEVITATION) & ~(I_SPECIAL | TIMEOUT)) === 0
-            && (E(LEVITATION) & ~W_ARTI) === 0;
+        const atWill = Lev_at_will(u);
         if (atWill && magic)
             you_are(lines, final, 'levitating, at will', '');
         else
@@ -1267,28 +1231,28 @@ function status_enlightenment(mode, final, state, lines) {
         || M_AP_TYPE(state.youmonst) !== M_AP_NOTHING))
         youhiding(true, final, state, lines);
 
-    if (H(STONED)) {
-        if (final && (H(STONED) & I_SPECIAL))
+    if (Stoned(u)) {
+        if (final && (Stoned(u) & I_SPECIAL))
             enlght_out(lines, ' You turned into stone.');
         else you_are(lines, final, 'turning to stone', '');
     }
-    if (H(SLIMED)) {
-        if (final && (H(SLIMED) & I_SPECIAL))
+    if (Slimed(u)) {
+        if (final && (Slimed(u) & I_SPECIAL))
             enlght_out(lines, ' You turned into slime.');
         else you_are(lines, final, 'turning into slime', '');
     }
-    if (H(STRANGLED)) {
+    if (Strangled(u)) {
         if (u.uburied) you_are(lines, final, 'buried', '');
-        else if (final && (H(STRANGLED) & I_SPECIAL))
+        else if (final && (Strangled(u) & I_SPECIAL))
             enlght_out(lines, ' You died from strangulation.');
         else {
             buf = 'being strangled';
-            if (state.wizard) buf += ' (' + (H(STRANGLED) & TIMEOUT) + ')';
+            if (state.wizard) buf += ' (' + (Strangled(u) & TIMEOUT) + ')';
             you_are(lines, final, buf, from_what(STRANGLED, state));
         }
     }
-    if (H(SICK)) {
-        if (final && (H(SICK) & I_SPECIAL)) {
+    if (Sick(u)) {
+        if (final && (Sick(u) & I_SPECIAL)) {
             const kind = (u.usick_type & SICK_NONVOMITABLE)
                 ? 'terminal illness' : 'food poisoning';
             enlght_out(lines, ' ' + You_ + 'died from ' + kind + '.');
@@ -1299,9 +1263,9 @@ function status_enlightenment(mode, final, state, lines) {
                 you_are(lines, final, 'terminally sick from food poisoning', '');
         }
     }
-    if (H(VOMITING)) you_are(lines, final, 'nauseated', '');
-    if (H(STUNNED)) you_are(lines, final, 'stunned', '');
-    if (H(CONFUSION)) you_are(lines, final, 'confused', '');
+    if (Vomiting(u)) you_are(lines, final, 'nauseated', '');
+    if (HStun(u)) you_are(lines, final, 'stunned', '');
+    if (HConfusion(u)) you_are(lines, final, 'confused', '');
     if (hallucinating) you_are(lines, final, 'hallucinating', '');
     if (blind) {
         buf = ((HBlinded(u) & FROMOUTSIDE) ? 'permanently'
@@ -1365,7 +1329,7 @@ function status_enlightenment(mode, final, state, lines) {
                 + simpleonames(saddle, state), '');
     }
     if (woundedLegs) {
-        const side = E(WOUNDED_LEGS) & BOTH_SIDES;
+        const side = EWounded_legs(u) & BOTH_SIDES;
         let bp = u.usteed ? mbodypart(u.usteed, LEG)
             : body_part(LEG, state.youmonst);
         let article = 'a ';
@@ -1384,7 +1348,7 @@ function status_enlightenment(mode, final, state, lines) {
     }
     if (glib) {
         buf = 'slippery ' + fingers_or_gloves(true, state);
-        if (state.wizard) buf += ' (' + (H(GLIB) & TIMEOUT) + ')';
+        if (state.wizard) buf += ' (' + (Glib(u) & TIMEOUT) + ')';
         you_have(lines, final, buf, '');
     }
     if (fumbling && (magic || cause_known(FUMBLING, state)))
@@ -1392,7 +1356,7 @@ function status_enlightenment(mode, final, state, lines) {
             from_what(FUMBLING, state));
     if (sleepy && (magic || cause_known(SLEEPY, state))) {
         buf = from_what(SLEEPY, state);
-        if (state.wizard) buf += ' (' + (H(SLEEPY) & TIMEOUT) + ')';
+        if (state.wizard) buf += ' (' + (HSleepy(u) & TIMEOUT) + ')';
         enl_msg(lines, final, You_, 'fall', 'fell', ' asleep uncontrollably', buf);
     }
     if (hunger && (magic || cause_known(HUNGER, state)))
@@ -1470,16 +1434,12 @@ export async function attributes_enlightenment(final, state, lines) {
     const blind = Blind(u);
     const seeInvisible = See_invisible(u);
     const invisible = Invis(u) && !seeInvisible;
-    const veryFast = Boolean((h(FAST) & ~INTRINSIC) || e(FAST));
     const clairvoyant = Clairvoyant(u);
-    const flying = Boolean((active(FLYING)
-        || (u.usteed && is_flyer(u.usteed.data))) && !b(FLYING));
-    const levitation = activeUnblocked(LEVITATION);
-    const walking = activeUnblocked(WWALKING) && !Is_waterlevel(u.uz, state);
-    const swimming = Boolean(active(SWIMMING)
-        || (u.usteed && is_swimmer(u.usteed.data)));
-    const breathlessHero = activeUnblocked(MAGICAL_BREATHING)
-        || breathless(state.youmonst?.data);
+    const flying = Flying(u);
+    const levitation = Levitation(u);
+    const walking = Wwalking(state);
+    const swimming = Swimming(u);
+    const breathlessHero = Breathless(state);
     const amphibiousHero = breathlessHero
         || amphibious(state.youmonst?.data);
     const walking_on_water = !u.uinwater && !levitation && !flying
@@ -1531,44 +1491,44 @@ export async function attributes_enlightenment(final, state, lines) {
             ` ${u.ualign.record}`, '');
     }
 
-    if (h(INVULNERABLE))
+    if (Invulnerable(u))
         you_are(lines, final, 'invulnerable', from_what(INVULNERABLE, state));
-    if (hasProperty(state, ANTIMAGIC)) {
+    if (Antimagic(state.u)) {
         you_are(lines, final, 'magic-protected', from_what(ANTIMAGIC, state));
     }
-    if (activeUnblocked(FIRE_RES))
+    if (Fire_resistance(u))
         you_are(lines, final, 'fire resistant', from_what(FIRE_RES, state));
     item_resistance_message(AD_FIRE, ' protected from fire');
-    if (activeUnblocked(COLD_RES))
+    if (Cold_resistance(u))
         you_are(lines, final, 'cold resistant', from_what(COLD_RES, state));
     item_resistance_message(AD_COLD, ' protected from cold');
-    if (activeUnblocked(SLEEP_RES))
+    if (Sleep_resistance(u))
         you_are(lines, final, 'sleep resistant', from_what(SLEEP_RES, state));
-    if (activeUnblocked(DISINT_RES))
+    if (Disint_resistance(u))
         you_are(lines, final, 'disintegration resistant',
             from_what(DISINT_RES, state));
     item_resistance_message(AD_DISN, ' protected from disintegration');
-    if (activeUnblocked(SHOCK_RES))
+    if (Shock_resistance(u))
         you_are(lines, final, 'shock resistant', from_what(SHOCK_RES, state));
     item_resistance_message(AD_ELEC, ' protected from electric shocks');
-    if (hasProperty(state, POISON_RES))
+    if (Poison_resistance(state.u))
         you_are(lines, final, 'poison resistant',
             from_what(POISON_RES, state));
-    if (activeUnblocked(ACID_RES)) {
+    if (Acid_resistance(u)) {
         const description = `${temp_resist(ACID_RES, state) ? 'temporarily ' : ''}`
             + 'acid resistant';
         you_are(lines, final, description, from_what(ACID_RES, state));
     }
     item_resistance_message(AD_ACID, ' protected from acid');
-    if (activeUnblocked(DRAIN_RES))
+    if (Drain_resistance(u))
         you_are(lines, final, 'level-drain resistant',
             from_what(DRAIN_RES, state));
     // youprop.h:69 widens Sick_resistance with defended(&gy.youmonst,
     // AD_DISE): green dragon scales, or the hero polymorphed into a green
     // dragon, which mondata.c defended() treats as wearing them.
-    if (activeUnblocked(SICK_RES) || defended(state.youmonst, AD_DISE, state))
+    if (Sick_resistance(state))
         you_are(lines, final, 'immune to sickness', from_what(SICK_RES, state));
-    if (activeUnblocked(STONE_RES)) {
+    if (Stone_resistance(u)) {
         const description = `${temp_resist(STONE_RES, state) ? 'temporarily ' : ''}`
             + 'petrification resistant';
         you_are(lines, final, description, from_what(STONE_RES, state));
@@ -1665,7 +1625,7 @@ export async function attributes_enlightenment(final, state, lines) {
             description, '');
     }
 
-    const adorn = e(ADORNED);
+    const adorn = Adornment(u);
     if (adorn) {
         let ringBonus = 0;
         if (state.uleft?.otyp === RIN_ADORNMENT) ringBonus += state.uleft.spe ?? 0;
@@ -1681,51 +1641,57 @@ export async function attributes_enlightenment(final, state, lines) {
         you_are(lines, final, 'invisible to others', from_what(INVIS, state));
     else if (BInvis(u) && Boolean(HInvis(u) || EInvis(u)))
         you_are(lines, final, 'visible', from_what(-INVIS, state));
-    if (active(DISPLACED))
+    if (Displaced(u))
         you_are(lines, final, 'displaced', from_what(DISPLACED, state));
-    if (activeUnblocked(STEALTH))
+    if (Stealth(u))
         you_are(lines, final, 'stealthy',
             from_what(STEALTH, state));
-    else if (b(STEALTH) && active(STEALTH)) {
-        const suffix = b(STEALTH) === FROMOUTSIDE ? ' if not mounted' : '';
+    else if (BStealth(u) && (HStealth(u) || EStealth(u))) {
+        const suffix = BStealth(u) === FROMOUTSIDE ? ' if not mounted' : '';
         enl_msg(lines, final, You_, 'would be', 'would have been',
             ` stealthy${suffix}`, '');
     }
-    if (active(AGGRAVATE_MONSTER))
+    if (Aggravate_monster(u))
         enl_msg(lines, final, 'You aggravate', '', 'd', ' monsters',
             from_what(AGGRAVATE_MONSTER, state));
-    if (active(CONFLICT))
+    if (Conflict(u))
         enl_msg(lines, final, 'You cause', '', 'd', ' conflict',
             from_what(CONFLICT, state));
 
-    if (active(JUMPING))
+    if (Jumping(u))
         you_can(lines, final, 'jump', from_what(JUMPING, state));
-    if (active(TELEPORT))
+    if (Teleportation(u))
         you_can(lines, final, 'teleport', from_what(TELEPORT, state));
-    if (active(TELEPORT_CONTROL))
+    if (Teleport_control(u))
         you_have(lines, final, 'teleport control',
             from_what(TELEPORT_CONTROL, state));
-    if (b(LEVITATION)) {
-        const trapped = Boolean(b(LEVITATION) & I_SPECIAL);
-        const terrain = Boolean(b(LEVITATION) & FROMOUTSIDE);
-        if (active(LEVITATION)) {
+    if (BLevitation(u)) { /* levitation is blocked */
+        const saveBLev = BLevitation(u);
+        u.uprops[LEVITATION].blocked = 0;
+        if (Levitation(u)) {
+            const trapped = Boolean(saveBLev & I_SPECIAL);
+            const terrain = Boolean(saveBLev & FROMOUTSIDE);
             const suffix = `${trapped ? ' if not trapped' : ''}`
                 + `${trapped && terrain ? ' and' : ''}`
                 + `${terrain ? ' if surroundings permitted' : ''}`;
             enl_msg(lines, final, You_, 'would levitate', 'would have levitated',
                 suffix, '');
         }
+        u.uprops[LEVITATION].blocked = saveBLev;
     }
-    if (b(FLYING)) {
-        if (active(FLYING) || (u.usteed && is_flyer(u.usteed.data))) {
-            const suffix = levitation ? ' if you weren\'t levitating'
-                : b(FLYING) === I_SPECIAL ? ' if you weren\'t trapped'
-                    : b(FLYING) === FROMOUTSIDE
+    if (BFlying(u)) { /* flight is blocked */
+        const saveBFly = BFlying(u);
+        u.uprops[FLYING].blocked = 0;
+        if (Flying(u)) {
+            const suffix = Levitation(u) ? ' if you weren\'t levitating'
+                : saveBFly === I_SPECIAL ? ' if you weren\'t trapped'
+                    : saveBFly === FROMOUTSIDE
                         ? ' if surroundings permitted'
                         : ' if circumstances permitted';
             enl_msg(lines, final, You_, 'would fly', 'would have flown',
                 suffix, '');
         }
+        u.uprops[FLYING].blocked = saveBFly;
     }
     if (is_clinger(state.youmonst?.data)) {
         const hasLid = has_ceiling(u.uz, state);
@@ -1750,14 +1716,14 @@ export async function attributes_enlightenment(final, state, lines) {
     else if (amphibiousHero)
         you_can(lines, final, 'breathe water',
             from_what(MAGICAL_BREATHING, state));
-    if (active(PASSES_WALLS))
+    if (Passes_walls(u))
         you_can(lines, final, 'walk through walls',
             from_what(PASSES_WALLS, state));
 
-    if (active(REGENERATION))
+    if (Regeneration(u))
         enl_msg(lines, final, 'You regenerate', '', 'd', '',
             from_what(REGENERATION, state));
-    if (active(SLOW_DIGESTION))
+    if (Slow_digestion(u))
         you_have(lines, final, 'slower digestion',
             from_what(SLOW_DIGESTION, state));
     if (u.uhitinc) {
@@ -1774,14 +1740,14 @@ export async function attributes_enlightenment(final, state, lines) {
     }
     if (u.udaminc)
         you_have(lines, final, combatinc('damage', u.udaminc), '');
-    if (u.uspellprot || active(PROTECTION)) {
+    if (u.uspellprot || Protection(u)) {
         let protection = u.uspellprot ?? 0;
         if (state.uleft?.otyp === RIN_PROTECTION)
             protection += state.uleft.spe ?? 0;
         if (state.uright?.otyp === RIN_PROTECTION)
             protection += state.uright.spe ?? 0;
         if (state.uamul?.otyp === AMULET_OF_GUARDING) protection += 2;
-        if (h(PROTECTION) & INTRINSIC) protection += u.ublessed ?? 0;
+        if (HProtection(u) & INTRINSIC) protection += u.ublessed ?? 0;
         if (protection)
             you_have(lines, final, combatinc('defense', protection), '');
     }
@@ -1798,7 +1764,7 @@ export async function attributes_enlightenment(final, state, lines) {
     if (Half_physical_damage(u))
         enl_msg(lines, final, You_, 'take', 'took',
             ` ${enlght_halfdmg(HALF_PHDAM)}`, from_what(HALF_PHDAM, state));
-    if (active(HALF_SPDAM))
+    if (Half_spell_damage(u))
         enl_msg(lines, final, You_, 'take', 'took',
             ` ${enlght_halfdmg(HALF_SPDAM)}`, from_what(HALF_SPDAM, state));
     if (state.ublindf && is_wet_towel(state.ublindf))
@@ -1815,16 +1781,16 @@ export async function attributes_enlightenment(final, state, lines) {
         if (castAdj)
             enl_msg(lines, final, 'Your spell casting ', 'is', 'was', castAdj, '');
     }
-    if (active(PROT_FROM_SHAPE_CHANGERS))
+    if (Protection_from_shape_changers(u))
         you_are(lines, final, 'protected from shape changers',
             from_what(PROT_FROM_SHAPE_CHANGERS, state));
-    if (active(UNCHANGING)) {
+    if (Unchanging(u)) {
         if (!Upolyd(u))
             you_can(lines, final, 'not change from your current form',
                 from_what(UNCHANGING, state));
         let periodic;
         let pastPeriodic;
-        if (active(POLYMORPH)) {
+        if (Polymorph(u)) {
             periodic = 'polymorph';
             pastPeriodic = 'have polymorphed';
         } else if (ismnum(u.ulycn)) {
@@ -1835,16 +1801,16 @@ export async function attributes_enlightenment(final, state, lines) {
             enl_msg(lines, final, You_, `would ${periodic} periodically`,
                 `would ${pastPeriodic} periodically`,
                 ' if not locked into your current form', '');
-    } else if (active(POLYMORPH)) {
+    } else if (Polymorph(u)) {
         you_are(lines, final, 'polymorphing periodically',
             from_what(POLYMORPH, state));
     }
-    if (active(POLYMORPH_CONTROL))
+    if (Polymorph_control(u))
         you_have(lines, final, 'polymorph control',
             from_what(POLYMORPH_CONTROL, state));
     if (Upolyd(u) && u.umonnum !== u.ulycn
         && !(final === ENL_GAMEOVERDEAD && u.umonnum === PM_GREEN_SLIME
-            && !active(UNCHANGING))) {
+            && !Unchanging(u))) {
         let description;
         const currentForm = state.youmonst?.data;
         const vampireShift = is_vampshifter(state.youmonst)
@@ -1872,31 +1838,31 @@ export async function attributes_enlightenment(final, state, lines) {
         }
         you_are(lines, final, description, '');
     }
-    if (active(UNCHANGING) && Upolyd(u))
+    if (Unchanging(u) && Upolyd(u))
         you_can(lines, final, 'not change from your current form',
             from_what(UNCHANGING, state));
     if (u.ulycn >= LOW_PM || hates_silver(state.youmonst?.data))
         you_are(lines, final, 'harmed by silver', '');
 
-    if (active(FAST))
-        you_are(lines, final, veryFast ? 'very fast' : 'fast',
+    if (Fast(u))
+        you_are(lines, final, Very_fast(u) ? 'very fast' : 'fast',
             from_what(FAST, state));
 
     // C ref: insight.c:1900. Reflection is reported after movement speed and
     // retains the wizard-mode source suffix from attrib.c from_what().
-    if (active(REFLECTING))
+    if (Reflecting(u))
         you_have(lines, final, 'reflection',
             from_what(REFLECTING, state));
 
     // C ref: insight.c:1902-1906. These capability lines retain their source
     // wording where from_what() has one and preserve C's order.
-    if (e(FREE_ACTION))
+    if (Free_action(u))
         you_have(lines, final, 'free action',
             from_what(FREE_ACTION, state));
-    if (e(FIXED_ABIL))
+    if (Fixed_abil(u))
         you_have(lines, final, 'fixed abilities',
             from_what(FIXED_ABIL, state));
-    if (e(LIFESAVED))
+    if (Lifesaved(u))
         enl_msg(lines, final, 'Your life ', 'will be', 'would have been',
             ' saved', '');
 
@@ -1986,7 +1952,7 @@ export function youhiding(via_enlghtmt, msgflag, state = game, lines = [], env =
             const obj = state.level.objects[u.ux][u.uy];
             if (obj)
                 description += ' underneath ' + ansimpleoname(obj, state);
-        } else if (is_clinger(species) || Flying(state)) {
+        } else if (is_clinger(species) || Flying(state.u)) {
             description += ' on the ' + ceiling(u.ux, u.uy, state);
         } else if (u.utrap && u.utraptype === TT_PIT) {
             const trap = t_at(u.ux, u.uy, state);
@@ -2206,7 +2172,7 @@ export function remove_achievement(achidx, state = game) {
 
 // C ref: insight.c's shared vanquished-list data and UniqCritterIndx macro
 // (2776-2781).  The list is state-owned: mvitals and mons are read from the
-// state passed by the caller so a planning clone never consults the live game.
+// state passed by the caller.
 export function monsterVitals(state) {
     return state.svm?.mvitals ?? state.mvitals ?? [];
 }
@@ -3141,12 +3107,11 @@ export async function mstatusline(mtmp, state = game) {
     }
     if (mtmp === state.u.usteed) {
         info += ', carrying you';
-        const woundedLegs = state.u.uprops?.[WOUNDED_LEGS] ?? {};
-        if (woundedLegs.intrinsic || woundedLegs.extrinsic) {
+        if (Wounded_legs(state.u)) {
             // youprop.h:136-138 keeps the timeout and worn-ring sides in the
             // same property; the status line masks EWounded_legs and names
             // both legs only when both C side bits are set.
-            const legs = Number(woundedLegs.extrinsic ?? 0) & BOTH_SIDES;
+            const legs = Number(EWounded_legs(state.u)) & BOTH_SIDES;
             let what = mbodypart(mtmp, LEG);
             if (legs === BOTH_SIDES) what = makeplural(what);
             info += `, injured ${what}`;
@@ -3177,7 +3142,7 @@ export async function ustatusline(state = game) {
     let info = '';
 
     const properties = u.uprops ?? [];
-    if (properties[SICK]?.intrinsic) {
+    if (Sick(u)) {
         info += ', dying from';
         const vomitable = Boolean(u.usick_type & SICK_VOMITABLE);
         const nonvomitable = Boolean(u.usick_type & SICK_NONVOMITABLE);
@@ -3187,11 +3152,11 @@ export async function ustatusline(state = game) {
             info += ' illness';
         }
     }
-    if (properties[STONED]?.intrinsic) info += ', solidifying';
-    if (properties[SLIMED]?.intrinsic) info += ', becoming slimy';
-    if (properties[STRANGLED]?.intrinsic) info += ', being strangled';
-    if (properties[VOMITING]?.intrinsic) info += ', nauseated';
-    if (properties[CONFUSION]?.intrinsic) info += ', confused';
+    if (Stoned(u)) info += ', solidifying';
+    if (Slimed(u)) info += ', becoming slimy';
+    if (Strangled(u)) info += ', being strangled';
+    if (Vomiting(u)) info += ', nauseated';
+    if (HConfusion(u)) info += ', confused';
     if (Blind(u)) {
         info += ', blind';
         if (u.ucreamed) {
@@ -3201,24 +3166,19 @@ export async function ustatusline(state = game) {
             info += ' by sticky goop';
         }
     }
-    if (properties[STUNNED]?.intrinsic) info += ', stunned';
-    if ((properties[WOUNDED_LEGS]?.intrinsic
-         || properties[WOUNDED_LEGS]?.extrinsic) && !u.usteed) {
-        const legs = Number(properties[WOUNDED_LEGS]?.extrinsic ?? 0)
+    if (HStun(u)) info += ', stunned';
+    if ((Wounded_legs(u)) && !u.usteed) {
+        const legs = Number(EWounded_legs(u))
             & BOTH_SIDES;
         let what = body_part(LEG, state.youmonst);
         if (legs === BOTH_SIDES) what = makeplural(what);
         info += `, injured ${what}`;
     }
-    if (properties[GLIB]?.intrinsic)
+    if (Glib(u))
         info += `, slippery ${fingers_or_gloves(true, state)}`;
     if (u.utrap) info += ', trapped';
-    const fastIntrinsic = Number(properties[FAST]?.intrinsic ?? 0);
-    const fastExtrinsic = Number(properties[FAST]?.extrinsic ?? 0);
-    if (fastIntrinsic || fastExtrinsic) {
-        const veryFast = Boolean((fastIntrinsic & ~INTRINSIC) || fastExtrinsic);
-        info += veryFast ? ', very fast' : ', fast';
-    }
+    if (Fast(u))
+        info += Very_fast(u) ? ', very fast' : ', fast';
     if (u.uundetected) info += ', concealed';
     else if ((state.youmonst?.m_ap_type ?? M_AP_NOTHING) !== M_AP_NOTHING)
         info += ', disguised';

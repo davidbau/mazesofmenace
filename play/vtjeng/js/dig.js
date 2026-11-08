@@ -59,7 +59,6 @@ import {
     N_DIRS,
     FOOT,
     NO_PART,
-    FUMBLING,
     FORCETRAP,
     F_WARNED,
     DIGTYP_DOOR,
@@ -238,8 +237,6 @@ import {
     delfloortrap,
     uteetering_at_seen_pit,
     uescaped_shaft,
-    Flying,
-    Levitation,
 } from './trap.js';
 import { feeltrap, seetrap } from './trap_effects.js';
 import { bimanual } from './worn.js';
@@ -297,8 +294,8 @@ import { canseemon } from './display.js';
 import { expels } from './mhitu.js';
 import { body_part, mbodypart } from './polyself.js';
 import {
-    Blind, Deaf,
-    Hallucination, Maybe_Half_Phys, Unaware,
+    Blind, Deaf, Flying, Fumbling, Hallucination, Levitation, Maybe_Half_Phys,
+    Unaware,
 } from './youprop.js';
 
 
@@ -322,7 +319,7 @@ export function pick_can_reach(pick, x, y, state = game) {
         return bimanual(pick, state);
     }
 
-    if (bimanual(pick, state) || Flying(state)) return true;
+    if (bimanual(pick, state) || Flying(state.u)) return true;
     return !targetInPit;
 }
 
@@ -627,8 +624,7 @@ export async function dig(state = game, rawEnv = {}) {
         return 0;
     }
 
-    const fumbling = Boolean(u.uprops?.[FUMBLING]?.intrinsic
-        || u.uprops?.[FUMBLING]?.extrinsic);
+    const fumbling = Fumbling(u);
     if (fumbling && !random.rn2(3)) {
         switch (random.rn2(3)) {
         case 0:
@@ -1083,7 +1079,7 @@ export async function use_pick_axe2(obj, state = game, env = {}) {
     } else if (u.uinwater) {
         await message(`Turbulence torpedoes your ${verbing} attempts.`, state);
     } else if (u.dz < 0) {
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await message("You don't have enough leverage.", state);
         } else {
             await message(`You can't reach the ${ceiling(u.ux, u.uy, state)}.`, state);
@@ -1501,7 +1497,7 @@ export async function digactualhole(
     const madebyObject = madeby === null;
     const herosFault = madebyU || madebyObject;
     const atHero = u_at(x, y, state);
-    let wontFall = Levitation(state) || Flying(state);
+    let wontFall = Levitation(state.u) || Flying(state.u);
     let oldAlignment = A_NONE;
 
     if (atHero && state.u.utrap) {
@@ -1565,7 +1561,7 @@ export async function digactualhole(
         else add_damage(x, y, herosFault ? SHOP_PIT_COST : 0, state);
         if (madebyU) await wake_nearby(false, env);
         await switch_terrain(state, rawEnv);
-        if (Levitation(state) || Flying(state)) wontFall = true;
+        if (Levitation(state.u) || Flying(state.u)) wontFall = true;
         if (atHero) {
             if (!wontFall) {
                 set_utrap(random.rn1(4, 2), TT_PIT, state);
@@ -1585,7 +1581,7 @@ export async function digactualhole(
         }
     } else if (atHero) {
         await switch_terrain(state, rawEnv);
-        if (Levitation(state) || Flying(state)) wontFall = true;
+        if (Levitation(state.u) || Flying(state.u)) wontFall = true;
         if (!state.u.ustuck && !wontFall
             && !(await next_to_u(state, rawEnv))) {
             await message('You are jerked back by your pet!', state, rawEnv);
@@ -2183,7 +2179,7 @@ function setTerrain(location, typ, flags = 0) {
 export async function draft_message(unexpected, env) {
     const state = env.state;
     const random = env.random ?? coreRandom;
-    const message = env.planning ? async () => {} : (env.message ?? (async () => {}));
+    const message = env.message ?? (async () => {});
     const hallucinating = Hallucination(state.u);
     if (unexpected) {
         if (!hallucinating) {
@@ -2215,10 +2211,8 @@ export async function mdig_tunnel(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
     const objectEnv = objectGenerationEnv({ ...rawEnv, state, random });
-    const redraw = rawEnv.planning ? () => {} : (rawEnv.redraw ?? (() => {}));
-    const message = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.message ?? (async () => {}));
+    const redraw = rawEnv.redraw ?? (() => {});
+    const message = rawEnv.message ?? (async () => {});
     const recalcBlockPoint = rawEnv.recalcBlockPoint ?? recalc_block_point;
     const unblockPoint = rawEnv.unblockPoint ?? unblock_point;
     const x = monster.mx;
@@ -2319,8 +2313,7 @@ export async function mdig_tunnel(monster, rawEnv = {}) {
 // the chain that had followed a ball.
 export async function bury_objs(x, y, state = game, rawEnv = {}) {
     const env = { ...rawEnv, state };
-    const redraw = env.planning ? (() => {})
-        : (env.newsym ?? env.redraw ?? ((px, py) => newsym(px, py, state)));
+    const redraw = env.newsym ?? env.redraw ?? ((px, py) => newsym(px, py, state));
     const keeper = shop_keeper(in_rooms(x, y, SHOPBASE, state)[0] ?? 0, state);
     const costly = keeper && costly_spot(x, y, state);
     let loss = 0;
@@ -2335,7 +2328,7 @@ export async function bury_objs(x, y, state = game, rawEnv = {}) {
     del_engr_at(x, y, state);
     redraw(x, y, state);
     maybe_unhide_at(x, y, state, env);
-    if (costly && loss && !env.planning) {
+    if (costly && loss) {
         await (env.message ?? ttyPline)(
             `You owe ${shkname(keeper, state)} ${loss} ${currency(loss, state)} for burying merchandise.`,
             state, env,
@@ -2358,21 +2351,18 @@ export async function wiz_debug_cmd_bury(state = game, env = {}) {
         }
     }
     const difference = before - after;
-    if (!env.planning) {
-        await (env.message ?? ttyPline)(
-            before === 0 ? 'No objects here or adjacent to bury.'
-                : difference === 0 ? 'No objects buried.'
-                    : `${difference} object${difference === 1 ? '' : 's'} buried.`,
-            state, env,
-        );
-    }
+    await (env.message ?? ttyPline)(
+        before === 0 ? 'No objects here or adjacent to bury.'
+            : difference === 0 ? 'No objects buried.'
+                : `${difference} object${difference === 1 ? '' : 's'} buried.`,
+        state, env,
+    );
     return ECMD_OK;
 }
 
 // The environment dig.c's rotting hands its callees. `state` and `hooks` are
 // what invent.c obj_extract_self() and obfree() read; the caller supplies
-// hooks.newsym, because a planned turn runs this over a discarded clone and
-// must draw nothing on the live map.
+// hooks.newsym.
 //
 // obj_extract_self()'s OBJ_FLOOR arm dispatches to mkobj.c remove_object() in
 // C. The port injects that owner, and rotting can mean no other one, so the
@@ -2434,7 +2424,7 @@ export async function rot_corpse(arg, timeout, rawEnv = {}) {
         if (state.flags.verbose) {
             const cname = corpse_xname(obj, null, CXN_NO_PFX, state);
             const wielded = obj === state.uwep;
-            const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+            const message = env.message ?? ttyPline;
             await message('Your ' + (wielded ? 'wielded ' : '') + cname
                 + ' ' + otense(obj, 'rot', state) + ' away' + (wielded ? '!' : '.'));
         }
@@ -2445,8 +2435,7 @@ export async function rot_corpse(arg, timeout, rawEnv = {}) {
             // dig.c:2165.
             await stop_occupation(state, {
                 ...env,
-                message: env.message
-                    ?? (env.planning ? async () => {} : ttyPline),
+                message: env.message ?? ttyPline,
             });
         }
     } else if (obj.where === OBJ_MINVENT) {

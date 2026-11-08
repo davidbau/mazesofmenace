@@ -11,7 +11,6 @@ import {
     ANTIMAGIC,
     BLND_RES,
     COLD_RES,
-    CONFUSION,
     CONFLICT,
     DISINT_RES,
     DRAIN_RES,
@@ -59,10 +58,7 @@ import {
     REGENERATION,
     SEARCHING,
     SHOCK_RES,
-    SICK,
     SICK_ALL,
-    SLIMED,
-    STUNNED,
     STEALTH,
     STONE_RES,
     TELEPORT_CONTROL,
@@ -267,7 +263,7 @@ import {
     monsterCommonName,
 } from './do_name.js';
 import {
-    cancel_monst, resist, Fire_resistance, Cold_resistance, flashburn,
+    cancel_monst, resist, flashburn,
     lightdamage, probe_monster,
 } from './zap.js';
 import { healmon, migrate_mon, set_ustuck, wake_nearto } from './mon.js';
@@ -294,7 +290,10 @@ import { burn_away_slime } from './timeout.js';
 import { remove_worn_item } from './steal.js';
 import { On_stairs } from './stairs.js';
 import {
-    BBlinded, BInvis, Blind, EBlinded, HBlinded, Hallucination, Maybe_Half_Phys,
+    Antimagic, BBlinded, BInvis, Blind, Cold_resistance, Drain_resistance,
+    EBlinded, ELevitation, Fire_resistance, HBlinded, HConfusion, HLevitation,
+    HStun, Hallucination, Levitation, Maybe_Half_Phys, Poison_resistance,
+    Shock_resistance, Sick, Slimed, Stone_resistance,
 } from './youprop.js';
 
 // C refs: artifact.c defends() and defends_when_carried(). Artifact attack,
@@ -816,11 +815,6 @@ function artifactTouchRestrictions(artifact, monster, yours, state, index) {
 // to inflict its own additional damage.
 let touch_blasted = false;
 
-// C ref: youprop.h:57. Antimagic is the intrinsic or the extrinsic.
-function Antimagic(state) {
-    const p = state.u?.uprops?.[ANTIMAGIC];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
 
 // C ref: youprop.h:401. Hate_silver: lycanthrope or silver-hating species.
 function Hate_silver(state) {
@@ -828,12 +822,6 @@ function Hate_silver(state) {
         || hates_silver(state.youmonst?.data);
 }
 
-// C ref: youprop.h:240. Levitation property (intrinsic or extrinsic, not
-// blocked).
-function Levitation(state) {
-    const value = state.u?.uprops?.[LEVITATION];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
 
 export async function touch_artifact(obj, monster, env = game) {
     const index = Math.trunc(obj?.oartifact ?? ART_NONARTIFACT);
@@ -847,9 +835,8 @@ export async function touch_artifact(obj, monster, env = game) {
 
     const artifact = state.artilist[index];
     const yours = monster === state.youmonst;
-    // A caller passes either the game state or an env carrying it. An env's
-    // message and losehp() operations let a planning clone run this hero arm
-    // without writing to the live message window.
+    // A caller passes either the game state or an env carrying it. An env may
+    // supply this hero arm's message and losehp() operations.
     const effectEnv = env === state ? {} : env;
     const message = effectEnv.message ?? ttyPline;
     /* all quest artifacts are self-willed; if this ever changes, `badclass'
@@ -866,7 +853,7 @@ export async function touch_artifact(obj, monster, env = game) {
             `You are blasted by ${s_suffix(the(xnameFresh(obj, state), state))} power!`,
             state);
         touch_blasted = true;
-        let dmg = d(Antimagic(state) ? 2 : 4, selfWilled ? 10 : 4);
+        let dmg = d(Antimagic(state.u) ? 2 : 4, selfWilled ? 10 : 4);
         /* add half (maybe quarter) of the usual silver damage bonus */
         if (state.objects[obj.otyp].oc_material === SILVER
             && Hate_silver(state)) {
@@ -901,8 +888,8 @@ export async function touch_artifact(obj, monster, env = game) {
 // The seam every monster-side C caller of touch_artifact() reaches: mon.c
 // can_touch_safely() in js/weapon.js, and mon.c meatmetal()/meatobj() through
 // js/mon.js. Ordinary objects are touchable without an operation. Artifact
-// callers may still inject a planning or focused-test predicate, while live
-// monster callers use the synchronous monster_touch_artifact() owner below.
+// callers may still inject a focused-test predicate, while live monster
+// callers use the synchronous monster_touch_artifact() owner below.
 export function artifactTouchable(obj, monster, env) {
     if (!obj.oartifact) return true;
     if (typeof env?.touchArtifact === 'function')
@@ -1069,7 +1056,6 @@ function* set_artifact_intrinsic_steps(otmp, on, wp_mask, state, rawEnv) {
         ...rawEnv,
         state: normalized,
         redraw: rawEnv.redraw ?? (normalized === game ? newsym : () => {}),
-        ...(rawEnv.planning && !rawEnv.message ? { message: async () => {} } : {}),
     };
     const dtyp = wp_mask !== W_ART ? oart.defn.adtyp : oart.cary.adtyp;
     let property = ARTIFACT_RESISTANCE_PROPERTY.get(dtyp);
@@ -1572,24 +1558,6 @@ export function arti_immune(obj, dtyp, state = game) {
 // special attacks apply against mtmp. The full version handles all five
 // DBONUS categories plus the SPFX_ATTK resistance checks.
 
-// Hero resistance helpers (youprop.h patterns). Fire_resistance and
-// Cold_resistance are imported from zap.js; the rest follow the same pattern.
-function Shock_resistance(state) {
-    const p = state.u?.uprops?.[SHOCK_RES];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
-function Poison_resistance(state) {
-    const p = state.u?.uprops?.[POISON_RES];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
-function Drain_resistance(state) {
-    const p = state.u?.uprops?.[DRAIN_RES];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
-export function Stone_resistance(state) {
-    const p = state.u?.uprops?.[STONE_RES];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
 
 function spec_applies(weap, mtmp, state = game, env = {}) {
     if (!(weap.spfx & (SPFX_DBONUS | SPFX_ATTK)))
@@ -1621,26 +1589,26 @@ function spec_applies(weap, mtmp, state = game, env = {}) {
 
         switch (weap.attk.adtyp) {
         case AD_FIRE:
-            return !(yours ? Fire_resistance(state)
+            return !(yours ? Fire_resistance(state.u)
                            : Resists_Elem(mtmp, FIRE_RES, state));
         case AD_COLD:
-            return !(yours ? Cold_resistance(state)
+            return !(yours ? Cold_resistance(state.u)
                            : Resists_Elem(mtmp, COLD_RES, state));
         case AD_ELEC:
-            return !(yours ? Shock_resistance(state)
+            return !(yours ? Shock_resistance(state.u)
                            : Resists_Elem(mtmp, SHOCK_RES, state));
         case AD_MAGM:
         case AD_STUN:
-            return !(yours ? Antimagic(state)
+            return !(yours ? Antimagic(state.u)
                            : ((env.random?.rn2 ?? rn2)(100) < ptr.mr));
         case AD_DRST:
-            return !(yours ? Poison_resistance(state)
+            return !(yours ? Poison_resistance(state.u)
                            : Resists_Elem(mtmp, POISON_RES, state));
         case AD_DRLI:
-            return !(yours ? Drain_resistance(state)
+            return !(yours ? Drain_resistance(state.u)
                            : resists_drli(mtmp, state));
         case AD_STON:
-            return !(yours ? Stone_resistance(state)
+            return !(yours ? Stone_resistance(state.u)
                            : Resists_Elem(mtmp, STONE_RES, state));
         default:
             throw new Error('Weird weapon special attack.');
@@ -1776,18 +1744,9 @@ const fakename = ['mon', 'you'];
 export async function Mb_hit(
     magr, mdef, mb, dmgptr, dieroll, vis, hittee, state = game, rawEnv = {},
 ) {
-    const env = typeof rawEnv.planningDeath === 'function'
-        ? {
-            ...rawEnv,
-            state,
-            // Cancellation can fatally rehumanize the hero. Preserve the
-            // attacking monster at that non-returning planning boundary.
-            planningDeath: () => rawEnv.planningDeath(magr),
-        }
-        : { ...rawEnv, state };
+    const env = { ...rawEnv, state };
     const random = env.random ?? coreRandom;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const youattack = (magr === state.youmonst);
     const youdefend = (mdef === state.youmonst);
     let resisted = false;
@@ -1833,8 +1792,8 @@ export async function Mb_hit(
             state, env);
         /* assume probing has some sort of noticeable feedback
            even if it is being done by one monster to another */
-        // A planning clone keeps display.c map_invisible()'s memory write
-        // and leaves the live paint to the replayed turn.
+        // map_invisible() paints the global game, so a foreign state (such
+        // as a test's hand-built state) keeps only its memory write.
         if (attack_indx === MB_INDEX_PROBE && !canspotmon(mdef, state)) {
             if (state === game) map_invisible(mdef.mx, mdef.my, state);
             else map_invisible_planning(mdef.mx, mdef.my, state);
@@ -1883,7 +1842,7 @@ export async function Mb_hit(
     }
     case MB_INDEX_SCARE:
         if (youdefend) {
-            if (Antimagic(state)) {
+            if (Antimagic(state.u)) {
                 resisted = true;
             } else {
                 nomul(-3, state);
@@ -1934,7 +1893,7 @@ export async function Mb_hit(
     if (do_stun) {
         if (youdefend) {
             const stunTimeout = (
-                (state.u?.uprops?.[STUNNED]?.intrinsic ?? 0) & TIMEOUT
+                HStun(state.u) & TIMEOUT
             ) + 3;
             await make_stunned(stunTimeout, false, state, env);
         } else {
@@ -1950,7 +1909,7 @@ export async function Mb_hit(
     if (do_confuse) {
         if (youdefend) {
             const confusionTimeout = (
-                (state.u?.uprops?.[CONFUSION]?.intrinsic ?? 0) & TIMEOUT
+                HConfusion(state.u) & TIMEOUT
             ) + 4;
             await make_confused(confusionTimeout, false, state, env);
         } else {
@@ -1993,9 +1952,6 @@ export async function Mb_hit(
 // C ref: artifact.c FATAL_DAMAGE_MODIFIER (63). Local to artifact.c.
 const FATAL_DAMAGE_MODIFIER = 200;
 
-function Slimed(state) {
-    return Boolean(state.u?.uprops?.[SLIMED]?.intrinsic);
-}
 
 // C ref: artifact.c artifact_hit() (1447-1726). The main artifact combat
 // handler. Returns true when it did something special (in which case the
@@ -2013,8 +1969,7 @@ export async function artifact_hit(
     // source gets the whole core set C calls.
     const random = env.random ?? coreRandom;
     const effectEnv = { ...env, state, random };
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const youattack = (magr === state.youmonst);
     const youdefend = (mdef === state.youmonst);
     const vis = (!youattack && magr && cansee(magr.mx, magr.my, state))
@@ -2058,7 +2013,7 @@ export async function artifact_hit(
                 dmgptr.value += itemdmg; /* item destruction dmg */
             await ignite_items(mdef.minvent, effectEnv);
         }
-        if (youdefend && Slimed(state))
+        if (youdefend && Slimed(state.u))
             await burn_away_slime(state, effectEnv);
         return realizes_damage;
     }
@@ -2326,13 +2281,7 @@ export async function artifact_hit(
                         state);
                 }
             }
-            const losexpEnv = typeof effectEnv.planningDeath === 'function'
-                ? {
-                    ...effectEnv,
-                    planningDeath: () => effectEnv.planningDeath(magr),
-                }
-                : effectEnv;
-            await losexp('life drainage', state, losexpEnv);
+            await losexp('life drainage', state, effectEnv);
             if (magr && magr.mhp < magr.mhpmax) {
                 healmon(magr, Math.trunc((Math.abs(oldhpmax - state.u.uhpmax) + 1) / 2), 0);
             }
@@ -2393,8 +2342,8 @@ export async function invoke_healing(obj, state) {
     // C: Sick = u.uprops[SICK].intrinsic, Slimed = u.uprops[SLIMED].intrinsic,
     // BlindedTimeout = u.uprops[BLINDED].intrinsic & TIMEOUT.
     const blindedTimeout = HBlinded(u) & TIMEOUT;
-    const sick = (u.uprops?.[SICK]?.intrinsic ?? 0) !== 0;
-    const slimed = (u.uprops?.[SLIMED]?.intrinsic ?? 0) !== 0;
+    const sick = (Sick(u)) !== 0;
+    const slimed = (Slimed(u)) !== 0;
     const hBlinded = HBlinded(u);
     // youprop.h:92 Blinded is a boolean, distinct from BlindedTimeout.
     const blinded = Boolean(hBlinded) && !BBlinded(u);
@@ -2829,22 +2778,20 @@ export function finesse_ahriman(obj, state = game) {
     const oart = get_artifact(obj, state);
     if (oart === state.artilist[ART_NONARTIFACT]) return false;
 
-    const levProp = state.u.uprops?.[LEVITATION]
-        ?? { intrinsic: 0, extrinsic: 0 };
     // Not levitating, or not an artifact that confers levitation via invoke
-    if (!(levProp.intrinsic || levProp.extrinsic)
+    if (!Levitation(state.u)
         || oart.inv_prop !== LEVITATION
-        || !(levProp.extrinsic & W_ARTI))
+        || !(ELevitation(state.u) & W_ARTI))
         return false;
 
     // Probe: clear I_SPECIAL|TIMEOUT and W_ARTI, check if still levitating
-    const saveIntrinsic = levProp.intrinsic;
-    const saveExtrinsic = levProp.extrinsic;
-    levProp.intrinsic &= ~(I_SPECIAL | TIMEOUT);
-    levProp.extrinsic &= ~W_ARTI;
-    const result = !(levProp.intrinsic || levProp.extrinsic);
-    levProp.intrinsic = saveIntrinsic;
-    levProp.extrinsic = saveExtrinsic;
+    const saveIntrinsic = HLevitation(state.u);
+    const saveExtrinsic = ELevitation(state.u);
+    state.u.uprops[LEVITATION].intrinsic &= ~(I_SPECIAL | TIMEOUT);
+    state.u.uprops[LEVITATION].extrinsic &= ~W_ARTI;
+    const result = !Levitation(state.u);
+    state.u.uprops[LEVITATION].intrinsic = saveIntrinsic;
+    state.u.uprops[LEVITATION].extrinsic = saveExtrinsic;
     return result;
 }
 
@@ -3021,10 +2968,8 @@ export function glow_verb(count, ingsfx) {
 // C ref: artifact.c Sting_effects() (2465-2502). Warning glow for Sting,
 // Orcrist, and Grimtooth.
 export async function Sting_effects(orc_count, state = game, env = {}) {
-    // `uwep` is a game-level equipment pointer in decl.h. Planning clones
-    // remap that pointer at their top level, so do not read the stale nested
-    // shape here. A caller-owned message seam keeps the source call usable
-    // without painting a planning clone onto the live terminal.
+    // `uwep` is a game-level equipment pointer in decl.h, read from the
+    // state's top level. A caller may supply its own message operation.
     const uwep = state.uwep;
     const message = env.message ?? ttyPline;
     if (uwep
@@ -3035,8 +2980,8 @@ export async function Sting_effects(orc_count, state = game, env = {}) {
         const oldstr = glow_strength(warn_cnt);
         const newstr = glow_strength(orc_count);
 
-        const blind = (HBlinded(state.u)) !== 0
-            || (EBlinded(state.u)) !== 0;
+        const blind = HBlinded(state.u) !== 0
+            || EBlinded(state.u) !== 0;
 
         if (orc_count === -1 && warn_cnt > 0) {
             await message(
@@ -3155,7 +3100,7 @@ export async function retouch_object(objp, loseit, state = game, rawEnv = {}) {
 
     /* if we still have it and caller wants us to drop it, do so now */
     if (loseit && obj) {
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await freeinv(obj, { state });
             await hitfloor(obj, true, state, rawEnv);
         } else {
@@ -3224,18 +3169,6 @@ async function untouchable(obj, drop_untouchable, state = game, rawEnv = {}) {
 // and carried objects after a form or alignment change. The per-game field
 // represents C's static recursion counter; nested calls share it across awaits.
 export async function retouch_equipment(dropflag, state = game, rawEnv = {}) {
-    // The touch tests print, can blast the hero to death in done(), and
-    // unwield or drop equipment. Stop a planning clone here so its owner
-    // replays this source path live, then replans from that state. With an
-    // empty pack and no steed every scan below finds nothing, and the call
-    // has no observable effect, so a plan may continue through it.
-    if (rawEnv.planning && (state.invent || state.u.usteed)) {
-        if (typeof rawEnv.requestPlanningInput !== 'function')
-            throw new TypeError(
-                'planned retouch_equipment requires a replay boundary',
-            );
-        return rawEnv.requestPlanningInput('artifact.c retouch_equipment');
-    }
     const had_gloves = Boolean(state.uarmg);
     const had_rings = Number(Boolean(state.uleft)) + Number(Boolean(state.uright));
     const retouchEnv = { ...rawEnv, state };

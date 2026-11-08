@@ -11,7 +11,6 @@ import {
     BURIED_TOO,
     BOLT_LIM,
     COLNO,
-    CONFUSION,
     CONTAINED_TOO,
     CORR,
     DETECT_MONSTERS,
@@ -49,7 +48,6 @@ import {
     ROWNO,
     SCORR,
     SDOOR,
-    STUNNED,
     STATUE_TRAP,
     TER_FULL,
     TER_MAP,
@@ -99,7 +97,6 @@ import {
     glyph_to_mon,
     feel_location,
     map_invisible,
-    map_invisible_planning,
     warning_of,
     glyph_to_cmap,
     glyph_to_obj,
@@ -237,8 +234,9 @@ import { NO_COLOR } from './terminal.js';
 import { canspotmon, sensemon } from './display.js';
 import { detect_wsegs } from './worm.js';
 import {
-    Blind, Clairvoyant, Deaf, EDetect_monsters, HBlinded,
-    HHallucination, Hallucination, Maybe_Half_Phys,
+    Blind, Clairvoyant, Confusion, Deaf, EDetect_monsters, HBlinded,
+    HConfusion, HHallucination, Hallucination, Maybe_Half_Phys,
+    Stunned,
 } from './youprop.js';
 
 /** An explicit-search branch whose effects are still unported. */
@@ -734,7 +732,7 @@ export async function gold_detect(scroll, state = game) {
 // not quantity; ctu distinguishes results at the hero/steed square so the
 // source can choose the no-map, underfoot feedback.
 export async function food_detect(scroll, state = game) {
-    const confused = propertyActiveUnblocked(state.u, CONFUSION)
+    const confused = Boolean(Confusion(state.u))
         || Boolean(scroll?.cursed);
     const objectClass = confused ? POTION_CLASS : FOOD_CLASS;
     const description = confused ? 'something' : 'food';
@@ -866,12 +864,6 @@ function observe_recursively(obj, state = game) {
     }
 }
 
-function heroConfused(state) {
-    const confusion = state.u?.uprops?.[CONFUSION];
-    return Boolean((confusion?.intrinsic || confusion?.extrinsic)
-        && !confusion?.blocked);
-}
-
 // C ref: detect.c object_detect() (603-791). Floor, buried, and monster
 // inventories are scanned in C order; when a contained match is mapped its
 // parent location is copied to the matched object before display.c maps it.
@@ -891,7 +883,7 @@ export async function object_detect(detector = null, objectClass = 0,
         && classSymbol === showSymbols[SYM_OFF_X + SYM_BOULDER]
         ? ROCK_CLASS : 0;
     const stuff = Hallucination(state.u)
-        || (heroConfused(state) && oclass === SCROLL_CLASS)
+        || (Confusion(state.u) && oclass === SCROLL_CLASS)
         ? 'something'
         : oclass ? DEF_OC_SYMS_NAMES[oclass] : 'objects';
     const description = boulder && oclass !== ROCK_CLASS
@@ -1418,7 +1410,7 @@ export async function use_crystal_ball(optr, state = game) {
         case 2:
             await ttyPline(`${Tobjnam(obj, 'confuse', state)} you!`, state);
             await make_confused(
-                ((state.u.uprops[CONFUSION]?.intrinsic ?? 0) & TIMEOUT)
+                (HConfusion(state.u) & TIMEOUT)
                     + impairment,
                 false,
                 state,
@@ -1429,7 +1421,7 @@ export async function use_crystal_ball(optr, state = game) {
                 await ttyPline(
                     `${Tobjnam(obj, 'damage', state)} your vision!`, state,
                 );
-                const blindTimeout = (HBlinded(state.u))
+                const blindTimeout = HBlinded(state.u)
                     & TIMEOUT;
                 await make_blinded(blindTimeout + impairment, false, state);
                 if (!Blind(state.u))
@@ -1444,7 +1436,7 @@ export async function use_crystal_ball(optr, state = game) {
         case 4:
             await ttyPline(`${Tobjnam(obj, 'zap', state)} your mind!`, state);
             await make_hallucinated(
-                ((HHallucination(state.u)) & TIMEOUT)
+                (HHallucination(state.u) & TIMEOUT)
                     + impairment,
                 false,
                 0,
@@ -1614,12 +1606,9 @@ export async function use_crystal_ball(optr, state = game) {
 // disorientation; ordinary subsets preserve the requested object/trap layers.
 export async function reveal_terrain(whichSubset, state = game) {
     const full = Boolean(whichSubset & TER_FULL);
-    // youprop.h: troubles use intrinsic values; only hallucination resistance
-    // also uses extrinsic. These macros do not read the blocked field.
-    const properties = state.u.uprops;
     const hallucination = Hallucination(state.u);
-    if ((hallucination || properties[STUNNED]?.intrinsic
-         || properties[CONFUSION]?.intrinsic) && !full) {
+    if ((hallucination || Stunned(state.u)
+         || Confusion(state.u)) && !full) {
         await ttyPline('You are too disoriented for this.', state);
         return;
     }
@@ -1716,7 +1705,7 @@ export function show_map_spot(
 export async function do_mapping(state = game, env = {}) {
     const random = env.random ?? coreRandom;
     const unconstrained = unconstrain_map(state);
-    const confused = Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
+    const confused = Boolean(Confusion(state.u));
     for (let x = 1; x < COLNO; ++x) {
         for (let y = 0; y < ROWNO; ++y)
             show_map_spot(x, y, confused, state, random);
@@ -1779,7 +1768,7 @@ export async function do_vicinity_map(sobj, state = game, env = {}) {
             const oldGlyph = glyph_at(x, y, state);
             show_map_spot(
                 x, y,
-                Boolean(state.u.uprops?.[CONFUSION]?.intrinsic),
+                Boolean(Confusion(state.u)),
                 state, random,
             );
 
@@ -1849,12 +1838,6 @@ export async function do_vicinity_map(sobj, state = game, env = {}) {
     }
     await see_monsters(state);
     if (refresh) await docrt();
-}
-
-function propertyActiveUnblocked(hero, propertyIndex) {
-    const property = hero?.uprops?.[propertyIndex];
-    return Boolean(property?.intrinsic || property?.extrinsic)
-        && !property?.blocked;
 }
 
 
@@ -1929,24 +1912,18 @@ function defaultSearchDisplay(x, y, env) {
     newsym(x, y);
 }
 
-// C ref: detect.c mfind0()'s map_invisible() call.  The display owner keeps
-// both the live and clone memory writes; the explicit planning seam selects
-// its no-paint half for a cloned level.
+// C ref: detect.c mfind0()'s map_invisible() call.
 function defaultMapInvisible(x, y, env) {
-    if (env.state === game) {
-        map_invisible(x, y, env.state);
-        return;
-    }
-    map_invisible_planning(x, y, env.state);
+    map_invisible(x, y, env.state);
 }
 
 async function silentSearchMessage() {}
 
 async function defaultDisplayPendingTtyMessageWindow(env) {
-    // display_nhwindow(WIN_MESSAGE, FALSE) is a live TTY operation. A search
-    // planning clone owns its message state but must neither consume live
-    // input nor retire the live message window.
-    if (env.planning || env.state !== game) return;
+    // display_nhwindow(WIN_MESSAGE, FALSE) is a live TTY operation. A state
+    // other than game must neither consume live input nor retire the live
+    // message window.
+    if (env.state !== game) return;
     await displayPendingTtyMessageWindow(env.state);
 }
 
@@ -2124,8 +2101,7 @@ function normalizeSearchEnv(rawEnv = {}) {
         ),
         norepMessage: operation(
             'norepMessage',
-            state === game && !rawEnv.planning
-                ? ttyNorep : silentSearchMessage,
+            state === game ? ttyNorep : silentSearchMessage,
         ),
         exerciseWisdom: operation(
             'exerciseWisdom',
@@ -2134,13 +2110,12 @@ function normalizeSearchEnv(rawEnv = {}) {
         // detect.c calls nomul(0) at 2048, 2058 and 2080, which js/hack.js
         // owns along with the end_running(TRUE) inside it.
         nomulZero: operation('nomulZero', ({ state }) => nomul(0, state)),
-        // The live fallback is the coordinate-aware pline path. A planning
-        // clone gets a silent operation without becoming an injected caller,
-        // so preflightTrap() keeps its source wait contract unchanged.
+        // The live fallback is the coordinate-aware pline path. A state other
+        // than game gets a silent operation without becoming an injected
+        // caller, so preflightTrap() keeps its source wait contract unchanged.
         message: operation(
             'message',
-            state === game && !rawEnv.planning
-                ? defaultSearchMessage : silentSearchMessage,
+            state === game ? defaultSearchMessage : silentSearchMessage,
         ),
         displayPendingTtyMessageWindow: operation(
             'displayPendingTtyMessageWindow',

@@ -15,8 +15,6 @@ import {
     ARTICLE_YOUR,
     COLD_RES,
     CLOUD,
-    CONFUSION,
-    CONFLICT,
     COLNO,
     CORR,
     DB_ICE,
@@ -89,7 +87,6 @@ import {
     LEVITATION,
     LEVEL_TELEP,
     MAX_CARR_CAP,
-    MAGICAL_BREATHING,
     MAX_TYPE,
     MELT_ICE_AWAY,
     MIGR_RANDOM,
@@ -103,7 +100,6 @@ import {
     NEUTRAL,
     NO_KILLER_PREFIX,
     NO_TRAP_FLAGS,
-    PASSES_WALLS,
     PARANOID_CONFIRM,
     PARANOID_SWIM,
     PARANOID_TRAP,
@@ -132,8 +128,6 @@ import {
     STAIRS,
     STEALTH,
     STONE,
-    STUNNED,
-    SWIMMING,
     TELEPORT,
     TELEP_TRAP,
     ROLLING_BOULDER_TRAP,
@@ -164,7 +158,6 @@ import {
     VIBRATING_SQUARE,
     WATER,
     WEB,
-    WOUNDED_LEGS,
     W_ARTI,
     W_ARMF,
     W_NONDIGGABLE,
@@ -176,7 +169,6 @@ import {
     WT_WEIGHTCAP_STRCON,
     WT_TOOMUCH_DIAGONAL,
     WT_WOUNDEDLEG_REDUCT,
-    WWALKING,
     ZOMBIFY_MON,
     SUPPRESS_SADDLE,
     Trap_Caught_Mon,
@@ -185,14 +177,12 @@ import {
     Trap_Moved_Mon,
     OVERLOADED,
     P_UNSKILLED,
-    PROT_FROM_SHAPE_CHANGERS,
     helpless,
     is_pit,
     u_at,
     xdir,
     ydir,
     dirs_ord,
-    UNCHANGING,
     Ugender,
 } from './const.js';
 import { ART_STING, ART_STORMBRINGER, attacks } from './artifacts.js';
@@ -300,7 +290,6 @@ import {
     attacktype_fordmg,
     likes_lava,
     bigmonst,
-    is_flyer,
     is_floater,
     is_hider,
     is_clinger,
@@ -312,10 +301,7 @@ import {
     noattacks,
     noncorporeal,
     grounded,
-    amphibious,
-    breathless,
     ceiling_hider,
-    is_swimmer,
     metallivorous,
     Resists_Elem,
     dmgtype,
@@ -503,7 +489,6 @@ import {
     climb_pit,
     deltrap,
     drown,
-    Flying,
     lava_effects,
     float_up,
     fill_pit,
@@ -543,10 +528,13 @@ import {
     vision_recalc,
 } from './vision.js';
 import { canspotmon, mon_visible, sensemon } from './display.js';
-import { Cold_resistance } from './zap.js';
 import {
-    Blind, Deaf, Half_physical_damage, Hallucination, Maybe_Half_Phys,
-    Warning,
+    Amphibious, BFlying, BLevitation, Blind, Breathless, Cold_resistance,
+    Conflict, Confusion, Deaf, EFire_resistance, EFlying, ELevitation,
+    EWounded_legs, Flying, Fumbling, HFire_resistance, HFlying, HFumbling,
+    HLevitation, Half_physical_damage, Hallucination, Levitation,
+    Maybe_Half_Phys, Passes_walls, Protection_from_shape_changers, Stealth,
+    Stunned, Swimming, Unchanging, Warning, Wwalking,
 } from './youprop.js';
 
 function reset_tmp_anything(state) {
@@ -688,21 +676,20 @@ export async function handle_tip(tip, state = game, env = {}) {
 // wounded leg costs WT_WOUNDEDLEG_REDUCT, and both cost twice that. C guards it
 // with !Flying, which is the only reader of Flying in this function.
 export function weight_cap(state = game) {
-    const levitation = state.u.uprops[LEVITATION];
-    const saveELevitation = levitation.extrinsic;
-    const saveBLevitation = levitation.blocked;
+    const saveELevitation = ELevitation(state.u);
+    const saveBLevitation = BLevitation(state.u);
 
     // C compares ga.afternmv by function identity. Boots grant their
     // properties when wearing begins, but C defers the levitation carrying
     // benefit until the multi-turn Boots_on callback has finished.
-    if (state.afternmv === Boots_on && (levitation.extrinsic & W_ARMF) !== 0) {
-        levitation.extrinsic &= ~W_ARMF;
+    if (state.afternmv === Boots_on && (ELevitation(state.u) & W_ARMF) !== 0) {
+        state.u.uprops[LEVITATION].extrinsic &= ~W_ARMF;
         float_vs_flight(state);
     }
 
     // C ignores only the floor-trap I_SPECIAL block while calculating
     // capacity, then restores the complete mask below.
-    levitation.blocked &= ~I_SPECIAL;
+    state.u.uprops[LEVITATION].blocked &= ~I_SPECIAL;
 
     let capacity = WT_WEIGHTCAP_STRCON * (
         acurrstr(state) + acurr(state, A_CON)
@@ -722,23 +709,23 @@ export function weight_cap(state = game) {
     }
     // hack.c:4330-4333. Levitation and the Plane of Air both provide the
     // full carrying capacity even when no equipment changes u.uprops.
-    if (propertyActiveUnblocked(state, LEVITATION)
+    if (Levitation(state.u)
         || Is_airlevel(state.u.uz, state)
         || (state.u.usteed && strongmonst(state.u.usteed.data))) {
         capacity = MAX_CARR_CAP;
     } else {
         capacity = Math.min(capacity, MAX_CARR_CAP);
-        if (!heroIsFlying(state)) {
-            const sides = state.u.uprops[WOUNDED_LEGS].extrinsic;
+        if (!Flying(state.u)) {
+            const sides = EWounded_legs(state.u);
             if (sides & LEFT_SIDE) capacity -= WT_WOUNDEDLEG_REDUCT;
             if (sides & RIGHT_SIDE) capacity -= WT_WOUNDEDLEG_REDUCT;
         }
     }
 
-    if (levitation.extrinsic !== saveELevitation
-        || levitation.blocked !== saveBLevitation) {
-        levitation.extrinsic = saveELevitation;
-        levitation.blocked = saveBLevitation;
+    if (ELevitation(state.u) !== saveELevitation
+        || BLevitation(state.u) !== saveBLevitation) {
+        state.u.uprops[LEVITATION].extrinsic = saveELevitation;
+        state.u.uprops[LEVITATION].blocked = saveBLevitation;
         float_vs_flight(state);
     }
     return Math.max(Math.trunc(capacity), 1); /* never return 0 */
@@ -814,8 +801,8 @@ export async function check_capacity(str, state = game) {
 // costs: one hit point, or consciousness when there is not one to spare.
 //
 // C selects the current form's HP for both the loss and fainting threshold.
-// Elapsed-turn planning supplies its cloned RNG and silent message owners;
-// the live combat caller uses the ordinary owners and awaits the sleep.
+// A caller may supply its RNG and message owners; the combat caller uses the
+// ordinary owners and awaits the sleep.
 export async function overexert_hp(state = game, env = {}) {
     const hp = Upolyd(state.u) ? 'mh' : 'uhp';
     if (state.u[hp] > 1) {
@@ -857,41 +844,11 @@ export async function overexertion(state = game) {
     return (state.multi ?? 0) < 0;
 }
 
-// near_capacity() without the cache write. hack.c's inv_weight() assigns
-// gw.wc as a side effect, and calc_capacity() then reads it, so calling
-// near_capacity() early would refresh the live cache before the elapsed-turn
-// admission pass has decided whether the turn may run at all. This returns the
-// same number for the same state and leaves state.gw.wc untouched; the
-// cache-writing call stays at allmain.c's source-ordered point, after monster
-// actions are admitted. Use near_capacity() anywhere C calls it, and this only
-// where the read must not be observable.
-export function projected_capacity(state = game) {
-    const capacity = weight_cap(state);
-    return capacity_from_excess(
-        inventory_weight(state) - capacity,
-        capacity,
-    );
-}
-
 export class UnsupportedHeroMoveBoundaryError extends Error {
     constructor(reason) {
         super(`unsupported hero move: ${reason}`);
         this.name = 'UnsupportedHeroMoveBoundaryError';
         this.reason = reason;
-    }
-}
-
-// A planned hit-point loss has crossed the active HP pool's lethal boundary.
-// The live replay owns end.c done() and polyself.c rehumanize(), which decide
-// whether life-saving, wizard recovery, or an ordinary death follows.
-export class HeroDeathPlanningError extends Error {
-    constructor(knam, k_format, { fromMonster = false } = {}) {
-        super('planned lethal hero hit-point loss');
-        this.name = 'HeroDeathPlanningError';
-        this.how = DIED;
-        this.killerName = knam ?? '';
-        this.killerFormat = k_format;
-        this.fromMonster = Boolean(fromMonster);
     }
 }
 
@@ -916,31 +873,16 @@ export function rounddiv(x, y) {
     return divsgn * r;
 }
 
-function propertyActiveUnblocked(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic)
-        && !value?.blocked;
-}
-
-function propertyIntrinsic(state, property) {
-    return Boolean(state.u?.uprops?.[property]?.intrinsic);
-}
 
 // C ref: hack.c u_maybe_impaired() (2417-2421). youprop.h:81 and :84 define
 // both Stunned and Confusion as the bare intrinsic field, with no extrinsic or
 // blocked term. rn2(5) is drawn only for a confused hero, so an unimpaired one
 // costs no randomness.
 export function u_maybe_impaired(state = game) {
-    return Boolean(propertyIntrinsic(state, STUNNED)
-        || (propertyIntrinsic(state, CONFUSION) && !rn2(5)));
+    return Boolean(Stunned(state.u)
+        || (Boolean(Confusion(state.u)) && !rn2(5)));
 }
 
-// C ref: youprop.h's plain `HFoo || EFoo` property macros, such as
-// Passes_walls and Fumbling, which carry no blocked term.
-function propertyPresent(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
 
 // C ref: hack.c in_town() (3562-3585). A Mine Town level with subrooms uses
@@ -1192,7 +1134,7 @@ export const You_can_move_again = 'You can move again.';
 // unmul(), so this state-dependent message belongs here rather than being
 // treated as unreachable.
 export async function unmul(msg_override, state = game, env = {}) {
-    const message = env.planning ? async () => {} : (env.message ?? ttyPline);
+    const message = env.message ?? ttyPline;
     state.disp ??= {};
     state.disp.botl = true;
     state.multi = 0; /* caller will usually have done this already */
@@ -1243,7 +1185,7 @@ export async function unmul(msg_override, state = game, env = {}) {
 export async function u_rooted(state = game) {
     const species = state.youmonst?.data;
     if (!species?.mmove) {
-        const inPlace = propertyActiveUnblocked(state, LEVITATION)
+        const inPlace = Levitation(state.u)
             || Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state);
         await ttyPline(
             `You are rooted ${inPlace ? 'in place' : 'to the ground'}.`,
@@ -1255,12 +1197,6 @@ export async function u_rooted(state = game) {
     return false;
 }
 
-// youprop.h:372 Unchanging, intrinsic or extrinsic; losehp() reads it to
-// decide whether a polymorphed hero wails at low hit points.
-function Unchanging(state) {
-    const unchanging = state.u?.uprops?.[UNCHANGING];
-    return Boolean(unchanging?.intrinsic || unchanging?.extrinsic);
-}
 
 // C ref: hack.c maybe_wail() (4210-4243). svm.moves is the turn counter and
 // gw.wailmsg the turn the last wail was printed on, so the first 50 turns of a
@@ -1315,13 +1251,10 @@ async function maybe_wail(state, env = {}) {
 // C ref: hack.c showdamage() (4245-4253). options.c leaves iflags.showdamage
 // off, so an ordinary game prints nothing here.
 //
-// `message` exists because mhitu.c mdamageu() calls this from inside a monster
-// turn, and js/unported_monster_actions.js runs every monster turn twice: once
-// against a clone, to find out whether it can be replayed, and then live. With
-// `showdamage` on, the default would write the clone's line to the live
-// terminal. losehp() takes the same seam for its one monster-turn caller,
-// potion.c potionhit(); every other caller runs on the hero's own turn and
-// leaves it unset.
+// `message` is the caller's message seam: mhitu.c mdamageu() calls this from
+// inside a monster turn and passes its own. losehp() takes the same seam for
+// its one monster-turn caller, potion.c potionhit(); every other caller runs
+// on the hero's own turn and leaves it unset.
 export async function showdamage(dmg, state, env = {}) {
     if (!state.iflags?.showdamage || !dmg) return;
     const message = env.message ?? ttyPline;
@@ -1335,34 +1268,27 @@ export async function showdamage(dmg, state, env = {}) {
 // back.
 //
 // `env.message` reaches showdamage() and maybe_wail(), the two lines this
-// prints short of death. A planned lethal loss stops after the source state
-// writes and before rehumanize(), urgent_pline(), or done(); those terminal
-// operations belong to the live replay.
+// prints short of death.
 export async function losehp(n, knam, k_format, state = game, env = {}) {
-    const effectEnv = env.planning && typeof env.message !== 'function'
-        ? { ...env, message: async () => {} }
-        : env;
     state.disp ??= {};
     state.disp.botl = true; /* u.uhp or u.mh is changing */
     end_running(true, state);
     if (Upolyd(state.u)) {
         state.u.mh -= n;
-        await showdamage(n, state, effectEnv);
+        await showdamage(n, state, env);
         if (state.u.mhmax < state.u.mh)
             state.u.mhmax = state.u.mh;
         if (state.u.mh < 1) {
-            if (env.planning)
-                throw new HeroDeathPlanningError(knam, k_format, env);
             await rehumanize(state);
         } else if (n > 0 && state.u.mh * 10 < state.u.mhmax
-            && Unchanging(state)) {
-            await maybe_wail(state, effectEnv);
+            && Unchanging(state.u)) {
+            await maybe_wail(state, env);
         }
         return;
     }
 
     state.u.uhp -= n;
-    await showdamage(n, state, effectEnv);
+    await showdamage(n, state, env);
     // Widening this comparison to >= would assign u.uhpmax to itself, so no
     // test can tell the two apart.
     if (state.u.uhp > state.u.uhpmax)
@@ -1378,8 +1304,6 @@ export async function losehp(n, knam, k_format, state = game, env = {}) {
         // svk.killer.name itself. Assigning the same string is that same
         // no-op here.
         state.killer.name = knam ?? '';
-        if (env.planning)
-            throw new HeroDeathPlanningError(knam, k_format, env);
         // urgent_pline() rather than pline(): win/tty/topl.c update_topl():265
         // refuses to let a line starting "You die" share the top line with the
         // message before it, so this is the --More-- the player answers before
@@ -1392,7 +1316,7 @@ export async function losehp(n, knam, k_format, state = game, env = {}) {
         // at.
         await done(DIED, state, env.fromMonster ? { fromMonster: true } : {});
     } else if (n > 0 && state.u.uhp * 10 < state.u.uhpmax) {
-        await maybe_wail(state, effectEnv);
+        await maybe_wail(state, env);
     }
 }
 
@@ -1430,7 +1354,7 @@ function blocksMove(x, y, state) {
 // shopkeeper case still cannot be source-backed by this admission helper.
 function blocksDiagonalDoorwayEntry(ux, uy, x, y, state) {
     return Boolean((x - ux) && (y - uy)
-        && !propertyPresent(state, PASSES_WALLS)
+        && !Passes_walls(state.u)
         && !doorless_door(state.level?.at(x, y), state));
 }
 
@@ -1439,7 +1363,7 @@ function blocksDiagonalDoorwayEntry(ux, uy, x, y, state) {
 function blocksDiagonalDoorwayExit(ux, uy, x, y, state) {
     const source = state.level?.at(ux, uy);
     return Boolean((x - ux) && (y - uy)
-        && !propertyPresent(state, PASSES_WALLS)
+        && !Passes_walls(state.u)
         && IS_DOOR(source?.typ) && !doorless_door(source, state));
 }
 
@@ -1607,7 +1531,7 @@ export function requireSimpleHeroDestination(
     if (floorObject && !noPickMove) {
         // pickup.c pickup() runs after domove_core() commits the hero
         // position. A late refusal there would leave room-entry writes
-        // behind, so dry-run the complete automatic-pickup transaction at
+        // behind, so preflight the complete automatic-pickup transaction at
         // the projected destination before the move spends its rng calls.
         const projected = {
             ...state,
@@ -1715,7 +1639,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // told the door is closed, and never reaches domove_swap_with_pet().
     // Those three falling-through arms stay refused below.
     if (destination && IS_DOOR(destination.typ) && closed_door(x, y, state)
-        && !propertyPresent(state, PASSES_WALLS)
+        && !Passes_walls(state.u)
         && !can_ooze(state.youmonst, state)
         && (state.u?.uinwater
             || !(tunnels(state.youmonst?.data)
@@ -1730,7 +1654,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // The tunnelling arm can fall through, and the autodig arm digs; both
     // stay refused below.
     if (destination && IS_OBSTRUCTED(destination.typ)
-        && !(propertyPresent(state, PASSES_WALLS)
+        && !(Passes_walls(state.u)
             && may_passwall(x, y, state))
         && (state.u?.uinwater
             || (!(tunnels(state.youmonst?.data)
@@ -1770,7 +1694,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // swap; the committed movement still runs the ordinary arrival effects.
     const passWallDestination = destination
         && (IS_OBSTRUCTED(destination.typ) || destination.typ === IRONBARS)
-        && propertyPresent(state, PASSES_WALLS)
+        && Passes_walls(state.u)
         && may_passwall(x, y, state);
     if (!ordinaryDestination && !passWallDestination) {
         throw new UnsupportedHeroMoveBoundaryError(
@@ -1800,7 +1724,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     if (state.level?.objects?.[x]?.[y]) {
         // pickup.c pickup() runs only after domove_swap_with_pet() has moved
         // both actors and domove_core() has committed the hero position. A
-        // late refusal there would leave those writes behind, so dry-run the
+        // late refusal there would leave those writes behind, so preflight the
         // complete automatic-pickup transaction at the projected destination
         // before do_attack() spends its source-ordered rn2(7). The pickup
         // planner refreshes gw.wc; clone that write owner and the projected
@@ -1867,7 +1791,7 @@ export function preflightDomoveDestination(x, y, state = game, run = 0) {
         //
         // The source-side refusal gates live in domove_swap_with_pet() and
         // therefore run only after do_attack() spends its safe-monster draw.
-        // This seam owns destination arrival effects that must be planned
+        // This seam owns destination arrival effects that must be checked
         // before that draw to keep an unsupported late operation atomic.
         requireSupportedDestinationMonster(destinationMonster, x, y, state);
     } else if (state.context?.forcefight) {
@@ -1914,7 +1838,7 @@ function requiredMessageOperation(env, arm) {
 function could_move_onto_boulder(sx, sy, dx, dy, state) {
     const u = state.u;
     /* can if able to phaze through rock (must be poly'd, so not riding) */
-    if (propertyPresent(state, PASSES_WALLS)) return true;
+    if (Passes_walls(state.u)) return true;
     /* can't when riding */
     if (u.usteed) return false;
     /* can if a giant, unless doing so allows hero to pass into a
@@ -2203,24 +2127,22 @@ export function movobj(obj, ox, oy, state = game) {
 // callbacks to remove levitation rings and boots in source order.
 export async function dosinkfall(state = game) {
     const u = state.u;
-    const levitation = u.uprops[LEVITATION];
-    const flying = u.uprops[FLYING];
     let levBoots = state.uarmf?.otyp === LEVITATION_BOOTS;
-    const innateLev = Boolean(levitation.intrinsic
+    const innateLev = Boolean(HLevitation(u)
         & (FROMOUTSIDE | FROMFORM));
-    const blockedLev = levitation.blocked === I_SPECIAL;
+    const blockedLev = BLevitation(u) === I_SPECIAL;
     const ufall = !innateLev && !blockedLev
-        && !(flying.intrinsic || flying.extrinsic);
+        && !(HFlying(u) || EFlying(u));
 
     if (!ufall) {
         await ttyPline(innateLev || blockedLev
             ? 'You wobble unsteadily for a moment.'
             : 'You gain control of your flight.', state);
     } else {
-        const saveExtrinsic = levitation.extrinsic;
-        const saveIntrinsic = levitation.intrinsic;
-        levitation.extrinsic = 0;
-        levitation.intrinsic = 0;
+        const saveExtrinsic = ELevitation(u);
+        const saveIntrinsic = HLevitation(u);
+        u.uprops[LEVITATION].extrinsic = 0;
+        u.uprops[LEVITATION].intrinsic = 0;
         await ttyPline('You crash to the floor!', state);
         const damage = rn1(8, 25 - acurr(state, A_CON));
         await losehp(
@@ -2243,8 +2165,8 @@ export async function dosinkfall(state = game) {
                 encumberMessage: encumber_msg,
             });
         }
-        levitation.extrinsic = saveExtrinsic;
-        levitation.intrinsic = saveIntrinsic;
+        u.uprops[LEVITATION].extrinsic = saveExtrinsic;
+        u.uprops[LEVITATION].intrinsic = saveIntrinsic;
     }
 
     if (ufall || levBoots) {
@@ -2253,9 +2175,9 @@ export async function dosinkfall(state = game) {
         // that were not fully put on; only then does C reread uarmf.
         levBoots = state.uarmf?.otyp === LEVITATION_BOOTS;
     }
-    levitation.extrinsic &= ~W_ARTI;
-    levitation.intrinsic &= ~(I_SPECIAL | TIMEOUT);
-    levitation.intrinsic++;
+    u.uprops[LEVITATION].extrinsic &= ~W_ARTI;
+    u.uprops[LEVITATION].intrinsic &= ~(I_SPECIAL | TIMEOUT);
+    u.uprops[LEVITATION].intrinsic++;
     if (state.uleft?.otyp === RIN_LEVITATION) {
         const ring = state.uleft;
         await Ring_off(ring, state);
@@ -2271,7 +2193,7 @@ export async function dosinkfall(state = game) {
         await Boots_off(state);
         await off_msg(boots, state);
     }
-    levitation.intrinsic--;
+    u.uprops[LEVITATION].intrinsic--;
     float_vs_flight(state);
 }
 
@@ -2448,7 +2370,7 @@ async function moverock_core(sx, sy, state, env) {
             }
             if (could_move_onto_boulder(sx, sy, u.dx, u.dy, state)) {
                 await message(
-                    `You squeeze yourself ${Flying(state)
+                    `You squeeze yourself ${Flying(state.u)
                         ? 'over' : 'against'} the boulder.`,
                     state,
                 );
@@ -2464,7 +2386,7 @@ async function moverock_core(sx, sy, state, env) {
         }
         // 412-421. Levitation and the air level have distinct source feedback
         // and are not interchangeable with the ordinary push transaction.
-        if (propertyActiveUnblocked(state, LEVITATION)
+        if (Levitation(state.u)
             || Is_airlevel(state.u?.uz, state)) {
             if (Blind(state.u)) feel_location(sx, sy, state);
             await message(
@@ -2750,7 +2672,7 @@ export async function test_move(
     const location = state.level?.at?.(x, y);
     if (!location) return false;
     const species = state.youmonst?.data;
-    const passesWalls = propertyPresent(state, PASSES_WALLS);
+    const passesWalls = Passes_walls(state.u);
     const run = state.context.run ?? 0;
     const message = env.message ?? ttyPline;
     // The C helper receives the boolean result of still_chewing() and the
@@ -2853,9 +2775,9 @@ export async function test_move(
                     );
                 }
                 if (state.flags?.autoopen && !run
-                    && !propertyIntrinsic(state, CONFUSION)
-                    && !propertyIntrinsic(state, STUNNED)
-                    && !propertyPresent(state, FUMBLING)) {
+                    && !Confusion(state.u)
+                    && !Stunned(state.u)
+                    && !Fumbling(state.u)) {
                     const openEnv = { message };
                     if (env.random) openEnv.random = env.random;
                     const result = await doopen_indir(x, y, state, openEnv);
@@ -2872,9 +2794,9 @@ export async function test_move(
                         ? 1 : 0;
                 } else if (x === ux || y === uy) {
                     if (Blind(state.u)
-                        || propertyIntrinsic(state, STUNNED)
+                        || Boolean(Stunned(state.u))
                         || acurr(state, A_DEX) < 10
-                        || propertyPresent(state, FUMBLING)) {
+                        || Fumbling(state.u)) {
                         if (state.u.usteed) {
                             await message(
                                 "You can't lead "
@@ -2967,8 +2889,8 @@ export async function test_move(
             return mode === TEST_TRAP;
         const seen = Boolean(location.seenv);
         const knownLiquid = seen && is_pool_or_lava(x, y, state);
-        const inAir = propertyActiveUnblocked(state, LEVITATION)
-            || heroIsFlying(state);
+        const inAir = Levitation(state.u)
+            || Flying(state.u);
         const safeLiquid = is_pool(x, y, state)
             ? known_wwalking(state)
             : known_lwalking(state)
@@ -3069,7 +2991,7 @@ export async function crawl_destination(x, y, state = game) {
     const { ux, uy } = state.u;
     if (x === ux || y === uy) return true;
     if (NODIAG(state.u.umonnum)) return false;
-    if (propertyPresent(state, PASSES_WALLS)) return true;
+    if (Passes_walls(state.u)) return true;
     const destination = state.level?.at(x, y);
     if (IS_DOOR(destination?.typ)
         && (!doorless_door(destination, state)
@@ -3217,7 +3139,7 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
                     }
 
                     const delayed = Boolean(
-                        (!propertyPresent(state, PASSES_WALLS)
+                        (!Passes_walls(state.u)
                             && !can_ooze(state.youmonst, state)
                             && closed_door(x, y, state))
                         || (sobj_at(BOULDER, x, y, state)
@@ -3417,8 +3339,8 @@ export function notice_mons_cmp(left, right, state = game) {
 // every ordinary solid or airborne destination to ROOM.
 export function u_simple_floortyp(x, y, state = game) {
     const typ = state.level?.at(x, y)?.typ;
-    const inAir = propertyActiveUnblocked(state, LEVITATION)
-        || heroIsFlying(state) || !grounded(state.youmonst?.data, state);
+    const inAir = Levitation(state.u)
+        || Flying(state.u) || !grounded(state.youmonst?.data, state);
     if (is_waterwall(x, y, state)) return WATER;
     if (typ === LAVAWALL) return LAVAWALL;
     if (!inAir) {
@@ -3444,8 +3366,8 @@ function swim_move_danger_result(x, y, state) {
         return SWIM_DANGER_CONTINUE;
     }
 
-    const stunned = propertyIntrinsic(state, STUNNED);
-    const confused = propertyIntrinsic(state, CONFUSION);
+    const stunned = Boolean(Stunned(state.u));
+    const confused = Boolean(Confusion(state.u));
     if (newtyp !== u_simple_floortyp(state.u.ux, state.u.uy, state)
         && !stunned && !confused && state.level.at(x, y).seenv
         && (is_pool(x, y, state) || is_lava(x, y, state) || liquidWall)
@@ -3485,7 +3407,7 @@ export async function domove_bump_mon(mtmp, glyph, state = game) {
         && (canspotmon(mtmp, state) || glyph_is_invisible(glyph)
             || glyph_is_warning(glyph))) {
         if ((mtmp.m_ap_type ?? 0)
-            && !propertyActiveUnblocked(state, PROT_FROM_SHAPE_CHANGERS)
+            && !Protection_from_shape_changers(state.u)
             && !sensemon(mtmp, state)) {
             await stumble_onto_mimic(mtmp, state);
         } else if (mtmp.mpeaceful && !Hallucination(state.u)) {
@@ -3528,8 +3450,8 @@ export async function domove_attackmon_at(
 // C ref: hack.c air_turbulence() (2342-2362).
 export async function air_turbulence(state = game) {
     if (Is_airlevel(state.u.uz, state) && rn2(4)
-        && !propertyActiveUnblocked(state, LEVITATION)
-        && !heroIsFlying(state)) {
+        && !Levitation(state.u)
+        && !Flying(state.u)) {
         switch (rn2(3)) {
         case 0:
             await ttyPline('You tumble in place.', state);
@@ -3552,8 +3474,7 @@ export async function air_turbulence(state = game) {
 // an object because C mutates its two pointer parameters.
 export async function water_turbulence(x, y, state = game) {
     if (state.u.uinwater) {
-        const wtmod = propertyPresent(state, SWIMMING)
-            ? MOD_ENCUMBER : SLT_ENCUMBER;
+        const wtmod = Swimming(state.u) ? MOD_ENCUMBER : SLT_ENCUMBER;
         await water_friction(state);
         if (!state.u.dx && !state.u.dy) {
             nomul(0, state);
@@ -3575,26 +3496,22 @@ export async function water_turbulence(x, y, state = game) {
 
 // C ref: hack.c slippery_ice_fumbling() (2396-2413).
 export function slippery_ice_fumbling(state = game) {
-    state.u.uprops[FUMBLING] ??= {
-        intrinsic: 0, extrinsic: 0, blocked: 0,
-    };
-    let onIce = !propertyActiveUnblocked(state, LEVITATION)
+    let onIce = !Levitation(state.u)
         && state.level?.at(state.u.ux, state.u.uy)?.typ === ICE;
     const skater = state.u.usteed ?? state.youmonst;
     if (onIce) {
         if ((state.uarmf && objdescr_is(state.uarmf, 'snow boots', state))
             || Resists_Elem(skater, COLD_RES, state)
-            || heroIsFlying(state) || is_floater(skater.data)
+            || Flying(state.u) || is_floater(skater.data)
             || is_clinger(skater.data) || is_whirly(skater.data)) {
             onIce = false;
-        } else if (!rn2(Cold_resistance(state) ? 3 : 2)) {
-            const fumbling = state.u.uprops[FUMBLING];
-            fumbling.intrinsic |= FROMOUTSIDE;
-            fumbling.intrinsic &= ~TIMEOUT;
-            fumbling.intrinsic += 1;
+        } else if (!rn2(Cold_resistance(state.u) ? 3 : 2)) {
+            state.u.uprops[FUMBLING].intrinsic |= FROMOUTSIDE;
+            state.u.uprops[FUMBLING].intrinsic &= ~TIMEOUT;
+            state.u.uprops[FUMBLING].intrinsic += 1;
         }
     }
-    if (!onIce && (state.u.uprops[FUMBLING].intrinsic & FROMOUTSIDE))
+    if (!onIce && (HFumbling(state.u) & FROMOUTSIDE))
         state.u.uprops[FUMBLING].intrinsic &= ~FROMOUTSIDE;
 }
 
@@ -3664,8 +3581,8 @@ function known_wwalking(state) {
 // C ref: hack.c Known_lwalking.
 function known_lwalking(state) {
     return known_wwalking(state)
-        && (propertyIntrinsic(state, FIRE_RES)
-            || Boolean(state.u?.uprops?.[FIRE_RES]?.extrinsic))
+        && (Boolean(HFire_resistance(state.u))
+            || Boolean(EFire_resistance(state.u)))
         && Boolean(state.uarmf.oerodeproof)
         && Boolean(state.uarmf.rknown);
 }
@@ -3693,8 +3610,8 @@ async function avoid_moving_on_trap(x, y, msg, state) {
 // C ref: hack.c avoid_moving_on_liquid(). The clinging-polyform case the
 // source marks XXX is absent there too.
 async function avoid_moving_on_liquid(x, y, msg, state) {
-    const inAir = propertyActiveUnblocked(state, LEVITATION)
-        || heroIsFlying(state);
+    const inAir = Levitation(state.u)
+        || Flying(state.u);
     const destination = state.level?.at(x, y);
     const here = state.level?.at(state.u.ux, state.u.uy);
     const pool = is_pool(x, y, state);
@@ -3751,8 +3668,8 @@ function region_damage(region) {
 export async function avoid_trap_andor_region(x, y, state = game) {
     const paranoia = Math.trunc(state.flags?.paranoia_bits ?? 0);
     const paranoidTrap = Boolean(paranoia & PARANOID_TRAP);
-    const impaired = propertyIntrinsic(state, STUNNED)
-        || propertyIntrinsic(state, CONFUSION);
+    const impaired = Boolean(Stunned(state.u))
+        || Boolean(Confusion(state.u));
     if (paranoidTrap && !Blind(state.u) && !impaired
         && !Hallucination(state.u)
         && (!state.context.nopick || state.context.run)) {
@@ -3851,7 +3768,7 @@ export async function escape_from_sticky_mon(x, y, state = game) {
             u.ustuck.msleeping = 0;
         }
         if (roll >= 3
-            && (propertyPresent(state, CONFLICT)
+            && (Conflict(state.u)
                 || u.ustuck.mconf || !u.ustuck.mtame)) {
             await ttyPline(
                 `You cannot escape from ${y_monnam(u.ustuck, state)}!`, state,
@@ -3881,7 +3798,7 @@ export function runStopsBeforeMonster(monster, run, state) {
     const seen = !Blind(state.u)
         && mon_visible(monster, state)
         && ((appearance !== M_AP_FURNITURE && appearance !== M_AP_OBJECT)
-            || propertyActiveUnblocked(state, PROT_FROM_SHAPE_CHANGERS));
+            || Protection_from_shape_changers(state.u));
     return seen || sensemon(monster, state);
 }
 
@@ -4773,11 +4690,10 @@ export async function pickup_checks(state = game, env = {}) {
     }
     // youprop.h: Wwalking excludes the Water Plane; Breathless reads raw
     // magical-breathing sources, while Flying includes a steed and blocking.
-    const waterWalking = propertyPresent(state, WWALKING) && !Is_waterlevel(u.uz, state);
-    const breathlessHero = propertyPresent(state, MAGICAL_BREATHING)
-        || breathless(state.youmonst.data);
+    const waterWalking = Wwalking(state);
+    const breathlessHero = Breathless(state);
     const cannotDive = () => waterWalking || is_floater(state.youmonst.data)
-        || is_clinger(state.youmonst.data) || (heroIsFlying(state) && !breathlessHero);
+        || is_clinger(state.youmonst.data) || (Flying(state.u) && !breathlessHero);
     if (is_pool(u.ux, u.uy, state)) {
         if (cannotDive()) {
             await message(`You cannot dive into the ${hliquid('water', { ...env, state })} to pick things up.`, state);
@@ -5089,8 +5005,7 @@ function domove_monster_trap_env(state, env = {}) {
         // hack.c:2198-2199 calls minliquid() after the swap and consumes the
         // rloc() result inside that source function. Supply the complete
         // teleport.c operation set so a liquid survivor can relocate before
-        // mintrap() runs, including the planning-safe seams when a caller
-        // provides them.
+        // mintrap() runs, including any seams a caller provides.
         relocateMonster: env.relocateMonster ?? (
             (subject, flags, relocationEnv) => rloc(
                 subject,
@@ -5312,23 +5227,13 @@ export async function domove_swap_with_pet(
     return true;
 }
 
-// C ref: youprop.h Flying, which counts a flying steed as carrying the hero.
-function heroIsFlying(state) {
-    const flyingProperty = state.u?.uprops?.[FLYING] ?? {};
-    return Boolean(
-        (flyingProperty.intrinsic
-            || flyingProperty.extrinsic
-            || (state.u?.usteed && is_flyer(state.u.usteed.data)))
-        && !flyingProperty.blocked,
-    );
-}
 
 // C ref: hack.c domove(), the heavy-tread branch immediately after the hero
 // position update.
 export function hero_tread_disturbs_buried_zombies(state = game) {
-    return !propertyActiveUnblocked(state, LEVITATION)
-        && !heroIsFlying(state)
-        && !propertyActiveUnblocked(state, STEALTH)
+    return !Levitation(state.u)
+        && !Flying(state.u)
+        && !Stealth(state.u)
         && (state.youmonst?.data?.cwt ?? 0) >= (WT_ELF / 2);
 }
 
@@ -5336,47 +5241,41 @@ export function hero_tread_disturbs_buried_zombies(state = game) {
 // blocks flight as well. C records the outside obstruction, calls float_up()
 // after the hero leaves it, restores flight, and updates the status line.
 export async function switch_terrain(state = game, rawEnv = {}) {
-    const message = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.message ?? ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const { u } = state;
     u.uprops ??= [];
     const lev = state.level?.at(u.ux, u.uy);
     const blocklev = Boolean(lev)
         && (IS_OBSTRUCTED(lev.typ) || closed_door(u.ux, u.uy, state)
             || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL);
-    const wasLevitating = propertyActiveUnblocked(state, LEVITATION);
-    const wasFlying = heroIsFlying(state);
-    const levitation = state.u.uprops[LEVITATION]
-        ?? (state.u.uprops[LEVITATION] = {});
-    const flying = state.u.uprops[FLYING]
-        ?? (state.u.uprops[FLYING] = {});
+    const wasLevitating = Levitation(state.u);
+    const wasFlying = Flying(state.u);
     if (blocklev) {
         // Called from spoteffects(), C skips float_down() here.  You_cant()
         // is pline.c's ordinary message formatter with the source prefix.
-        if (propertyActiveUnblocked(state, LEVITATION))
+        if (Levitation(state.u))
             await message("You can't levitate in here.", state);
-        levitation.blocked = (levitation.blocked ?? 0) | FROMOUTSIDE;
-    } else if (levitation.blocked) {
-        levitation.blocked &= ~FROMOUTSIDE;
+        state.u.uprops[LEVITATION].blocked |= FROMOUTSIDE;
+    } else if (BLevitation(state.u)) {
+        state.u.uprops[LEVITATION].blocked &= ~FROMOUTSIDE;
         // A remaining blocked bit (for example a buried iron ball) still
         // reaches C's discarded float_up() call after FROMOUTSIDE clears.
-        if (propertyActiveUnblocked(state, LEVITATION) || levitation.blocked)
+        if (Levitation(state.u) || BLevitation(state.u))
             await float_up(state);
     }
     if (blocklev) {
-        if (heroIsFlying(state))
+        if (Flying(state.u))
             await message("You can't fly in here.", state);
-        flying.blocked = (flying.blocked ?? 0) | FROMOUTSIDE;
-    } else if (flying.blocked) {
-        flying.blocked &= ~FROMOUTSIDE;
+        state.u.uprops[FLYING].blocked |= FROMOUTSIDE;
+    } else if (BFlying(state.u)) {
+        state.u.uprops[FLYING].blocked &= ~FROMOUTSIDE;
         // float_vs_flight() owns the C I_SPECIAL adjustment.  Its return is
         // discarded, so the synchronous owner can run before the message.
         float_vs_flight(state);
-        if (heroIsFlying(state)) await message('You start flying.', state);
+        if (Flying(state.u)) await message('You start flying.', state);
     }
-    if (wasLevitating !== propertyActiveUnblocked(state, LEVITATION)
-        || wasFlying !== heroIsFlying(state)) {
+    if (wasLevitating !== Levitation(state.u)
+        || wasFlying !== Flying(state.u)) {
         state.disp ??= {};
         state.disp.botl = true;
     }
@@ -5401,21 +5300,14 @@ export async function set_uinwater(in_out, state = game, rawEnv = {}) {
 // moving. It returns true only when dismounting, drowning, or burning moves
 // the hero and the caller must skip the rest of its square effects.
 export async function pooleffects(newspot, state = game, rawEnv = {}) {
-    const message = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.message ?? ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const { u } = state;
-    const levitating = propertyActiveUnblocked(state, LEVITATION);
-    const flying = heroIsFlying(state);
-    const waterWalking = propertyPresent(state, WWALKING)
-        && !Is_waterlevel(u.uz, state);
-    const swimming = propertyPresent(state, SWIMMING)
-        || Boolean(u.usteed && is_swimmer(u.usteed.data));
-    const hasMagicalBreathing = propertyPresent(state, MAGICAL_BREATHING);
-    const breathlessHero = hasMagicalBreathing
-        || breathless(state.youmonst?.data);
-    const amphibiousHero = hasMagicalBreathing
-        || amphibious(state.youmonst?.data);
+    const levitating = Levitation(state.u);
+    const flying = Flying(state.u);
+    const waterWalking = Wwalking(state);
+    const swimming = Swimming(state.u);
+    const breathlessHero = Breathless(state);
+    const amphibiousHero = Amphibious(state);
 
     if (u.uinwater) {
         let stillInWater = false;
@@ -5469,8 +5361,8 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
     }
 
     if (!u.ustuck
-        && !propertyActiveUnblocked(state, LEVITATION)
-        && !heroIsFlying(state)
+        && !Levitation(state.u)
+        && !Flying(state.u)
         && is_pool_or_lava(u.ux, u.uy, state)) {
         if (u.usteed && !grounded(u.usteed.data, state)) {
             return false;
@@ -5490,14 +5382,6 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
             return false;
         }
         if (is_lava(u.ux, u.uy, state)) {
-            // Lava effects own tactile display, worn-item destruction, death
-            // choices and possible relocation. Replay that input-capable
-            // source call live, then replan from its resulting state.
-            if (rawEnv.planning) {
-                if (typeof rawEnv.requestPlanningInput !== 'function')
-                    throw new TypeError('planned lava entry requires a replay boundary');
-                rawEnv.requestPlanningInput('trap.c lava_effects');
-            }
             if (await lava_effects(state)) return true;
         } else {
             const isWaterWall = is_waterwall(u.ux, u.uy, state);
@@ -5554,9 +5438,7 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
     // before beginning any square-arrival effects in that case.
     if (state.program_state?.gameover) return;
     const { u } = state;
-    const message = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.message ?? ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const random = rawEnv.random ?? coreRandom;
     const staticState = spoteffectsStaticsFor(state);
     let trap = t_at(u.ux, u.uy, state);
@@ -5578,14 +5460,6 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
     }
     if (state.iflags?.in_lava_effects) return;
 
-    // Arrival can run input-capable liquid, room and trap effects before
-    // inspecting the floor. Commit the complete source call live, then replan.
-    if (pick && rawEnv.planning) {
-        if (typeof rawEnv.requestPlanningInput !== 'function')
-            throw new TypeError('planned arrival pickup requires a replay boundary');
-        rawEnv.requestPlanningInput('hack.c spoteffects');
-    }
-
     ++staticState.depth;
     staticState.terrain = location?.typ ?? STONE;
     staticState.x = u.ux;
@@ -5601,20 +5475,19 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
 
         await check_special_room(false, state);
         if (IS_SINK(state.level?.at(u.ux, u.uy)?.typ)
-            && propertyActiveUnblocked(state, LEVITATION)) {
+            && Levitation(state.u)) {
             await dosinkfall(state);
         }
         if (!state.in_steed_dismounting) {
             // C ref: hack.c:3362-3372. Preserve the one-point timeout check
             // and consume rn2(2) only when the fire trap would otherwise run
             // twice at the end of this turn.
-            const levitation = u.uprops[LEVITATION] ?? {};
-            if (trap && (levitation.intrinsic & TIMEOUT) === 1
-                && !levitation.extrinsic
-                && !(levitation.intrinsic & ~(I_SPECIAL | TIMEOUT))) {
+            if (trap && (HLevitation(u) & TIMEOUT) === 1
+                && !ELevitation(u)
+                && !(HLevitation(u) & ~(I_SPECIAL | TIMEOUT))) {
                 if (random.rn2(2)) {
                     const { incr_itimeout } = await import('./potion.js');
-                    incr_itimeout(levitation, 1);
+                    incr_itimeout(u.uprops[LEVITATION], 1);
                 } else {
                     const { float_down } = await import('./trap.js');
                     if (await float_down(
@@ -5810,9 +5683,9 @@ export async function notice_all_mons(reset, state = game, env = {}) {
 // mondata.c locomotion() cannot answer it, because its is_flyer() and
 // is_floater() tests read a monster form rather than the hero's properties.
 export function u_locomotion(def, state = game) {
-    if (propertyActiveUnblocked(state, LEVITATION))
+    if (Levitation(state.u))
         return def[0] === highc(def[0]) ? 'Float' : 'float';
-    if (heroIsFlying(state))
+    if (Flying(state.u))
         return def[0] === highc(def[0]) ? 'Fly' : 'fly';
     return locomotion(state.youmonst.data, def);
 }
@@ -5838,7 +5711,7 @@ export async function invocation_message(state = game, env = {}) {
     nomul(0, state);
     const beneath = u.usteed
         ? `beneath ${y_monnam(u.usteed, state)}`
-        : propertyActiveUnblocked(state, LEVITATION) || heroIsFlying(state)
+        : Levitation(state.u) || Flying(state.u)
             ? 'beneath you'
             : `under your ${makeplural(body_part(FOOT, state.youmonst))}`;
     await (env.message ?? ttyPline)(
@@ -5946,7 +5819,7 @@ export function bad_rock(species, x, y, state = game) {
 export function cant_squeeze_thru(mon, state = game) {
     const hero = mon === state.youmonst;
     const species = mon?.data;
-    if (hero ? propertyPresent(state, PASSES_WALLS) : passes_walls(species))
+    if (hero ? Passes_walls(state.u) : passes_walls(species))
         return 0;
 
     /* too big? */

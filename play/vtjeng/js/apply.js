@@ -46,7 +46,6 @@ import {
     CQ_CANNED,
     CORR,
     CONFUSION,
-    CONFLICT,
     COST_DSTROY,
     COST_SPLAT,
     DEAF,
@@ -56,16 +55,13 @@ import {
     ECMD_TIME,
     FIG_TRANSFORM,
     FLASHED_LIGHT,
-    FREE_ACTION,
     FM_FMON,
     FEMALE,
     FACE,
     FOOT,
     G_GONE,
     HEAD,
-    FUMBLING,
     FORCETRAP,
-    GLIB,
     GETOBJ_DOWNPLAY,
     GETOBJ_EXCLUDE,
     GETOBJ_EXCLUDE_INACCESS,
@@ -113,7 +109,6 @@ import {
     D_ISOPEN,
     DISP_BEAM,
     DISP_END,
-    FLYING,
     FORCEBUNGLE,
     INTRINSIC,
     INVIS_BEAM,
@@ -133,22 +128,15 @@ import {
     P_RIDING,
     STOMACH,
     STONE,
-    STONED,
-    STRANGLED,
-    PROT_FROM_SHAPE_CHANGERS,
     STUNNED,
-    JUMPING,
     LEG,
-    LEVITATION,
     LEFT_SIDE,
-    PASSES_WALLS,
     RIGHT_SIDE,
     ROOM,
     SHOPBASE,
     SICK,
     SICK_ALL,
     SICK_NONVOMITABLE,
-    SLIMED,
     MONSEEN_INFRAVIS,
     MONSEEN_NORMAL,
     MONSEEN_SEEINVIS,
@@ -172,7 +160,6 @@ import {
     WEAK,
     MAXULEV,
     MAX_SPELL_STUDY,
-    WOUNDED_LEGS,
     VOMITING,
     NO_KILLER_PREFIX,
     Is_airlevel,
@@ -531,7 +518,6 @@ import {
     deltrap,
     fill_pit,
     instapetrify,
-    Levitation,
     maketrap,
     reset_utrap,
     t_at,
@@ -634,37 +620,35 @@ import { u_wipe_engr } from './engrave.js';
 import { select_menu } from './windows.js';
 import {
     ART_SNICKERSNEE,
-    Stone_resistance,
     arti_speak,
     retouch_object,
 } from './artifacts.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
 import {
-    BBlinded, Blind, BlindedTimeout, Deaf, HBlinded, HDeaf,
-    HHallucination, Halluc_resistance, Hallucination, Invis, Maybe_Half_Phys,
-    See_invisible,
+    BBlinded, Blind, BlindedTimeout, Conflict, Confusion, Deaf, EFumbling,
+    EJumping, Flying, Free_action, Fumbling, Glib, HBlinded, HConfusion,
+    HDeaf, HFumbling, HHallucination, HJumping, HStun, Halluc_resistance,
+    Hallucination, Invis, Jumping, Levitation, Maybe_Half_Phys, Passes_walls,
+    Protection_from_shape_changers, See_invisible, Sick, Slimed,
+    Stone_resistance, Stoned, Strangled, Stunned, Vomiting, Wounded_legs,
 } from './youprop.js';
 
-function applyPropertyActive(property, state = game) {
-    const value = state.u?.uprops?.[property];
-    return Boolean((value?.intrinsic || value?.extrinsic) && !value?.blocked);
-}
 
 function applyIsConfused(state) {
-    return Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
+    return Boolean(Confusion(state.u));
 }
 
 function applyIsStunned(state) {
-    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
+    return Boolean(Stunned(state.u));
 }
 
 
 function applyIsFumbling(state) {
-    return applyPropertyActive(FUMBLING, state);
+    return Fumbling(state.u);
 }
 
 function applyIsGlib(state) {
-    return applyPropertyActive(GLIB, state);
+    return Boolean(Glib(state.u));
 }
 
 function polearmContext(state) {
@@ -850,7 +834,7 @@ export async function use_whip(obj, state = game, env = {}) {
             }
             return ECMD_TIME;
         }
-        if (Levitation(state) || u.usteed || applyPropertyActive(FLYING, state)) {
+        if (Levitation(state.u) || u.usteed || Flying(state.u)) {
             let object = state.level.objects?.[u.ux]?.[u.uy] ?? null;
             if (object?.otyp === CORPSE
                 && [PM_HORSE, little_to_big(PM_HORSE), big_to_little(PM_HORSE)]
@@ -972,7 +956,7 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
                     const species = state.mons?.[object.corpsenm];
                     const petrifies = object.otyp === CORPSE
                         && touch_petrifies(species) && !state.uarmg
-                        && !Stone_resistance(state);
+                        && !Stone_resistance(state.u);
                     if (petrifies) {
                         const canTransform = poly_when_stoned(state.youmonst.data, state);
                         const saved = canTransform
@@ -1023,7 +1007,7 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
             }
         } else {
             let doSnap = true;
-            if (M_AP_TYPE(monster) && !applyPropertyActive(PROT_FROM_SHAPE_CHANGERS, state)
+            if (M_AP_TYPE(monster) && !Protection_from_shape_changers(state.u)
                 && !sensemon(monster, state)) {
                 await stumble_onto_mimic(monster, state);
                 doSnap = false;
@@ -1357,7 +1341,6 @@ export function get_mleash(monster, state = game) {
 export async function check_leash(x, y, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const message = rawEnv.message ?? ttyPline;
-    // allmain's planning pass injects its cloned stream.
     const random = rawEnv.random ?? coreRandom;
 
     for (let leash = state.invent; leash; leash = leash.nobj) {
@@ -1764,7 +1747,7 @@ async function use_tinning_kit(obj, state = game, env = {}) {
     if (!species)
         throw new RangeError(`tinning kit: invalid corpse species ${corpse.corpsenm}`);
 
-    if (touch_petrifies(species) && !Stone_resistance(state) && !state.uarmg) {
+    if (touch_petrifies(species) && !Stone_resistance(state.u) && !state.uarmg) {
         const corpseName = an(cxname(corpse, state), state);
         let kbuf = '';
         if (poly_when_stoned(state.youmonst.data, state)) {
@@ -1940,12 +1923,11 @@ export function reset_trapset(state = game) {
 }
 
 function trapSettingFumbling(state) {
-    const property = state.u?.uprops?.[FUMBLING];
-    return Boolean(property?.intrinsic || property?.extrinsic);
+    return Fumbling(state.u);
 }
 
 function trapSettingStunned(state) {
-    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
+    return Boolean(Stunned(state.u));
 }
 
 // C ref: apply.c use_trap() (2821-2911). The caller has already selected a
@@ -1967,7 +1949,7 @@ export async function use_trap(obj, state = game, env = {}) {
             ? 'while swallowed' : 'while engulfed';
     else if (state.u.uinwater)
         what = 'underwater';
-    else if (Levitation(state))
+    else if (Levitation(state.u))
         what = 'while levitating';
     else if (is_pool(state.u.ux, state.u.uy, state))
         what = 'in water';
@@ -2783,15 +2765,6 @@ const JUMP_HORZ = 1;
 const JUMP_VERT = 2;
 const JUMP_DIAG = 3;
 
-function jumpProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
-function jumpPropertyActive(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
 
 // C ref: dothrow.c walk_path() (656-753).
 function jumpWalkPath(source, destination, callback, argument, state) {
@@ -2843,7 +2816,7 @@ function jumpWalkPath(source, destination, callback, argument, state) {
 
 // C ref: apply.c check_jump() (1860-1883).
 export function check_jump(trajectory, x, y, state = game) {
-    if (jumpProperty(state, PASSES_WALLS)) return true;
+    if (Passes_walls(state.u)) return true;
     const location = state.level.at(x, y);
     if (IS_STWALL(location.typ)) return false;
     if (IS_DOOR(location.typ)) {
@@ -2863,8 +2836,7 @@ export function check_jump(trajectory, x, y, state = game) {
 // C ref: apply.c is_valid_jump_pos() (1885-1954).
 export async function is_valid_jump_pos(x, y, magic, showmsg, state = game) {
     const distance = dist2(x, y, state.u.ux, state.u.uy);
-    const jumping = state.u?.uprops?.[JUMPING] ?? {};
-    if (!magic && !(jumping.intrinsic & ~INTRINSIC) && !jumping.extrinsic
+    if (!magic && !(HJumping(state.u) & ~INTRINSIC) && !EJumping(state.u)
         && distance !== 5) {
         if (showmsg) await ttyPline('Illegal move!', state);
         return false;
@@ -2886,13 +2858,13 @@ export async function is_valid_jump_pos(x, y, magic, showmsg, state = game) {
     const dy = y - state.u.uy;
     const ax = Math.abs(dx);
     const ay = Math.abs(dy);
-    const diagonal = (magic || jumpProperty(state, PASSES_WALLS) || (!dx && !dy))
+    const diagonal = (magic || Passes_walls(state.u) || (!dx && !dy))
         ? JUMP_ANY : !dy ? JUMP_HORZ : !dx ? JUMP_VERT : JUMP_DIAG;
     let flatX = ax;
     let flatY = ay;
     if (flatX >= 2 * flatY) flatY = 0;
     else if (flatY >= 2 * flatX) flatX = 0;
-    const trajectory = (magic || jumpProperty(state, PASSES_WALLS)
+    const trajectory = (magic || Passes_walls(state.u)
         || (!flatX && !flatY))
         ? JUMP_ANY : !flatY ? JUMP_HORZ : !flatX ? JUMP_VERT : JUMP_DIAG;
 
@@ -2919,7 +2891,7 @@ export async function is_valid_jump_pos(x, y, magic, showmsg, state = game) {
 export async function get_valid_jump_position(x, y, state = game) {
     return isok(x, y)
         && (ACCESSIBLE(state.level.at(x, y).typ)
-            || jumpProperty(state, PASSES_WALLS))
+            || Passes_walls(state.u))
         && await is_valid_jump_pos(
             x, y, state.gj?.jumping_is_magic ?? 0, false, state,
         );
@@ -2976,14 +2948,14 @@ export async function dojump(state = game, env = {}) {
 // C ref: apply.c jump() (1988-2163).
 export async function jump(magic = 0, state = game, env = {}) {
     // apply.c's morehungry calls reach newuhs's pline/end_running/bot.
-    // Preserve supplied operations when this caller uses a cloned state.
+    // Preserve operations the caller supplies.
     const hungerEnv = {
         ...env,
         message: env.message ?? ttyPline,
         endRunning: env.endRunning ?? endRunning,
         statusRefresh: env.statusRefresh ?? (() => bot()),
     };
-    if (!magic && !jumpProperty(state, JUMPING)
+    if (!magic && !Jumping(state.u)
         && known_spell(SPE_JUMPING, state) >= spe_Fresh)
         return spelleffects(SPE_JUMPING, false, false, state, hungerEnv);
 
@@ -2992,7 +2964,7 @@ export async function jump(magic = 0, state = game, env = {}) {
         await ttyPline("You can't jump; you have no legs!", state);
         return ECMD_OK;
     }
-    if (!magic && !jumpProperty(state, JUMPING)) {
+    if (!magic && !Jumping(state.u)) {
         await ttyPline("You can't jump very far.", state);
         return ECMD_OK;
     }
@@ -3016,7 +2988,7 @@ export async function jump(magic = 0, state = game, env = {}) {
     }
     if (state.u.ustuck) {
         const captor = state.u.ustuck;
-        if (captor.mtame && !jumpProperty(state, CONFLICT) && !captor.mconf) {
+        if (captor.mtame && !Conflict(state.u) && !captor.mconf) {
             set_ustuck(null, state);
             await ttyPline(`You pull free from ${mon_nam(captor, state)}.`, state);
             return ECMD_TIME;
@@ -3032,7 +3004,7 @@ export async function jump(magic = 0, state = game, env = {}) {
             state);
         return ECMD_OK;
     }
-    if (jumpPropertyActive(state, LEVITATION)
+    if (Levitation(state.u)
         || Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state)) {
         if (magic) {
             await ttyPline('You flail around a little.', state);
@@ -3049,7 +3021,7 @@ export async function jump(magic = 0, state = game, env = {}) {
         await ttyPline('You lack the strength to jump!', state);
         return ECMD_OK;
     }
-    if (!magic && jumpProperty(state, WOUNDED_LEGS)) {
+    if (!magic && Wounded_legs(state.u)) {
         await legs_in_no_shape('jumping', Boolean(state.u.usteed), state);
         return ECMD_OK;
     }
@@ -3119,7 +3091,7 @@ export async function jump(magic = 0, state = game, env = {}) {
         }
         if (trap) {
             await ttyPline(
-                `You jump up and ${jumpPropertyActive(state, FLYING) ? 'fly' : 'come'} back down.`,
+                `You jump up and ${Flying(state.u) ? 'fly' : 'come'} back down.`,
                 state,
             );
             await dotrap(trap, FORCETRAP | TOOKPLUNGE, state);
@@ -3187,7 +3159,7 @@ export async function use_lamp(obj, state = game, env = {}) {
                 `The lamp spills and covers your ${fingers_or_gloves(true, state)} with oil.`,
                 state,
             );
-            const glib = state.u?.uprops?.[GLIB]?.intrinsic ?? 0;
+            const glib = Glib(state.u);
             make_glib((glib & TIMEOUT) + d(2, 10), state, env);
         } else if (!Blind(state.u)) {
             await ttyPline(
@@ -3498,10 +3470,8 @@ export async function use_candle(obj, state = game, env = {}) {
 export async function use_unicorn_horn(obj, state = game, env = {}) {
     const message = env.message ?? ttyPline;
     const intrinsic = (property) => state.u?.uprops?.[property]?.intrinsic ?? 0;
-    const timedTrouble = (property) => {
-        const value = intrinsic(property);
-        return value && !(value & ~TIMEOUT) ? value & TIMEOUT : 0;
-    };
+    // C ref: apply.c TimedTrouble(P), which takes the property's value.
+    const timedTrouble = (value) => (value && !(value & ~TIMEOUT) ? value & TIMEOUT : 0);
     const hallucinating = () => Hallucination(state.u);
     const deaf = () => Deaf(state.u);
 
@@ -3509,7 +3479,7 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
         const lcount = rn1(90, 10);
         switch (Math.trunc(rn2(13) / 2)) {
         case 0: {
-            const sickTimeout = intrinsic(SICK) & TIMEOUT;
+            const sickTimeout = Sick(state.u) & TIMEOUT;
             // C evaluates the timeout (and its conditional RNG) before xname.
             const sicknessDuration = sickTimeout
                 ? Math.trunc(sickTimeout / 3) + 1
@@ -3529,14 +3499,14 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
             );
             break;
         case 2:
-            if (!intrinsic(CONFUSION)) {
+            if (!HConfusion(state.u)) {
                 await message(
                     `You suddenly feel ${hallucinating() ? 'trippy' : 'confused'}.`,
                     state,
                 );
             }
             await make_confused(
-                (intrinsic(CONFUSION) & TIMEOUT) + lcount,
+                (HConfusion(state.u) & TIMEOUT) + lcount,
                 true,
                 state,
                 env,
@@ -3544,12 +3514,12 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
             break;
         case 3:
             await make_stunned(
-                (intrinsic(STUNNED) & TIMEOUT) + lcount,
+                (HStun(state.u) & TIMEOUT) + lcount,
                 true, state, env,
             );
             break;
         case 4:
-            if (intrinsic(VOMITING))
+            if (Vomiting(state.u))
                 await vomit(state, { ...env, message });
             else
                 await make_vomiting(14, false, state, env);
@@ -3577,8 +3547,8 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
     }
 
     const troubles = [];
-    if (timedTrouble(SICK)) troubles.push(SICK);
-    if (timedTrouble(BLINDED) > (state.u?.ucreamed ?? 0)
+    if (timedTrouble(Sick(state.u))) troubles.push(SICK);
+    if (timedTrouble(HBlinded(state.u)) > (state.u?.ucreamed ?? 0)
         && !(state.u?.uswallow
             && attacktype_fordmg(
                 state.u?.ustuck?.data,
@@ -3587,11 +3557,11 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
             ))) {
         troubles.push(BLINDED);
     }
-    if (timedTrouble(HALLUC)) troubles.push(HALLUC);
-    if (timedTrouble(VOMITING)) troubles.push(VOMITING);
-    if (timedTrouble(CONFUSION)) troubles.push(CONFUSION);
-    if (timedTrouble(STUNNED)) troubles.push(STUNNED);
-    if (timedTrouble(DEAF)) troubles.push(DEAF);
+    if (timedTrouble(HHallucination(state.u))) troubles.push(HALLUC);
+    if (timedTrouble(Vomiting(state.u))) troubles.push(VOMITING);
+    if (timedTrouble(HConfusion(state.u))) troubles.push(CONFUSION);
+    if (timedTrouble(HStun(state.u))) troubles.push(STUNNED);
+    if (timedTrouble(HDeaf(state.u))) troubles.push(DEAF);
 
     if (!troubles.length) {
         await message(nothing_happens, state);
@@ -4133,7 +4103,7 @@ export async function use_mirror(obj, state = game, env = {}) {
             );
         } else if (u.umonnum === PM_FLOATING_EYE) {
             // youprop.h:383 Free_action is the extrinsic field alone.
-            if (state.u?.uprops?.[FREE_ACTION]?.extrinsic) {
+            if (Free_action(state.u)) {
                 await ttyPline('You stiffen momentarily under your gaze.', state);
             } else {
                 const hallucinating = Hallucination(state.u);
@@ -4153,14 +4123,14 @@ export async function use_mirror(obj, state = game, env = {}) {
         } else if (u.umonnum === PM_UMBER_HULK) {
             await ttyPline("Huh?  That doesn't look like you!", state);
             await make_confused(
-                (state.u.uprops[CONFUSION]?.intrinsic ?? 0)
+                HConfusion(state.u)
                     + random.d(3, 4),
                 false,
                 state,
             );
         } else if (Hallucination(state.u)) {
             await ttyPline(`You look ${hcolor(null, state)}.`, state);
-        } else if (state.u.uprops[SICK]?.intrinsic) {
+        } else if (Sick(state.u)) {
             await ttyPline('You look peaked.', state);
         } else if (u.uhs >= WEAK) {
             await ttyPline('You look undernourished.', state);
@@ -4359,7 +4329,7 @@ export async function use_towel(obj, state = game, env = {}) {
         let old;
         switch (random.rn2(3)) {
         case 2:
-            old = (u.uprops?.[GLIB]?.intrinsic ?? 0) & TIMEOUT;
+            old = (Glib(u)) & TIMEOUT;
             make_glib(old + random.rn1(10, 3), state, env);
             await message(
                 `Your ${makeplural(body_part(HAND, state.youmonst))} `
@@ -4410,7 +4380,7 @@ export async function use_towel(obj, state = game, env = {}) {
         }
     }
 
-    if (u.uprops?.[GLIB]?.intrinsic) {
+    if (Glib(u)) {
         make_glib(0, state, env);
         await message(
             `You wipe off your ${!state.uarmg
@@ -5113,10 +5083,10 @@ export async function doapply(state = game, env = {}) {
                     ...(env.hooks ?? {}),
                     encumberMessage: env.hooks?.encumberMessage
                         ?? ((targetState) => encumber_msg(targetState, {
-                            message: env.planning ? async () => {} : ttyPline,
+                            message: ttyPline,
                         })),
                     newsym: env.hooks?.newsym
-                        ?? (env.planning ? () => {} : (x, y) => newsym(x, y)),
+                        ?? ((x, y) => newsym(x, y)),
                 },
             }),
         });
@@ -5208,9 +5178,8 @@ export async function flip_coin(obj, state = game, env = {}) {
         await message('It tumbles away.', state);
         loseCoin = true;
     } else {
-        const glib = state.u?.uprops?.[GLIB]?.intrinsic;
-        const fumbling = state.u?.uprops?.[FUMBLING];
-        if (glib || fumbling?.intrinsic || fumbling?.extrinsic
+        const glib = Glib(state.u);
+        if (glib || HFumbling(state.u) || EFumbling(state.u)
             || (acurr(state, A_DEX) < 10
                 && !drawRn2(acurr(state, A_DEX)))) {
             await message(
@@ -5231,10 +5200,10 @@ export async function flip_coin(obj, state = game, env = {}) {
                 ...(env.hooks ?? {}),
                 encumberMessage: env.hooks?.encumberMessage
                     ?? ((targetState) => encumber_msg(targetState, {
-                        message: env.planning ? async () => {} : ttyPline,
+                        message: ttyPline,
                     })),
                 newsym: env.hooks?.newsym
-                    ?? (env.planning ? () => {} : (x, y) => newsym(x, y)),
+                    ?? ((x, y) => newsym(x, y)),
             },
         });
         return ECMD_TIME;
@@ -5376,7 +5345,7 @@ export async function use_grease(obj, state = game, env = {}) {
             return ECMD_OK;
 
         await consume_obj_charge(obj, true, { ...env, state });
-        const oldglib = (state.u?.uprops?.[GLIB]?.intrinsic ?? 0) & TIMEOUT;
+        const oldglib = (Glib(state.u)) & TIMEOUT;
         if (target !== hands_obj) {
             await ttyPline(
                 `You cover ${yname(target, state)} with a thick layer of grease.`,
@@ -5416,26 +5385,26 @@ export function unfixable_trouble_count(isHorn = false, state = game) {
     const intrinsic = (index) => prop(index).intrinsic ?? 0;
     let count = 0;
 
-    if (intrinsic(STONED)) count++;
-    if (intrinsic(SLIMED)) count++;
-    if (intrinsic(STRANGLED)) count++;
+    if (Stoned(state.u)) count++;
+    if (Slimed(state.u)) count++;
+    if (Strangled(state.u)) count++;
     if ((u.atemp?.[A_DEX] ?? 0) < 0
-        && (intrinsic(WOUNDED_LEGS) || prop(WOUNDED_LEGS).extrinsic)) count++;
+        && (Wounded_legs(state.u))) count++;
     if ((u.atemp?.[A_STR] ?? 0) < 0 && (u.uhs ?? 0) >= WEAK) count++;
 
-    if (intrinsic(SICK)
-        && (!isHorn || (intrinsic(SICK) & ~TIMEOUT) !== 0)) count++;
-    if (intrinsic(STUNNED)
-        && (!isHorn || (intrinsic(STUNNED) & ~TIMEOUT) !== 0)) count++;
-    if (intrinsic(CONFUSION)
-        && (!isHorn || (intrinsic(CONFUSION) & ~TIMEOUT) !== 0)) count++;
+    if (Sick(state.u)
+        && (!isHorn || (Sick(state.u) & ~TIMEOUT) !== 0)) count++;
+    if (HStun(state.u)
+        && (!isHorn || (HStun(state.u) & ~TIMEOUT) !== 0)) count++;
+    if (HConfusion(state.u)
+        && (!isHorn || (HConfusion(state.u) & ~TIMEOUT) !== 0)) count++;
 
     const hallucination = HHallucination(state.u);
     if (hallucination && !Halluc_resistance(state.u)
         && (!isHorn || (hallucination & ~TIMEOUT) !== 0)) count++;
 
-    if (intrinsic(VOMITING)
-        && (!isHorn || (intrinsic(VOMITING) & ~TIMEOUT) !== 0)) count++;
+    if (Vomiting(state.u)
+        && (!isHorn || (Vomiting(state.u) & ~TIMEOUT) !== 0)) count++;
 
     if (Deaf(u) && (!isHorn || (HDeaf(u) & ~TIMEOUT) !== 0)) count++;
 

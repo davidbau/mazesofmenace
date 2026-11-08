@@ -26,12 +26,10 @@ import {
     M_SEEN_POISON,
     M_SEEN_REFL,
     M_SEEN_SLEEP,
-    MAGICAL_BREATHING,
     MALE,
     MS_BURBLE,
     MS_BUZZ,
     MS_SILENT,
-    STRANGLED,
     NATTK,
     NEUTRAL,
     NO_TRAP,
@@ -115,7 +113,8 @@ export function set_mon_data(monster, species, state = game) {
 }
 import { which_armor } from './worn.js';
 import {
-    Blind, Blnd_resist, EBlinded, Hallucination, Unaware,
+    Blind, Blnd_resist, Breathless, EBlinded, Hallucination, Strangled,
+    Unaware,
 } from './youprop.js';
 
 function hasAttackType(species, attackType) {
@@ -201,7 +200,7 @@ export function is_floater(species) {
 }
 export function is_clinger(species) { return flag1(species, M.M1_CLING); }
 // C ref: mondata.h:23-24 grounded(). The macro reads the global u.uz, which
-// this port takes from the caller's state so that the planning clone answers
+// this port takes from the caller's state so that a hand-built state answers
 // for its own hero; has_ceiling() takes the same state, so the endgame
 // topology it compares against is the caller's too.
 export function grounded(species, state = game) {
@@ -815,7 +814,7 @@ export function can_blow(monster, state = game) {
         return false;
     }
     if (monster === state.youmonst
-        && Boolean(state.u?.uprops?.[STRANGLED]?.intrinsic)) {
+        && Boolean(Strangled(state.u))) {
         return false;
     }
     return true;
@@ -1511,9 +1510,7 @@ export function can_be_strangled(mon, state = game) {
     if (mon === state.youmonst) {
         nobrainer = mindless(state.youmonst.data);
         // youprop.h:276 Breathless
-        const mb = state.u.uprops[MAGICAL_BREATHING];
-        nonbreathing = Boolean(mb.intrinsic || mb.extrinsic
-                               || breathless(state.youmonst.data));
+        nonbreathing = Breathless(state);
     } else {
         nobrainer = mindless(mon.data);
         const mamul = which_armor(mon, W_AMUL, state);
@@ -1560,7 +1557,7 @@ export function is_silent(species) {
 // speaks by buzzing or burbling.
 export function can_chant(mon, state = game) {
     if (mon === state.youmonst
-        && Boolean(state.u?.uprops?.[STRANGLED]?.intrinsic))
+        && Boolean(Strangled(state.u)))
         return false;
     if (is_silent(mon.data) || !has_head(mon.data))
         return false;

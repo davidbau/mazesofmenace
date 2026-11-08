@@ -21,7 +21,6 @@ import {
     XKILL_GIVEMSG,
     XKILL_NOCORPSE,
     COLD_RES,
-    CONFLICT,
     ERODE_CORRODE,
     ERODE_BURN,
     ERODE_NONE,
@@ -51,7 +50,6 @@ import {
     NC_SHOW_MSG,
     NATTK,
     NORMAL_SPEED,
-    PASSES_WALLS,
     SHOCK_RES,
     SLEEP_RES,
     STONE_RES,
@@ -237,7 +235,9 @@ import { mintrap } from './trap_effects.js';
 import { acid_damage, erode_obj } from './trap_erode_obj.js';
 import { simpleonames, xnameFresh } from './objnam.js';
 import { strsubst } from './hacklib.js';
-import { Blind, Deaf, Unaware } from './youprop.js';
+import {
+    Blind, Conflict, Deaf, Passes_walls, Unaware,
+} from './youprop.js';
 
 // C ref: mhitm.c attk_protection() (1475-1518). Return the worn-item mask
 // that protects a target from the attack type. This is a pure source helper;
@@ -326,8 +326,7 @@ export async function slept_monst(mtmp, env = {}) {
     if (!helpless(mtmp) || mtmp !== state.u?.ustuck
         || sticks(state.youmonst?.data) || state.u?.uswallow)
         return;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const name = Monnam(mtmp, state);
     await pline_mon(mtmp, `${s_suffix(name)} grip relaxes.`, state,
         { ...env, message });
@@ -353,15 +352,6 @@ function attackEnv(rawEnv) {
     return { ...rawEnv, state, random };
 }
 
-// C ref: youprop.h:218 Conflict, `(HConflict || EConflict)`, over the hero's
-// CONFLICT property. Two disjuncts and no blocking term: youprop.h gives a
-// `blocked` alias to BLINDED, CLAIRVOYANT, INVIS, STEALTH, LEVITATION and
-// FLYING alone, so no C path sets it for CONFLICT. mhitm.c reads Conflict
-// once, in the cockatrice-instinct test at 436.
-function Conflict(state) {
-    const conflict = state.u?.uprops?.[CONFLICT];
-    return Boolean(conflict?.intrinsic || conflict?.extrinsic);
-}
 
 
 // C ref: mhitm.c noises() (26-38). What the hero hears when a fight he cannot
@@ -413,21 +403,12 @@ async function noises(magr, mattk, env) {
 // The marker write goes through the `markInvisible` seam for the same reason
 // `redraw` does. Both write the live map: newsym() paints the module-global
 // game, and display.c map_invisible() writes map memory and then paints
-// through show_glyph_cell(), which reads that same global. The once-per-turn
-// planning scan reaches this function -- js/unported_monster_actions.js
-// preflightSimpleMonsterActions() runs moveSimplePet() with `planning: true`,
-// and a pet's blow arrives here through dogmove.c dog_move() -- and its clone
-// shares the live level's cells, so a dry run marking a square would leave a
-// remembered 'I' and a painted cell behind in a game the scan may still refuse.
-// The scan binds both seams to no-ops and replays the turn live afterwards.
+// through show_glyph_cell(), which reads that same global.
 function pre_mm_attack(magr, mdef, env) {
     const { state } = env;
-    const redraw = env.redraw ?? (env.planning
-        ? () => {}
-        : (x, y) => newsym(x, y));
-    const markInvisible = env.markInvisible ?? (env.planning
-        ? () => {}
-        : (x, y) => map_invisible(x, y, state));
+    const redraw = env.redraw ?? ((x, y) => newsym(x, y));
+    const markInvisible = env.markInvisible
+        ?? ((x, y) => map_invisible(x, y, state));
     let showit = false;
 
     if (M_AP_TYPE(mdef)) {
@@ -575,24 +556,17 @@ export async function fightm(mtmp, rawEnv = {}) {
 export async function mdisplacem(magr, mdef, quietly = false, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
-    // The planning scan passes only { state, random, planning }.  Every
-    // display seam below therefore needs an explicit planning no-op; falling
-    // back to ttyPline/newsym would write the live terminal while the clone
-    // is still being considered.  Live callers retain their injected seams.
-    const planning = Boolean(rawEnv.planning);
-    const message = planning ? async () => {} : (rawEnv.message ?? ttyPline);
-    const redraw = planning ? () => {} : (rawEnv.redraw ?? newsym);
-    const flush = planning ? async () => {} : (rawEnv.flushScreen ?? flush_screen);
+    // Callers may inject their own display seams.
+    const message = rawEnv.message ?? ttyPline;
+    const redraw = rawEnv.redraw ?? newsym;
+    const flush = rawEnv.flushScreen ?? flush_screen;
     const unblockPoint = rawEnv.unblockPoint ?? ((x, y, targetState) => {
-        if (planning && typeof rawEnv.admitPlannedVisionChange === 'function')
-            rawEnv.admitPlannedVisionChange(x, y, targetState);
         unblock_point(x, y, targetState);
     });
     const operationEnv = {
         ...rawEnv,
         state,
         random,
-        planning,
         message,
         redraw,
         flushScreen: flush,
@@ -604,8 +578,8 @@ export async function mdisplacem(magr, mdef, quietly = false, rawEnv = {}) {
         },
     };
 
-    // C names the petrifying pair even while the movement pass is planned.
-    // Keep those cosmetic draws on the active state, like the pronoun below.
+    // Keep the petrifying pair's cosmetic naming draws on the active state,
+    // like the pronoun below.
     const nameEnv = {
         ...operationEnv,
         canSpotMonster: rawEnv.canSpotMonster ?? canspotmon,
@@ -669,7 +643,7 @@ export async function mdisplacem(magr, mdef, quietly = false, rawEnv = {}) {
         }
         await monstone(magr, state, { ...operationEnv, message });
         if (magr.mhp >= 1) return M_ATTK_HIT;
-        if (magr.mtame && !state.gv.vis && !planning)
+        if (magr.mtame && !state.gv.vis)
             await message('You have a peculiarly sad feeling for a moment, then it passes.', state, operationEnv);
         return M_ATTK_AGR_DIED;
     }
@@ -688,7 +662,7 @@ export async function mdisplacem(magr, mdef, quietly = false, rawEnv = {}) {
     update_monster_region(magr, state);
     update_monster_region(mdef, state);
 
-    if (state.gv.vis && !quietly && !planning) {
+    if (state.gv.vis && !quietly) {
         await message(
             `${Monnam(magr, state, nameEnv)} moves ${mon_nam(mdef, state, nameEnv)}`
                 + ` out of ${is_rider(pa) ? 'the' : mhis(magr, {
@@ -700,11 +674,9 @@ export async function mdisplacem(magr, mdef, quietly = false, rawEnv = {}) {
             rawEnv,
         );
     }
-    if (!planning) {
-        redraw(fx, fy, state);
-        redraw(tx, ty, state);
-        await flush(0, state);
-    }
+    redraw(fx, fy, state);
+    redraw(tx, ty, state);
+    await flush(0, state);
     return M_ATTK_HIT;
 }
 
@@ -754,9 +726,7 @@ export async function mattackm(magr, mdef, rawEnv = {}) {
     /* mundetected monsters become un-hidden if they are attacked */
     if (mdef.mundetected) {
         mdef.mundetected = 0;
-        (env.redraw ?? (env.planning
-            ? () => {}
-            : (x, y) => newsym(x, y)))(mdef.mx, mdef.my);
+        (env.redraw ?? ((x, y) => newsym(x, y)))(mdef.mx, mdef.my);
         if (canseemon(mdef, state) && !sensemon(mdef, state)) {
             const message = requireAttackOperation(env, 'message');
             if (Unaware(state)) {
@@ -874,7 +844,7 @@ export async function mattackm(magr, mdef, rawEnv = {}) {
             /* Monsters won't attack cockatrices physically if they
              * have a weapon instead. This instinct doesn't work for
              * players, or under conflict or confusion. */
-            if (!magr.mconf && !Conflict(state) && mwep
+            if (!magr.mconf && !Conflict(state.u) && mwep
                 && mattk.aatyp !== AT_WEAP && touch_petrifies(mdef.data)) {
                 strike = 0;
                 break;
@@ -1100,8 +1070,7 @@ async function explmm(magr, mdef, mattk, env) {
 // at every currently ported direct caller.
 export async function failed_grab(magr, mdef, mattk, env = {}) {
     const state = env.state ?? game;
-    const message = env.message ?? (env.planning ? async () => {}
-        : ttyPline);
+    const message = env.message ?? ttyPline;
     const tailmiss = Boolean(state.gn?.notonhead);
 
     if ((unsolid(mdef.data) || tailmiss)
@@ -1154,8 +1123,7 @@ export function engulf_target(magr, mdef, state = game) {
     const dy = defenderIsHero ? state.u?.uy : mdef?.my;
     const defenderLocation = state.level?.at(dx, dy);
     const defenderPassesWalls = defenderIsHero
-        ? Boolean(state.u?.uprops?.[PASSES_WALLS]?.intrinsic
-            || state.u?.uprops?.[PASSES_WALLS]?.extrinsic)
+        ? Passes_walls(state.u)
         : passes_walls(mdef?.data);
     if (!defenderPassesWalls
         && (!defenderLocation
@@ -1171,8 +1139,7 @@ export function engulf_target(magr, mdef, state = game) {
     const ay = attackerIsHero ? state.u?.uy : magr?.my;
     const attackerLocation = state.level?.at(ax, ay);
     const attackerPassesWalls = attackerIsHero
-        ? Boolean(state.u?.uprops?.[PASSES_WALLS]?.intrinsic
-            || state.u?.uprops?.[PASSES_WALLS]?.extrinsic)
+        ? Passes_walls(state.u)
         : passes_walls(magr?.data);
     if (!attackerPassesWalls
         && (!attackerLocation
@@ -1661,13 +1628,6 @@ export async function mon_poly(magr, mdef, damage, state = game, rawEnv = {}) {
     const oldform = mdef.data;
     const freaky = ' undergoes a freakish metamorphosis';
 
-    // polyself() can ask for a form and uses the live core context. Stop
-    // the dry run at the existing input boundary and replay this effect live.
-    if (env.planning) {
-        if (typeof env.requestPlanningInput !== 'function')
-            throw new TypeError('planned mon_poly requires an input boundary');
-        env.requestPlanningInput('mon_poly');
-    }
     if (mdef === state.youmonst) {
         const active = (property) => Boolean(
             state.u.uprops[property].intrinsic

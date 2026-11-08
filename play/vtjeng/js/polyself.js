@@ -26,7 +26,6 @@ import {
     BZ_OFS_AD,
     BZ_U_BREATH,
     COLD_RES,
-    CONFUSION,
     DART_TRAP,
     DIED,
     DISINT_RES,
@@ -44,7 +43,6 @@ import {
     FIRE_TRAP,
     FLYING,
     FOOT,
-    FREE_ACTION,
     FROMFORM,
     FROM_RACE,
     FROMOUTSIDE,
@@ -99,8 +97,6 @@ import {
     POLY_REVERT,
     POLY_TRAP,
     POLYMORPH,
-    POLYMORPH_CONTROL,
-    PROT_FROM_SHAPE_CHANGERS,
     REFLECTING,
     REGENERATION,
     ROCKTRAP,
@@ -110,11 +106,9 @@ import {
     SHOCK_RES,
     SHOPBASE,
     SHOP_WEB_COST,
-    SICK,
     SICK_ALL,
     SICK_RES,
     SLEEP_RES,
-    SLIMED,
     SLP_GAS_TRAP,
     SPIKED_PIT,
     SQKY_BOARD,
@@ -122,7 +116,6 @@ import {
     STEALTH,
     STOMACH,
     STONE_RES,
-    STONED,
     STONING,
     STRANGLED,
     STUNNED,
@@ -139,7 +132,6 @@ import {
     TT_LAVA,
     TT_PIT,
     TT_WEB,
-    UNCHANGING,
     Ugender,
     Upolyd,
     VIBRATING_SQUARE,
@@ -160,7 +152,7 @@ import {
 import { game } from './gstate.js';
 import { mungspaces } from './hacklib.js';
 import {
-    amorphous, attacktype, attacktype_fordmg, breakarm, can_be_strangled, can_breathe, could_twoweap, dmgtype, dmgtype_fromattack, emits_light, has_head, has_horns, hides_under, humanoid, infravision, is_animal, is_bat, is_clinger, is_floater, is_flyer, is_hider, is_female, is_male, is_neuter, is_placeholder, is_swimmer, is_vampire, is_vampshifter, is_mind_flayer, is_unicorn, is_were, is_whirly, lays_eggs, eggs_in_water, likes_lava, mindless, Resists_Elem, nohands, nonliving, unsolid, passes_walls, perceives, pm_invisible, poly_when_stoned, polyok, regenerates, resists_drli, sliparm, slithy, sticks, strongmonst, telepathic, touch_petrifies, valid_vampshiftform, verysmall, webmaker, weirdnonliving, can_teleport, control_teleport, defended, your_race, flaming, name_to_monclass, name_to_monplus, num_horns, type_is_pname, } from './mondata.js';
+    amorphous, attacktype, attacktype_fordmg, breakarm, can_be_strangled, can_breathe, could_twoweap, dmgtype, dmgtype_fromattack, emits_light, has_head, has_horns, hides_under, humanoid, infravision, is_animal, is_bat, is_clinger, is_floater, is_flyer, is_hider, is_female, is_male, is_neuter, is_placeholder, is_swimmer, is_vampire, is_vampshifter, is_mind_flayer, is_unicorn, is_were, is_whirly, lays_eggs, eggs_in_water, likes_lava, mindless, Resists_Elem, nohands, nonliving, unsolid, passes_walls, perceives, pm_invisible, poly_when_stoned, polyok, regenerates, resists_drli, sliparm, slithy, sticks, strongmonst, telepathic, touch_petrifies, valid_vampshiftform, verysmall, webmaker, weirdnonliving, can_teleport, control_teleport, your_race, flaming, name_to_monclass, name_to_monplus, num_horns, type_is_pname, } from './mondata.js';
 import { character_race, genders } from './roles.js';
 import {
     capitalizedMonsterName, hliquid, l_monnam, Monnam, mon_nam,
@@ -278,7 +270,11 @@ import { unpunish } from './read.js';
 import { learn_egg_type } from './timeout.js';
 import { canseemon } from './display.js';
 import {
-    Blind, Hallucination, Invis, See_invisible,
+    Blind, Confusion, EFlying, ELevitation, Flying, Free_action, HFlying,
+    HLevitation, Hallucination, Invis, Levitation, Passes_walls,
+    Polymorph_control, Protection_from_shape_changers, See_invisible, Sick,
+    Sick_resistance, Slimed, Stone_resistance, Stoned, Strangled, Stunned,
+    Swimming, Unchanging,
 } from './youprop.js';
 
 // Boundary error for polyself branches that fall outside the current goal.
@@ -292,59 +288,12 @@ export class UnsupportedPolyselfError extends Error {
     }
 }
 
-function uprop(state, index) {
-    const property = state.u?.uprops?.[index];
-    if (!property)
-        throw new Error(`hero property ${index} is not initialized`);
-    return property;
-}
-
-// youprop.h:253 Flying. A flying steed carries the hero through the air, so
-// the steed term belongs inside the macro rather than at its call sites.
-function Flying(state) {
-    const flying = uprop(state, FLYING);
-    return Boolean((flying.intrinsic || flying.extrinsic
-                    || (state.u.usteed && is_flyer(state.u.usteed.data)))
-                   && !flying.blocked);
-}
-
-// youprop.h:242 Levitation.
-function Levitation(state) {
-    const levitation = uprop(state, LEVITATION);
-    return Boolean((levitation.intrinsic || levitation.extrinsic)
-                   && !levitation.blocked);
-}
 
 
-// youprop.h:84 Confusion is HConfusion alone.
-function Confusion(state) {
-    return Boolean(uprop(state, CONFUSION).intrinsic);
-}
-
-// youprop.h:65 Stone_resistance, :152 See_invisible, :368 Polymorph_control
-// and :372 Unchanging: intrinsic or extrinsic, with no block term.
-function intrinsicOrExtrinsic(state, index) {
-    const property = uprop(state, index);
-    return Boolean(property.intrinsic || property.extrinsic);
-}
-
-function Stone_resistance(state) {
-    return intrinsicOrExtrinsic(state, STONE_RES);
-}
 
 
-function Polymorph_control(state) {
-    return intrinsicOrExtrinsic(state, POLYMORPH_CONTROL);
-}
 
-function Unchanging(state) {
-    return intrinsicOrExtrinsic(state, UNCHANGING);
-}
 
-// youprop.h:383 Free_action reads the extrinsic field alone.
-function Free_action(state) {
-    return Boolean(uprop(state, FREE_ACTION).extrinsic);
-}
 
 // monst.h:272 resists_fire(mon) is Resists_Elem(mon, FIRE_RES), whose
 // monster arm mondata.js ports as Resists_Elem().
@@ -373,19 +322,17 @@ function DEADMONSTER(mon) {
 // I_SPECIAL bit of the corresponding blocked mask.
 export function float_vs_flight(state = game) {
     const u = state.u;
-    const flying = uprop(state, FLYING);
-    const levitation = uprop(state, LEVITATION);
     const stuck_in_floor = Boolean(u.utrap && u.utraptype !== TT_PIT);
 
-    if ((levitation.intrinsic || levitation.extrinsic)
-        || ((flying.intrinsic || flying.extrinsic) && stuck_in_floor))
-        flying.blocked |= I_SPECIAL;
+    if ((HLevitation(u) || ELevitation(u))
+        || ((HFlying(u) || EFlying(u)) && stuck_in_floor))
+        u.uprops[FLYING].blocked |= I_SPECIAL;
     else
-        flying.blocked &= ~I_SPECIAL;
-    if ((levitation.intrinsic || levitation.extrinsic) && stuck_in_floor)
-        levitation.blocked |= I_SPECIAL;
+        u.uprops[FLYING].blocked &= ~I_SPECIAL;
+    if ((HLevitation(u) || ELevitation(u)) && stuck_in_floor)
+        u.uprops[LEVITATION].blocked |= I_SPECIAL;
     else
-        levitation.blocked &= ~I_SPECIAL;
+        u.uprops[LEVITATION].blocked &= ~I_SPECIAL;
 
     steed_vs_stealth(state);
 
@@ -397,11 +344,10 @@ export function float_vs_flight(state = game) {
 // hero and steed fly. This is the only writer of uprops[STEALTH].blocked, the
 // BStealth term of youprop.h:210's Stealth macro.
 export function steed_vs_stealth(state = game) {
-    const stealth = uprop(state, STEALTH);
-    if (state.u.usteed && !Flying(state) && !Levitation(state))
-        stealth.blocked |= FROMOUTSIDE;
+    if (state.u.usteed && !Flying(state.u) && !Levitation(state.u))
+        state.u.uprops[STEALTH].blocked |= FROMOUTSIDE;
     else
-        stealth.blocked &= ~FROMOUTSIDE;
+        state.u.uprops[STEALTH].blocked &= ~FROMOUTSIDE;
 }
 
 // ---------- polysense --------------------------------------------------
@@ -442,11 +388,10 @@ function polysense(state) {
 // polymorphing into or out of a form immune to it.
 async function check_strangling(on, state, rawEnv = {}) {
     const u = state.u;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     if (on) {
         // maybe resume strangling
-        const was_strangled = (u.uprops[STRANGLED].intrinsic !== 0);
+        const was_strangled = (Strangled(u) !== 0);
         if (state.uamul && state.uamul.otyp === AMULET_OF_STRANGULATION
             && can_be_strangled(state.youmonst, state)) {
             u.uprops[STRANGLED].intrinsic = 6;
@@ -464,7 +409,7 @@ async function check_strangling(on, state, rawEnv = {}) {
         }
     } else {
         // maybe block strangling
-        if (u.uprops[STRANGLED].intrinsic
+        if (Strangled(u)
             && !can_be_strangled(state.youmonst, state)) {
             u.uprops[STRANGLED].intrinsic = 0;
             state.disp ??= {};
@@ -487,8 +432,7 @@ export function set_uasmon(state = game) {
     state.youmonst.m_id = 1;
 
     // C checks the active property before assigning a vampire's shift base.
-    const shapeProtection = state.u.uprops[PROT_FROM_SHAPE_CHANGERS];
-    if (shapeProtection.intrinsic || shapeProtection.extrinsic)
+    if (Protection_from_shape_changers(state.u))
         state.youmonst.cham = NON_PM;
     else if (is_vampire(state.youmonst.data))
         state.youmonst.cham = state.youmonst.mnum;
@@ -647,8 +591,7 @@ export function uasmon_maxStr(state = game) {
 export async function skinback(silently, state = game, rawEnv = {}) {
     if (state.uskin) {
         if (!silently) {
-            const message = rawEnv.message
-                ?? (rawEnv.planning ? async () => {} : ttyPline);
+            const message = rawEnv.message ?? ttyPline;
             await message('Your skin returns to its original form.', state,
                 rawEnv);
         }
@@ -664,10 +607,8 @@ export async function skinback(silently, state = game, rawEnv = {}) {
 // C ref: polyself.c dropp() (1122-1154). Drop an item from inventory,
 // checking that it is still there (emergency_disrobe might have removed it).
 async function dropp(obj, state, rawEnv = {}) {
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
-    const redraw = rawEnv.redraw
-        ?? (rawEnv.planning ? () => {} : newsym);
+    const message = rawEnv.message ?? ttyPline;
+    const redraw = rawEnv.redraw ?? newsym;
     let otmp = state.invent;
     while (otmp) {
         if (otmp === obj) {
@@ -694,8 +635,7 @@ async function dropp(obj, state, rawEnv = {}) {
 // drops each object only after its worn slot has been updated.
 async function break_armor(state, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, random, message };
     let otmp;
     const uptr = state.youmonst.data;
@@ -887,10 +827,8 @@ async function break_armor(state, rawEnv = {}) {
 // wielded weapon.  For the gnome case, cantwield is false (humanoid
 // hands), so this falls through to the untwoweapon check.
 async function drop_weapon(alone, state, rawEnv = {}) {
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
-    const redraw = rawEnv.redraw
-        ?? (rawEnv.planning ? () => {} : newsym);
+    const message = rawEnv.message ?? ttyPline;
+    const redraw = rawEnv.redraw ?? newsym;
     if (state.uwep) {
         // alone=0 when called from break_armor alongside glove removal;
         // alone=1 when called directly from polymon.
@@ -963,10 +901,8 @@ async function drop_weapon(alone, state, rawEnv = {}) {
 // property cleanup, escape from holders/terrain, and the command hints.
 export async function polymon(mntmp, state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
-    const redraw = rawEnv.redraw
-        ?? (rawEnv.planning ? () => {} : newsym);
+    const message = rawEnv.message ?? ttyPline;
+    const redraw = rawEnv.redraw ?? newsym;
     const env = { ...rawEnv, state, random, message, redraw };
     const u = state.u;
     let mdat = state.mons[mntmp];
@@ -1057,7 +993,7 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     // polyself.c:823-828. poly_when_stoned() already checks that the stone
     // golem is not genocided; make_stoned() clears the delayed killer after
     // the form-change line and emits this second line in source order.
-    if (u.uprops[STONED].intrinsic
+    if (Stoned(u)
         && poly_when_stoned(mdat, state)) {
         mntmp = M.PM_STONE_GOLEM;
         mdat = state.mons[mntmp];
@@ -1083,20 +1019,16 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
 
     // polyself.c:838-841 and youprop.h:69-70. Sick_resistance includes the
     // form's property plus defended()'s AD_DISE suit check.
-    if (Stone_resistance(state) && u.uprops[STONED].intrinsic) {
+    if (Stone_resistance(state.u) && Stoned(u)) {
         await make_stoned(0, null, 0, null, state);
         await message('You no longer seem to be petrifying.', state, env);
     }
-    const sicknessResistance = u.uprops[SICK_RES];
-    const sickResistant = Boolean(
-        sicknessResistance.intrinsic || sicknessResistance.extrinsic
-        || defended(state.youmonst, M.AD_DISE, state),
-    );
-    if (sickResistant && u.uprops[SICK].intrinsic) {
+    const sickResistant = Sick_resistance(state);
+    if (sickResistant && Sick(u)) {
         await make_sick(0, null, false, SICK_ALL, state, env);
         await message('You no longer feel sick.', state, env);
     }
-    if (u.uprops[SLIMED].intrinsic) {
+    if (Slimed(u)) {
         if (flaming(state.youmonst.data)) {
             await make_slimed(0, 'The slime burns away!', state, env);
         } else if (mntmp === M.PM_GREEN_SLIME) {
@@ -1203,7 +1135,7 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     }
 
     if (u.usteed) {
-        if (touch_petrifies(u.usteed.data) && !Stone_resistance(state)
+        if (touch_petrifies(u.usteed.data) && !Stone_resistance(state.u)
             && random.rnl(3)) {
             await message(
                 `No longer petrify-resistant, you touch ${mon_nam(u.usteed, state, env)}.`,
@@ -1223,36 +1155,14 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     // a changed form can leave the hero in liquid or underwater without a
     // compatible movement property.
     const inPoolOrLava = is_pool_or_lava(u.ux, u.uy, state);
-    const inPoolHazard = !Levitation(state) && !u.ustuck
-        && !Flying(state) && inPoolOrLava;
-    const swimming = u.uprops[SWIMMING];
-    const isSwimming = swimming.intrinsic || swimming.extrinsic
-        || (u.usteed && is_swimmer(u.usteed.data));
-    const unsafeUnderwater = u.uinwater && !isSwimming;
+    const inPoolHazard = !Levitation(state.u) && !u.ustuck
+        && !Flying(state.u) && inPoolOrLava;
+    const unsafeUnderwater = u.uinwater && !Swimming(u);
     if ((inPoolHazard || unsafeUnderwater) && !wasExpelled)
         await spoteffects(true, state, env);
     if (state.program_state?.gameover) return 1;
 
-    async function resetTrapWithMessage() {
-        if (!rawEnv.planning) {
-            await reset_utrap(true, state);
-            return;
-        }
-        const wasLevitation = Levitation(state);
-        const wasFlight = Flying(state);
-        reset_utrap(false, state);
-        // trap.c reset_utrap()'s only discarded continuation here is
-        // float_up(), which can write terminal output and perform pickup or
-        // terrain effects. Keep that boundary explicit on planning clones.
-        if (!wasLevitation && Levitation(state))
-            note_unported('trap.c float_up after polymon trap release');
-        else if (!wasFlight && Flying(state))
-            await message('You can fly.', state, env);
-    }
-
-    const passesWalls = u.uprops[PASSES_WALLS].intrinsic
-        || u.uprops[PASSES_WALLS].extrinsic;
-    if (passesWalls && u.utrap
+    if (Passes_walls(u) && u.utrap
         && (u.utraptype === TT_INFLOOR
             || u.utraptype === TT_BURIEDBALL)) {
         if (u.utraptype === TT_INFLOOR) {
@@ -1262,12 +1172,12 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
                 state, env);
             await buried_ball_to_freedom(state, env);
         }
-        await resetTrapWithMessage();
+        await reset_utrap(true, state);
     } else if (likes_lava(state.youmonst.data)
         && u.utrap && u.utraptype === TT_LAVA) {
         await message(`The ${hliquid('lava', env)} now feels soothing.`,
             state, env);
-        await resetTrapWithMessage();
+        await reset_utrap(true, state);
     }
 
     const newForm = state.youmonst.data;
@@ -1289,11 +1199,11 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
                 && u.utraptype === TT_BEARTRAP))) {
         await message(`You are no longer stuck in the ${u.utraptype === TT_WEB
             ? 'web' : 'bear trap'}.`, state, env);
-        await resetTrapWithMessage();
+        await reset_utrap(true, state);
     }
     if (webmaker(newForm) && u.utrap && u.utraptype === TT_WEB) {
         await message('You orient yourself on the web.', state, env);
-        await resetTrapWithMessage();
+        await reset_utrap(true, state);
     }
 
     await check_strangling(true, state, env); // maybe start strangling
@@ -1373,13 +1283,10 @@ async function polyman(fmt, arg, state, rawEnv = {}) {
     // C polyman() always uses urgent_pline() for the form-change line.  The
     // urgent tty arm clears WIN_STOP left by an Escape at an earlier More;
     // ordinary pline() would retain the stop and let a later map flush repaint
-    // the stale pending spell message.  Planning remains silent, and an
-    // explicitly supplied urgent seam keeps clone tests independent of TTY.
-    const message = rawEnv.planning
-        ? (async () => {})
-        : (rawEnv.urgentMessage ?? ttyUrgentPline);
-    const redraw = rawEnv.redraw
-        ?? (rawEnv.planning ? () => {} : newsym);
+    // the stale pending spell message.  An explicitly supplied urgent seam
+    // keeps tests independent of TTY.
+    const message = rawEnv.urgentMessage ?? ttyUrgentPline;
+    const redraw = rawEnv.redraw ?? newsym;
     const sticking = Boolean(sticks(state.youmonst.data) && u.ustuck
                              && !u.uswallow);
     const was_mimicking = (M_AP_TYPE(state.youmonst) !== M_AP_NOTHING);
@@ -1444,8 +1351,7 @@ async function polyman(fmt, arg, state, rawEnv = {}) {
     }
     await check_strangling(true, state);
 
-    if (!Levitation(state) && !u.ustuck && is_pool_or_lava(u.ux, u.uy, state)
-        && !rawEnv.planning)
+    if (!Levitation(state.u) && !u.ustuck && is_pool_or_lava(u.ux, u.uy, state))
         await spoteffects(true, state);
 
     await see_monsters(state, { ...rawEnv, redraw });
@@ -1524,11 +1430,11 @@ export function livelog_newform(viapoly, oldgend, newgend, state = game) {
 // live log; only the former is owned here. The `dead` flag stands for C's `goto dead`
 // into the middle of the u.uhp <= 0 arm.
 export async function newman(state = game, env = {}) {
-    // C's newuhs(FALSE) refreshes hunger through bot(). Planning callers
-    // supply their own status operation, or suppress that live redraw.
+    // C's newuhs(FALSE) refreshes hunger through bot(). A caller may supply
+    // its own status operation.
     const hungerEnv = {
         ...env,
-        statusRefresh: env.statusRefresh ?? (env.planning ? () => {} : () => bot()),
+        statusRefresh: env.statusRefresh ?? (() => bot()),
     };
     const u = state.u;
     let i, oldgend;
@@ -1601,12 +1507,12 @@ export async function newman(state = game, env = {}) {
         /* [should alignment record be tweaked too?] */
 
         u.uhunger = rn1(500, 500);
-        if (u.uprops[SICK].intrinsic)
+        if (Sick(u))
             await make_sick(0, null, false, SICK_ALL, state);
-        if (u.uprops[STONED].intrinsic)
+        if (Stoned(u))
             await make_stoned(0, null, 0, null, state);
         if (u.uhp <= 0) {
-            if (Polymorph_control(state)) { /* even when Stunned || Unaware */
+            if (Polymorph_control(state.u)) { /* even when Stunned || Unaware */
                 if (u.uhp <= 0)
                     u.uhp = 1;
             } else {
@@ -1649,7 +1555,7 @@ export async function newman(state = game, env = {}) {
     else
         livelog_newform(true, oldgend, newgend, state);
 
-    if (u.uprops[SLIMED].intrinsic) {
+    if (Slimed(u)) {
         await ttyPline(
             'Your body transforms, but there is still slime on you.', state,
         );
@@ -1682,19 +1588,19 @@ export async function polyself(psflags, state = game, env = {}) {
     const iswere = ismnum(u.ulycn);
     const isvamp = Boolean(is_vampire(state.youmonst.data)
                            || is_vampshifter(state.youmonst));
-    let controllable_poly = Polymorph_control(state)
-        && !(Boolean(uprop(state, STUNNED).intrinsic)
+    let controllable_poly = Polymorph_control(state.u)
+        && !(Boolean(Stunned(state.u))
              || (Math.trunc(state.multi ?? 0) < 0
                  && (unconscious(state) || u.uhs === FAINTED)));
 
-    if (Unchanging(state)) {
+    if (Unchanging(state.u)) {
         await ttyPline('You fail to transform!', state);
         return;
     }
 
     // Being stunned or unaware does not negate the force-control aspect of
     // polymorph control.  The shock draw occurs before old_light is captured.
-    if (!Polymorph_control(state) && !forcecontrol && !draconian && !iswere
+    if (!Polymorph_control(state.u) && !forcecontrol && !draconian && !iswere
         && !isvamp && rn2(20) > acurr(state, A_CON)) {
         await ttyPline('You shudder for a moment.', state);
         await losehp(rnd(30), 'system shock', KILLED_BY_AN, state);
@@ -2081,33 +1987,23 @@ export function mbodypart(monster, part) {
 // points left dies. C does not use polyman()'s return value.
 export async function rehumanize(state = game, rawEnv = {}) {
     const u = state.u;
-    const was_flying = Flying(state);
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const was_flying = Flying(state.u);
+    const message = rawEnv.message ?? ttyPline;
     const displayRandom = rawEnv.displayRandom
         ?? (state.displayCtx
             ? (bound) => rn2_on_display_rng(bound, state)
             : () => 0);
     const env = {
         ...rawEnv, state, message, displayRandom,
-        redraw: rawEnv.redraw
-            ?? (rawEnv.planning ? () => {} : newsym),
+        redraw: rawEnv.redraw ?? newsym,
     };
 
     /* You can't revert back while unchanging */
-    if (Unchanging(state)) {
+    if (Unchanging(state.u)) {
         if (u.mh < 1) {
             state.killer ??= {};
             state.killer.format = NO_KILLER_PREFIX;
             state.killer.name = 'killed while stuck in creature form';
-            if (env.planning) {
-                if (typeof env.planningDeath !== 'function') {
-                    throw new TypeError(
-                        'rehumanize requires planningDeath for a fatal planned reversion',
-                    );
-                }
-                throw env.planningDeath();
-            }
             await done(DIED, state);
             /* can get to here if declining to die in explore or wizard
                mode; since we're wearing an amulet of unchanging we can't
@@ -2142,14 +2038,6 @@ export async function rehumanize(state = game, rawEnv = {}) {
         state.killer ??= {};
         state.killer.name = `reverting to unhealthy ${state.urace.adj} form`;
         state.killer.format = KILLED_BY;
-        if (env.planning) {
-            if (typeof env.planningDeath !== 'function') {
-                throw new TypeError(
-                    'rehumanize requires planningDeath for a fatal planned reversion',
-                );
-            }
-            throw env.planningDeath();
-        }
         await done(DIED, state);
     }
     nomul(0, state);
@@ -2159,7 +2047,7 @@ export async function rehumanize(state = game, rawEnv = {}) {
     state.vision_full_recalc = 1;
     await encumber_msg(state, { message });
     update_inventory(env);
-    if (was_flying && !Flying(state) && u.usteed)
+    if (was_flying && !Flying(state.u) && u.usteed)
         await message(
             `You and ${monsterCommonName(u.usteed, state, 0, env)} return gently `
             + `to the ${surface(u.ux, u.uy, state)}.`, state, env,
@@ -2175,7 +2063,7 @@ export async function rehumanize(state = game, rawEnv = {}) {
 // ubreatheu() (self-targeted) or ubuzz() (directional breath).
 export async function dobreathe(state = game) {
     // polyself.c:1425-1428 Strangled guard
-    if (state.u.uprops[STRANGLED].intrinsic) {
+    if (Strangled(state.u)) {
         await ttyPline("You can't breathe.  Sorry.", state);
         return ECMD_OK;
     }
@@ -2281,7 +2169,7 @@ export async function dospinweb(state = game) {
     /* [at the time this was written, it was not possible to be both a
        webmaker and a flyer, but with the advent of amulet of flying that
        became a possibility; at present hero can spin a web while flying] */
-    if (Levitation(state) || reject_terrain) {
+    if (Levitation(state.u) || reject_terrain) {
         await ttyPline(
             `You must be on ${reject_terrain ? 'solid' : 'the'} ground `
             + 'to spin a web.',
@@ -2494,13 +2382,13 @@ export async function dogaze(state = game) {
                 looked--;
                 continue;
             } else if (state.flags.safe_dog && mtmp.mtame
-                       && !Confusion(state)) {
+                       && !Confusion(state.u)) {
                 await ttyPline(
                     `You avoid gazing at ${y_monnam(mtmp, state)}.`, state,
                 );
             } else {
                 if (state.flags.confirm && mtmp.mpeaceful
-                    && !Confusion(state)) {
+                    && !Confusion(state.u)) {
                     const qbuf = `Really ${(adtyp === M.AD_CONF)
                         ? 'confuse' : 'attack'} `
                         + `${mon_nam(mtmp, state)}?`;
@@ -2565,7 +2453,7 @@ export async function dogaze(state = game) {
                     continue;
 
                 if (mtmp.data.pmidx === M.PM_FLOATING_EYE && !mtmp.mcan) {
-                    if (!Free_action(state)) {
+                    if (!Free_action(state.u)) {
                         await ttyPline(
                             'You are frozen by '
                             + `${s_suffix(mon_nam(mtmp, state))} gaze!`,
@@ -2618,7 +2506,7 @@ export async function dogaze(state = game) {
 export async function dohide(state = game) {
     const u = state.u;
     const ismimic = state.youmonst.data.mlet === M.S_MIMIC;
-    const on_ceiling = is_clinger(state.youmonst.data) || Flying(state);
+    const on_ceiling = is_clinger(state.youmonst.data) || Flying(state.u);
 
     /* can't hide while being held (or holding) or while trapped
        (except for floor hiders [trapper or mimic] in pits) */
@@ -2669,7 +2557,7 @@ export async function dohide(state = game) {
              otmp = otmp.nexthere)
             ct += otmp.quan;
         /* otmp will be Null iff the entire pile consists of 'trice corpses */
-        if (!otmp && !Stone_resistance(state)) {
+        if (!otmp && !Stone_resistance(state.u)) {
             let corpse_name = cxname(otop, state);
 
             /* for the plural case, we'll say "cockatrice corpses" or
@@ -2698,7 +2586,7 @@ export async function dohide(state = game) {
         u.uundetected = 0;
         return ECMD_OK;
     }
-    if ((is_hider(state.youmonst.data) && !Flying(state)) /* floor hider */
+    if ((is_hider(state.youmonst.data) && !Flying(state.u)) /* floor hider */
         && (Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state))) {
         await ttyPline('There is nowhere to hide beneath you.', state);
         u.uundetected = 0;
@@ -2812,8 +2700,7 @@ export async function uunstick(state = game, rawEnv = {}) {
         throw new Error('impossible: uunstick: no ustuck?');
     }
     set_ustuck(null, state); /* before pline() */
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     await message(
         `${capitalizedMonsterName(mtmp, state)} is no longer in your clutches.`,
         state,
@@ -2835,7 +2722,7 @@ export function poly_gender(state = game) {
 // heals from electricity and one in iron golem form from fire, up to the
 // form's maximum.
 export async function ugolemeffects(damtype, dam, state = game, env = {}) {
-    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const random = env.random ?? coreRandom;
     const u = state.u;
     let heal = 0;

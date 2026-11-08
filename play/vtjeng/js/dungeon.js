@@ -8,7 +8,6 @@ import { isok } from './cmd_isok.js';
 import { rn2, rnd } from './rng.js';
 import { DUNGEON_DATA } from './dungeon_data.js';
 import {
-    AGGRAVATE_MONSTER,
     ALTAR,
     AM_MASK,
     Amask2align,
@@ -28,7 +27,6 @@ import {
     CORR,
     DELPHI,
     DOOR,
-    FLYING,
     ICE,
     IS_AIR,
     IS_ALTAR,
@@ -38,7 +36,6 @@ import {
     IS_ROOM,
     IS_WALL,
     LAVAPOOL,
-    LEVITATION,
     LR_DOWNTELE,
     LR_UPTELE,
     MAGIC_PORTAL,
@@ -111,7 +108,9 @@ import { ttyPline } from './tty_message.js';
 import { add_menu_heading, getlin, select_menu } from './windows.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
 import { tty_clear_map_window } from './wintty.js';
-import { Blind, Hallucination } from './youprop.js';
+import {
+    Blind, EAggravate_monster, Flying, Hallucination, Levitation,
+} from './youprop.js';
 
 export const BR_STAIR = 0;
 export const BR_NO_END1 = 1;
@@ -757,8 +756,7 @@ export function Can_rise_up(x, y, lev, state = game) {
 //
 // dungeon.h:141 In_endgame() and :114 Is_earthlevel() are spelled out against
 // `state`: every other topology predicate in this file is state-scoped, and
-// grounded() is called with the planning clone in
-// js/unported_monster_actions.js, which carries its own hero.
+// grounded() may pass a state other than the module-global game.
 export function has_ceiling(level, state = game) {
     const inEndgame = level?.dnum != null
         && level.dnum === state.astral_level?.dnum;
@@ -904,7 +902,7 @@ export function level_difficulty(state = game) {
             result += 2 * (dungeon.entry_lev - level.dlevel + 1);
         }
     }
-    if (state.u.uprops?.[AGGRAVATE_MONSTER]?.extrinsic)
+    if (EAggravate_monster(state.u))
         result = result > 25 ? 50 : result * 2;
     return result;
 }
@@ -1187,9 +1185,10 @@ export function u_on_newpos(
 }
 
 // C ref: dungeon.c u_on_rndspot() (1604-1638). Live mode places the hero at a
-// random spot in the arrival region a level change left behind. Planning mode
-// repeats the same candidate selection with the supplied RNG and calls the
-// required preflight without changing position or terrain.
+// random spot in the arrival region a level change left behind. With
+// planPositionOnly, do.js place_random_arrival() repeats the same candidate
+// selection with the supplied RNG and calls the required preflight without
+// changing position or terrain.
 //
 // `upflag` packs two bits, as C's own `int up = (upflag & 1),
 // was_in_W_tower = (upflag & 2)` shows.
@@ -1254,21 +1253,7 @@ export class UnsupportedEarthSenseError extends Error {
     }
 }
 
-// C ref: youprop.h Levitation (240) and Flying (253-255). Both are read once,
-// by earth_sense() below. C's Flying carries a third term,
-// `u.usteed && is_flyer(u.usteed->data)`, which earth_sense() cannot observe:
-// its own `u.usteed` test returns one operand earlier.
-function heroLevitating(state) {
-    const levitation = state.u?.uprops?.[LEVITATION];
-    return Boolean((levitation?.intrinsic || levitation?.extrinsic)
-        && !levitation?.blocked);
-}
 
-function heroFlying(state) {
-    const flying = state.u?.uprops?.[FLYING];
-    return Boolean((flying?.intrinsic || flying?.extrinsic)
-        && !flying?.blocked);
-}
 
 // C ref: dungeon.c earth_sense() (1543-1565). A dwarf standing on ROOM or
 // CORR terrain senses a buried object at her square unless mounted, flying,
@@ -1279,7 +1264,7 @@ function heroFlying(state) {
 function earth_sense(state, { message = null } = {}) {
     const hero = state.u;
     if (state.urace?.mnum !== PM_DWARF) return;
-    if (hero.usteed || heroFlying(state) || heroLevitating(state)
+    if (hero.usteed || Flying(state.u) || Levitation(state.u)
         || Upolyd(hero)) return;
     const typ = state.level?.at(hero.ux, hero.uy)?.typ;
     if (typ !== CORR && typ !== ROOM) return;
@@ -2616,7 +2601,7 @@ export function recalc_mapseen(state = game) {
     }
 
     // Record the hero's own square when it can be felt (not levitating).
-    if (!heroLevitating(state))
+    if (!Levitation(state.u))
         update_lastseentyp(u.ux, u.uy, state);
     for (let x = 1; x < COLNO; ++x) {
         for (let y = 0; y < ROWNO; ++y)

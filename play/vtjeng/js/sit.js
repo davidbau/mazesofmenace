@@ -7,14 +7,11 @@
 import {
     AGGRAVATE_MONSTER,
     A_CON,
-    ACID_RES,
-    DRAIN_RES,
     POLY_NOFLAGS,
     UTOTYPE_NONE,
     A_MAX,
     A_STR,
     A_WIS,
-    ANTIMAGIC,
     COLD_RES,
     CONFUSION,
     DRAWBRIDGE_DOWN,
@@ -26,7 +23,6 @@ import {
     FAST,
     FROMOUTSIDE,
     FOUNTAIN,
-    HALF_SPDAM,
     HEAD,
     INTRINSIC,
     INVIS,
@@ -37,14 +33,11 @@ import {
     KILLED_BY,
     KILLED_BY_AN,
     LADDER,
-    LEVITATION,
     ROOM,
     POISON_RES,
     PROTECTION,
     SEE_INVIS,
     SICK_ALL,
-    SHOCK_RES,
-    SLIMED,
     SPIKED_PIT,
     STAIRS,
     TT_BEARTRAP,
@@ -113,7 +106,6 @@ import { aggravate } from './wizard.js';
 import { S_altar, S_grave, S_ice, S_sink, S_throne } from './symbols.js';
 
 import {
-    Flying,
     t_at,
     uescaped_shaft,
     uteetering_at_seen_pit,
@@ -128,16 +120,12 @@ import { which_armor } from './worn.js';
 import { ttyPline } from './tty_message.js';
 import { youFeel } from './pline.js';
 import {
-    Blind, Deaf, ETelepat, HBlinded, HSee_invisible, HTelepat,
-    Half_physical_damage, Hallucination, See_invisible,
+    Antimagic, Blind, Cold_resistance, Deaf, Drain_resistance,
+    EAcid_resistance, ETelepat, Fire_resistance, Flying, HAcid_resistance,
+    HBlinded, HConfusion, HSee_invisible, HTelepat, Half_physical_damage,
+    Half_spell_damage, Hallucination, Levitation, See_invisible,
+    Shock_resistance, Slimed,
 } from './youprop.js';
-
-
-// youprop.h:240 Levitation, including its blocking term.
-function Levitation(state) {
-    const value = state.u?.uprops?.[LEVITATION];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
 
 
 function Underwater(state) {
@@ -151,15 +139,6 @@ function Is_waterlevel(state) {
         && level.dnum === here.dnum && level.dlevel === here.dlevel);
 }
 
-function Fire_resistance(state) {
-    const value = state.u?.uprops?.[FIRE_RES];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
-function Cold_resistance(state) {
-    const value = state.u?.uprops?.[COLD_RES];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
 function sit_message(what) {
     return `You sit on the ${what}.`;
@@ -246,8 +225,7 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
     }
     case 5: {
         await message('Sitting on the throne was a terrible experience.', state, env);
-        const resistance = u.uprops[DRAIN_RES];
-        if (!(resistance.intrinsic || resistance.extrinsic)) {
+        if (!(Drain_resistance(u))) {
             const { losexp } = await import('./exper.js');
             await losexp('a bad experience sitting on a throne', state, env);
             if (state.program_state?.gameover) return; // C done(DIED) never returns.
@@ -291,17 +269,16 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
         break;
     }
     case 10: {
-        const confusion = u.uprops[CONFUSION];
-        const savedConfusion = confusion.intrinsic;
+        const savedConfusion = HConfusion(u);
         const fakeSpellbook = newObject({
             otyp: SPE_REMOVE_CURSE, oclass: SPBOOK_CLASS, blessed: true,
         });
-        confusion.intrinsic = 1;
+        u.uprops[CONFUSION].intrinsic = 1;
         try {
             const { seffects } = await import('./read.js');
             await seffects(fakeSpellbook, state, env);
         } finally {
-            confusion.intrinsic = savedConfusion;
+            u.uprops[CONFUSION].intrinsic = savedConfusion;
         }
         break;
     }
@@ -317,9 +294,8 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
         break;
     case 12: {
         await message('The throne is covered in acid!', state, env);
-        const resistance = u.uprops[ACID_RES];
         const { losehp } = await import('./hack.js');
-        await losehp(random.rnd(resistance.intrinsic || resistance.extrinsic ? 16 : 80),
+        await losehp(random.rnd(HAcid_resistance(u) || EAcid_resistance(u) ? 16 : 80),
             'acidic chair', KILLED_BY_AN, state, env);
         if (state.program_state?.gameover) return; // No exercise after C done(DIED).
         await sit_exercise(A_CON, state, random);
@@ -400,8 +376,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
             break;
         }
         case 3: {
-            const shock = u.uprops?.[SHOCK_RES];
-            const shockResistant = Boolean(shock?.intrinsic || shock?.extrinsic);
+            const shockResistant = Shock_resistance(u);
             await message(
                 `A${shockResistant ? 'n' : ' massive'} electric shock shoots through your body!`,
                 state,
@@ -532,7 +507,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
             if (luck < 0 || (seeInvisible & INTRINSIC)) {
                 if (state.level?.flags?.nommap) {
                     await message('A terrible drone fills your head!', state);
-                    const confusion = u.uprops?.[CONFUSION]?.intrinsic ?? 0;
+                    const confusion = HConfusion(u);
                     const { make_confused } = await import('./potion.js');
                     await make_confused(
                         (confusion & TIMEOUT) + random.rnd(30),
@@ -592,7 +567,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
         }
         case 13: {
             await message('Your mind turns into a pretzel!', state);
-            const confusion = u.uprops?.[CONFUSION]?.intrinsic ?? 0;
+            const confusion = HConfusion(u);
             const { make_confused } = await import('./potion.js');
             await make_confused(
                 (confusion & TIMEOUT) + random.rn1(7, 16),
@@ -783,7 +758,7 @@ export async function dosit(state = game, rawEnv = {}) {
     const { can_reach_floor } = await import('./engrave.js');
     if (!can_reach_floor(false, state)) {
         if (u.uswallow) await message('There are no seats in here!', state);
-        else if (Levitation(state)) await message('You tumble in place.', state);
+        else if (Levitation(state.u)) await message('You tumble in place.', state);
         else await message('You are sitting on air.', state);
         return ECMD_OK;
     } else if (u.ustuck && !sticks(species)) {
@@ -882,7 +857,7 @@ export async function dosit(state = game, rawEnv = {}) {
                 u.utrap += random.rn1(10, 5);
             } else if (u.utraptype === TT_LAVA) {
                 await message(`You sit in the ${hliquid('lava', { ...rawEnv, state })}!`, state);
-                if (u.uprops?.[SLIMED]?.intrinsic)
+                if (Slimed(u))
                     await burn_away_slime(state, rawEnv);
                 u.utrap += random.rnd(4);
                 const { losehp } = await import('./hack.js');
@@ -894,7 +869,7 @@ export async function dosit(state = game, rawEnv = {}) {
                 ++u.utrap;
             }
         } else {
-            await message(`${Flying(state) ? 'You land' : 'You sit down'}.`, state);
+            await message(`${Flying(state.u) ? 'You land' : 'You sit down'}.`, state);
             // C sit.c:dosit discards dotrap()'s return value after the
             // sitting message; preserve that call's state, output, and RNG.
             const { dotrap } = await import('./trap_effects.js');
@@ -934,11 +909,11 @@ export async function dosit(state = game, rawEnv = {}) {
         }
         await message(`${The(hliquid('lava', { ...rawEnv, state }), state)} burns you!`, state);
         const { losehp } = await import('./hack.js');
-        await losehp(random.d(Fire_resistance(state) ? 2 : 10, 10),
+        await losehp(random.d(Fire_resistance(state.u) ? 2 : 10, 10),
             'sitting on lava', KILLED_BY, state, rawEnv);
     } else if (is_ice(u.ux, u.uy, state)) {
         await message(sit_message(CMAP_EXPLANATIONS[S_ice]), state);
-        if (!Cold_resistance(state))
+        if (!Cold_resistance(state.u))
             await message(`${The(CMAP_EXPLANATIONS[S_ice], state)} feels cold.`, state);
     } else if (typ === DRAWBRIDGE_DOWN) {
         await message(sit_message('drawbridge'), state);
@@ -962,15 +937,13 @@ export async function rndcurse(state = game, rawEnv = {}) {
     // curse() and unbless() reach mkobj.c weight() for a bag of holding,
     // whose object environment requires the whole random set.
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const objectEnv = objectGenerationEnv({ ...rawEnv, state, random, message });
     if (is_art(state.uwep, ART_MAGICBANE) && random.rn2(20)) {
         await message('You feel a malignant aura surround the magic-absorbing blade.', state);
         return;
     }
-    const antimagic = state.u.uprops?.[ANTIMAGIC];
-    if (antimagic?.intrinsic || antimagic?.extrinsic)
+    if (Antimagic(state.u))
         await shieldeff(state.u.ux, state.u.uy, state);
     await message('You feel a malignant aura surround you.', state);
     let nobj = 0;
@@ -979,11 +952,9 @@ export async function rndcurse(state = game, rawEnv = {}) {
         ++nobj;
     }
     // C reads these macros again after the aura output and inventory count.
-    const countAntimagic = state.u.uprops?.[ANTIMAGIC];
-    const halfSpell = state.u.uprops?.[HALF_SPDAM];
-    const Antimagic = Boolean(countAntimagic?.intrinsic || countAntimagic?.extrinsic);
-    const Half_spell_damage = Boolean(halfSpell?.intrinsic || halfSpell?.extrinsic);
-    let cnt = random.rnd(Math.trunc(6 / (Number(Antimagic) + Number(Half_spell_damage) + 1)));
+    const antimagic = Antimagic(state.u);
+    const halfSpellDamage = Half_spell_damage(state.u);
+    let cnt = random.rnd(Math.trunc(6 / (Number(antimagic) + Number(halfSpellDamage) + 1)));
     if (nobj) {
         for (; cnt > 0; --cnt) {
             let onum = random.rnd(nobj);
@@ -1062,21 +1033,9 @@ export async function attrcurse(state = game, rawEnv = {}) {
         } else if (propertyId === SEE_INVIS) {
             if (!See_invisible(u)) {
                 const { newsym, see_monsters, set_mimic_blocking } = await import('./display.js');
-                // A planning clone borrows vision.c's shared obstruction
-                // index, so it admits each point set_mimic_blocking()
-                // changes; see_monsters() and the hero's newsym() repaint
-                // through the caller's redraw seam.
-                if (rawEnv.planning
-                    && typeof rawEnv.admitPlannedVisionChange !== 'function') {
-                    throw new TypeError(
-                        'planned attrcurse requires admitPlannedVisionChange',
-                    );
-                }
-                set_mimic_blocking(state, {
-                    admitPointChange: rawEnv.planning
-                        ? rawEnv.admitPlannedVisionChange
-                        : null,
-                });
+                // see_monsters() and the hero's newsym() repaint through
+                // the caller's redraw seam.
+                set_mimic_blocking(state);
                 await see_monsters(state, { ...rawEnv, message });
                 (rawEnv.redraw ?? newsym)(u.ux, u.uy, state);
             }

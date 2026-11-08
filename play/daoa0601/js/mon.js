@@ -20,7 +20,7 @@ import { splitMon } from './potion.js';
 import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_COLOR, MONSTER_DIFFICULTY, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL, SPECIAL_PM, monsterClassSymbol, requireMonsterData } from './monster_data.js';
 import { displayLiquidName, formatMonsterName, monsterName, namelessMonsterName, setMonsterGivenName, monsterTypeName, visibleMonsterSubject } from './do_name.js';
 import { possessiveName, dist2, distmin, ordinalSuffix, pointsOnline } from './hacklib.js';
-import { monsterHasFireResistance, monsterHasSeductionAttack, monsterHasStoneResistance, monsterCorrodesBars, monsterPassesBars, monsterLocomotion, monsterFireDescription, formCanBecomeStoneGolem, nameToMonster, resolveMonsterClass, monsterHasPoisonResistance, setMonsterSpecies, monsterKnowsTrap, acidic, cant_drown, is_male, is_minion, is_neuter, is_orc, is_shapeshifter, lays_eggs, metallivorous, monsterCanTeleport, is_dwarf, is_elf, monsterIsAnimal, monsterIsFemale, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsSlithy, monsterIsSwimmer, monsterPerceives, needspick, notake, polyok, regenerates, strongmonst, tunnels, monsterCanEngulf, monsterDigests, monsterGrowthFamilyMatch, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsCovetous, monsterIsDisplacer, monsterIsEel, monsterIsFloater, monsterIsFlyer, monsterIsGolem, monsterIsHuman, monsterIsKop, monsterIsNoncorporeal, monsterIsNonliving, monsterIsAlwaysHostile, monsterIsPlainHuman, monsterIsQuestGuardian, monsterIsPlayerMonster, monsterIsRider, monsterIsSlimeproof, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterOlderForm, monsterPassesWalls, monsterSpeciesSticks, monsterThrowsRocks, monsterYoungerForm, speciesEatsCorpses, heroResistsStoning, touchPetrifies, fleshPetrifies, resistConflict, heroHasOlfaction, } from './mondata.js';
+import { monsterHasFireResistance, monsterHasSeductionAttack, monsterHasStoneResistance, monsterCorrodesBars, monsterPassesBars, monsterLocomotion, monsterFireDescription, formCanBecomeStoneGolem, nameToMonster, resolveMonsterClass, monsterHasPoisonResistance, setMonsterSpecies, monsterKnowsTrap, acidic, cant_drown, is_male, is_minion, is_neuter, is_orc, is_shapeshifter, lays_eggs, metallivorous, monsterCanTeleport, is_dwarf, is_elf, monsterIsAnimal, monsterIsFemale, monsterIsGiant, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsSlithy, monsterIsSwimmer, monsterPerceives, needspick, notake, polyok, regenerates, strongmonst, tunnels, monsterCanEngulf, monsterDigests, monsterGrowthFamilyMatch, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsBig, likes_lava, monsterIsBreathless, monsterIsClinger, monsterIsCovetous, monsterIsDisplacer, monsterIsEel, monsterIsFloater, monsterIsFlyer, monsterIsGolem, monsterIsHuman, monsterIsKop, monsterIsNoncorporeal, monsterIsNonliving, monsterIsAlwaysHostile, monsterIsPlainHuman, monsterIsQuestGuardian, monsterIsPlayerMonster, monsterIsRider, monsterIsSlimeproof, monsterIsUndead, monsterIsUnicorn, monsterIsUnsolid, monsterIsVampire, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterOlderForm, monsterPassesWalls, monsterSpeciesSticks, monsterThrowsRocks, monsterYoungerForm, speciesEatsCorpses, heroResistsStoning, touchPetrifies, fleshPetrifies, resistConflict, heroHasOlfaction, } from './mondata.js';
 import { killEgg, objectsInTimerGraph, stopObjectTimer } from './timeout.js';
 import { d, rn2, rnd, rn1, rnl } from './rng.js';
 import { randomMonsterRelocation, relocateMonsterTo, reportMonsterTeleportRestriction, monsterTeleportRestricted, enexto, goodPosition } from './teleport.js';
@@ -40,8 +40,8 @@ import { splitObjectStack, mkcorpstat, mkgold, mksobj, mkobj, discardMonsterInve
 import { unpunishHero } from './read.js';
 import { capitalizedDefiniteName } from './objnam.js';
 import { heroSpecies, heroFormSticks, heroIsAmphibious, dragonFormForArmor, heroMonsterForm, body_part, heroHasProtectionFromShapeChangers } from './polyself.js';
-import { cansee, couldSeeFromHero, couldsee, monsterHasLineOfSightToHero, vision_recalc, monsterEmitsLight, vision_note_blocker_change } from './vision.js';
-import { hasLightSources } from './light.js';
+import { cansee, couldSeeFromHero, couldsee, mimicBlocksLight, monsterHasLineOfSightToHero, vision_recalc, monsterEmitsLight, vision_note_blocker_change } from './vision.js';
+import { hasLightSources, registerMonsterLightSource } from './light.js';
 import { publishMonsterGrowl } from './sounds.js';
 import { adjustHeroAlignment, changeHeroLuck, currentAttribute } from './attrib.js';
 import { heroHasConflict } from './hero_conflict.js';
@@ -105,8 +105,6 @@ import { docrt } from './display.js';
 import { placeBallAndChain } from './ball.js';
 const PM_GREMLIN = 40;
 const PM_IRON_GOLEM = 259;
-const PM_FIRE_ELEMENTAL = 155;
-const PM_SALAMANDER = 329;
 const PM_BABY_PURPLE_WORM = 113;
 const PM_PURPLE_WORM = 115;
 const PM_SHRIEKER = 163;
@@ -245,17 +243,12 @@ export function rollMonsterPoolReaction(monster, state = game, { random = rn2, r
         return { kind: 'safe' };
     return { kind: 'drown' };
 }
-// C mondata.h:likes_lava():
-function monsterLikesLava(monster) {
-    return monster?.mnum === PM_FIRE_ELEMENTAL
-        || monster?.mnum === PM_SALAMANDER;
-}
 // Part of C mon.c:minliquid_core(): the lava reaction branch.
 export function monsterLavaReaction(monster, state = game) {
     const location = state.level?.at?.(monster?.mx, monster?.my);
     if (!location || !isLavaAt(monster.mx, monster.my, state))
         return null;
-    const likesLava = monsterLikesLava(monster);
+    const likesLava = likes_lava(monster?.mnum ?? -1);
     if (monsterInAir(monster, state) || monsterIsClinger(monster.mnum) || likesLava)
         return { kind: 'safe' };
     const fireResistant = monsterHasFireResistance(monster);
@@ -395,7 +388,7 @@ export async function resolveMonsterLiquid(monster, state = game, { announce = a
                 if (state.program_state.gameover || monster.dead || monster.mhp <= 0)
                     return death;
             }
-            if (monsterInAir(monster, state) || monsterLikesLava(monster))
+            if (monsterInAir(monster, state) || likes_lava(monster.mnum))
                 return { survived: true };
             await fireDamageChain(monster.minvent || monster.inventory || [], {
                 carrier: monster,
@@ -945,6 +938,10 @@ export function monsterCarryAmount(monster, object, state = game, random = rn2) 
 export function monsterCanCarryObject(monster, object, state = game, random = rn2) {
     return monsterCarryAmount(monster, object, state, random) > 0;
 }
+// C mon.c:m_poisongas_ok().
+// Would this actor be OK in poison gas?  Does not check for actual gas at
+// the location.  The halves stay in region.ts (heroGasTolerance(),
+// monsterGasTolerance(), the species tests they share).
 export function mPoisongasOk(target, state = game) {
     return 'hero' in target
         ? heroGasTolerance(target.hero)
@@ -969,7 +966,7 @@ export async function mfndpos(monster, state, flags = monAllowFlags(monster, sta
     let wantPool = symbol === S_EEL;
     const poolOk = (!waterLevel && inAir) || (monsterIsSwimmer(monster.mnum) && !wantPool);
     const lavaOk = monster.mnum !== PM_FLOATING_EYE &&
-        (inAir || monster.mnum === PM_FIRE_ELEMENTAL || monster.mnum === PM_SALAMANDER);
+        (inAir || likes_lava(monster.mnum));
     const { rockOk, treeOk } = monsterDigCapabilities(monster, flags);
     const throughDoor = !!(flags & (ALLOW_WALL | BUSTDOOR)) || rockOk || treeOk;
     const poisonGasOk = mPoisongasOk({ monster }, state) === GAS_OK;
@@ -1871,17 +1868,6 @@ export function angerAttackedMonster(monster) {
 // C mon.c:seemimic(). Reveal a monster that is imitating another monster,
 // furniture, or an object.
 // ---------------------------------------------------------------------------
-// C monst.h:is_lightblocker_mappear():
-function appearanceBlocksLight(type, appearance) {
-    if (type === M_AP_OBJECT)
-        return appearance === BOULDER;
-    if (type !== M_AP_FURNITURE)
-        return false;
-    return (appearance >= 0 && appearance < 12)
-        || appearance === 15 || appearance === 16 || appearance === 18
-        || appearance === TREE || appearance === SDOOR
-        || appearance === DOOR || IS_WALL(appearance);
-}
 // C mon.c:seemimic():
 export async function revealMonsterAppearance(monster, { includeMonsterDisguise = true, } = {}) {
     const type = M_AP_TYPE(monster);
@@ -1891,14 +1877,18 @@ export async function revealMonsterAppearance(monster, { includeMonsterDisguise 
             revealed: false, type, appearance, lightBlocker: false,
         };
     }
-    const lightBlocker = appearanceBlocksLight(type, appearance);
+    const lightBlocker = mimicBlocksLight(monster);
     const corpsenm = monster.mcorpsenm
         ?? monster.mextra?.mcorpsenm ?? null;
     monster.m_ap_type = 0;
     monster.mappearance = 0;
-    delete monster.mcorpsenm;
-    if (monster.mextra)
-        delete monster.mextra.mcorpsenm;
+    // C freemcorpsenm() (makemon.c:2379-2382) resets MCORPSENM to NON_PM
+    // and keeps the mextra allocation; the -1 marker is the port's trace of
+    // that retained allocation.
+    if (monster.mcorpsenm !== undefined)
+        monster.mcorpsenm = -1;
+    if (monster.mextra && monster.mextra.mcorpsenm !== undefined)
+        monster.mextra.mcorpsenm = -1;
     if (lightBlocker)
         vision_note_blocker_change(monster.mx, monster.my);
     await newsym(monster.mx, monster.my);
@@ -4799,8 +4789,13 @@ export async function changeMonsterForm(monster, forcedTargetMnum = null, state 
         await releaseMonsterLeash(monster, true, { state, publish });
         leashReleased = true;
     }
-    if (monsterEmitsLight(oldMnum) !== monsterEmitsLight(targetMnum))
+    // C mon.c:5397-5404 (and the replacement at mon.c:2539-2541): when the
+    // form's light changes, the new form registers a fresh light source.
+    if (monsterEmitsLight(oldMnum) !== monsterEmitsLight(targetMnum)) {
+        if (monsterEmitsLight(targetMnum))
+            registerMonsterLightSource(monster, state);
         state.vision_full_recalc = 1;
+    }
     if (!monster.perminvis || oldNaturallyInvisible)
         monster.perminvis = naturallyInvisible;
     monster.minvis = monster.invis_blkd ? 0 : !!monster.perminvis;

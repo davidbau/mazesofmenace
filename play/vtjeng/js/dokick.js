@@ -21,7 +21,7 @@ import { isok } from './cmd_isok.js';
 import { getdir, yn_function } from './cmd.js';
 import {
     TT_PIT, TT_WEB, TT_BEARTRAP,
-    A_CHA, LEG, OBJ_MINVENT, OBJ_MIGRATING, STATUE_TRAP, STONE_RES, WEB, ZAP_POS, KICKED_WEAPON, is_pit,
+    A_CHA, LEG, OBJ_MINVENT, OBJ_MIGRATING, STATUE_TRAP, WEB, ZAP_POS, KICKED_WEAPON, is_pit,
     A_LAWFUL,
     A_WIS,
     CORR,
@@ -70,9 +70,6 @@ import {
     LA_DOWN,
     LADDER,
     LAVAWALL,
-    LEVITATION,
-    PASSES_WALLS,
-    FUMBLING,
     M_ATTK_DEF_DIED,
     M_ATTK_MISS,
     M_AP_TYPE,
@@ -101,7 +98,6 @@ import {
     STAIRS,
     T_LOOTED,
     Upolyd,
-    WOUNDED_LEGS,
     W_ARMF,
     M_AP_MONSTER,
     NO_TRAP_FLAGS,
@@ -233,8 +229,8 @@ import { is_art, ART_MJOLLNIR } from './artifacts.js';
 import { water_damage } from './trap_water_damage.js';
 import { makemon_runtime } from './makemon_create.js';
 import {
-    Blind, Deaf,
-    Hallucination, Maybe_Half_Phys,
+    Blind, Deaf, Fumbling, Hallucination, Levitation, Maybe_Half_Phys,
+    Passes_walls, Stone_resistance, Wounded_legs,
 } from './youprop.js';
 
 // C ref: decl.h:507 `coord kickedloc`, the square the hero just kicked. Three
@@ -260,30 +256,6 @@ export class UnsupportedKickError extends Error {
     }
 }
 
-// youprop.h:242 Levitation, which subtracts a blocking term. Spelled out here
-// rather than imported for the reason js/trap.js states about its own copy:
-// the macro reads three fields of one property, and each C file's port owns
-// the macros its own functions read.
-function Levitation(state) {
-    const levitation = state.u.uprops[LEVITATION];
-    return Boolean((levitation.intrinsic || levitation.extrinsic)
-                   && !levitation.blocked);
-}
-
-
-// youprop.h:138 Wounded_legs, a plain OR with no blocked term: the intrinsic
-// holds the recovery timeout and the extrinsic holds the side bits.
-function Wounded_legs(state) {
-    const wounded = state.u.uprops[WOUNDED_LEGS];
-    return Boolean(wounded.intrinsic || wounded.extrinsic);
-}
-
-// youprop.h:286 Passes_walls, likewise a plain OR.
-function Passes_walls(state) {
-    const passes = state.u.uprops[PASSES_WALLS];
-    return Boolean(passes.intrinsic || passes.extrinsic);
-}
-
 
 // C ref: dokick.c:8-10, the martial() macro over is_bigfoot() at :7. A Samurai
 // or a Monk answers TRUE from martial_bonus() without either later term being
@@ -294,12 +266,6 @@ function martial(state) {
         || state.uarmf?.otyp === KICKING_BOOTS;
 }
 
-// youprop.h:129 Fumbling. Both intrinsic and extrinsic sources count, with
-// no blocked term.
-function Fumbling(state) {
-    const fumbling = state.u?.uprops?.[FUMBLING];
-    return Boolean(fumbling?.intrinsic || fumbling?.extrinsic);
-}
 
 function kickEnvironment(state) {
     state.context ??= {};
@@ -433,7 +399,7 @@ export async function kick_monster(mon, x, y, state = game) {
 
     await setmangry(mon, true, env);
 
-    if (Levitation(state) && !rn2(3) && verysmall(mon.data)
+    if (Levitation(state.u) && !rn2(3) && verysmall(mon.data)
         && !is_flyer(mon.data)) {
         await ttyPline('Floating in the air, you miss wildly!', state);
         await exercise(A_DEX, false, state, env.random);
@@ -517,7 +483,7 @@ export async function kick_monster(mon, x, y, state = game) {
     }
 
     if (!bypassClumsiness) {
-        if (Fumbling(state)) clumsy = true;
+        if (Fumbling(state.u)) clumsy = true;
         else if (state.uarm && state.objects?.[state.uarm.otyp]?.oc_bulky
                  && acurr(state, A_DEX) < rnd(25)) clumsy = true;
     }
@@ -560,7 +526,7 @@ export async function kick_monster(mon, x, y, state = game) {
 // mpickobj consumes it. The TRUE result prevents that caller placing it again.
 export async function ghitm(monster, gold, state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.planning ? async () => {} : (rawEnv.message ?? ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, random, message };
     let messageGiven = false;
     if (!likes_gold(monster.data) && !monster.isshk && !monster.ispriest
@@ -652,9 +618,8 @@ export async function kick_object(x, y, kickName, state = game, rawEnv = {}) {
 // a whole stack before splitobj; the returned Boolean controls dokick's ouch.
 export async function really_kick_object(x, y, state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.planning ? async () => {} : (rawEnv.message ?? ttyPline);
-    const redraw = rawEnv.planning ? () => {}
-        : (rawEnv.redraw ?? ((px, py) => newsym(px, py, state)));
+    const message = rawEnv.message ?? ttyPline;
+    const redraw = rawEnv.redraw ?? ((px, py) => newsym(px, py, state));
     const env = objectGenerationEnv({ ...rawEnv, state, random, message, redraw });
     const u = state.u;
     const object = () => state.gk.kickedobj;
@@ -662,7 +627,7 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
         || object() === state.uball || object() === state.uchain) return 0;
     const trap = t_at(x, y, state);
     if (trap) {
-        if ((is_pit(trap.ttyp) && !Passes_walls(state)) || trap.ttyp === WEB) {
+        if ((is_pit(trap.ttyp) && !Passes_walls(state.u)) || trap.ttyp === WEB) {
             if (!trap.tseen) await find_trap(trap, { ...rawEnv, state });
             const hallucination = Hallucination(u);
             await message(`You can't kick something that's in a ${hallucination ? 'tizzy' : trap.ttyp === WEB ? 'web' : 'pit'}!`, state, env);
@@ -673,14 +638,13 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
             return 1;
         }
     }
-    if (Fumbling(state) && !random.rn2(3)) {
+    if (Fumbling(state.u) && !random.rn2(3)) {
         await message('Your clumsy kick missed.', state, env);
         return 1;
     }
-    const stone = u.uprops[STONE_RES];
     if (!state.uarmf && object().otyp === CORPSE
         && touch_petrifies(state.mons[object().corpsenm])
-        && !(stone.intrinsic || stone.extrinsic)) {
+        && !(Stone_resistance(u))) {
         await message(`You kick ${corpse_xname(object(), null, CXN_PFX_THE, state)} with your bare ${makeplural(body_part(FOOT, state.youmonst))}.`, state, env);
         if (!(poly_when_stoned(state.youmonst.data, state)
             && await polymon(PM_STONE_GOLEM, state, env))) {
@@ -716,7 +680,7 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
     let costly = Boolean(keeper && (costly_spot(x, y, state)
         || (costly_adjacent(keeper, x, y, state) && object().unpaid)));
     const kickLine = `You kick ${!isGold ? singular(object(), donameFresh, state) : donameFresh(object(), state)}.`;
-    await (rawEnv.planning ? message : (rawEnv.norepMessage ?? rawEnv.message ?? ttyNorep))(kickLine, state, env);
+    await (rawEnv.norepMessage ?? rawEnv.message ?? ttyNorep)(kickLine, state, env);
     if (IS_OBSTRUCTED(state.level.at(x, y).typ) || closed_door(x, y, state)) {
         if ((!martial(state) && random.rn2(20) > acurr(state, A_DEX))
             || IS_OBSTRUCTED(state.level.at(u.ux, u.uy).typ)
@@ -849,7 +813,7 @@ async function kick_dumb(x, y, state) {
     }
     // 876-877. C short-circuits the roll off the air level; otherwise one
     // rn2(2) decides whether this empty kick sends the hero backward.
-    if ((Is_airlevel(u.uz, state) || Levitation(state)) && rn2(2))
+    if ((Is_airlevel(u.uz, state) || Levitation(state.u)) && rn2(2))
         await hurtle(-u.dx, -u.dy, 1, true, state);
 }
 
@@ -922,7 +886,7 @@ async function kick_ouch(x, y, kickobjnam, state) {
     const dmg = rnd(acurr(state, A_CON) > 15 ? 3 : 5);
     await losehp(Maybe_Half_Phys(dmg, state.u), kickstr(maploc, kickobjnam,
         state), KILLED_BY, state);
-    if (Is_airlevel(u.uz, state) || Levitation(state))
+    if (Is_airlevel(u.uz, state) || Levitation(state.u))
         await hurtle(-u.dx, -u.dy, rn1(2, 4), true, state);
 }
 
@@ -935,7 +899,7 @@ export async function kick_door(x, y, avrg_attrib, state = game) {
         await kick_dumb(x, y, state);
         return;
     }
-    if (Levitation(state)) {
+    if (Levitation(state.u)) {
         await kick_ouch(x, y, '', state);
         return;
     }
@@ -1010,7 +974,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
     const random = coreRandom;
     const objects = objectGenerationEnv({ state, random });
     if (maploc.typ === SDOOR) {
-        if (!Levitation(state) && rn2(30) < avrg_attrib) {
+        if (!Levitation(state.u) && rn2(30) < avrg_attrib) {
             cvt_sdoor_to_door(maploc, state);
             const mask = maploc.flags;
             await ttyPline(`Crash!  ${(mask & (D_LOCKED | D_TRAPPED))
@@ -1031,7 +995,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
         return ECMD_TIME;
     }
     if (maploc.typ === SCORR) {
-        if (!Levitation(state) && rn2(30) < avrg_attrib) {
+        if (!Levitation(state.u) && rn2(30) < avrg_attrib) {
             await ttyPline('Crash!  You kick open a secret passage!', state);
             await exercise(A_DEX, true, state, random);
             maploc.typ = CORR;
@@ -1044,7 +1008,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
     }
     if (IS_THRONE(maploc.typ)) {
         const luck = (state.u.uluck ?? 0) + (state.u.moreluck ?? 0);
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await kick_dumb(x, y, state);
             return ECMD_TIME;
         }
@@ -1094,7 +1058,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
         return ECMD_TIME;
     }
     if (IS_ALTAR(maploc.typ)) {
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await kick_dumb(x, y, state);
             return ECMD_TIME;
         }
@@ -1112,7 +1076,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
         return ECMD_TIME;
     }
     if (IS_FOUNTAIN(maploc.typ)) {
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await kick_dumb(x, y, state);
             return ECMD_TIME;
         }
@@ -1130,7 +1094,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
         return ECMD_TIME;
     }
     if (IS_GRAVE(maploc.typ)) {
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await kick_dumb(x, y, state);
             return ECMD_TIME;
         }
@@ -1225,7 +1189,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
     }
     if (IS_SINK(maploc.typ)) {
         const gend = poly_gender(state);
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await kick_dumb(x, y, state);
             return ECMD_TIME;
         }
@@ -1301,7 +1265,7 @@ export async function dokick(state = game) {
             return ECMD_TIME;
         }
         return ECMD_OK;
-    } else if (Wounded_legs(state)) {
+    } else if (Wounded_legs(state.u)) {
         await legs_in_no_shape('kicking', false, state);
         no_kick = true;
     } else if (near_capacity(state) > SLT_ENCUMBER) {
@@ -1317,7 +1281,7 @@ export async function dokick(state = game) {
         no_kick = true;
         switch (u.utraptype) {
         case TT_PIT:
-            if (!Passes_walls(state))
+            if (!Passes_walls(state.u))
                 await ttyPline("There's not enough room to kick down here.", state);
             else
                 no_kick = false;
@@ -1329,7 +1293,7 @@ export async function dokick(state = game) {
         default:
             break;
         }
-    } else if (sobj_at(BOULDER, u.ux, u.uy, state) && !Passes_walls(state)) {
+    } else if (sobj_at(BOULDER, u.ux, u.uy, state) && !Passes_walls(state.u)) {
         await ttyPline("There's not enough room to kick in here.", state);
         no_kick = true;
     }
@@ -1387,7 +1351,7 @@ export async function dokick(state = game) {
     }
     // 1355-1370. While levitating, C can brace against a wall, door, or an
     // object behind the hero on an air level. Otherwise it returns ECMD_OK.
-    if (Levitation(state)) {
+    if (Levitation(state.u)) {
         const xx = u.ux - u.dx;
         const yy = u.uy - u.dy;
         const behind = isok(xx, yy) ? state.level.at(xx, yy) : null;
@@ -1439,7 +1403,7 @@ export async function dokick(state = game) {
 
         // dokick.c:1428-1439. C uses integer division for both range steps;
         // mdat remains the pre-kick species if the monster died above.
-        if ((Is_airlevel(u.uz, state) || Levitation(state)) && state.context?.move) {
+        if ((Is_airlevel(u.uz, state) || Levitation(state.u)) && state.context?.move) {
             let range = state.youmonst.data.cwt
                 + weight_cap(state) + inv_weight(state);
             if (range < 1) range = 1;
@@ -1462,7 +1426,7 @@ export async function dokick(state = game) {
     // 1452-1453. OBJ_AT() read off the per-square pile chain, so that a
     // supplied state rather than the module global answers for it.
     const pile = state.level?.objects?.[x]?.[y] ?? null;
-    if (pile && (!Levitation(state) || Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)
+    if (pile && (!Levitation(state.u) || Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)
                  || sobj_at(BOULDER, x, y, state))) {
         const kickName = { value: '' };
         if (await kick_object(x, y, kickName, state)) {
@@ -1777,7 +1741,7 @@ export async function ship_object(obj, x, y, shop_floor_obj, env = {}) {
     if (obj.otyp === BOULDER) obj.otrapped = 0;
     if (impact) {
         await impact_drop(obj, x, y, 0, env);
-        if (!env.planning) newsym(x, y);
+        newsym(x, y);
     }
     return true;
 }

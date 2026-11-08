@@ -77,7 +77,6 @@ import {
     SHOPBASE,
     P_POLEARMS,
     PIT,
-    PROT_FROM_SHAPE_CHANGERS,
     STRAT_APPEARMSG,
     STRAT_CLOSE,
     STRAT_WAITFORU,
@@ -597,7 +596,7 @@ import {
     which_armor,
 } from './worn.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
-import { Blind, See_invisible } from './youprop.js';
+import { Blind, Protection_from_shape_changers, See_invisible } from './youprop.js';
 
 const SUPPORTED_FLAGS = NO_MINVENT
     | MM_NOWAIT
@@ -854,7 +853,7 @@ function runtimeAppearanceMessage(monster, mmflags, normalized) {
 // mcorpsenm overlay established here remain intact.
 export function set_mimic_sym(monster, normalized) {
     const { random, state } = normalized;
-    if (!monster || heroHasProperty(state, PROT_FROM_SHAPE_CHANGERS)) return;
+    if (!monster || Protection_from_shape_changers(state.u)) return;
     const x = monster.mx;
     const y = monster.my;
     const object = state.level.objects?.[x]?.[y];
@@ -1034,9 +1033,9 @@ export function set_mimic_sym(monster, normalized) {
     }
 
     // C's tail re-evaluates the square only after the disguise and any
-    // species overlay have consumed all their randomness. Runtime monster
-    // planning supplies clone-owned hooks here because vision.c's compact
-    // transparency index is shared outside the game-state object.
+    // species overlay have consumed all their randomness. Callers may supply
+    // their own hooks here because vision.c's compact transparency index is
+    // shared outside the game-state object.
     const doesBlock = normalized.hooks?.doesBlock
         ?? ((bx, by, cell, env) => does_block(
             bx,
@@ -1604,7 +1603,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && !hatchEggCall
         && !explicitCoordinateNoFlagsRuntimeCall
         && !explicitCoordinateNoMinventRuntimeCall
-        && !heroHasProperty(state, PROT_FROM_SHAPE_CHANGERS)) {
+        && !Protection_from_shape_changers(state.u)) {
         if (isRogueLevel(state)) {
             throw new UnsupportedMonsterCreationError(
                 'initial chameleon on the rogue level',
@@ -2448,10 +2447,6 @@ export function rnd_defensive_item(monster, normalized) {
     }
 }
 
-function heroHasProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
 // C ref: muse.c rnd_misc_item(). No inventory-enabled shape-changer in this
 // initial-generation slice is a vampire shifter.
@@ -3245,7 +3240,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     monster.cham = NON_PM;
     const naturalShape = pm_to_cham(mndx, state);
     let initialShape = false;
-    if (!heroHasProperty(state, PROT_FROM_SHAPE_CHANGERS)
+    if (!Protection_from_shape_changers(state.u)
         && naturalShape !== NON_PM) {
         monster.cham = naturalShape;
         // C ref: makemon.c:1361. Vlad stays in his normal form so he
@@ -3402,7 +3397,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
 export async function makemon_runtime(ptr, x, y, mmflags = 0, env = {}) {
     const message = env.message === undefined ? ttyPline : env.message;
     const norepMessage = env.norepMessage === undefined
-        ? env.planning ? message : ttyNorep
+        ? ttyNorep
         : env.norepMessage;
     if (typeof message !== 'function' || typeof norepMessage !== 'function') {
         throw new TypeError('makemon_runtime requires message operations');

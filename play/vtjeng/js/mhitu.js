@@ -15,12 +15,8 @@ import {
     ACID_RES,
     AC_VALUE,
     BLINDED,
-    MAGICAL_BREATHING,
     COLD_RES,
-    CONFLICT,
-    CONFUSION,
     DISMOUNT_ENGULFED,
-    DISPLACED,
     DIED,
     ERODE_CORRODE,
     FIRE_RES,
@@ -46,15 +42,10 @@ import {
     NO_MINVENT,
     NEED_HTH_WEAPON,
     NEED_WEAPON,
-    PROTECTION,
-    PROT_FROM_SHAPE_CHANGERS,
     P_WHIP,
     RLOC_NOMSG,
     STONING,
-    STUNNED,
     SHOCK_RES,
-    SLOW_DIGESTION,
-    SICK,
     SICK_NONVOMITABLE,
     STONE_RES,
     IS_WATERWALL,
@@ -76,7 +67,6 @@ import {
     Upolyd,
     is_pit,
     u_at,
-    REFLECTING,
     KILLED_BY,
     HAND,
     HAIR,
@@ -107,7 +97,6 @@ import {
     ART_SNICKERSNEE,
     ART_STORMBRINGER,
     ART_VORPAL_BLADE,
-    Stone_resistance,
     is_art,
     protects,
 } from './artifacts.js';
@@ -281,7 +270,7 @@ import {
     mhitm_knockback,
     erode_armor,
 } from './uhitm.js';
-import { Cold_resistance, Fire_resistance, drain_item } from './zap.js';
+import { drain_item } from './zap.js';
 import { cansee, couldsee, m_canseeu, vision_recalc } from './vision.js';
 import { hitval } from './weapon.js';
 import { is_pole, setworn, which_armor, find_mac } from './worn.js';
@@ -318,8 +307,13 @@ import { money2mon } from './shk.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { worm_move } from './worm.js';
 import {
-    Blind, Blinded, Deaf, Detect_monsters, HHallucination, Half_physical_damage, Hallucination,
-    Invis, Maybe_Half_Phys, See_invisible, Unaware,
+    Blind, Blinded, Cold_resistance, Conflict, Deaf, Detect_monsters,
+    Displaced, EAcid_resistance, EMagical_breathing, EProtection,
+    EShock_resistance, Fast, Fire_resistance, HAcid_resistance, HConfusion,
+    HHallucination, HMagical_breathing, HProtection, HShock_resistance, HStun,
+    Half_physical_damage, Hallucination, Invis, Maybe_Half_Phys,
+    Protection_from_shape_changers, Reflecting, See_invisible, Sick,
+    Slow_digestion, Stone_resistance, Unaware,
 } from './youprop.js';
 
 // C ref: mhitu.c u_slow_down() (163-171).  The self-zap and monster-action
@@ -329,10 +323,8 @@ export async function u_slow_down(
     state = game,
     { message = ttyPline, random = coreRandom } = {},
 ) {
-    const fast = state.u?.uprops?.[FAST];
-    if (!fast) return;
-    fast.intrinsic = 0;
-    if (!(fast.extrinsic ?? 0))
+    state.u.uprops[FAST].intrinsic = 0;
+    if (!Fast(state.u))
         await message('You slow down.', state);
     else
         await message('Your quickness feels less natural.', state);
@@ -344,8 +336,7 @@ export async function u_slow_down(
 export async function u_slip_free(mtmp, mattk, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message ?? (rawEnv.planning ? async () => {}
-        : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
 
     if (mattk.aatyp === M.AT_ENGL) return false;
 
@@ -384,19 +375,6 @@ export async function u_slip_free(mtmp, mattk, rawEnv = {}) {
     return false;
 }
 
-// Planning cannot call end.c done_in_by() on its cloned state: the ordinary
-// death entry updates the live terminal and then asks for input. This signal
-// carries the source DIED result across the atomic planning/live seam; it is
-// consumed by unported_monster_actions.js and is never a gameplay boundary.
-export class MonsterDeathPlanningError extends Error {
-    constructor(monster, how = DIED) {
-        super('the hero dying of a monster attack');
-        this.name = 'MonsterDeathPlanningError';
-        this.monsterId = monster.m_id;
-        this.how = how;
-    }
-}
-
 // mhitu.c:summonmu() uses an() for one visible helper but makeplural() for
 // several; Deaf changes only the final source suffix.
 export function unseenWereSummonMessage(numseen, genericWere, deaf) {
@@ -406,15 +384,9 @@ export function unseenWereSummonMessage(numseen, genericWere, deaf) {
     return `${upstart(nounPhrase)}${deaf ? ' from nowhere' : ''}!`;
 }
 
-// C expands youprop.h:Protection_from_shape_changers in mhitu.c and were.c.
-export function Protection_from_shape_changers(state) {
-    const property = state.u.uprops[PROT_FROM_SHAPE_CHANGERS];
-    return Boolean(property.intrinsic || property.extrinsic);
-}
 
 // C ref: mhitu.c summonmu() (956-1030). The caller supplies the same random
-// owner it uses for the rest of the attack; this matters when mattacku() is
-// evaluating the turn on its planning clone.
+// owner it uses for the rest of the attack.
 export async function summonmu(monster, youseeit, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
@@ -434,7 +406,7 @@ export async function summonmu(monster, youseeit, rawEnv = {}) {
     if (!is_were(mdat)) return;
 
     if (is_human(mdat)) {
-        if (!Protection_from_shape_changers(state)
+        if (!Protection_from_shape_changers(state.u)
             && !random.rn2(5 - (night(state) ? 2 : 0))) {
             await new_were(monster, {
                 ...rawEnv,
@@ -446,7 +418,7 @@ export async function summonmu(monster, youseeit, rawEnv = {}) {
                     ?? ((x, y) => newsym(x, y)),
             });
         }
-    } else if (Protection_from_shape_changers(state)
+    } else if (Protection_from_shape_changers(state.u)
         || !random.rn2(30)) {
         await new_were(monster, {
             ...rawEnv,
@@ -538,12 +510,6 @@ export async function cloneu(rawState = game, rawEnv = {}) {
         // marker lets makemon_create.js admit that source caller outside
         // level generation without widening the generic runtime allowlist.
         _cloneu: true,
-        ...(rawEnv.planning
-            ? {
-                message: rawEnv.message ?? (async () => {}),
-                norepMessage: rawEnv.norepMessage ?? (async () => {}),
-            }
-            : {}),
     };
     let monster = await makemon_runtime(
         state.youmonst.data,
@@ -573,15 +539,6 @@ function requireMattackuOperation(env, name) {
 }
 
 
-// C ref: youprop.h:218 Conflict, `(HConflict || EConflict)`. Two disjuncts and
-// no blocking term, which is why it cannot share activeHeroProperty() above:
-// youprop.h gives a `blocked` alias to BLINDED, CLAIRVOYANT, INVIS, STEALTH,
-// LEVITATION and FLYING alone, so no C path sets one for CONFLICT. mhitu.c
-// reads Conflict once, in mattacku()'s cockatrice-instinct test at 803.
-function Conflict(state) {
-    const conflict = state.u?.uprops?.[CONFLICT];
-    return Boolean(conflict?.intrinsic || conflict?.extrinsic);
-}
 
 // C ref: hack.h distu() and mdistu(). mdistu() is distu() applied to a
 // monster's own square, with no long-worm handling of its own.
@@ -600,8 +557,7 @@ export function m_next2u(monster, state) {
 // C ref: mhitu.c wildmiss() (176-262). A monster can attack the wrong square
 // when it cannot see, when the hero is displaced, or while the hero is
 // underwater. The caller supplies the ordinary gameplay random source; the
-// display and message seams remain injectable so the planning pass can spend
-// gameplay draws without painting the live terminal.
+// display and message seams remain injectable.
 export async function wildmiss(mtmp, mattk, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
@@ -611,10 +567,7 @@ export async function wildmiss(mtmp, mattk, rawEnv = {}) {
     const invisibleHero = Invis(state.u)
         && !perceives(mtmp.data);
     const unotseen = !mtmp.mcansee || invisibleHero;
-    const unotthere = Boolean(
-        state.u?.uprops?.[DISPLACED]?.intrinsic
-        || state.u?.uprops?.[DISPLACED]?.extrinsic,
-    );
+    const unotthere = Displaced(state.u);
     const usubmerged = Boolean(state.u?.uinwater);
 
     // C's impossible() diagnostic is not a gameplay message. This path means
@@ -640,10 +593,7 @@ export async function wildmiss(mtmp, mattk, rawEnv = {}) {
 
     if (unotseen) {
         if (!compat) {
-            // C consumes this draw even during planning, but the planning pass
-            // must not evaluate display-only naming or write a line.
             const outcome = random.rn2(3);
-            if (rawEnv.planning) return;
             const name = capitalizedMonsterName(mtmp, state, rawEnv);
             const swings = mattk.aatyp === M.AT_BITE ? 'snaps'
                 : mattk.aatyp === M.AT_KICK ? 'kicks'
@@ -661,7 +611,7 @@ export async function wildmiss(mtmp, mattk, rawEnv = {}) {
                     ? `${name} attacks a spot beside you.`
                     : `${name} strikes at ${target}!`;
             await message(messageAt(text, mtmp.mx, mtmp.my, state), state);
-        } else if (!rawEnv.planning) {
+        } else {
             const name = capitalizedMonsterName(mtmp, state, rawEnv);
             await message(
                 messageAt(`${name} tries to touch you and misses!`,
@@ -675,7 +625,6 @@ export async function wildmiss(mtmp, mattk, rawEnv = {}) {
     // The displacement message is intentionally emitted even while blind;
     // at this point cansee() has established that the monster's own square is
     // visible. Underwater is reached only when the preceding reason is off.
-    if (rawEnv.planning) return;
     const name = capitalizedMonsterName(mtmp, state, rawEnv);
     let text;
     if (unotthere) {
@@ -795,11 +744,9 @@ async function mayberem(mon, seducer, obj, str, state = game, rawEnv = {}) {
 // through the same source-ordered armor slots.
 export async function doseduce(mon, state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const urgentMessage = rawEnv.urgentMessage
-        ?? (rawEnv.message ? rawEnv.message
-            : rawEnv.planning ? async () => {} : ttyUrgentPline);
+        ?? (rawEnv.message ? rawEnv.message : ttyUrgentPline);
     const encumberMessage = rawEnv.encumberMessage
         ?? ((currentState) => encumber_msg(currentState, { message }));
     const effectEnv = {
@@ -841,15 +788,6 @@ export async function doseduce(mon, state = game, rawEnv = {}) {
                 + 'of response.',
         );
         return 0;
-    }
-
-    // The rest of doseduce() can ask y_n() questions in mayberem() and the
-    // ring offers, and its outcome draws follow those answers. Stop a
-    // planning clone at this boundary so the live pass asks them.
-    if (rawEnv.planning) {
-        if (typeof rawEnv.requestPlanningInput !== 'function')
-            throw new TypeError('planned doseduce requires an input boundary');
-        rawEnv.requestPlanningInput('mhitu.c doseduce');
     }
 
     const seewho = canseemon(mon, state);
@@ -1240,8 +1178,8 @@ export async function doseduce(mon, state = game, rawEnv = {}) {
 // the real function for dochugw()'s interruption and once to a refusal for a
 // pet's hunger -- and neither binding is meant for these two call sites.
 //
-// What the env does own is the pair of display operations that differ between
-// the live game and the atomic planning clone, so those are forwarded.
+// What the env does own is the pair of display operations, so those are
+// forwarded.
 function mattackuStopOccupation(env) {
     return stop_occupation(env.state, {
         message: env.message,
@@ -1539,7 +1477,7 @@ export function getmattk(magr, mdef, indx, prev_result, rawEnv = {}) {
     } else if (indx === 0 && attk.aatyp === M.AT_TUCH
                && attk.adtyp === M.AD_COLD
                && (udefend
-                   ? Cold_resistance(state)
+                   ? Cold_resistance(state.u)
                    : Resists_Elem(mdef, COLD_RES, state))
                && mdef.data !== state.mons[M.PM_SHADE]) {
         attk = copyAttack(attk);
@@ -1594,8 +1532,7 @@ export function mtrapped_in_pit(mtmp, state = game) {
 
 // C ref: mhitu.c mattacku() (491–951). Returns an attacker-death flag.
 // All dispatch branches use the canonical combat/relocation owners and retain
-// those owners' documented admission limits. Planning uses the same state and
-// RNG order with silent display operations. Long-worm relocation updates its
+// those owners' documented admission limits. Long-worm relocation updates its
 // tail before the hero's destination is checked, as in C.
 export async function mattacku(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;
@@ -1608,33 +1545,20 @@ export async function mattacku(monster, rawEnv = {}) {
         );
     }
     const unsupported = requireMattackuOperation(rawEnv, 'unsupported');
-    // pline_mon(), newsym() and bot(). The planning scan replays the same turn
-    // against the live display afterwards, so a dry run must produce none of
-    // the three.
-    const message = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.message ?? ttyPline);
+    // pline_mon(), newsym() and bot().
+    const message = rawEnv.message ?? ttyPline;
     // mhitu.c's steal() chain calls ordinary pline() for the worn-item
-    // preface and urgent_pline() for the final theft line. Planning must keep
-    // both operations silent; a live attack gets the urgent terminal boundary.
-    const urgentMessage = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.urgentMessage ?? ttyUrgentPline);
-    const redraw = rawEnv.planning ? () => {} : (rawEnv.redraw ?? newsym);
-    const statusRefresh = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.statusRefresh ?? (() => bot()));
+    // preface and urgent_pline() for the final theft line; a live attack
+    // gets the urgent terminal boundary.
+    const urgentMessage = rawEnv.urgentMessage ?? ttyUrgentPline;
+    const redraw = rawEnv.redraw ?? newsym;
+    const statusRefresh = rawEnv.statusRefresh ?? (() => bot());
     // map_invisible() writes map memory and then paints through
-    // show_glyph_cell(), both against the module-global game. The planning
-    // scan replays the same turn live afterwards, so a dry run must write
-    // neither half; the live replay writes both.
-    const markInvisible = rawEnv.planning
-        ? () => {}
-        : (rawEnv.markInvisible ?? map_invisible);
-    // C keeps cosmetic choices on the display stream.  Planning owns a
-    // cloned display context; live callers use the game's display context.
-    // Supplying this explicitly prevents hliquid() in passiveum() from
-    // falling back to the attacker's gameplay random source.
+    // show_glyph_cell(), both against the module-global game.
+    const markInvisible = rawEnv.markInvisible ?? map_invisible;
+    // C keeps cosmetic choices on the display stream; live callers use the
+    // game's display context. Supplying this explicitly prevents hliquid() in
+    // passiveum() from falling back to the attacker's gameplay random source.
     const displayRandom = rawEnv.displayRandom
         ?? (state.displayCtx
             ? (bound) => rn2_on_display_rng(bound, state)
@@ -1642,7 +1566,6 @@ export async function mattacku(monster, rawEnv = {}) {
     const env = {
         ...rawEnv, state, message, urgentMessage, redraw, statusRefresh,
         markInvisible, displayRandom,
-        planningDeath: (subject) => new MonsterDeathPlanningError(subject),
     };
     let mdat = monster.data;
     const initial = calc_mattacku_vars(monster, env);
@@ -1889,7 +1812,7 @@ export async function mattacku(monster, rawEnv = {}) {
             if (mattk.aatyp === M.AT_KICK && mtrapped_in_pit(monster, state))
                 continue;
             if (!range2 && (!monster.mw /* MON_WEP() */ || monster.mconf
-                            || Conflict(state)
+                            || Conflict(state.u)
                             || !touch_petrifies(state.youmonst.data))) {
                 if (foundyou) {
                     j = random.rnd(20 + i);
@@ -1947,7 +1870,7 @@ export async function mattacku(monster, rawEnv = {}) {
                         || (!monster.mspec_used
                             && ((j = random.rnd(20 + i)), tmp > j));
                     if (engulfing) {
-                        if (!env.planning) await flush_screen(1);
+                        await flush_screen(1);
                         sum[i] = await gulpmu(monster, mattk, env);
                     } else {
                         await missmu(monster, tmp === j, mattk, env);
@@ -2148,11 +2071,9 @@ export async function expels(mtmp, rawEnv = {}) {
     await unstuck(mtmp, state, { ...rawEnv, state });
 
     // teleport.c rloc_to_core() owns the old and new monster-square redraws.
-    // Keep the operation seam explicit so a planning clone cannot paint the
-    // live map while mnexto() performs that relocation.
-    const redraw = rawEnv.planning
-        ? () => {}
-        : (rawEnv.newsym ?? rawEnv.redraw ?? newsym);
+    // Keep the caller's operation seam explicit while mnexto() performs that
+    // relocation.
+    const redraw = rawEnv.newsym ?? rawEnv.redraw ?? newsym;
     await mnexto(mtmp, RLOC_NOMSG, {
         ...rawEnv,
         state,
@@ -2162,21 +2083,17 @@ export async function expels(mtmp, rawEnv = {}) {
     // mhitu.c redraws only the hero's former stomach square after mnexto().
     // The relocation core has already painted the monster's old and new
     // squares; repeating the destination paint changes the TTY trace.
-    if (!rawEnv.planning) {
-        redraw(state.u.ux, state.u.uy);
-    }
+    redraw(state.u.ux, state.u.uy);
     // mhitu.c:302-304. um_dist() is Chebyshev distance, and the message is
     // emitted only when mnexto() had to leave the monster beyond a neighboring
     // square (for example through a controlled relocation seam).
-    if (!rawEnv.planning
-        && distmin(mtmp.mx, mtmp.my, state.u.ux, state.u.uy) > 1) {
+    if (distmin(mtmp.mx, mtmp.my, state.u.ux, state.u.uy) > 1) {
         await (rawEnv.message ?? ttyPline)(
             'Brrooaa...  You land hard at some distance.', state,
         );
     }
-    // Keep the planning clone's display seam attached through the terrain
-    // transition.  switch_terrain() is reached through spoteffects(), and a
-    // missing environment here would let a clone write live TTY output.
+    // Keep the caller's display seam attached through the terrain
+    // transition; switch_terrain() is reached through spoteffects().
     await spoteffects(true, state, rawEnv);
 }
 
@@ -2196,7 +2113,7 @@ export async function diseasemu(mdat, rawEnv = {}) {
 
     // C's Sick macro is the whole packed intrinsic, not only its timeout
     // field; make_sick() clamps the resulting duration through itimeout().
-    const sick = state.u?.uprops?.[SICK]?.intrinsic ?? 0;
+    const sick = Sick(state.u);
     const duration = sick
         ? Math.trunc(sick / 3) + 1
         : random.rn1(acurr(state, A_CON), 20);
@@ -2228,26 +2145,23 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
     const urgentMessage = rawEnv.urgentMessage ?? ttyUrgentPline;
     const redraw = rawEnv.redraw ?? newsym;
     const statusRefresh = rawEnv.statusRefresh ?? (() => bot(state));
-    const prop = (index) => u.uprops?.[index] ?? {};
-    const slowDigestion = Boolean(
-        prop(SLOW_DIGESTION).intrinsic || prop(SLOW_DIGESTION).extrinsic,
-    );
+    const slowDigestion = Slow_digestion(u);
     const magicalBreathing = Boolean(
-        prop(MAGICAL_BREATHING).intrinsic
-            || prop(MAGICAL_BREATHING).extrinsic,
+        HMagical_breathing(u)
+            || EMagical_breathing(u),
     );
     // C's Hallucination macro reads the timed intrinsic only when effective
     // hallucination resistance is absent.  A suppressed timeout must not
     // select the hallucination-only acid-engulf message.
     const hallucinating = Hallucination(u);
     const acidResistant = Boolean(
-        prop(ACID_RES).intrinsic || prop(ACID_RES).extrinsic,
+        HAcid_resistance(u) || EAcid_resistance(u),
     );
     const shockResistant = Boolean(
-        prop(SHOCK_RES).intrinsic || prop(SHOCK_RES).extrinsic,
+        HShock_resistance(u) || EShock_resistance(u),
     );
-    const coldResistant = Cold_resistance(state);
-    const fireResistant = Fire_resistance(state);
+    const coldResistant = Cold_resistance(state.u);
+    const fireResistant = Fire_resistance(state.u);
     const isBlinded = () => Blinded(u);
     const encumberMessage = rawEnv.encumberMessage
         ?? ((subject) => encumber_msg(subject, {
@@ -2294,7 +2208,7 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
         mtmp.mtrapped = false;
         place_monster(mtmp, u.ux, u.uy, state);
         set_ustuck(mtmp, state);
-        if (!rawEnv.planning) redraw(mtmp.mx, mtmp.my);
+        redraw(mtmp.mx, mtmp.my);
 
         if (u.usteed) {
             const steedName = mon_nam(u.usteed, state, rawEnv);
@@ -2313,9 +2227,6 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
                 state,
                 random,
             });
-        } else if (rawEnv.planning) {
-            // Planning suppresses only the display operation. Source state
-            // transitions and game-RNG draws below still run on the clone.
         } else {
             const injectedSpotOwner = rawEnv.canSpotMonster
                 ?? rawEnv.canSeeMonster;
@@ -2373,10 +2284,8 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
 
         // display_nhwindow(WIN_MESSAGE, FALSE) waits for pending --More-- and
         // clears it before vision and the swallow timer are updated.
-        if (!rawEnv.planning) {
-            await displayPendingTtyMessageWindow(state);
-        }
-        vision_recalc(2, { state, redraw: rawEnv.planning ? () => {} : redraw });
+        await displayPendingTtyMessageWindow(state);
+        vision_recalc(2, { state, redraw });
         u.uswallow = 1;
 
         if (mattk.adtyp === M.AD_DGST) {
@@ -2387,7 +2296,7 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
             timTmp = random.rnd(mtmp.m_lev + 10 / 2);
         }
         u.uswldtim = Math.max(2, timTmp);
-        if (!rawEnv.planning) await swallowed(1, state);
+        await swallowed(1, state);
         if (!flaming(mtmp.data)) {
             for (let object = state.invent; object;) {
                 const next = object.nobj;
@@ -2605,7 +2514,7 @@ export function magic_negation(mon, state = game) {
     let mc = 0;
     let via_amul = false;
     let gotprot = isYou
-        ? Boolean(u.uprops?.[PROTECTION]?.extrinsic)
+        ? EProtection(u) !== 0
         : mon.data === state.mons[M.PM_HIGH_CLERIC];
     const inventory = isYou ? state.invent : mon.minvent;
 
@@ -2643,7 +2552,7 @@ export function magic_negation(mon, state = game) {
     } else if (mc < 1) {
         /* intrinsic Protection is weaker (play balance; obtaining divine
            protection is too easy); it confers minimum mc 1 instead of 0 */
-        if ((isYou && ((u.uprops?.[PROTECTION]?.intrinsic
+        if ((isYou && ((HProtection(u)
                         && u.ublessed > 0) || u.uspellprot))
             /* aligned priests and angels have innate intrinsic Protection */
             // Indexed without a guard on purpose: an absent catalog would make
@@ -2657,9 +2566,8 @@ export function magic_negation(mon, state = game) {
 
 // C ref: mhitu.c hitmu() (1143-1267). "monster hits you; returns MM_ flags".
 //
-// Every reachable surviving exit answers M_ATTK_HIT. Lethal planning damage
-// raises MonsterDeathPlanningError before live rehumanize() or done_in_by().
-// A completed live end-game boundary unwinds the monster pass.
+// Every reachable surviving exit answers M_ATTK_HIT. A completed end-game
+// boundary unwinds the monster pass.
 //
 // Ported: the base damage roll, mhitm_adtyping(), mhitm_knockback(), the
 // negative-armor-class reduction, mdamageu() and passiveum().
@@ -2857,14 +2765,8 @@ export async function explmu(mtmp, mattk, ufound, rawEnv = {}) {
     case M.AD_FIRE:
     case M.AD_ELEC:
         // C's second damage roll, attacker removal and blast belong to
-        // mon_explodes(). Only the live pass may enter terminal death input.
-        await mon_explodes(mtmp, mattk, state, {
-            ...rawEnv,
-            ...(rawEnv.planning ? {
-                planningDeath: (how = DIED) =>
-                    new MonsterDeathPlanningError(mtmp, how),
-            } : {}),
-        });
+        // mon_explodes().
+        await mon_explodes(mtmp, mattk, state, { ...rawEnv });
         if (state.program_state?.gameover) return M_ATTK_AGR_DIED;
         if (mtmp.mhp > 0) killAgr = false;
         break;
@@ -2904,7 +2806,7 @@ export async function explmu(mtmp, mattk, ufound, rawEnv = {}) {
             await mondead(mtmp, state, rawEnv);
             killAgr = false;
             const changed = await make_hallucinated(
-                (HHallucination(state.u)) + tmp,
+                HHallucination(state.u) + tmp,
                 false,
                 0,
                 state,
@@ -2938,11 +2840,8 @@ export async function explmu(mtmp, mattk, ufound, rawEnv = {}) {
 export async function gazemu(monster, attack, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
-    const urgentMessage = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.urgentMessage ?? ttyUrgentPline);
+    const message = rawEnv.message ?? ttyPline;
+    const urgentMessage = rawEnv.urgentMessage ?? ttyUrgentPline;
     const env = {
         ...rawEnv,
         state,
@@ -2973,8 +2872,7 @@ export async function gazemu(monster, attack, rawEnv = {}) {
     }
 
     const isMedusa = monster.data === state.mons?.[M.PM_MEDUSA];
-    const reflecting = state.u?.uprops?.[REFLECTING];
-    const reflectable = Boolean(reflecting?.intrinsic || reflecting?.extrinsic)
+    const reflectable = Reflecting(state.u)
         && couldsee(monster.mx, monster.my, state)
         && isMedusa;
     const hallucination = () => {
@@ -3053,7 +2951,7 @@ export async function gazemu(monster, attack, rawEnv = {}) {
         }
         if (canseemon(monster, state)
             && couldsee(monster.mx, monster.my, state)
-            && !Stone_resistance(state)
+            && !Stone_resistance(state.u)
             && !Unaware(state)) {
             await message(
                 `You meet ${monsterPossessive(monster, state)} gaze.`,
@@ -3069,8 +2967,6 @@ export async function gazemu(monster, attack, rawEnv = {}) {
             state.killer ??= {};
             state.killer.format = KILLED_BY;
             state.killer.name = pmname(monster.data, gender(monster));
-            if (rawEnv.planning)
-                throw new MonsterDeathPlanningError(monster, STONING);
             await done(STONING, state, { ...env, fromMonster: true });
         }
         break;
@@ -3084,10 +2980,9 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                 const confusion = draw('d', 3, 4);
                 monster.mspec_used = (monster.mspec_used ?? 0)
                     + confusion + draw('rn2', 6);
-                const property = state.u?.uprops?.[CONFUSION];
                 // include/youprop.h:84 defines Confusion as HConfusion only;
                 // an extrinsic property does not suppress this source message.
-                if (!property?.intrinsic) {
+                if (!HConfusion(state.u)) {
                     await message(messageAt(
                         `${monsterPossessive(monster, state, true, env)} gaze `
                         + 'confuses you!',
@@ -3099,7 +2994,7 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                     );
                 }
                 await make_confused(
-                    (state.u?.uprops?.[CONFUSION]?.intrinsic ?? 0)
+                    HConfusion(state.u)
                         + confusion,
                     false,
                     state,
@@ -3125,9 +3020,8 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                         monster.mx, monster.my, state), state,
                     env,
                 );
-                const property = state.u?.uprops?.[STUNNED];
                 await make_stunned(
-                    ((property?.intrinsic ?? 0) & TIMEOUT) + stun,
+                    (HStun(state.u) & TIMEOUT) + stun,
                     true,
                     state,
                     env,
@@ -3162,7 +3056,7 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                 if (!Blind(state.u)) {
                     await message(`Your ${vision_clears}`, state, env);
                 } else {
-                    const oldStun = (state.u?.uprops?.[STUNNED]?.intrinsic ?? 0)
+                    const oldStun = HStun(state.u)
                         & TIMEOUT;
                     await make_stunned(
                         Math.max(oldStun, draw('rnd', 3)), true, state, env,
@@ -3186,7 +3080,7 @@ export async function gazemu(monster, attack, rawEnv = {}) {
                     monster.mx, monster.my, state,
                 ), state, env);
                 await mattackuStopOccupation(env);
-                if (Fire_resistance(state)) {
+                if (Fire_resistance(state.u)) {
                     await shieldeff(state.u.ux, state.u.uy, state);
                     await message("The fire doesn't feel hot!", state, env);
                     monstseesu(M_SEEN_FIRE, state);
@@ -3238,7 +3132,7 @@ export async function gazemu(monster, attack, rawEnv = {}) {
 // rehumanize(), while an ordinary hero uses u.uhp/uhpmax and done_in_by().
 // showdamage() runs before the matching cap, exactly as in C.
 export async function mdamageu(mtmp, n, state, env = {}) {
-    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
 
     if (n < 0) {
         // C discards the diagnostic's result and continues with zero damage.
@@ -3255,12 +3149,6 @@ export async function mdamageu(mtmp, n, state, env = {}) {
         if (state.u.mh > state.u.mhmax)
             state.u.mh = state.u.mhmax;
         if (state.u.mh < 1) {
-            // rehumanize() owns the live polyself.c transition. A planning
-            // clone cannot run it: polyman/newsym and a possible done() would
-            // write the live terminal or consume input. Hand the exact C
-            // lethal boundary back to the live replay instead.
-            if (env.planning)
-                throw new MonsterDeathPlanningError(mtmp);
             await rehumanize(state, env);
         }
         return;
@@ -3273,13 +3161,8 @@ export async function mdamageu(mtmp, n, state, env = {}) {
         state.u.uhp = state.u.uhpmax;
     if (state.u.uhp < 1) {
         // C ref: mhitu.c:1924-1925. done_in_by() prints "You die...", builds
-        // the killer string, and calls done(). The planning clone cannot run
-        // that input-bearing NORETURN path, so it stops at this boundary.
-        if (env.planning) {
-            throw new MonsterDeathPlanningError(mtmp);
-        } else {
-            await done_in_by(mtmp, DIED, state);
-        }
+        // the killer string, and calls done().
+        await done_in_by(mtmp, DIED, state);
     }
 }
 
@@ -3336,8 +3219,7 @@ export function ranged_attk_available(mtmp, rawEnv = {}) {
 // drain_item, and shieldeff. Their surrounding source branches still consume
 // the conditional draws before recording the discarded call.
 async function assess_dmg(mtmp, tmp, state, env) {
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     mtmp.mhp -= tmp;
     if (mtmp.mhp <= 0) {
         await message(
@@ -3357,8 +3239,7 @@ async function assess_dmg(mtmp, tmp, state, env) {
 
 async function passiveum(olduasmon, mtmp, mattk, state, env) {
     const random = env.random ?? coreRandom;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     let i;
     let oldu_mattk = null;
 

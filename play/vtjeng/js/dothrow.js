@@ -47,7 +47,6 @@ import {
     BRK_KNOWN2BREAK,
     BRK_KNOWN2NOTBREAK,
     BRK_KNOWN_OUTCOME,
-    CONFUSION,
     CXN_PFX_THE,
     CQ_CANNED,
     D_ISOPEN,
@@ -69,7 +68,6 @@ import {
     EYE,
     FACE,
     FIRE_TRAP,
-    FUMBLING,
     FOOT,
     GETOBJ_ALLOWCNT,
     GETOBJ_DOWNPLAY,
@@ -100,7 +98,6 @@ import {
     Has_contents,
     HOLE,
     IS_ALTAR,
-    PASSES_WALLS,
     PIT,
     ZAP_POS,
     VIBRATING_SQUARE,
@@ -133,11 +130,9 @@ import {
     P_SPEAR,
     SLT_ENCUMBER,
     SHOPBASE,
-    STONE_RES,
     STONING,
     STRAT_WAITMASK,
     STR19,
-    STUNNED,
     TT_BURIEDBALL,
     THROWN_TETHERED_WEAPON,
     THROWN_WEAPON,
@@ -192,7 +187,6 @@ import {
     glyph_is_invisible,
     glyph_is_monster,
     map_invisible,
-    map_invisible_planning,
     newsym,
     obj_to_glyph,
     tmp_at,
@@ -429,8 +423,6 @@ import {
 import { container_impact_dmg, ship_object } from './dokick.js';
 import { P_SKILL, weapon_type } from './startup_skills.js';
 import {
-    Flying,
-    Levitation,
     drown,
     instapetrify,
     minstapetrify,
@@ -484,18 +476,10 @@ import { unsplitobj } from './obj.js';
 import { canseemon, canspotmon } from './display.js';
 import { Punished } from './steed.js';
 import {
-    Blind, Deaf, HBlinded, Hallucination, Maybe_Half_Phys,
+    Blind, Confusion, Deaf, EWwalking, Flying, Fumbling, HBlinded,
+    Hallucination, Levitation, Maybe_Half_Phys, Passes_walls,
+    Stone_resistance, Stunned, Wwalking,
 } from './youprop.js';
-
-// C refs: youprop.h Confusion (84), Stunned (81), Fumbling (129) and
-// Stone_resistance (65). Each is the union of the intrinsic and extrinsic
-// halves of one property; none of the four has a blocking source. Defined here
-// beside their callers -- the multishot gate and the bare-handed corpse gate --
-// the way js/wield.js keeps Glib beside can_twoweapon().
-function propertyHeld(state, property) {
-    const held = state.u?.uprops?.[property];
-    return Boolean(held?.intrinsic || held?.extrinsic);
-}
 
 
 // A branch of dothrow.c this port has not translated. js/cmd.js
@@ -566,17 +550,12 @@ export async function walk_path(source, destination, checkProc, arg) {
 export async function hurtle(
     dx, dy, range, verbose, state = game,
     {
-        planning = false,
         random = null,
-        planningDeath = null,
-        requestPlanningInput = null,
-        isolateVision = null,
         displayRandom = null,
     } = {},
 ) {
     const u = state.u;
-    // A planning copy of a monster's knockback must print nothing live.
-    const message = planning ? async () => {} : ttyPline;
+    const message = ttyPline;
     if (Punished(state) && state.uball?.where !== OBJ_INVENT) {
         await message(youFeel('a tug from the iron ball.', state), state);
         nomul(0, state);
@@ -613,26 +592,13 @@ export async function hurtle(
 
     const source = { x: u.ux, y: u.uy };
     const destination = { x: u.ux + dx * range, y: u.uy + dy * range };
-    const walkRange = {
-        range, state, planning: Boolean(planning), random, planningDeath,
-        requestPlanningInput,
-        isolateVision, displayRandom,
-    };
+    const walkRange = { range, state, random, displayRandom };
     await walk_path(source, destination, hurtle_step, walkRange);
 }
 
-function propertyPresent(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
-function heroWwalking(state) {
-    return !Is_waterlevel(state.u?.uz, state)
-        && propertyPresent(state, WWALKING);
-}
 
 function heroPassesWalls(state) {
-    return propertyPresent(state, PASSES_WALLS);
+    return Passes_walls(state.u);
 }
 
 function isMoat(x, y, state) {
@@ -662,14 +628,12 @@ function noitMhim(monster, state, random) {
 // before the callback returns to walk_path().
 export async function hurtle_jump(arg, x, y) {
     const state = arg?.state ?? game;
-    const walking = state.u?.uprops?.[WWALKING]
-        ?? (state.u.uprops[WWALKING] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
-    const saved = walking.extrinsic;
-    walking.extrinsic |= I_SPECIAL;
+    const saved = EWwalking(state.u);
+    state.u.uprops[WWALKING].extrinsic |= I_SPECIAL;
     try {
         return await hurtle_step(arg, x, y);
     } finally {
-        walking.extrinsic = saved;
+        state.u.uprops[WWALKING].extrinsic = saved;
     }
 }
 
@@ -721,9 +685,8 @@ export async function mhurtle_step(arg, x, y) {
     if (!monster || !state.level)
         throw new TypeError('mhurtle_step requires a monster and level');
     if (!isok(x, y)) return false;
-    // Speculative movement keeps map/physics effects without live presentation.
-    const redraw = env.planning ? () => {} : newsym;
-    const message = env.planning ? async () => {} : ttyPline;
+    const redraw = newsym;
+    const message = ttyPline;
 
     if (will_hurtle(monster, x, y, state, env)
         && await m_in_out_region(monster, x, y, { ...env, state })) {
@@ -741,10 +704,8 @@ export async function mhurtle_step(arg, x, y) {
             redraw(state.u.ux0, state.u.uy0);
             vision_recalc(0, { state });
         }
-        if (!env.planning) {
-            await flush_screen(1);
-            await nh_delay_output(state);
-        }
+        await flush_screen(1);
+        await nh_delay_output(state);
         set_apparxy(monster, { ...env, state, random: env.random });
         if (IS_WATERWALL(state.level.at(x, y).typ)) return false;
         const result = await mintrap(
@@ -791,8 +752,8 @@ export async function mhurtle_step(arg, x, y) {
         const { stop_occupation } = await import('./allmain.js');
         await stop_occupation(state, {
             ...env,
-            message: env.planning ? message : (env.message
-                ?? ((line, target) => ttyPline(line, target ?? state))),
+            message: env.message
+                ?? ((line, target) => ttyPline(line, target ?? state)),
         });
         if (Upolyd(state.u) && touch_petrifies(state.youmonst.data)
             && !which_armor(monster, W_ARMU | W_ARM | W_ARMC, state)) {
@@ -876,8 +837,8 @@ export async function mhurtle(monster, dx, dy, range, rawEnv = {}) {
                 mhurtleTrapEnvironment(movementEnv, state),
             );
         } else {
-            // A caller's minLiquid owner carries the elapsed-turn or planning
-            // seams for relocation and output, as dochug()'s own call does.
+            // A caller's minLiquid owner carries its own relocation and
+            // output seams, as dochug()'s own call does.
             await (movementEnv.minLiquid ?? minliquid)(monster, movementEnv);
         }
     }
@@ -888,12 +849,11 @@ export async function mhurtle(monster, dx, dy, range, rawEnv = {}) {
 // range and nearby state in source order; its boolean controls walk_path().
 export async function hurtle_step(arg, x, y) {
     const state = arg?.state ?? game;
-    const planning = Boolean(arg?.planning);
     const random = arg?.random ?? coreRandom;
-    const message = planning ? async () => {} : ttyPline;
-    const norepMessage = planning ? async () => {} : ttyNorep;
-    const redraw = planning ? () => {} : newsym;
-    const flush = planning ? async () => {} : flush_screen;
+    const message = ttyPline;
+    const norepMessage = ttyNorep;
+    const redraw = newsym;
+    const flush = flush_screen;
     const pointer = rangePointer(arg);
     const range = () => Math.trunc(pointer.range ?? 0);
     let mayPass = true;
@@ -905,7 +865,7 @@ export async function hurtle_step(arg, x, y) {
     if (!await in_out_region(x, y, { state })) return false;
     if (range() === 0) return false;
 
-    const viaJumping = (state.u?.uprops?.[WWALKING]?.extrinsic ?? 0)
+    const viaJumping = (EWwalking(state.u))
         & I_SPECIAL;
     const stoppingShort = Boolean(viaJumping && range() < 2);
     const lev = state.level.at(x, y);
@@ -957,11 +917,7 @@ export async function hurtle_step(arg, x, y) {
                 why,
                 KILLED_BY,
                 state,
-                planning ? {
-                    planning: true,
-                    message,
-                    planningDeath: arg?.planningDeath,
-                } : {},
+                {},
             );
             await wake_nearto(x, y, 10, { state, random, message });
             return false;
@@ -988,13 +944,8 @@ export async function hurtle_step(arg, x, y) {
             await message(`You bump into ${mnam}.`, state);
         }
         await wakeup(mon, false, { state, random, message });
-        if (!canspotmon(mon, state)) {
-            // C's map write belongs to the planned level, but map_invisible()
-            // also paints the module-global display. Keep that live half out
-            // of this cloned-state pass.
-            if (planning) map_invisible_planning(mon.mx, mon.my, state);
-            else map_invisible(mon.mx, mon.my, state);
-        }
+        if (!canspotmon(mon, state))
+            map_invisible(mon.mx, mon.my, state);
         await setmangry(mon, false, { state, random, message });
         if (touch_petrifies(mon.data) && !state.uarmu && !state.uarm
             && !state.uarmc) {
@@ -1004,8 +955,6 @@ export async function hurtle_step(arg, x, y) {
                 ...arg?.env,
                 random,
                 message,
-                planning,
-                planningDeath: arg?.planningDeath,
             });
         }
         if (touch_petrifies(state.youmonst?.data)
@@ -1045,24 +994,13 @@ export async function hurtle_step(arg, x, y) {
     const oldX = state.u.ux;
     const oldY = state.u.uy;
     // dungeon.c:u_on_newpos() observes nearby objects before its generic-glyph
-    // newsym_force() redraw. The planning clone keeps those discovery writes
-    // and draws through its silent redraw; the live pass repaints.
-    u_on_newpos(x, y, state, {
-        seeNearbyObjectsOptions: planning ? { redraw } : undefined,
-    });
+    // newsym_force() redraw.
+    u_on_newpos(x, y, state);
     redraw(oldX, oldY);
-    if (planning) {
-        if (typeof arg?.isolateVision !== 'function') {
-            throw new TypeError(
-                'planned hurtle requires clone-owned vision buffers',
-            );
-        }
-        arg.isolateVision(state);
-    }
     vision_recalc(1, { state, redraw });
     await flush(1);
     if (ltyp !== state.level.at(oldX, oldY).typ)
-        await switch_terrain(state, { planning, message });
+        await switch_terrain(state, { message });
     await check_special_room(false, state, {
         message,
         random,
@@ -1070,18 +1008,9 @@ export async function hurtle_step(arg, x, y) {
 
     if (is_pool(x, y, state) && !state.u.uinwater) {
         if (state.level.at(x, y).typ === WATER
-            || !(Levitation(state) || Flying(state) || heroWwalking(state))) {
+            || !(Levitation(state.u) || Flying(state.u) || Wwalking(state))) {
             state.multi = 0;
-            if (planning) {
-                // C calls drown() after moving into the pool. It can kill,
-                // save or relocate the hero, so the clone cannot continue
-                // later monster decisions without replaying this effect live.
-                if (typeof arg?.requestPlanningInput === 'function')
-                    arg.requestPlanningInput('trap.c drown via hurtle');
-                throw new Error('planned hurtle into pool needs a live handoff');
-            } else {
-                await drown(state);
-            }
+            await drown(state);
             return false;
         }
         if (!Is_waterlevel(state.u.uz, state) && !stoppingShort) {
@@ -1101,27 +1030,23 @@ export async function hurtle_step(arg, x, y) {
             // landing trap after this callback has stopped one square short.
         } else if (trap.ttyp === MAGIC_PORTAL) {
             await dotrap(trap, NO_TRAP_FLAGS, state, {
-                planning, random, message, redraw,
-                planningDeath: arg?.planningDeath,
+                random, message, redraw,
             });
             return false;
         } else if (trap.ttyp === VIBRATING_SQUARE) {
             await message('The ground vibrates as you pass it.', state);
             await dotrap(trap, NO_TRAP_FLAGS, state, {
-                planning, random, message, redraw,
-                planningDeath: arg?.planningDeath,
+                random, message, redraw,
             });
         } else if (trap.ttyp === FIRE_TRAP) {
             await dotrap(trap, NO_TRAP_FLAGS, state, {
-                planning, random, message, redraw,
-                planningDeath: arg?.planningDeath,
+                random, message, redraw,
             });
         } else if ((is_pit(trap.ttyp) || is_hole(trap.ttyp))
             && state.level.flags?.sokoban_rules) {
             if (!viaJumping)
                 await dotrap(trap, NO_TRAP_FLAGS, state, {
-                    planning, random, message, redraw,
-                    planningDeath: arg?.planningDeath,
+                    random, message, redraw,
                 });
             pointer.range = 0;
             return true;
@@ -1134,7 +1059,7 @@ export async function hurtle_step(arg, x, y) {
     }
     pointer.range = Math.max(0, range() - 1);
     if (range() !== 0)
-        await (planning ? async () => {} : nh_delay_output)(state);
+        await nh_delay_output(state);
     return true;
 }
 
@@ -1277,7 +1202,7 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
 
         switch (otyp) {
         case EGG:
-            if (petrifier && !propertyPresent(state, STONE_RES)
+            if (petrifier && !Stone_resistance(state.u)
                 && !(poly_when_stoned(state.youmonst.data, state)
                     && await polymon(PM_STONE_GOLEM, state))) {
                 // A visor may still save the hero from the egg's petrifying
@@ -1316,7 +1241,7 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
             if (otyp === BLINDING_VENOM && !Blind(state.u))
                 await message('It blinds you!', state, rawEnv);
             u.ucreamed = (u.ucreamed ?? 0) + blindinc;
-            const blindedTimeout = (HBlinded(u))
+            const blindedTimeout = HBlinded(u)
                 & TIMEOUT;
             await make_blinded(blindedTimeout + blindinc, false, state,
                 rawEnv);
@@ -1400,7 +1325,7 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
             // harmless; the helmet has stopped it from passing through.
             // (The petrifier case is explicitly not harmless in C.)
             harmless = false;
-        } else if (petrifier && !propertyPresent(state, STONE_RES)
+        } else if (petrifier && !Stone_resistance(state.u)
             && !(poly_when_stoned(state.youmonst.data, state)
                 && await polymon(PM_STONE_GOLEM, state))) {
             await toss_up_petrify(obj, state, rawEnv);
@@ -1652,7 +1577,7 @@ async function check_shop_obj(obj, x, y, broken, state = game, rawEnv = {}) {
 export async function release_camera_demon(obj, x, y, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
-    const message = env.planning ? async () => {} : (env.message ?? ttyPline);
+    const message = env.message ?? ttyPline;
     if (!random.rn2(3)) {
         const species = random.rn2(3) ? PM_HOMUNCULUS : PM_IMP;
         const monster = await makemon_runtime(state.mons[species], x, y,
@@ -2179,7 +2104,7 @@ export async function throw_obj(obj, shotlimit, state = game) {
     u_wipe_engr(2, { state });
     if (!state.uarmg && obj.otyp === CORPSE
         && touch_petrifies(state.mons[obj.corpsenm])
-        && !propertyHeld(state, STONE_RES)) {
+        && !Stone_resistance(state.u)) {
         await ttyPline(
             `You throw ${corpse_xname(obj, null, CXN_PFX_THE, state)} `
                 + `with your bare ${makeplural(body_part(HAND, state.youmonst))}.`,
@@ -2213,15 +2138,15 @@ export async function throw_obj(obj, shotlimit, state = game) {
             ? matching_launcher(obj, state.uwep, state)
             /* otherwise any stackable (non-ammo) weapon */
             : obj.oclass === WEAPON_CLASS)
-        && !(propertyHeld(state, CONFUSION)
-            || propertyHeld(state, STUNNED))) {
+        && !(Boolean(Confusion(state.u))
+            || Boolean(Stunned(state.u)))) {
         /* some roles don't get a volley bonus until becoming expert */
         const role = state.urole.mnum;
         const weakmultishot = (role === PM_WIZARD || role === PM_CLERIC
             || (role === PM_HEALER && skill !== P_KNIFE)
             || (role === PM_TOURIST && skill !== -P_DART)
             /* poor dexterity also inhibits multishot */
-            || propertyHeld(state, FUMBLING)
+            || Fumbling(state.u)
             || acurr(state, A_DEX) <= 6);
 
         /* Bonus if the player is proficient in this weapon... */
@@ -2617,11 +2542,11 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
     const u = state.u;
 
     const arw = autoreturn_weapon(obj);
-    let impaired = propertyHeld(state, CONFUSION)
-        || propertyHeld(state, STUNNED)
+    let impaired = Boolean(Confusion(state.u))
+        || Boolean(Stunned(state.u))
         || Blind(state.u)
         || Hallucination(state.u)
-        || propertyHeld(state, FUMBLING);
+        || Fumbling(state.u);
     const tetheredWeapon = Boolean(arw?.tethered && (wep_mask & W_WEP));
 
     state.gn ??= {};
@@ -2707,7 +2632,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
         throwit_return(true, state);
         return;
     } else if (obj.otyp === BOOMERANG && !u.uinwater) {
-        if (Is_airlevel(u.uz, state) || Levitation(state))
+        if (Is_airlevel(u.uz, state) || Levitation(state.u))
             await hurtle(-u.dx, -u.dy, 1, true, state);
         mon = await boomhit(
             obj, u.dx, u.dy, state, throwit_mon_hit, endmultishot,
@@ -2751,7 +2676,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
             }
         }
 
-        if (Is_airlevel(u.uz, state) || Levitation(state)) {
+        if (Is_airlevel(u.uz, state) || Levitation(state.u)) {
             urange -= range;
             if (urange < 1) urange = 1;
             range -= urange;
@@ -2774,7 +2699,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
         );
         obj = pobj.obj;
         setThrownObject(state, obj);
-        if (Is_airlevel(u.uz, state) || Levitation(state))
+        if (Is_airlevel(u.uz, state) || Levitation(state.u))
             await hurtle(-u.dx, -u.dy, urange, true, state);
         if (!obj) {
             if (tetheredWeapon) await tmp_at(DISP_END, 0, state);
@@ -2824,10 +2749,10 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
                     await ttyPline(
                         Blind(state.u)
                             ? `Something lands ${
-                                Levitation(state) ? 'beneath' : 'at'} your ${
+                                Levitation(state.u) ? 'beneath' : 'at'} your ${
                                 makeplural(body_part(FOOT, state.youmonst))}.`
                             : `${Tobjnam(obj, 'return', state)} back to you, `
-                                + `landing ${Levitation(state) ? 'beneath' : 'at'} `
+                                + `landing ${Levitation(state.u) ? 'beneath' : 'at'} `
                                 + `your ${makeplural(body_part(FOOT, state.youmonst))}.`, state,
                     );
                 } else {
@@ -2957,7 +2882,7 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
     // hmon(), whose kill path reaches mon.c xkilled()'s treasure drop and
     // mkobj.c mkobj(). C draws all of those from the one global RNG.
     const random = env.random ?? coreRandom;
-    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     // Existing partial owners may still report an unported discarded or
     // impossible branch. Keep this source function running so such a gap
     // cannot replace a source arm with a new throw or consume extra RNG.

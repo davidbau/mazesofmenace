@@ -41,7 +41,6 @@ import {
     ROWNO,
     SCORR,
     STONE,
-    STRANGLED,
     TLCORNER,
     TRCORNER,
     VAULT,
@@ -50,7 +49,7 @@ import {
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import {
-    map_invisible, map_invisible_planning, map_location, newsym, unset_seenv, xy_set_wall_state,
+    map_invisible, map_location, newsym, unset_seenv, xy_set_wall_state,
 } from './display.js';
 import { assign_level, on_level } from './dungeon.js';
 import { verbalize, youHear, youSee } from './pline.js';
@@ -102,7 +101,7 @@ import { set_voice } from './sounds.js';
 import { fracture_rock } from './zap.js';
 import { make_grave } from './grave.js';
 import { coreRandom } from './rng.js';
-import { Blind, Deaf } from './youprop.js';
+import { Blind, Deaf, Strangled } from './youprop.js';
 
 // Thrown where vault.c reaches vault-guard handling this port has not ported.
 export class UnsupportedVaultGuardError extends Error {
@@ -565,18 +564,6 @@ export async function gd_move(grd, env = {}) {
 
     if (!on_level(egrd.gdlevel, state.u.uz))
         return -1;
-
-    // Everything below can draw (the "Move along!" rn2(10), rloc(),
-    // gd_mv_monaway()), dig and restore the fake corridor, and repaint
-    // squares through newsym(), which always draws the live map. The dry run
-    // cannot do that silently, and skipping it would leave the plan's random
-    // draws behind the live pass's for the rest of the turn. Stop the dry run
-    // here: js/allmain.js replays this scan live and plans the rest from it.
-    if (env.planning) {
-        if (typeof env.requestPlanningInput !== 'function')
-            throw new TypeError('planned gd_move requires a planning boundary');
-        env.requestPlanningInput('vault.c gd_move');
-    }
 
     if (semi_dead || !grd.mx || egrd.gddone) {
         egrd.gddone = 1;
@@ -1046,13 +1033,6 @@ function find_guard_dest(guard, state) {
     return null;
 }
 
-function propertyActive(hero, index) {
-    const property = hero?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
-function Strangled(state) {
-    return propertyActive(state.u, STRANGLED);
-}
 // C ref: vault.c invault() (317-629). Called once per turn from moveloop when
 // the hero is in a vault. After VAULT_GUARD_TIME turns, creates a guard who
 // asks the hero's name and demands any gold be dropped.
@@ -1181,13 +1161,12 @@ export async function invault(state, env = {}) {
         await message(
             `Suddenly one of the Vault's ${makeplural(pmname(guard.data, gender(guard)))} enters!`,
         );
-        // newsym() paints the live game, which a planning copy leaves to
-        // the live pass, as map_invisible() below does.
+        // newsym() paints the global game; a hand-built state has no
+        // display to repaint.
         if (state === game) newsym(guard.mx, guard.my);
     } else {
         await message('Someone else has entered the Vault.');
-        if (state === game) map_invisible(guard.mx, guard.my, state);
-        else map_invisible_planning(guard.mx, guard.my, state);
+        map_invisible(guard.mx, guard.my, state);
     }
 
     if (u.uswallow) {
@@ -1215,7 +1194,7 @@ export async function invault(state, env = {}) {
         await mongone(guard, { state, random });
         return;
     }
-    if (Strangled(state) || is_silent(state.youmonst?.data ?? u.umonster)
+    if (Strangled(state.u) || is_silent(state.youmonst?.data ?? u.umonster)
         || state.multi < 0) {
         if (Deaf(state.u)) {
             await message(`${noit_Monnam(guard, state)} huffs and turns to leave.`);
@@ -1234,10 +1213,6 @@ export async function invault(state, env = {}) {
     if (state.multi > 0) {
         nomul(0, state);
     }
-
-    // A dry run stops at the guard's question: getlin() reads keys, so the
-    // question and every effect after it belong to the live game alone.
-    if (env.planning) return { beforeInput: true };
 
     let buf = '';
     let trycount = 5;

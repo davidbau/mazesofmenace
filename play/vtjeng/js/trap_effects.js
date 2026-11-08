@@ -17,10 +17,8 @@
 // split the same file for the same reason.
 
 import {
-    ANTIMAGIC,
     ANTI_MAGIC,
     ARROW_TRAP,
-    UNCHANGING,
     ARTICLE_NONE,
     ARTICLE_THE,
     A_CHA,
@@ -34,7 +32,6 @@ import {
     COST_DRAIN,
     DART_TRAP,
     DEAF,
-    DRAIN_RES,
     DISP_END,
     DISP_FLASH,
     DISMOUNT_POLY,
@@ -50,9 +47,7 @@ import {
     FORCEBUNGLE,
     FORCETRAP,
     FROMOUTSIDE,
-    FUMBLING,
     HEAD,
-    HALF_SPDAM,
     HOLE,
     HURTLING,
     IS_STWALL,
@@ -79,7 +74,6 @@ import {
     M_SEEN_FIRE,
     PIT,
     CXN_PFX_THE,
-    PASSES_WALLS,
     POLY_NOFLAGS,
     POLY_TRAP,
     RIGHT_SIDE,
@@ -351,8 +345,6 @@ import { makeplural } from './fruit.js';
 import { coreRandom, rn2_on_display_rng } from './rng.js';
 import { messageAt } from './startup_a11y.js';
 import {
-    Flying,
-    Levitation,
     deltrap,
     fall_through,
     fill_pit,
@@ -376,7 +368,7 @@ import {
     rloco,
     tele_trap,
 } from './teleport.js';
-import { Fire_resistance, fracture_rock, poly_obj, resist } from './zap.js';
+import { fracture_rock, poly_obj, resist } from './zap.js';
 import { ttyPline } from './tty_message.js';
 import { burnarmor } from './trap_erode_obj.js';
 import { burn_floor_objects, destroy_items } from './zap_destroy_items.js';
@@ -412,13 +404,15 @@ import {
 import { canseemon, canspotmon } from './display.js';
 import { Punished } from './steed.js';
 import {
-    Blind, Deaf, EInvis, HInvis, Half_physical_damage, Hallucination, Invis,
-    Maybe_Half_Phys, See_invisible,
+    Antimagic, Blind, Deaf, EDrain_resistance, EFumbling, EInvis,
+    ESleep_resistance, Fire_resistance, Flying, HConfusion, HDrain_resistance,
+    HFumbling, HInvis, HSleep_resistance, Half_physical_damage,
+    Half_spell_damage, Hallucination, Invis, Levitation, Maybe_Half_Phys,
+    Passes_walls, See_invisible, Unchanging,
 } from './youprop.js';
 
 // Effects receive the source owners through their caller's environment.
-// mintrap() supplies live defaults for state-only production callers; planning
-// callers replace message/redraw and RNG with clone-local operations. Every
+// mintrap() supplies live defaults for state-only production callers. Every
 // supplied environment is checked here so an invalid operation fails before
 // it is used.
 function requireTrapOperation(env, name) {
@@ -434,9 +428,9 @@ function requireTrapOperation(env, name) {
 const a_your = Object.freeze(['a', 'your']);
 const A_Your = Object.freeze(['A', 'Your']);
 
-// Live dotrap() uses its ordinary owners. The planned hurtle caller can pass
-// clone-local RNG, message and redraw operations without changing other trap
-// callers; `unsupported` keeps the same movement-catch boundary.
+// Live dotrap() uses its ordinary owners. A caller can pass its own RNG,
+// message and redraw operations without changing other trap callers;
+// `unsupported` keeps the same movement-catch boundary.
 function heroTrapEnv(state, rawEnv = {}) {
     return {
         ...rawEnv,
@@ -489,8 +483,8 @@ export function check_in_air(monster, trflags, state = game) {
     const is_you = monster === state.youmonst;
     const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
     return (trflags & HURTLING) !== 0
-        || (is_you ? Levitation(state) : is_floater(monster.data))
-        || ((is_you ? Flying(state) : is_flyer(monster.data)) && !plunged);
+        || (is_you ? Levitation(state.u) : is_floater(monster.data))
+        || ((is_you ? Flying(state.u) : is_flyer(monster.data)) && !plunged);
 }
 
 // C ref: trap.c m_easy_escape_pit(). A pit fiend or any huge-or-larger
@@ -506,9 +500,7 @@ export function fixed_tele_trap(trap) {
         && isok(trap.teledest?.x, trap.teledest?.y);
 }
 
-// C ref: trap.c seetrap(). The redraw is injected because the planning clone
-// paints nothing; the tseen write is real in both passes, which is why
-// planningState() clones the level's trap list.
+// C ref: trap.c seetrap(). The redraw is injected by the caller.
 export function seetrap(trap, env) {
     const redraw = requireTrapOperation(env, 'redraw');
     if (!trap.tseen) {
@@ -600,9 +592,9 @@ async function trapeffect_sqky_board(monster, trap, trflags, env) {
     const message = requireTrapOperation(env, 'message');
 
     const forcetrap = (trflags & (FORCETRAP | FAILEDUNTRAP)) !== 0
-        || (Flying(state) && (trflags & VIASITTING) !== 0);
+        || (Flying(state.u) && (trflags & VIASITTING) !== 0);
     if (monster === state.youmonst) {
-        if ((Levitation(state) || Flying(state)) && !forcetrap) {
+        if ((Levitation(state.u) || Flying(state.u)) && !forcetrap) {
             if (!Blind(state.u)) {
                 seetrap(trap, env);
                 await message(
@@ -787,7 +779,6 @@ async function trapeffect_arrow_trap(mtmp, trap, _trflags, env) {
             );
         }
         deltrap(trap, state);
-        // The caller's redraw is silent in a monster turn's planning pass.
         requireTrapOperation(env, 'redraw')(mtmp.mx, mtmp.my, state);
         return Trap_Is_Gone;
     }
@@ -1196,8 +1187,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags, env) {
 // the --More--, and only then evaluates thitm()'s argument at 1554, so the
 // draw lands in the keystroke that dismissed the message and not in the one
 // that moved the monster. The port reaches the same order by awaiting the
-// message seam, which suspends in the live pass and returns at once in the
-// cloned planning pass, leaving the draw at the same position in both.
+// message seam.
 async function trapeffect_bear_trap(mtmp, trap, trflags, env) {
     const { state } = env;
     const random = env.random;
@@ -1277,7 +1267,7 @@ async function trapeffect_bear_trap(mtmp, trap, trflags, env) {
 
     const dmg = random.d(2, 4);
 
-    if ((Levitation(state) || Flying(state)) && !forcetrap)
+    if ((Levitation(state.u) || Flying(state.u)) && !forcetrap)
         return Trap_Effect_Finished;
     feeltrap(trap, env);
     const you = state.youmonst.data;
@@ -1352,8 +1342,7 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags, env) {
 
     if (mtmp === state.youmonst) {
         seetrap(trap, env);
-        const resistance = state.u?.uprops?.[SLEEP_RES];
-        if (resistance?.intrinsic || resistance?.extrinsic
+        if (HSleep_resistance(state.u) || ESleep_resistance(state.u)
             || breathless(state.youmonst.data)) {
             await message('You are enveloped in a cloud of gas!', state, env);
             monstseesu(M_SEEN_SLEEP, state);
@@ -1532,8 +1521,8 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
 
         // KMH -- You can't escape the Sokoban level traps.
         const sokoban = Boolean(state.level?.flags?.sokoban_rules);
-        if (!sokoban && (Levitation(state)
-            || (Flying(state) && !plunged && !viasitting)))
+        if (!sokoban && (Levitation(state.u)
+            || (Flying(state.u) && !plunged && !viasitting)))
             return Trap_Effect_Finished;
 
         feeltrap(trap, env);
@@ -1583,7 +1572,7 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
                 const between = !random.rn2(5) ? ' between the pits' : '';
                 await message(`You stumble over debris${between}.`, state, env);
             } else {
-                verbbuf = !plunged ? 'fall' : (Flying(state) ? 'dive' : 'plunge');
+                verbbuf = !plunged ? 'fall' : (Flying(state.u) ? 'dive' : 'plunge');
             }
             if (verbbuf)
                 await message(`You ${verbbuf} into ${a_your[trap.madeby_u ? 1 : 0]} pit!`, state, env);
@@ -1655,7 +1644,7 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
                         return Trap_Effect_Finished;
                 }
             } else if (!conjPit && !deliberate
-                && !(plunged && (Flying(state) || is_clinger(state.youmonst.data)))) {
+                && !(plunged && (Flying(state.u) || is_clinger(state.youmonst.data)))) {
                 await losehp(
                     Maybe_Half_Phys(random.rnd(adjPit ? 3 : 6), state.u),
                     plunged ? 'deliberately plunged into a pit' : 'fell into a pit',
@@ -1931,8 +1920,7 @@ async function domagictrap(env) {
             }
             break;
         case 20: { /* uncurse stuff */
-            const confusion = state.u.uprops?.[CONFUSION];
-            const savedConfusion = confusion?.intrinsic ?? 0;
+            const savedConfusion = HConfusion(state.u);
             const confusionProperty = (state.u.uprops ??= {})[CONFUSION]
                 ??= { intrinsic: 0, extrinsic: 0 };
             const pseudo = newObject({
@@ -2130,7 +2118,7 @@ export async function dofiretrap(box, rawEnv = {}) {
             state,
             env,
         );
-        if (Fire_resistance(state)) {
+        if (Fire_resistance(state.u)) {
             await message('You are uninjured.', state, env);
         } else {
             await losehp(random.rnd(3), 'boiling water', KILLED_BY, state, env);
@@ -2145,7 +2133,7 @@ export async function dofiretrap(box, rawEnv = {}) {
         env,
     );
 
-    if (Fire_resistance(state)) {
+    if (Fire_resistance(state.u)) {
         await shieldeff(u.ux, u.uy, state);
         monstseesu(M_SEEN_FIRE, state);
         num = random.rn2(2);
@@ -2188,8 +2176,7 @@ export async function dofiretrap(box, rawEnv = {}) {
         }
         if (u.uhpmax < uhpmin) {
             setuhpmax(Math.min(oldUhpmax, uhpmin), false, state);
-            const drainResistance = u.uprops?.[DRAIN_RES];
-            if (!drainResistance?.intrinsic && !drainResistance?.extrinsic)
+            if (!HDrain_resistance(u) && !EDrain_resistance(u))
                 await losexp(null, state, env);
         }
         if (u.uhp > u.uhpmax) {
@@ -2235,7 +2222,7 @@ export async function dofiretrap(box, rawEnv = {}) {
 // (1738-1819) is also the return-valued callee of trapeffect_magic_trap(); its
 // hero arm delegates to dofiretrap() and returns Trap_Effect_Finished.
 async function trapeffect_fire_trap(mtmp, trap, _trflags, env) {
-    // Both names use the active display owner, including speculative turns.
+    // Both names use the active display owner.
     const { state } = env;
     const random = env.random;
     const message = requireTrapOperation(env, 'message');
@@ -2439,9 +2426,8 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
         if (antimagicTrapHero(state)) {
             let damage = random.rnd(4);
             const hp = Upolyd(state.u) ? state.u.mh : state.u.uhp;
-            const halfSpell = state.u?.uprops?.[HALF_SPDAM];
             if (Half_physical_damage(state.u)
-                || halfSpell?.intrinsic || halfSpell?.extrinsic) {
+                || Half_spell_damage(state.u)) {
                 damage += random.rnd(4);
             }
             if (state.uwep && is_art(state.uwep, ART_MAGICBANE))
@@ -2456,8 +2442,7 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
             }
             if (object) damage += random.rnd(4);
 
-            const passesWalls = state.u?.uprops?.[PASSES_WALLS];
-            if (passesWalls?.intrinsic || passesWalls?.extrinsic)
+            if (Passes_walls(state.u))
                 damage = Math.trunc((damage + 3) / 4);
 
             await message(
@@ -2594,24 +2579,19 @@ export function force_launch_placement(state = game) {
 // and placed, 2 if launched and used up.
 //
 // This port covers the rolling path shared by the hero and monster arms. The
-// display and message operations are injected so mintrap() can first replay
-// the same motion against its planning clone without painting or printing.
+// display and message operations can be injected by the caller.
 export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}) {
     const env = {
         ...rawEnv,
         state,
         random: rawEnv.random ?? coreRandom,
     };
-    const planning = Boolean(env.planning);
     const message = env.message ?? ((line, target) =>
         ttyPline(line, target ?? state));
     const redraw = env.redraw ?? ((x, y) => newsym(x, y, state));
-    const delayOutput = env.delayOutput
-        ?? (planning ? async () => {} : nh_delay_output);
-    const temporaryDisplay = env.temporaryDisplay
-        ?? (planning ? async () => {} : tmp_at);
-    const cursorOnHero = env.cursorOnHero
-        ?? (planning ? async () => {} : curs_on_u);
+    const delayOutput = env.delayOutput ?? nh_delay_output;
+    const temporaryDisplay = env.temporaryDisplay ?? tmp_at;
+    const cursorOnHero = env.cursorOnHero ?? curs_on_u;
     const youSee = env.youSee ?? plineYouSee;
     const youHear = env.youHear ?? plineYouHear;
 
@@ -2653,12 +2633,8 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
     }
 
     let singleobj;
-    // The vision hooks read objectEnv.planning: a planned launch must borrow
-    // the module-wide transparency index (admitPlannedVisionChange) before
-    // lifting the boulder, or the live pass inherits the unblocked square.
     const objectEnv = {
         state,
-        planning,
         hooks: objectHooks,
     };
     if (otmp.quan === 1) {
@@ -2738,18 +2714,16 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
             delaycnt = 1;
         if (!cansee(x, y, state))
             await cursorOnHero(state);
-        if (!planning) {
-            await temporaryDisplay(DISP_FLASH, obj_to_glyph(singleobj, state,
-                rn2_on_display_rng), state);
-            await temporaryDisplay(x, y, state);
-        }
+        await temporaryDisplay(DISP_FLASH, obj_to_glyph(singleobj, state,
+            rn2_on_display_rng), state);
+        await temporaryDisplay(x, y, state);
     }
     // Mark a spot for bones files to prevent loss of object mid-flight.
     launch_drop_spot(singleobj, x, y, state);
 
     // Set the object in motion
     while (dist-- > 0 && !used_up) {
-        if (!planning) await temporaryDisplay(x, y, state);
+        await temporaryDisplay(x, y, state);
         let tmp = delaycnt;
 
         // Delay only if hero sees it
@@ -2852,17 +2826,12 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                     Maybe_Half_Phys(dam, state.u),
                     singleobj, null, state, {
                         message,
-                        // thitu() passes losehp() its planning flag.
                         losehp: (d, r, k, s, hpEnv) => losehp(d, r, k, s, hpEnv),
                         exercise: (a, b) => exercise(a, b, state, env.random, {
                             encumberMessage: (subject) =>
                                 encumber_msg(subject, { message }),
                         }),
                         random: env.random,
-                        // A planned boulder that kills the hero stops at
-                        // losehp()'s planning boundary; the live pass then
-                        // replays the death on the real state.
-                        planning,
                     });
             // C's done() does not return: a fatal boulder ends the game
             // inside thitu(), before stop_occupation(). really_done() has
@@ -2968,7 +2937,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                     x2 = x;
                     y2 = y;
                     // flooreffects() repaints through env.newsym; hand it
-                    // this caller's redraw, which a planning pass silences.
+                    // this caller's redraw.
                     if (await flooreffects(singleobj, x2, y2, 'fall', {
                         ...env,
                         newsym: env.newsym ?? redraw,
@@ -3058,7 +3027,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
             }
         }
     } // while dist > 0
-    if (!planning) await temporaryDisplay(DISP_END, 0, state);
+    await temporaryDisplay(DISP_END, 0, state);
     launch_drop_spot(null, 0, 0, state);
     if (!used_up) {
         singleobj.otrapped = 0;
@@ -3140,14 +3109,9 @@ async function trapeffect_rolling_boulder_trap(monster, trap, _trflags, env) {
 }
 
 function antimagicTrapHero(state) {
-    const property = state.u?.uprops?.[ANTIMAGIC];
-    return Boolean(property?.intrinsic || property?.extrinsic);
+    return Antimagic(state.u);
 }
 
-function unchangingTrapHero(state) {
-    const property = state.u?.uprops?.[UNCHANGING];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
 // C ref: trap.c trapeffect_poly_trap() (2453-2525). The monster arm's
 // polymorph resistance result is consumed here; C discards newcham()'s
@@ -3191,7 +3155,7 @@ async function trapeffect_poly_trap(mtmp, trap, trflags, env) {
                 ...env, hooks: { ...env.hooks, message },
             });
         } else if (antimagicTrapHero(state)
-            || unchangingTrapHero(state)) {
+            || Unchanging(state.u)) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await message(plineYouFeel('momentarily different.', state), state, env);
         } else {
@@ -3630,8 +3594,8 @@ export async function blow_up_landmine(trap, rawEnv = {}) {
         {
             ...env,
             random,
-            // explode.c scatter() reads `newsym`; the planning env exposes
-            // the same redraw operation under that seam.
+            // explode.c scatter() reads `newsym`; expose the caller's redraw
+            // operation under that seam.
             newsym: env.newsym ?? env.redraw
                 ?? ((rx, ry) => newsym(rx, ry, state)),
         },
@@ -3754,7 +3718,7 @@ export async function trapeffect_landmine(mtmp, trap, trflags, rawEnv = {}) {
             || (trflags & FAILEDUNTRAP) !== 0;
         const forcebungle = (trflags & FORCEBUNGLE) !== 0;
 
-        if ((Levitation(state) || Flying(state)) && !forcetrap) {
+        if ((Levitation(state.u) || Flying(state.u)) && !forcetrap) {
             if (!alreadySeen && random.rn2(3))
                 return Trap_Effect_Finished;
             feeltrap(trap, env);
@@ -4153,8 +4117,7 @@ export async function dotrap(trap, trflags, state = game, rawEnv = {}) {
             }
             return;
         }
-        const fumbling = u.uprops?.[FUMBLING];
-        const isFumbling = fumbling?.intrinsic || fumbling?.extrinsic;
+        const isFumbling = HFumbling(u) || EFumbling(u);
         if (already_seen && !isFumbling && !undestroyable_trap(ttype)
             && ttype !== ANTI_MAGIC && !(flags & FORCEBUNGLE)
             && !plunged && !conjPit && !adjPit
@@ -4203,9 +4166,9 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
         return Trap_Effect_Finished;
     }
     // State-only production callers (muse.c and trap.c open/close traps) use
-    // the ordinary source owners. Planning callers supply their own complete
-    // random set and output operations; preserve those without filling missing
-    // random operations from the live stream.
+    // the ordinary source owners. A caller that supplies its own complete
+    // random set and output operations keeps them; missing random operations
+    // are not filled from the live stream.
     const defaults = heroTrapEnv(state);
     const env = {
         ...defaults,
@@ -4230,8 +4193,7 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
     // in the arm matters, because the arm runs after
     // mon_learns_traps() has written mtrapseen on the victim and every
     // onlooker, and after the rn2(4) and rnl(5) gates may have drawn -- so a
-    // late proof would refuse with state already changed, and with a bare
-    // TypeError that ELAPSED_TURN_PLANNING_REFUSALS does not convert.
+    // late proof would refuse with state already changed.
     const random = env.random;
     const tt = trap.ttyp;
     const randomNames = ['rn1', 'rn2', 'rnd', 'rne', 'rnl'];

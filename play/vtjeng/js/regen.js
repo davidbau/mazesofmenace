@@ -5,13 +5,9 @@ import {
     A_CON,
     A_INT,
     A_WIS,
-    ENERGY_REGENERATION,
     Is_waterlevel,
-    MAGICAL_BREATHING,
     MAXULEV,
     MOD_ENCUMBER,
-    REGENERATION,
-    SLEEPY,
     Upolyd,
 } from './const.js';
 import {
@@ -19,28 +15,20 @@ import {
 } from './dbridge.js';
 import { acurr } from './attrib.js';
 import { game } from './gstate.js';
-import { breathless } from './mondata.js';
 import { PM_WIZARD, S_EEL } from './monsters.js';
 import { rehumanize } from './polyself.js';
 import { coreRandom } from './rng.js';
-import { Half_physical_damage } from './youprop.js';
+import {
+    Breathless, EMagical_breathing, Energy_regeneration, Half_physical_damage,
+    Regeneration, Sleepy,
+} from './youprop.js';
 
 
-function propertyActive(hero, index) {
-    const property = hero?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
-// youprop.h:276 Breathless: magical breathing from either source, or a form
-// that does not breathe.
-function Breathless(state) {
-    return propertyActive(state.u, MAGICAL_BREATHING)
-        || breathless(state.youmonst?.data);
-}
 
 function canRegenerate(hero) {
-    return propertyActive(hero, REGENERATION)
-        || (propertyActive(hero, SLEEPY) && Boolean(hero.usleep));
+    return Regeneration(hero)
+        || (Sleepy(hero) && Boolean(hero.usleep));
 }
 
 // allmain.c regen_hp() and regen_pw() call interrupt_multi() unconditionally
@@ -50,8 +38,7 @@ function canRegenerate(hero) {
 // happens to have multi <= 0.
 //
 // `norepMessage` travels with the call because interrupt_multi() prints
-// through it, and the elapsed turn substitutes a silent owner while it dry-runs
-// a burdened turn on a cloned state.
+// through it.
 async function reachedFull(kind, state, env) {
     if (typeof env.interruptMulti !== 'function') {
         throw new TypeError(
@@ -87,7 +74,7 @@ export async function regen_hp(wtcap, state = game, env = {}) {
                    && !Breathless(state)) {
             /* eel out of water loses hp, similar to monster eels;
                as hp gets lower, rate of further loss slows down */
-            if (hero.mh > 1 && !propertyActive(hero, REGENERATION)
+            if (hero.mh > 1 && !Regeneration(hero)
                 && random.rn2(hero.mh) > random.rn2(8)
                 && (!Half_physical_damage(hero)
                     || !(state.moves % 2)))
@@ -112,7 +99,7 @@ export async function regen_hp(wtcap, state = game, env = {}) {
     let heal = ((hero.ulevel ?? 0) + acurr(state, A_CON))
         > random.rn2(100) ? 1 : 0;
     if (regeneration) heal++;
-    if (propertyActive(hero, SLEEPY) && hero.usleep) heal++;
+    if (Sleepy(hero) && hero.usleep) heal++;
     if (!heal) return false;
 
     hero.uhp = Math.min(hero.uhp + heal, hero.uhpmax);
@@ -131,7 +118,7 @@ export async function regen_hp(wtcap, state = game, env = {}) {
 export async function regen_pw(wtcap, state = game, env = {}) {
     const hero = state.u;
     if ((hero.uen ?? 0) >= (hero.uenmax ?? 0)) return false;
-    const energyRegeneration = propertyActive(hero, ENERGY_REGENERATION);
+    const energyRegeneration = Energy_regeneration(hero);
     const divisor = Math.trunc(
         (MAXULEV + 8 - (hero.ulevel ?? 0))
         * (state.urole?.mnum === PM_WIZARD ? 3 : 4)
@@ -150,7 +137,7 @@ export async function regen_pw(wtcap, state = game, env = {}) {
         (acurr(state, A_WIS)
             + acurr(state, A_INT)) / 15,
     ) + 1;
-    if (hero.uprops?.[MAGICAL_BREATHING]?.extrinsic) upper += 2;
+    if (EMagical_breathing(hero)) upper += 2;
     hero.uen += random.rn1(upper, 1);
     if (hero.uen > hero.uenmax) hero.uen = hero.uenmax;
     state.disp ??= {};

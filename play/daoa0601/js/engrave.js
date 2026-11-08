@@ -13,7 +13,7 @@ import { heroFormSticks, heroHidesOnCeiling, heroIsFlying, heroMonsterForm, hero
 import { heroTeetersAtPit, heroEscapedShaft } from './trap.js';
 import { MONSTER_ATTACKS, MONSTER_SIZE, MONSTER_SYMBOL } from './monster_data.js';
 import { AT_HUGS } from './monster_attack_types.js';
-import { P_RIDING, BUFSZ, BURN, COLNO, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, MARK, N_ENGRAVE, ROWNO, A_WIS, ACCESSIBLE, ALTAR, CLOUD, DRAWBRIDGE_UP, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GRAVE, IS_AIR, IS_FOUNTAIN, NO_MM_FLAGS, ROOM, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, LL_CONDUCT, MD_PAD_RUMORS, } from './const.js';
+import { P_RIDING, BUFSZ, BURN, COLNO, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, MARK, N_ENGRAVE, ROWNO, A_WIS, ACCESSIBLE, ALTAR, CLOUD, DRAWBRIDGE_UP, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GRAVE, IS_AIR, IS_FOUNTAIN, Is_airlevel, Is_waterlevel, NO_MM_FLAGS, ROOM, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, LL_CONDUCT, MD_PAD_RUMORS, SIZEOF_ENGRAVING, } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { newsym } from './display.js';
 import { surfaceName, ceilingName } from './dungeon.js';
@@ -158,11 +158,8 @@ export function makeEngravingAt(x, y, text, pristine = null, epoch = 0, engrType
     game.level.engravings.unshift(engraving);
     return engraving;
 }
-// Port only: positional adapter for make_engr_at() callers written against
-// the C signature; makeEngravingAt() is the port.
-export function make_engr_at(x, y, text, pristine, epoch, engr_type, options = undefined) {
-    return makeEngravingAt(x, y, text, pristine, epoch, engr_type, options);
-}
+// make_engr_at() callers above pass the C signature straight through to
+// makeEngravingAt(), the port.
 // C engrave.c:make_grave().  The caller is responsible for newsym(x, y).
 export function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
@@ -172,7 +169,7 @@ export function make_grave(x, y, text) {
     if (!setLevelTerrainType(x, y, GRAVE))
         return;
     const epitaph = text ?? getRndLine(RANDOM_EPITAPHS, MD_PAD_RUMORS, rn2);
-    make_engr_at(x, y, epitaph, null, 0, HEADSTONE);
+    makeEngravingAt(x, y, epitaph, null, 0, HEADSTONE);
 }
 // C engrave.c:wipeout_text()
 export function wipeoutText(text, count, seed = 0) {
@@ -409,8 +406,8 @@ export function heroCanReachFloor(state = game, { checkPit = false } = {}) {
         return false;
     if (hero.ustuck && !heroFormSticks(state) && holderHugs(hero.ustuck))
         return false;
-    const airLevel = sameDungeonLevel(hero.uz, state.air_level);
-    const waterLevel = sameDungeonLevel(hero.uz, state.water_level);
+    const airLevel = Is_airlevel(hero.uz, state);
+    const waterLevel = Is_waterlevel(hero.uz, state);
     if ((hero.levitating || hero.levitation || state.levitating)
         && !airLevel && !waterLevel)
         return false;
@@ -438,13 +435,6 @@ function holderHugs(holder) {
 // Part of C engrave.c:can_reach_floor(): P_SKILL(P_RIDING).
 function ridingSkill(state) {
     return state.u?.weaponSkills?.[P_RIDING]?.skill ?? 0;
-}
-// Part of C engrave.c:can_reach_floor(): Is_airlevel()/Is_waterlevel()
-// compare the hero's location with the level records.
-function sameDungeonLevel(current, target) {
-    return !!current && !!target
-        && current.dnum === target.dnum
-        && current.dlevel === target.dlevel;
 }
 // Part of C engrave.c:can_reach_floor(): t_at(u.ux, u.uy) for the pit
 // check.
@@ -1317,5 +1307,17 @@ function engravingFinishVerb(x, y, engraveType, state) {
         default:
             return 'your weird engraving';
     }
+}
+// C engrave.c:engr_stats(): the #stats row over the head_engr list — one
+// struct engr per engraving plus its text allocation.  make_engr_at()
+// (engrave.c:429,454) allocates smem * 3 bytes for the three text states,
+// with smem = strlen(text) + 1; the port keeps that original length in the
+// pristine text.
+export function engrStats(state = game) {
+    const engravings = state.level?.engravings ?? [];
+    let size = 0;
+    for (const engraving of engravings)
+        size += SIZEOF_ENGRAVING + 3 * (engraving.pristine.length + 1);
+    return { header: `engravings, size ${SIZEOF_ENGRAVING}+text`, count: engravings.length, size };
 }
 //# sourceMappingURL=engrave.js.map

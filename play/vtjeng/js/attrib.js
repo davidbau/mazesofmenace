@@ -22,7 +22,6 @@ import {
     BLND_RES,
     CLAIRVOYANT,
     COLD_RES,
-    CONFUSION,
     DEAF,
     DIED,
     DRAIN_RES,
@@ -32,12 +31,10 @@ import {
     FAINTING,
     FAST,
     FIRE_RES,
-    FIXED_ABIL,
     FROMEXPER,
     FROMFORM,
     FROMOUTSIDE,
     FROM_RACE,
-    FUMBLING,
     HUNGRY,
     HVY_ENCUMBER,
     INFRAVISION,
@@ -54,28 +51,23 @@ import {
     NUM_ATTRS,
     POISON_RES,
     POISONING,
-    REGENERATION,
     SATIATED,
     SEARCHING,
     SEE_INVIS,
     SHOCK_RES,
-    SICK,
     SLEEP_RES,
     STEALTH,
     STR18,
     STR19,
     STRANGLED,
-    STUNNED,
     TELEPORT_CONTROL,
     TIMEOUT,
     Upolyd,
-    VOMITING,
     W_ARMC,
     W_ARMF,
     W_ARMH,
     WARNING,
     WEAK,
-    WOUNDED_LEGS,
     Is_astralevel,
     ismnum,
     something,
@@ -144,8 +136,10 @@ import { livelog_printf, youFeel } from './pline.js';
 import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
 import {
     BBlinded, BClairvoyant, BInvis, BlindedTimeout, Blindfolded_only,
-    EBlinded, HBlinded, HBlnd_resist, HClairvoyant, HHallucination,
-    Halluc_resistance, Hallucination,
+    Confusion, EBlinded, EFast, EWounded_legs, Fixed_abil, Fumbling, HBlinded,
+    HBlnd_resist, HClairvoyant, HFast, HHallucination, HRegeneration,
+    HWounded_legs, Halluc_resistance, Hallucination, Poison_resistance, Sick,
+    Stunned, Very_fast, Vomiting, Wounded_legs,
 } from './youprop.js';
 
 const EXERCISE_LIMIT = 50;
@@ -375,10 +369,7 @@ export function is_innate(propidx, state = game) {
     // innately() would report INNATE_FORM for this; caller wants specificity
     if (propidx === DRAIN_RES && ismnum(u.ulycn))
         return INNATE_LYCN;
-    // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast)
-    const propFast = u.uprops?.[FAST] ?? {};
-    if (propidx === FAST
-        && ((propFast.intrinsic & ~INTRINSIC) || propFast.extrinsic))
+    if (propidx === FAST && Very_fast(u))
         return INNATE_NONE; // can't become very fast innately
     const innateness = innately(
         propidx, u.uprops?.[propidx]?.intrinsic ?? 0, state,
@@ -392,7 +383,7 @@ export function is_innate(propidx, state = game) {
         return INNATE_ROLE;
     if ((propidx === BLINDED && !haseyes(state.youmonst?.data))
         || (propidx === BLND_RES
-            && ((HBlnd_resist(u)) & FROMFORM) !== 0))
+            && (HBlnd_resist(u) & FROMFORM) !== 0))
         return INNATE_FORM;
     return INNATE_NONE;
 }
@@ -436,19 +427,14 @@ export function from_what(propidx, state = game) {
         if (innateness === INNATE_FORM)
             return ' from your creature form';
 
-        // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast)
-        const propFast = u.uprops?.[FAST] ?? {};
-        const HFast = propFast.intrinsic ?? 0;
-        const EFast = propFast.extrinsic ?? 0;
-        const Very_fast = (HFast & ~INTRINSIC) || EFast;
-        if (propidx === FAST && Very_fast) {
+        if (propidx === FAST && Very_fast(u)) {
             let source;
-            if ((HFast & TIMEOUT) !== 0)
+            if ((HFast(u) & TIMEOUT) !== 0)
                 source = 'a potion or spell';
-            else if ((EFast & W_ARMF) !== 0 && state.uarmf?.dknown
+            else if ((EFast(u) & W_ARMF) !== 0 && state.uarmf?.dknown
                      && objectType(state.uarmf, state).oc_name_known)
                 source = ysimple_name(state.uarmf, state); // speed boots
-            else if (EFast)
+            else if (EFast(u))
                 source = 'worn equipment';
             else
                 source = something;
@@ -490,12 +476,12 @@ export function from_what(propidx, state = game) {
             break;
         }
         case INVIS:
-            if ((BInvis(u)) & W_ARMC)
+            if (BInvis(u) & W_ARMC)
                 return ` because of ${ysimple_name(state.uarmc, state)}`; // mummy wrapping
             break;
         case CLAIRVOYANT:
             if (state.wizard
-                && ((BClairvoyant(u)) & W_ARMH))
+                && (BClairvoyant(u) & W_ARMH))
                 return ` because of ${ysimple_name(state.uarmh, state)}`; // cornuthaum
             break;
         }
@@ -996,14 +982,6 @@ export function exercise_nonphysical(
     return exerciseAttribute(index, increase, state, random).adjustment;
 }
 
-function propertyPresent(hero, index) {
-    const property = hero?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
-
-function intrinsicPropertyPresent(hero, index) {
-    return Boolean(hero?.uprops?.[index]?.intrinsic);
-}
 
 function requiredOperation(env, name) {
     const operation = env[name];
@@ -1085,24 +1063,24 @@ export async function exerper(state = game, env = {}) {
     }
 
     if (moves % 5 === 0) {
-        if (Boolean(HClairvoyant(hero))
+        if (HClairvoyant(hero)
             && !BClairvoyant(hero)) {
             await exerciseWithEnvironment(A_WIS, true, state, normalized);
         }
-        if (intrinsicPropertyPresent(hero, REGENERATION))
+        if (HRegeneration(hero))
             await exerciseWithEnvironment(A_STR, true, state, normalized);
-        if (intrinsicPropertyPresent(hero, SICK)
-            || intrinsicPropertyPresent(hero, VOMITING)) {
+        if (Sick(hero)
+            || Boolean(Vomiting(hero))) {
             await exerciseWithEnvironment(A_CON, false, state, normalized);
         }
         const hallucinating = Boolean(HHallucination(hero))
             && !Halluc_resistance(hero);
-        if (intrinsicPropertyPresent(hero, CONFUSION) || hallucinating) {
+        if (Confusion(hero) || hallucinating) {
             await exerciseWithEnvironment(A_WIS, false, state, normalized);
         }
-        if ((propertyPresent(hero, WOUNDED_LEGS) && !hero.usteed)
-            || propertyPresent(hero, FUMBLING)
-            || intrinsicPropertyPresent(hero, STUNNED)) {
+        if ((Wounded_legs(hero) && !hero.usteed)
+            || Fumbling(hero)
+            || Boolean(Stunned(hero))) {
             await exerciseWithEnvironment(A_DEX, false, state, normalized);
         }
     }
@@ -1133,7 +1111,7 @@ export async function adjattrib(
     // Callers pass C's TRUE/FALSE as booleans and its -1 as a number;
     // msgflg is the integer C compares.
     const msgflg = Number(messageMode);
-    if (state.u?.uprops?.[FIXED_ABIL]?.extrinsic || !increment) return false;
+    if (Fixed_abil(state.u) || !increment) return false;
 
     if ((index === A_INT || index === A_WIS)
         && state.uarmh?.otyp === DUNCE_CAP) {
@@ -1436,8 +1414,8 @@ export async function restore_attrib(state = game, env = {}) {
     const u = state.u;
     const attrs = attributeArrays(u);
     for (let i = 0; i < NUM_ATTRS; i++) {
-        const woundedLegs = u.uprops?.[WOUNDED_LEGS]?.intrinsic
-            || u.uprops?.[WOUNDED_LEGS]?.extrinsic;
+        const woundedLegs = HWounded_legs(u)
+            || EWounded_legs(u);
         const equilibrium = ((i === A_STR && u.uhs >= WEAK)
             || (i === A_DEX && woundedLegs)) ? -1 : 0;
         if (attrs.temp[i] !== equilibrium && attrs.time[i] !== 0) {
@@ -1644,8 +1622,7 @@ export async function poisoned(
     }
 
     // Poison resistance blocks the effect entirely.
-    const poisonRes = state.u?.uprops?.[POISON_RES];
-    if (poisonRes?.intrinsic || poisonRes?.extrinsic) {
+    if (Poison_resistance(state.u)) {
         if (blast) await shieldeff(state.u.ux, state.u.uy, state);
         await message('The poison doesn\'t seem to affect you.', state);
         return;
@@ -1715,11 +1692,6 @@ export async function poisoned(
         state.killer.format = kprefix;
         state.killer.name = pkiller;
         // "Poisoned by a poisoned ___" is redundant.
-        // Monster-turn planning runs on a clone. C's done() is a terminal
-        // boundary and never runs on that clone; carry the lethal result back
-        // to the live replay so its real done() call owns end-game effects.
-        if (env.planning && typeof env.planningDeath === 'function')
-            throw env.planningDeath();
         await done(strstri(pkiller, 'poison') >= 0 ? DIED : POISONING, state);
         if (state.program_state?.gameover) return;
     }

@@ -8,7 +8,6 @@ import {
     KILLED_BY,
     LARGEST_INT,
     LL_MINORAC,
-    MAGICAL_BREATHING,
     MAXULEV,
     NATTK,
     NORMAL_SPEED,
@@ -19,7 +18,7 @@ import { exp_percent_changing, xlev_to_rank } from './display.js';
 import { game } from './gstate.js';
 import { livelog_printf, youFeel } from './pline.js';
 import { achieve_rank, record_achievement } from './insight.js';
-import { amphibious, extra_nasty, resists_drli } from './mondata.js';
+import { extra_nasty, resists_drli } from './mondata.js';
 import {
     AD_BLND,
     AD_DRLI,
@@ -40,6 +39,7 @@ import { monhp_per_lvl } from './makemon.js';
 import { ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { find_mac } from './worn.js';
+import { Amphibious } from './youprop.js';
 
 function advancementValue(advance, field) {
     return Math.trunc(advance?.[field] ?? 0);
@@ -59,8 +59,7 @@ export function newuexp(level) {
 // source HP/energy clamps, and the polymorph HP adjustment in order.
 export async function losexp(drainer = null, state = game, env = {}) {
     const u = state.u;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
 
     // C explicitly overrides life-drain resistance for the debug command,
     // but that command is never fatal at level one.
@@ -73,8 +72,7 @@ export async function losexp(drainer = null, state = game, env = {}) {
     if (u.ulevel > 1) {
         --u.ulevel;
         // adjabil()'s postadjabil() reaches display.c see_monsters() when
-        // Warning or See_invisible lapses; it needs the caller's redraw seam,
-        // which a planning clone supplies as its silent repaint.
+        // Warning or See_invisible lapses; it needs the caller's redraw seam.
         await adjabil(u.ulevel + 1, u.ulevel, state, { ...env, message });
         livelog_printf(
             LL_MINORAC,
@@ -89,17 +87,6 @@ export async function losexp(drainer = null, state = game, env = {}) {
             state.killer ??= {};
             state.killer.format = KILLED_BY;
             state.killer.name = drainer;
-            if (env.planning) {
-                if (typeof env.planningDeath !== 'function') {
-                    throw new TypeError(
-                        'losexp requires planningDeath for a fatal planned drain',
-                    );
-                }
-                // C's done(DIED) is a non-returning boundary. Planning state is
-                // cloned, but done() still acts on the live terminal and
-                // recovery flow, so replay the attack with its real source.
-                throw env.planningDeath();
-            }
             const { done } = await import('./end.js');
             await done(DIED, state);
             // A completed really_done() represents C's non-returning path.
@@ -202,15 +189,6 @@ export function newpw(state = game, random = coreRandom) {
     return energy;
 }
 
-// C ref: youprop.h Amphibious() (272-273). Upolyd() is constantly false in
-// this port, so gy.youmonst.data is the role's own species and amphibious()
-// answers for it directly.
-function Amphibious(state) {
-    const breathing = state.u?.uprops?.[MAGICAL_BREATHING];
-    return Boolean(breathing?.intrinsic)
-        || Boolean(breathing?.extrinsic)
-        || amphibious(state.youmonst?.data);
-}
 
 // C ref: exper.c experience() (84-166). The experience points one kill is
 // worth. It draws nothing, prints nothing and changes nothing: every term

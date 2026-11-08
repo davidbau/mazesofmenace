@@ -22,11 +22,9 @@ import {
     ANIMATE_SHATTER,
     ANIMATE_SPELL,
     ANTI_MAGIC,
-    ANTIMAGIC,
     ARM,
     ARROW_TRAP,
     BEAR_TRAP,
-    CONFUSION,
     CORR,
     DIR_180,
     DIR_ERR,
@@ -54,13 +52,9 @@ import {
     AS_OK,
     FAILEDUNTRAP,
     FIRE_RES,
-    SLIMED,
     FIRE_TRAP,
     FINGER,
-    FLYING,
     FORCETRAP,
-    FREE_ACTION,
-    FUMBLING,
     GETOBJ_DOWNPLAY,
     GETOBJ_EXCLUDE,
     GETOBJ_PROMPT,
@@ -81,14 +75,12 @@ import {
     Is_waterlevel,
     LADDER,
     LEG,
-    LIFESAVED,
     LANDMINE,
     LEVEL_TELEP,
     LEVITATION,
     LL_DUMP,
     LL_MINORAC,
     M_SEEN_FIRE,
-    MAGICAL_BREATHING,
     M_SEEN_ELEC,
     MAGIC_PORTAL,
     MAGIC_TRAP,
@@ -110,7 +102,6 @@ import {
     NO_TRAP,
     NO_TRAP_FLAGS,
     N_DIRS,
-    PASSES_WALLS,
     PIT,
     PLNMSG_BACK_ON_GROUND,
     POLY_TRAP,
@@ -122,7 +113,6 @@ import {
     RUST_TRAP,
     SCORR,
     SDOOR,
-    SHOCK_RES,
     SHOPBASE,
     SHOP_HOLE_COST,
     SLEEP_RES,
@@ -135,10 +125,6 @@ import {
     STONE,
     STONE_RES,
     STONING,
-    STUNNED,
-    SWIMMING,
-    TELEPORT,
-    TELEPORT_CONTROL,
     TELEP_TRAP,
     TELEDS_ALLOW_DRAG,
     TELEDS_TELEPORT,
@@ -170,7 +156,6 @@ import {
     WT_TOOMUCH_DIAGONAL,
     XKILL_NOMSG,
     W_SADDLE,
-    W_ARTI,
     ZAP_POS,
     CORPSTAT_FEMALE,
     CORPSTAT_GENDER,
@@ -190,7 +175,7 @@ import {
     ydir,
 } from './const.js';
 import { isok } from './cmd_isok.js';
-import { is_art, ART_STING, attacks, has_magic_key, Stone_resistance } from './artifacts.js';
+import { is_art, ART_STING, attacks, has_magic_key } from './artifacts.js';
 import { exercise, adjalign, acurr, poisoned } from './attrib.js';
 import { obj_resists } from './bury.js';
 import { buried_ball, unearth_objs } from './dig.js';
@@ -239,7 +224,6 @@ import { impact_drop } from './dokick.js';
 import {
     near_capacity, calc_capacity, check_capacity, inv_cnt, inv_weight, weight_cap,
     test_move, spoteffects, bad_rock, crawl_destination, set_uinwater,
-    HeroDeathPlanningError,
     nomul, unmul, losehp, You_can_move_again,
     u_locomotion,
     movobj,
@@ -274,7 +258,7 @@ import {
     amorphous, amphibious, attacktype, breathless, can_teleport, flaming,
     ceiling_hider, is_clinger, is_floater,
     is_animal, is_flyer, is_whirly, nohands, resists_magm, unsolid, webmaker, sticks,
-    bigmonst, is_swimmer, likes_lava, mindless, Resists_Elem,
+    bigmonst, likes_lava, mindless, Resists_Elem,
     touch_petrifies, unique_corpstat, poly_when_stoned, is_golem,
     is_vampshifter, nonliving, hides_under, is_unicorn,
 } from './mondata.js';
@@ -355,8 +339,12 @@ import { mon_has_amulet } from './wizard.js';
 import { canspotmon } from './display.js';
 import { change_luck } from './moveloop_preamble.js';
 import {
-    Blind, HHallucination,
-    Halluc_resistance, Hallucination, Maybe_Half_Phys,
+    Antimagic, BFlying, BLevitation, Blind, Breathless, Confusion,
+    Fire_resistance, Flying, Free_action, Fumbling, HHallucination, HStun,
+    Halluc_resistance, Hallucination, Lev_at_will, Levitation, Lifesaved,
+    Maybe_Half_Phys, Passes_walls, Shock_resistance,
+    Sleep_resistance, Slimed, Stone_resistance, Stunned, Swimming,
+    Teleport_control, Teleportation, Wwalking,
 } from './youprop.js';
 
 // C ref: trap.c sokoban_guilt() (7036-7055). Sokoban is the current-level
@@ -372,22 +360,14 @@ export function sokoban_guilt(state = game) {
 // protection-loss callers; other source callers retain their named gaps, so
 // this helper is not established complete across its wider entry points.
 export async function instapetrify(str, state = game, env = {}) {
-    if (Stone_resistance(state)) return;
+    if (Stone_resistance(state.u)) return;
     if (poly_when_stoned(state.youmonst.data, state)
         && await polymon(PM_STONE_GOLEM, state, env)) return;
-    const urgentMessage = env.urgentMessage
-        ?? (env.planning ? env.message ?? (async () => {}) : ttyUrgentPline);
+    const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
     await urgentMessage('You turn to stone...', state, env);
     state.killer ??= { name: '' };
     state.killer.format = KILLED_BY;
     if (str !== state.killer.name) state.killer.name = str ?? '';
-    // A planning armor callback cannot enter end.c's live terminal/recovery
-    // sequence. The existing preflight handoff carries this death kind too.
-    if (env.planning) {
-        const error = new HeroDeathPlanningError(state.killer.name, KILLED_BY, env);
-        error.how = STONING;
-        throw error;
-    }
     await done(STONING, state, env);
 }
 
@@ -423,14 +403,14 @@ export async function selftouch(arg, state = game, env = {}) {
     const touchCorpse = async (object, unwield) => {
         if (object?.otyp !== CORPSE
             || !touch_petrifies(state.mons?.[object.corpsenm])
-            || Stone_resistance(state)) return;
+            || Stone_resistance(state.u)) return;
 
         const corpsePmname = obj_pmname(object, state);
         await ttyPline(`${arg} touch the ${corpsePmname} corpse.`, state);
         await instapetrify(`${an(corpsePmname)} corpse`, state, env);
         // C unwields only after instapetrify() returns from lifesaving. A
         // resistant hero or one wearing gloves can keep the corpse equipped.
-        if (!state.uarmg && !Stone_resistance(state))
+        if (!state.uarmg && !Stone_resistance(state.u))
             await unwield({ state, ...env });
     };
 
@@ -681,7 +661,7 @@ export async function fall_through(td, ftflags, state = game) {
 
     // Sokoban's special fall rule overrides levitation, but a blind,
     // levitating hero elsewhere gets no message and no other side effect.
-    if (Blind(state.u) && Levitation(state) && !state.level?.flags?.sokoban_rules)
+    if (Blind(state.u) && Levitation(state.u) && !state.level?.flags?.sokoban_rules)
         return;
 
     const nextLevel = dunlev(u.uz) + 1;
@@ -703,10 +683,10 @@ export async function fall_through(td, ftflags, state = game) {
 
     if (state.level?.flags?.sokoban_rules && Can_fall_thru(u.uz, state)) {
         // Sokoban's holes cannot be escaped; proceed to the fall checks below.
-    } else if (Levitation(state) || u.ustuck
+    } else if (Levitation(state.u) || u.ustuck
         || (!Can_fall_thru(u.uz, state)
             && !state.level.at(u.ux, u.uy).candig)
-        || ((Flying(state) || is_clinger(state.youmonst.data)
+        || ((Flying(state.u) || is_clinger(state.youmonst.data)
             || (ceiling_hider(state.youmonst.data) && u.uundetected))
             && !plunged)) {
         dontFall = "don't fall in.";
@@ -726,11 +706,11 @@ export async function fall_through(td, ftflags, state = game) {
         return;
     }
 
-    if ((Flying(state) || is_clinger(state.youmonst.data))
+    if ((Flying(state.u) || is_clinger(state.youmonst.data))
         && plunged && td && trap) {
-        if (Flying(state)) controlledFlight = true;
+        if (Flying(state.u)) controlledFlight = true;
         await ttyPline(
-            `You ${Flying(state) ? 'swoop' : 'deliberately drop'} down `
+            `You ${Flying(state.u) ? 'swoop' : 'deliberately drop'} down `
                 + (trap.ttyp === TRAPDOOR
                     ? 'through the trap door!'
                     : 'into the gaping hole!'),
@@ -765,7 +745,7 @@ export async function fall_through(td, ftflags, state = game) {
         : null;
     schedule_goto(
         destination,
-        Flying(state) ? UTOTYPE_NONE : UTOTYPE_FALLING,
+        Flying(state.u) ? UTOTYPE_NONE : UTOTYPE_FALLING,
         null,
         postMessage,
         state,
@@ -1211,41 +1191,9 @@ export function count_traps(ttyp, state = game) {
 
 // ── Hero trap state and the descent out of levitation (C ref: trap.c) ──
 
-// youprop.h:242 Levitation and :253 Flying, spelled out here for the same
-// reason every other file in this port spells them out: the macros read three
-// fields of one property and Flying adds a steed term. They are exported for
-// js/trap_effects.js alone, which holds the rest of trap.c's port and needs
-// the same two macros in dotrap() and trapeffect_bear_trap(); a second copy
-// there would be a second copy inside one C file.
-export function Levitation(state) {
-    const levitation = state.u.uprops[LEVITATION];
-    return Boolean((levitation.intrinsic || levitation.extrinsic)
-                   && !levitation.blocked);
-}
-
-export function Flying(state) {
-    const flying = state.u.uprops[FLYING];
-    return Boolean((flying.intrinsic || flying.extrinsic
-                    || (state.u.usteed && is_flyer(state.u.usteed.data)))
-                   && !flying.blocked);
-}
-
-function activeHeroProperty(state, property) {
-    const value = state.u?.uprops?.[property] ?? {};
-    return Boolean((value.intrinsic || value.extrinsic) && !value.blocked);
-}
-
-// youprop.h's Fire_resistance and Wwalking are plain intrinsic/extrinsic
-// properties. Wwalking is additionally disabled on the Plane of Water; it
-// does not use the blocked field (that field belongs to Levitation/Flying).
-function heroLavaProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
 function heroLavaWalking(state) {
-    return heroLavaProperty(state, WWALKING)
-        && !Is_waterlevel(state.u?.uz, state);
+    return Wwalking(state);
 }
 
 // objclass.h is_organic(): material values through WOOD burn in lava.  Keep
@@ -1256,13 +1204,11 @@ function isOrganic(obj, state) {
 }
 
 function heroSwimming(state) {
-    return activeHeroProperty(state, SWIMMING)
-        || Boolean(state.u?.usteed && is_swimmer(state.u.usteed.data));
+    return Swimming(state.u);
 }
 
 function heroBreathless(state) {
-    return activeHeroProperty(state, MAGICAL_BREATHING)
-        || breathless(state.youmonst?.data);
+    return Breathless(state);
 }
 
 function heroAmphibious(state) {
@@ -1272,7 +1218,7 @@ function heroAmphibious(state) {
 // C ref: trap.c back_on_ground() (4976-5011).
 export async function back_on_ground(rescued, state = game, env = {}) {
     const { u } = state;
-    let preposition = Levitation(state) || Flying(state) ? 'over' : 'on';
+    let preposition = Levitation(state.u) || Flying(state.u) ? 'over' : 'on';
     let surf = surface(u.ux, u.uy, state);
     if (is_ice(u.ux, u.uy, state)) {
         surf = ice_descr(u.ux, u.uy, state);
@@ -1514,9 +1460,9 @@ export async function drown(state = game) {
         return false;
     }
 
-    const teleports = activeHeroProperty(state, TELEPORT)
+    const teleports = Teleportation(state.u)
         || can_teleport(state.youmonst?.data);
-    const teleportControl = activeHeroProperty(state, TELEPORT_CONTROL);
+    const teleportControl = Teleport_control(state.u);
     const unaware = Math.trunc(state.multi ?? 0) < 0
         && (unconscious(state) || is_fainted(state));
     if (teleports && !unaware
@@ -1621,7 +1567,7 @@ export async function lava_effects(state = game) {
     await burn_away_slime(state);
     if (likes_lava(state.youmonst?.data)) return false;
 
-    let fireResistant = heroLavaProperty(state, FIRE_RES);
+    let fireResistant = Fire_resistance(state.u);
     let waterWalking = heroLavaWalking(state);
     let survives = fireResistant || (waterWalking && damage < u.uhp);
     let protectedId = 0;
@@ -1675,7 +1621,7 @@ export async function lava_effects(state = game) {
     // Boots_off() may remove the only source of either property. C evaluates
     // these macros again after that callback, while the initial usurvive test
     // intentionally retains the pre-removal values.
-    fireResistant = heroLavaProperty(state, FIRE_RES);
+    fireResistant = Fire_resistance(state.u);
     waterWalking = heroLavaWalking(state);
     if (!fireResistant) {
         if (waterWalking) {
@@ -1705,9 +1651,7 @@ export async function lava_effects(state = game) {
             );
         }
 
-        survives = Boolean(
-            state.u?.uprops?.[LIFESAVED]?.extrinsic,
-        ) || Boolean(state.discover);
+        survives = Boolean(Lifesaved(state.u)) || Boolean(state.discover);
         if (state.wizard) survives = true;
         state.iflags.in_lava_effects++;
 
@@ -1780,7 +1724,7 @@ export async function lava_effects(state = game) {
         state.iflags.in_lava_effects--;
 
         if (burnPass === 2) {
-            if (!heroLavaProperty(state, FIRE_RES))
+            if (!Fire_resistance(state.u))
                 set_itimeout(state.u.uprops[FIRE_RES], 5);
             if (!heroLavaWalking(state))
                 set_itimeout(state.u.uprops[WWALKING], 5);
@@ -1842,7 +1786,7 @@ export async function sink_into_lava(state = game) {
     } else if (!is_lava(u.ux, u.uy, state)) {
         reset_utrap(false, state); // this shouldn't happen either
     } else if (!u.uinvulnerable) {
-        if (!heroLavaProperty(state, FIRE_RES))
+        if (!Fire_resistance(state.u))
             u.uhp = Math.trunc((u.uhp + 2) / 3);
 
         u.utrap -= (1 << 8);
@@ -1859,14 +1803,14 @@ export async function sink_into_lava(state = game) {
             // Only life-saving gets here; try to get away from lava.
             await reset_utrap(true, state);
             // Levitation or flight have become unblocked, otherwise teleport.
-            if (!Levitation(state) && !Flying(state)) {
+            if (!Levitation(state.u) && !Flying(state.u)) {
                 const { safe_teleds } = await import('./teleport.js');
                 await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT, state);
             }
         } else if (!u.umoved) {
             // Slime cannot finish while in lava, but may come close before
             // the lava burns it away.
-            const slimed = Math.trunc(u.uprops[SLIMED].intrinsic ?? 0);
+            const slimed = Math.trunc(Slimed(u));
             if (slimed && rnd(10 - 1) >= (slimed & TIMEOUT)) {
                 await ttyPline(sink_deeper, state);
                 await burn_away_slime(state);
@@ -1887,8 +1831,7 @@ export async function fire_damage_chain(
 ) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? (await import('./rng.js'));
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const hooks = {
         ...(rawEnv.hooks ?? {}),
         extractExternalObject:
@@ -1957,16 +1900,16 @@ export function set_utrap(tim, typ, state = game) {
 // float_up(); resumed flight reports that the hero can fly. `msg=false`
 // returns synchronously because the C branch has no output in that case.
 export function reset_utrap(msg, state = game) {
-    const was_Lev = Levitation(state);
-    const was_Fly = Flying(state);
+    const was_Lev = Levitation(state.u);
+    const was_Fly = Flying(state.u);
 
     set_utrap(0, 0, state);
 
     if (!msg) return;
 
     return (async () => {
-        if (!was_Lev && Levitation(state)) await float_up(state);
-        if (!was_Fly && Flying(state)) await ttyPline('You can fly.', state);
+        if (!was_Lev && Levitation(state.u)) await float_up(state);
+        if (!was_Fly && Flying(state.u)) await ttyPline('You can fly.', state);
     })();
 }
 
@@ -2044,12 +1987,8 @@ export async function float_up(state = game) {
 
     if (u.usteed && !is_floater(u.usteed.data)
         && !is_flyer(u.usteed.data)) {
-        const levitation = u.uprops[LEVITATION] ?? {};
         const levAtWill = Boolean(
-            ((levitation.intrinsic & I_SPECIAL)
-                || (levitation.extrinsic & W_ARTI))
-                && !(levitation.intrinsic & ~(I_SPECIAL | TIMEOUT))
-                && !(levitation.extrinsic & ~W_ARTI),
+            Lev_at_will(u),
         );
         if (levAtWill) {
             await ttyPline(`${Monnam(u.usteed, state)} magically floats up!`, state);
@@ -2058,7 +1997,7 @@ export async function float_up(state = game) {
             await dismount_steed(DISMOUNT_GENERIC, state);
         }
     }
-    if (Flying(state))
+    if (Flying(state.u))
         await ttyPline('You are no longer able to control your flight.', state);
     float_vs_flight(state);
     await encumber_msg(state);
@@ -2088,16 +2027,15 @@ export function fill_pit(x, y, state = game, rawEnv = {}) {
 // punishment, terrain, trap activation, and the final pickup in source order.
 export async function float_down(hmask, emask, state = game) {
     const u = state.u;
-    const levitation = u.uprops[LEVITATION];
 
-    levitation.intrinsic &= ~hmask;
-    levitation.extrinsic &= ~emask;
-    if (Levitation(state))
+    u.uprops[LEVITATION].intrinsic &= ~hmask;
+    u.uprops[LEVITATION].extrinsic &= ~emask;
+    if (Levitation(state.u))
         return 0; /* maybe another ring/potion/boots */
-    if (levitation.blocked) {
+    if (BLevitation(u)) {
         // The BLevitation arm gives terrain- or trap-specific feedback and
         // returns before every side effect below it.
-        const trapped = levitation.blocked === I_SPECIAL;
+        const trapped = BLevitation(u) === I_SPECIAL;
         float_vs_flight(state);
         if (trapped && u.utrap) {
             const reason = u.utraptype === TT_BEARTRAP ? "trap's jaws"
@@ -2115,9 +2053,9 @@ export async function float_down(hmask, emask, state = game) {
     state.disp ??= {};
     state.disp.botl = true;
     nomul(0, state); /* stop running or resting */
-    if (u.uprops[FLYING].blocked) {
+    if (BFlying(u)) {
         float_vs_flight(state);
-        if (Flying(state)) {
+        if (Flying(state.u)) {
             await ttyPline('You have stopped levitating and are now flying.', state);
             await encumber_msg(state);
             return 1;
@@ -2151,7 +2089,7 @@ export async function float_down(hmask, emask, state = game) {
     }
 
     let noMsg = false;
-    if (!Flying(state)) {
+    if (!Flying(state.u)) {
         if (u.ustuck) {
             if (sticks(state.youmonst?.data)) {
                 await ttyPline(
@@ -2251,7 +2189,7 @@ export async function climb_pit(state = game) {
     if (!u.utrap || u.utraptype !== TT_PIT) return;
 
     const pitname = trapname(PIT, false, state);
-    if (Passes_walls(state)) {
+    if (Passes_walls(state.u)) {
         await ttyPline(`You ascend from the ${pitname}.`, state);
         await reset_utrap(false, state);
         await fill_pit(u.ux, u.uy, state);
@@ -2264,7 +2202,7 @@ export async function climb_pit(state = game) {
         await displayPendingTtyMessageWindow(state);
         clearTtyMessageWindow(state);
         await ttyPline(`You free your ${body_part(LEG, state.youmonst)}.`, state);
-    } else if ((Flying(state) || is_clinger(state.youmonst.data))
+    } else if ((Flying(state.u) || is_clinger(state.youmonst.data))
         && !state.level?.flags?.sokoban_rules) {
         await ttyPline(
             `You ${u_locomotion('climb', state)} from the ${pitname}.`,
@@ -2275,7 +2213,7 @@ export async function climb_pit(state = game) {
         state.vision_full_recalc = 1;
     } else if (!(--u.utrap) || m_easy_escape_pit(state.youmonst, state)) {
         await reset_utrap(false, state);
-        const escape = state.level?.flags?.sokoban_rules && Levitation(state)
+        const escape = state.level?.flags?.sokoban_rules && Levitation(state.u)
             ? 'struggle against the air currents and float'
             : u.usteed ? 'ride' : 'crawl';
         await ttyPline(`You ${escape} to the edge of the ${pitname}.`, state);
@@ -2294,8 +2232,7 @@ export async function climb_pit(state = game) {
 
 // C ref: trap.c trapname() (7100-7155). The display RNG chooses the name;
 // only the extra role/rank entry also spends a core rn2(3). The display draw
-// uses `state`'s own stream unless the caller injects one, so a monster-turn
-// planning clone advances its copy rather than the live game's. `state` has
+// uses `state`'s own stream unless the caller injects one. `state` has
 // no default, and scripts/trapname-state.test.mjs requires every caller in
 // js/ to pass it. The display stream is its own function, never part of a
 // random set (scripts/random-source.mjs).
@@ -2318,11 +2255,6 @@ export function trapname(ttyp, override, state, random = coreRandom,
         if (nameidx !== NO_TRAP) ttyp = nameidx;
     }
     return CMAP_EXPLANATIONS[trap_to_defsym(ttyp)];
-}
-
-function heroProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
 }
 
 // C ref: trap.c immune_to_trap() (2783-2942). This is a pure classification:
@@ -2357,14 +2289,14 @@ export function immune_to_trap(mon, ttype, state = game) {
             || (is_clinger(pm) && has_ceiling(state.u.uz, state))) {
             return TRAP_CLEARLY_IMMUNE;
         }
-        if (isYou && (heroProperty(state, LEVITATION)
-            || heroProperty(state, FLYING))) return TRAP_CLEARLY_IMMUNE;
+        if (isYou && (Levitation(state.u) || Flying(state.u)))
+            return TRAP_CLEARLY_IMMUNE;
         return TRAP_NOT_IMMUNE;
     case SLP_GAS_TRAP:
         if (breathless(pm)) return TRAP_CLEARLY_IMMUNE;
         if (!isYou && Resists_Elem(mon, SLEEP_RES, state))
             return TRAP_CLEARLY_IMMUNE;
-        if (isYou && heroProperty(state, SLEEP_RES))
+        if (isYou && Sleep_resistance(state.u))
             return TRAP_HIDDEN_IMMUNE;
         return TRAP_NOT_IMMUNE;
     case LEVEL_TELEP:
@@ -2386,7 +2318,7 @@ export function immune_to_trap(mon, ttype, state = game) {
         return TRAP_NOT_IMMUNE;
     case ANTI_MAGIC:
         if (isYou) {
-            if (heroProperty(state, ANTIMAGIC)) return TRAP_NOT_IMMUNE;
+            if (Antimagic(state.u)) return TRAP_NOT_IMMUNE;
             if (!state.u.uenmax) return TRAP_HIDDEN_IMMUNE;
         } else if (!resists_magm(mon, state)
             && (mon.mcan || (!attacktype(pm, AT_MAGC)
@@ -2409,7 +2341,7 @@ export function immune_to_trap(mon, ttype, state = game) {
         // monster magic traps have the same harmful part as fire traps
     case FIRE_TRAP: {
         const fireproof = isYou
-            ? heroProperty(state, FIRE_RES)
+            ? Fire_resistance(state.u)
             : Resists_Elem(mon, FIRE_RES, state);
         if (!fireproof) return TRAP_NOT_IMMUNE;
         for (let obj = isYou ? state.invent : mon.minvent;
@@ -2439,24 +2371,6 @@ export function immune_to_trap(mon, ttype, state = game) {
 // C ref: decl.c c_common_strings.c_the_your, indexed by madeby_u.
 const the_your = ['the', 'your'];
 
-function Confusion(state) {
-    return Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
-}
-function Stunned(state) {
-    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
-}
-function Fumbling(state) {
-    return Boolean(state.u?.uprops?.[FUMBLING]?.intrinsic
-                   || state.u?.uprops?.[FUMBLING]?.extrinsic);
-}
-function Passes_walls(state) {
-    const p = state.u?.uprops?.[PASSES_WALLS];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
-// youprop.h:383 Free_action reads the extrinsic field alone.
-function Free_action(state) {
-    return Boolean(state.u?.uprops?.[FREE_ACTION]?.extrinsic);
-}
 // C ref: obj.h u_wield_art(art) => is_art(uwep, art).
 function u_wield_art(art, state) {
     return is_art(state.uwep, art);
@@ -2519,13 +2433,13 @@ function untrap_prob(ttmp, state = game) {
             chance = 7; /* 5.0: used to be 30 */
         }
     }
-    if (Confusion(state) || Hallucination(state.u))
+    if (Confusion(state.u) || Hallucination(state.u))
         chance++;
     if (Blind(state.u))
         chance++;
-    if (Stunned(state))
+    if (Stunned(state.u))
         chance += 2;
-    if (Fumbling(state))
+    if (Fumbling(state.u))
         chance *= 2;
     /* Your own traps are better known than others. */
     if (ttmp.madeby_u)
@@ -2566,10 +2480,9 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it, state = game, rawEn
         }
         stackobj(otmp, env);
     }
-    if (!env.planning)
-        (env.newsym ?? newsym)(ttmp.tx, ttmp.ty, state);
+    (env.newsym ?? newsym)(ttmp.tx, ttmp.ty, state);
     if (state.u.utrap && state.u.ux === ttmp.tx && state.u.uy === ttmp.ty)
-        await reset_utrap(!env.planning, state);
+        await reset_utrap(true, state);
     const mtmp = m_at(ttmp.tx, ttmp.ty, state);
     if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
     deltrap(ttmp, state);
@@ -2650,7 +2563,7 @@ async function try_disarm(ttmp, force_failure, state = game) {
         return 0;
     }
     /* We might be forced to move onto the trap's location. */
-    if (sobj_at(BOULDER, ttmp.tx, ttmp.ty, state) && !Passes_walls(state)
+    if (sobj_at(BOULDER, ttmp.tx, ttmp.ty, state) && !Passes_walls(state.u)
         && !under_u) {
         await ttyPline('There is a boulder in your way.', state);
         return 0;
@@ -2880,7 +2793,7 @@ async function help_monster_out(mtmp, ttmp, state = game) {
 
     /* is it a cockatrice?... */
     if (touch_petrifies(mtmp.data) && !state.uarmg
-        && !Stone_resistance(state)) {
+        && !Stone_resistance(state.u)) {
         const mtmp_pmname = mon_pmname(mtmp, state);
 
         await ttyPline(`You grab the trapped ${mtmp_pmname} using your bare ${makeplural(body_part(HAND, state.youmonst))}.`, state);
@@ -2941,7 +2854,7 @@ async function disarm_box(box, force, confused, state = game) {
         const ch = acurr(state, A_DEX) + state.u.ulevel;
         let effective_ch = ch;
         if (state.urole?.mnum === PM_ROGUE) effective_ch *= 2;
-        if (!force && (confused || Fumbling(state)
+        if (!force && (confused || Fumbling(state.u)
                        || rnd(75 + Math.trunc(level_difficulty(state) / 2))
                           > effective_ch)) {
             await chest_trap(box, FINGER, true, state);
@@ -2988,7 +2901,7 @@ export async function untrap(force, rx, ry, container, state = game) {
     const u = state.u;
     let x, y;
     let ttmp;
-    const confused = Confusion(state) || Hallucination(state.u);
+    const confused = Confusion(state.u) || Hallucination(state.u);
     let trap_skipped = false;
     let autounlock_door = false;
     let boxcnt = 0;
@@ -3179,7 +3092,7 @@ export async function untrap(force, rx, ry, container, state = game) {
             const ch = 15 + (state.urole?.mnum === PM_ROGUE
                 ? u.ulevel * 3 : u.ulevel);
             await exercise(A_DEX, true, state);
-            if (!force && (confused || Fumbling(state)
+            if (!force && (confused || Fumbling(state.u)
                            || rnd(75 + Math.trunc(level_difficulty(state) / 2))
                               > ch)) {
                 await ttyPline('You set it off!', state);
@@ -3623,12 +3536,6 @@ const blindgas = Object.freeze([
     'humid', 'odorless', 'pungent', 'chilling', 'acrid', 'biting',
 ]);
 
-// Local helper: Shock_resistance. C ref: youprop.h Shock_resistance.
-function Shock_resistance(state) {
-    const p = state.u?.uprops?.[SHOCK_RES];
-    return Boolean(p?.intrinsic || p?.extrinsic);
-}
-
 
 // C ref: trap.c chest_trap() (6294-6501). Handles a trapped chest:
 // explosions, poison gas, paralysis, etc. Called from disarm_box (trap.c)
@@ -3680,7 +3587,7 @@ export async function b_trapped(item, bodypart, state = game, env = {}) {
     await exercise(A_STR, false, state, random, exerciseEnv);
     if (bodypart !== NO_PART)
         await exercise(A_CON, false, state, random, exerciseEnv);
-    await make_stunned((state.u.uprops[STUNNED].intrinsic & TIMEOUT) + dmg,
+    await make_stunned((HStun(state.u) & TIMEOUT) + dmg,
         true, state, { ...env, message });
 }
 
@@ -3836,7 +3743,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
             let dmg = d(4, 4);
             const orig_dmg = dmg;
             await ttyPline('You are jolted by a surge of electricity!', state);
-            if (Shock_resistance(state)) {
+            if (Shock_resistance(state.u)) {
                 // C trap.c:chest_trap -- animate before the resistance message.
                 await shieldeff(u.ux, u.uy, state);
                 await ttyPline("You don't seem to be affected.", state);
@@ -3855,7 +3762,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
         }
         case 5: case 4: case 3:
             // Paralysis.
-            if (!Free_action(state)) {
+            if (!Free_action(state.u)) {
                 await ttyPline('Suddenly you are frozen in place!', state);
                 nomul(-d(5, 6), state);
                 state.multi_reason = 'frozen by a trap';
@@ -3874,7 +3781,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
                 `A cloud of ${gascolor} gas billows from ${the(xnameFresh(obj, state), state)}.`,
                 state,
             );
-            if (!Stunned(state)) {
+            if (!Stunned(state.u)) {
                 if (Hallucination(state.u)) {
                     await ttyPline('What a groovy feeling!', state);
                 } else {
@@ -3888,11 +3795,11 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
                 }
             }
             const stunTimeout = (
-                (state.u?.uprops?.[STUNNED]?.intrinsic ?? 0) & TIMEOUT
+                HStun(state.u) & TIMEOUT
             ) + rn1(7, 16);
             await make_stunned(stunTimeout, false, state);
             await make_hallucinated(
-                ((HHallucination(state.u)) & TIMEOUT)
+                (HHallucination(state.u) & TIMEOUT)
                     + rn1(5, 16),
                 false, 0, state,
             );

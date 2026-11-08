@@ -47,7 +47,6 @@ import {
     HATCH_EGG,
     HALLUC,
     GLIB,
-    INTRINSIC,
     INVIS,
     I_SPECIAL,
     Is_waterlevel,
@@ -77,7 +76,6 @@ import {
     OBJ_MINVENT,
     RANGE_LEVEL,
     PASSES_WALLS,
-    POISON_RES,
     POISONING,
     PLNMSG_OK_DONT_DIE,
     PROT_FROM_SHAPE_CHANGERS,
@@ -89,7 +87,6 @@ import {
     SICK,
     SICK_ALL,
     SICK_NONVOMITABLE,
-    SLEEP_RES,
     SLEEPY,
     SEE_INVIS,
     SUPPRESS_SADDLE,
@@ -108,7 +105,6 @@ import {
     TIMER_OBJECT,
     TROLL_REVIVE_CHANCE,
     TURNED_SLIME,
-    UNCHANGING,
     Upolyd,
     VOMITING,
     WARN_OF_MON,
@@ -126,7 +122,7 @@ import {
 import { surface } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
 import { confdir } from './cmd.js';
-import { Stone_resistance, artifact_light } from './artifacts.js';
+import { artifact_light } from './artifacts.js';
 import { acurr, adjattrib, exercise, stone_luck } from './attrib.js';
 import { canseemon, newsym, see_monsters, set_mimic_blocking, vobj_at } from './display.js';
 import {
@@ -159,7 +155,7 @@ import { an, donameFresh, the, vtense, xname, Yname2 } from './objnam.js';
 import {
     candle_light_range, arti_light_radius, del_light_source, get_obj_location, new_light_source, } from './light.js';
 import {
-    big_to_little, breathless, cantvomit, emits_light, is_flyer, is_rider, is_silent,
+    big_to_little, cantvomit, emits_light, is_rider, is_silent,
     is_were, locomotion, name_to_mon, mhe, nolimbs, touch_petrifies,
     type_is_pname, little_to_big,
 } from './mondata.js';
@@ -218,8 +214,14 @@ import { coreRandom,
 } from './rng.js';
 import { ttyNorep, ttyPline, ttyUrgentPline } from './tty_message.js';
 import {
-    Blind, Deaf, HDeaf, Hallucination, Invis, See_invisible, Unaware,
-    Warn_of_mon,
+    Acid_resistance, BInvis, Blind, Breathless, Confusion, Deaf, Displaced,
+    EFumbling, ELevitation, EPasses_walls, Fast, Fire_resistance, Flying,
+    Fumbling, HConfusion, HDeaf, HFlying, HFumbling, HLevitation,
+    HMagical_breathing, HPasses_walls, HSleepy, HStun, Hallucination, Invis,
+    Levitation, Passes_walls, Poison_resistance,
+    Protection_from_shape_changers, See_invisible, Sick, Sleep_resistance,
+    Sleepy, Slimed, Stone_resistance, Stoned, Strangled, Stunned, Unaware,
+    Unchanging, Very_fast, Vomiting, Warn_of_mon, Wounded_legs, Wwalking,
 } from './youprop.js';
 
 const NO_CLEANUP_ERROR = Symbol('no cleanup error');
@@ -750,13 +752,6 @@ function unportedDueTimerReason(state, env) {
     return null;
 }
 
-function heroPropertyActive(state, propertyIndex) {
-    const property = state.u?.uprops?.[propertyIndex];
-    return Boolean(property?.intrinsic || property?.extrinsic)
-        && !property?.blocked;
-}
-
-
 
 // C ref: timeout.c slip_or_trip() (1222-1341). This is called only after the
 // Fumbling property has been decremented, so FROMOUTSIDE and ice-only checks
@@ -808,23 +803,20 @@ export async function slip_or_trip(state = game, env = {}) {
 
         if (!state.uarmf && object.otyp === CORPSE
             && touch_petrifies(state.mons[object.corpsenm])
-            && !Stone_resistance(state)) {
+            && !Stone_resistance(state.u)) {
             state.killer ??= {};
             state.killer.name = `tripping over ${an(
                 state.mons[object.corpsenm].pmnames[NEUTRAL],
             )} corpse`;
-            if (!env.planning) {
-                // timeout.c calls trap.c:instapetrify() here. trap.js imports
-                // timeout.js, so defer this caller binding until gameplay.
-                const { instapetrify } = await import('./trap.js');
-                await instapetrify(state.killer.name, state, env);
-            }
+            // timeout.c calls trap.c:instapetrify() here. trap.js imports
+            // timeout.js, so defer this caller binding until gameplay.
+            const { instapetrify } = await import('./trap.js');
+            await instapetrify(state.killer.name, state, env);
         }
-    } else if ((u.uprops?.[FUMBLING]?.intrinsic & FROMOUTSIDE)
+    } else if ((HFumbling(u) & FROMOUTSIDE)
         || (is_ice(u.ux, u.uy, state) && !random.rn2(3))) {
-        const fumbling = u.uprops[FUMBLING];
-        const iceOnly = !(fumbling.extrinsic
-            || (fumbling.intrinsic & ~FROMOUTSIDE));
+        const iceOnly = !(EFumbling(u)
+            || (HFumbling(u) & ~FROMOUTSIDE));
         await message(
             `${u.usteed
                 ? upstart(x_monnam(
@@ -842,20 +834,13 @@ export async function slip_or_trip(state = game, env = {}) {
                 || !saddle.cursed)
             && (!iceOnly || !random.rn2(3))) {
             await message('You lose your balance.', state);
-            if (!env.planning) {
-                const { dismount_steed } = await import('./steed.js');
-                await dismount_steed(DISMOUNT_FELL, state, { random });
-            }
+            const { dismount_steed } = await import('./steed.js');
+            await dismount_steed(DISMOUNT_FELL, state, { random });
         } else if (!random.rn2(10 + acurr(state, A_DEX))) {
             if (!NODIAG(u.umonnum))
                 confdir(true, state, { random });
             if (u.ux + u.dx !== u.ux0 || u.uy + u.dy !== u.uy0) {
-                await hurtle(u.dx, u.dy, 1, false, state, {
-                    planning: Boolean(env.planning),
-                    random,
-                    planningDeath: env.planningDeath,
-                    isolateVision: env.isolateVision,
-                });
+                await hurtle(u.dx, u.dy, 1, false, state, { random });
             }
         }
     } else if (onFoot) {
@@ -901,17 +886,15 @@ export async function slip_or_trip(state = game, env = {}) {
             await message('You slide to one side of the saddle.', state);
             break;
         }
-        if (!env.planning) {
-            const { dismount_steed } = await import('./steed.js');
-            await dismount_steed(DISMOUNT_FELL, state, { random });
-        }
+        const { dismount_steed } = await import('./steed.js');
+        await dismount_steed(DISMOUNT_FELL, state, { random });
     }
 }
 
 // C ref: timeout.c burn_away_slime() (446-453). Fire cures green slime, and
 // calls make_slimed() only while its timeout is active.
 export async function burn_away_slime(state = game, env = {}) {
-    if (state.u?.uprops?.[SLIMED]?.intrinsic) {
+    if (Slimed(state.u)) {
         await make_slimed(
             0, 'The slime that covers you is burned away!', state, env,
         );
@@ -949,11 +932,11 @@ export function adjust_timeout_luck(state = game) {
 
 // C ref: timeout.c sleep_dialogue() (268-274). This is before nh_timeout()'s
 // per-property decrement, so a four-turn SLEEPY timeout says "You yawn."
-// before its countdown changes. The live elapsed-turn owner supplies the
-// message seam; the planning clone supplies a silent one.
+// before its countdown changes. The elapsed-turn owner supplies the message
+// seam.
 async function sleep_dialogue(state, env = {}) {
     const timeout = Math.trunc(
-        state.u?.uprops?.[SLEEPY]?.intrinsic ?? 0,
+        HSleepy(state.u),
     ) & TIMEOUT;
     if (timeout === 4)
         await (env.message ?? ttyPline)('You yawn.', state);
@@ -961,7 +944,7 @@ async function sleep_dialogue(state, env = {}) {
 
 // C ref: timeout.c slime_texts[] and slime_dialogue() (389-443). The
 // countdown message and its attribute/effect calls run before nh_timeout()
-// decrements Slimed. Display and output callbacks keep planner clones isolated.
+// decrements Slimed. Callers may supply the display and output callbacks.
 const slimeTexts = Object.freeze([
     'You are turning a little %s.',
     'Your limbs are getting oozy.',
@@ -977,12 +960,10 @@ async function slime_dialogue(state = game, env = {}) {
             ? rn2_on_display_rng
             : createCoreRandom(state.displayCtx, state).rn2);
     const displayEnv = { ...env, state, displayRandom };
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
-    const urgentMessage = env.urgentMessage
-        ?? (env.planning ? message : ttyUrgentPline);
+    const message = env.message ?? ttyPline;
+    const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
     const u = state.u;
-    const timeout = Math.trunc(u.uprops?.[SLIMED]?.intrinsic ?? 0) & TIMEOUT;
+    const timeout = Math.trunc(Slimed(u)) & TIMEOUT;
     const index = Math.trunc(timeout / 2);
 
     if (timeout === 1) {
@@ -1029,7 +1010,7 @@ async function slime_dialogue(state = game, env = {}) {
         break;
     }
     case 1:
-        if (u.uprops[STONED]?.intrinsic)
+        if (Stoned(u))
             await make_stoned(0, null, KILLED_BY_AN, null, state);
         break;
     }
@@ -1048,13 +1029,9 @@ const sicknessTexts = Object.freeze([
 
 export async function sickness_dialogue(state = game, env = {}) {
     const random = env.random ?? coreRandom;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
-    const urgentMessage = env.urgentMessage
-        ?? (env.planning
-            ? message
-            : ttyUrgentPline);
-    const sickness = state.u?.uprops?.[SICK]?.intrinsic ?? 0;
+    const message = env.message ?? ttyPline;
+    const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
+    const sickness = Sick(state.u);
     const j = Math.trunc(sickness) & TIMEOUT;
     const i = Math.trunc(j / 2);
 
@@ -1081,20 +1058,18 @@ export async function sickness_dialogue(state = game, env = {}) {
 // The final descent message belongs to float_down(), not this countdown.
 export async function levitation_dialogue(state = game, env = {}) {
     const u = state.u;
-    const timeout = u.uprops[LEVITATION].intrinsic & TIMEOUT;
+    const timeout = HLevitation(u) & TIMEOUT;
     const i = Math.trunc((timeout - 1) / 2);
-    if (u.uprops[LEVITATION].extrinsic) return;
+    if (ELevitation(u)) return;
     if (!ACCESSIBLE(state.level.at(u.ux, u.uy).typ)
         && !is_pool_or_lava(u.ux, u.uy, state)) return;
 
     if (timeout % 2 && i > 0 && i <= 2) {
-        const message = env.message
-            ?? (env.planning ? async () => {} : ttyPline);
+        const message = env.message ?? ttyPline;
         if (i === 1) {
             const danger = is_pool_or_lava(u.ux, u.uy, state)
                 && !Is_waterlevel(u.uz, state);
-            const urgentMessage = env.urgentMessage
-                ?? (env.planning ? message : ttyUrgentPline);
+            const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
             await urgentMessage(
                 `You wobble unsteadily ${danger ? 'over' : 'in'} the ${danger
                     ? surface(u.ux, u.uy, state) : 'air'}.`, state,
@@ -1129,12 +1104,9 @@ export async function choke_dialogue(state, env = {}) {
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
     const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
-    const intrinsic = state.u?.uprops?.[STRANGLED]?.intrinsic ?? 0;
+    const intrinsic = Strangled(state.u);
     const i = Math.trunc(intrinsic) & TIMEOUT;
-    // youprop.h:276 reads both magical-breathing sources or the current form;
-    // none of these source checks consults the property's blocked field.
-    const magicalBreathing = propertySource(state, MAGICAL_BREATHING);
-    const isBreathless = magicalBreathing || breathless(state.youmonst?.data);
+    const isBreathless = Breathless(state);
 
     if (i > 0 && i <= chokeTexts.length) {
         if (isBreathless || random.rn2(50) === 0) {
@@ -1177,7 +1149,7 @@ async function vomiting_dialogue(state, env = {}) {
     const message = env.message ?? ttyPline;
     const encumberMessage = (subject) => encumber_msg(subject, { message });
     const timeout = Math.trunc(
-        state.u.uprops?.[VOMITING]?.intrinsic ?? 0,
+        Vomiting(state.u),
     ) & TIMEOUT;
     let text = null;
 
@@ -1187,13 +1159,13 @@ async function vomiting_dialogue(state, env = {}) {
         break;
     case 11:
         text = vomitingTexts[1];
-        if (state.u.uprops?.[CONFUSION]?.intrinsic)
+        if (HConfusion(state.u))
             text = text.replace(' confused', ' more confused');
         break;
     case 6: {
         // C computes the current timeout before the d(2,4) passed to the
         // source helper, then continues with the Popeye/occupation branch.
-        const stunTimeout = ((state.u.uprops?.[STUNNED]?.intrinsic ?? 0)
+        const stunTimeout = (HStun(state.u)
             & TIMEOUT) + random.d(2, 4);
         await make_stunned(stunTimeout, false, state, { ...env, random, message });
         if (!Popeye(VOMITING, state))
@@ -1202,7 +1174,7 @@ async function vomiting_dialogue(state, env = {}) {
     }
     // FALLTHROUGH
     case 9: {
-        const confusionTimeout = (state.u.uprops?.[CONFUSION]?.intrinsic ?? 0)
+        const confusionTimeout = HConfusion(state.u)
             & TIMEOUT;
         await make_confused(
             confusionTimeout + random.d(2, 4), false, state, env,
@@ -1212,7 +1184,7 @@ async function vomiting_dialogue(state, env = {}) {
     }
     case 8:
         text = vomitingTexts[2];
-        if ((state.u.uprops?.[STUNNED]?.intrinsic ?? 0)
+        if (HStun(state.u)
             && text.includes(' think')) {
             text = text.replace("can't seem to ", "can't ");
         }
@@ -1260,12 +1232,10 @@ const stonedTexts = Object.freeze([
 
 export async function stoned_dialogue(state = game, env = {}) {
     const u = state.u;
-    const i = u.uprops[STONED].intrinsic & TIMEOUT;
+    const i = Stoned(u) & TIMEOUT;
     const random = env.random ?? coreRandom;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
-    const urgentMessage = env.urgentMessage
-        ?? (env.planning ? message : ttyUrgentPline);
+    const message = env.message ?? ttyPline;
+    const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
     if (i > 0 && i <= stonedTexts.length) {
         let text = stonedTexts[stonedTexts.length - i];
         if (nolimbs(state.youmonst.data) && strstri(text, 'limbs') >= 0)
@@ -1287,17 +1257,16 @@ export async function stoned_dialogue(state = game, env = {}) {
         nomul(-3, state);
         state.multi_reason = 'getting stoned';
         state.nomovemsg = You_can_move_again;
-        if ((u.uprops[WOUNDED_LEGS].intrinsic
-            || u.uprops[WOUNDED_LEGS].extrinsic) && !u.usteed)
+        if ((Wounded_legs(u)) && !u.usteed)
             await heal_legs(state, { ...env, how: 2, message });
         break;
     case 2: {
         const deafTimeout = HDeaf(u) & TIMEOUT;
         if (deafTimeout > 0 && deafTimeout < 5)
             set_itimeout(u.uprops[DEAF], 5);
-        if (u.uprops[VOMITING].intrinsic)
+        if (Vomiting(u))
             await make_vomiting(0, false, state, { ...env, message });
-        if (u.uprops[SLIMED].intrinsic)
+        if (Slimed(u))
             await make_slimed(0, null, state, { ...env, message });
         break;
     }
@@ -1353,13 +1322,11 @@ const phazeTexts = Object.freeze([
 ]);
 
 export async function phaze_dialogue(state = game, env = {}) {
-    const property = state.u.uprops[PASSES_WALLS];
-    const timeout = property.intrinsic & TIMEOUT;
+    const timeout = HPasses_walls(state.u) & TIMEOUT;
     const i = Math.trunc(timeout / 2);
-    if (property.extrinsic || (property.intrinsic & ~TIMEOUT)) return;
+    if (EPasses_walls(state.u) || (HPasses_walls(state.u) & ~TIMEOUT)) return;
     if (timeout % 2 && i > 0 && i <= phazeTexts.length) {
-        const message = env.message
-            ?? (env.planning ? async () => {} : ttyPline);
+        const message = env.message ?? ttyPline;
         await message(phazeTexts[phazeTexts.length - i], state);
     }
 }
@@ -1371,95 +1338,35 @@ const regionTexts = Object.freeze([
 ]);
 
 export async function region_dialogue(state = game, env = {}) {
-    const property = state.u.uprops[MAGICAL_BREATHING];
-    const remaining = property.intrinsic & TIMEOUT;
+    const remaining = HMagical_breathing(state.u) & TIMEOUT;
     const i = Math.trunc(remaining / 2);
 
     // Test danger after removing only the timed breathing protection. Restore
     // it before returning or allowing the ordinary warning to wait for input.
-    property.intrinsic &= ~TIMEOUT;
-    const noNeedToBreathe = propertySource(state, MAGICAL_BREATHING)
-        || breathless(state.youmonst.data);
+    state.u.uprops[MAGICAL_BREATHING].intrinsic &= ~TIMEOUT;
+    const noNeedToBreathe = Breathless(state);
     const inPoisonGasCloud = region_danger(state);
-    property.intrinsic |= remaining;
+    state.u.uprops[MAGICAL_BREATHING].intrinsic |= remaining;
     if (noNeedToBreathe || !inPoisonGasCloud) return;
 
     if (remaining % 2 && i > 0 && i <= regionTexts.length) {
-        const message = env.message
-            ?? (env.planning ? async () => {} : ttyPline);
+        const message = env.message ?? ttyPline;
         await message(regionTexts[regionTexts.length - i], state);
     }
 }
 
-// C ref: timeout.c done_timeout() (575-585). Keep the same property object
-// across the awaited death owner, just as C retains intrinsic_p. Its special
-// bit remains visible through final disclosure and is cleared only on return
-// from life saving; the JS end owner marks a final death with gameover.
+// C ref: timeout.c done_timeout() (575-585). The special bit remains visible
+// through final disclosure and is cleared only on return from life saving;
+// the JS end owner marks a final death with gameover.
 export async function done_timeout(how, which, state = game, env = {}) {
-    const property = state.u.uprops[which];
-    property.intrinsic |= I_SPECIAL;
+    state.u.uprops[which].intrinsic |= I_SPECIAL;
     await done(how, state, env);
     if (state.program_state?.gameover) return;
-    property.intrinsic &= ~I_SPECIAL;
+    state.u.uprops[which].intrinsic &= ~I_SPECIAL;
     state.disp.botl = true;
 }
 
-// youprop.h: source-only properties do not consult their blocked field.
-function propertySource(state, index) {
-    const property = state.u?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
-function Flying(state) {
-    return Boolean(propertySource(state, FLYING)
-        || (state.u?.usteed && is_flyer(state.u.usteed.data)))
-        && !state.u?.uprops?.[FLYING]?.blocked;
-}
-
-// These existing callees can draw, prompt, change maps or invoke arbitrary
-// callbacks. The elapsed-turn planner stops before ordinary expiry handlers
-// reach one, runs them live, then validates the remaining allocation from the
-// resulting state. timeout.c calls choke_dialogue() for every nonzero
-// Strangled value and vomiting_dialogue() for every nonzero Vomiting value;
-// each helper exercises an attribute, so either active value must use the
-// same live handoff before nh_timeout().
-// This is an execution handoff, not a refused source path.
-export function nh_timeout_requires_live_state(state = game) {
-    const u = state.u;
-    if (u.uinvulnerable) return false;
-    // These callbacks can revive a monster and remove its corpse.
-    // ZOMBIFY_MON can also fall back to rot_corpse, removing the corpse and
-    // redrawing its square. Both effects must run live before planning the
-    // elapsed turn's monster tail. Carried ROT_CORPSE also names the corpse
-    // and can remove worn gear or interrupt an occupation, so run it live.
-    for (let timer = state.gt?.timer_base;
-        timer && timer.timeout <= state.moves; timer = timer.next) {
-        if (timer.kind === TIMER_OBJECT
-            && (timer.func_index === REVIVE_MON || timer.func_index === ZOMBIFY_MON
-                || (timer.func_index === ROT_CORPSE && timer.arg.where === OBJ_INVENT)))
-            return true;
-    }
-    if (u.mtimedone === 1 && !propertySource(state, UNCHANGING)) return true;
-    if (u.uprops?.[STONED]?.intrinsic) return true;
-    if (u.uprops?.[STRANGLED]?.intrinsic) return true;
-    if (u.uprops?.[VOMITING]?.intrinsic) return true;
-    // Warnings at five and three turns stop occupations after displaying
-    // their message. Run that source effect live before planning the tail.
-    const levitation = u.uprops?.[LEVITATION];
-    const levitationTimeout = levitation?.intrinsic & TIMEOUT;
-    if ((levitationTimeout === 5 || levitationTimeout === 3)
-        && !levitation.extrinsic
-        && (ACCESSIBLE(state.level.at(u.ux, u.uy).typ)
-            || is_pool_or_lava(u.ux, u.uy, state))) return true;
-    for (const index of [
-        STONED, SICK, SLIMED, BLINDED, INVIS, SEE_INVIS, HALLUC, LEVITATION,
-        FLYING, DETECT_MONSTERS, DISPLACED, GLIB,
-        PROT_FROM_SHAPE_CHANGERS, STONE_RES,
-    ]) {
-        if ((u.uprops?.[index]?.intrinsic & TIMEOUT) === 1) return true;
-    }
-    return false;
-}
 
 // C ref: timeout.c nh_timeout() (669-945). Every expiry follows the common
 // decrement and delayed-killer lookup, including properties with no case.
@@ -1470,7 +1377,7 @@ async function decrement_property_timeouts(state, env) {
     // timeout.c:735-790 call stop_occupation() and fall_asleep(), whose
     // "You stop %s." line needs the same message() as this function's own.
     const occupationEnv = { ...env, message };
-    const wasFlying = Flying(state);
+    const wasFlying = Flying(state.u);
     const encumberMessage = (subject) => encumber_msg(subject, { message });
     for (let index = 0; index < (u.uprops?.length ?? 0); ++index) {
         const property = u.uprops[index];
@@ -1488,10 +1395,10 @@ async function decrement_property_timeouts(state, env) {
                 state.killer.name = 'killed by petrification';
             }
             dealloc_killer(killer, state);
-            if (!env.planning) await done_timeout(STONING, STONED, state, env);
+            await done_timeout(STONING, STONED, state, env);
             break;
         case SLIMED:
-            if (!env.planning) await slimed_to_death(killer, state, env);
+            await slimed_to_death(killer, state, env);
             break;
         case VOMITING:
             await make_vomiting(0, true, state, env);
@@ -1531,15 +1438,15 @@ async function decrement_property_timeouts(state, env) {
                     }
                 }
             }
-            if (!env.planning) await done_timeout(POISONING, SICK, state, env);
+            await done_timeout(POISONING, SICK, state, env);
             if (state.program_state?.gameover) return;
             u.usick_type = 0;
             break;
         case FAST:
-            if (!((property.intrinsic & ~INTRINSIC) || property.extrinsic)) {
+            if (!Very_fast(state.u)) {
                 await message(
                     youFeel(
-                        `yourself slow down${propertySource(state, FAST) ? ' a bit' : ''}.`,
+                        `yourself slow down${Fast(state.u) ? ' a bit' : ''}.`,
                         state,
                     ),
                     state,
@@ -1549,12 +1456,12 @@ async function decrement_property_timeouts(state, env) {
         case CONFUSION:
             set_itimeout(property, 1);
             await make_confused(0, true, state, env);
-            if (!property.intrinsic) await stop_occupation(state, occupationEnv);
+            if (!Confusion(state.u)) await stop_occupation(state, occupationEnv);
             break;
         case STUNNED:
             set_itimeout(property, 1);
             await make_stunned(0, true, state, env);
-            if (!property.intrinsic) await stop_occupation(state, occupationEnv);
+            if (!Stunned(state.u)) await stop_occupation(state, occupationEnv);
             break;
         case BLINDED: {
             const wasBlind = Blind(state.u);
@@ -1573,7 +1480,7 @@ async function decrement_property_timeouts(state, env) {
             break;
         case INVIS:
             (env.newsym ?? newsym)(u.ux, u.uy, state);
-            if (!Invis(state.u) && !property.blocked
+            if (!Invis(state.u) && !BInvis(state.u)
                 && !Blind(state.u)) {
                 await message(!See_invisible(state.u)
                     ? 'You are no longer invisible.'
@@ -1584,8 +1491,7 @@ async function decrement_property_timeouts(state, env) {
         case SEE_INVIS:
             set_mimic_blocking(state);
             await see_monsters(state, { ...env,
-                redraw: env.redraw ?? env.newsym
-                    ?? (env.planning ? () => {} : undefined) });
+                redraw: env.redraw ?? env.newsym });
             (env.newsym ?? newsym)(u.ux, u.uy, state);
             await stop_occupation(state, occupationEnv);
             break;
@@ -1599,9 +1505,9 @@ async function decrement_property_timeouts(state, env) {
             if (!Hallucination(state.u)) await stop_occupation(state, occupationEnv);
             break;
         case SLEEPY:
-            if (unconscious(state) || propertySource(state, SLEEP_RES)) {
+            if (unconscious(state) || Sleep_resistance(state.u)) {
                 incr_itimeout(property, random.rnd(100));
-            } else if (propertySource(state, SLEEPY)) {
+            } else if (Sleepy(state.u)) {
                 await message('You fall asleep.', state);
                 const duration = random.rnd(20);
                 await fall_asleep(-duration, true, state, occupationEnv);
@@ -1609,12 +1515,12 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case LEVITATION:
-            if ((u.uprops[FLYING].intrinsic & TIMEOUT) === 1)
+            if ((HFlying(u) & TIMEOUT) === 1)
                 set_itimeout(u.uprops[FLYING], 0);
             await float_down(I_SPECIAL | TIMEOUT, 0, state);
             break;
         case FLYING:
-            if (wasFlying && !Flying(state)) {
+            if (wasFlying && !Flying(state.u)) {
                 state.disp ??= {};
                 state.disp.botl = true;
                 await message('You land.', state);
@@ -1622,7 +1528,7 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case ACID_RES:
-            if (!propertySource(state, ACID_RES)) {
+            if (!Acid_resistance(state.u)) {
                 if (eating_dangerous_corpse(ACID_RES, state)) {
                     set_itimeout(property, 1);
                     break;
@@ -1632,7 +1538,7 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case STONE_RES:
-            if (!propertySource(state, STONE_RES)) {
+            if (!Stone_resistance(state.u)) {
                 if (eating_dangerous_corpse(STONE_RES, state)) {
                     set_itimeout(property, 1);
                     break;
@@ -1644,15 +1550,15 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case FIRE_RES:
-            if (!propertySource(state, FIRE_RES))
+            if (!Fire_resistance(state.u))
                 await message('Your temporary ability to survive burning has ended.', state);
             break;
         case WWALKING:
-            if (!(propertySource(state, WWALKING) && !Is_waterlevel(u.uz, state)))
+            if (!(Wwalking(state)))
                 await message('Your temporary ability to walk on liquid has ended.', state);
             break;
         case DISPLACED:
-            if (!propertySource(state, DISPLACED))
+            if (!Displaced(state.u))
                 await toggle_displacement(null, 0, false, state);
             break;
         case WARN_OF_MON:
@@ -1665,7 +1571,7 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case PASSES_WALLS:
-            if (!propertySource(state, PASSES_WALLS)) {
+            if (!Passes_walls(state.u)) {
                 if (stuck_in_wall(state)) {
                     await message(
                         youFeel('hemmed in again.', state),
@@ -1677,17 +1583,16 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case MAGICAL_BREATHING:
-            if (!(propertySource(state, MAGICAL_BREATHING)
-                    || breathless(state.youmonst.data))
+            if (!(Breathless(state))
                 && region_danger(state)) {
-                await message(`You cough${propertySource(state, POISON_RES) ? '.' : ' and spit blood!'}`, state);
+                await message(`You cough${Poison_resistance(state.u) ? '.' : ' and spit blood!'}`, state);
             }
             break;
         case STRANGLED:
             state.killer ??= {};
             state.killer.format = KILLED_BY;
             state.killer.name = u.uburied ? 'suffocation' : 'strangulation';
-            if (!env.planning) await done_timeout(DIED, STRANGLED, state, env);
+            await done_timeout(DIED, STRANGLED, state, env);
             if (state.program_state?.gameover) return;
             if (state.uamul?.otyp === AMULET_OF_STRANGULATION) {
                 await message('Your amulet vanishes!', state);
@@ -1695,7 +1600,7 @@ async function decrement_property_timeouts(state, env) {
             }
             break;
         case FUMBLING:
-            if (u.umoved && !(heroPropertyActive(state, LEVITATION) || Flying(state))) {
+            if (u.umoved && !(Levitation(state.u) || Flying(state.u))) {
                 await slip_or_trip(state, { ...env, random, message });
                 nomul(-2, state);
                 state.multi_reason = 'fumbling';
@@ -1706,24 +1611,22 @@ async function decrement_property_timeouts(state, env) {
                 }
             }
             property.intrinsic &= ~FROMOUTSIDE;
-            if (propertySource(state, FUMBLING))
+            if (Fumbling(state.u))
                 incr_itimeout(property, random.rnd(20));
             // timeout.c calls deferred_decor(FALSE) after the Fumbling clock
-            // has expired.  Planning clones cannot emit the catch-up line;
-            // the live timeout owns the source message and clears the flag.
-            if (state.iflags?.defer_decor && !env.planning)
+            // has expired.
+            if (state.iflags?.defer_decor)
                 await deferred_decor(false, state);
             break;
         case DETECT_MONSTERS:
             await see_monsters(state, { ...env,
-                redraw: env.redraw ?? env.newsym
-                    ?? (env.planning ? () => {} : undefined) });
+                redraw: env.redraw ?? env.newsym });
             break;
         case GLIB:
             make_glib(0, state, env);
             break;
         case PROT_FROM_SHAPE_CHANGERS:
-            if (!propertySource(state, PROT_FROM_SHAPE_CHANGERS))
+            if (!Protection_from_shape_changers(state.u))
                 restartcham(state, { ...env, state });
             break;
         }
@@ -1746,50 +1649,46 @@ export async function nh_timeout(state = game, env = {}) {
     };
     adjust_timeout_luck(state);
     if (u.uinvulnerable) return;
-    if (u.uprops?.[STONED]?.intrinsic)
+    if (Stoned(u))
         await stoned_dialogue(state, { ...displayEnv, random });
-    if (u.uprops?.[SLIMED]?.intrinsic) {
-        const slimeMessage = env.message
-            ?? (env.planning ? async () => {} : ttyPline);
+    if (Slimed(u)) {
+        const slimeMessage = env.message ?? ttyPline;
         await slime_dialogue(state, {
             ...displayEnv,
             state,
             random,
             message: slimeMessage,
-            urgentMessage: env.urgentMessage
-                ?? (env.planning ? slimeMessage : ttyUrgentPline),
+            urgentMessage: env.urgentMessage ?? ttyUrgentPline,
         });
     }
-    if (u.uprops?.[VOMITING]?.intrinsic && !env.planning)
+    if (Vomiting(u))
         await vomiting_dialogue(state, { ...env, random, message });
-    if (u.uprops?.[STRANGLED]?.intrinsic && !env.planning)
+    if (Strangled(u))
         await choke_dialogue(state, { ...displayEnv, random, message });
-    if (u.uprops?.[SICK]?.intrinsic) {
-        const sicknessMessage = env.message
-            ?? (env.planning ? async () => {} : ttyPline);
+    if (Sick(u)) {
+        const sicknessMessage = env.message ?? ttyPline;
         await sickness_dialogue(state, {
             ...displayEnv,
             state,
             random,
             message: sicknessMessage,
-            urgentMessage: env.urgentMessage
-                ?? (env.planning ? sicknessMessage : ttyUrgentPline),
+            urgentMessage: env.urgentMessage ?? ttyUrgentPline,
             encumberMessage: env.encumberMessage
                 ?? (subject => encumber_msg(subject, {
                     message: sicknessMessage,
                 })),
         });
     }
-    if (u.uprops?.[LEVITATION]?.intrinsic & TIMEOUT)
+    if (HLevitation(u) & TIMEOUT)
         await levitation_dialogue(state, displayEnv);
-    if (u.uprops?.[PASSES_WALLS]?.intrinsic & TIMEOUT)
+    if (HPasses_walls(u) & TIMEOUT)
         await phaze_dialogue(state, displayEnv);
-    if (u.uprops?.[MAGICAL_BREATHING]?.intrinsic & TIMEOUT)
+    if (HMagical_breathing(u) & TIMEOUT)
         await region_dialogue(state, displayEnv);
-    if (u.uprops?.[SLEEPY]?.intrinsic & TIMEOUT)
+    if (HSleepy(u) & TIMEOUT)
         await sleep_dialogue(state, env);
     if (u.mtimedone && !--u.mtimedone) {
-        if (propertySource(state, UNCHANGING))
+        if (Unchanging(state.u))
             u.mtimedone = random.rnd(100 * state.youmonst.data.mlevel + 1);
         else if (is_were(state.youmonst.data)) {
             await you_unwere(false, state, { ...displayEnv, random, message });
@@ -2319,8 +2218,7 @@ export async function run_timers(state = game, env = {}) {
 }
 
 // The firing timer has already released its object count. Compose the existing
-// object, light and worn-slot owners against that same state; the planning
-// pass mutates its clone while suppressing inventory and map output.
+// object, light and worn-slot owners against that same state.
 function burnObjectEnv(rawEnv) {
     const state = rawEnv.state ?? game;
     const env = objectGenerationEnv({ ...rawEnv, state });
@@ -2333,12 +2231,7 @@ function burnObjectEnv(rawEnv) {
         }),
         ...rawEnv.hooks,
     };
-    if (rawEnv.planning) {
-        env.message = async () => {};
-        env.newsym = () => {};
-        env.hooks.updateInventory = () => {};
-        env.hooks.newsym = env.newsym;
-    } else if (env.hooks.updateInventory === undefined) {
+    if (env.hooks.updateInventory === undefined) {
         env.hooks.updateInventory = state.hooks?.updateInventory;
     }
     return env;
@@ -2347,7 +2240,7 @@ function burnObjectEnv(rawEnv) {
 // C ref: timeout.c see_lamp_flicker() (1345-1356). Called only when seen.
 export async function see_lamp_flicker(obj, tailer, env = {}) {
     const state = env.state ?? game;
-    const message = env.planning ? async () => {} : (env.message ?? ttyPline);
+    const message = env.message ?? ttyPline;
     switch (obj.where) {
     case OBJ_INVENT:
     case OBJ_MINVENT:
@@ -2362,7 +2255,7 @@ export async function see_lamp_flicker(obj, tailer, env = {}) {
 // C ref: timeout.c lantern_message() (1360-1375). Called only when seen.
 export async function lantern_message(obj, env = {}) {
     const state = env.state ?? game;
-    const message = env.planning ? async () => {} : (env.message ?? ttyPline);
+    const message = env.message ?? ttyPline;
     switch (obj.where) {
     case OBJ_INVENT:
         await message('Your lantern is getting dim.', state);

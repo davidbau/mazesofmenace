@@ -40,7 +40,6 @@ import {
     A_CHAOTIC,
     LL_CONDUCT,
     ACID_RES,
-    ANTIMAGIC,
     A_CON,
     A_DEX,
     A_INT,
@@ -97,8 +96,6 @@ import {
     KILLED_BY,
     KILLED_BY_AN,
     BOLT_LIM,
-    FIXED_ABIL,
-    FREE_ACTION,
     G_GONE,
     HEAD,
     LEG,
@@ -118,17 +115,13 @@ import {
     POTHIT_HERO_THROW,
     POTHIT_OTHER_THROW,
     PLNMSG_OBJ_GLOWS,
-    PROT_FROM_SHAPE_CHANGERS,
     SEE_INVIS,
     M_SEEN_SLEEP,
     SICK,
     SICK_ALL,
-    SLEEP_RES,
-    SICK_RES,
     SLIMED,
     STUNNED,
     STONED,
-    STRANGLED,
     TIMEOUT,
     P_BASIC,
     P_RIDING,
@@ -136,10 +129,8 @@ import {
     SHOPBASE,
     SUPPRESS_IT,
     SUPPRESS_SADDLE,
-    UNCHANGING,
     Upolyd,
     VOMITING,
-    WOUNDED_LEGS,
     W_SADDLE,
     W_WEP,
     ismnum,
@@ -184,8 +175,7 @@ import { clone_mon, set_malign } from './makemon.js';
 import { makemon_runtime } from './makemon_create.js';
 import {
     breathless, dmgtype, has_head, haseyes, is_human, is_silent,
-    is_vampshifter, is_were, likes_fire, mon_hates_blessings, stagger,
-    defended, Resists_Elem,
+    is_vampshifter, is_were, likes_fire, mon_hates_blessings, stagger, Resists_Elem,
 } from './mondata.js';
 import {
     AD_ACID, AD_DISE, AD_PEST,
@@ -227,7 +217,7 @@ import {
     burn_away_slime, fall_asleep, obj_stop_timers,
 } from './timeout.js';
 import { explode, explode_oil } from './explode.js';
-import { float_up, Levitation } from './trap.js';
+import { float_up } from './trap.js';
 import { rider_cant_reach } from './steed.js';
 import {
     Can_rise_up, ceiling, depth, get_level, has_ceiling, ledger_no, on_level,
@@ -238,8 +228,6 @@ import { cansee, vision_recalc } from './vision.js';
 import {
     bhitm, do_enlightenment_effect, makewish,
     resist,
-    Cold_resistance,
-    Fire_resistance,
 } from './zap.js';
 import {
     OBJ_DESCR,
@@ -294,7 +282,7 @@ import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { livelog_printf, youFeel } from './pline.js';
 import {
-    GLYPH_INVISIBLE, map_invisible, map_invisible_planning, unmap_object,
+    GLYPH_INVISIBLE, map_invisible, unmap_object,
 } from './display.js';
 import {
     healmon, killed, mongone, monkilled, new_were, wake_nearto, wakeup,
@@ -319,11 +307,16 @@ import { is_pool } from './dbridge.js';
 import { erode_obj } from './trap_erode_obj.js';
 import { obj_unpolyable, poly_obj } from './zap.js';
 import {
-    BBlinded, BInvis, Blind, Blind_telepat, Blinded, BlindedTimeout,
-    Blindfolded, Deaf, Detect_monsters, EBlinded, EHalluc_resistance,
-    EWarn_of_mon, HBlinded, HDeaf, HDetect_monsters,
-    HHallucination, HInvis, HSee_invisible, Halluc_resistance, Hallucination,
-    Infravision, Invis, Maybe_Half_Phys, PermaBlind, See_invisible, Unaware,
+    Acid_resistance, Antimagic, BBlinded, BInvis, BLevitation, Blind,
+    Blind_telepat, Blinded, BlindedTimeout, Blindfolded, Cold_resistance,
+    Confusion, Deaf, Detect_monsters, EBlinded, EHalluc_resistance,
+    EWarn_of_mon, Fast, Fire_resistance, Fixed_abil, Free_action, Glib,
+    HBlinded, HConfusion, HDeaf, HDetect_monsters, HFast, HHallucination,
+    HInvis, HSee_invisible, HStun, Halluc_resistance, Hallucination,
+    Infravision, Invis, Levitation, Maybe_Half_Phys, PermaBlind,
+    Poison_resistance, Protection_from_shape_changers, See_invisible, Sick,
+    Sick_resistance, Sleep_resistance, Slimed, Stoned, Strangled, Unaware,
+    Unchanging, Very_fast, Vomiting, Wounded_legs,
 } from './youprop.js';
 
 // Thrown where dodrink/dopotion/peffects reaches a branch this port has not
@@ -547,18 +540,15 @@ export function incr_itimeout(prop, incr) {
 // C ref: potion.c make_slimed() (199-218). Slimed's timeout and appearance
 // cleanup are one transition; callers set the delayed killer separately.
 export async function make_slimed(xtime, msg, state = game, env = {}) {
-    const prop = state.u?.uprops?.[SLIMED];
-    if (!prop)
-        throw new Error('make_slimed requires initialized SLIMED state');
-    const old = prop.intrinsic;
-    set_itimeout(prop, xtime);
+    const old = Slimed(state.u);
+    set_itimeout(state.u.uprops[SLIMED], xtime);
     if (Boolean(xtime) !== Boolean(old)) {
         state.disp ??= {};
         state.disp.botl = true;
         if (msg) await (env.message ?? ttyPline)(msg, state);
     }
     // C tests the complete Slimed value here, not just the timeout mask.
-    if (!prop.intrinsic) {
+    if (!Slimed(state.u)) {
         dealloc_killer(find_delayed_killer(SLIMED, state), state);
         const hero = state.youmonst;
         if (M_AP_TYPE(hero) === M_AP_MONSTER
@@ -575,17 +565,14 @@ export async function make_slimed(xtime, msg, state = game, env = {}) {
 export async function make_stoned(
     xtime, msg, killedby, killername, state = game,
 ) {
-    const prop = state.u?.uprops?.[STONED];
-    if (!prop)
-        throw new Error('make_stoned requires initialized STONED state');
-    const old = prop.intrinsic & TIMEOUT;
-    set_itimeout(prop, xtime);
+    const old = Stoned(state.u) & TIMEOUT;
+    set_itimeout(state.u.uprops[STONED], xtime);
     if (Boolean(xtime) !== Boolean(old)) {
         state.disp ??= {};
         state.disp.botl = true;
         if (msg) await ttyPline(msg, state);
     }
-    if (!(prop.intrinsic & TIMEOUT)) {
+    if (!(Stoned(state.u) & TIMEOUT)) {
         dealloc_killer(find_delayed_killer(STONED, state), state);
     } else if (!old) {
         delayed_killer(STONED, killedby, killername, state);
@@ -597,14 +584,11 @@ export async function make_stoned(
 // the condition line, and the optional cure message follows C's old-value and
 // Unaware checks.
 export async function make_vomiting(xtime, talk, state = game, env = {}) {
-    const prop = state.u?.uprops?.[VOMITING];
-    if (!prop)
-        throw new Error('make_vomiting requires initialized VOMITING state');
-    const old = prop.intrinsic;
+    const old = Vomiting(state.u);
 
     if (Unaware(state)) talk = false;
 
-    set_itimeout(prop, xtime);
+    set_itimeout(state.u.uprops[VOMITING], xtime);
     state.disp ??= {};
     state.disp.botl = true;
     if (!xtime && old && talk) {
@@ -621,18 +605,13 @@ export async function make_sick(
     xtime, cause, talk, type, state = game, env = {},
 ) {
     const u = state.u;
-    const sick = u?.uprops?.[SICK];
-    if (!sick)
-        throw new Error('make_sick requires initialized SICK state');
-    const old = sick.intrinsic;
+    const old = Sick(u);
     const message = env.message ?? ttyPline;
     const random = env.random ?? coreRandom;
     const encumberMessage = env.encumberMessage ?? encumber_msg;
 
     if (xtime > 0) {
-        const resistance = u.uprops[SICK_RES];
-        if (resistance.intrinsic || resistance.extrinsic
-            || defended(state.youmonst, AD_DISE, state)) {
+        if (Sick_resistance(state)) {
             return;
         }
         if (!old) {
@@ -643,7 +622,7 @@ export async function make_sick(
                 state,
             );
         }
-        set_itimeout(sick, xtime);
+        set_itimeout(u.uprops[SICK], xtime);
         u.usick_type = (u.usick_type ?? 0) | type;
         state.disp ??= {};
         state.disp.botl = true;
@@ -653,18 +632,18 @@ export async function make_sick(
             if (talk) await message(youFeel('somewhat better.', state), state);
             // potion.c approximates the remaining illness with twice its old
             // timeout after one sickness type has been cured.
-            set_itimeout(sick, old * 2);
+            set_itimeout(u.uprops[SICK], old * 2);
         } else {
             if (talk) await message(youFeel('cured.  What a relief!', state), state);
             // C assigns Sick directly to zero rather than preserving flags.
-            sick.intrinsic = 0;
+            u.uprops[SICK].intrinsic = 0;
         }
         state.disp ??= {};
         state.disp.botl = true;
     }
 
     const killer = find_delayed_killer(SICK, state);
-    if (sick.intrinsic) {
+    if (Sick(u)) {
         await exercise(A_CON, false, state, random, { encumberMessage });
         if (xtime || !old || !killer) {
             const format = cause === '#wizintrinsic' ? KILLED_BY : KILLED_BY_AN;
@@ -679,16 +658,14 @@ export async function make_sick(
 // polymon() calls make_glib(0) when the new form has no hands, clearing any
 // Glib timeout so the status line updates.
 export function make_glib(xtime, state = game, env = {}) {
-    const prop = state.u?.uprops?.[GLIB];
-    if (!prop) return; // property not initialized
-    const wasGlib = Boolean(prop.intrinsic);
+    const wasGlib = Boolean(Glib(state.u));
     const willBeGlib = Boolean(xtime);
     // Preserve C's (!Glib ^ !!xtime), including its equal-truth-value case.
     if (!wasGlib !== willBeGlib) {
         state.disp ??= {};
         state.disp.botl = true;
     }
-    set_itimeout(prop, xtime);
+    set_itimeout(state.u.uprops[GLIB], xtime);
     // potion.c:467: the worn-glove annotation can change with Glib.
     if (state.uarmg) update_inventory({ ...env, state });
 }
@@ -710,8 +687,6 @@ export async function self_invis_message(state = game, env = {}) {
 // When talk is true and the state changes, prints "You can hear again." or
 // "You are unable to hear anything."  The rottenfood fainting callback
 // (Hear_again) calls make_deaf(0, false), clearing the timer silently.
-// `env.message` lets elapsed-turn planning run this source call without
-// writing the clone's message to the live terminal.
 export async function make_deaf(xtime, talk, state = game, env = {}) {
     // Nothing sets HDeaf's non-timeout bits, so the whole field C reads as
     // `old` is its timeout.
@@ -739,9 +714,8 @@ export async function make_deaf(xtime, talk, state = game, env = {}) {
 
 // C ref: potion.c make_blinded() (261-331). The temporary timeout is probed
 // before committing it because Eyes of the Overworld can keep Blind false even
-// while HBlinded changes. Message calls use the caller's seam so planning
-// clones do not write to the live terminal; toggle_blindness() remains the
-// canonical owner of the full vision rebuild.
+// while HBlinded changes. Message calls use the caller's seam;
+// toggle_blindness() remains the canonical owner of the full vision rebuild.
 export async function make_blinded(xtime, talk, state = game, env = {}) {
     const old = BlindedTimeout(state.u);
 
@@ -838,11 +812,7 @@ export async function make_blinded(xtime, talk, state = game, env = {}) {
 // report a cleared condition when requested, and mark the status line only
 // when confusion starts or ends.
 export async function make_confused(xtime, talk, state = game, env = {}) {
-    const prop = state.u.uprops[CONFUSION] ??= {
-        intrinsic: 0,
-        extrinsic: 0,
-    };
-    const old = prop.intrinsic;
+    const old = HConfusion(state.u);
 
     if (Unaware(state)) talk = false;
 
@@ -855,18 +825,14 @@ export async function make_confused(xtime, talk, state = game, env = {}) {
     if ((xtime && !old) || (!xtime && old))
         state.disp.botl = true;
 
-    set_itimeout(prop, xtime);
+    set_itimeout(state.u.uprops[CONFUSION], xtime);
 }
 
 // C ref: potion.c make_stunned() (107-131). HStun is one packed intrinsic
 // value; the transition tests use its full value, while set_itimeout changes
 // only the timeout bits at the end of the source sequence.
 export async function make_stunned(xtime, talk, state = game, env = {}) {
-    const prop = state.u.uprops[STUNNED] ??= {
-        intrinsic: 0,
-        extrinsic: 0,
-    };
-    const old = prop.intrinsic;
+    const old = HStun(state.u);
     const message = env.message ?? ttyPline;
 
     if (Unaware(state)) talk = false;
@@ -892,7 +858,7 @@ export async function make_stunned(xtime, talk, state = game, env = {}) {
         state.disp.botl = true;
     }
 
-    set_itimeout(prop, xtime);
+    set_itimeout(state.u.uprops[STUNNED], xtime);
 }
 
 // C ref: potion.c make_hallucinated() (369-442). The ordinary transition
@@ -901,37 +867,21 @@ export async function make_stunned(xtime, talk, state = game, env = {}) {
 export async function make_hallucinated(
     xtime, talk, mask = 0, state = game, rawEnv = {},
 ) {
-    const planning = Boolean(rawEnv.planning);
-    const message = rawEnv.message
-        ?? (planning ? async () => {} : ttyPline);
-    const redraw = rawEnv.redraw
-        ?? (planning ? () => {} : newsym);
+    const message = rawEnv.message ?? ttyPline;
+    const redraw = rawEnv.redraw ?? newsym;
     // Object and trap repainting is display-only.  Their existing owners are
-    // live-game helpers; a planning clone supplies optional seams when it
-    // needs to observe these writes, and otherwise discards the repaint just
-    // as the clone discards every other terminal update.
+    // live-game helpers; a state other than the live game supplies optional
+    // seams when it needs to observe these writes, and otherwise discards
+    // the repaint.
     const seeObjects = rawEnv.seeObjects
-        ?? (!planning && state === game ? see_objects : () => {});
+        ?? (state === game ? see_objects : () => {});
     const seeTraps = rawEnv.seeTraps
-        ?? (!planning && state === game ? see_traps : () => {});
-    // A planning clone still needs see_monsters() to update its own map
-    // memory.  An explicit planning call against the live game is the one
-    // case where the display fallback must stay silent.
+        ?? (state === game ? see_traps : () => {});
     const seeMonsters = rawEnv.seeMonsters
-        ?? (planning && state === game
-            ? () => {}
-            : (subject) => see_monsters(subject, { ...rawEnv, message, redraw }));
+        ?? ((subject) => see_monsters(subject, { ...rawEnv, message, redraw }));
     const swallow = rawEnv.swallowed
-        ?? (!planning && state === game ? swallowed : async () => {});
-    const hooks = {
-        ...(rawEnv.hooks ?? {}),
-        // invent.c requires an updateInventory seam for an active
-        // permanent-inventory window.  Planning has no live window to paint,
-        // but it still must pass that source preflight without refusal; a
-        // caller-provided hook remains authoritative.
-        ...(planning && typeof rawEnv.hooks?.updateInventory !== 'function'
-            ? { updateInventory: () => {} } : {}),
-    };
+        ?? (state === game ? swallowed : async () => {});
+    const hooks = { ...(rawEnv.hooks ?? {}) };
     const env = { ...rawEnv, state, message, redraw, hooks };
     if (Unaware(state)) talk = false;
     const old = HHallucination(state.u) & TIMEOUT;
@@ -1186,7 +1136,7 @@ async function peffect_booze(otmp, state = game) {
     if (!otmp.blessed) {
         // C reads u.uhs before adding the potion's nutrition.
         await make_confused(itimeout_incr(
-            state.u.uprops[CONFUSION].intrinsic,
+            HConfusion(state.u),
             d(2 + state.u.uhs, 8),
         ), false, state);
     }
@@ -1237,12 +1187,8 @@ async function peffect_enlightenment(otmp, state = game, env = {}) {
 // ---------------------------------------------------------------------------
 
 async function peffect_confusion(otmp, state = game) {
-    const prop = state.u.uprops[CONFUSION] ??= {
-        intrinsic: 0,
-        extrinsic: 0,
-    };
 
-    if (!prop.intrinsic) {
+    if (!HConfusion(state.u)) {
         if (Hallucination(state.u)) {
             await ttyPline('What a trippy feeling!', state);
             state.gp.potion_unkn++;
@@ -1254,7 +1200,7 @@ async function peffect_confusion(otmp, state = game) {
     }
     await make_confused(
         itimeout_incr(
-            prop.intrinsic,
+            HConfusion(state.u),
             rn1(7, 16 - 8 * bcsign(otmp)),
         ),
         false,
@@ -1275,7 +1221,7 @@ async function peffect_gain_ability(otmp, state = game, env = {}) {
     if (otmp.cursed) {
         await message('Ulch!  That potion tasted foul!', state);
         state.gp.potion_unkn++;
-    } else if (fixedAbilities(state)) {
+    } else if (Fixed_abil(state.u)) {
         state.gp.potion_nothing++;
     } else {
         let index = -1;
@@ -1300,25 +1246,17 @@ async function peffect_gain_ability(otmp, state = game, env = {}) {
 // print the speed-change message.
 export async function speed_up(duration, state = game) {
     const hero = state.u;
-    const prop = hero.uprops[FAST] ??= { intrinsic: 0, extrinsic: 0 };
 
-    // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast).
-    // True when the hero has a timed speed (non-intrinsic timeout bits) or
-    // extrinsic speed (speed boots, etc.).
-    const Very_fast = Boolean((prop.intrinsic & ~INTRINSIC) || prop.extrinsic);
-    // C ref: youprop.h:376 Fast = (HFast || EFast).
-    const Fast = Boolean(prop.intrinsic || prop.extrinsic);
-
-    if (!Very_fast)
+    if (!Very_fast(hero))
         await ttyPline(
-            `You are suddenly moving ${Fast ? '' : 'much '}faster.`, state);
+            `You are suddenly moving ${Fast(hero) ? '' : 'much '}faster.`, state);
     else
         await ttyPline(
             `Your ${makeplural(body_part(LEG, state.youmonst))} get new energy.`,
             state);
 
     await exercise(A_DEX, true, state);
-    incr_itimeout(prop, duration);
+    incr_itimeout(hero.uprops[FAST], duration);
 }
 
 // C ref: potion.c peffect_speed() (1052-1070). Handle the POT_SPEED and
@@ -1326,13 +1264,11 @@ export async function speed_up(duration, state = game) {
 async function peffect_speed(otmp, state = game) {
     const is_speed = (otmp.otyp === POT_SPEED);
     const hero = state.u;
-    const prop = hero.uprops[FAST] ??= { intrinsic: 0, extrinsic: 0 };
 
     // C ref: 1057-1061. Skip when mounted; heal_legs() would heal the steed's
     // legs instead. Fail-closed: u.usteed is not ported.
     if (is_speed
-        && Boolean((hero.uprops[WOUNDED_LEGS]?.intrinsic ?? 0)
-                   || (hero.uprops[WOUNDED_LEGS]?.extrinsic ?? 0))
+        && Wounded_legs(hero)
         && !otmp.cursed && !hero.usteed) {
         await heal_legs(state);
         state.gp.potion_unkn++;
@@ -1343,9 +1279,9 @@ async function peffect_speed(otmp, state = game) {
 
     // C ref: 1066-1069. Non-cursed potion grants permanent intrinsic speed.
     if (is_speed && !otmp.cursed
-        && !(prop.intrinsic & INTRINSIC)) {
+        && !(HFast(hero) & INTRINSIC)) {
         await ttyPline('Your quickness feels very natural.', state);
-        prop.intrinsic |= FROMOUTSIDE;
+        hero.uprops[FAST].intrinsic |= FROMOUTSIDE;
     }
 }
 
@@ -1373,13 +1309,9 @@ async function peffect_blindness(otmp, state = game) {
 // ---------------------------------------------------------------------------
 
 function poisonResistance(state) {
-    const property = state.u?.uprops?.[POISON_RES];
-    return Boolean(property?.intrinsic || property?.extrinsic);
+    return Poison_resistance(state.u);
 }
 
-function fixedAbilities(state) {
-    return Boolean(state.u?.uprops?.[FIXED_ABIL]?.extrinsic);
-}
 
 // C callers use the same message, random, and encumbrance operations for the
 // potion effect and the attribute helpers it calls. In particular,
@@ -1434,7 +1366,7 @@ async function peffect_sickness(otmp, state = game, env = {}) {
                 + (otmp.fromsink
                     ? 'contaminated tap water'
                     : 'contaminated potion');
-            if (!fixedAbilities(state)) {
+            if (!Fixed_abil(state.u)) {
                 await poisontell(typ, false, state, env);
                 await adjattrib(
                     typ,
@@ -1496,8 +1428,8 @@ async function peffect_oil(otmp, state = game) {
                 `You burn your ${body_part(FACE, state.youmonst)}.`, state);
             // C ref: 1276. Fire damage; vulnerable = !Fire_resistance ||
             // Cold_resistance (cold-blooded heroes take extra fire damage).
-            const vulnerable = !Fire_resistance(state)
-                || Cold_resistance(state);
+            const vulnerable = !Fire_resistance(state.u)
+                || Cold_resistance(state.u);
             await losehp(d(vulnerable ? 4 : 2, 4),
                 'quaffing a burning potion of oil',
                 KILLED_BY, state);
@@ -1617,8 +1549,7 @@ async function peffect_see_invisible(otmp, state = game, env = {}) {
     else
         incr_itimeout(state.u.uprops[SEE_INVIS], random.rn1(100, 750));
     set_mimic_blocking(state);
-    await see_monsters(state, { ...env, message,
-        redraw: env.redraw ?? (env.planning ? () => {} : undefined) });
+    await see_monsters(state, { ...env, message });
     newsym(state.u.ux, state.u.uy);
     if (msg && !Blind(state.u)) {
         await message(
@@ -1632,13 +1563,13 @@ async function peffect_see_invisible(otmp, state = game, env = {}) {
 // spends the source-ordered rn1() duration, stores the interruption reason
 // and completion message for unmul(), and exercises Dexterity downward.
 async function peffect_paralysis(otmp, state = game) {
-    if (Free_action(state)) {
+    if (Free_action(state.u)) {
         await ttyPline('You stiffen momentarily.', state);
         return;
     }
 
     const hero = state.u;
-    if (Levitation(state)
+    if (Levitation(state.u)
         || Is_airlevel(hero.uz, state)
         || Is_waterlevel(hero.uz, state)) {
         await ttyPline('You are motionlessly suspended.', state);
@@ -1665,7 +1596,7 @@ async function peffect_paralysis(otmp, state = game) {
 // after nearby monsters forget it. Keep the source's message, observation,
 // duration draw, and fall_asleep() order.
 async function peffect_sleeping(otmp, state = game, env = {}) {
-    if (Sleep_resistance(state) || Free_action(state)) {
+    if (Sleep_resistance(state.u) || Free_action(state.u)) {
         monstseesu(M_SEEN_SLEEP, state);
         await ttyPline('You yawn.', state);
     } else {
@@ -1706,9 +1637,7 @@ async function peffect_extra_healing(otmp, state = game) {
         encumberMessage: encumber_msg,
     });
 
-    const wounded = state.u.uprops[WOUNDED_LEGS];
-    if (wounded && otmp.blessed && !state.u.usteed
-        && (wounded.intrinsic || wounded.extrinsic)) {
+    if (otmp.blessed && !state.u.usteed && Wounded_legs(state.u)) {
         await heal_legs(state);
     }
 }
@@ -1739,8 +1668,7 @@ async function peffect_full_healing(otmp, state = game, env = {}) {
     await exercise(A_STR, true, state, random, { encumberMessage });
     await exercise(A_CON, true, state, random, { encumberMessage });
 
-    const wounded = state.u.uprops[WOUNDED_LEGS];
-    if ((wounded.intrinsic || wounded.extrinsic)
+    if ((Wounded_legs(state.u))
         && (otmp.blessed || (!otmp.cursed && !state.u.usteed))) {
         await heal_legs(state, { message });
     }
@@ -1755,8 +1683,7 @@ async function peffect_polymorph(otmp, state = game) {
         state,
     );
 
-    const unchanging = state.u.uprops[UNCHANGING];
-    if (unchanging.intrinsic || unchanging.extrinsic)
+    if (Unchanging(state.u))
         return;
 
     if (!otmp.blessed || state.u.umonnum !== state.u.umonster) {
@@ -1784,21 +1711,20 @@ async function peffect_polymorph(otmp, state = game) {
 // spells use the same property timeout, cursed ceiling impact, and sink effect.
 async function peffect_levitation(otmp, state) {
     const { u } = state;
-    const levitation = u.uprops[LEVITATION];
     state.gp ??= {};
     state.gp.potion_nothing ??= 0;
 
-    if (!Levitation(state) && !levitation.blocked) {
+    if (!Levitation(state.u) && !BLevitation(u)) {
         // Give float_up() a live intrinsic before it reports the rise.
-        set_itimeout(levitation, 1);
+        set_itimeout(u.uprops[LEVITATION], 1);
         await float_up(state);
     } else {
         state.gp.potion_nothing++;
     }
 
     if (otmp.cursed) {
-        levitation.intrinsic &= ~I_SPECIAL;
-        if (levitation.blocked) {
+        u.uprops[LEVITATION].intrinsic &= ~I_SPECIAL;
+        if (BLevitation(u)) {
             // BLevitation means the rise is still blocked.
         } else if (stairway_at(u.ux, u.uy, state)?.up) {
             await doup(state);
@@ -1821,13 +1747,13 @@ async function peffect_levitation(otmp, state) {
             state.gp.potion_nothing = 0;
         }
     } else if (otmp.blessed) {
-        incr_itimeout(levitation, rn1(50, 250));
-        levitation.intrinsic |= I_SPECIAL;
+        incr_itimeout(u.uprops[LEVITATION], rn1(50, 250));
+        u.uprops[LEVITATION].intrinsic |= I_SPECIAL;
     } else {
-        incr_itimeout(levitation, rn1(140, 10));
+        incr_itimeout(u.uprops[LEVITATION], rn1(140, 10));
     }
 
-    if (Levitation(state)
+    if (Levitation(state.u)
         && IS_SINK(state.level.at(u.ux, u.uy).typ))
         await spoteffects(false, state);
     float_vs_flight(state);
@@ -1836,7 +1762,7 @@ async function peffect_levitation(otmp, state) {
 // C ref: potion.c peffect_acid() (1297-1315). A quaffed acid potion can also
 // cure petrification after applying its own acid damage.
 async function peffect_acid(otmp, state = game) {
-    if (Acid_resistance(state)) {
+    if (Acid_resistance(state.u)) {
         await ttyPline(
             `This tastes ${Hallucination(state.u) ? 'tangy' : 'sour'}.`, state,
         );
@@ -1859,7 +1785,7 @@ async function peffect_acid(otmp, state = game) {
             encumberMessage: encumber_msg,
         });
     }
-    if (state.u?.uprops?.[STONED]?.intrinsic)
+    if (Stoned(state.u))
         await fix_petrification(state);
     state.gp.potion_unkn++;
 }
@@ -2201,7 +2127,7 @@ export async function dodrink(state = game) {
     const hero = state.u;
 
     // C ref: potion.c:530-533. Strangled hero cannot drink.
-    if (hero.uprops[STRANGLED]?.intrinsic) {
+    if (Strangled(hero)) {
         await ttyPline(
             "If you can't breathe air, how can you drink liquid?", state);
         return ECMD_OK;
@@ -2301,7 +2227,7 @@ export async function dodrink(state = game) {
 // (telepathy, infravision, or Sting-glow) depend on the blind/sighted split.
 //
 // The Sting_effects(-1) result is discarded by C.  The implemented artifact
-// owner accepts the message seam below so planning clones stay silent.
+// owner accepts the message seam below.
 export async function toggle_blindness(state = game, env = {}) {
     const hero = state.u;
 
@@ -2311,9 +2237,10 @@ export async function toggle_blindness(state = game, env = {}) {
 
     state.disp.botl = true;               // status conditions need update
     state.vision_full_recalc = 1;          // vision has changed
-    // vision_recalc() and see_monsters() can operate on a planning clone when
-    // their caller gives them the clone's redraw seam. The fallback is silent
-    // for a non-live state because newsym() is the live display owner.
+    // vision_recalc() and see_monsters() can operate on a state other than
+    // the live game when their caller gives them that state's redraw seam.
+    // The fallback is silent for a non-live state because newsym() is the
+    // live display owner.
     const redraw = env.redraw ?? (state === game ? undefined : () => {});
     const visionRecalc = env.visionRecalc
         ?? ((control) => vision_recalc(control, { state, redraw }));
@@ -2326,7 +2253,7 @@ export async function toggle_blindness(state = game, env = {}) {
 
     // C ref: potion.c:359-360. Sting_effects(-1) resets the Sting glow/quiver
     // message to match the new blindness state. Its result is discarded; the
-    // async owner accepts a silent clone message seam.
+    // async owner accepts a silent message seam for a non-live state.
     if (Stinging) {
         await Sting_effects(-1, state, {
             message: env.message ?? (state === game ? undefined : async () => {}),
@@ -2341,27 +2268,8 @@ export async function toggle_blindness(state = game, env = {}) {
 }
 
 
-// C ref: youprop.h:36 Sleep_resistance and :215 Free_action. Both are the
-// plain "either source" spelling, with no blocking term.
-function eitherSource(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
-function Sleep_resistance(state) {
-    return eitherSource(state, SLEEP_RES);
-}
 
-// youprop.h:383 Free_action reads the extrinsic field alone; an intrinsic
-// FREE_ACTION (wizard-mode #wizintrinsic) does not count.
-function Free_action(state) {
-    return Boolean(state.u?.uprops?.[FREE_ACTION]?.extrinsic);
-}
-
-// C ref: youprop.h:132 Acid_resistance, the plain "either source" spelling.
-function Acid_resistance(state) {
-    return eitherSource(state, ACID_RES);
-}
 
 // C ref: youprop.h:405 Half_gas_damage, "wrap it round your head to ward off
 // noxious fumes [we require it to be damp or wet]". It is the one property
@@ -2571,14 +2479,12 @@ export async function potionhit(mon, obj, how, rawEnv = {}) {
                 youFeel(`a little ${Hallucination(state.u) ? 'normal' : 'strange'}.`, state),
                 state,
             );
-            if (!(state.u.uprops[UNCHANGING]?.intrinsic
-                || state.u.uprops[UNCHANGING]?.extrinsic)
-                && !(state.u.uprops[ANTIMAGIC]?.intrinsic
-                    || state.u.uprops[ANTIMAGIC]?.extrinsic))
+            if (!Unchanging(state.u)
+                && !(Antimagic(state.u)))
                 await polyself(POLY_NOFLAGS, state, env);
             break;
         case POT_ACID:
-            if (!Acid_resistance(state)) {
+            if (!Acid_resistance(state.u)) {
                 await message(`This burns${obj.blessed ? ' a little'
                     : obj.cursed ? ' a lot' : ''}!`, state);
                 await losehp(
@@ -2666,10 +2572,7 @@ export async function potionhit(mon, obj, how, rawEnv = {}) {
             mon_set_minvis(mon, cursedPotion, state);
             if (sawit && !canspotmon(mon, state)) {
                 if (cansee(mon.mx, mon.my, state))
-                    (env.planning && state !== game
-                        ? map_invisible_planning : map_invisible)(
-                        mon.mx, mon.my, state,
-                    );
+                    map_invisible(mon.mx, mon.my, state);
             } else if (sawit && cursedPotion) {
                 await message(`${Monnam(mon, state, env)} briefly seems to be transparent.`, state);
             } else if (!sawit && canspotmon(mon, state)) {
@@ -2729,8 +2632,7 @@ export async function potionhit(mon, obj, how, rawEnv = {}) {
                         await message(`${Monnam(mon, state, env)} looks healthier.`, state);
                     await healmon(mon, random.d(2, 6), 0);
                     if (is_were(mon.data) && is_human(mon.data)
-                        && !(state.u.uprops[PROT_FROM_SHAPE_CHANGERS]?.intrinsic
-                            || state.u.uprops[PROT_FROM_SHAPE_CHANGERS]?.extrinsic)) {
+                        && !Protection_from_shape_changers(state.u)) {
                         await new_were(mon, env);
                     }
                 }
@@ -2845,8 +2747,7 @@ export async function potionbreathe(obj, state = game, env = {}) {
     let cureblind = false;
     const already_in_use = obj.in_use;
     const random = env.random ?? coreRandom;
-    // potionhit() can call this inside a monster planning clone, which must
-    // send feedback through its own message operation.
+    // Feedback goes through the caller's message operation when it has one.
     const message = env.message ?? ttyPline;
 
     /* potion of unholy water might be wielded; prevent
@@ -2952,11 +2853,10 @@ export async function potionbreathe(obj, state = game, env = {}) {
     case POT_CONFUSION:
     case POT_BOOZE:
         {
-            const confusion = state.u.uprops[CONFUSION];
-            if (!(confusion.intrinsic || confusion.extrinsic))
+            if (!Confusion(state.u))
                 await message(youFeel('somewhat dizzy.', state), state);
             await make_confused(
-                itimeout_incr(confusion.intrinsic, random.rnd(5)),
+                itimeout_incr(HConfusion(state.u), random.rnd(5)),
                 false,
                 state,
                 { ...env, random, message },
@@ -2977,7 +2877,7 @@ export async function potionbreathe(obj, state = game, env = {}) {
         break;
     case POT_PARALYSIS:
         kn++;
-        if (!Free_action(state)) {
+        if (!Free_action(state.u)) {
             await message('Something seems to be holding you.', state);
             nomul(-random.rnd(5), state);
             state.multi_reason = 'frozen by a potion';
@@ -2989,7 +2889,7 @@ export async function potionbreathe(obj, state = game, env = {}) {
         break;
     case POT_SLEEPING:
         kn++;
-        if (!Free_action(state) && !Sleep_resistance(state)) {
+        if (!Free_action(state.u) && !Sleep_resistance(state.u)) {
             await message(youFeel('rather tired.', state), state);
             nomul(-random.rnd(5), state);
             state.multi_reason = 'sleeping off a magical draught';
@@ -3002,10 +2902,9 @@ export async function potionbreathe(obj, state = game, env = {}) {
         break;
     case POT_SPEED:
         {
-            const fast = state.u.uprops[FAST];
-            if (!(fast.intrinsic || fast.extrinsic))
+            if (!Fast(state.u))
                 await message('Your knees seem more flexible now.', state);
-            incr_itimeout(fast, random.rnd(5));
+            incr_itimeout(state.u.uprops[FAST], random.rnd(5));
             await exercise(A_DEX, true, state, random);
         }
         break;
@@ -3120,18 +3019,13 @@ export function dip_ok(obj, state = game) {
 }
 
 export function dip_hands_ok(obj, state = game) {
-    if (!obj && Glib(state) && can_reach_floor(false, state))
+    if (!obj && Glib(state.u) && can_reach_floor(false, state))
         return GETOBJ_SUGGEST;
     return dip_ok(obj, state);
 }
 
 function pair_of(obj, state = game) {
     return obj.otyp === LENSES || is_gloves(obj, state) || is_boots(obj, state);
-}
-
-
-function Glib(state) {
-    return Boolean(state.u?.uprops?.[GLIB]?.intrinsic & TIMEOUT);
 }
 
 
@@ -3308,7 +3202,7 @@ export async function dodip(state = game, rawEnv = {}) {
             const prompt = 'Dip ' + (state.flags.verbose ? obuf : shortestName)
                 + ' into the ' + pooltype + '?';
             if (await y_n(prompt, state) === 'y') {
-                if (Levitation(state)) {
+                if (Levitation(state.u)) {
                     await floating_above(pooltype, state, env);
                 } else if (hero.usteed
                     && !is_swimmer(hero.usteed.data)
@@ -3574,7 +3468,7 @@ export async function potion_dip(obj, potion, state = game, rawEnv = {}) {
         } else if (potion.cursed) {
             await message('The potion spills and covers your '
                 + fingers_or_gloves(true, state) + ' with oil.', state);
-            const glib = state.u.uprops[GLIB]?.intrinsic ?? 0;
+            const glib = Glib(state.u);
             make_glib((glib & TIMEOUT) + random.d(2, 10), state, env);
         } else if (obj.oclass !== WEAPON_CLASS && !is_weptool(obj, state)) {
             // C jumps to the lamp and horn cases below.

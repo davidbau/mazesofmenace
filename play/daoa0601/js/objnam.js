@@ -92,12 +92,12 @@ export function cloakSimpleName(object, state) {
             ? 'smock' : 'apron';
     return 'cloak';
 }
-// C objnam.c:helm_simple_name().
-// Soft headgear is a "hat"; everything that protects like the hard-helmet
-// messages is a "helm".
 const SOFT_HEADGEAR = {
     'elven leather helm': true, fedora: true, cornuthaum: true, 'dunce cap': true,
 };
+// C objnam.c:helm_simple_name().
+// Soft headgear is a "hat"; everything that protects like the hard-helmet
+// messages is a "helm".
 export function helmSimpleName(object) {
     const actualName = OBJ_NAME(object.otyp) || object.name || 'armor';
     return SOFT_HEADGEAR[actualName] ? 'hat' : 'helm';
@@ -3138,10 +3138,11 @@ export function objectUsesCharges(object) {
         || (oclass === TOOL_CLASS && !isWeaponTool(object)
             && !!objectCharged(object.otyp));
 }
-// C objnam.c:suit_simple_name(), objnam.c:cloak_simple_name(),
-// objnam.c:helm_simple_name(), objnam.c:gloves_simple_name(),
-// objnam.c:boots_simple_name(), objnam.c:shield_simple_name(),
-// objnam.c:shirt_simple_name().
+// Part of C objnam.c:suit_simple_name(), cloak_simple_name(),
+// helm_simple_name(), gloves_simple_name(), boots_simple_name(),
+// shield_simple_name() and shirt_simple_name(): the armor-slot dispatcher
+// the wear and combat messages share; each case defers to the matching
+// simple-name port where one exists.
 export function simpleArmorName(armor, slot, state) {
     const name = OBJ_NAME(armor.otyp);
     if (!name)
@@ -3151,13 +3152,7 @@ export function simpleArmorName(armor, slot, state) {
     const known = objectTypeKnown(armor, state);
     switch (slot) {
         case 'uarm':
-            if (name.endsWith('dragon scale mail'))
-                return 'dragon mail';
-            if (name.endsWith('dragon scales'))
-                return 'dragon scales';
-            if (name.endsWith(' mail'))
-                return 'mail';
-            return name.endsWith(' jacket') ? 'jacket' : 'suit';
+            return suitSimpleName(armor);
         case 'uarmc':
             if (name === 'robe')
                 return 'robe';

@@ -71,13 +71,13 @@ import {
     WAND_CLASS,
 } from './objects.js';
 import { ttyPline } from './tty_message.js';
-import { Fire_resistance, inventory_resistance_check } from './zap.js';
+import { inventory_resistance_check } from './zap.js';
 import { Ring_gone } from './do_wear.js';
 import { bypass_objlist, nxt_unbypassed_obj, setnotworn } from './worn.js';
 import { recharge } from './read.js';
 import { canseemon } from './display.js';
 import { note_unported } from './unported.js';
-import { Blind } from './youprop.js';
+import { Blind, Fire_resistance, Shock_resistance } from './youprop.js';
 
 // C ref: zap.c destroyable() (5612-5650), translated whole. "Return TRUE if obj
 // is eligible to pass to maybe_destroy_item given the type of elemental damage
@@ -210,8 +210,7 @@ function destroyedItemName(u_carry, carrier, obj, cnt, quan, state, displayRando
 // ported. Monster carriers never call recharge() in C.
 async function maybe_destroy_item(carrier, obj, dmgtyp, env) {
     const { state, random } = env;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const u_carry = carrier === state.youmonst;
     const vis = !u_carry && canseemon(carrier, state);
 
@@ -231,7 +230,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp, env) {
         xresist = (obj.oclass !== POTION_CLASS
                    && obj.otyp !== GLOB_OF_GREEN_SLIME
                    && (u_carry
-                       ? Fire_resistance(state)
+                       ? Fire_resistance(state.u)
                        : Resists_Elem(carrier, FIRE_RES, state)));
         if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
             skip = true;
@@ -286,8 +285,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp, env) {
         // monster branch skips the same source call because C never makes it.
         xresist = obj.oclass !== RING_CLASS
             && (u_carry
-                ? Boolean(state.u?.uprops?.[SHOCK_RES]?.intrinsic
-                    || state.u?.uprops?.[SHOCK_RES]?.extrinsic)
+                ? Shock_resistance(state.u)
                 : Resists_Elem(carrier, SHOCK_RES, state));
         quan = Math.trunc(obj.quan);
         if (obj.oclass === RING_CLASS) {
@@ -319,20 +317,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp, env) {
     if (chargeIt) {
         // C only calls read.c:recharge() for the hero; monster-carried charged
         // rings still take the same early return without a recharge call.
-        if (u_carry) {
-            // recharge() draws from the live RNG and writes messages and
-            // inventory directly, so a planning clone stops at this boundary
-            // and leaves the call to the live pass.
-            if (env.planning) {
-                if (typeof env.requestPlanningInput !== 'function') {
-                    throw new TypeError(
-                        'planned read.c recharge requires a planning boundary',
-                    );
-                }
-                env.requestPlanningInput('read.c recharge');
-            }
-            await recharge(obj, 0, state);
-        }
+        if (u_carry) await recharge(obj, 0, state);
         return dmg;
     }
 
@@ -403,7 +388,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp, env) {
                 // termination in the JavaScript replay harness.
                 if (state.program_state?.gameover) return dmg;
                 // The encumbrance line goes through the same message
-                // operation, so a planning pass prints nothing.
+                // operation.
                 await exercise(A_STR, false, state, random, {
                     encumberMessage: env.encumberMessage
                         ?? ((hero) => encumber_msg(hero, { message })),
@@ -528,8 +513,7 @@ export async function burn_floor_objects(
         );
     }
 
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     let count = 0;
     for (let obj = env.state.level.objects[x][y]; obj;) {
         const next = obj.nexthere;

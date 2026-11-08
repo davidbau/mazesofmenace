@@ -100,8 +100,6 @@ import {
     HEAD,
     I_SPECIAL,
     INFRAVISION,
-    INTRINSIC,
-    LEVITATION,
     LEFT_HANDED,
     LEFT_RING,
     LEG,
@@ -110,16 +108,13 @@ import {
     PARANOID_REMOVE,
     RIGHT_RING,
     SICK_RES,
-    SLIMED,
     SLEEPY,
     SLOW_DIGESTION,
     STONE_RES,
     STRANGLED,
-    SWIMMING,
     st_corpse,
     st_petrifies,
     TIMEOUT,
-    STEALTH,
     SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE,
     TT_BEARTRAP,
@@ -127,7 +122,6 @@ import {
     TT_INFLOOR,
     TT_LAVA,
     Upolyd,
-    UNCHANGING,
     W_ACCESSORY,
     W_AMUL,
     W_ARM,
@@ -168,7 +162,7 @@ import {
     set_occupation,
     yn_function,
 } from './cmd.js';
-import { artifact_light, retouch_object, Stone_resistance } from './artifacts.js';
+import { artifact_light, retouch_object } from './artifacts.js';
 import { obj_resists } from './bury.js';
 import { game } from './gstate.js';
 import { set_bc } from './ball.js';
@@ -195,7 +189,6 @@ import {
     has_head,
     has_horns,
     humanoid,
-    is_flyer,
     is_clinger,
     is_swimmer,
     nohands,
@@ -209,8 +202,6 @@ import { MZ_SMALL, PM_ARCHEOLOGIST, PM_CLERIC, PM_WIZARD, S_CENTAUR } from './mo
 import { change_luck } from './moveloop_preamble.js';
 import { gulp_blnd_check } from './mhitu.js';
 import {
-    Flying,
-    Levitation,
     drown,
     float_down,
     float_up,
@@ -398,7 +389,7 @@ import { youFeel } from './pline.js';
 import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import { find_ac } from './u_init_inventory_attrs.js';
 import { note_unported } from './unported.js';
-import { empty_handed, setuwep, Glib, welded } from './wield.js';
+import { empty_handed, setuwep, welded } from './wield.js';
 import { weapon_descr } from './weapon.js';
 import {
     bimanual,
@@ -411,23 +402,23 @@ import {
 import { shk_your } from './shk.js';
 import { is_pool_or_lava } from './dbridge.js';
 import {
-    BInvis, Blind, EDetect_monsters, EInvis, ESee_invisible, ETelepat,
-    HDetect_monsters, HInvis, HSee_invisible, HTelepat, Hallucination, Invis,
-    See_invisible,
+    BInvis, BLevitation, BStealth, Blind, EDetect_monsters, EInvis,
+    EMagical_breathing, ESee_invisible, ESleepy, EStealth, ESwimming,
+    ETelepat, Fast, Flying, Glib, HDetect_monsters, HDisplaced, HFast,
+    HFumbling, HInvis, HLevitation, HMagical_breathing, HSee_invisible,
+    HSleepy, HStealth, HSwimming, HTelepat, Hallucination, Invis, Levitation,
+    See_invisible, Slimed, Stone_resistance, Strangled, Unchanging, Very_fast,
 } from './youprop.js';
 
-// The armor callbacks can run during a planning polymorph.  Keep the live
-// defaults in one place while allowing that caller to supply its message and
-// repaint seams; C's callbacks do not own the terminal or a second game.
+// Keep the armor callbacks' live defaults in one place while allowing a
+// caller to supply its message and repaint operations; C's callbacks do not
+// own the terminal or a second game.
 function wearOperationEnv(rawEnv = {}) {
-    const planning = Boolean(rawEnv.planning);
     const hooks = { ...(rawEnv.hooks ?? {}) };
-    if (planning && typeof hooks.updateInventory !== 'function')
-        hooks.updateInventory = () => {};
     return {
         ...rawEnv,
-        message: rawEnv.message ?? (planning ? async () => {} : ttyPline),
-        redraw: rawEnv.redraw ?? (planning ? () => {} : newsym),
+        message: rawEnv.message ?? ttyPline,
+        redraw: rawEnv.redraw ?? newsym,
         hooks,
     };
 }
@@ -762,8 +753,7 @@ export function cancel_don(state = game) {
 // interrupted delay before choosing the armor-removal duration. C clears the
 // pending callback before unmul(), so completion cannot run a donning/doffing
 // action that was canceled by the theft.
-// env.message carries the caller's message operation to unmul(), so a
-// planning steal() prints nothing.
+// env.message carries the caller's message operation to unmul().
 export async function stop_donning(stolenobj, state = game, env = {}) {
     let otmp = null;
     for (let obj = state.invent; obj; obj = obj.nobj) {
@@ -989,11 +979,11 @@ export async function Ring_on(obj, state = game, rawEnv = {}) {
     }
     case RIN_LEVITATION:
         if (!maskedOldprop
-            && !state.u.uprops[LEVITATION].intrinsic
-            && !(state.u.uprops[LEVITATION].blocked & FROMOUTSIDE)) {
+            && !HLevitation(state.u)
+            && !(BLevitation(state.u) & FROMOUTSIDE)) {
             await float_up(state);
             learnring(obj, true, state);
-            if (Levitation(state)) await spoteffects(false, state, env);
+            if (Levitation(state.u)) await spoteffects(false, state, env);
         } else {
             float_vs_flight(state);
         }
@@ -1066,7 +1056,7 @@ async function Ring_off_or_gone(obj, gone, state = game, rawEnv = {}) {
     case RIN_STEALTH:
         await toggle_stealth(
             obj,
-            (state.u.uprops[STEALTH]?.extrinsic ?? 0) & ~mask,
+            EStealth(state.u) & ~mask,
             false,
             state,
         );
@@ -1106,9 +1096,9 @@ async function Ring_off_or_gone(obj, gone, state = game, rawEnv = {}) {
         break;
     }
     case RIN_LEVITATION:
-        if (!(state.u.uprops[LEVITATION].blocked & FROMOUTSIDE)) {
+        if (!(BLevitation(state.u) & FROMOUTSIDE)) {
             await float_down(0, 0, state);
-            if (!Levitation(state))
+            if (!Levitation(state.u))
                 learnring(obj, true, state);
         } else {
             float_vs_flight(state);
@@ -1178,10 +1168,9 @@ async function Amulet_on(obj, state = game) {
         break;
     case AMULET_OF_MAGICAL_BREATHING: {
         // C tests gas danger before this amulet contributed breathing.
-        const breathing = state.u.uprops[MAGICAL_BREATHING];
-        breathing.extrinsic &= ~W_AMUL;
+        state.u.uprops[MAGICAL_BREATHING].extrinsic &= ~W_AMUL;
         const was_in_poison_gas = region_danger(state);
-        breathing.extrinsic |= W_AMUL;
+        state.u.uprops[MAGICAL_BREATHING].extrinsic |= W_AMUL;
         if (was_in_poison_gas) {
             discover_object(AMULET_OF_MAGICAL_BREATHING, true, true, true, state);
             await on_msg(state.uamul, state);
@@ -1191,14 +1180,13 @@ async function Amulet_on(obj, state = game) {
         break;
     }
     case AMULET_OF_UNCHANGING:
-        if (state.u.uprops[SLIMED].intrinsic)
+        if (Slimed(state.u))
             await make_slimed(0, null, state);
         break;
     case AMULET_OF_CHANGE: {
         let call_it = false;
         const orig_sex = poly_gender(state);
-        const unchanging = state.u.uprops[UNCHANGING];
-        if (!(unchanging.intrinsic || unchanging.extrinsic))
+        if (!Unchanging(state.u))
             change_sex(state);
         const new_sex = poly_gender(state);
         if (new_sex !== orig_sex)
@@ -1224,7 +1212,7 @@ async function Amulet_on(obj, state = game) {
     case AMULET_OF_STRANGULATION:
         /* note: might already be Strangled (via #wizintrinsic) */
         if (can_be_strangled(state.youmonst, state)
-            && !state.u.uprops[STRANGLED].intrinsic) {
+            && !Strangled(state.u)) {
             discover_object(AMULET_OF_STRANGULATION, true, true, true, state);
             state.u.uprops[STRANGLED].intrinsic = 6;
             state.disp.botl = true;
@@ -1235,13 +1223,13 @@ async function Amulet_on(obj, state = game) {
         break;
     case AMULET_OF_RESTFUL_SLEEP: {
         const newnap = rnd(98) + 2;
-        const oldnap = state.u.uprops[SLEEPY].intrinsic & TIMEOUT;
+        const oldnap = HSleepy(state.u) & TIMEOUT;
 
         if (newnap < oldnap || oldnap === 0)
             /* avoid clobbering FROMOUTSIDE bit, which might have
                gotten set by previously eating one of these amulets */
             state.u.uprops[SLEEPY].intrinsic
-                = (state.u.uprops[SLEEPY].intrinsic & ~TIMEOUT) | newnap;
+                = (HSleepy(state.u) & ~TIMEOUT) | newnap;
         break;
     }
     case AMULET_OF_FLYING: {
@@ -1249,19 +1237,14 @@ async function Amulet_on(obj, state = game) {
         float_vs_flight(state); /* block flying if levitating */
 
         // youprop.h:253 Flying macro
-        const flyProp = state.u.uprops[FLYING];
-        const heroFlying = () => Boolean(
-            (flyProp.intrinsic || flyProp.extrinsic
-             || (state.u.usteed && is_flyer(state.u.usteed.data)))
-            && !flyProp.blocked,
-        );
+        const heroFlying = () => Flying(state.u);
 
         if (heroFlying()) {
             /* to determine whether this flight is new we temporarily
                remove the amulet's contribution */
-            flyProp.extrinsic &= ~W_AMUL;
+            state.u.uprops[FLYING].extrinsic &= ~W_AMUL;
             const already_flying = heroFlying();
-            flyProp.extrinsic |= W_AMUL;
+            state.u.uprops[FLYING].extrinsic |= W_AMUL;
 
             if (!already_flying) {
                 discover_object(AMULET_OF_FLYING, true, true, true, state);
@@ -1289,9 +1272,9 @@ async function Amulet_on(obj, state = game) {
 // source before effects that depend on the remaining worn properties.
 export async function Amulet_off(state = game, env = {}) {
     const amul = state.uamul;
-    // mhitu.c:mattacku supplies silent messages and redraw seams while it
-    // plans monster turns on a cloned state. Keep those caller-owned effects
-    // through the Amulet_of_ESP theft path as well as direct player removal.
+    // mhitu.c:mattacku can supply its own message and redraw seams. Keep
+    // those caller-owned effects through the Amulet_of_ESP theft path as well
+    // as direct player removal.
     const message = env.message ?? ttyPline;
     let makeKnown = false;
     let earlyOffMessage = false;
@@ -1324,9 +1307,8 @@ export async function Amulet_off(state = game, env = {}) {
 
         if (state.u.uinwater) {
             const you = state.youmonst.data;
-            const swimming = state.u.uprops[SWIMMING];
             if (!(is_swimmer(you) || amphibious(you) || breathless(you))
-                && !(swimming.intrinsic || swimming.extrinsic
+                && !(HSwimming(state.u) || ESwimming(state.u)
                     || (state.u.usteed
                         && is_swimmer(state.u.usteed.data)))) {
                 await message(
@@ -1350,11 +1332,10 @@ export async function Amulet_off(state = game, env = {}) {
         await off_msg(amul, state, message);
         earlyOffMessage = true;
 
-        if (state.u.uprops[STRANGLED].intrinsic) {
+        if (Strangled(state.u)) {
             state.u.uprops[STRANGLED].intrinsic = 0;
             state.disp.botl = true;
-            const magicalBreathing = state.u.uprops[MAGICAL_BREATHING];
-            if (magicalBreathing.intrinsic || magicalBreathing.extrinsic
+            if (HMagical_breathing(state.u) || EMagical_breathing(state.u)
                 || breathless(state.youmonst.data)) {
                 await message(
                     `Your ${body_part(NECK, state.youmonst)} is no longer constricted!`,
@@ -1369,13 +1350,12 @@ export async function Amulet_off(state = game, env = {}) {
     }
     case AMULET_OF_RESTFUL_SLEEP: {
         await setworn(null, W_AMUL, setwornEnv(state));
-        const sleepy = state.u.uprops[SLEEPY];
-        if (!sleepy.extrinsic && !(sleepy.intrinsic & ~TIMEOUT))
-            sleepy.intrinsic &= ~TIMEOUT;
+        if (!ESleepy(state.u) && !(HSleepy(state.u) & ~TIMEOUT))
+            state.u.uprops[SLEEPY].intrinsic &= ~TIMEOUT;
         break;
     }
     case AMULET_OF_FLYING: {
-        const wasFlying = Flying(state);
+        const wasFlying = Flying(state.u);
 
         // Remove the source before recomputing flight; C deliberately calls
         // float_vs_flight() before reading the new Flying value.
@@ -1384,7 +1364,7 @@ export async function Amulet_off(state = game, env = {}) {
         earlyOffMessage = true;
 
         float_vs_flight(state);
-        if (wasFlying && !Flying(state)) {
+        if (wasFlying && !Flying(state.u)) {
             state.disp.botl = true;
             const isOverWaterOrAir = is_pool_or_lava(
                 state.u.ux,
@@ -1553,25 +1533,16 @@ async function dragon_armor_handling(
     case BLUE_DRAGON_SCALES:
     case BLUE_DRAGON_SCALE_MAIL:
         if (puton) {
-            // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast).
-            const fast = state.u.uprops[FAST];
-            const Very_fast = Boolean(
-                (fast.intrinsic & ~INTRINSIC) || fast.extrinsic);
-            // C ref: youprop.h:376 Fast = (HFast || EFast).
-            const Fast = Boolean(fast.intrinsic || fast.extrinsic);
-            if (!Very_fast)
+            if (!Very_fast(state.u))
                 await message(
-                    `You speed up${Fast ? ' a bit more' : ''}.`, state, env);
-            fast.extrinsic |= W_ARM;
+                    `You speed up${Fast(state.u) ? ' a bit more' : ''}.`, state, env);
+            state.u.uprops[FAST].extrinsic |= W_ARM;
         } else {
-            const fast = state.u.uprops[FAST];
             // C clears EFast before evaluating Very_fast.  This matters when
             // blue armor is the only fast source: removal must print the
             // slowdown message after its W_ARM bit is gone.
-            fast.extrinsic &= ~W_ARM;
-            const veryFast = Boolean(
-                (fast.intrinsic & ~INTRINSIC) || fast.extrinsic);
-            if (!veryFast && !takeoffContext(state).cancelled_don)
+            state.u.uprops[FAST].extrinsic &= ~W_ARM;
+            if (!Very_fast(state.u) && !takeoffContext(state).cancelled_don)
                 await message('You slow down.', state, env);
         }
         break;
@@ -1786,12 +1757,11 @@ export async function Boots_on(state) {
             state.gw.wasinwater = 0;
         }
     } else if (otyp === SPEED_BOOTS) {
-        const fast = state.u.uprops[FAST];
 
-        if (!oldprop && !(fast.intrinsic & TIMEOUT)) {
+        if (!oldprop && !(HFast(state.u) & TIMEOUT)) {
             discover_object(otyp, true, true, true, state);
             await ttyPline(
-                youFeel(`yourself speed up${fast.intrinsic
+                youFeel(`yourself speed up${HFast(state.u)
                     ? ' a bit more' : ''}.`, state),
                 state,
             );
@@ -1801,18 +1771,16 @@ export async function Boots_on(state) {
     } else if (otyp === FUMBLE_BOOTS) {
         // HFumbling is the intrinsic field of FUMBLING. C masks the footwear
         // source from oldprop before checking for another source or timeout.
-        const fumbling = state.u.uprops[FUMBLING];
-        if (!oldprop && !(fumbling.intrinsic & ~TIMEOUT))
-            incr_itimeout(fumbling, rnd(20));
+        if (!oldprop && !(HFumbling(state.u) & ~TIMEOUT))
+            incr_itimeout(state.u.uprops[FUMBLING], rnd(20));
     } else if (otyp === LEVITATION_BOOTS) {
-        const levitation = state.u.uprops[LEVITATION];
-        if (!oldprop && !levitation.intrinsic
-            && !(levitation.blocked & FROMOUTSIDE)) {
+        if (!oldprop && !HLevitation(state.u)
+            && !(BLevitation(state.u) & FROMOUTSIDE)) {
             state.uarmf.known = true;
             state.disp.botl = true;
             discover_object(otyp, true, true, true, state);
             await float_up(state);
-            if (Levitation(state)) await spoteffects(false, state);
+            if (Levitation(state.u)) await spoteffects(false, state);
         } else {
             float_vs_flight(state);
         }
@@ -1834,18 +1802,10 @@ export async function Boots_on(state) {
 // call, so burning water-walking boots clear their slot without recursively
 // applying the landing effect.
 //
-// A planning caller (steal.c remove_worn_item() during a monster's dry run)
-// passes its env: the messages go through env.message, and either landing arm
-// stops the dry run through env.requestPlanningInput(), so the live pass
-// replays the source call, which can print, trigger a trap and ask for input.
+// A caller such as steal.c remove_worn_item() passes its env, and the
+// messages go through env.message.
 export async function Boots_off(state = game, rawEnv = {}) {
     const env = wearOperationEnv(rawEnv);
-    const requestLiveReplay = (operation) => {
-        if (!env.planning) return;
-        if (typeof env.requestPlanningInput !== 'function')
-            throw new TypeError(`planned ${operation} requires a replay boundary`);
-        env.requestPlanningInput(operation);
-    };
     const otmp = state.uarmf;
     if (!otmp) return 0;
     const otyp = otmp.otyp;
@@ -1861,19 +1821,16 @@ export async function Boots_off(state = game, rawEnv = {}) {
 
     switch (otyp) {
     case SPEED_BOOTS: {
-        const fast = state.u?.uprops?.[FAST] ?? {};
         // youprop.h Very_fast preserves non-role/race/outside intrinsic
         // sources. Removing these boots still prints the slowdown when a
         // separate non-intrinsic source has not made the hero Very_fast.
-        const veryFast = Boolean(
-            (fast.intrinsic & ~INTRINSIC) || fast.extrinsic);
-        if (!veryFast && !takeoff.cancelled_don) {
+        if (!Very_fast(state.u) && !takeoff.cancelled_don) {
             discover_object(otyp, true, true, true, state);
             // C You_feel(): "You dream that you feel" while Unaware, as when
             // a polymorph into a form too small to carry the pack has left
             // the hero unable to move.
             await env.message(
-                youFeel(`yourself slow down${fast.intrinsic ? ' a bit' : ''}.`,
+                youFeel(`yourself slow down${Fast(state.u) ? ' a bit' : ''}.`,
                     state),
                 state,
                 env,
@@ -1882,17 +1839,8 @@ export async function Boots_off(state = game, rawEnv = {}) {
         break;
     }
     case WATER_WALKING_BOOTS: {
-        const levitation = state.u?.uprops?.[LEVITATION] ?? {};
-        const flying = state.u?.uprops?.[FLYING] ?? {};
-        const hasLevitation = Boolean(
-            (levitation.intrinsic || levitation.extrinsic)
-            && !levitation.blocked,
-        );
-        const hasFlying = Boolean(
-            (flying.intrinsic || flying.extrinsic
-                || (state.u?.usteed && is_flyer(state.u.usteed.data)))
-            && !flying.blocked,
-        );
+        const hasLevitation = Levitation(state.u);
+        const hasFlying = Flying(state.u);
         const { is_pool } = await import('./dbridge.js');
         const { is_lava } = await import('./dbridge.js');
         if ((is_pool(state.u.ux, state.u.uy, state)
@@ -1904,7 +1852,6 @@ export async function Boots_off(state = game, rawEnv = {}) {
             && !state.iflags?.in_lava_effects) {
             // C learns fireproofed/water-walking boots before spoteffects can
             // drown the hero, which may itself return after a relocation.
-            requestLiveReplay('hack.c spoteffects');
             discover_object(otyp, true, true, true, state);
             const { spoteffects } = await import('./hack.js');
             await spoteffects(true, state);
@@ -1915,24 +1862,21 @@ export async function Boots_off(state = game, rawEnv = {}) {
         await toggle_stealth(otmp, oldprop, false, state, env);
         break;
     case FUMBLE_BOOTS: {
-        const fumbling = state.u?.uprops?.[FUMBLING] ?? {};
-        if (!oldprop && !(fumbling.intrinsic & ~TIMEOUT)) {
-            fumbling.intrinsic = 0;
-            fumbling.extrinsic = 0;
+        if (!oldprop && !(HFumbling(state.u) & ~TIMEOUT)) {
+            state.u.uprops[FUMBLING].intrinsic = 0;
+            state.u.uprops[FUMBLING].extrinsic = 0;
         }
         break;
     }
     case LEVITATION_BOOTS: {
-        const levitation = state.u?.uprops?.[LEVITATION] ?? {};
         // C tests HLevitation here, deliberately ignoring ELevitation. The
         // blocked bit is checked separately for its FROMOUTSIDE case, so a
         // blocked intrinsic source still takes the float_vs_flight() arm.
-        const hasIntrinsicLevitation = Boolean(levitation.intrinsic);
-        const fromOutside = Boolean(levitation.blocked & FROMOUTSIDE);
+        const hasIntrinsicLevitation = Boolean(HLevitation(state.u));
+        const fromOutside = Boolean(BLevitation(state.u) & FROMOUTSIDE);
         const cancelled = takeoff.cancelled_don;
         if (!oldprop && !hasIntrinsicLevitation && !fromOutside && !cancelled) {
             if (!state.iflags?.in_lava_effects) {
-                requestLiveReplay('trap.c float_down');
                 const { float_down } = await import('./trap.js');
                 await float_down(0, 0, state);
             }
@@ -1971,7 +1915,6 @@ export async function toggle_displacement(
     if ((on && state.initial_don) || cancelledDon)
         return 0;
 
-    const displacement = state.u.uprops[DISPLACED];
     const blind = Blind(state.u);
     const invisible = Boolean(
         Invis(state.u)
@@ -1986,17 +1929,15 @@ export async function toggle_displacement(
     );
 
     if (!oldprop
-        && !displacement?.intrinsic
-        && !displacement?.blocked
+        && !HDisplaced(state.u)
+        && !state.u.uprops[DISPLACED]?.blocked
         && ((!blind && !state.u.uswallow && !invisible)
             || unblindTelepat
             || (blindTelepat && blind)
             || detectMonsters)) {
         if (obj)
             // C's discover_object() performs the Wisdom exercise in this
-            // branch.  Carry the caller's planning random/hooks through so
-            // an armor callback cannot spend the live stream while a clone
-            // is being evaluated.
+            // branch.  Carry the caller's random/hooks through.
             discover_object(obj.otyp, true, true, true, state, env);
         await env.message(
             youFeel(`that monsters${on ? '' : ' no longer'} have difficulty `
@@ -2017,8 +1958,7 @@ async function toggle_stealth(obj, oldprop, on, state = game, rawEnv = {}) {
     if (on ? state.initial_don : takeoffContext(state).cancelled_don)
         return;
 
-    const stealth = state.u.uprops[STEALTH];
-    if (!oldprop && !stealth.intrinsic && !stealth.blocked) {
+    if (!oldprop && !HStealth(state.u) && !BStealth(state.u)) {
         if (obj.otyp === RIN_STEALTH)
             learnring(obj, true, state);
         else
@@ -2027,7 +1967,7 @@ async function toggle_stealth(obj, oldprop, on, state = game, rawEnv = {}) {
         if (on) {
             const message = !is_boots(obj, state)
                 ? 'You move very quietly.'
-                : Levitation(state) || Flying(state)
+                : Levitation(state.u) || Flying(state.u)
                     ? 'You float imperceptibly.'
                     : 'You walk very quietly.';
             await env.message(message, state, env);
@@ -2151,7 +2091,7 @@ async function Cloak_on(state, rawEnv = {}) {
 // C ref: do_wear.c Cloak_off() (382-431). C computes `oldprop` at 385 for
 // toggle_stealth(), toggle_displacement() and the invisibility arm, and runs
 // its switch after setworn(). The ordinary and polymorph paths retain source
-// order; both cloak helpers use the caller's planning seams.
+// order; both cloak helpers use the caller's message and repaint operations.
 export async function Cloak_off(state = game, rawEnv = {}) {
     const env = wearOperationEnv(rawEnv);
     const { message, redraw } = env;
@@ -2461,7 +2401,7 @@ function Gloves_on(state) {
         // HFumbling is the intrinsic field of FUMBLING. incr_itimeout()
         // preserves non-timeout source flags, matching potion.c.
         if (!oldprop
-            && !((state.u.uprops[FUMBLING]?.intrinsic ?? 0) & ~TIMEOUT)) {
+            && !((HFumbling(state.u)) & ~TIMEOUT)) {
             incr_itimeout(state.u.uprops[FUMBLING], rnd(20));
         }
         break;
@@ -2496,7 +2436,7 @@ export async function wielding_corpse(
     if (!obj || obj.otyp !== CORPSE || state.uarmg) return;
     if (obj !== state.uwep && (obj !== state.uswapwep || !state.u.twoweap))
         return;
-    if (touch_petrifies(state.mons[obj.corpsenm]) && !Stone_resistance(state)) {
+    if (touch_petrifies(state.mons[obj.corpsenm]) && !Stone_resistance(state.u)) {
         const env = wearOperationEnv(rawEnv);
         await env.message(
             `You ${how && is_gloves(how, state) ? 'now wield' : 'are wielding'} `
@@ -2517,7 +2457,7 @@ export async function wielding_corpse(
         if (state.program_state?.gameover) return;
         // Life-saving can return without restoring resistance. A successful
         // stone-golem transformation instead keeps the corpse wielded.
-        if (!Stone_resistance(state))
+        if (!Stone_resistance(state.u))
             await remove_worn_item(obj, false, state, env);
     }
 }
@@ -2540,10 +2480,9 @@ export async function Gloves_off(state = game, rawEnv = {}) {
     case LEATHER_GLOVES:
         break;
     case GAUNTLETS_OF_FUMBLING: {
-        const fumbling = state.u.uprops[FUMBLING];
-        if (!oldprop && !(fumbling.intrinsic & ~TIMEOUT)) {
-            fumbling.intrinsic = 0;
-            fumbling.extrinsic = 0;
+        if (!oldprop && !(HFumbling(state.u) & ~TIMEOUT)) {
+            state.u.uprops[FUMBLING].intrinsic = 0;
+            state.u.uprops[FUMBLING].extrinsic = 0;
         }
         break;
     }
@@ -2564,7 +2503,7 @@ export async function Gloves_off(state = game, rawEnv = {}) {
     takeoff.cancelled_don = false;
     await encumber_msg(state, env);
 
-    if (Glib(state)) make_glib(0, state);
+    if (Glib(state.u)) make_glib(0, state);
     if (state.uwep?.otyp === CORPSE)
         await wielding_corpse(state.uwep, gloves, on_purpose, state, env);
     if (state.u.twoweap && state.uswapwep?.otyp === CORPSE)
@@ -2964,7 +2903,7 @@ export async function canwearobj(otmp, noisy, state = game) {
                 );
             }
             err++;
-        } else if (Glib(state)) {
+        } else if (Glib(state.u)) {
             /* prevent slippery bare fingers from transferring to
                gloved fingers */
             if (noisy) {
@@ -3187,7 +3126,7 @@ export async function glibr(state = game, env = {}) {
             object.quan = savedQuantity;
         }
         // setuwep()'s "stops shining" notice goes through glibr()'s message
-        // operation, which a planned turn silences.
+        // operation.
         await setuwep(null, { ...setwornEnv(state), message });
         cmdq_clear(CQ_CANNED, state);
         if (await canLetGo(object, '', state)) await drop(object);
@@ -3205,7 +3144,7 @@ export async function cursed(otmp, state = game) {
             || otmp.otyp === LENSES || otmp.quan > 1;
 
         /* might be trying again after applying grease to hands */
-        if (Glib(state) && otmp.bknown
+        if (Glib(state.u) && otmp.bknown
             /* for weapon, we'll only get here via 'A )' */
             && (state.uarmg
                 ? otmp === state.uwep
@@ -3258,7 +3197,7 @@ export function stuck_ring(ring, otyp, state = game) {
         if (ring.cursed) return ring;
         /* normally outermost layer is processed first, but slippery gloves
            wears off quickly so uncurse ring itself before handling those */
-        if (state.uarmg && Glib(state)) return state.uarmg;
+        if (state.uarmg && Glib(state.u)) return state.uarmg;
     }
     /* either no ring or not right type or nothing prevents its removal */
     return null;
@@ -3328,12 +3267,12 @@ export async function select_off(otmp, state = game) {
             buf = `free a weapon ${body_part(HAND, state.youmonst)}`;
             why = state.uwep;
         } else if (state.uarmg
-            && (state.uarmg.cursed || Glib(state))) {
-            buf = `take off your ${Glib(state) ? 'slippery ' : ''}`
+            && (state.uarmg.cursed || Glib(state.u))) {
+            buf = `take off your ${Glib(state.u) ? 'slippery ' : ''}`
                 + gloves_simple_name(state.uarmg, state);
             // C points at cg.zeroobj whenever Glib blocks removal. Its
             // bknown write cannot affect the worn glove in that branch.
-            why = Glib(state) ? { bknown: false } : state.uarmg;
+            why = Glib(state.u) ? { bknown: false } : state.uarmg;
         }
         if (why) {
             await ttyPline(`You cannot ${buf} to remove the ring.`, state);
@@ -3352,7 +3291,7 @@ export async function select_off(otmp, state = game) {
             );
             set_bknown(state.uwep, 1, { state });
             return 0;
-        } else if (Glib(state)) {
+        } else if (Glib(state.u)) {
             // do_wear.c:2736-2740. The inline comment in C says this is a
             // simplified Shk_Your(): unpaid items say "The", own items "Your".
             await ttyPline(
@@ -3613,7 +3552,7 @@ async function accessory_or_armor_on(obj, state = game) {
                     }
                 } while (!done);
             }
-            if (state.uarmg && Glib(state)) {
+            if (state.uarmg && Glib(state.u)) {
                 await ttyPline(
                     `Your ${gloves_simple_name(state.uarmg, state)} are too `
                     + 'slippery to remove, so you cannot put on the ring.',
@@ -4208,8 +4147,7 @@ export async function destroy_arm(
     random = coreRandom,
     rawEnv = {},
 ) {
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const hits = random.rn2(4) + 1;
     const armors = [
         state.uarm,

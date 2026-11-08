@@ -9,20 +9,13 @@
 
 import {
     A_DEX,
-    ANTIMAGIC,
-    COLD_RES,
     BZ_M_SPELL,
     BZ_OFS_AD,
     BZ_VALID_ADTYP,
-    CONFUSION,
     DIED,
     EYE,
     KILLED_BY,
     Upolyd,
-    DISPLACED,
-    FIRE_RES,
-    FREE_ACTION,
-    HALF_SPDAM,
     HEAD,
     M_AP_OBJECT,
     M_ATTK_HIT,
@@ -35,15 +28,13 @@ import {
     MFAST,
     MM_ANGRY,
     MM_NOMSG,
-    SHOCK_RES,
-    STUNNED,
     TIMEOUT,
     u_at,
     ismnum,
     vision_clears,
 } from './const.js';
 import { game } from './gstate.js';
-import { HeroDeathPlanningError, losehp, nomul } from './hack.js';
+import { losehp, nomul } from './hack.js';
 import { acurr, adjuhploss, losestr, minuhpmax, setuhpmax } from './attrib.js';
 import { done } from './end.js';
 import { sgn, upstart } from './hacklib.js';
@@ -114,38 +105,30 @@ import {
 } from './pline.js';
 import { ttyNorep, ttyPline } from './tty_message.js';
 import {
-    Blind, Blinded, Deaf, Detect_monsters, HHallucination,
-    Half_physical_damage, Halluc_resistance, Hallucination, Invis,
-    See_invisible, Unaware,
+    Antimagic, Blind, Blinded, Cold_resistance, Confusion, Deaf,
+    Detect_monsters, Displaced, Fire_resistance, Free_action, HConfusion,
+    HHallucination, HStun, Half_physical_damage, Half_spell_damage,
+    Halluc_resistance, Hallucination, Invis, See_invisible, Shock_resistance,
+    Unaware,
 } from './youprop.js';
 
 // C ref: mcastu.c touch_of_death() (323-354). Both Death's melee touch
-// and the monster spell share this HP/killer path. Terminal death/recovery
-// runs live; planning uses the established handoff before reading input.
+// and the monster spell share this HP/killer path.
 export async function touch_of_death(mtmp, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
-    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     let dmg = 50 + random.d(8, 6);
     const drain = Math.trunc(dmg / 2);
     await message(youFeel('drained...', state), state, env);
     const kbuf = death_inflicted_by('the touch of death', mtmp, state);
     if (Upolyd(state.u)) {
         state.u.mh = 0;
-        await (env.rehumanize ?? rehumanize)(state, {
-            ...env, message,
-            planningDeath: typeof env.planningDeath === 'function'
-                ? () => env.planningDeath(mtmp) : undefined,
-        });
+        await (env.rehumanize ?? rehumanize)(state, { ...env, message });
     } else if (drain >= state.u.uhpmax) {
         state.killer ??= {};
         state.killer.format = KILLED_BY;
         state.killer.name = kbuf;
-        if (env.planning) {
-            if (typeof env.planningDeath === 'function')
-                throw env.planningDeath(mtmp);
-            throw new HeroDeathPlanningError(kbuf, KILLED_BY, { fromMonster: true });
-        }
         await (env.done ?? done)(DIED, state, env);
     } else {
         const olduhp = state.u.uhp;
@@ -186,20 +169,20 @@ export function death_inflicted_by(deathreason, monster, state = game) {
 export async function mcast_death_touch(mtmp, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
-    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random, message,
         canSpotMonster: env.canSpotMonster ?? canspotmon };
     await message(`Oh no, ${mhe(mtmp, effectEnv)}'s using the touch of death!`, state, effectEnv);
     if (nonliving(state.youmonst.data) || is_demon(state.youmonst.data)) {
         await message('You seem no deader than before.', state, effectEnv);
-    } else if (!heroProperty(state, ANTIMAGIC) && random.rn2(mtmp.m_lev) > 12) {
+    } else if (!Antimagic(state.u) && random.rn2(mtmp.m_lev) > 12) {
         if (Hallucination(state.u))
             await message('You have an out of body experience.', state, effectEnv);
         else
             await touch_of_death(mtmp, effectEnv);
         monstunseesu(M_SEEN_MAGR, state);
     } else {
-        if (heroProperty(state, ANTIMAGIC)) {
+        if (Antimagic(state.u)) {
             await shieldeff(state.u.ux, state.u.uy, state);
             monstseesu(M_SEEN_MAGR, state);
         }
@@ -278,21 +261,7 @@ const mon_wizard_spells = [
     MCAST_AGGRAVATION, MCAST_SUMMON_MONS, MCAST_CLONE_WIZ, MCAST_DEATH_TOUCH,
 ];
 
-// ---- Property helpers (youprop.h macros) ----
-// Most C macros test (intrinsic | extrinsic) and respect a blocked alias only
-// for the few properties that have one.  The helpers here follow the same
-// structure, mirroring monmove.js and mhitu.js.
-function heroProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
-// Some properties have a blocked alias (Invis, Blind, etc.) -- this tests
-// for the unblocked-active form.
-function activeHeroProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean((value?.intrinsic || value?.extrinsic) && !value?.blocked);
-}
 
 
 function requireCastmuOperation(env, name) {
@@ -331,7 +300,7 @@ function spell_would_be_useless(mtmp, spellnum, env = {}) {
 
     switch (spellnum) {
     case MCAST_DEATH_TOUCH:
-        if ((heroProperty(state, ANTIMAGIC) || Hallucination(state.u))
+        if ((Antimagic(state.u) || Hallucination(state.u))
             && !random.rn2(2))
             return true;
         break;
@@ -412,8 +381,7 @@ async function cursetxt(mtmp, undirected, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
     const message = env.message;
-    const norepMessage = env.planning ? async () => {}
-        : (env.norepMessage ?? ttyNorep);
+    const norepMessage = env.norepMessage ?? ttyNorep;
 
     if (canseemon(mtmp, state)
         && couldsee(mtmp.mx, mtmp.my, state)) {
@@ -428,7 +396,7 @@ async function cursetxt(mtmp, undirected, env = {}) {
                 && state.youmonst?.mappearance === STRANGE_OBJECT)
             || state.u?.uundetected) {
             point_msg = 'and curses in your general direction';
-        } else if (activeHeroProperty(state, DISPLACED)
+        } else if (Displaced(state.u)
                 && (mtmp.mux !== state.u.ux || mtmp.muy !== state.u.uy)) {
             point_msg = 'and curses at your displaced image';
         } else {
@@ -554,7 +522,7 @@ export async function castmu(
                     && !perceives(mtmp.data)
                     && !u_at(mtmp.mux, mtmp.muy, state)) {
                 target = ' at a spot near you';
-            } else if (activeHeroProperty(state, DISPLACED)
+            } else if (Displaced(state.u)
                     && !u_at(mtmp.mux, mtmp.muy, state)) {
                 target = ' at your displaced image';
             } else {
@@ -579,7 +547,7 @@ export async function castmu(
     } else {
         dmg = random.d(Math.trunc(ml / 2) + 1, 6);
     }
-    if (heroProperty(state, HALF_SPDAM))
+    if (Half_spell_damage(state.u))
         dmg = Math.trunc((dmg + 1) / 2);
 
     const ret = M_ATTK_HIT;
@@ -593,7 +561,7 @@ export async function castmu(
     case AD_MAGM:
         if (message)
             await message('You are hit by a shower of missiles!', state, env);
-        if (heroProperty(state, ANTIMAGIC)) {
+        if (Antimagic(state.u)) {
             await shieldeff(state.u.ux, state.u.uy, state);
             if (message)
                 await message('The missiles bounce off!', state, env);
@@ -611,7 +579,7 @@ export async function castmu(
     case AD_COLD:
         if (message)
             await message("You're covered in frost.", state, env);
-        if (heroProperty(state, COLD_RES)) {
+        if (Cold_resistance(state.u)) {
             await shieldeff(state.u.ux, state.u.uy, state);
             if (message)
                 await message('But you resist the effects.', state, env);
@@ -644,7 +612,7 @@ async function mcast_psi_bolt(dmg, env = {}) {
     const state = env.state ?? game;
     const message = env.message;
 
-    if (heroProperty(state, ANTIMAGIC)) {
+    if (Antimagic(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_MAGR, state);
         dmg = Math.trunc((dmg + 1) / 2);
@@ -679,7 +647,7 @@ async function mcast_open_wounds(dmg, env = {}) {
     const state = env.state ?? game;
     const message = env.message;
 
-    if (heroProperty(state, ANTIMAGIC)) {
+    if (Antimagic(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_MAGR, state);
         dmg = Math.trunc((dmg + 1) / 2);
@@ -742,23 +710,22 @@ async function mcast_fire_pillar(mtmp, dmg, env = {}) {
     if (typeof message === 'function')
         await message('A pillar of fire strikes all around you!', state);
     const origDmg = dmg = random.d(8, 6);
-    if (heroProperty(state, FIRE_RES)) {
+    if (Fire_resistance(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_FIRE, state);
         dmg = 0;
     } else {
         monstunseesu(M_SEEN_FIRE, state);
     }
-    if (heroProperty(state, HALF_SPDAM)) dmg = Math.trunc((dmg + 1) / 2);
+    if (Half_spell_damage(state.u)) dmg = Math.trunc((dmg + 1) / 2);
     await burn_away_slime(state, env);
-    // C's item effects mutate the same hero clone and may print through their
-    // own fallback operations.  Planning passes an explicit silent message
-    // operation so those fallbacks cannot write to the live terminal.
+    // C's item effects mutate the hero and may print through their own
+    // fallback operations.
     const effectEnv = {
         ...env,
         state,
         random,
-        message: env.message ?? (env.planning ? async () => {} : undefined),
+        message: env.message,
     };
     await burnarmor(state.youmonst, effectEnv);
     await destroy_items(state.youmonst, AD_FIRE, origDmg, effectEnv);
@@ -782,7 +749,7 @@ async function mcast_lightning(mtmp, dmg, env = {}) {
         ? await env.ureflects('It bounces off your %s%s.', '', state, env)
         : await ureflects('It bounces off your %s%s.', '', state, env);
     const origDmg = dmg = random.d(8, 6);
-    if (reflects || heroProperty(state, SHOCK_RES)) {
+    if (reflects || Shock_resistance(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         dmg = 0;
         if (reflects) {
@@ -794,19 +761,19 @@ async function mcast_lightning(mtmp, dmg, env = {}) {
     } else {
         monstunseesu(M_SEEN_ELEC | M_SEEN_REFL, state);
     }
-    if (heroProperty(state, HALF_SPDAM)) dmg = Math.trunc((dmg + 1) / 2);
+    if (Half_spell_damage(state.u)) dmg = Math.trunc((dmg + 1) / 2);
     const effectEnv = {
         ...env,
         state,
         random,
-        message: env.message ?? (env.planning ? async () => {} : undefined),
+        message: env.message,
     };
     await destroy_items(state.youmonst, AD_ELEC, origDmg, effectEnv);
     await mon_spell_hits_spot(
         mtmp, AD_ELEC, state.u.ux, state.u.uy, effectEnv,
     );
     // mcastu.c evaluates rnd(100) before the canonical zap.c flashburn call.
-    // Keep that draw on the injected gameplay RNG, including in planning.
+    // Keep that draw on the injected gameplay RNG.
     if (typeof random.rnd !== 'function')
         throw new TypeError('mcast_lightning requires the rnd operation');
     const duration = random.rnd(100);
@@ -817,9 +784,9 @@ async function mcast_lightning(mtmp, dmg, env = {}) {
 // C ref: mcastu.c mcast_paralyze() (746-769).
 async function mcast_paralyze(mtmp, env = {}) {
     const state = env.state ?? game;
-    const antimagic = heroProperty(state, ANTIMAGIC);
+    const antimagic = Antimagic(state.u);
     // youprop.h:383 Free_action is the extrinsic field alone.
-    const freeAction = Boolean(state.u?.uprops?.[FREE_ACTION]?.extrinsic);
+    const freeAction = Free_action(state.u);
     let dmg = 0;
     if (antimagic || freeAction) {
         await shieldeff(state.u.ux, state.u.uy, state);
@@ -831,7 +798,7 @@ async function mcast_paralyze(mtmp, env = {}) {
         if ((state.multi ?? 0) >= 0 && typeof env.message === 'function')
             await env.message('You are frozen in place!', state);
         dmg = 4 + (mtmp.m_lev ?? 0);
-        if (heroProperty(state, HALF_SPDAM)) dmg = Math.trunc((dmg + 1) / 2);
+        if (Half_spell_damage(state.u)) dmg = Math.trunc((dmg + 1) / 2);
         monstunseesu(M_SEEN_MAGR, state);
     }
     nomul(-dmg, state);
@@ -846,8 +813,7 @@ async function mcast_paralyze(mtmp, env = {}) {
 async function mcast_clone_wiz(mtmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     if (mtmp?.iswiz && state.context?.no_of_wizards === 1) {
-        const message = rawEnv.message
-            ?? (rawEnv.planning ? async () => {} : ttyPline);
+        const message = rawEnv.message ?? ttyPline;
         await message('Double Trouble...', state, rawEnv);
         await clonewiz(state, rawEnv);
     } else {
@@ -864,10 +830,7 @@ export async function mcast_summon_mons(mtmp, rawEnv = {}) {
     const count = await summonNasty(mtmp, { ...rawEnv, state });
     if (!count) return count;
 
-    // A planning summon keeps every message clone-local just like the
-    // creation tail in nasty(); ordinary callers retain the live tty sink.
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     if (mtmp?.iswiz) {
         const line = `Destroy the thief, my pet${count === 1 ? '' : 's'}!`;
         if (typeof rawEnv.verbalize === 'function') {
@@ -893,7 +856,7 @@ export async function mcast_summon_mons(mtmp, rawEnv = {}) {
             `${mappear} ${one ? 'at' : 'around'} a spot near you!`,
             state,
         );
-    } else if (activeHeroProperty(state, DISPLACED) && displaced) {
+    } else if (Displaced(state.u) && displaced) {
         await message(
             `${mappear} ${one ? 'by' : 'around'} your displaced image!`,
             state,
@@ -911,8 +874,7 @@ export async function mcast_insects(mtmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
     const env = { ...rawEnv, state, random };
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
+    const message = env.message ?? ttyPline;
     const chooseClass = env.mkclass ?? mkclass;
     const census = env.monsterCensus ?? monster_census;
     const nextTo = env.enexto ?? enexto;
@@ -995,7 +957,7 @@ export async function mcast_insects(mtmp, rawEnv = {}) {
         && !perceives(mtmp.data)
         && (mtmp.mux !== state.u.ux || mtmp.muy !== state.u.uy)) {
         line = `${Monnam(mtmp, state, env)} summons ${what} around a spot near you!`;
-    } else if (activeHeroProperty(state, DISPLACED)
+    } else if (Displaced(state.u)
         && (mtmp.mux !== state.u.ux || mtmp.muy !== state.u.uy)) {
         line = `${Monnam(mtmp, state, env)} summons ${what} around your displaced image!`;
     } else {
@@ -1011,12 +973,11 @@ export async function mcast_insects(mtmp, rawEnv = {}) {
 async function mcast_stun_you(dmg, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
-    const message = env.message
-        ?? (env.planning ? async () => {} : ttyPline);
-    const hStun = state.u?.uprops?.[STUNNED]?.intrinsic ?? 0;
+    const message = env.message ?? ttyPline;
+    const hStun = HStun(state.u);
 
-    if (heroProperty(state, ANTIMAGIC)
-        || state.u?.uprops?.[FREE_ACTION]?.extrinsic) {
+    if (Antimagic(state.u)
+        || Free_action(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_MAGR, state);
         if (!hStun)
@@ -1029,7 +990,7 @@ async function mcast_stun_you(dmg, env = {}) {
             env,
         );
         dmg = random.d(acurr(state, A_DEX) < 12 ? 6 : 4, 4);
-        if (heroProperty(state, HALF_SPDAM))
+        if (Half_spell_damage(state.u))
             dmg = Math.trunc((dmg + 1) / 2);
         await make_stunned((hStun & TIMEOUT) + dmg, false, state,
             { ...env, message });
@@ -1043,10 +1004,9 @@ async function mcast_stun_you(dmg, env = {}) {
 export async function mcast_weaken_you(mtmp, dmg, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
 
-    if (heroProperty(state, ANTIMAGIC)) {
+    if (Antimagic(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_MAGR, state);
         await message(youFeel('momentarily weakened.', state), state, rawEnv);
@@ -1056,7 +1016,7 @@ export async function mcast_weaken_you(mtmp, dmg, rawEnv = {}) {
     await message('You suddenly feel weaker!', state, rawEnv);
     dmg = mtmp.m_lev - 6;
     if (dmg < 1) dmg = 1;
-    if (heroProperty(state, HALF_SPDAM))
+    if (Half_spell_damage(state.u))
         dmg = Math.trunc((dmg + 1) / 2);
     await losestr(
         random.rnd(dmg),
@@ -1076,10 +1036,9 @@ export async function mcast_weaken_you(mtmp, dmg, rawEnv = {}) {
 export async function mcast_destroy_armor(rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
 
-    if (heroProperty(state, ANTIMAGIC)) {
+    if (Antimagic(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_MAGR, state);
         await message('A field of force surrounds you!', state, rawEnv);
@@ -1217,7 +1176,7 @@ async function mcast_blind_you(env = {}) {
         if (numEyes !== 1) eyes = makeplural(eyes);
 
         await message(`Scales cover your ${eyes}!`, state);
-        await make_blinded(heroProperty(state, HALF_SPDAM) ? 100 : 200,
+        await make_blinded(Half_spell_damage(state.u) ? 100 : 200,
             false, state, { ...env, message });
         if (!Blind(state.u))
             await message(`Your ${vision_clears}`, state);
@@ -1238,8 +1197,7 @@ async function mcast_disappear(mtmp, rawEnv = {}) {
         return;
     }
 
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     if (canseemon(mtmp, state)) {
         // C pline_mon() formats the source name with Monnam() and adds map
         // coordinates when accessiblemsg is enabled.
@@ -1260,6 +1218,8 @@ async function mcast_disappear(mtmp, rawEnv = {}) {
 
     mon_set_minvis(mtmp, false, state, rawEnv);
 
+    // map_invisible() paints the global game, so a foreign state (such as a
+    // test's hand-built state) keeps only its memory write.
     if (cansee(mtmp.mx, mtmp.my, state) && !canspotmon(mtmp, state)) {
         if (state === game) map_invisible(mtmp.mx, mtmp.my, state);
         else map_invisible_planning(mtmp.mx, mtmp.my, state);
@@ -1271,11 +1231,9 @@ async function mcast_disappear(mtmp, rawEnv = {}) {
 // the spell adds the caster level to packed HConfusion before selecting feedback.
 async function mcast_confuse_you(mtmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const confusion = state.u?.uprops?.[CONFUSION];
-    const message = rawEnv.message
-        ?? (rawEnv.planning ? async () => {} : ttyPline);
+    const message = rawEnv.message ?? ttyPline;
 
-    if (heroProperty(state, ANTIMAGIC)) {
+    if (Antimagic(state.u)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstseesu(M_SEEN_MAGR, state);
         await message(youFeel('momentarily dizzy.', state), state);
@@ -1283,14 +1241,14 @@ async function mcast_confuse_you(mtmp, rawEnv = {}) {
     }
 
     // HConfusion is the raw intrinsic field, not its low TIMEOUT bits.
-    const oldConfusion = Boolean(confusion?.intrinsic);
+    const oldConfusion = Boolean(Confusion(state.u));
     let damage = mtmp.m_lev;
-    if (heroProperty(state, HALF_SPDAM))
+    if (Half_spell_damage(state.u))
         damage = Math.trunc((damage + 1) / 2);
 
     const effectEnv = { ...rawEnv, message };
     await make_confused(
-        (confusion?.intrinsic ?? 0) + damage,
+        HConfusion(state.u) + damage,
         true,
         state,
         effectEnv,

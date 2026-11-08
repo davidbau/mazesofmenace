@@ -10,7 +10,6 @@ import {
     AUTOUNLOCK_KICK,
     AUTOUNLOCK_UNTRAP,
     COST_BRKLCK,
-    CONFUSION,
     CQ_CANNED,
     D_BROKEN,
     D_CLOSED,
@@ -38,8 +37,6 @@ import {
     P_DAGGER,
     P_FLAIL,
     P_LANCE,
-    PASSES_WALLS,
-    STUNNED,
     TT_PIT,
     SDOOR,
     u_at,
@@ -152,7 +149,6 @@ import {
     t_at,
     could_untrap,
     untrap,
-    Levitation,
 } from './trap.js';
 import { stumble_onto_mimic } from './uhitm.js';
 import { maybe_absorb_item } from './steal.js';
@@ -166,7 +162,8 @@ import { S_hcdoor, S_vcdoor } from './symbols.js';
 import { ttyPline } from './tty_message.js';
 import { canseemon, canspotmon } from './display.js';
 import {
-    BBlinded, Blind, Deaf, HBlinded, Unaware,
+    BBlinded, Blind, Confusion, Deaf, HBlinded, Levitation, Passes_walls,
+    Protection_from_shape_changers, Stunned, Unaware,
 } from './youprop.js';
 
 // Thrown where lock.c reaches a branch this port has not ported.
@@ -767,7 +764,7 @@ export async function pick_lock(pick, rx, ry, container, state = game, env = {})
 
     if (u_at(cc.x, cc.y, state)) {
         if (u.dz < 0 && !autounlock) {
-            await message(`There isn't any sort of lock up ${Levitation(state) ? 'here' : 'there'}.`, state);
+            await message(`There isn't any sort of lock up ${Levitation(state.u) ? 'here' : 'there'}.`, state);
             return PICKLOCK_LEARNED_SOMETHING;
         } else if (is_lava(u.ux, u.uy, state)) {
             await message(`Doing that would probably melt ${yname(pick, state)}.`, state);
@@ -1126,7 +1123,7 @@ export async function doopen_indir(x, y, state = game, env = {}) {
     // lock.c:825-826. When choosing a direction is impaired, use a turn
     // regardless of whether a door is successfully targeted.
     let res = ECMD_OK;
-    if (Confusion(state) || Stunned(state))
+    if (Confusion(state.u) || Stunned(state.u))
         res = ECMD_TIME;
 
     // lock.c:828-829.
@@ -1244,7 +1241,7 @@ export async function doopen_indir(x, y, state = game, env = {}) {
 export async function stumble_on_door_mimic(x, y, state = game) {
     const mtmp = m_at(x, y, state);
     if (mtmp && is_door_mappear(mtmp)
-        && !Protection_from_shape_changers(state)) {
+        && !Protection_from_shape_changers(state.u)) {
         await stumble_onto_mimic(mtmp, state, { state, pline: ttyPline });
         return true;
     }
@@ -1258,13 +1255,6 @@ function is_door_mappear(mtmp) {
         && (mtmp.mappearance === S_hcdoor || mtmp.mappearance === S_vcdoor);
 }
 
-// C ref: youprop.h:287 Protection_from_shape_changers, the bare intrinsic OR
-// extrinsic. The constant 65 is prop.h PROT_FROM_SHAPE_CHANGERS.
-function Protection_from_shape_changers(state) {
-    const PROT_FROM_SHAPE_CHANGERS = 65;
-    const prop = state.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
-    return Boolean(prop?.intrinsic || prop?.extrinsic);
-}
 
 // C ref: lock.c obstructed() (926-953). A non-furniture monster blocks the
 // ray; object mimics continue through C's objhere label to OBJ_AT.
@@ -1307,9 +1297,7 @@ async function obstructed(x, y, quietly, state = game, rawEnv = {}) {
 export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
     const door = state.level.at(x, y);
     const message = rawEnv.message ?? ttyPline;
-    // A monster's planning pass supplies its own newsym(), so the door it
-    // would change is not repainted, nor hallucinatory glyphs drawn, on
-    // the live display.
+    // A caller may supply its own newsym() for the door square.
     const redraw = rawEnv.newsym ?? newsym;
     const mysterywand = obj.oclass === WAND_CLASS && !obj.dknown;
     let result = true;
@@ -1504,22 +1492,6 @@ export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
 }
 
 
-// C ref: youprop.h:286 Passes_walls, the bare intrinsic OR extrinsic.
-function Passes_walls(state) {
-    const passes = state.u?.uprops?.[PASSES_WALLS];
-    return Boolean(passes?.intrinsic || passes?.extrinsic);
-}
-
-// C ref: youprop.h:83-84 Confusion, the bare intrinsic field.
-function Confusion(state) {
-    return Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
-}
-
-// C ref: youprop.h:81 Stunned, the bare intrinsic field.
-function Stunned(state) {
-    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
-}
-
 // C ref: lock.c doclose() (957-1051), the #close command handler. Prompts for
 // a direction, checks preconditions, and attempts to close the door.
 //
@@ -1556,7 +1528,7 @@ export async function doclose(state = game) {
 
     // lock.c:979-982. u_at checks whether the target is the hero's own square.
     // Passes_walls heroes can close from their own square.
-    if (u_at(x, y, state) && !Passes_walls(state)) {
+    if (u_at(x, y, state) && !Passes_walls(state.u)) {
         await ttyPline('You are in the way!', state);
         return ECMD_TIME;
     }
@@ -1577,7 +1549,7 @@ export async function doclose(state = game) {
     // lock.c:992-993. Unreachable in this port: getdir() calls confdir(), which
     // throws for a confused or stunned hero. Written out so the branch exists
     // when confdir is ported.
-    if (Confusion(state) || Stunned(state))
+    if (Confusion(state.u) || Stunned(state.u))
         res = ECMD_TIME;
 
     const door = state.level.at(x, y);

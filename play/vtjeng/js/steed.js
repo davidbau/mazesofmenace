@@ -11,7 +11,6 @@ import {
     ARTICLE_A,
     ARTICLE_YOUR,
     BOTH_SIDES,
-    CONFUSION,
     DIR_ERR,
     DISMOUNT_BONES,
     DISMOUNT_BYCHOICE,
@@ -24,13 +23,9 @@ import {
     ECMD_CANCEL,
     ECMD_OK,
     ECMD_TIME,
-    FLYING,
-    FUMBLING,
-    GLIB,
     has_mgivenname,
     KILLED_BY_AN,
     LEG,
-    LEVITATION,
     MAXULEV,
     M_AP_FURNITURE,
     M_AP_OBJECT,
@@ -45,9 +40,6 @@ import {
     P_SKILLED,
     P_UNSKILLED,
     SLT_ENCUMBER,
-    STEALTH,
-    STONE_RES,
-    STUNNED,
     SUPPRESS_HALLUCINATION,
     SUPPRESS_INVISIBLE,
     SUPPRESS_IT,
@@ -61,10 +53,7 @@ import {
     TT_WEB,
     Upolyd,
     VIBRATING_SQUARE,
-    WOUNDED_LEGS,
-    W_ARTI,
     W_SADDLE,
-    I_SPECIAL,
     TIMEOUT,
     helpless,
 } from './const.js';
@@ -176,20 +165,10 @@ import { exercise } from './attrib.js';
 import { note_unported } from './unported.js';
 import { canspotmon } from './display.js';
 import {
-    Blind, Blind_telepat, Hallucination, Maybe_Half_Phys,
+    Blind, Blind_telepat, Confusion, Flying, Fumbling, Glib, HWounded_legs,
+    Hallucination, Lev_at_will, Levitation, Maybe_Half_Phys, Stealth,
+    Stone_resistance, Stunned, Wounded_legs,
 } from './youprop.js';
-
-// youprop.h property spellings this file needs. Each names the exact macro it
-// stands for, because the terms differ from macro to macro.
-function propertyActive(state, index) {
-    const value = state.u?.uprops?.[index];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
-// youprop.h:84 and :112 define Confusion and Glib as the bare intrinsic field.
-function propertyIntrinsic(state, index) {
-    return Boolean(state.u?.uprops?.[index]?.intrinsic);
-}
 
 // youprop.h:77. The punishing ball is the whole test.
 export function Punished(state) {
@@ -288,39 +267,7 @@ export function put_saddle_on_mon(saddle, monster, env = {}) {
     return saddle;
 }
 
-// youprop.h:210 Stealth. BStealth is written by polyself.c
-// steed_vs_stealth(), which this file calls on both sides of a ride.
-function Stealth(state) {
-    const stealth = state.u.uprops[STEALTH];
-    return Boolean((stealth.intrinsic || stealth.extrinsic)
-                   && !stealth.blocked);
-}
 
-// youprop.h:253 Flying. The steed term is what makes a hero on a flying steed
-// count as airborne; a pony is not a flyer, so it contributes nothing here.
-function Flying(state) {
-    const flying = state.u.uprops[FLYING];
-    return Boolean((flying.intrinsic || flying.extrinsic
-                    || (state.u.usteed && is_flyer(state.u.usteed.data)))
-                   && !flying.blocked);
-}
-
-// youprop.h:240 and :242. Levitation subtracts a blocking term; Lev_at_will
-// asks whether the levitation is one the hero can switch off at will, which is
-// true only for an intrinsic flagged I_SPECIAL or an artifact extrinsic with
-// nothing else contributing.
-function Levitation(state) {
-    const value = state.u?.uprops?.[LEVITATION];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
-
-function Lev_at_will(state) {
-    const intrinsic = state.u?.uprops?.[LEVITATION]?.intrinsic ?? 0;
-    const extrinsic = state.u?.uprops?.[LEVITATION]?.extrinsic ?? 0;
-    return ((intrinsic & I_SPECIAL) !== 0 || (extrinsic & W_ARTI) !== 0)
-        && (intrinsic & ~(I_SPECIAL | TIMEOUT)) === 0
-        && (extrinsic & ~W_ARTI) === 0;
-}
 
 // C ref: steed.c can_ride() (168-174).
 export function can_ride(mtmp, state = game) {
@@ -382,7 +329,7 @@ export async function use_saddle(otmp, state = game, env = {}) {
 
     const species = mtmp.data;
     if (touch_petrifies(species) && !state.uarmg
-        && !propertyActive(state, STONE_RES)) {
+        && !Stone_resistance(state.u)) {
         await ttyPline(`You touch ${mon_nam(mtmp, state)}.`, state);
         if (!(poly_when_stoned(state.youmonst.data, state)
             && await polymon(PM_STONE_GOLEM, state))) {
@@ -428,9 +375,9 @@ export async function use_saddle(otmp, state = game, env = {}) {
         chance -= 20;
         break;
     }
-    if (propertyActive(state, CONFUSION)
-        || propertyActive(state, FUMBLING)
-        || propertyIntrinsic(state, GLIB)) {
+    if (Confusion(state.u)
+        || Fumbling(state.u)
+        || Boolean(Glib(state.u))) {
         chance -= 20;
     } else if (state.uarmg && objdescr_is(state.uarmg, 'riding gloves', state)) {
         chance += 10;
@@ -473,11 +420,11 @@ export async function mount_steed(mtmp, force, state = game) {
         await ttyPline('Maybe you should find a designated driver.', state);
         return false;
     }
-    if (propertyActive(state, WOUNDED_LEGS)) {
+    if (Wounded_legs(state.u)) {
         await legs_in_no_shape('riding', false, state);
         // C intentionally derives the prompt plural from HWounded_legs,
         // the intrinsic timeout, rather than the extrinsic side bits.
-        const plural = ((u.uprops[WOUNDED_LEGS].intrinsic & BOTH_SIDES)
+        const plural = ((HWounded_legs(u) & BOTH_SIDES)
             === BOTH_SIDES) ? 's' : '';
         if (force && state.wizard
             && await y_n(`Heal your leg${plural}?`, state) === 'y') {
@@ -543,7 +490,7 @@ export async function mount_steed(mtmp, force, state = game) {
     }
 
     const ptr = mtmp.data;
-    if (touch_petrifies(ptr) && !propertyActive(state, STONE_RES)) {
+    if (touch_petrifies(ptr) && !Stone_resistance(state.u)) {
         await ttyPline(`You touch ${mon_nam(mtmp, state)}.`, state);
         // trap.c:instapetrify is a void callee; its death/poly effect is unported.
         note_unported('trap.c instapetrify');
@@ -590,8 +537,8 @@ export async function mount_steed(mtmp, force, state = game) {
     }
 
     /* Is the player impaired? */
-    if (!force && !is_floater(ptr) && !is_flyer(ptr) && Levitation(state)
-        && !Lev_at_will(state)) {
+    if (!force && !is_floater(ptr) && !is_flyer(ptr) && Levitation(state.u)
+        && !Lev_at_will(state.u)) {
         await ttyPline(
             `You cannot reach ${mon_nam(mtmp, state)}.`, state,
         );
@@ -611,14 +558,14 @@ export async function mount_steed(mtmp, force, state = game) {
     // reach this line: the guard above returns for it whenever `force` is
     // FALSE. A forced debug mount bypasses this entire impairment disjunction.
     if (!force
-        && (propertyIntrinsic(state, CONFUSION)
-            || propertyActive(state, FUMBLING)
-            || propertyIntrinsic(state, GLIB)
-            || propertyActive(state, WOUNDED_LEGS)
+        && (Boolean(Confusion(state.u))
+            || Fumbling(state.u)
+            || Boolean(Glib(state.u))
+            || Wounded_legs(state.u)
             || otmp.cursed
             || otmp.greased
             || (u.ulevel + mtmp.mtame < rnd(MAXULEV / 2 + 5)))) {
-        if (Levitation(state)) {
+        if (Levitation(state.u)) {
             await ttyPline(
                 `${Monnam(mtmp, state)} slips away from you.`,
                 state,
@@ -643,7 +590,7 @@ export async function mount_steed(mtmp, force, state = game) {
     /* Success */
     await maybewakesteed(mtmp, state);
     if (!force) {
-        if (Levitation(state) && !is_floater(ptr) && !is_flyer(ptr)) {
+        if (Levitation(state.u) && !is_floater(ptr) && !is_flyer(ptr)) {
             /* Must have Lev_at_will at this point: the guard above rejects
                every other levitating hero. */
             await ttyPline(
@@ -652,7 +599,7 @@ export async function mount_steed(mtmp, force, state = game) {
             );
         }
         await ttyPline(`You mount ${mon_nam(mtmp, state)}.`, state);
-        if (Flying(state)) {
+        if (Flying(state.u)) {
             await ttyPline(
                 `You and ${mon_nam(mtmp, state)} take flight `
                 + 'together.',
@@ -665,10 +612,10 @@ export async function mount_steed(mtmp, force, state = game) {
         state.unweapon = false;
     u.usteed = mtmp;
     {
-        const was_stealthy = Stealth(state);
+        const was_stealthy = Stealth(state.u);
 
         steed_vs_stealth(state);
-        if (was_stealthy && !Stealth(state))
+        if (was_stealthy && !Stealth(state.u))
             await ttyPline("You aren't stealthy anymore.", state);
     }
     remove_monster(mtmp.mx, mtmp.my, state);
@@ -795,9 +742,9 @@ async function landing_spot(reason, forceit, state = game, random = coreRandom) 
      *       avoids boulders but allows known traps;
      * i==2: other, allow traps and boulders.
      */
-    const impaird = propertyIntrinsic(state, STUNNED)
-        || propertyIntrinsic(state, CONFUSION)
-        || propertyActive(state, FUMBLING);
+    const impaird = Boolean(Stunned(state.u))
+        || Boolean(Confusion(state.u))
+        || Fumbling(state.u);
     let viable = 0;
     let found = false;
     let i = (reason === DISMOUNT_BYCHOICE && !impaird) ? 0
@@ -865,7 +812,7 @@ export async function dismount_steed(reason, state = game, rawEnv = {}) {
     if (typeof random.rn2 !== 'function')
         throw new TypeError('dismount_steed random injection requires rn2');
     const save_utrap = u.utrap;
-    let repair_leg_damage = propertyActive(state, WOUNDED_LEGS);
+    let repair_leg_damage = Wounded_legs(state.u);
     // The initializers run before the `!u.usteed` sanity check, so
     // landing_spot() reads a hero who is still mounted.
     let have_spot = await landing_spot(reason, 0, state, random);
@@ -876,8 +823,8 @@ export async function dismount_steed(reason, state = game, rawEnv = {}) {
     // C ref: steed.c:591-597. Clear the steed while querying the hero's own
     // flight, levitation, and fall verb; restore it before the reason switch.
     u.usteed = null;
-    const ufly = Flying(state);
-    const ulev = Levitation(state);
+    const ufly = Flying(state.u);
+    const ulev = Levitation(state.u);
     let verb = u_locomotion('fall', state);
     u.usteed = mtmp;
 
@@ -902,7 +849,7 @@ export async function dismount_steed(reason, state = game, rawEnv = {}) {
                 Maybe_Half_Phys(rn1(10, 10), state.u),
                 'riding accident', KILLED_BY_AN, state,
             );
-            const wounded = state.u.uprops[WOUNDED_LEGS].intrinsic & TIMEOUT;
+            const wounded = HWounded_legs(state.u) & TIMEOUT;
             await set_wounded_legs(
                 BOTH_SIDES, wounded + rn1(5, 5), state,
             );
@@ -976,10 +923,10 @@ export async function dismount_steed(reason, state = game, rawEnv = {}) {
     u.usteed = null;
     u.ugallop = 0;
     {
-        const was_stealthy = Stealth(state);
+        const was_stealthy = Stealth(state.u);
 
         steed_vs_stealth(state);
-        if (Stealth(state) && !was_stealthy)
+        if (Stealth(state.u) && !was_stealthy)
             await ttyPline('You seem less noisy now.', state);
     }
 

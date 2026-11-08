@@ -51,8 +51,6 @@ import {
     FACE,
     F_LOOTED,
     FOUNTAIN,
-    FUMBLING,
-    FIRE_RES,
     GETOBJ_ALLOWCNT,
     GETOBJ_PROMPT,
     GRAVE,
@@ -379,8 +377,6 @@ import {
     deltrap,
     fill_pit,
     maketrap,
-    Flying,
-    Levitation,
     clamp_hole_destination,
     float_down,
     minstapetrify,
@@ -408,7 +404,9 @@ import { done } from './end.js';
 import { tutorial } from './nhlua.js';
 import { canseemon, canspotmon } from './display.js';
 import {
-    Blind, Deaf, EBlinded, HBlinded, Hallucination, Maybe_Half_Phys,
+    BLevitation, Blind, Deaf, EBlinded, ELevitation, EWounded_legs,
+    Fire_resistance, Flying, Fumbling, HBlinded, HLevitation, HWounded_legs,
+    Hallucination, Levitation, Maybe_Half_Phys, Wounded_legs,
 } from './youprop.js';
 
 // A fail-closed boundary for goto_level() branches outside the ordinary
@@ -806,17 +804,6 @@ export async function deferred_goto(state = game, rawEnv = {}) {
     state.gd.dfr_post_msg = null;
 }
 
-// Renders youprop.h's `(HProperty || EProperty)` shape only. That is not what
-// every property macro says, so a caller must read the macro it wants before
-// reusing this: Flying (youprop.h:253-255) is
-// `((HFlying || EFlying || (u.usteed && is_flyer(u.usteed->data))) && !BFlying)`,
-// with a steed term and a blocker this helper models neither.
-// js/worn.js setworn() is the port's only writer of an extrinsic property.
-function heroPropertyActive(hero, index) {
-    const property = hero?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
-
 // C ref: do.c familiar_level_msg() (1448-1476). Displays a random "deja vu"
 // message when the hero enters a bones level that came from a previous game
 // played under the same name. Consumes one rn2(4) call.
@@ -878,9 +865,8 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
         : IS_WATERWALL(location?.typ) ? chance < 5
             : lava ? chance === 0 : chance !== 0;
     const message = rawEnv.message ?? ttyPline;
-    // newsym() paints the live game whatever state it is given, so a
-    // planning copy (a monster's planned death drop reaching flooreffects())
-    // redraws only through a caller's newsym.
+    // newsym() paints the global game whatever state it is given, so a
+    // hand-built state redraws only through a caller's newsym.
     const redraw = rawEnv.newsym ?? (state === game ? newsym : () => {});
 
     if (fillsUp) {
@@ -945,8 +931,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
             state.vision_full_recalc = 1;
             await message('You find yourself on dry land again!', state);
         } else if (lava && next2u(rx, ry, state)) {
-            const fireResistant = Boolean(state.u?.uprops?.[FIRE_RES]?.intrinsic
-                || state.u?.uprops?.[FIRE_RES]?.extrinsic);
+            const fireResistant = Fire_resistance(state.u);
             await message(
                 `You are hit by molten ${hliquid('lava', {
                     state,
@@ -956,14 +941,12 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
             );
             await burn_away_slime(state, rawEnv);
             const damage = random.d(fireResistant ? 1 : 3, 6);
-            // A planned monster throw stops at a lethal hit, before done();
-            // the live pass repeats the throw and owns the death.
             await losehp(
                 Maybe_Half_Phys(damage, state.u),
                 'molten lava',
                 KILLED_BY,
                 state,
-                rawEnv.planning ? { planning: true, message } : {},
+                {},
             );
         } else if (!fillsUp && state.flags?.verbose !== false
             && (pushing ? !Blind(state.u) : cansee(rx, ry, state))) {
@@ -1052,8 +1035,7 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                         'squished under a boulder',
                         NO_KILLER_PREFIX,
                         state,
-                        rawEnv.planning
-                            ? { planning: true, message: rawEnv.message } : {},
+                        {},
                     );
                     // C jumps to deletedwithboulder after squishing the hero,
                     // skipping the later generic pit-filling message.
@@ -1101,7 +1083,7 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
         }
         if (is_pool(x, y, state)) {
             const blind = Blind(state.u);
-            const floating = Levitation(state) || Flying(state);
+            const floating = Levitation(state.u) || Flying(state.u);
             if ((blind || floating) && !Deaf(state.u)
                 && u_at(x, y, state)) {
                 if (!state.u?.uinwater) {
@@ -1224,14 +1206,6 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
 export async function trycall(obj, state = game, env = {}) {
     const type = objectType(obj, state);
     if (!type.oc_name_known && !type.oc_uname) {
-        // docall() returns before output/input for an unseen object. A
-        // planning clone otherwise stops before its flush_screen/getlin so
-        // the live pass can replay every source-earlier message and draw.
-        if (env.planning && obj.dknown) {
-            if (typeof env.requestPlanningInput !== 'function')
-                throw new TypeError('planned trycall requires an input handoff');
-            return env.requestPlanningInput('do.c trycall');
-        }
         await docall(obj, state);
     }
 }
@@ -1750,8 +1724,7 @@ async function drop(obj, state = game) {
             const { finesse_ahriman } = await import('./artifacts.js');
             const levhack = finesse_ahriman(obj, state);
             if (levhack) {
-                const levitation = state.u.uprops[LEVITATION];
-                levitation.extrinsic = W_ART;
+                state.u.uprops[LEVITATION].extrinsic = W_ART;
             }
             if (state.flags.verbose)
                 await ttyPline(`You drop ${donameFresh(obj, state)}.`, state);
@@ -1933,7 +1906,7 @@ export function preflight_dropx(obj, env = {}) {
     // do.c boulder_hits_pool never fills a Water-level pool. Underwater
     // drops skip its splash/wakeup arm and consume the boulder through the
     // existing live owner. Surface/private liquid effects stay excluded.
-    const submergedWaterBoulder = state === game && !normalized.planning
+    const submergedWaterBoulder = state === game
         && obj.otyp === BOULDER && u.uinwater
         && on_level(u.uz, state.water_level)
         && is_pool(u.ux, u.uy, state);
@@ -2080,7 +2053,7 @@ function consumeDropAdmission(obj, env, admission) {
 // and before dropy(), so the altar message and BUC knowledge precede placement.
 export async function doaltarobj(obj, state = game, env = {}) {
     // A monster's drop reaches this through flooreffects() with the caller's
-    // message seam, which a planning clone keeps off the live terminal.
+    // message seam.
     const message = env.message ?? ttyPline;
     if (Blind(state.u)) return;
 
@@ -2212,14 +2185,11 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
             normalized.state, normalized);
     }
     stackobj(obj, normalized);
-    if (Blind(normalized.state.u) && Levitation(normalized.state)) {
+    if (Blind(normalized.state.u) && Levitation(normalized.state.u)) {
         // display.c map_object() refuses any state but the module-global
         // game, because its draw half paints that game whatever state it is
-        // handed. The once-per-turn planning clone therefore binds this
-        // operation to a no-op beside newsym below (js/allmain.js
-        // finishElapsedTurn()); every live caller takes map_object() itself,
-        // so only a dry run needs to supply the hook.
-        (normalized.hooks.mapObject ?? map_object)(obj, 0, normalized.state);
+        // handed.
+        map_object(obj, 0, normalized.state);
     }
     requiredDropHook(normalized, 'newsym')(
         normalized.state.u.ux,
@@ -2391,9 +2361,8 @@ export async function dodown(state = game, env = {}) {
     // do.c:1154-1201. HLevitation and ELevitation are the intrinsic and
     // extrinsic masks in youprop.h. Controlled levitation clears only the
     // special timeout and artifact sources before the ordinary floating arm.
-    const levitation = u.uprops?.[LEVITATION] ?? {};
-    const hlevitation = levitation.intrinsic ?? 0;
-    const elevitation = levitation.extrinsic ?? 0;
+    const hlevitation = HLevitation(u);
+    const elevitation = ELevitation(u);
     if (hlevitation || elevitation) {
         if ((hlevitation & I_SPECIAL) || (elevitation & W_ARTI)) {
             if (elevitation & W_ARTI) {
@@ -2407,7 +2376,7 @@ export async function dodown(state = game, env = {}) {
             }
             if (await float_down(I_SPECIAL | TIMEOUT, W_ARTI, state))
                 return ECMD_TIME;
-            if (!levitation.intrinsic && !levitation.extrinsic) {
+            if (!HLevitation(u) && !ELevitation(u)) {
                 await ttyPline('Your latent levitation ceases.', state);
                 return ECMD_TIME;
             }
@@ -2415,7 +2384,7 @@ export async function dodown(state = game, env = {}) {
 
         // do.c:1180-1190 checks the displayed cmap glyph only when the hero
         // is blind and levitation is not blocked; unknown stairs stay hidden.
-        if (!levitation.blocked && Blind(state.u)) {
+        if (!BLevitation(u) && Blind(state.u)) {
             const glyph = state.level?.at(u.ux, u.uy)?.glyph;
             if (stairs_down)
                 stairs_down = glyph_to_cmap(glyph) === S_dnstair;
@@ -2448,7 +2417,7 @@ export async function dodown(state = game, env = {}) {
     if (Upolyd(u) && ceiling_hider(state.mons?.[u.umonnum])
         && u.uundetected) {
         u.uundetected = 0;
-        if (Flying(state)) {
+        if (Flying(state.u)) {
             await ttyPline('You fly out of hiding.', state);
         } else {
             await ttyPline(
@@ -2986,12 +2955,12 @@ export async function goto_level(
         }
         // do.c:1758-1764. A punished, non-levitating hero announces the
         // extra effort even when verbose mode is off.
-        const greatEffort = Punished(state) && !Levitation(state);
+        const greatEffort = Punished(state) && !Levitation(state.u);
         if (state.flags?.verbose || greatEffort) {
             await ttyPline(
                 `${greatEffort ? 'With great effort, you' : 'You'} `
                     + `${u_locomotion('climb', state)} up${
-                    Flying(state) && state.ga?.at_ladder
+                    Flying(state.u) && state.ga?.at_ladder
                         ? ' along' : ''} the ${
                     state.ga?.at_ladder ? 'ladder' : 'stairs'
                 }.`,
@@ -3013,7 +2982,7 @@ export async function goto_level(
         }
         if (!u.dz) {
             /* stayed on same level? (no transit effects) */
-        } else if (Flying(state)) {
+        } else if (Flying(state.u)) {
             // do.c:1776. Flying descends without the falling branch; the
             // ladder wording includes the source's "along" preposition.
             if (state.flags?.verbose) {
@@ -3024,7 +2993,7 @@ export async function goto_level(
                 );
             }
         } else if (near_capacity(state) > UNENCUMBERED
-                   || Punished(state) || heroPropertyActive(u, FUMBLING)) {
+                   || Punished(state) || Fumbling(u)) {
             // do.c:1783-1797. Punishment drags the ball and chain before the
             // ordinary fall damage or steed dismount.
             await ttyPline(
@@ -3094,8 +3063,7 @@ export async function goto_level(
     await kill_genocided_monsters(state);
     // "Expire all timers that have gone off while away. Must be after
     // migrating monsters and objects are delivered."
-    // The arrival is never a dry run, so a rotting floor corpse draws through
-    // the live newsym().
+    // A rotting floor corpse draws through the live newsym().
     await run_timers(state, {
         newsym,
         message: ttyPline,
@@ -3385,8 +3353,7 @@ export async function legs_in_no_shape(
         return;
     }
 
-    const wounded = state.u.uprops[WOUNDED_LEGS];
-    const wl = (wounded.extrinsic ?? 0) & BOTH_SIDES;
+    const wl = (EWounded_legs(state.u)) & BOTH_SIDES;
     let bp = body_part(LEG, state.youmonst);
     if (wl === BOTH_SIDES) bp = makeplural(bp);
     const side = wl === LEFT_SIDE
@@ -3415,24 +3382,23 @@ export async function legs_in_no_shape(
 // caller's, not this function's.
 export async function set_wounded_legs(side, timex, state = game, env = {}) {
     const u = state.u;
-    const wounded = u.uprops[WOUNDED_LEGS];
-    const already = Boolean(wounded.intrinsic || wounded.extrinsic);
+    const already = Wounded_legs(u);
 
     state.disp ??= {};
     state.disp.botl = true;
     if (!already) --u.atemp[A_DEX];
 
-    if (!already || (wounded.intrinsic & TIMEOUT) < timex) {
+    if (!already || (HWounded_legs(u) & TIMEOUT) < timex) {
         // prop.h set_itimeout(): overwrite the timeout field and keep the
         // source bits above it.
-        wounded.intrinsic = (wounded.intrinsic & ~TIMEOUT) | timex;
+        u.uprops[WOUNDED_LEGS].intrinsic = (HWounded_legs(u) & ~TIMEOUT) | timex;
     }
     // C ref: do.c:2442-2445. Bitwise-OR rather than assignment, so a second
     // wound to the other leg does not heal the first.
-    wounded.extrinsic |= side;
+    u.uprops[WOUNDED_LEGS].extrinsic |= side;
     // uhitm.c passes through the attack message sink when a leg wound changes
-    // burden.  Keep the optional seam here so planning attacks cannot write to
-    // the live terminal; older callers retain ttyPline by default.
+    // burden.  Keep the optional seam here; other callers retain ttyPline by
+    // default.
     await encumber_msg(state, { message: env.message ?? ttyPline });
 }
 
@@ -3449,8 +3415,7 @@ export async function set_wounded_legs(side, timex, state = game, env = {}) {
 // raised in between keeps the gain. Across one wound the two cancel exactly.
 export async function heal_legs(state = game, { how = 0, message = ttyPline } = {}) {
     const u = state.u;
-    const wounded = u.uprops[WOUNDED_LEGS];
-    if (!wounded.intrinsic && !wounded.extrinsic) return;
+    if (!HWounded_legs(u) && !EWounded_legs(u)) return;
 
     state.disp ??= {};
     state.disp.botl = true;
@@ -3460,13 +3425,13 @@ export async function heal_legs(state = game, { how = 0, message = ttyPline } = 
     // nothing is said about the hero's own legs.
     if (!u.usteed && how !== 2) {
         let legs = body_part(LEG, state.youmonst);
-        if ((wounded.extrinsic & BOTH_SIDES) === BOTH_SIDES)
+        if ((EWounded_legs(u) & BOTH_SIDES) === BOTH_SIDES)
             legs = makeplural(legs);
         await message(`Your ${legs} ${vtense(legs, 'feel')} better.`, state);
     }
 
-    wounded.intrinsic = 0;
-    wounded.extrinsic = 0;
+    u.uprops[WOUNDED_LEGS].intrinsic = 0;
+    u.uprops[WOUNDED_LEGS].extrinsic = 0;
 
     // C ref: do.c:2473-2484. Wounded legs cost carrying capacity, so healing
     // them can lift an encumbrance the hero has been carrying.

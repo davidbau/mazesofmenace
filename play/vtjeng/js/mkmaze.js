@@ -31,7 +31,6 @@ import {
     MKTRAP_MAZEFLAG,
     MM_NONAME,
     NO_MM_FLAGS,
-    SWIMMING,
     MON_BUBBLEMOVE,
     POOL,
     ROOM,
@@ -76,7 +75,7 @@ import { makemon } from './makemon_create.js';
 import { elemental_clog, m_into_limbo, mnearto, mnexto } from './mon.js';
 import { mkstairs, place_branch, walkfrom, wallification } from './mklev.js';
 import { mktrap, occupied } from './mktrap.js';
-import { is_orc, is_swimmer } from './mondata.js';
+import { is_orc } from './mondata.js';
 import { m_at, remove_monster } from './monst.js';
 import {
     dealloc_obj,
@@ -150,7 +149,9 @@ import { objectGenerationEnv } from './object_generation.js';
 import { rloc } from './teleport.js';
 import { remove_worm } from './worm.js';
 import { onscary, set_apparxy } from './monmove.js';
-import { Deaf } from './youprop.js';
+import {
+    Deaf, Swimming,
+} from './youprop.js';
 
 // C ref: mkmaze.c iswall(). Wall-spine joins accept doors, lava walls,
 // water, secret doors, and iron bars in addition to ordinary wall types.
@@ -584,16 +585,10 @@ export async function movebubbles(state = game, random = rn2) {
     state.vision_full_recalc = 1;
 }
 
-function heroSwimming(state) {
-    const property = state.u?.uprops?.[SWIMMING];
-    return Boolean(property?.intrinsic || property?.extrinsic)
-        || is_swimmer(state.youmonst?.data);
-}
-
 // C ref: mkmaze.c water_friction() (1687-1720).
 export async function water_friction(state = game, random = rn2) {
     const hero = state.u;
-    if (heroSwimming(state) && random(4)) return;
+    if (Swimming(state.u) && random(4)) return;
     let affected = false;
     if (hero.dx && !random(!hero.dy ? 3 : 6)) {
         let dy;
@@ -744,7 +739,8 @@ export function bad_location(x, y, nlx, nly, nhx, nhy, state = game) {
 // do.c goto_level() zeroes before every arrival. js/do.js renders that clearing
 // as `state.updest = {}`, so an unset field arrives here as undefined where C
 // would read 0; `?? 0` restores C's value before any comparison sees it.
-// Planning options form one lockstep protocol: `planPositionOnly` traverses
+// The position-only options form one lockstep protocol, which js/do.js
+// place_random_arrival() uses to admit an arrival: `planPositionOnly` traverses
 // candidates with `randomOneBased`, calls the required `preflightPosition`
 // for the selected square instead of committing it, and must leave every
 // selection input unchanged so the caller can replay the traversal live.
@@ -817,8 +813,9 @@ export async function place_lregion(
 // `oneshot` is TRUE when there is no other square to try: either the region is
 // a single square, or the 200 random tries are spent and the deterministic
 // sweep is running. Only then does C disturb what is already on the square,
-// and only the live pass may disturb what is there. The planning pass checks
-// the same destination with a removable trap omitted from a private view;
+// and only the committing pass may disturb what is there. The
+// planPositionOnly pass checks the same destination with a removable trap
+// omitted from a private view;
 // relocation is a live effect after selection, not another selection draw.
 async function put_lregion_here(
     x, y,

@@ -40,7 +40,6 @@ import {
     ANIMATE_SPELL,
     ALTAR,
     AM_CHAOTIC,
-    ANTIMAGIC,
     AM_SANCTUM,
     AM_SHRINE,
     AM_MASK,
@@ -49,7 +48,6 @@ import {
     AGGRAVATE_MONSTER,
     ACH_TUNE,
     BOLT_LIM,
-    CONFUSION,
     DIED,
     ESCAPED,
     ASCENDED,
@@ -60,7 +58,6 @@ import {
     EXT_ENCUMBER,
     FAST,
     FOOT,
-    FIXED_ABIL,
     FROMOUTSIDE,
     HUNGRY,
     HVY_ENCUMBER,
@@ -91,24 +88,19 @@ import {
     PASSES_WALLS,
     PLNMSG_OBJ_GLOWS,
     PROTECTION,
-    REFLECTING,
     ROOM,
     SCORR,
     SDOOR,
     SEE_INVIS,
-    SICK,
     SICK_ALL,
     FIRE_RES,
     COLD_RES,
     SLEEP_RES,
     SHOCK_RES,
     POISON_RES,
-    SLIMED,
     STRAT_APPEARMSG,
-    STONED,
     STRANGLED,
     STOMACH,
-    STUNNED,
     TELEDS_NO_FLAGS,
     TELL,
     TIMEOUT,
@@ -117,10 +109,8 @@ import {
     something,
     TT_BURIEDBALL,
     TT_LAVA,
-    UNCHANGING,
     Upolyd,
     WEAK,
-    WOUNDED_LEGS,
     W_SADDLE,
     W_ARM,
     W_ARMC,
@@ -287,8 +277,6 @@ import { randrole } from './role_init.js';
 import { aggravate } from './wizard.js';
 import {
     animate_statue,
-    Flying,
-    Levitation,
     reset_utrap,
     rescued_from_terrain,
 } from './trap.js';
@@ -323,7 +311,7 @@ import {
     spe_Unknown,
     spelleffects,
 } from './spell.js';
-import { welded, Glib } from './wield.js';
+import { welded } from './wield.js';
 import { bimanual, setnotworn, which_armor } from './worn.js';
 import { encumber_msg, rider_corpse_revival } from './pickup.js';
 import { init_uhunger } from './u_init.js';
@@ -356,8 +344,12 @@ import { canseemon } from './display.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { Punished } from './steed.js';
 import {
-    Blind, Blinded, BlindedTimeout, Blindfolded, Deaf, EBlinded,
-    HBlinded, HDeaf, HHallucination, Hallucination,
+    Antimagic, Blind, Blinded, BlindedTimeout, Blindfolded, Deaf,
+    Disint_resistance, EBlinded, EDisint_resistance, EReflecting, Fixed_abil,
+    Flying, Glib, HBlinded, HConfusion, HDeaf, HFast, HHallucination,
+    HProtection, HStealth, HStun, HTelepat, Hallucination, Levitation,
+    Passes_walls, Reflecting, Shock_resistance, Sick, Slimed,
+    Stoned, Strangled, Unchanging, Wounded_legs,
 } from './youprop.js';
 
 // Raised where pray.c reaches a branch this port has not translated.
@@ -543,12 +535,12 @@ export async function dosacrifice(state = game) {
 
     if (!on_altar(state) || u.uswallow) {
         await ttyPline(
-            `You are not ${Levitation(state) || Flying(state) ? 'over' : 'on'} an altar.`,
+            `You are not ${Levitation(state.u) || Flying(state.u) ? 'over' : 'on'} an altar.`,
             state,
         );
         return ECMD_OK;
     }
-    if (intrinsic(state, CONFUSION) || intrinsic(state, STUNNED)) {
+    if (HConfusion(state.u) || HStun(state.u)) {
         await ttyPline('You are too impaired to perform the rite.', state);
         return ECMD_OK;
     }
@@ -1183,7 +1175,7 @@ async function at_your_feet(str, state) {
     } else {
         await ttyPline(
             `${str} ${vtense(str, blind ? 'land' : 'appear')} `
-                + `${Levitation(state) ? 'beneath' : 'at'} your `
+                + `${Levitation(state.u) ? 'beneath' : 'at'} your `
                 + `${makeplural(body_part(FOOT, state.youmonst))}!`,
             state,
         );
@@ -1191,21 +1183,7 @@ async function at_your_feet(str, state) {
 }
 
 
-// The intrinsic half of a youprop.h macro. Every trouble test below that reads
-// one names it here rather than reaching into u.uprops, so a stray `.extrinsic`
-// cannot creep into a test C writes as intrinsic-only.
-function intrinsic(state, propidx) {
-    return Math.trunc(state.u.uprops?.[propidx]?.intrinsic ?? 0);
-}
 
-function extrinsic(state, propidx) {
-    return Math.trunc(state.u.uprops?.[propidx]?.extrinsic ?? 0);
-}
-
-// C ref: youprop.h:372 Unchanging (HUnchanging || EUnchanging).
-function Unchanging(state) {
-    return Boolean(intrinsic(state, UNCHANGING) || extrinsic(state, UNCHANGING));
-}
 
 // C ref: pray.c critically_low_hp() (116-156). "critically low hit points if
 // hp <= 5 or hp <= maxhp/N for some N".
@@ -1250,7 +1228,7 @@ export function critically_low_hp(only_if_injured, state = game) {
 export function stuck_in_wall(state = game) {
     let count = 0;
 
-    if (intrinsic(state, PASSES_WALLS) || extrinsic(state, PASSES_WALLS))
+    if (Passes_walls(state.u))
         return false;
     for (let i = -1; i <= 1; i++) {
         const x = state.u.ux + i;
@@ -1280,14 +1258,14 @@ export function in_trouble(state = game) {
     /*
      * major troubles
      */
-    if (intrinsic(state, STONED)) return TROUBLE_STONED;
-    if (intrinsic(state, SLIMED)) return TROUBLE_SLIMED;
-    if (intrinsic(state, STRANGLED)) return TROUBLE_STRANGLED;
+    if (Stoned(state.u)) return TROUBLE_STONED;
+    if (Slimed(state.u)) return TROUBLE_SLIMED;
+    if (Strangled(state.u)) return TROUBLE_STRANGLED;
     if (state.u.utrap && state.u.utraptype === TT_LAVA) return TROUBLE_LAVA;
-    if (intrinsic(state, SICK)) return TROUBLE_SICK;
+    if (Sick(state.u)) return TROUBLE_SICK;
     if (state.u.uhs >= WEAK) return TROUBLE_STARVING;
     if (region_danger(state)) return TROUBLE_REGION;
-    if ((!Upolyd(state.u) || Unchanging(state))
+    if ((!Upolyd(state.u) || Unchanging(state.u))
         && critically_low_hp(false, state))
         return TROUBLE_HIT;
     if (ismnum(state.u.ulycn)) return TROUBLE_LYCANTHROPE;
@@ -1305,7 +1283,7 @@ export function in_trouble(state = game) {
            otherwise "fix all troubles" would get stuck in a loop */
         if (welded(state.uwep, state)) return TROUBLE_UNUSEABLE_HANDS;
         if (Upolyd(state.u) && nohands(state.youmonst?.data)
-            && (!Unchanging(state)
+            && (!Unchanging(state.u)
                 || ((otmp = unchanger(state)) !== null && otmp.cursed)))
             return TROUBLE_UNUSEABLE_HANDS;
     }
@@ -1339,12 +1317,12 @@ export function in_trouble(state = game) {
 
     for (let i = 0; i < A_MAX; i++)
         if (state.u.acurr.a[i] < state.u.amax.a[i]) return TROUBLE_POISONED;
-    if ((intrinsic(state, WOUNDED_LEGS) || extrinsic(state, WOUNDED_LEGS))
+    if ((Wounded_legs(state.u))
         && !state.u.usteed)
         return TROUBLE_WOUNDED_LEGS;
     if (state.u.uhs >= HUNGRY) return TROUBLE_HUNGRY;
-    if (intrinsic(state, STUNNED) & TIMEOUT) return TROUBLE_STUNNED;
-    if (intrinsic(state, CONFUSION) & TIMEOUT) return TROUBLE_CONFUSED;
+    if (HStun(state.u) & TIMEOUT) return TROUBLE_STUNNED;
+    if (HConfusion(state.u) & TIMEOUT) return TROUBLE_CONFUSED;
     if (HHallucination(state.u) & TIMEOUT) return TROUBLE_HALLUCINATION;
     return 0;
 }
@@ -1421,7 +1399,7 @@ export async function fix_curse_trouble(otmp, what = null, state = game) {
         return;
     }
 
-    if (otmp === state.uarmg && Glib(state)) {
+    if (otmp === state.uarmg && Glib(state.u)) {
         make_glib(0, state);
         await ttyPline(
             `Your ${gloves_simple_name(state.uarmg, state)} are no longer slippery.`,
@@ -1533,7 +1511,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         state.u.acurr.a[A_STR] = state.u.amax.a[A_STR];
         state.disp ??= {};
         state.disp.botl = true;
-        if (state.u.uprops?.[FIXED_ABIL]?.extrinsic) {
+        if (Fixed_abil(state.u)) {
             if ((otmp = stuck_ring(
                 state.uleft, RIN_SUSTAIN_ABILITY, state,
             ))) {
@@ -1550,11 +1528,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         if (await safe_teleds(TELEDS_NO_FLAGS, state)) {
             await ttyPline('Your surroundings change.', state);
         } else {
-            const passesWalls = state.u.uprops[PASSES_WALLS] ??= {
-                intrinsic: 0,
-                extrinsic: 0,
-            };
-            set_itimeout(passesWalls, d(4, 4) + 4);
+            set_itimeout(state.u.uprops[PASSES_WALLS], d(4, 4) + 4);
             await ttyPline(youFeel('much slimmer.', state), state);
         }
         break;
@@ -1578,7 +1552,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
             break;
         }
         if (Upolyd(state.u) && nohands(state.youmonst?.data)) {
-            if (!Unchanging(state)) {
+            if (!Unchanging(state.u)) {
                 await ttyPline('Your shape becomes uncertain.', state);
                 await rehumanize(state);
             } else if ((otmp = unchanger(state)) && otmp.cursed) {
@@ -1975,8 +1949,7 @@ export async function prayer_done(state = game) {
 // C ref: pray.c maybe_turn_mon_iter() (2347-2405). `iter_mons()` invokes this
 // callback for living, on-map monsters; the asynchronous owners below keep
 // that same cached-next traversal in doturn().
-function turnDefaultMessage(text, state, env = {}) {
-    if (env.planning) return undefined;
+function turnDefaultMessage(text, state) {
     return ttyPline(text, state);
 }
 
@@ -2031,7 +2004,7 @@ export async function maybe_turn_mon_iter(mtmp, state = game, env = {}) {
                 && state.u.ulevel > (MAXULEV / 2)))) return;
 
     mtmp.msleeping = false;
-    if (intrinsic(state, CONFUSION)) {
+    if (HConfusion(state.u)) {
         const messageCount = state.turn_undead_msg_cnt ?? 0;
         state.turn_undead_msg_cnt = messageCount + 1;
         if (!messageCount) {
@@ -2122,7 +2095,7 @@ export async function doturn(state = game, env = {}) {
     const Gname = halu_gname(state.u.ualign.type, state);
     if (!can_chant(state.youmonst, state)) {
         await message(
-            `You are ${intrinsic(state, STRANGLED)
+            `You are ${Strangled(state.u)
                 ? 'not able to call' : 'incapable of calling'} upon ${Gname}`
                 + ' to turn aside evilness.', state, env,
         );
@@ -2677,26 +2650,23 @@ export async function pleased(g_align, state = game) {
                 'Thou hast pleased me with thy progress,',
                 state,
             );
-            const grant = (property, label) => {
-                const prop = u.uprops[property];
-                prop.intrinsic ??= 0;
-                if (!(prop.intrinsic & INTRINSIC)) {
-                    prop.intrinsic |= FROMOUTSIDE;
+            // Each gift tests its H macro and sets that intrinsic field.
+            const grant = (heroIntrinsic, property, label) => {
+                if (!(heroIntrinsic(u) & INTRINSIC)) {
+                    u.uprops[property].intrinsic |= FROMOUTSIDE;
                     return label;
                 }
                 return null;
             };
-            const gift = grant(TELEPAT, 'Telepathy')
-                ?? grant(FAST, 'Speed')
-                ?? grant(STEALTH, 'Stealth');
+            const gift = grant(HTelepat, TELEPAT, 'Telepathy')
+                ?? grant(HFast, FAST, 'Speed')
+                ?? grant(HStealth, STEALTH, 'Stealth');
             if (gift) {
                 await ttyPline(`"and thus I grant thee the gift of ${gift}!"`, state);
                 if (gift === 'Telepathy' && Blind(state.u)) await see_monsters(state);
             } else {
-                const prop = u.uprops[PROTECTION];
-                prop.intrinsic ??= 0;
-                if (!(prop.intrinsic & INTRINSIC)) {
-                    prop.intrinsic |= FROMOUTSIDE;
+                if (!(HProtection(u) & INTRINSIC)) {
+                    u.uprops[PROTECTION].intrinsic |= FROMOUTSIDE;
                     if (!u.ublessed) u.ublessed = rn1(3, 2);
                 } else {
                     u.ublessed++;
@@ -2772,8 +2742,7 @@ async function god_zaps_you(resp_god, state) {
         }
     } else {
         await ttyPline('Suddenly, a bolt of lightning strikes you!', state);
-        const reflecting = u.uprops?.[REFLECTING];
-        if (reflecting?.intrinsic || reflecting?.extrinsic) {
+        if (Reflecting(u)) {
             await shieldeff(u.ux, u.uy, state);
             if (Blind(state.u)) {
                 await ttyPline("For some reason you're unaffected.", state);
@@ -2782,8 +2751,7 @@ async function god_zaps_you(resp_god, state) {
             }
             monstseesu(M_SEEN_REFL, state);
         } else {
-            const shockResistance = u.uprops?.[SHOCK_RES];
-            if (shockResistance?.intrinsic || shockResistance?.extrinsic) {
+            if (Shock_resistance(u)) {
                 await shieldeff(u.ux, u.uy, state);
                 await ttyPline('It seems not to affect you.', state);
                 monstseesu(M_SEEN_ELEC, state);
@@ -2821,8 +2789,8 @@ async function god_zaps_you(resp_god, state) {
 
         // do_wear.c disintegrate_arm() owns the source object-resistance roll
         // and all object/equipment effects. C discards its return value.
-        const reflectionExtrinsic = u.uprops?.[REFLECTING]?.extrinsic ?? 0;
-        const disintExtrinsic = u.uprops?.[DISINT_RES]?.extrinsic ?? 0;
+        const reflectionExtrinsic = EReflecting(u);
+        const disintExtrinsic = EDisint_resistance(u);
         if (state.uarms
             && !(reflectionExtrinsic & W_ARMS)
             && !(disintExtrinsic & W_ARMS)) {
@@ -2842,8 +2810,7 @@ async function god_zaps_you(resp_god, state) {
         if (state.uarmu && !state.uarm && !state.uarmc)
             await disintegrate_arm(state.uarmu, { state });
 
-        const disintResistance = u.uprops?.[DISINT_RES];
-        if (!(disintResistance?.intrinsic || disintResistance?.extrinsic)) {
+        if (!(Disint_resistance(u))) {
             await fry_by_god(resp_god, true, state);
             if (state.program_state?.gameover) return;
             monstunseesu(M_SEEN_DISINT, state);
@@ -3010,9 +2977,8 @@ export async function angrygods(resp_god, state = game) {
     case 5:
         await godvoice(resp_god, 'Thou hast angered me.', state);
         {
-            const antimagic = u.uprops?.[ANTIMAGIC];
             if (!Blind(state.u)
-                && !(antimagic?.intrinsic || antimagic?.extrinsic)) {
+                && !(Antimagic(u))) {
                 const aura = an(hcolor('black', state));
                 await ttyPline(
                     `${aura[0].toUpperCase()}${aura.slice(1)} glow surrounds you.`,

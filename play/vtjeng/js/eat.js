@@ -23,8 +23,6 @@ import {
     COST_OPEN,
     IS_ALTAR,
     COLD_RES,
-    CONFUSION,
-    CONFLICT,
     COST_BITE,
     DIED,
     DISMOUNT_FELL,
@@ -41,7 +39,6 @@ import {
     FAINTED,
     FAINTING,
     FIRE_RES,
-    FIXED_ABIL,
     FROMFORM,
     FROMOUTSIDE,
     GETOBJ_DOWNPLAY,
@@ -51,7 +48,6 @@ import {
     GETOBJ_NOFLAGS,
     GETOBJ_SUGGEST,
     GD_EATGOLD,
-    GLIB,
     Has_contents,
     IRONBARS,
     HEALTHY_TIN,
@@ -69,7 +65,6 @@ import {
     LL_CONDUCT,
     LAST_PROP,
     LIGHT_HEADED,
-    MAGICAL_BREATHING,
     M_AP_NOTHING,
     M_AP_OBJECT,
     M_AP_TYPE,
@@ -88,7 +83,6 @@ import {
     POISON_RES,
     POISONING,
     PROTECTION,
-    REGENERATION,
     ROTTEN_TIN,
     SATIATED,
     STARVED,
@@ -97,25 +91,20 @@ import {
     SHOCK_RES,
     SICK,
     SICK_ALL,
-    SICK_RES,
     SICK_VOMITABLE,
     SLEEP_RES,
     SLEEPY,
     SLIMED,
-    SLOW_DIGESTION,
     SLT_ENCUMBER,
     SPINACH_TIN,
     STOMACH,
-    STUNNED,
     STONED,
     STONING,
     STONE_RES,
-    STRANGLED,
     TELEPAT,
     TELEPORT,
     TELEPORT_CONTROL,
     TIMEOUT,
-    UNCHANGING,
     Upolyd,
     VOMITING,
     WEAK,
@@ -128,7 +117,6 @@ import {
     W_TOOL,
     W_WEP,
     W_NONDIGGABLE,
-    WWALKING,
     TT_BEARTRAP,
     BEAR_TRAP,
     NEUTRAL,
@@ -167,7 +155,7 @@ import { vault_gd_watching } from './vault.js';
 import { unpunish } from './read.js';
 import { livelog_printf, verbalize, youHear, youFeel } from './pline.js';
 import {
-    HeroDeathPlanningError, check_capacity, endRunning, inv_cnt, losehp, nomul, unmul, rounddiv, still_chewing, curs_on_u, You_can_move_again, } from './hack.js';
+    check_capacity, endRunning, inv_cnt, losehp, nomul, unmul, rounddiv, still_chewing, curs_on_u, You_can_move_again, } from './hack.js';
 import { dist2, lcase, s_suffix } from './hacklib.js';
 import {
     INVLET_BASIC, addinv_nomerge, carrying, feel_cockatrice, freeinv, getobj, hands_obj, obj_extract_self, obj_here, stackobj, useup, useupall, useupf, will_feel_cockatrice, } from './invent.js';
@@ -179,9 +167,9 @@ import {
     iter_mons_safe, mon_offmap, mondied, monstone, pm_to_cham, rescham,
 } from './mon.js';
 import {
-    humanoid, is_dwarf, is_elf, is_orc, acidic, attacktype, attacktype_fordmg, can_teleport, carnivorous, cantvomit, control_teleport, defended, dmgtype, flesh_petrifies, herbivorous, is_giant, is_rider, is_clinger, is_were, metallivorous, mindless, monsndx, noncorporeal, poisonous, poly_when_stoned, same_race, slimeproof, telepathic, type_is_pname, your_race, is_undead, olfaction, breathless, perceives, } from './mondata.js';
+    humanoid, is_dwarf, is_elf, is_orc, acidic, attacktype, attacktype_fordmg, can_teleport, carnivorous, cantvomit, control_teleport, dmgtype, flesh_petrifies, herbivorous, is_giant, is_rider, is_clinger, is_were, metallivorous, mindless, monsndx, noncorporeal, poisonous, poly_when_stoned, same_race, slimeproof, telepathic, type_is_pname, your_race, is_undead, olfaction, breathless, perceives, } from './mondata.js';
 import {
-    AD_ACID, AD_BLND, AD_DISE, AD_POLY, AT_BREA, AT_ENGL, PM_KNIGHT,
+    AD_ACID, AD_BLND, AD_POLY, AT_BREA, AT_ENGL, PM_KNIGHT,
     PM_PYROLISK, PM_QUEEN_BEE, PM_STONE_GOLEM, } from './monsters.js';
 import {
     hcolor, Mgender, Monnam, mon_nam, pmname, rndmonnam,
@@ -211,8 +199,6 @@ import { outrumor } from './random_text.js';
 import { fall_asleep, obj_stop_timers } from './timeout.js';
 import {
     b_trapped, deltrap, float_up, reset_utrap, selftouch, t_at,
-    Flying,
-    Levitation,
 } from './trap.js';
 import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
 import { remove_worn_item } from './steal.js';
@@ -222,8 +208,14 @@ import {
     cantwield, uwepgone, uswapwepgone, uqwepgone, welded, wield_tool,
 } from './wield.js';
 import {
-    BInvis, Blind, Deaf, EInvis, ESee_invisible, HBlinded, HHallucination,
-    HInvis, HSee_invisible, Hallucination, Invis, Unaware,
+    Acid_resistance, BInvis, Blind, Breathless, Deaf, Displaced, EConflict,
+    EInvis, EMagical_breathing, EProtection, ERegeneration, ESee_invisible,
+    EWwalking, Fixed_abil, Flying, Glib, HBlinded, HConflict, HConfusion,
+    HFast, HHallucination, HInvis, HMagical_breathing, HRegeneration,
+    HSee_invisible, HSleep_resistance, HSleepy, HStun, HWwalking,
+    Hallucination, Hunger, Invis, Levitation, Lifesaved, Poison_resistance,
+    Sick, Sick_resistance, Sleep_resistance, Slimed, Slow_digestion,
+    Stone_resistance, Stoned, Strangled, Unaware, Unchanging, Vomiting,
 } from './youprop.js';
 
 // C ref: eat.c hu_stat[], indexed by u.uhs and shared with botl.c and
@@ -330,20 +322,6 @@ function hungerProperty(state, index) {
     return state.u?.uprops?.[index] ?? {};
 }
 
-// The `(HFoo || EFoo)` shape, and only that shape. youprop.h spells
-// Sleep_resistance (36), Hunger (147), Slow_digestion (291) and
-// Halluc_resistance (119) this way; the maladies at :108-113 and
-// Hallucination's own positive term at :116 are the bare intrinsic, so they
-// read hungerProperty().intrinsic instead.
-//
-// youprop.h:218 spells Conflict this way too, but gethungry() must not read it
-// through this helper: eat.c:3202-3203 tests `HConflict || (EConflict &
-// (~W_ARTI))` rather than the macro, so an artifact is the one conflict source
-// that costs no nutrition. That masked test stays spelled out below.
-function propertyActive(state, index) {
-    const property = hungerProperty(state, index);
-    return Boolean(property.intrinsic || property.extrinsic);
-}
 
 // C ref: eat.c temp_resist() (453-470). The timeout portion is temporary
 // only when no other intrinsic source, worn source, or blocker contributes.
@@ -358,14 +336,6 @@ export function temp_resist(prop, state = game) {
         ? timeout : 0;
 }
 
-// C ref: youprop.h Sick_resistance (67-70). In addition to the intrinsic and
-// extrinsic property bits, a wielded sickness-defending artifact or green
-// dragon armor (through mondata.c defended()) confers this resistance.
-function sickResistance(state) {
-    const property = hungerProperty(state, SICK_RES);
-    return Boolean(property.intrinsic || property.extrinsic
-        || defended(state.youmonst, AD_DISE, state));
-}
 
 // C ref: eat.c is_fainted() (3346-3350). Keep the hunger status predicate in
 // its source owner; youprop.h Unaware and steal.c unresponsive() both use it.
@@ -392,9 +362,7 @@ function ringConsumesNutrition(ring, side, state) {
     if (ring.spe || !definition.oc_charged) return true;
     if (ring.otyp !== RIN_PROTECTION) return false;
 
-    const extrinsic = Math.trunc(
-        hungerProperty(state, PROTECTION).extrinsic ?? 0,
-    );
+    const extrinsic = EProtection(state.u);
     if (side === W_RINGL) {
         const otherSources = extrinsic & ~W_RINGL;
         return otherSources === 0
@@ -415,9 +383,7 @@ function preflightNutritionRing(ring, state) {
 }
 
 // The operations eat.c reaches through globals -- pline(), end_running() and
-// bot() -- and this port injects, because the elapsed-turn caller substitutes
-// silent versions of all three when it dry-runs a turn on a cloned state.
-// Resolving by name means a caller that omits one fails here rather than
+// bot() -- and this port injects. Resolving by name means a caller that omits one fails here rather than
 // silently skipping the output C produces.
 function requireEatOperation(env, name) {
     const operation = env[name];
@@ -464,8 +430,7 @@ export function is_edible(obj, state = game) {
 }
 
 // Pure admission for eat.c:gethungry(). gethungry() reuses the returned
-// source inputs at its actual source-ordered call site, and a dry run of the
-// once-per-turn block reads requiresLiveState to stop before it.
+// source inputs at its actual source-ordered call site.
 export function preflightGetHungry(state = game, env = {}) {
     const u = state.u;
     if (!u || !Number.isSafeInteger(u.uhunger)) {
@@ -496,20 +461,18 @@ export function preflightGetHungry(state = game, env = {}) {
 
     const eatsNormally = Boolean(species.mflags1
         & (M1_CARNIVORE | M1_HERBIVORE | M1_METALLIVORE));
-    const slowDigestion = propertyActive(state, SLOW_DIGESTION);
+    const slowDigestion = Slow_digestion(state.u);
     const ordinaryLoss = eatsNormally && !slowDigestion ? 1 : 0;
-    const regeneration = hungerProperty(state, REGENERATION);
-    const regenerationLoss = (Math.trunc(regeneration.intrinsic ?? 0)
-            & ~FROMFORM)
-        || (Math.trunc(regeneration.extrinsic ?? 0) & ~(W_ARTI | W_WEP))
-        ? 1 : 0;
+    const regenerationLoss = (HRegeneration(state.u) & ~FROMFORM)
+        || (ERegeneration(state.u) & ~(W_ARTI | W_WEP)) ? 1 : 0;
     const capacity = env.nearCapacity(state);
     const oddLoss = ordinaryLoss + regenerationLoss
         + (capacity > SLT_ENCUMBER ? 1 : 0);
-    const hungerLoss = propertyActive(state, HUNGER) ? 1 : 0;
-    const conflict = hungerProperty(state, CONFLICT);
-    const conflictLoss = conflict.intrinsic
-        || (Math.trunc(conflict.extrinsic ?? 0) & ~W_ARTI) ? 1 : 0;
+    const hungerLoss = Hunger(state.u) ? 1 : 0;
+    // eat.c:3203 masks W_ARTI out of EConflict rather than testing Conflict,
+    // so an artifact is the one conflict source that costs no nutrition.
+    const conflictLoss = HConflict(state.u)
+        || (EConflict(state.u) & ~W_ARTI) ? 1 : 0;
     const accessoryLoss = Math.max(
         slowDigestion
             && state.uright?.otyp !== RIN_SLOW_DIGESTION
@@ -522,15 +485,12 @@ export function preflightGetHungry(state = game, env = {}) {
     const evenLoss = ordinaryLoss + hungerLoss + conflictLoss + accessoryLoss;
     // An Unaware hero pays `ordinaryLoss` only when rn2(10) comes up 0, so
     // this over-states the loss for nine turns in ten. That is the safe
-    // direction: the upper bound identifies hunger effects that must run live
-    // before planning the remaining upkeep from their result.
+    // direction for the admission checks below.
     const maximumReachableLoss = Math.max(oddLoss, evenLoss);
     const earliestStatus = hungerStatus(
         u.uhunger - maximumReachableLoss,
     );
     const mayChangeStatus = earliestStatus !== u.uhs;
-    const requiresLiveState = earliestStatus === FAINTING
-        || (mayChangeStatus && (u.umonnum !== u.umonster ? u.mh : u.uhp) < 1);
     // newuhs()'s `newhs >= WEAK && u.uhs < WEAK` arm writes ATEMP(A_STR), and
     // its WEAK message reads the role and the race. Widening `<` to `<=` here
     // is equivalent for every well-formed state: it only adds the case where
@@ -564,7 +524,6 @@ export function preflightGetHungry(state = game, env = {}) {
         hungerLoss,
         ordinaryLoss,
         regenerationLoss,
-        requiresLiveState,
         skipped: false,
         slowDigestion,
         unaware,
@@ -685,7 +644,7 @@ export function vegetarian(monster) {
 
 // C ref: eat.c eating_conducts() (576-599). The helper is used by mind-flayer
 // brain attacks as well as the existing food paths. Its caller supplies the
-// message environment so planning clones keep Monk conduct feedback private.
+// message environment for Monk conduct feedback.
 export async function eating_conducts(pd, state = game, env = {}) {
     const u = state.u;
     u.uconduct ??= {};
@@ -727,8 +686,7 @@ export async function eating_conducts(pd, state = game, env = {}) {
 // effects here.
 export async function eat_brains(magr, mdef, visflag, dmg, state = game, env = {}) {
     const random = env.random ?? coreRandom;
-    const message = env.message ?? (env.planning ? async () => {}
-        : ttyPline);
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, random, message };
     const pd = mdef.data;
     let giveNutrit = false;
@@ -764,8 +722,8 @@ export async function eat_brains(magr, mdef, visflag, dmg, state = game, env = {
 
     if (flesh_petrifies(pd)) {
         if (magr === state.youmonst) {
-            if (!propertyActive(state, STONE_RES)
-                && !hungerProperty(state, STONED).intrinsic) {
+            if (!Stone_resistance(state.u)
+                && !Stoned(state.u)) {
                 await make_stoned(
                     5,
                     null,
@@ -808,11 +766,6 @@ export async function eat_brains(magr, mdef, visflag, dmg, state = game, env = {
             state.killer ??= {};
             state.killer.name = `unwisely ate the brain of ${pmname(pd, Mgender(mdef, state))}`;
             state.killer.format = NO_KILLER_PREFIX;
-            if (env.planning) {
-                if (typeof env.planningDeath !== 'function')
-                    throw new TypeError('eat_brains requires planningDeath for fatal planned Rider ingestion');
-                throw env.planningDeath(state.youmonst, DIED);
-            }
             await done(DIED, state, effectEnv);
             if (state.program_state?.gameover) return result;
             await exercise(A_WIS, false, state, random);
@@ -832,18 +785,10 @@ export async function eat_brains(magr, mdef, visflag, dmg, state = game, env = {
         await maybe_cannibal(monsndx(pd), true, state, effectEnv);
     } else if (mdef === state.youmonst) {
         if (state.u.acurr.a[A_INT] <= (state.urace.attrmin[A_INT] ?? 0)) {
-            const lifeSaved = Boolean(
-                state.u.uprops?.[LIFESAVED]?.extrinsic,
-            );
-            if (lifeSaved) {
+            if (Lifesaved(state.u)) {
                 state.killer ??= {};
                 state.killer.name = 'brainlessness';
                 state.killer.format = KILLED_BY;
-                if (env.planning) {
-                    if (typeof env.planningDeath !== 'function')
-                        throw new TypeError('eat_brains requires planningDeath for fatal planned brain loss');
-                    throw env.planningDeath(magr, DIED);
-                }
                 await done(DIED, state, { ...effectEnv, fromMonster: true });
                 if (state.program_state?.gameover) return result;
                 await message('Unfortunately your brain is still gone.',
@@ -857,11 +802,6 @@ export async function eat_brains(magr, mdef, visflag, dmg, state = game, env = {
             state.killer ??= {};
             state.killer.name = 'brainlessness';
             state.killer.format = KILLED_BY;
-            if (env.planning) {
-                if (typeof env.planningDeath !== 'function')
-                    throw new TypeError('eat_brains requires planningDeath for fatal planned brain loss');
-                throw env.planningDeath(magr, DIED);
-            }
             await done(DIED, state, { ...effectEnv, fromMonster: true });
             if (state.program_state?.gameover) return result;
             state.u.acurr.a[A_INT] = (state.urace.attrmin[A_INT] ?? 0) + 2;
@@ -1045,7 +985,7 @@ async function consume_tin(mesg, state = game, env = {}) {
         const monster = state.mons[monsterNumber];
         if ((monsterNumber === PM_COCKATRICE
             || monsterNumber === PM_CHICKATRICE)
-            && (propertyActive(state, STONE_RES) || Hallucination(state.u))) {
+            && (Stone_resistance(state.u) || Hallucination(state.u))) {
             what = 'chicken';
             which = 1;
         } else if (Hallucination(state.u)) {
@@ -1106,7 +1046,7 @@ async function consume_tin(mesg, state = game, env = {}) {
         }
 
         if (TIN_VARIETIES[variety].greasy) {
-            const glib = (state.u.uprops[GLIB]?.intrinsic ?? 0) & TIMEOUT;
+            const glib = (Glib(state.u)) & TIMEOUT;
             await make_glib(glib + random.rn1(11, 5), state, eatEnv);
             await message(
                 `Eating ${TIN_VARIETIES[variety].name} food made your `
@@ -1140,7 +1080,7 @@ async function consume_tin(mesg, state = game, env = {}) {
         }
         conduct.food = Math.trunc(conduct.food ?? 0) + 1;
         if (!tin.cursed) {
-            const fixed = Boolean(state.u.uprops[FIXED_ABIL]?.extrinsic);
+            const fixed = Fixed_abil(state.u);
             const feeling = Hallucination(state.u)
                 ? "Swee'pea"
                 : !fixed ? 'Popeye'
@@ -1235,7 +1175,7 @@ async function start_tin(otmp, state = game, env = {}) {
         }
         if (tmp === undefined) {
             await message('It is not so easy to open this tin.', state);
-            if (state.u.uprops[GLIB]?.intrinsic) {
+            if (Glib(state.u)) {
                 await message(
                     `The tin slips from your ${fingers_or_gloves(false, state)}.`,
                     state,
@@ -1259,7 +1199,7 @@ async function start_tin(otmp, state = game, env = {}) {
         }
     } else {
         await message('It is not so easy to open this tin.', state);
-        if (state.u.uprops[GLIB]?.intrinsic) {
+        if (Glib(state.u)) {
             await message(
                 `The tin slips from your ${fingers_or_gloves(false, state)}.`,
                 state,
@@ -1453,7 +1393,7 @@ async function rottenfood(obj, state) {
                 state,
             );
         await make_confused(
-            (hungerProperty(state, CONFUSION).intrinsic & 0x00FFFFFF)
+            (HConfusion(state.u) & 0x00FFFFFF)
                 + d(2, 4),
             false,
             state,
@@ -1461,7 +1401,7 @@ async function rottenfood(obj, state) {
     } else if (!rn2(4) && !Blind(state.u)) {
         // Blindness arm.  The hero is not Blind, but BlindedTimeout might
         // be nonzero if blindness is being overridden by Eyes of the Overworld.
-        const blindedTimeout = (HBlinded(state.u)) & 0x00FFFFFF;
+        const blindedTimeout = HBlinded(state.u) & 0x00FFFFFF;
         await ttyPline('Everything suddenly goes dark.', state);
         await make_blinded(blindedTimeout + d(2, 10), false, state);
         if (!Blind(state.u))
@@ -1474,7 +1414,7 @@ async function rottenfood(obj, state) {
         if (!Blind(state.u)) {
             what = 'goes';
             where = 'dark';
-        } else if (Levitation(state)
+        } else if (Levitation(state.u)
                    || Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)) {
             what = 'you lose control of';
             where = 'yourself';
@@ -1763,7 +1703,7 @@ export async function cant_finish_meal(corpse, state = game, env = {}) {
     const { stop_occupation } = await import('./allmain.js');
     const mealEnv = {
         ...env,
-        message: env.message ?? (env.planning ? async () => {} : ttyPline),
+        message: env.message ?? ttyPline,
         endRunning: env.endRunning ?? endRunning,
     };
     await stop_occupation(state, mealEnv);
@@ -1798,9 +1738,7 @@ export async function unfaint(state = game, env = {}) {
 // rather than one bite. C keeps the pair in function statics; this port keeps
 // them on the game state, so a new game starts with neither set.
 //
-// `env` supplies message(), endRunning() and statusRefresh(), because the
-// elapsed-turn caller substitutes silent versions of all three when it is
-// dry-running a turn on a cloned state.
+// `env` supplies message(), endRunning() and statusRefresh().
 export async function newuhs(incr, state = game, env = {}) {
     const u = state.u;
     let newhs = hungerStatus(u.uhunger);
@@ -1842,7 +1780,7 @@ export async function newuhs(incr, state = game, env = {}) {
                 state.nomovemsg = 'You regain consciousness.';
                 state.afternmv = unfaint;
                 newhs = FAINTED;
-                if (!Levitation(state)) {
+                if (!Levitation(state.u)) {
                     await selftouch('Falling, you', state, env);
                     if (state.program_state?.gameover) return;
                 }
@@ -1856,11 +1794,6 @@ export async function newuhs(incr, state = game, env = {}) {
             state.killer ??= {};
             state.killer.format = KILLED_BY;
             state.killer.name = 'starvation';
-            if (env.planning) {
-                const boundary = new HeroDeathPlanningError('starvation', KILLED_BY);
-                boundary.how = STARVING;
-                throw boundary;
-            }
             await done(STARVING, state, env);
             return;
         }
@@ -1902,11 +1835,6 @@ export async function newuhs(incr, state = game, env = {}) {
             state.killer ??= {};
             state.killer.format = KILLED_BY;
             state.killer.name = 'exhaustion';
-            if (env.planning) {
-                const boundary = new HeroDeathPlanningError('exhaustion', KILLED_BY);
-                boundary.how = STARVING;
-                throw boundary;
-            }
             await done(STARVING, state, env);
             return;
         }
@@ -1952,12 +1880,11 @@ export async function morehungry(num, state, env = {}) {
     // fill missing hunger operations while retaining every supplied callback.
     await newuhs(true, state, {
         ...env,
-        message: env.message ?? (env.planning ? async () => {} : ttyPline),
-        statusRefresh: env.statusRefresh
-            ?? (env.planning ? async () => {} : async () => {
-                const { bot } = await import('./display.js');
-                return bot(state);
-            }),
+        message: env.message ?? ttyPline,
+        statusRefresh: env.statusRefresh ?? (async () => {
+            const { bot } = await import('./display.js');
+            return bot(state);
+        }),
         endRunning: env.endRunning ?? endRunning,
     });
 }
@@ -1991,10 +1918,9 @@ async function choke(food, state, env = {}) {
     // youprop.h: Breathless includes either magical-breathing property or a
     // breathless form; Hunger is intrinsic OR extrinsic, while Strangled is
     // specifically the intrinsic property.
-    const hunger = propertyActive(state, HUNGER);
-    const strangled = Boolean(u.uprops?.[STRANGLED]?.intrinsic);
-    const breathlessHero = propertyActive(state, MAGICAL_BREATHING)
-        || breathless(state.youmonst?.data);
+    const hunger = Hunger(state.u);
+    const strangled = Boolean(Strangled(u));
+    const breathlessHero = Breathless(state);
     if (breathlessHero || hunger
         || (!strangled && random.rn2(20) === 0)) {
         if (food?.otyp === AMULET_OF_STRANGULATION) {
@@ -2053,7 +1979,7 @@ export async function vomit(state = game, env = {}) {
     if (cantvomit(species)) {
         await message('Your jaw gapes convulsively.', state);
     } else {
-        if (hero.uprops?.[SICK]?.intrinsic
+        if (Sick(hero)
             && (hero.usick_type & SICK_VOMITABLE)) {
             await make_sick(0, null, true, SICK_VOMITABLE, state, env);
         }
@@ -2126,7 +2052,7 @@ export async function lesshungry(num, state, env) {
             if (iseating) reset_eat(state);
         }
     } else if (u.uhunger >= 1500
-        && !propertyActive(state, HUNGER)
+        && !Hunger(state.u)
         // C spells this `!eating || (eating && !fullwarn)`.
         && (!meal.eating || !meal.fullwarn)) {
         await requireEatOperation(env, 'message')(
@@ -2205,8 +2131,7 @@ async function maybe_cannibal(pm, allowmsg, state, env = {}) {
     const u = state.u;
     const fptr = state.mons[pm]; /* food type */
     const random = env.random ?? coreRandom;
-    const message = env.message ?? (env.planning ? async () => {}
-        : ttyPline);
+    const message = env.message ?? ttyPline;
 
     /* when poly'd into a mind flayer, multiple tentacle hits in one
        turn cause multiple digestion checks to occur; avoid giving
@@ -2236,7 +2161,7 @@ async function maybe_cannibal(pm, allowmsg, state, env = {}) {
                     env,
                 );
             }
-            hungerProperty(state, AGGRAVATE_MONSTER).intrinsic |= FROMOUTSIDE;
+            state.u.uprops[AGGRAVATE_MONSTER].intrinsic |= FROMOUTSIDE;
             change_luck(-random.rn1(4, 2), state); /* -5..-2 */
             return true;
         }
@@ -2251,7 +2176,7 @@ export async function cprefx(pm, state = game, env = {}) {
     const message = env.message ?? ttyPline;
     await maybe_cannibal(pm, true, state, env);
     if (flesh_petrifies(state.mons[pm])) {
-        if (!propertyActive(state, STONE_RES)
+        if (!Stone_resistance(state.u)
             && !(poly_when_stoned(state.youmonst.data, state)
                 && await polymon(PM_STONE_GOLEM, state, env))) {
             // C consumes an opened tin before death so it cannot reach bones.
@@ -2286,11 +2211,11 @@ export async function cprefx(pm, state = game, env = {}) {
                     + ' was a bad idea.', state),
                 state,
             );
-            hungerProperty(state, AGGRAVATE_MONSTER).intrinsic |= FROMOUTSIDE;
+            state.u.uprops[AGGRAVATE_MONSTER].intrinsic |= FROMOUTSIDE;
         }
         break;
     case PM_LIZARD:
-        if (hungerProperty(state, STONED).intrinsic)
+        if (Stoned(state.u))
             await fix_petrification(state);
         break;
     case PM_DEATH:
@@ -2317,8 +2242,8 @@ export async function cprefx(pm, state = game, env = {}) {
         return;
     }
     case PM_GREEN_SLIME:
-        if (!hungerProperty(state, SLIMED).intrinsic
-            && !propertyActive(state, UNCHANGING)
+        if (!Slimed(state.u)
+            && !Unchanging(state.u)
             && !slimeproof(state.youmonst.data)) {
             await message(
                 "You don't feel very well.", state,
@@ -2330,7 +2255,7 @@ export async function cprefx(pm, state = game, env = {}) {
         /* FALLTHROUGH */
     default:
         if (acidic(state.mons[pm])
-            && hungerProperty(state, STONED).intrinsic)
+            && Stoned(state.u))
             await fix_petrification(state);
         break;
     }
@@ -2510,7 +2435,7 @@ async function givit(type, ptr, state, env = {}) {
     case POISON_RES:
         if (!(property.intrinsic & FROMOUTSIDE)) {
             await message(
-                youFeel(`${propertyActive(state, POISON_RES)
+                youFeel(`${Poison_resistance(state.u)
                     ? 'especially healthy' : 'healthy'}.`, state),
                 state,
             );
@@ -2548,12 +2473,11 @@ async function givit(type, ptr, state, env = {}) {
                 state,
             );
             addOutside();
-            if (Blind(state.u)) await see_monsters(state, { ...env,
-                redraw: env.redraw ?? (env.planning ? () => {} : undefined) });
+            if (Blind(state.u)) await see_monsters(state, { ...env });
         }
         break;
     case ACID_RES:
-        if (!propertyActive(state, ACID_RES)) {
+        if (!Acid_resistance(state.u)) {
             await message(
                 youFeel(`${Hallucination(state.u)
                     ? 'secure from flashbacks'
@@ -2564,7 +2488,7 @@ async function givit(type, ptr, state, env = {}) {
         incr_itimeout(property, random.d(3, 6));
         break;
     case STONE_RES:
-        if (!propertyActive(state, STONE_RES)) {
+        if (!Stone_resistance(state.u)) {
             await message(
                 youFeel(`${Hallucination(state.u)
                     ? 'unusually limber'
@@ -2616,8 +2540,7 @@ export function eatmdone(state = game, env = {}) {
     }
     if (state.youmonst.m_ap_type) {
         state.youmonst.m_ap_type = M_AP_NOTHING;
-        if (!env.planning)
-            (env.redraw ?? newsym)(state.u.ux, state.u.uy, state);
+        (env.redraw ?? newsym)(state.u.ux, state.u.uy, state);
     }
     return 0;
 }
@@ -2651,10 +2574,10 @@ export function eatmupdate(state = game, env = {}) {
         state.nomovemsg = state.eatmbuf;
         state.youmonst.mappearance = altapp;
 
-        // newsym() updates the live map. Planning callers inject a silent
-        // redraw, and isolated states without a redraw must not repaint game.
+        // newsym() updates the live map. Isolated states without a redraw
+        // must not repaint game.
         const redraw = env.redraw
-            ?? (env.planning || state !== game ? null : newsym);
+            ?? (state !== game ? null : newsym);
         redraw?.(state.u.ux, state.u.uy, state);
     }
 }
@@ -2662,8 +2585,6 @@ export function eatmupdate(state = game, env = {}) {
 // C ref: eat.c cpostfx() (1127-1319), called after completely consuming a
 // corpse. `state.eatmbuf` is the JS representation of C's ge.eatmbuf.
 async function cpostfx(pm, state, env = {}) {
-    // A planning clone finishes a meal through stop_occupation() and passes
-    // its own random source and a silent message operation.
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
     let tmp = 0;
@@ -2712,11 +2633,11 @@ async function cpostfx(pm, state, env = {}) {
         newsym(state.u.ux, state.u.uy);
         // C falls through to the shared yellow-light/giant-bat stun arm.
         await make_stunned(
-            (state.u.uprops[STUNNED].intrinsic & TIMEOUT) + 30,
+            (HStun(state.u) & TIMEOUT) + 30,
             false, state, env,
         );
         await make_stunned(
-            (state.u.uprops[STUNNED].intrinsic & TIMEOUT) + 30,
+            (HStun(state.u) & TIMEOUT) + 30,
             false, state, env,
         );
         break;
@@ -2725,13 +2646,13 @@ async function cpostfx(pm, state, env = {}) {
     case PM_GIANT_BAT:
         // This call changes HStun before the second fallthrough call below.
         await make_stunned(
-            (state.u.uprops[STUNNED].intrinsic & TIMEOUT) + 30,
+            (HStun(state.u) & TIMEOUT) + 30,
             false, state, env,
         );
         // FALLTHROUGH
     case PM_BAT:
         await make_stunned(
-            (state.u.uprops[STUNNED].intrinsic & TIMEOUT) + 30,
+            (HStun(state.u) & TIMEOUT) + 30,
             false, state, env,
         );
         break;
@@ -2744,7 +2665,7 @@ async function cpostfx(pm, state, env = {}) {
     case PM_SMALL_MIMIC:
         tmp += 20;
         if (state.youmonst.data.mlet !== S_MIMIC
-            && !propertyActive(state, UNCHANGING)) {
+            && !Unchanging(state.u)) {
             const hallucinating = Hallucination(state.u);
             const tempshape = hallucinating ? 'an orange' : 'a pile of gold';
             state.u.uconduct ??= {};
@@ -2792,22 +2713,19 @@ async function cpostfx(pm, state, env = {}) {
         break;
     case PM_QUANTUM_MECHANIC: {
         await message('Your velocity suddenly seems very uncertain!', state);
-        const fast = state.u.uprops[FAST];
-        if (fast.intrinsic & INTRINSIC) {
-            fast.intrinsic &= ~INTRINSIC;
+        if (HFast(state.u) & INTRINSIC) {
+            state.u.uprops[FAST].intrinsic &= ~INTRINSIC;
             await message('You seem slower.', state);
         } else {
-            fast.intrinsic |= FROMOUTSIDE;
+            state.u.uprops[FAST].intrinsic |= FROMOUTSIDE;
             await message('You seem faster.', state);
         }
         break;
     }
     case PM_LIZARD: {
-        const stun = state.u.uprops[STUNNED];
-        const confusion = state.u.uprops[CONFUSION];
-        if ((stun.intrinsic & TIMEOUT) > 2)
+        if ((HStun(state.u) & TIMEOUT) > 2)
             await make_stunned(2, false, state, env);
-        if ((confusion.intrinsic & TIMEOUT) > 2)
+        if ((HConfusion(state.u) & TIMEOUT) > 2)
             await make_confused(2, false, state);
         check_intrinsics = true; // might convey temporary stoning resistance
         break;
@@ -2816,7 +2734,7 @@ async function cpostfx(pm, state, env = {}) {
     case PM_DOPPELGANGER:
     case PM_SANDESTIN: // moot--they do not leave corpses
     case PM_GENETIC_ENGINEER:
-        if (propertyActive(state, UNCHANGING)) {
+        if (Unchanging(state.u)) {
             await message(youFeel('momentarily different.', state), state);
         } else {
             // C's tin context exists and holds NULL even when this call
@@ -2840,10 +2758,9 @@ async function cpostfx(pm, state, env = {}) {
         }
         break;
     case PM_DISPLACER_BEAST: {
-        const displaced = state.u.uprops[DISPLACED];
-        if (!propertyActive(state, DISPLACED))
+        if (!Displaced(state.u))
             await toggle_displacement(null, 0, true, state);
-        incr_itimeout(displaced, random.d(6, 6));
+        incr_itimeout(state.u.uprops[DISPLACED], random.d(6, 6));
         break;
     }
     case PM_DISENCHANTER:
@@ -2931,8 +2848,7 @@ export async function Finish_digestion(state = game, env = {}) {
 // C ref: eat.c violated_vegetarian() (1375-1384). Both callers -- doeat()'s
 // FLESH arm and eatcorpse() -- reach it for any food that is not vegetarian.
 async function violated_vegetarian(state, env = {}) {
-    const message = env.message ?? (env.planning ? async () => {}
-        : ttyPline);
+    const message = env.message ?? ttyPline;
     state.u.uconduct.unvegetarian++;
     if (state.urole.mnum === PM_MONK) {
         await message(youFeel('guilty.', state), state, env);
@@ -2962,15 +2878,15 @@ async function eatcorpse(otmp, state, env = {}) {
     const uptr = state.youmonst.data;
     const glob = Boolean(otmp.globby);
     const slimeable = mnum === PM_GREEN_SLIME
-        && !hungerProperty(state, SLIMED).intrinsic
-        && !propertyActive(state, UNCHANGING)
+        && !Slimed(state.u)
+        && !Unchanging(state.u)
         && !slimeproof(uptr);
 
     if (!ismnum(mnum))
         throw new Error(`eatcorpse: corpsenm ${mnum} is not a monster`);
     const corpse = state.mons[mnum];
     const stoneable = flesh_petrifies(corpse)
-        && !propertyActive(state, STONE_RES)
+        && !Stone_resistance(state.u)
         && !poly_when_stoned(uptr, state);
 
     /* KMH, conduct */
@@ -3019,13 +2935,13 @@ async function eatcorpse(otmp, state, env = {}) {
             `Ulch - that ${food} was tainted${cannibal ? ', you cannibal' : ''}!`,
             state,
         );
-        if (sickResistance(state)) {
+        if (Sick_resistance(state)) {
             await ttyPline(
                 "It doesn't seem at all sickening, though...", state,
             );
         } else {
             let sickTime = rn1(10, 10);
-            const sick = hungerProperty(state, SICK).intrinsic;
+            const sick = Sick(state.u);
             if (sick && sickTime > sick)
                 sickTime = sick > 1 ? sick - 1 : 1;
             await make_sick(
@@ -3044,7 +2960,7 @@ async function eatcorpse(otmp, state, env = {}) {
         else
             await useupf(otmp, 1, env);
         return 2;
-    } else if (acidic(corpse) && !propertyActive(state, ACID_RES)) {
+    } else if (acidic(corpse) && !Acid_resistance(state.u)) {
         tp++;
         /* not body_part() */
         await ttyPline('You have a very bad case of stomach acid.', state);
@@ -3057,7 +2973,7 @@ async function eatcorpse(otmp, state, env = {}) {
     } else if (poisonous(corpse) && rn2(5)) {
         tp++;
         await ttyPline('Ecch - that must have been poisonous!', state);
-        if (!propertyActive(state, POISON_RES)) {
+        if (!Poison_resistance(state.u)) {
             // attrib.c poison_strdmg() takes hack.c losehp() and, through
             // adjattrib(), pickup.c encumber_msg() from its caller; both
             // files import attrib.js, so attrib.js cannot import them back.
@@ -3078,10 +2994,10 @@ async function eatcorpse(otmp, state, env = {}) {
 
     /* now any corpse left too long will make you mildly ill */
     } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
-               && !sickResistance(state)) {
+               && !Sick_resistance(state)) {
         tp++;
         await ttyPline(
-            youFeel(`${hungerProperty(state, SICK).intrinsic ? 'very ' : ''}sick.`,
+            youFeel(`${Sick(state.u) ? 'very ' : ''}sick.`,
                 state),
             state,
         );
@@ -3120,7 +3036,7 @@ async function eatcorpse(otmp, state, env = {}) {
         if (!retcode)
             consume_oeaten(otmp, 2, state); /* oeaten >>= 2 */
     } else if ((mnum === PM_COCKATRICE || mnum === PM_CHICKATRICE)
-               && (propertyActive(state, STONE_RES) || Hallucination(state.u))) {
+               && (Stone_resistance(state.u) || Hallucination(state.u))) {
         await ttyPline('This tastes just like chicken!', state);
     } else if (mnum === PM_FLOATING_EYE && u.umonnum === PM_RAVEN) {
         await ttyPline('You peck the eyeball with delight.', state);
@@ -3206,7 +3122,7 @@ async function fpostfx(otmp, state, env = {}) {
         break;
     case LUMP_OF_ROYAL_JELLY:
         if (state.youmonst.data === state.mons[PM_KILLER_BEE]
-            && !propertyActive(state, UNCHANGING)
+            && !Unchanging(state.u)
             && await polymon(PM_QUEEN_BEE, state, effectEnv))
             break;
 
@@ -3242,10 +3158,10 @@ async function fpostfx(otmp, state, env = {}) {
     case EGG:
         if (ismnum(otmp.corpsenm)
             && flesh_petrifies(state.mons[otmp.corpsenm])) {
-            if (!propertyActive(state, STONE_RES)
+            if (!Stone_resistance(state.u)
                 && !(poly_when_stoned(state.youmonst.data, state)
                     && await polymon(PM_STONE_GOLEM, state, effectEnv))) {
-                if (!hungerProperty(state, STONED).intrinsic) {
+                if (!Stoned(state.u)) {
                     const killerName = state.mons[otmp.corpsenm]
                         .pmnames[NEUTRAL] + ' egg';
                     state.killer ??= { name: '', format: KILLED_BY_AN };
@@ -3260,14 +3176,14 @@ async function fpostfx(otmp, state, env = {}) {
         break;
     case EUCALYPTUS_LEAF:
         if (!otmp.cursed) {
-            if (hungerProperty(state, SICK).intrinsic)
+            if (Sick(state.u))
                 await make_sick(0, null, true, SICK_ALL, state, effectEnv);
-            if (hungerProperty(state, VOMITING).intrinsic)
+            if (Vomiting(state.u))
                 await make_vomiting(0, true, state, effectEnv);
         }
         break;
     case APPLE:
-        if (otmp.cursed && !propertyActive(state, SLEEP_RES)) {
+        if (otmp.cursed && !Sleep_resistance(state.u)) {
             if (state.urace?.mnum === PM_DWARF && Hallucination(state.u)) {
                 await verbalize(
                     "Heigh-ho, ho-hum, I think I'll skip work today.",
@@ -3333,7 +3249,7 @@ async function fprefx(otmp, state, env = {}) {
             return false;
         } else if (staleEgg(otmp, state)) {
             await message('Ugh.  Rotten egg.', state);
-            await make_vomiting((hungerProperty(state, VOMITING).intrinsic & TIMEOUT)
+            await make_vomiting((Vomiting(state.u) & TIMEOUT)
                 + random.d(10, 4), true, state, env);
         } else await feedback();
         break;
@@ -3382,7 +3298,7 @@ async function fprefx(otmp, state, env = {}) {
             && otmp.spe === state.context.current_fruit) {
             await message(`My, this is a ${Hallucination(state.u) ? 'primo' : 'yummy'} ${singular(otmp, xnameFresh, state)}!`, state);
         } else if (otmp.otyp === APPLE && otmp.cursed
-            && !propertyActive(state, SLEEP_RES)) {
+            && !Sleep_resistance(state.u)) {
             // C defers this flavor feedback to fpostfx().
         } else if (otmp.otyp === APPLE) {
             // The recorded reference compiles MACOS before the UNIX arm.
@@ -3412,10 +3328,10 @@ export async function edibility_prompts(otmp, state = game, env = {}) {
     let stoneorslime = false;
     if (cadaver || [EGG, TIN, GLOB_OF_GREEN_SLIME].includes(otmp.otyp)) {
         stoneorslime = ismnum(mnum) && flesh_petrifies(state.mons[mnum])
-            && !propertyActive(state, STONE_RES)
+            && !Stone_resistance(state.u)
             && !poly_when_stoned(state.youmonst.data, state);
         if (mnum === PM_GREEN_SLIME || otmp.otyp === GLOB_OF_GREEN_SLIME)
-            stoneorslime = !propertyActive(state, UNCHANGING)
+            stoneorslime = !Unchanging(state.u)
                 && !slimeproof(state.youmonst.data);
         if (cadaver && !nonrotting_corpse(mnum, state)) {
             rotted = Math.trunc((state.moves - peek_at_iced_corpse_age(otmp, state)) / 10);
@@ -3424,22 +3340,22 @@ export async function edibility_prompts(otmp, state = game, env = {}) {
         }
     }
     let text = '';
-    if (cadaver && rotted > 5 && !sickResistance(state)) {
+    if (cadaver && rotted > 5 && !Sick_resistance(state)) {
         text = `${foodsmell} like ${pronoun} could be tainted!`;
     } else if (stoneorslime) {
         text = `${foodsmell} like ${pronoun} could be something very dangerous!`;
-    } else if (cadaver && rotted > 5 && sickResistance(state)) {
+    } else if (cadaver && rotted > 5 && Sick_resistance(state)) {
         text = `${foodsmell} like ${pronoun} could be tainted.`;
     } else if (otmp.orotten || (cadaver && rotted > 3)) {
         text = `${foodsmell} like ${pronoun} could be rotten!`;
-    } else if (cadaver && poisonous(state.mons[mnum]) && !propertyActive(state, POISON_RES)) {
+    } else if (cadaver && poisonous(state.mons[mnum]) && !Poison_resistance(state.u)) {
         text = `${foodsmell} like ${pronoun} might be poisonous!`;
-    } else if (otmp.otyp === APPLE && otmp.cursed && !propertyActive(state, SLEEP_RES)) {
+    } else if (otmp.otyp === APPLE && otmp.cursed && !Sleep_resistance(state.u)) {
         text = `${foodsmell} like ${pronoun} might have been poisoned.`;
     } else if (cadaver && !vegetarian(state.mons[mnum])
         && !state.u.uconduct.unvegetarian && state.urole.mnum === PM_MONK) {
         text = `${foodsmell} unhealthy.`;
-    } else if (cadaver && acidic(state.mons[mnum]) && !propertyActive(state, ACID_RES)) {
+    } else if (cadaver && acidic(state.mons[mnum]) && !Acid_resistance(state.u)) {
         text = `${foodsmell} rather acidic.`;
     } else if (Upolyd(state.u) && state.u.umonnum === PM_RUST_MONSTER
         && isMetallic(otmp, state) && otmp.oerodeproof) {
@@ -3494,14 +3410,12 @@ function eatOperations(state, statusRefresh, message = ttyPline) {
 // installs at the end of start_eating(). allmain.c moveloop_core() runs it once
 // a turn and clears go.occupation when it answers 0.
 //
-// `env` carries the display operations that differ for the live game and an
-// atomic planning clone; every other operation is this file's own.
+// `env` carries the caller's display operations; every other operation is
+// this file's own.
 export async function eatfood(state = game, env = {}) {
     const meal = victual(state);
-    // A planning clone reaches this through stop_occupation() ->
-    // maybe_finished_meal() and supplies its own random source; the meal's
-    // ending (done_eating() -> useupf() -> delobj() -> obj_resists(), and
-    // cpostfx()) must draw from that clone rather than the live RNG.
+    // A caller-supplied random source also reaches the meal's ending
+    // (done_eating() -> useupf() -> delobj() -> obj_resists(), and cpostfx()).
     const eatEnv = {
         ...eatOperations(state, env.statusRefresh, env.message),
         ...(env.random ? { random: env.random } : {}),
@@ -3633,8 +3547,7 @@ async function start_eating(otmp, already_partly_eaten, state, env) {
     //     newly in range and one already visible nearby skips it;
     //   - monmove.c dochugw():223-235, a hostile spottable monster newly
     //     inside (BOLT_LIM + 1) * (BOLT_LIM + 1), reached both from
-    //     makemon()'s runtime tail and from the live and planning monster
-    //     scans. It prints the same line and runs no reset_eat(). Its radius
+    //     makemon()'s runtime tail and from the monster scan. It prints the same line and runs no reset_eat(). Its radius
     //     is nine where hack.c monster_nearby() scans the eight adjacent
     //     squares alone, so when it does fire it fires earlier;
     //   - teleport.c rloc_to_core():1761-1762, whose whole tail js/teleport.js
@@ -3724,12 +3637,12 @@ export async function floorfood(verb, corpsecheck, state = game) {
     /* if we can't touch floor objects then use invent food only;
        same when 'm' prefix is used--for #eat, it means "skip floor food" */
     const walking = Boolean(
-        state.u?.uprops?.[WWALKING]?.intrinsic
-        || state.u?.uprops?.[WWALKING]?.extrinsic,
+        HWwalking(state.u)
+        || EWwalking(state.u),
     ) && !Is_waterlevel(u.uz, state);
     const breathlessHero = Boolean(
-        state.u?.uprops?.[MAGICAL_BREATHING]?.intrinsic
-        || state.u?.uprops?.[MAGICAL_BREATHING]?.extrinsic,
+        HMagical_breathing(state.u)
+        || EMagical_breathing(state.u),
     ) || breathless(uptr);
     const skipfloor = state.iflags.menu_requested
         || !can_reach_floor(true, state)
@@ -3737,7 +3650,7 @@ export async function floorfood(verb, corpsecheck, state = game) {
     if (!skipfloor
         && !(is_pool_or_lava(u.ux, u.uy, state)
             && (walking || is_clinger(uptr)
-                || (Flying(state) && !breathlessHero)))) {
+                || (Flying(state.u) && !breathlessHero)))) {
 
         if (feeding && metallivorous(uptr)) {
             const trap = t_at(u.ux, u.uy, state);
@@ -3960,8 +3873,7 @@ async function eataccessory(otmp, state, env) {
         switch (typ) {
         case RIN_SEE_INVISIBLE: {
             set_mimic_blocking(state);
-            await see_monsters(state, { ...env,
-                redraw: env.redraw ?? (env.planning ? () => {} : undefined) });
+            await see_monsters(state, { ...env });
             const invisible = Boolean(
                 Invis(state.u),
             );
@@ -3995,7 +3907,7 @@ async function eataccessory(otmp, state, env) {
             break;
         case RIN_LEVITATION:
             prop.intrinsic = oldprop;
-            if (!Levitation(state)) {
+            if (!Levitation(state.u)) {
                 await float_up(state);
                 incr_itimeout(prop, d(10, 20));
                 discover_object(typ, true, true, true, state);
@@ -4043,12 +3955,10 @@ async function eataccessory(otmp, state, env) {
         state.disp.botl = true;
         break;
     case RIN_FREE_ACTION: {
-        const sleepResistance = state.u.uprops[SLEEP_RES];
-        if (!(sleepResistance.intrinsic & FROMOUTSIDE)) await effect();
-        if (!(sleepResistance.intrinsic || sleepResistance.extrinsic)
-            || sleepResistance.blocked)
+        if (!(HSleep_resistance(state.u) & FROMOUTSIDE)) await effect();
+        if (!Sleep_resistance(state.u))
             await message(youFeel('wide awake.', state), state);
-        sleepResistance.intrinsic |= FROMOUTSIDE;
+        state.u.uprops[SLEEP_RES].intrinsic |= FROMOUTSIDE;
         break;
     }
     case AMULET_OF_CHANGE:
@@ -4063,8 +3973,7 @@ async function eataccessory(otmp, state, env) {
         state.disp.botl = true;
         break;
     case AMULET_OF_UNCHANGING:
-        if (!(state.u.uprops[UNCHANGING].intrinsic
-            || state.u.uprops[UNCHANGING].extrinsic) && Upolyd(state.u)) {
+        if (!Unchanging(state.u) && Upolyd(state.u)) {
             await effect();
             discover_object(typ, true, true, true, state);
             await rehumanize(state);
@@ -4075,12 +3984,11 @@ async function eataccessory(otmp, state, env) {
         break;
     case AMULET_OF_RESTFUL_SLEEP: {
         const newnap = rnd(100);
-        const sleepy = state.u.uprops[SLEEPY];
-        const oldnap = sleepy.intrinsic & TIMEOUT;
-        if (!(sleepy.intrinsic & FROMOUTSIDE)) await effect();
-        sleepy.intrinsic |= FROMOUTSIDE;
+        const oldnap = HSleepy(state.u) & TIMEOUT;
+        if (!(HSleepy(state.u) & FROMOUTSIDE)) await effect();
+        state.u.uprops[SLEEPY].intrinsic |= FROMOUTSIDE;
         if (newnap < oldnap || oldnap === 0)
-            sleepy.intrinsic = (sleepy.intrinsic & ~TIMEOUT) | newnap;
+            state.u.uprops[SLEEPY].intrinsic = (HSleepy(state.u) & ~TIMEOUT) | newnap;
         break;
     }
     case RIN_SUSTAIN_ABILITY:
@@ -4185,8 +4093,7 @@ async function eatspecial(state, env) {
 // C ref: eat.c doeat_nonfood() (2734-2813).  This is the return-valued
 // dependency of doeat(): a compatible polymorphed form gets exactly one turn
 // of nutrition, conduct updates, poisoned-weapon handling and then the common
-// eatspecial() tail.  Callers pass the same operation seams as ordinary food
-// so death and status output cannot escape a planning clone.
+// eatspecial() tail.  Callers pass the same operation seams as ordinary food.
 export async function doeat_nonfood(otmp, state = game, env = {}) {
     const u = state.u;
     const meal = victual(state);
@@ -4259,7 +4166,7 @@ export async function doeat_nonfood(otmp, state = game, env = {}) {
 
     if (otmp.oclass === WEAPON_CLASS && otmp.opoisoned) {
         await env.message('Ecch - that must have been poisonous!', state);
-        if (!propertyActive(state, POISON_RES)) {
+        if (!Poison_resistance(state.u)) {
             await poison_strdmg(
                 rnd(4), rnd(15), xnameFresh(otmp, state), KILLED_BY_AN,
                 state,
@@ -4295,7 +4202,7 @@ export async function doeat(state = game, env = {}) {
     const u = state.u;
     const eatEnv = eatOperations(state, env.statusRefresh, env.message);
 
-    if (u.uprops[STRANGLED].intrinsic) {
+    if (Strangled(u)) {
         await ttyPline(
             "If you can't breathe air, how can you consume solids?",
             state,
@@ -4367,7 +4274,7 @@ export async function doeat(state = game, env = {}) {
         );
         otmp.oerodeproof = 0;
         // eat.c evaluates the timeout and draws before the source helper.
-        const stunTimeout = (state.u.uprops[STUNNED].intrinsic & TIMEOUT)
+        const stunTimeout = (HStun(state.u) & TIMEOUT)
             + rn2(10);
         await make_stunned(stunTimeout, true, state, eatEnv);
         if (welded(otmp, state)

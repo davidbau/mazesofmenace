@@ -31,9 +31,7 @@ import {
     COST_CONTENTS,
     COST_SINGLEOBJ,
     CONTAINED_TOO,
-    CONFLICT,
     DISINT_RES,
-    DISPLACED,
     ECMD_CANCEL,
     ECMD_OK,
     ECMD_TIME,
@@ -41,7 +39,6 @@ import {
     D_CLOSED,
     ESHK,
     EYE,
-    FAST,
     G_GONE,
     HEAD,
     helpless,
@@ -68,7 +65,6 @@ import {
     OBJ_MINVENT,
     OBJ_ONBILL,
     PICK_ANY,
-    PASSES_WALLS,
     PLINE_SPEECH,
     PLINE_VERBALIZE,
     PL_NSIZ,
@@ -306,8 +302,8 @@ import { canseemon, canspotmon, sensemon } from './display.js';
 import { choose_stairs } from './wizard.js';
 import { setnotworn } from './worn.js';
 import {
-    Blind, Deaf, EDetect_monsters, ETelepat, HDetect_monsters, HTelepat,
-    Invis,
+    Blind, Conflict, Deaf, Displaced, EDetect_monsters, ETelepat, Fast,
+    HDetect_monsters, HTelepat, Invis, Passes_walls,
 } from './youprop.js';
 
 // C ref: shk.c:u_entered_shop()'s static `empty_shops[5]`. It survives calls
@@ -2907,11 +2903,6 @@ function noitPronoun(shopkeeper, field, state, random) {
     return gender[field];
 }
 
-// C ref: youprop.h:376 Fast = (HFast || EFast).
-function heroIsFast(state) {
-    const value = state.u?.uprops?.[FAST];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
 // C ref: shk.c u_entered_shop() (751-917). The source's void helper is
 // exposed as a boolean for the existing JavaScript callers; every non-empty
@@ -3139,7 +3130,7 @@ export async function u_entered_shop(
             }
             shouldBlock = true;
         } else {
-            shouldBlock = heroIsFast(state)
+            shouldBlock = Fast(state.u)
                 && Boolean(
                     sobj_at(PICK_AXE, state.u.ux, state.u.uy, state)
                     || sobj_at(
@@ -3564,9 +3555,8 @@ export function repairable_damage(damage, shkp, state = game) {
     const { x, y } = damage.place;
     if ((state.moves ?? 0) - damage.when < REPAIR_DELAY) return false;
     if (!IS_ROOM(damage.typ)) {
-        const passwall = state.u?.uprops?.[PASSES_WALLS];
         if ((u_at(x, y, state)
-                && !(passwall?.intrinsic || passwall?.extrinsic))
+                && !Passes_walls(state.u))
             || (x === shkp.mx && y === shkp.my)) {
             return false;
         }
@@ -3727,11 +3717,11 @@ async function litter_scatter(litter, x, y, shkp, state = game, env = {}) {
 }
 
 // C ref: shk.c litter_newsyms() (4712-4720). Redraw only squares to which
-// litter was moved, through repair_damage()'s redraw.
-function litter_newsyms(litter, x, y, redraw = newsym) {
+// litter was moved.
+function litter_newsyms(litter, x, y) {
     for (let i = 0; i < 9; ++i) {
         if (litter[i] & LITTER_UPDATE)
-            redraw(x + litterHoriz(i), y + litterVert(i));
+            newsym(x + litterHoriz(i), y + litterVert(i));
     }
 }
 
@@ -3739,10 +3729,7 @@ function litter_newsyms(litter, x, y, redraw = newsym) {
 // and returns one as soon as the terrain is restored for an off-level repair.
 async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
     if (!repairable_damage(damage, shkp, state)) return 0;
-    const message = shopRepairMessage(env);
-    // A shopkeeper's move in a monster turn's planning pass repairs only the
-    // planning copy; the live pass repaints the squares.
-    const redraw = env.planning ? () => {} : newsym;
+    const message = ttyPline;
 
     const { x, y } = damage.place;
     const seeit = cansee(x, y, state);
@@ -3804,7 +3791,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
 
         deltrap(trap, state);
         del_engr_at(x, y, state);
-        if (seeit) redraw(x, y);
+        if (seeit) newsym(x, y);
         if (!catchup) disposition = 3;
     }
 
@@ -3830,19 +3817,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
         await litter_scatter(litter, x, y, shkp, state, env);
     del_engr_at(x, y, state);
 
-    if (seeit) redraw(x, y);
-    // block_point() rebuilds vision.c's module-wide transparency index. A
-    // planning clone borrows that index, so mark the borrow first; the
-    // planning wrapper restores it afterwards. Otherwise the dry run's
-    // repair blocks sight on the live map before the live repair runs.
-    if (env.planning) {
-        if (typeof env.admitPlannedVisionChange !== 'function') {
-            throw new TypeError(
-                'planned shop repair requires admitPlannedVisionChange',
-            );
-        }
-        env.admitPlannedVisionChange(x, y, state);
-    }
+    if (seeit) newsym(x, y);
     block_point(x, y, state);
     if (catchup) return 1;
 
@@ -3853,14 +3828,14 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
         } else if (IS_DOOR(damage.typ)) {
             await message('Suddenly, the shop door reappears!', state, env);
         }
-        redraw(x, y);
+        newsym(x, y);
     } else if (IS_WALL(damage.typ)) {
         if (inside_shop(state.u.ux, state.u.uy, state)
             === shkp.mextra.eshk.shoproom) {
             await message(youFeel('more claustrophobic than before.', state),
                 state, env);
         } else if (!Deaf(state.u) && !randomFor(env).rn2(10)) {
-            await (env.planning ? message : ttyNorep)(
+            await ttyNorep(
                 'The dungeon acoustics noticeably change.', state, env);
         }
     }
@@ -3869,17 +3844,11 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
     if (stopPicking)
         await stop_occupation(state, {
             ...env,
-            message: env.planning ? message : (env.message ?? ttyPline),
+            message: env.message ?? ttyPline,
         });
-    litter_newsyms(litter, x, y, redraw);
+    litter_newsyms(litter, x, y);
     if (disposition < 3) disposition = 2;
     return disposition;
-}
-
-// The once-per-turn planning pass runs shk_move() on a cloned state; its
-// repair messages must neither draw nor wait for --More-- on the live terminal.
-function shopRepairMessage(env) {
-    return env.planning ? async () => {} : ttyPline;
 }
 
 function randomFor(env) {
@@ -3891,7 +3860,7 @@ function randomFor(env) {
 async function shk_fixes_damage(shkp, state, env = {}) {
     const damage = find_damage(shkp, state);
     if (!damage) return;
-    const message = shopRepairMessage(env);
+    const message = ttyPline;
 
     const closeby = dist2(shkp.mx, shkp.my, state.u.ux, state.u.uy)
         <= Math.trunc(BOLT_LIM / 2) ** 2;
@@ -3950,10 +3919,7 @@ export async function shk_move(shkp, state, rawEnv = {}) {
     const udist = dist2(omx, omy, hero?.ux ?? 0, hero?.uy ?? 0);
     if (udist < 3 && (shkp.data !== state.mons[PM_GRID_BUG]
         || omx === hero.ux || omy === hero.uy)) {
-        const conflict = state.u?.uprops?.[CONFLICT];
-        const conflictActive = Boolean(
-            conflict?.intrinsic || conflict?.extrinsic,
-        );
+        const conflictActive = Conflict(state.u);
         const random = env.random ?? coreRandom;
         if (!shkp.mpeaceful
             || (conflictActive
@@ -3962,13 +3928,11 @@ export async function shk_move(shkp, state, rawEnv = {}) {
             // Only this impure arm needs a promise; peaceful movement stays
             // synchronous and m_move awaits either mover result.
             return (async () => {
-                const displaced = hero.uprops?.[DISPLACED];
-                if (displaced?.intrinsic || displaced?.extrinsic) {
-                    if (!env.planning)
-                        await (env.message ?? ttyPline)(
-                            `Your displaced image doesn't fool ${shkname(shkp, state)}!`,
-                            state, env,
-                        );
+                if (Displaced(hero)) {
+                    await (env.message ?? ttyPline)(
+                        `Your displaced image doesn't fool ${shkname(shkp, state)}!`,
+                        state, env,
+                    );
                 }
                 await (env.attackHero ?? mattacku)(shkp, env);
                 return 0;
@@ -4041,8 +4005,7 @@ export async function shk_move(shkp, state, rawEnv = {}) {
                     carrying(PICK_AXE, state)
                     || carrying(DWARVISH_MATTOCK, state),
                 );
-                const fast = hero.uprops?.[FAST];
-                if (fast?.intrinsic || fast?.extrinsic) {
+                if (Fast(hero)) {
                     badinv = badinv || Boolean(
                         sobj_at(PICK_AXE, hero.ux, hero.uy, state)
                         || sobj_at(DWARVISH_MATTOCK, hero.ux, hero.uy, state),

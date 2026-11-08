@@ -29,7 +29,6 @@ import {
     WORN_TYPES,
     W_WEAPONS,
     CHOOSE_ALL,
-    CONFUSION,
     CXN_ARTICLE,
     CXN_SINGULAR,
     ECMD_OK,
@@ -48,7 +47,6 @@ import {
     GETOBJ_PROMPT,
     GETOBJ_SUGGEST,
     FEEL_COCKATRICE,
-    FUMBLING,
     HAND,
     HVY_ENCUMBER,
     ICE,
@@ -93,8 +91,6 @@ import {
     SHOPBASE,
     SLT_ENCUMBER,
     STONE,
-    STONE_RES,
-    STUNNED,
     TIMEOUT,
     OMONST,
     SELL_NORMAL,
@@ -299,7 +295,8 @@ import {
 } from './timeout.js';
 import { get_mtraits } from './corpstat.js';
 import {
-    Blind, Hallucination, Maybe_Half_Phys,
+    Blind, Confusion, HFumbling, Hallucination, Maybe_Half_Phys,
+    Stone_resistance, Stunned,
 } from './youprop.js';
 
 const INCREASED_BURDEN_MESSAGES = Object.freeze([
@@ -397,11 +394,6 @@ export function find_justpicked(olist) {
     return null;
 }
 
-function heroHasProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
 // C ref: pickup.c deferred_decor() (337-350). The flag is deliberately stored
 // beside prev_decor, so a timeout can defer one terrain message and the next
 // pickup or movement can catch it up in source order.
@@ -426,7 +418,7 @@ function describeDecorPlan(x, y, state = game) {
     const location = state.level?.at(x, y);
     const ltyp = surface_typ(location);
     const previous = state.iflags?.prev_decor ?? STONE;
-    const fumbling = Number(state.u?.uprops?.[FUMBLING]?.intrinsic ?? 0);
+    const fumbling = Number(HFumbling(state.u));
     if ((fumbling & TIMEOUT) === 1
         && !state.iflags?.defer_decor
         && !state.decor_fumble_override) {
@@ -553,7 +545,7 @@ export function u_safe_from_fatal_corpse(obj, tests, state = game) {
         || ((tests & st_corpse) && obj.otyp !== CORPSE)
         || ((tests & st_petrifies)
             && !touch_petrifies(state.mons[obj.corpsenm]))
-        || ((tests & st_resists) && heroHasProperty(state, STONE_RES)),
+        || ((tests & st_resists) && Stone_resistance(state.u)),
     );
 }
 
@@ -2558,10 +2550,10 @@ async function mbag_item_gone(held, item, silent, state) {
 // C ref: pickup.c:2202-2209. The Confusion branch calls reverse_loot(),
 // which has unported inventory and shop interactions.
 function ConfusionProp(state) {
-    return Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
+    return Boolean(Confusion(state.u));
 }
 function StunnedProp(state) {
-    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
+    return Boolean(Stunned(state.u));
 }
 
 // C ref: pickup.c:67-70.  Encumbrance feedback prefixes used by

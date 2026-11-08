@@ -13,7 +13,6 @@ import {
     A_STR,
     A_WIS,
     ALTAR,
-    ANTIMAGIC,
     BOLT_LIM,
     CC_INCL_CENTER,
     CC_NO_FLAGS,
@@ -25,7 +24,6 @@ import {
     ECMD_OK,
     ECMD_TIME,
     SHOPBASE,
-    CONFUSION,
     DIED,
     KILLED_BY,
     GP_ALLOW_U,
@@ -51,7 +49,6 @@ import {
     MENU_BEHAVE_STANDARD,
     OBJ_FREE,
     PICK_ONE,
-    PASSES_WALLS,
     RLOC_MSG,
     RLOC_NONE,
     RLOC_NOMSG,
@@ -60,16 +57,10 @@ import {
     TEMPLE,
     SLT_ENCUMBER,
     STRAT_APPEARMSG,
-    FLYING,
-    LEVITATION,
-    STUNNED,
-    SWIMMING,
-    MAGICAL_BREATHING,
     TELEDS_ALLOW_DRAG,
     TELEDS_TELEPORT,
     TELEP_TRAP,
     TELEPORT,
-    TELEPORT_CONTROL,
     TIMEOUT,
     TRAPDOOR,
     TT_BURIEDBALL,
@@ -80,8 +71,6 @@ import {
     VIBRATING_SQUARE,
     VIASITTING,
     WATER,
-    WWALKING,
-    FIRE_RES,
     W_NONPASSWALL,
     ZAP_POS,
     In_quest,
@@ -165,11 +154,8 @@ import {
     is_covetous,
     is_dlord,
     is_dprince,
-    amphibious,
-    is_flyer,
     is_rider,
     is_silent,
-    is_swimmer,
     likes_lava,
     passes_walls,
 } from './mondata.js';
@@ -243,7 +229,7 @@ import {
 import { note_unported } from './unported.js';
 import { menuTitleStyle } from './tty_menu.js';
 import { morehungry } from './eat.js';
-import { clamp_hole_destination, deltrap, fill_pit, Flying, reset_utrap,
+import { clamp_hole_destination, deltrap, fill_pit, reset_utrap,
     t_at, unconscious }
     from './trap.js';
 import { mintrap } from './trap_effects.js';
@@ -254,7 +240,12 @@ import { ttyPline } from './tty_message.js';
 import { findgd, uleftvault, vault_occupied } from './vault.js';
 import { couldsee, vision_recalc } from './vision.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
-import { Blind, Blinded, Hallucination } from './youprop.js';
+import {
+    Amphibious, Antimagic, Blind, Blinded, Confusion, ETeleportation,
+    Fire_resistance, Flying, HConfusion, HStun, HTeleportation, Hallucination,
+    Levitation, Passes_walls, Stunned, Swimming, Teleport_control,
+    Teleportation, Wwalking,
+} from './youprop.js';
 
 // These generated-monster masks are source data which monsters.js does not
 // currently export. Keep their names and values traceable to monflag.h.
@@ -279,14 +270,6 @@ function teleportEnv(env = {}) {
 
 function teleportInput(env, operation, fallback) {
     if (typeof env[operation] === 'function') return env[operation];
-    if (env.planning) {
-        if (typeof env.requestPlanningInput !== 'function') {
-            throw new TypeError(
-                `planned teleport requires a ${operation} boundary`,
-            );
-        }
-        return (...args) => env.requestPlanningInput(operation, ...args);
-    }
     return fallback;
 }
 
@@ -753,8 +736,8 @@ export async function mlevel_tele_trap(
             'monster level teleport requires a destination level',
         );
     }
-    // C calls dog.c migrate_to_level() directly. Monster-turn callers bind
-    // their planning-aware adapter; any other caller, such as a fountain
+    // C calls dog.c migrate_to_level() directly. Monster-turn callers may bind
+    // their own adapter; any other caller, such as a fountain
     // monster that lands on a level teleporter, gets the source function.
     const migrateToLevel = env.migrateToLevel ?? migrate_to_level;
     const seeTrap = inSight
@@ -917,45 +900,26 @@ export function goodpos_onscary(x, y, species, env = {}) {
     return Boolean(sengr_at('Elbereth', x, y, true, state));
 }
 
-function propertyPresent(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
-function propertyActive(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
-
 // These are teleport.c goodpos()'s direct hero macro expressions. Keep them
 // here so every goodpos caller gets the same C checks without injected hooks.
 function heroCanOccupyPool(x, y, state) {
-    const steed = state.u?.usteed;
-    const flying = state.u?.uprops?.[FLYING] ?? {};
-    return propertyPresent(state, SWIMMING)
-        || Boolean(steed && is_swimmer(steed.data))
-        || propertyPresent(state, MAGICAL_BREATHING)
-        || amphibious(state.youmonst?.data)
+    return Swimming(state.u)
+        || Amphibious(state)
         || (!inWaterLevel(state)
             && !is_waterwall(x, y, state)
-            && (propertyActive(state, LEVITATION)
-                || Boolean((flying.intrinsic || flying.extrinsic
-                    || (steed && is_flyer(steed.data))) && !flying.blocked)
-                || propertyPresent(state, WWALKING)));
+            && (Levitation(state.u)
+                || Flying(state.u)
+                || Wwalking(state)));
 }
 
 function heroCanOccupyLava(state) {
     // C teleport.c reads global `uarmf` (worn.c's W_ARMF slot), which is
     // stored at the game-state root alongside uarmh/uarms.
     const boots = state.uarmf;
-    const waterWalking = propertyPresent(state, WWALKING)
-        && !inWaterLevel(state);
-    const flying = state.u?.uprops?.[FLYING] ?? {};
-    const steed = state.u?.usteed;
-    return Boolean(propertyActive(state, LEVITATION)
-        || Boolean((flying.intrinsic || flying.extrinsic
-            || (steed && is_flyer(steed.data))) && !flying.blocked)
-        || (propertyPresent(state, FIRE_RES) && waterWalking
+    const waterWalking = Wwalking(state);
+    return Boolean(Levitation(state.u)
+        || Flying(state.u)
+        || (Fire_resistance(state.u) && waterWalking
             && boots && boots.oerodeproof)
         || (Upolyd(state.u) && likes_lava(state.youmonst?.data)));
 }
@@ -1419,7 +1383,7 @@ export async function teleok(x, y, trapok, state = game, rawEnv = {}) {
         else if (trap.ttyp === VIBRATING_SQUARE)
             trapok = true;
         else if ((is_pit(trap.ttyp) || is_hole(trap.ttyp))
-            && (Levitation_prop(state) || Flying_prop(state)))
+            && (Levitation(state.u) || Flying(state.u)))
             trapok = true;
         if (!trapok)
             return false;
@@ -1433,23 +1397,9 @@ export async function teleok(x, y, trapok, state = game, rawEnv = {}) {
     return true;
 }
 
-function Levitation_prop(state) {
-    const p = state.u?.uprops?.[LEVITATION];
-    return Boolean((p?.intrinsic || p?.extrinsic) && !p?.blocked);
-}
-
-function Flying_prop(state) {
-    const p = state.u?.uprops?.[FLYING];
-    return Boolean((p?.intrinsic || p?.extrinsic) && !p?.blocked);
-}
-
-function Teleport_control_prop(state) {
-    const p = state.u?.uprops?.[TELEPORT_CONTROL];
-    return Boolean((p?.intrinsic || p?.extrinsic) && !p?.blocked);
-}
 
 function Stunned_prop(state) {
-    return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
+    return Boolean(Stunned(state.u));
 }
 
 // C ref: teleport.c safe_teleds() (717-770). After forty random safe squares,
@@ -1470,8 +1420,7 @@ export async function safe_teleds(teleds_flags, state = game, rawEnv = {}) {
     }
 
     let ccFlags = CC_RING_PAIRS | CC_SKIP_MONS;
-    const passesWalls = state.u?.uprops?.[PASSES_WALLS];
-    if (!(passesWalls?.intrinsic || passesWalls?.extrinsic))
+    if (!Passes_walls(state.u))
         ccFlags |= CC_SKIP_INACCS;
     const candidates = collect_coords(
         state.u.ux,
@@ -1543,7 +1492,7 @@ export async function scrolltele(scroll, state = game, rawEnv = {}) {
             return;
     }
 
-    if (((Teleport_control_prop(state) || Boolean(scroll?.blessed))
+    if (((Teleport_control(state.u) || Boolean(scroll?.blessed))
         && !Stunned_prop(state)) || state.wizard) {
         if (unconscious(state)) {
             await message(
@@ -1645,31 +1594,25 @@ export async function dotelecmd(state = game, rawEnv = {}) {
             selectedTeleportMode = modes[1];
     }
 
-    let teleportProperty;
     let savedTeleportation;
     let spellRestore = TPORT_SPELL_ACTION.NOOP;
     try {
         if (selectedTeleportMode !== null) {
-            teleportProperty = state.u.uprops[TELEPORT] ??= {
-                intrinsic: 0,
-                extrinsic: 0,
-                blocked: 0,
-            };
             savedTeleportation = {
-                intrinsic: teleportProperty.intrinsic,
-                extrinsic: teleportProperty.extrinsic,
+                intrinsic: HTeleportation(state.u),
+                extrinsic: ETeleportation(state.u),
             };
             if (selectedTeleportMode === 'n') {
-                teleportProperty.intrinsic =
-                    (Number(teleportProperty.intrinsic) || 0) | I_SPECIAL;
+                state.u.uprops[TELEPORT].intrinsic =
+                    HTeleportation(state.u) | I_SPECIAL;
                 spellRestore = tport_spell(TPORT_SPELL_ACTION.HIDE, state);
             } else if (selectedTeleportMode === 's') {
-                teleportProperty.intrinsic = 0;
-                teleportProperty.extrinsic = 0;
+                state.u.uprops[TELEPORT].intrinsic = 0;
+                state.u.uprops[TELEPORT].extrinsic = 0;
                 spellRestore = tport_spell(TPORT_SPELL_ACTION.ADD, state);
             } else if (selectedTeleportMode === 't') {
-                teleportProperty.intrinsic = 0;
-                teleportProperty.extrinsic = 0;
+                state.u.uprops[TELEPORT].intrinsic = 0;
+                state.u.uprops[TELEPORT].extrinsic = 0;
                 spellRestore = tport_spell(TPORT_SPELL_ACTION.HIDE, state);
             }
         }
@@ -1681,8 +1624,8 @@ export async function dotelecmd(state = game, rawEnv = {}) {
         return result ? ECMD_TIME : ECMD_OK;
     } finally {
         if (savedTeleportation) {
-            teleportProperty.intrinsic = savedTeleportation.intrinsic;
-            teleportProperty.extrinsic = savedTeleportation.extrinsic;
+            state.u.uprops[TELEPORT].intrinsic = savedTeleportation.intrinsic;
+            state.u.uprops[TELEPORT].extrinsic = savedTeleportation.extrinsic;
             if (spellRestore !== TPORT_SPELL_ACTION.NOOP)
                 tport_spell(spellRestore, state);
         }
@@ -1737,11 +1680,7 @@ export async function dotele(breakTheRules = false, state = game, rawEnv = {}) {
 
     if (!trap && !breakTheRules) {
         let castIt = false;
-        const teleportProperty = state.u?.uprops?.[TELEPORT];
-        const hasTeleportation = Boolean(
-            (teleportProperty?.intrinsic || teleportProperty?.extrinsic)
-            && !teleportProperty?.blocked,
-        );
+        const hasTeleportation = Teleportation(state.u);
         const roleWizard = state.urole?.mnum === PM_WIZARD;
         const formCanTeleport = can_teleport(state.youmonst?.data);
         if (!hasTeleportation
@@ -1749,11 +1688,7 @@ export async function dotele(breakTheRules = false, state = game, rawEnv = {}) {
                 && !formCanTeleport)) {
             const { known_spell, spe_Fresh, spe_Unknown } = await import('./spell.js');
             const knownSpell = known_spell(SPE_TELEPORT_AWAY, state);
-            const confused = Boolean(
-                state.u?.uprops?.[CONFUSION]?.intrinsic
-                || state.u?.uprops?.[CONFUSION]?.extrinsic,
-            );
-            castIt = knownSpell >= spe_Fresh && !confused;
+            castIt = knownSpell >= spe_Fresh && !Confusion(state.u);
             if (!castIt) {
                 const reason = !hasTeleportation
                     ? (knownSpell !== spe_Unknown
@@ -1837,15 +1772,6 @@ export async function teleds(nux, nuy, teleds_flags, state = game, rawEnv = {}) 
     const env = teleportEnv({ ...rawEnv, state });
     if (state !== game && typeof env.redraw !== 'function') {
         throw new TypeError('teleds on a non-live state requires a redraw callback');
-    }
-    // C teleds() owns the vision rebuild before input-capable Water arrival,
-    // drowning and inventory damage. Replay the whole call on live state:
-    // its vision buffers must not be written by the private planning pass.
-    if (env.planning && on_level(state.u?.uz, state.water_level)
-        && is_pool(nux, nuy, state)) {
-        if (typeof env.requestPlanningInput !== 'function')
-            throw new TypeError('planned Water teleport requires a replay boundary');
-        env.requestPlanningInput('teleport.c teleds');
     }
     const redraw = env.redraw ?? newsym;
     const u = state.u;
@@ -1947,10 +1873,9 @@ export async function teleds(nux, nuy, teleds_flags, state = game, rawEnv = {}) 
     }
 
     /* must set u.ux, u.uy after drag_ball() */
-    // see_nearby_objects()'s newsym_force() paints the live map; the planning
-    // clone keeps its discovery writes and draws nothing.
+    // see_nearby_objects()'s newsym_force() draws through this call's redraw.
     u_on_newpos(nux, nuy, state, {
-        seeNearbyObjectsOptions: { redraw: env.planning ? () => {} : redraw },
+        seeNearbyObjectsOptions: { redraw },
     });
     await fill_pit(u.ux0, u.uy0, state, env);
     if (ball_active && state.uchain?.where === OBJ_FREE)
@@ -2000,8 +1925,7 @@ export async function teleds(nux, nuy, teleds_flags, state = game, rawEnv = {}) 
 // youprop.h:57 defines Antimagic as the intrinsic or the extrinsic, with no
 // blocking term.
 function Antimagic_prop(state) {
-    const p = state.u?.uprops?.[ANTIMAGIC];
-    return Boolean(p?.intrinsic || p?.extrinsic);
+    return Antimagic(state.u);
 }
 
 // C's `static boolean in_tele_trap` inside tele_trap(), teleport.c:1494. A
@@ -2049,7 +1973,7 @@ export async function domagicportal(trap, state = game) {
         totype = UTOTYPE_PORTAL;
         stunmsg = Stunned_prop(state)
             ? 'You feel dizzier.' : 'You feel slightly dizzy.';
-        const stun = u.uprops[STUNNED]?.intrinsic ?? 0;
+        const stun = HStun(u);
         await make_stunned((stun & TIMEOUT) + 3, false, state);
     }
     schedule_goto(trap.dst, totype, stunmsg, null, state);
@@ -2137,7 +2061,7 @@ export async function level_tele_trap(
     await level_tele(state);
 
     const hallucination = Hallucination(state.u);
-    if (hallucination || Teleport_control_prop(state)) {
+    if (hallucination || Teleport_control(state.u)) {
         await message(
             `You briefly feel ${hallucination ? 'oriented' : 'centered'}.`,
             state,
@@ -2145,23 +2069,18 @@ export async function level_tele_trap(
         );
     } else {
         await message(
-            youFeel(`${Confusion(state) ? 'even more ' : ''}disoriented.`, state),
+            youFeel(`${Confusion(state.u) ? 'even more ' : ''}disoriented.`, state),
             state,
             env,
         );
     }
 
-    if (!Teleport_control_prop(state)) {
-        const confusion = state.u?.uprops?.[CONFUSION]?.intrinsic ?? 0;
+    if (!Teleport_control(state.u)) {
+        const confusion = HConfusion(state.u);
         await make_confused((confusion & TIMEOUT) + 3, false, state, env);
     }
 }
 
-// youprop.h:83-84 defines Confusion as the bare intrinsic field, with neither
-// an extrinsic nor a blocked term.
-function Confusion(state) {
-    return Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
-}
 
 // The comparison recorder's atoi() reaches strtol() and then stores the
 // result in a signed int. Match that concrete LP64 ABI: ASCII whitespace,
@@ -2345,7 +2264,7 @@ export async function level_tele(state = game) {
         return;
     }
 
-    const controlled = (Teleport_control_prop(state) && !Stunned_prop(state))
+    const controlled = (Teleport_control(state.u) && !Stunned_prop(state))
         || Boolean(state.wizard);
     if (!controlled) {
         // teleport.c:1292-1298. Involuntary level teleport skips getlin().
@@ -2389,7 +2308,7 @@ export async function level_tele(state = game) {
                 }
                 // C evaluates this before Escape, so confused Escape still
                 // consumes rnl(5) and can become a random teleport.
-                if (Confusion(state) && rnl(5)) {
+                if (Confusion(state.u) && rnl(5)) {
                     await ttyPline('Oops...', state);
                     random_levtport = true;
                     break;
@@ -2532,9 +2451,9 @@ export async function level_tele(state = game) {
         }
         if (killer.name) {
             // The heaven destination is already fatal and remains pending.
-        } else if (Levitation_prop(state)) {
+        } else if (Levitation(state.u)) {
             escape_by_flying = 'float gently down to earth';
-        } else if (Flying(state)) {
+        } else if (Flying(state.u)) {
             escape_by_flying = 'fly down to the ground';
         } else {
             await ttyPline('Unfortunately, you don\'t know how to fly.', state);

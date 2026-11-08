@@ -23,8 +23,6 @@ import {
     ARTICLE_YOUR,
     A_WIS,
     CLAIRVOYANT,
-    CONFLICT,
-    DISPLACED,
     DRY,
     EPRI,
     FROMOUTSIDE,
@@ -123,7 +121,7 @@ import { canseemon } from './display.js';
 import { m_canseeu } from './vision.js';
 import { buzz } from './zap.js';
 import {
-    Deaf, Hallucination, Invis,
+    Conflict, Deaf, Displaced, HProtection, Hallucination, Invis,
 } from './youprop.js';
 
 // C ref: priest.c local constants.
@@ -621,7 +619,7 @@ export async function move_special(
 ) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
-    const redraw = env.planning ? () => {} : (env.redraw ?? newsym);
+    const redraw = env.redraw ?? newsym;
 
     if (omx === ggx && omy === ggy) return 0;
     if (mtmp.mconf) {
@@ -744,18 +742,15 @@ export async function pri_move(priest, env = {}) {
 
     let avoid = true;
 
-    const conflict = state.u.uprops?.[CONFLICT];
-    if (!priest.mpeaceful || ((conflict?.intrinsic || conflict?.extrinsic)
+    if (!priest.mpeaceful || (Conflict(state.u)
         && !resist_conflict(priest, state, random))) {
         if (monnear(priest, state.u.ux, state.u.uy, state)) {
             // priest.c:199-203 completes its discarded attack before returning.
-            const displaced = state.u.uprops?.[DISPLACED];
-            if (displaced?.intrinsic || displaced?.extrinsic) {
-                if (!env.planning)
-                    await (env.message ?? ttyPline)(
-                        `Your displaced image doesn't fool ${mon_nam(priest, state)}!`,
-                        state, env,
-                    );
+            if (Displaced(state.u)) {
+                await (env.message ?? ttyPline)(
+                    `Your displaced image doesn't fool ${mon_nam(priest, state)}!`,
+                    state, env,
+                );
             }
             await (env.attackHero ?? mattacku)(priest, { ...env, state });
             return 0;
@@ -1142,9 +1137,8 @@ export async function priest_talk(priest, state = game, env = {}) {
         // compares against 2*suggested, not suggested*quan.
         let origUblessed = Math.trunc(u.ublessed ?? 0);
         u.uprops ??= [];
-        const protection = u.uprops[PROTECTION] ??= { intrinsic: 0 };
-        if (!(protection.intrinsic & INTRINSIC)) {
-            protection.intrinsic |= FROMOUTSIDE;
+        if (!(HProtection(u) & INTRINSIC)) {
+            u.uprops[PROTECTION].intrinsic |= FROMOUTSIDE;
             origUblessed = -1;
         }
 

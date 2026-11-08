@@ -23,7 +23,6 @@ import {
     GETOBJ_EXCLUDE,
     GETOBJ_PROMPT,
     GETOBJ_SUGGEST,
-    GLIB,
     HAND,
     has_oname,
     plur,
@@ -42,7 +41,6 @@ import {
     is_art,
     restrict_name,
     retouch_object,
-    Stone_resistance,
 } from './artifacts.js';
 import { reset_remarm, setwornEnv } from './do_wear.js';
 import { acurr, exercise } from './attrib.js';
@@ -146,7 +144,9 @@ import {
     setnotworn,
     setworn,
 } from './worn.js';
-import { Blind, Hallucination } from './youprop.js';
+import {
+    Blind, Glib, Hallucination, Stone_resistance,
+} from './youprop.js';
 
 // C ref: wield.c setuwep() (100-137). Slot changes and status invalidation
 // precede artifact-light shutdown; finish unweapon only after the live message.
@@ -227,11 +227,6 @@ function TWOWEAPOK(obj, state) {
         : is_weptool(obj, state);
 }
 
-// youprop.h:112 defines Glib as the bare intrinsic field, so slippery fingers
-// have no extrinsic source to consult. do_wear.c cursed() reads it too.
-export function Glib(state) {
-    return Boolean(state.u?.uprops?.[GLIB]?.intrinsic);
-}
 
 // C ref: wield.c can_twoweapon() (760-804). Each refusal prints its source
 // reason and returns FALSE; only the successful path reaches dotwoweapon()'s
@@ -294,8 +289,8 @@ export async function can_twoweapon(state = game, env = {}) {
         && await cant_wield_corpse(uswapwep, state)) {
         // wield.c:794-796 leaves this arm empty because !TWOWEAPOK() has
         // already rejected a corpse.
-    } else if (Glib(state) || uswapwep.cursed) {
-        if (!Glib(state)) set_bknown(uswapwep, 1, { ...env, state });
+    } else if (Glib(state.u) || uswapwep.cursed) {
+        if (!Glib(state.u)) set_bknown(uswapwep, 1, { ...env, state });
         await drop_uswapwep(state, env);
     } else {
         return true;
@@ -374,7 +369,7 @@ export function welded(obj, state = game, env = {}) {
 export async function cant_wield_corpse(obj, state = game, env = {}) {
     if (state.uarmg || obj.otyp !== CORPSE
         || !touch_petrifies(state.mons[obj.corpsenm])
-        || Stone_resistance(state)) return false;
+        || Stone_resistance(state.u)) return false;
 
     await ttyPline(
         `You wield ${corpse_xname(obj, null, CXN_PFX_THE, state)} in your bare ${makeplural(body_part(HAND, state.youmonst))}.`,

@@ -11,7 +11,6 @@ import {
     Is_rogue_level,
     Is_astralevel,
     NO_MM_FLAGS,
-    PROT_FROM_SHAPE_CHANGERS,
     RLOC_MSG,
     STRAT_APPEARMSG,
     STRAT_GOAL,
@@ -88,7 +87,7 @@ import { mnexto as moveMonsterNextTo, wake_nearto } from './mon.js';
 import { dist2 } from './hacklib.js';
 import { m_next2u } from './mhitu.js';
 import { verbalize, youFeel } from './pline.js';
-import { Blind, Deaf } from './youprop.js';
+import { Blind, Deaf, Protection_from_shape_changers } from './youprop.js';
 
 // C wizard.c:52-56, ROLL_FROM(wizapp) in clonewiz().
 const WIZARD_APPEARANCES = Object.freeze([
@@ -153,8 +152,8 @@ export async function amulet(state = game, rawEnv = {}) {
 
 
 // C In_endgame() compares the current dungeon number with astral_level. This
-// local spelling keeps nasty()'s substitute cap clone-local during planning
-// and source-pinned tests.
+// local spelling reads the caller's state, so nasty()'s substitute cap follows
+// a hand-built state in source-pinned tests.
 function inEndgameState(state) {
     const level = state.u?.uz;
     const astral = state.astral_level;
@@ -223,8 +222,6 @@ export async function clonewiz(state = game, rawEnv = {}) {
 
     const env = {
         ...rawEnv, state, random, _cloneWizard: true,
-        ...(rawEnv.planning && rawEnv.message === undefined
-            ? { message: async () => {} } : {}),
     };
     const monster = await createMonster(
         species,
@@ -243,17 +240,17 @@ export async function clonewiz(state = game, rawEnv = {}) {
         add_to_minv(monster, fake, env);
     }
 
-    const property = state.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
-    if (!(property?.intrinsic || property?.extrinsic)) {
+    if (!Protection_from_shape_changers(state.u)) {
         monster.m_ap_type = M_AP_MONSTER;
         monster.mappearance = WIZARD_APPEARANCES[
             random.rn2(WIZARD_APPEARANCES.length)
         ];
     }
     // C redraws after the clone's final attitudes and disguise are set.
-    // Preserve planning isolation and caller-owned display operations.
+    // Caller-owned display operations take precedence; a hand-built state
+    // has no global display for newsym() to paint.
     const redraw = rawEnv.redraw ?? rawEnv.redrawSquare
-        ?? (!rawEnv.planning && state === game ? newsym : null);
+        ?? (state === game ? newsym : null);
     if (typeof redraw === 'function')
         await redraw(monster.mx, monster.my, state, rawEnv);
     return monster;
@@ -545,12 +542,7 @@ export async function nasty(summoner, rawEnv = {}) {
                 // NO_MM_FLAGS shape without widening ordinary runtime calls.
                 _nasty: true,
                 // MM_NOMSG creation still requires both runtime message
-                // operations.  Planning callers own a silent clone-local
-                // operation; live callers retain makemon_runtime defaults.
-                ...(rawEnv.planning && !rawEnv.message
-                    ? { message: async () => {} } : {}),
-                ...(rawEnv.planning && !rawEnv.norepMessage
-                    ? { norepMessage: async () => {} } : {}),
+                // operations; callers retain makemon_runtime defaults.
             };
             let monster = await createMonster(
                 species,
@@ -809,8 +801,8 @@ function wizardOperation(rawEnv, name, fallback = null) {
 }
 
 // C ref: wizard.c tactics() (368-468).  Relocation, object transfer, and
-// output are operation seams because the same function runs on the live
-// monster and on the planning clone.  The only discarded unavailable callee
+// output are operation seams that callers and tests may replace.  The only
+// discarded unavailable callee
 // is the swallowed expels(TRUE) arm; its return is not used by C.
 export async function tactics(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;

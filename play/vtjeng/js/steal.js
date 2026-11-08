@@ -3,8 +3,6 @@
 // mdrop_obj(), relobj(), steal(), worn_item_removal() and remove_worn_item().
 
 import {
-    ADORNED,
-    CONFLICT,
     FOOT,
     HAND,
     LEFT_HANDED,
@@ -126,7 +124,7 @@ import { messageAt } from './startup_a11y.js';
 import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import { cansee } from './vision.js';
 import {
-    Flying, Levitation, minstapetrify, openholdingtrap, unconscious,
+    minstapetrify, openholdingtrap, unconscious,
 } from './trap.js';
 import { is_fainted, maybe_finished_meal } from './eat.js';
 import {
@@ -151,7 +149,9 @@ import { unpunish } from './read.js';
 import { canseemon, canspotmon } from './display.js';
 import { ART_ORB_OF_DETECTION, touch_artifact } from './artifacts.js';
 import { body_part, mbodypart } from './polyself.js';
-import { Blind } from './youprop.js';
+import {
+    Adornment, Blind, Conflict, Flying, Levitation,
+} from './youprop.js';
 
 export class UnsupportedMonsterPickupOperationError extends Error {
     constructor(operation, obj = null) {
@@ -599,8 +599,7 @@ export async function steal(
 ) {
     // C's worn_item_removal() uses ordinary pline(), while the final theft
     // line uses urgent_pline(). Keep the two display operations separate so
-    // callers can silence both during planning without changing live message
-    // attributes or the --More-- boundary.
+    // each keeps its own message attributes and --More-- boundary.
     const message = env.message ?? ttyPline;
     const urgentMessage = env.urgentMessage ?? ttyUrgentPline;
     const randomSet = env.random ?? coreRandom;
@@ -618,7 +617,7 @@ export async function steal(
     if (!monnear(mtmp, state.u.ux, state.u.uy, state)) return 0;
 
     // x_monnam() draws core RNG for the unseen someone/something choice and
-    // the display stream for a hallucinated species, so a planning caller's
+    // the display stream for a hallucinated species, so the caller's
     // streams must reach both.
     const nameEnv = {
         random,
@@ -688,7 +687,7 @@ export async function steal(
     if (monkey_business || state.uarmg) {
         // skip ring special cases
     } else {
-        const adornment = state.u.uprops?.[ADORNED]?.extrinsic ?? 0;
+        const adornment = Adornment(state.u);
         if (adornment & LEFT_RING) {
             otmp = state.uleft;
             goGotobj = true;
@@ -880,9 +879,8 @@ export async function steal(
     if (objnambuf) objnambuf.value = yname(otmp, state);
 
     // set mavenge so knights won't suffer alignment penalty
-    const conflict = state.u.uprops?.[CONFLICT];
     const punished = Boolean(state.uball);
-    if (!(conflict?.intrinsic || conflict?.extrinsic)
+    if (!Conflict(state.u)
         && !(was_punished && !punished))
         mtmp.mavenge = 1;
 
@@ -1347,7 +1345,7 @@ export async function stealgold(mtmp, rawEnv = {}) {
         if (what.startsWith('rear ')) what = what.slice(5);
         await message(
             `${Monnam(mtmp, state, env)} quickly snatches some gold from `
-                + `${Levitation(state) || Flying(state) ? 'beneath' : 'between'} `
+                + `${Levitation(state.u) || Flying(state.u) ? 'beneath' : 'between'} `
                 + `${whose} ${what}!`,
             state,
             env,

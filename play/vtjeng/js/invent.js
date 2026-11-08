@@ -40,7 +40,6 @@ import {
     ECMD_CANCEL,
     ECMD_FAIL,
     FINGERTIP,
-    FUMBLING,
     GOLD_SYM,
     HAND,
     st_all,
@@ -118,7 +117,6 @@ import {
     Never_mind,
     quitchars,
     silly_thing_to,
-    STONE_RES,
     PLNMSG_ONE_ITEM_HERE,
     CXN_ARTICLE,
     CXN_PFX_THE,
@@ -390,7 +388,9 @@ import {
 import { set_moreluck } from './attrib.js';
 import { is_pole } from './worn.js';
 import { welded } from './wield.js';
-import { Blind, Hallucination } from './youprop.js';
+import {
+    Blind, Fumbling, Hallucination, Stone_resistance,
+} from './youprop.js';
 
 // invent.c owns reroll_menu(); the startup module holds its complete menu
 // implementation so the startup dependency graph stays acyclic. Re-export
@@ -2322,7 +2322,7 @@ export function sobj_at(otyp, x, y, state = game) {
 export function will_feel_cockatrice(otmp, force_touch, state = game) {
     return Boolean((Blind(state.u) || force_touch)
         && !state.uarmg
-        && !Stone_resistance(state)
+        && !Stone_resistance(state.u)
         && otmp.otyp === CORPSE
         && touch_petrifies(state.mons[otmp.corpsenm]));
 }
@@ -2348,14 +2348,6 @@ export async function feel_cockatrice(
     await instapetrify(killer, state);
 }
 
-// C ref: youprop.h:65 Stone_resistance, which is
-// (HStone_resistance || EStone_resistance) and carries no `blocked` term --
-// unlike Blind() at :103, which does. js/pickup.js reads the same macro for
-// u_safe_from_fatal_corpse()'s st_resists arm, so the two must agree.
-function Stone_resistance(state) {
-    const property = state.u?.uprops?.[STONE_RES];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
 // Mutation-free admission for look_here() through its first complete result.
 // `objects` projects the floor chain after an automatic pickup without
@@ -3487,13 +3479,6 @@ function oname(obj) {
     return hasTextExtra(obj, 'oname') ? String(obj.oextra.oname) : '';
 }
 
-// C's `Fumbling`, which reads u.uprops[FUMBLING] the way the property macros
-// in youprop.h do.  Nothing in this port raises it.
-function propertyPresent(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
 
 function isCleric(state) {
     return state.urole?.filecode === 'Pri';
@@ -3899,16 +3884,6 @@ export function merged(otmp, obj, env = {}) {
 // introduce an observable scheduling boundary.
 export function mergedRuntime(otmp, obj, env = {}) {
     const normalized = mergedEnv(env);
-    if (normalized.planning && obj?.globby
-        && preflightMerged(otmp, obj, normalized, 'runtime')) {
-        if (typeof normalized.requestPlanningInput !== 'function')
-            throw new TypeError(
-                'planned glob merge requires a message input handoff',
-            );
-        return normalized.requestPlanningInput(
-            'mkobj.c pudding_merge_message', otmp, obj, normalized,
-        );
-    }
     const plan = beginMerged(otmp, obj, normalized, 'runtime');
     if (!plan) return false;
     if (plan.globby) {
@@ -4185,14 +4160,12 @@ function addinv_core1(obj, env, facts) {
         .then(() => addinv_core1_effects(obj, env, facts));
 }
 
-// pline.c impossible() through the inventory environment's message seam. A
-// planning clone prints nothing.
+// pline.c impossible() through the inventory environment's message seam.
 function inventoryImpossible(text, env) {
-    const silent = env.planning ? async () => {} : undefined;
-    const message = env.hooks?.message ?? env.message ?? silent;
+    const message = env.hooks?.message ?? env.message;
     return impossible(text, env.state, {
         message,
-        urgentMessage: env.planning ? message : env.urgentMessage,
+        urgentMessage: env.urgentMessage,
     });
 }
 
@@ -4944,7 +4917,7 @@ export async function hold_another_object(
             obj.oerodeproof = oerode;
         }
     }
-    if (propertyPresent(state, FUMBLING)) {
+    if (Fumbling(state.u)) {
         obj.nomerge = 1;
         obj = await addinvCore0Runtime(obj, normalized, null, false);
         await gotoDrop(obj, drop_fmt, drop_arg, normalized);

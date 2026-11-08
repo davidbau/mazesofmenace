@@ -19,9 +19,7 @@ import {
     HEAD,
     ACH_INVK,
     ACH_NOVL,
-    ANTIMAGIC,
     CMDQ_KEY,
-    CONFUSION,
     CLOUD, IS_TREE,
     ERODE_CORRODE,
     EF_GREASE,
@@ -52,13 +50,8 @@ import {
     P_UNSKILLED,
     PICK_NONE,
     PICK_ONE,
-    POISON_RES,
     quitchars,
-    SLEEP_RES,
-    SICK,
-    SLIMED,
     SPINE,
-    STUNNED,
     TIMEOUT,
     uhim,
 } from './const.js';
@@ -162,7 +155,6 @@ import { coreRandom, rn2_on_display_rng } from './rng.js';
 import { aggravate } from './wizard.js';
 import {
     displayPendingTtyMessageWindow,
-    TOPLINE_NEED_MORE,
     ttyNorep,
     ttyPline,
 } from './tty_message.js';
@@ -209,7 +201,9 @@ import { clearTtyMessageWindow } from './tty_message.js';
 import { mkinvokearea } from './mklev.js';
 import { S_goodpos } from './symbols.js';
 import {
-    BClairvoyant, Blind, BlindedTimeout, Hallucination, Maybe_Half_Phys,
+    Antimagic, BClairvoyant, Blind, BlindedTimeout, Confusion, HConfusion,
+    HStun, Hallucination, Maybe_Half_Phys, Poison_resistance, Sick,
+    Sleep_resistance, Slimed, Stunned,
 } from './youprop.js';
 
 // C ref: spell.c's spellmenu arguments. 0..MAXSPELL-1 double as svs.spl_book[]
@@ -395,7 +389,7 @@ export async function losespells(
     }
 
     let toForget = random.rn2(count + 1);
-    if (spellPropertyActive(CONFUSION, state)) {
+    if (Confusion(state.u)) {
         const confusedRoll = random.rn2(count + 1);
         if (confusedRoll > toForget) toForget = confusedRoll;
     }
@@ -419,11 +413,6 @@ function spellStudyDelay(type) {
     if (level === 5 || level === 6) return -level * type.oc_delay;
     if (level === 7) return -8 * type.oc_delay;
     return 0;
-}
-
-function spellPropertyActive(property, state) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
 }
 
 function randomSource(env = {}) {
@@ -465,7 +454,7 @@ export async function cursed_book(book, state = game, env = {}) {
     }
     case 4: {
         await message('These runes were just too much to comprehend.', state);
-        const prior = timeout[CONFUSION]?.intrinsic ?? 0;
+        const prior = HConfusion(state.u);
         await make_confused(
             (prior & TIMEOUT) + random.rn1(7, 16), false, state,
             { message },
@@ -484,7 +473,7 @@ export async function cursed_book(book, state = game, env = {}) {
         } else {
             const wasInUse = book.in_use;
             book.in_use = false;
-            const resistant = spellPropertyActive(POISON_RES, state);
+            const resistant = Poison_resistance(state.u);
             const strengthDamage = resistant
                 ? random.rn1(2, 1) : random.rn1(4, 3);
             const poisonDamage = random.rnd(resistant ? 6 : 10);
@@ -514,7 +503,7 @@ export async function cursed_book(book, state = game, env = {}) {
             break;
         }
     case 6: {
-        if (spellPropertyActive(ANTIMAGIC, state)) {
+        if (Antimagic(state.u)) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await message(
                 'The book radiates explosive energy, but you are unharmed!',
@@ -557,15 +546,7 @@ export async function confused_book(book, state = game, env = {}) {
             'Being confused you have difficulties in controlling your actions.',
             state,
         );
-        if (env.planning && state.nhDisplay?.toplin === TOPLINE_NEED_MORE) {
-            if (typeof env.requestPlanningInput !== 'function')
-                throw new TypeError(
-                    'planned confused_book requires a display input handoff',
-                );
-            await env.requestPlanningInput('windows.c display_nhwindow');
-        } else {
-            await displayPendingTtyMessageWindow(state);
-        }
+        await displayPendingTtyMessageWindow(state);
         await message('You accidentally tear the spellbook to pieces.', state);
         await trycall(book, state, { ...env, random, message });
         await useup(book, { state, hooks: {} });
@@ -764,8 +745,8 @@ function deadbookMakemonEnv(state, random, env) {
         random,
         _deadbook: true,
         // C's makemon appearance uses Norep(), including repeated species
-        // within the swarm. Keep custom planning sinks silent while using
-        // the ordinary live Norep owner rather than the Book's pline sink.
+        // within the swarm. A custom message sink also receives the Norep
+        // lines; the ordinary pline owner maps to the ttyNorep owner.
         norepMessage: env.norepMessage
             ?? (env.message === ttyPline ? ttyNorep : env.message),
     };
@@ -807,7 +788,7 @@ export async function learn(state = game, env = {}) {
         && random.rn2(2)) {
         spbook.delay++;
     }
-    if (spellPropertyActive(CONFUSION, state)) {
+    if (Confusion(state.u)) {
         await confused_book(book, state, { ...env, random });
         spbook.book = null;
         spbook.o_id = 0;
@@ -902,14 +883,14 @@ export async function study_book(spellbook, state = game, env = {}) {
     const message = env.message ?? ttyPline;
     const prompt = env.prompt;
     const booktype = spellbook.otyp;
-    const confused = spellPropertyActive(CONFUSION, state);
+    const confused = Boolean(Confusion(state.u));
     const type = objectType(booktype, state);
     const level = Math.trunc(type.oc_level ?? type.oc_oc2 ?? 0);
     state.context ??= {};
     state.context.spbook ??= { delay: 0, book: null, o_id: 0 };
     const spbook = state.context.spbook;
 
-    if (!confused && !spellPropertyActive(SLEEP_RES, state)
+    if (!confused && !Sleep_resistance(state.u)
         && OBJ_DESCR(type, state) === 'dull') {
         let dullbook = random.rnd(25) - acurr(state, A_WIS);
         if (spbook.delay && spellbook === spbook.book)
@@ -1479,7 +1460,7 @@ function spell_idx(otyp, state = game) {
 // C ref: spell.c rejectcasting() (687-708). Checks that the hero can cast at
 // all: not stunned, can chant, has a free hand (or wields a quarterstaff).
 async function rejectcasting(state, { message }) {
-    if (Boolean(state.u?.uprops?.[STUNNED]?.intrinsic)) {
+    if (Stunned(state.u)) {
         await message('You are too impaired to cast a spell.', state);
         return true;
     } else if (!can_chant(state.youmonst, state)) {
@@ -1595,8 +1576,8 @@ export async function cast_protection(state = game, env = {}) {
 export async function spell_backfire(spell, state = game, env = {}) {
     const random = randomSource(env);
     const duration = (spellev(spell, state) + 1) * 3;
-    const oldStun = (state.u.uprops[STUNNED]?.intrinsic ?? 0) & TIMEOUT;
-    const oldConf = (state.u.uprops[CONFUSION]?.intrinsic ?? 0) & TIMEOUT;
+    const oldStun = HStun(state.u) & TIMEOUT;
+    const oldConf = HConfusion(state.u) & TIMEOUT;
     state.disp ??= {};
     switch (random.rn2(10)) {
     case 0: case 1: case 2: case 3:
@@ -1625,7 +1606,7 @@ export async function spelleffects_check(spell, state = game, env = {}) {
     const random = randomSource(env);
     let res = ECMD_OK;
     const confused = Boolean(
-        state.u?.uprops?.[CONFUSION]?.intrinsic,
+        HConfusion(state.u),
     );
     let energy = 0;
 
@@ -1769,8 +1750,8 @@ export async function spelleffects(spell_otyp, atme, force, state = game,
         await healup(0, 0, false, true, state, env);
         break;
     case SPE_CURE_SICKNESS: {
-        const wasSick = Boolean(state.u.uprops[SICK].intrinsic);
-        const wasSlimed = Boolean(state.u.uprops[SLIMED].intrinsic);
+        const wasSick = Boolean(Sick(state.u));
+        const wasSlimed = Boolean(Slimed(state.u));
         await healup(0, 0, true, false, state, env);
         const message = env.message ?? ttyPline;
         if (wasSick || !wasSlimed) {

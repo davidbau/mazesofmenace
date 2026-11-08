@@ -61,12 +61,10 @@ import {
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ECMD_OK,
     AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
-    ACCESSIBLE, BOLT_LIM, CONFUSION, FLYING, GLIB, INTRINSIC, WOUNDED_LEGS,
+    ACCESSIBLE, BOLT_LIM, INTRINSIC,
     H_IBM, H_UTF8, PRIMARYSET, ROGUESET,
     CORPSTAT_FEMALE, CORPSTAT_GENDER,
-    HL_BOLD, HL_INVERSE, HL_ULINE, HL_UNDEF,
-    LEVITATION, NOT_HUNGRY, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE,
-    SLIMED, STONED, STR18, STRANGLED, STUNNED, OBJ_FLOOR,
+    HL_BOLD, HL_INVERSE, HL_ULINE, HL_UNDEF, NOT_HUNGRY, SICK_NONVOMITABLE, SICK_VOMITABLE, STR18, OBJ_FLOOR,
     BACKTRACK, DISP_ALL, DISP_ALWAYS, DISP_BEAM, DISP_CHANGE, DISP_END,
     DISP_FLASH, DISP_FREEMEM, DISP_TETHER,
     P_SHORT_SWORD, P_SABER,
@@ -95,7 +93,6 @@ import {
     M_AP_TYPMASK, MON_STILL_ARRIVING,
     SYM_BOULDER, SYM_INVISIBLE, SYM_NOTHING, SYM_UNEXPLORED,
     SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE, WARNCOUNT,
-    PROT_FROM_SHAPE_CHANGERS,
     def_warnsyms,
 } from './const.js';
 import {
@@ -120,7 +117,7 @@ import {
 } from './terminal.js';
 import { rankOf, roles } from './roles.js';
 import { pmname } from './do_name.js';
-import { is_flyer, monsndx, sticks } from './mondata.js';
+import { monsndx, sticks } from './mondata.js';
 import { m_at } from './monst.js';
 import {
     dist2,
@@ -316,7 +313,7 @@ import {
     S_EEL,
     monsterClassSymbol,
 } from './monsters.js';
-import { planningContextInstalled, rn2_on_display_rng } from './rng.js';
+import { rn2_on_display_rng } from './rng.js';
 import {
     emitGlyphUpdateNotices,
     glyphGnewSinceNotice,
@@ -325,9 +322,10 @@ import {
 } from './startup_a11y.js';
 import { see_wsegs, worm_known } from './worm.js';
 import {
-    Blind, Deaf, Detect_monsters, ETelepat, HHallucination, HTelepat,
-    Halluc_resistance, Hallucination, Infravision, Invis, See_invisible,
-    Warn_of_mon, Warning,
+    Blind, Confusion, Deaf, Detect_monsters, ETelepat, Flying, Glib,
+    HHallucination, HTelepat, Halluc_resistance, Hallucination, Infravision,
+    Invis, Levitation, Protection_from_shape_changers, See_invisible, Sick,
+    Slimed, Stoned, Strangled, Stunned, Warn_of_mon, Warning, Wounded_legs,
 } from './youprop.js';
 
 // C ref: display.c tp_sensemon() (166-168), through display.h's
@@ -428,7 +426,7 @@ export function knowninvisible(mon, state = game) {
             || Detect_monsters(state.u)))
         return true;
     return !Blind(state.u)
-        && Boolean((HTelepat(state.u)) & ~INTRINSIC)
+        && Boolean(HTelepat(state.u) & ~INTRINSIC)
         && dist2(mx, my, state.u?.ux, state.u?.uy) <= BOLT_LIM * BOLT_LIM;
 }
 
@@ -1427,7 +1425,7 @@ function display_monster(x, y, monster, sightflags, wormTail, state = game) {
         & M_AP_TYPMASK;
     const monMimic = appearanceType !== M_AP_NOTHING;
     const sensed = monMimic && (
-        _propertyActive(state.u, PROT_FROM_SHAPE_CHANGERS)
+        Protection_from_shape_changers(state.u)
         || sensemon(monster, state)
     );
 
@@ -2842,9 +2840,6 @@ export function back_to_glyph(x, y, state = game) {
 
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, glyph) {
-    // The live glyph buffer, like newsym() below: a planned paint is dropped,
-    // and the live pass paints the square when it plays the turn.
-    if (planningContextInstalled()) return;
     if (!glyph || typeof glyph !== 'object'
         || !Object.hasOwn(glyph, 'dec')) {
         throw new TypeError(
@@ -2940,11 +2935,11 @@ const SHIELD_STATIC_CMAP = Object.freeze([
 // C ref: display.c shieldeff() (1110-1122). Put one shield-static cmap glyph
 // at the target, flush it, and wait once per source array entry, then redraw
 // the remembered location. This is only terminal animation: it uses no RNG
-// and changes no game state. As with flash_glyph_at(), planning clones must
-// not paint the live game's display buffer.
+// and changes no game state. As with flash_glyph_at(), a state other than the
+// game's paints nothing, since the display buffer is the game's.
 export async function shieldeff(x, y, state = game) {
     if (!state.flags?.sparkle || !cansee(x, y, state)) return;
-    if (state !== game || state.program_state?.planning) return;
+    if (state !== game) return;
 
     for (const cmap of SHIELD_STATIC_CMAP) {
         const glyph = cmap_to_glyph(cmap, state);
@@ -2982,10 +2977,10 @@ export async function flash_glyph_at(
             ? unexploredGlyphInfo(state)
             : map_glyphinfo(back_to_glyph(x, y, state), state);
 
-    // display.c's animation is a window-port side effect. Planning clones
-    // still resolve the two glyphs in source order, but cannot paint the live
-    // terminal or consume animation hooks owned by the live game.
-    if (state !== game || state.program_state?.planning) return;
+    // display.c's animation is a window-port side effect. Another state
+    // still resolves the two glyphs in source order, but cannot paint the
+    // terminal or consume animation hooks owned by the game.
+    if (state !== game) return;
 
     const total = repeatCount * 2;
     for (let i = 0; i < total; ++i) {
@@ -3017,9 +3012,8 @@ function unexploredGlyphInfo(state) {
 // erase/clear operations change the transient buffer, not remembered map cells.
 export async function under_water(mode, state = game) {
     if (Is_waterlevel(state.u.uz, state) || state.u.uswallow) return;
-    // Display owners use the live singleton. Planning clones leave terminal
-    // output and input to the live pass, as shieldeff() does.
-    if (state !== game || state.program_state?.planning) return;
+    // Display owners use the game singleton, as shieldeff() does.
+    if (state !== game) return;
     const previous = state._underWater ??= { x: 0, y: 0, dela: false };
     if (mode === 1 || previous.dela) {
         await cls();
@@ -3561,9 +3555,8 @@ export function glyph_is_invisible(glyph) {
  *
  * The two halves land in different places: the memory write goes to the
  * `state` handed in, and show_glyph_cell() below takes no state and paints the
- * module-global `game`. A live call therefore keeps the foreign-state guard,
- * while the explicit map_invisible_planning() seam below retains the source
- * memory write for a planning clone without painting the live terminal.
+ * module-global `game`. map_invisible() therefore refuses any other state,
+ * and map_invisible_planning() below makes the memory write alone for one.
  */
 function mapInvisibleMemory(x, y, state) {
     if (x === state.u?.ux && y === state.u?.uy) return;
@@ -3584,14 +3577,15 @@ export function map_invisible(x, y, state = game) {
     show_glyph_cell(x, y, map_glyphinfo(GLYPH_INVISIBLE, state));
 }
 
-// C ref: display.c map_invisible()'s levl[].glyph write. The C call also
-// paints the live window, so planningState() uses this explicit seam to keep
-// the memory mutation on its cloned location grid while suppressing that
-// live-only display half.
+// C ref: display.c map_invisible()'s levl[].glyph write alone, for a state
+// other than the game, such as a unit test's hand-built state. The C call
+// also paints the window, which belongs to the game, so this skips that half.
+// js/artifacts.js Mb_hit() and js/mcastu.js mcast_disappear() call it when
+// they are handed such a state.
 export function map_invisible_planning(x, y, state) {
     if (!state || state === game) {
         throw new TypeError(
-            'map_invisible_planning() requires a foreign planning state',
+            'map_invisible_planning() requires a state other than the game',
         );
     }
     mapInvisibleMemory(x, y, state);
@@ -3610,8 +3604,7 @@ export function map_invisible_planning(x, y, state) {
  * live state, while scripts/detect.test.mjs drives dosearch0() through a
  * hand-built state whose memory half is exactly what that test reads. The
  * repaint is covered separately, against the live game, in
- * scripts/display-symbols.test.mjs. A monster's planning pass (js/explode.js
- * explode()) passes its own `redraw`, so the live square is not repainted.
+ * scripts/display-symbols.test.mjs.
  */
 export function unmap_invisible(x, y, state = game, redraw = newsym) {
     if (!isok(x, y)) return false;
@@ -3770,8 +3763,7 @@ export function unmap_object(x, y, state = game) {
  * C's newsym_force() is newsym() plus the glyph buffer's dirty bookkeeping.
  * js/display.js flush_screen() repaints from game.level rather than from a
  * dirty range, so newsym() alone carries the whole live effect here. A
- * planned clone supplies a silent redraw callback, so it still observes the
- * object but never paints the live terminal.
+ * caller with another state supplies its own redraw callback.
  *
  * The default redraw below is newsym(), which takes no state and reads the
  * module-global `game`. Keep the foreign-state guard unless a caller supplies
@@ -3825,12 +3817,6 @@ function observeNearbyObject(object, x, y, state) {
 // which need the persistent map glyph must reread
 // level.at(x, y).remembered_glyph afterward.
 export function newsym(x, y) {
-    // newsym() takes no state: it always repaints the live game's square. A
-    // planning clone (js/unported_monster_actions.js planningState()) dry-runs
-    // a turn that the live pass then runs again, and the live pass repaints
-    // every square it changes, so a planned repaint is dropped here, as
-    // js/tty_message.js drops a planned message.
-    if (planningContextInstalled()) return;
     // C display.c:926-928 suppresses both map memory and output while the
     // level is in flux, before even accessing the requested location.
     if (suppressMapOutput()) return;
@@ -4182,13 +4168,10 @@ export function newsym(x, y) {
 // ── see_monsters ──
 // C ref: display.c mimic_light_blocking() and set_mimic_blocking().  The
 // caller has already changed See_invisible before this traversal starts.
-// A planning clone passes admitPointChange, which it calls before each
-// block_point() or unblock_point() rewrites the shared obstruction index.
-export function set_mimic_blocking(state = game, { admitPointChange = null } = {}) {
+export function set_mimic_blocking(state = game) {
     const canSeeInvisible = See_invisible(state.u);
     iter_mons((monster) => {
         if (!monster.minvis || !is_lightblocker_mappear(monster)) return;
-        admitPointChange?.(monster.mx, monster.my, state);
         if (canSeeInvisible)
             block_point(monster.mx, monster.my, state);
         else
@@ -4198,17 +4181,18 @@ export function set_mimic_blocking(state = game, { admitPointChange = null } = {
 
 // C ref: display.c see_monsters() (1486-1529). Redraws every monster on the
 // level after something changed what the hero can perceive. `redraw` is an
-// optional caller-owned seam for planning clones: newsym() still draws the
-// live game, while a clone can supply a silent or state-local repaint. The
-// monster-list state changes (meverseen and warning count) always belong to
-// the state passed by the caller.
+// optional caller-owned seam: newsym() draws the game, while a caller with
+// another state supplies its own repaint. The monster-list state changes
+// (meverseen and warning count) always belong to the state passed by the
+// caller.
 //
 export function see_monsters(state = game, env = {}) {
     if (state.gd?.defer_see_monsters) return;
     const { redraw = null } = env;
     if (state !== game && typeof redraw !== 'function') {
         throw new TypeError(
-            'see_monsters() on a clone requires a redraw callback',
+            'see_monsters() on a state other than the game requires a '
+                + 'redraw callback',
         );
     }
     const repaint = redraw ?? newsym;
@@ -4262,8 +4246,6 @@ export function see_monsters(state = game, env = {}) {
             // call.
             return Sting_effects(new_warn_obj_cnt, state, {
                 ...env,
-                ...(env.planning && !env.message
-                    ? { message: async () => {} } : {}),
             }).then(() => {
                 state.warn_obj_cnt = new_warn_obj_cnt;
                 finish();
@@ -4285,14 +4267,13 @@ export function newsymReportsOffMap(x, y) {
 
 // The port's newsym() is synchronous and cannot wait at the --More-- that
 // impossible() reaches, so callers that can meet an off-map square raise the
-// report through this helper. A planning clone prints nothing.
+// report through this helper.
 export function newsymOffMapImpossible(x, y, state = game, env = {}) {
-    const message = env.message ?? (env.planning ? async () => {} : undefined);
     return impossible(`newsym: attempting screen update for <${x},${y}>`,
         state, {
             ...env,
-            message,
-            urgentMessage: env.planning ? message : env.urgentMessage,
+            message: env.message,
+            urgentMessage: env.urgentMessage,
         });
 }
 
@@ -4343,8 +4324,6 @@ async function redraw_map(cursorOnHero = false) {
 // restore defers see_monsters(). Callers can supply equivalent vision callbacks;
 // overlayMonsters=false lets a caller perform its own final monster overlay.
 export async function docrt(options = {}) {
-    // A planned redraw is dropped, as in newsym().
-    if (planningContextInstalled()) return;
     if (!game.level || !game.u?.ux || game.program_state?.in_docrt) return;
     game.program_state ??= {};
     game.program_state.in_docrt = true;
@@ -4975,18 +4954,6 @@ const ENC_STAT_FORMS = Object.freeze([
     Object.freeze(['', 'Brd', 'Strs', 'Strn', 'Ovtx', 'Ovld']),
 ]);
 
-function _propertyActive(u, index) {
-    const property = u.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
-
-function _propertyIntrinsic(u, index) {
-    return Boolean(u.uprops?.[index]?.intrinsic);
-}
-
-function _propertyActiveUnblocked(u, index) {
-    return _propertyActive(u, index) && !u.uprops?.[index]?.blocked;
-}
 
 // C ref: display.h canseeself(), senseself(), and canspotself() (164-176).
 // newsym() must map the hero's square underneath an invisible hero when no
@@ -5173,7 +5140,7 @@ export function statusConditionActive(option, u) {
     case 'unconscious': return botl_incapacitated_conditions(game, u)[option];
     case 'barehanded': return !game.uarmg && !game.uwep;
     case 'blind': return Blind(u);
-    case 'conf': return _propertyIntrinsic(u, CONFUSION);
+    case 'conf': return Boolean(Confusion(u));
     case 'deaf': return Deaf(u);
     // youprop.h:253's Flying counts a flying steed as carrying the hero, and
     // botl.c:1194 reads the whole macro. No steed this port can reach flies,
@@ -5190,12 +5157,9 @@ export function statusConditionActive(option, u) {
     // module-private, reachable only through can_reach_floor() and
     // mount_steed().
     case 'fly':
-        return Boolean((u.uprops?.[FLYING]?.intrinsic
-                        || u.uprops?.[FLYING]?.extrinsic
-                        || (u.usteed && is_flyer(u.usteed.data)))
-                       && !u.uprops?.[FLYING]?.blocked);
+        return Flying(u);
     case 'foodpois':
-        return _propertyIntrinsic(u, SICK)
+        return Boolean(Sick(u))
             && Boolean((u.usick_type ?? 0) & SICK_VOMITABLE);
     // botl.c:1195 reads the remaining confuse-monster hand charges.
     case 'glowhands': return Boolean(u.umconf);
@@ -5232,22 +5196,22 @@ export function statusConditionActive(option, u) {
         const selected = lava ? 'lava' : tethered ? 'tethered' : 'trap';
         return (option === 'inlava' ? 'lava' : option) === selected;
     }
-    case 'levitate': return _propertyActiveUnblocked(u, LEVITATION);
+    case 'levitate': return Levitation(u);
     case 'ride': return Boolean(u.usteed);
-    case 'slime': return _propertyIntrinsic(u, SLIMED);
+    case 'slime': return Boolean(Slimed(u));
     // botl.c:1207 and youprop.h:112 use intrinsic Glib only.
-    case 'slip': return _propertyIntrinsic(u, GLIB);
-    case 'stone': return _propertyIntrinsic(u, STONED);
-    case 'strngl': return _propertyIntrinsic(u, STRANGLED);
-    case 'stun': return _propertyIntrinsic(u, STUNNED);
+    case 'slip': return Boolean(Glib(u));
+    case 'stone': return Boolean(Stoned(u));
+    case 'strngl': return Boolean(Strangled(u));
+    case 'stun': return Boolean(Stunned(u));
     // botl.c:1203 uses Underwater, defined as u.uinwater in youprop.h.
     case 'submerged': return Boolean(u.uinwater);
     case 'termill':
-        return _propertyIntrinsic(u, SICK)
+        return Boolean(Sick(u))
             && Boolean((u.usick_type ?? 0) & SICK_NONVOMITABLE);
     // botl.c:1208 and youprop.h:138 include both timeout and side bits,
     // including a ridden steed's wounds stored in the same hero property.
-    case 'woundedlegs': return _propertyActive(u, WOUNDED_LEGS);
+    case 'woundedlegs': return Wounded_legs(u);
     default: return false;
     }
 }
@@ -7360,8 +7324,6 @@ function suppressMapOutput(state = game) {
 }
 
 export async function flush_screen(mode) {
-    // A planned redraw is dropped, as in newsym().
-    if (planningContextInstalled()) return;
     if (suppressMapOutput()) return;
     if (mode === -1) game.delay_flushing = !game.delay_flushing;
     if (game.delay_flushing) return;
@@ -7409,8 +7371,6 @@ export async function flush_screen(mode) {
 
 // ── cls ──
 export async function cls() {
-    // A planned redraw is dropped, as in newsym().
-    if (planningContextInstalled()) return;
     // C's static in_cls protects reentrant message/display callbacks.
     if (game._inCls) return;
     game._inCls = true;
@@ -7496,8 +7456,6 @@ export async function cls() {
 // during the "You die..." --More-- sequence would show HP:0 instead of the
 // pre-damage value that C's incremental terminal leaves on screen.
 export async function bot({ initialTtyRefresh = false } = {}) {
-    // A planned redraw is dropped, as in newsym().
-    if (planningContextInstalled()) return;
     if (game.gb?.bot_disabled === true)
         return;
     // C botl.c bot() line 259: skip the status update when u.uhp == -1 but
@@ -7588,8 +7546,6 @@ export async function bot({ initialTtyRefresh = false } = {}) {
 // cleared, exactly as bot() does above; suppress_map_output() covers the save,
 // restore and hangup states this port does not enter.
 export async function timebot() {
-    // A planned redraw is dropped, as in newsym().
-    if (planningContextInstalled()) return;
     if (game.gb?.bot_disabled === true)
         return;
     if (game.flags?.time && game.iflags?.status_updates !== false) {

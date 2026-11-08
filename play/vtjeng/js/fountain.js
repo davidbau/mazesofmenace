@@ -28,12 +28,10 @@ import {
     IS_FOUNTAIN,
     KILLED_BY,
     KILLED_BY_AN,
-    LEVITATION,
     MM_NOMSG,
     POLY_NOFLAGS,
     M_SEEN_FIRE,
     MAGICENLIGHTENMENT,
-    POISON_RES,
     PICK_NONE,
     POOL,
     ROOM,
@@ -42,7 +40,6 @@ import {
     something,
     TT_INFLOOR,
     TT_LAVA,
-    UNCHANGING,
     LL_ARTIFACT,
     ONAME_VIA_DIP,
     ONAME_KNOW_ARTI,
@@ -124,11 +121,9 @@ import {
 } from './objects.js';
 import { canspotmon } from './display.js';
 import { somegold } from './steal.js';
-import { Glib } from './wield.js';
-import { Fire_resistance } from './zap.js';
 import {
-    Blind, Deaf,
-    Hallucination, Invisible,
+    Blind, Deaf, Fire_resistance, Glib, Hallucination, Invisible, Levitation,
+    Poison_resistance, Unchanging,
 } from './youprop.js';
 
 // ── Fail-closed error ──
@@ -139,19 +134,6 @@ export class UnsupportedFountainError extends Error {
         this.name = 'UnsupportedFountainError';
         this.reason = reason;
     }
-}
-
-// C ref: youprop.h:240 Levitation. Local because each file defines its own.
-function Levitation(state) {
-    const value = state.u?.uprops?.[LEVITATION];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
-
-// C ref: youprop.h:48 Poison_resistance. Unlike Levitation it has no blocked
-// term, so a source of poison resistance is never suppressed.
-function Poison_resistance(state) {
-    const value = state.u?.uprops?.[POISON_RES];
-    return Boolean(value?.intrinsic || value?.extrinsic);
 }
 
 
@@ -525,9 +507,8 @@ export async function dryup(x, y, isyou, state = game, env = {}) {
         ?? ((tx, ty) => cansee(tx, ty, state));
     const glyphAt = env.glyphAt ?? env.glyph_at
         ?? ((tx, ty) => glyph_at(tx, ty, state));
-    const redraw = env.planning ? () => {}
-        : (env.redraw ?? env.newsym
-            ?? ((tx, ty) => newsym(tx, ty, state)));
+    const redraw = env.redraw ?? env.newsym
+        ?? ((tx, ty) => newsym(tx, ty, state));
 
     if (IS_FOUNTAIN(state.level.at(x, y).typ)
         && (!random.rn2(3)
@@ -605,7 +586,7 @@ export async function drinkfountain(state = game, env = {}) {
     const fate = random.rnd(30);
 
     // C ref: fountain.c:249-252. Levitation prevents drinking.
-    if (Levitation(state)) {
+    if (Levitation(state.u)) {
         await floating_above('fountain', state, env);
         return;
     }
@@ -731,7 +712,7 @@ export async function drinkfountain(state = game, env = {}) {
             {
                 const { losehp } = await import('./hack.js');
                 const { encumber_msg } = await import('./pickup.js');
-                if (Poison_resistance(state)) {
+                if (Poison_resistance(state.u)) {
                     await message(
                         'Perhaps it is runoff from the nearby '
                             + `${fruitname(false, state)} farm.`,
@@ -918,7 +899,7 @@ export async function dipfountain(obj, state = game, env = {}) {
     const is_hands = (obj === hands_obj);
 
     // C ref: fountain.c:399-402. Levitation prevents dipping.
-    if (Levitation(state)) {
+    if (Levitation(state.u)) {
         await floating_above('fountain', state, env);
         return;
     }
@@ -1119,13 +1100,13 @@ export async function wash_hands(state = game, env = {}) {
     const random = env.random ?? coreRandom;
     const hands = makeplural(body_part(HAND, state.youmonst));
     let res = ER_NOTHING;
-    const wasGlib = Glib(state);
+    const wasGlib = Glib(state.u);
 
     await message(
         `You wash your ${state.uarmg ? 'gloved ' : ''}${hands} in the ${hliquid('water', env)}.`,
         state);
 
-    if (Glib(state)) {
+    if (Glib(state.u)) {
         const { make_glib } = await import('./potion.js');
         make_glib(0, state);
         // C ref: fountain.c:568 calls do_wear.c:fingers_or_gloves(TRUE).
@@ -1175,7 +1156,7 @@ export async function dipsink(obj, state = game, env = {}) {
 
     if (!random.rn2(not_looted_yet ? 25 : 15)) {
         await breaksink(x, y, state, { ...env, message });
-        if (Glib(state) && is_hands) {
+        if (Glib(state.u) && is_hands) {
             await message(
                 `Your ${fingers_or_gloves(true, state)} are still slippery.`,
                 state,
@@ -1309,7 +1290,7 @@ export async function drinksink(state = game, env = {}) {
     const hallucination = Hallucination(state.u);
     const liquidEnv = { state, displayRandom: env.displayRandom };
 
-    if (Levitation(state)) {
+    if (Levitation(state.u)) {
         await floating_above('sink', state, env);
         return;
     }
@@ -1323,7 +1304,7 @@ export async function drinksink(state = game, env = {}) {
         break;
     case 2:
         await message(`You take a sip of scalding hot ${hliquid('water', liquidEnv)}.`, state);
-        if (Fire_resistance(state)) {
+        if (Fire_resistance(state.u)) {
             await message('It seems quite tasty.', state);
             monstseesu(M_SEEN_FIRE, state);
         } else {
@@ -1411,8 +1392,7 @@ export async function drinksink(state = game, env = {}) {
     }
     case 10:
         await message(`This ${hliquid('water', liquidEnv)} contains toxic wastes!`, state);
-        if (!(state.u.uprops[UNCHANGING]?.intrinsic
-            || state.u.uprops[UNCHANGING]?.extrinsic)) {
+        if (!Unchanging(state.u)) {
             await message('You undergo a freakish metamorphosis!', state);
             // fountain.c discards polyself()'s return; its state and RNG
             // effects still happen here in the original call order.

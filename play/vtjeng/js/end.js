@@ -72,7 +72,6 @@ import {
     LEAVESTATUE,
     KILLED_BY,
     KILLED_BY_AN,
-    LIFESAVED,
     MAGICENLIGHTENMENT,
     M_AP_MONSTER,
     M_AP_TYPE,
@@ -85,7 +84,6 @@ import {
     PLNMSG_OK_DONT_DIE,
     QUIT,
     OBJ_FREE,
-    SICK,
     SICK_ALL,
     SORTLOOT_LOOT,
     SORTLOOT_PACK,
@@ -216,14 +214,15 @@ import {
     isTerminated,
     markTerminated,
     neverSettles,
-    planningContextInstalled,
     recordTerminationViolation,
     settleTerminationNotice,
 } from './rng.js';
 import { timet_delta } from './allmain.js';
 import { canspotmon } from './display.js';
 import { tty_exit_nhwindows } from './wintty.js';
-import { Blind, Hallucination } from './youprop.js';
+import {
+    Blind, Hallucination, Lifesaved, Sick,
+} from './youprop.js';
 
 export class UnsupportedEndOfGameError extends Error {
     constructor(message) {
@@ -267,12 +266,6 @@ function nowrap_add(a, b) {
     return sum <= Number.MAX_SAFE_INTEGER ? sum : Number.MAX_SAFE_INTEGER;
 }
 
-// C ref: youprop.h:387 Lifesaved, the extrinsic alone. The amulet of life
-// saving is the only item that confers it; do_wear.c Amulet_on() supplies the
-// worn-slot state that makes this property active.
-function Lifesaved(state) {
-    return Boolean(state.u?.uprops?.[LIFESAVED]?.extrinsic);
-}
 
 // C ref: flag.h:560 ParanoidDie, over flag.h:85 PARANOID_DIE.
 //
@@ -317,7 +310,7 @@ async function savelife(how, state = game) {
 
     // cure impending doom of sickness hero won't have time to fix
     // C ref: Sick is u.uprops[SICK].intrinsic; TIMEOUT is 0x00FFFFFF.
-    if (((u.uprops?.[SICK]?.intrinsic ?? 0) & TIMEOUT) === 1) {
+    if (((Sick(u)) & TIMEOUT) === 1) {
         await make_sick(0, null, false, SICK_ALL, state);
     }
 
@@ -708,7 +701,6 @@ function lifeSavingInventoryEnv(state, source = {}) {
 // done() continues into really_done(), preserving the source call for every
 // killer format and end reason.
 export async function done(how, state = game, source = {}) {
-    refuseTerminationWhilePlanning('done()');
     state.killer ??= { name: '', format: KILLED_BY_AN };
     const killer = state.killer;
     const programState = state.program_state;
@@ -739,9 +731,7 @@ export async function done(how, state = game, source = {}) {
     } else {
         /* otherwise force full status update */
         state.disp.botlx = true;
-        // bot() paints the canonical game for live hero and monster damage.
-        // Monster planning stops at mdamageu's lethal boundary before it can
-        // reach this terminal operation from a clone.
+        // bot() paints the canonical game for hero and monster damage.
         await bot();
     }
 
@@ -777,7 +767,7 @@ export async function done(how, state = game, source = {}) {
             state.disp.botl = true;
         }
     }
-    if (Lifesaved(state) && how <= GENOCIDED) {
+    if (Lifesaved(state.u) && how <= GENOCIDED) {
         // end.c:1082-1103. Keep discovery, the four messages, object
         // consumption, constitution adjustment, and savelife() in C order.
         await ttyPline('But wait...', state);
@@ -1613,15 +1603,6 @@ async function really_done(how, state) {
     await nh_terminate(state);
 }
 
-// done() and nh_terminate() end the live game. A planning clone rehearsing
-// a monster turn (js/rng.js withPlanningCoreContext()) must stop before
-// either; reaching one is a port defect, reported as an ordinary crash
-// rather than ending a game the live pass may not end.
-function refuseTerminationWhilePlanning(name) {
-    if (planningContextInstalled())
-        throw new Error(`${name} reached while a planning context is installed`);
-}
-
 // C ref: end.c nh_terminate() (1672-1702) with recorder patch 006, which
 // makes the final input-boundary capture right after in_moveloop = 0. C exits
 // the process; the port cannot, because the judge's runSegment() must return.
@@ -1637,7 +1618,6 @@ function refuseTerminationWhilePlanning(name) {
 // called. Setting gameover after the capture stands in for the process
 // exiting; playSegment() reads it as its stop signal.
 export async function nh_terminate(state = game) {
-    refuseTerminationWhilePlanning('nh_terminate()');
     if (isTerminated()) {
         // A second call can come only from a chain some caller discarded,
         // which kept running after the first. It takes no second capture.

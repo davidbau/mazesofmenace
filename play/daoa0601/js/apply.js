@@ -51,6 +51,7 @@ import { lightRoom } from './read.js';
 import { finishTeleportArrival, askTeleportDestination, enexto, goodPosition, heroTeleportRestricted, monsterTeleportRestricted, teleds, randomMonsterRelocation, relocateMonsterTo, teleportHeroToRandomPet, } from './teleport.js';
 import { pickLock } from './lock.js';
 import { makemonAt, mkclassAligned, useBagOfTricks } from './makemon.js';
+import { makeUndeadNear } from './mkroom.js';
 import { MAP_SYMBOLS } from './map_symbols.js';
 import { billDummyObject, mksobj, objectQuantity, rejoinObjectStack, splitObjectStack, unblessObjectState, unlinkObject, objectWeight, isContainer, useHornOfPlenty, unlinkMonsterObject, placeObject, remove_object, chargeAlteredUnpaidObject, } from './mkobj.js';
 import { is_male, is_neuter, monsterIsClinger, monsterIsFemale, monsterIsSlithy, monsterPossessive, monsterSubjectPronoun, monsterHasHead, monsterHasNoLimbs, monsterIsUnsolid, strongmonst, monsterDigests, monsterHasEyes, monsterHasProperName, monsterIsBig, monsterIsBreathless, monsterIsDemon, monsterIsHumanoid, monsterIsRider, monsterIsUnicorn, monsterIsVampire, monsterIsVampireShifter, monsterIsWhirly, monsterPerceives, monsterThrowsRocks, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, canBlnd, heroCanBlow, monsterHidesUnder, monsterIsAmorphous, monsterIsEel, monsterIsFlyer, monsterPassesWalls, } from './mondata.js';
@@ -59,14 +60,14 @@ import { makeMonsterFlee, isAccessibleAt } from './monmove.js';
 import { AD_BLND, AT_ENGL, AT_WEAP } from './monster_attack_types.js';
 import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO, MONSTER_MOVE, MONSTER_NAME, MONSTER_NUTRITION, MONSTER_SIZE, MONSTER_SOUND, MONSTER_SYMBOL } from './monster_data.js';
 import { PLAYABLE_INSTRUMENTS, playInstrument } from './music.js';
-import { isAxe, isFlimsyObject, isGrayStone, isPick, isPolearm, isWetTowel, isBimanualObject, } from './object_properties.js';
+import { isAxe, isCandle, isFlimsyObject, isGrayStone, isPick, isPolearm, isWetTowel, isBimanualObject, } from './object_properties.js';
 import { corpseName, definiteName, definiteObjectAction, makePlural, minimalObjectName, objectCombatName, objectDescription, objectName, objectNameIsPlural, observeObjectForNaming, ownedObjectName, simpleObjectTypeName, singularObjectName, withIndefiniteArticle, } from './objnam.js';
 import { formatFeltMessage, formatHeardMessage, formatSeenMessage, pline as syncPline, plineWithContinuation, plineWithContinuation as pline, publishHeardMessage, impossible, } from './pline.js';
 import { propertyIsActive } from './properties.js';
 import { unpunishHero } from './read.js';
 import { promptChoice, promptYesNo } from './query.js';
 import { mon_reflects } from './muse.js';
-import { d, rn1, rn2, rnd, rnl } from './rng.js';
+import { d, rn1, rn2, rnd, rnl, shuffleIntArray } from './rng.js';
 import { addShopDamage, carriedObjectOwner, chargeUnpaidUsage, costlySpot, deleteObject, dopay, findObjectOwner, objectOwnershipPrefix, payForShopDamage, shopkeeperIsMuted } from './shk.js';
 import { ensureHeroSkills, uwepSkillType, dryTowel, heroStrengthDamageBonus, monsterWieldedWeapon, unwieldMonsterWeapon, } from './weapon.js';
 import { castSpell, knownSpell } from './spell.js';
@@ -75,7 +76,6 @@ import { monsterAtPosition, stuckSteed, useSaddle, strikeSteed } from './steed.j
 import { heroIsPetrifying, petrifyFromCorpseContact } from './stoning.js';
 import { ceilingName, surfaceName, canDigDown } from './dungeon.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt } from './dbridge.js';
-import { summonUndead } from './undead_summoning.js';
 import { summonVaultGuardSoon } from './vault.js';
 import { cansee, couldsee, howMonsterSeen, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { wieldTool, doswapweapon } from './wield.js';
@@ -1146,7 +1146,7 @@ export async function useBell(object, { state = game } = {}) {
                 await openit(state);
         }
         else if (object.cursed) {
-            await summonUndead({ x: state.u.ux, y: state.u.uy }, { state, flags: NO_MINVENT });
+            await makeUndeadNear(state.u.ux, state.u.uy, { state, flags: NO_MINVENT });
             wake = true;
         }
         else if (invoking) {
@@ -1191,10 +1191,6 @@ export async function useBell(object, { state = game } = {}) {
 // Port only: shared spent-time result builder for the apply light family.
 function result(object, state) {
     return { spentTime: true, heroDied: !!state.program_state?.gameover, object };
-}
-// C obj.h:Is_candle()
-function isCandle(object) {
-    return object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
 }
 // Part of C apply.c:use_lamp(): the Shk_Your() capitalized pronoun
 // prefix of the lamp on/off messages.
@@ -1421,7 +1417,7 @@ function lightSourceName(object, state) {
 // end_burn(). snuff_lit()'s candle tail and the drop/throw/kick/put-in-box
 // callers land here.
 export async function snuffCandle(object, state = game, publish = plineWithContinuation) {
-    const candle = object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
+    const candle = isCandle(object);
     if ((!candle && object.otyp !== CANDELABRUM_OF_INVOCATION) || !object.lamplit)
         return false;
     const many = candle ? object.quan > 1 : object.spe > 1;
@@ -1505,7 +1501,7 @@ export async function splashLitObject(object, publish, state = game) {
     const visible = object.where === 'minvent'
         ? !!position && cansee(position.x, position.y) : !heroIsBlind(state);
     if (visible) {
-        const candle = object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
+        const candle = isCandle(object);
         if (candle || object.otyp === CANDELABRUM_OF_INVOCATION) {
             const many = candle ? object.quan > 1 : object.spe > 1;
             await publish(`${objectOwnershipPrefix(object, state, { capitalized: true })}${candle ? '' : "candelabrum's "}candle${many ? "s' flames are" : "'s flame is"} extinguished.`);
@@ -2143,7 +2139,7 @@ export async function useUnicornHorn({ object = null, state = game, publish = pl
         return { used: true, spentTime: true, caused: null, cured: [] };
     }
     if (troubles.length > 1)
-        shuffleTroubles(troubles, random);
+        shuffleIntArray(troubles, troubles.length, random);
     const maximum = rollDice(2, object?.blessed ? 4 : 2);
     const cureCount = Math.min(troubles.length, random(maximum));
     const cured = [];
@@ -2159,19 +2155,6 @@ export async function useUnicornHorn({ object = null, state = game, publish = pl
     else
         await publish('Nothing seems to happen.');
     return { used: true, spentTime: true, caused: null, cured };
-}
-// C rnd.c:shuffle_int_array()
-function shuffleTroubles(values, random) {
-    for (let index = values.length - 1; index > 0; index--) {
-        const other = random(index + 1);
-        if (other === index)
-            continue;
-        const currentValue = values[index];
-        const otherValue = values[other];
-        if (!currentValue || !otherValue)
-            throw new RangeError('Unicorn horn shuffleTroubles selected a missing condition.');
-        [values[index], values[other]] = [otherValue, currentValue];
-    }
 }
 const S_EYE = 5;
 const S_MIMIC = 13;

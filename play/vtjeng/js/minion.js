@@ -8,7 +8,6 @@ import {
     A_NONE,
     A_NEUTRAL,
     ARTICLE_A,
-    CONFLICT,
     EXACT_NAME,
     G_GONE,
     LL_UMONST,
@@ -66,16 +65,12 @@ import {
 } from './objects.js';
 import { bless, mksobj } from './obj.js';
 import { mpickobj } from './steal.js';
-import { Blind, Deaf } from './youprop.js';
+import { Blind, Conflict, Deaf } from './youprop.js';
 
 function guardianRandom(state, rawEnv = {}) {
     return rawEnv.random ?? state.random ?? coreRandom;
 }
 
-function conflictActive(state) {
-    const conflict = state.u?.uprops?.[CONFLICT];
-    return Boolean(conflict?.intrinsic || conflict?.extrinsic);
-}
 
 // C ref: minion.c lose_guardian_angel(). The source discards mk_roamer's
 // result while creating replacement hostile angels in source order.
@@ -116,7 +111,7 @@ export async function gain_guardian_angel(state = game, rawEnv = {}) {
     const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, random, message };
     await Hear_again(state, env);
-    if (conflictActive(state)) {
+    if (Conflict(state.u)) {
         if (!Deaf(state.u)) await message('A voice booms:', state);
         else await message(youFeel('a booming voice:', state), state);
         set_voice(null, 0, 80, voice_deity, state);
@@ -238,9 +233,7 @@ export async function demon_talk(mtmp, state = game, env = {}) {
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
     const speak = env.verbalize ?? verbalize;
-    // newsym() paints the live game; a monster turn's planning pass
-    // (monmove.c dochug() on a planning copy) leaves that to the live pass.
-    const redraw = env.planning ? () => {} : newsym;
+    const redraw = newsym;
     const deaf = Deaf(state.u);
 
     if (is_art(state.uwep, ART_EXCALIBUR)
@@ -384,8 +377,8 @@ export async function bribe(mtmp, prompt, state = game, env = {}) {
 
 // C ref: minion.c monster_census() (40-57).  The census walks the live level
 // chain, ignoring dead monsters and guards parked at <0,0>. A spotted census
-// uses the canonical sensing predicate by default; callers can inject a
-// clone-local predicate so planning never consults live display state.
+// uses the canonical sensing predicate by default; callers can inject their
+// own predicate.
 export function monster_census(spotted = false, env = {}) {
     const state = env?.state ?? (env?.level ? env : game);
     const canSpot = env?.canSpotMonster ?? env?.canspotmon ?? canspotmon;
@@ -489,13 +482,11 @@ function summonRandom(rawEnv = {}) {
 // C ref: minion.c msummon() (59-190).  The caller owns the monster's action
 // state, while this function owns selector RNG, minion extension state, and
 // the census delta.  It is async because makemon_runtime() awaits the runtime
-// tails; that keeps the source order visible to summonmu() and planning.
+// tails; that keeps the source order visible to summonmu().
 export async function msummon(mon = null, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = summonRandom(rawEnv);
-    const message = rawEnv.planning
-        ? async () => {}
-        : (rawEnv.message ?? ttyPline);
+    const message = rawEnv.message ?? ttyPline;
     const seeMonster = rawEnv.canSeeMonster ?? canseemon;
     const env = {
         ...rawEnv,
@@ -607,9 +598,9 @@ export async function msummon(mon = null, rawEnv = {}) {
         }
         if (created.data.mlet === M.S_ANGEL && !Blind(state.u)) {
             hasTransientLight = true;
-            if (!env.planning && typeof env.showTransientLight === 'function') {
+            if (typeof env.showTransientLight === 'function') {
                 await env.showTransientLight(created.mx, created.my, state, env);
-            } else if (!env.planning) {
+            } else {
                 await show_transient_light(
                     null,
                     created.mx,
@@ -628,7 +619,7 @@ export async function msummon(mon = null, rawEnv = {}) {
             );
         }
     }
-    if (hasTransientLight && !env.planning)
+    if (hasTransientLight)
         await transient_light_cleanup(state, transientLightEnv(state));
     return result ? monster_census(false, { state }) - census : 0;
 }

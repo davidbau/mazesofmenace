@@ -56,7 +56,10 @@ import { ttyPline } from './tty_message.js';
 import { S_cloud, S_poisoncloud } from './symbols.js';
 import { TOWEL } from './objects.js';
 import { note_unported } from './unported.js';
-import { Blind, HBlinded, Maybe_Half_Phys } from './youprop.js';
+import {
+    Blind, EMagical_breathing, HBlinded, HMagical_breathing, Maybe_Half_Phys,
+    Poison_resistance,
+} from './youprop.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 'inside_gas_cloud';
@@ -410,8 +413,7 @@ export async function inside_gas_cloud(region, monster = null, rawEnv = {}) {
             await make_blinded(1, false, state, env);
         }
 
-        const poisonResistance = state.u?.uprops?.[POISON_RES];
-        if (!(poisonResistance?.intrinsic || poisonResistance?.extrinsic)) {
+        if (!(Poison_resistance(state.u))) {
             const lungs = makeplural(body_part(LUNG, state.youmonst));
             await message(`Something is burning your ${lungs}!`, state, env);
             await message('You cough and spit blood!', state, env);
@@ -877,11 +879,10 @@ export function region_danger(state = game) {
         // record and u.uprops the same way heroIsBlind() above reads BLINDED.
         if (nonliving(state.youmonst?.data)
             || breathless(state.youmonst?.data)
-            || state.u?.uprops?.[MAGICAL_BREATHING]?.intrinsic
-            || state.u?.uprops?.[MAGICAL_BREATHING]?.extrinsic)
+            || HMagical_breathing(state.u)
+            || EMagical_breathing(state.u))
             continue;
-        if (state.u?.uprops?.[POISON_RES]?.intrinsic
-            || state.u?.uprops?.[POISON_RES]?.extrinsic)
+        if (Poison_resistance(state.u))
             continue;
         return true;
     }

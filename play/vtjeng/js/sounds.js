@@ -9,7 +9,6 @@ import {
     BARRACKS,
     BEEHIVE,
     BOLT_LIM,
-    CONFLICT,
     COURT,
     ECMD_CANCEL,
     ECMD_OK,
@@ -79,7 +78,6 @@ import {
     SDOOR,
     SOUND_TRIGGER_VERBAL,
     STONE,
-    STRANGLED,
     STRAT_WAITMASK,
     VAULT,
     W_ARMH,
@@ -219,7 +217,7 @@ import { t_at } from './trap.js';
 import { note_unported } from './unported.js';
 import { canseemon, canspotmon } from './display.js';
 import {
-    Blind, Deaf, Hallucination, Invis,
+    Blind, Conflict, Deaf, Hallucination, Invis, Strangled,
 } from './youprop.js';
 
 const FOUNTAIN_MESSAGES = Object.freeze([
@@ -828,7 +826,7 @@ export async function beg(mtmp, rawEnv = {}) {
     const message = rawEnv.message ?? ttyPline;
     const spotMonster = rawEnv.canSpotMonster ?? canspotmon;
     const markInvisible = rawEnv.mapInvisible ?? rawEnv.markInvisible
-        ?? (rawEnv.planning ? () => {} : map_invisible);
+        ?? map_invisible;
     if (helpless(mtmp)
         || !(carnivorous(mtmp.data) || herbivorous(mtmp.data))) {
         return;
@@ -955,7 +953,7 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
     const message = rawEnv.message ?? ttyPline;
     const spotMonster = rawEnv.canSpotMonster ?? canspotmon;
     const markInvisible = rawEnv.mapInvisible ?? rawEnv.markInvisible
-        ?? (rawEnv.planning ? () => {} : map_invisible);
+        ?? map_invisible;
     const ptr = mtmp.data;
     if (Deaf(state.u)) return ECMD_OK;
     if (is_silent(ptr) && !mtmp.isshk) return ECMD_OK;
@@ -1442,7 +1440,7 @@ async function dochat(state) {
         );
         return ECMD_OK;
     }
-    if (u.uprops[STRANGLED].intrinsic) { /* youprop.h:110 Strangled */
+    if (Strangled(u)) { /* youprop.h:110 Strangled */
         await ttyPline("You can't speak.  You're choking!", state);
         return ECMD_OK;
     }
@@ -1717,8 +1715,7 @@ export async function tiphat(state = game, rawEnv = {}) {
         }
     } else {
         mtmp.mstrategy &= ~STRAT_WAITMASK;
-        const conflict = state.u?.uprops?.[CONFLICT];
-        const conflictActive = Boolean(conflict?.intrinsic || conflict?.extrinsic);
+        const conflictActive = Conflict(state.u);
         if (vismon && humanoid(mtmp.data) && mtmp.mpeaceful
             && !conflictActive) {
             const wornHelmet = which_armor(mtmp, W_ARMH, state);

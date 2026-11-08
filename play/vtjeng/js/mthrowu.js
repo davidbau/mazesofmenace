@@ -23,14 +23,12 @@ import {
     BOLT_LIM,
     BZ_OFS_AD,
     BZ_VALID_ADTYP,
-    CONFUSION,
     DISP_TETHER,
     DISP_END,
     DISP_FLASH,
     EYE,
     EDOG,
     FOOT,
-    FUMBLING,
     IRONBARS,
     IS_OBSTRUCTED,
     IS_SINK,
@@ -64,11 +62,8 @@ import {
     P_SPEAR,
     BRK_BY_HERO,
     BRK_MELEE,
-    SLEEP_RES,
     SLT_ENCUMBER,
     STONE_RES,
-    STONED,
-    STUNNED,
     TIMEOUT,
     W_NONDIGGABLE,
     W_WEP,
@@ -85,7 +80,7 @@ import { isok } from './cmd_isok.js';
 import { acurr, acurrstr, poisoned } from './attrib.js';
 import { freehand } from './engrave.js';
 import { game } from './gstate.js';
-import { calc_capacity, end_running, nomul, rounddiv } from './hack.js';
+import { calc_capacity, nomul, rounddiv } from './hack.js';
 import { dist2, distmin, s_suffix, sgn, upstart } from './hacklib.js';
 import {
     add_to_minv,
@@ -247,7 +242,7 @@ import {
     mwepgone,
     select_rwep,
 } from './weapon.js';
-import { spec_abon, Stone_resistance } from './artifacts.js';
+import { spec_abon } from './artifacts.js';
 import { extract_from_minvent, find_mac, is_pole } from './worn.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { mwelded } from './wield.js';
@@ -277,7 +272,9 @@ import {
 import { snuff_candle } from './apply_splash_lit.js';
 import { canseemon, canspotmon, newsym } from './display.js';
 import {
-    Blind, Deaf, HBlinded, Hallucination, Maybe_Half_Phys,
+    Acid_resistance, Blind, Confusion, Deaf, Fumbling, HBlinded,
+    Hallucination, Maybe_Half_Phys, Sleep_resistance, Stone_resistance,
+    Stoned, Stunned,
 } from './youprop.js';
 
 /* C ref: mthrowu.c:24-28. Breath weapon names indexed by BZ_OFS_AD(typ).
@@ -314,17 +311,6 @@ export function rnd_hallublast(random = coreRandom) {
     return hallublasts[random.rn2(hallublasts.length)];
 }
 
-// ---- Module-local hero-property helpers ----
-// Each C port file defines these locally; see the pattern in js/mcastu.js.
-function heroProperty(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
-
-function Sleep_resistance(state) {
-    return heroProperty(state, SLEEP_RES);
-}
 
 // C ref: mondata.h mdistu(). Distance-squared from the hero to a monster.
 function mdistu(mon, state) {
@@ -486,11 +472,6 @@ function refuseRanged(env, reason) {
     return requireRangedOperation(env, 'unsupported')(reason);
 }
 
-function propertyActive(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
-
 // C ref: mthrowu.c u_catch_thrown_obj() (531-549), through the failed-catch
 // result selected by an ordinary monster missile. A successful catch hands the
 // object to hold_another_object(), which remains a named boundary.
@@ -500,9 +481,9 @@ async function u_catch_thrown_obj(obj, env) {
     const catchChance = 100 - acurr(state, A_DEX)
         - ((role === PM_MONK || role === PM_ROGUE) ? 20 : 0);
     if (!Blind(state.u)
-        && !propertyActive(state, CONFUSION)
-        && !propertyActive(state, STUNNED)
-        && !propertyActive(state, FUMBLING)
+        && !Confusion(state.u)
+        && !Stunned(state.u)
+        && !Fumbling(state.u)
         && obj.oclass !== VENOM_CLASS
         && !nohands(state.youmonst.data)
         && freehand(state)
@@ -891,8 +872,7 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
         && Boolean(arw?.tethered);
 
     // Resolve every injected owner before the source-ordered inventory
-    // extraction. The planning pass also executes the complete path on cloned
-    // state, but a missing live adapter must still fail before mutation.
+    // extraction, so a missing adapter fails before mutation.
     const canSeeMonster = requireRangedOperation(env, 'canSeeMonster');
     const canSeeSquare = requireRangedOperation(env, 'canSeeSquare');
     const monsterAt = requireRangedOperation(env, 'monsterAt');
@@ -1158,9 +1138,8 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
                 }
             }
             if (hit && singleobj.otyp === EGG) {
-                const stoned = state.u.uprops?.[STONED];
-                if (!stoned?.intrinsic
-                    && !Stone_resistance(state)
+                if (!Stoned(state.u)
+                    && !Stone_resistance(state.u)
                     && !(poly_when_stoned(state.youmonst.data, state)
                          && await polymon(PM_STONE_GOLEM, state))) {
                     await make_stoned(5, null, KILLED_BY, '', state);
@@ -1284,10 +1263,10 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
     const env = { ...rawEnv, state, random };
     // C's three newsym() calls repaint the live map. newsym() paints the
     // module-global game whatever state it is handed, so a foreign state
-    // (a planning clone) draws only through a redraw operation it supplies.
+    // (such as a hand-built test state) draws only through a redraw
+    // operation it supplies.
     const redraw = env.newsym ?? (state === game ? newsym : () => {});
-    // C uses one process-wide throttle. Each game and speculative clone
-    // must own its value so planning cannot claim the live return message.
+    // C uses one process-wide throttle; the port keeps it on each game state.
     const returnDoNotAnnoy = state._returnDoNotAnnoy ?? 0;
     const impaired = (magr.mconf || magr.mstun || magr.mblinded);
     let notcaught = false;
@@ -1626,8 +1605,6 @@ export async function breamm(mtmp, mattk, mtarg, rawEnv = {}) {
                 state.gb.buzzer = mtmp;
                 // C discards dobuzz()'s return value, but the call itself owns
                 // the beam walk, damage, messages, and all of its RNG draws.
-                // Keep the attack environment available so the planning clone
-                // can route output through its silent message seam.
                 await dobuzz(
                     -20 - BZ_OFS_AD(typ),
                     mattk.damn,
@@ -1647,7 +1624,7 @@ export async function breamm(mtmp, mattk, mtarg, rawEnv = {}) {
                  * cunning; don't breath if the target fell asleep. */
                 if (!utarget || !random.rn2(3))
                     mtmp.mspec_used = 8 + random.rn2(18);
-                if (utarget && typ === AD_SLEE && !Sleep_resistance(state))
+                if (utarget && typ === AD_SLEE && !Sleep_resistance(state.u))
                     mtmp.mspec_used += random.rnd(20);
 
                 /* If this is a pet, it'll get hungry. Minions and
@@ -1989,7 +1966,7 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
     else
         await message(`You are hit by ${onm}${exclam(dam)}`, state);
 
-    if (is_acid && propertyActive(state, ACID_RES)) {
+    if (is_acid && Acid_resistance(state.u)) {
         // C ref: mthrowu.c:123-125. The resistance ledger is maintained by
         // mondata.c monstseesu(); the acid-resistance property is the same
         // intrinsic-or-extrinsic test used by youprop.h Acid_resistance.
@@ -2027,22 +2004,9 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
             await message('It burns!', state);
             monstunseesu(M_SEEN_ACID, state);
         }
-        if (env.planning && dam >= state.u.uhp
-            && typeof env.planningDeath === 'function') {
-            // losehp() would enter end.c done() on the clone. Reproduce its
-            // state writes, then hand the monster identity to the live pass.
-            end_running(true, state);
-            state.disp ??= {};
-            state.disp.botl = true;
-            state.u.uhp -= dam;
-            throw env.planningDeath();
-        }
-        // A planning pass stops at losehp()'s planning boundary instead
-        // of running rehumanize() for a polymorphed hero on the copy.
         await losehp(dam, knm, kprefix, state, {
             fromMonster: Boolean(env.fromMonster),
             message,
-            planning: env.planning,
         });
         // C losehp() enters end.c really_done() on lethal damage, whose
         // NORETURN path never reaches exercise(A_STR, FALSE).

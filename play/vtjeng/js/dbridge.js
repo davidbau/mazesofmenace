@@ -1,11 +1,10 @@
 // dbridge.c — drawbridge terrain, entity, and transition functions.
 import {
-    BURNING, CONFUSION, CRUSHING, DB_DIR, DB_EAST, DB_ICE, DB_LAVA,
+    BURNING, CRUSHING, DB_DIR, DB_EAST, DB_ICE, DB_LAVA,
     DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR,
-    DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DROWNING, D_NODOOR, FUMBLING, ICE, ICED_MOAT,
-    IS_LAVA, IS_WALL, IS_DRAWBRIDGE, IS_WATERWALL, KILLED_BY_AN, LAVAPOOL,
-    MAGICAL_BREATHING, MOAT, NO_KILLER_PREFIX, OBJ_AT, PASSES_WALLS,
-    POOL, ROOM, STUNNED, SWIMMING, WATER, WWALKING, Is_waterlevel,
+    DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DROWNING, D_NODOOR, ICE, ICED_MOAT,
+    IS_LAVA, IS_WALL, IS_DRAWBRIDGE, IS_WATERWALL, KILLED_BY_AN, LAVAPOOL, MOAT, NO_KILLER_PREFIX, OBJ_AT,
+    POOL, ROOM, WATER,
     W_NONDIGGABLE, XKILL_GIVEMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     XKILL_NOMSG, TELEDS_NO_FLAGS, helpless, u_at,
 } from './const.js';
@@ -20,8 +19,7 @@ import { SCATTER_MAY_HIT, scatter } from './explode.js';
 import { del_engr_at } from './engrave.js';
 import { dist2 } from './hacklib.js';
 import { delallobj, obj_extract_self, sobj_at } from './invent.js';
-import {
-    amphibious, breathless, is_flyer, is_floater, is_swimmer, likes_lava,
+import { breathless, is_flyer, is_floater, is_swimmer, likes_lava,
     noncorporeal, passes_walls, mhe,
 } from './mondata.js';
 import { AD_DGST, AD_PHYS, PM_LONG_WORM_TAIL } from './monsters.js';
@@ -31,7 +29,7 @@ import { m_at, place_monster, remove_monster } from './monst.js';
 import { coreRandom, rn2_on_display_rng } from './rng.js';
 import { BOULDER, IRON_CHAIN } from './objects.js';
 import { update_monster_region } from './region.js';
-import { deltrap, drown, Flying, Levitation, lava_effects, t_at } from './trap.js';
+import { deltrap, drown, lava_effects, t_at } from './trap.js';
 import { revive_nasty, spoteffects } from './hack.js';
 import { enexto, teleds } from './teleport.js';
 import {
@@ -41,7 +39,10 @@ import { mksobj_at } from './obj.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { ttyPline } from './tty_message.js';
 import { vtense } from './objnam.js';
-import { Deaf, Hallucination, Unaware } from './youprop.js';
+import {
+    Amphibious, Confusion, Deaf, Flying, Fumbling, Hallucination, Levitation,
+    Passes_walls, Stunned, Swimming, Unaware, Wwalking,
+} from './youprop.js';
 
 // C refs: dbridge.c is_pool() (46-60) and is_moat() (100-112). The `flags`
 // field is the live JavaScript owner of drawbridgemask on map records.
@@ -392,14 +393,10 @@ function occupants(state) {
 // set_entity() (304-342). C's go.occupants is transient state for one
 // transition; it is initialized when captured and cleared by nokiller().
 function is_u(entity, state) { return entity?.emon === state.youmonst; }
-function heroProperty(index, state) {
-    const property = state.u?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
-function heroPassesWalls(state) { return heroProperty(PASSES_WALLS, state); }
-function heroConfused(state) { return heroProperty(CONFUSION, state); }
-function heroStunned(state) { return heroProperty(STUNNED, state); }
-function heroFumbling(state) { return heroProperty(FUMBLING, state); }
+function heroPassesWalls(state) { return Passes_walls(state.u); }
+function heroConfused(state) { return Boolean(Confusion(state.u)); }
+function heroStunned(state) { return Boolean(Stunned(state.u)); }
+function heroFumbling(state) { return Fumbling(state.u); }
 function entityCanSee(entity, state) {
     return is_u(entity, state) || canseemon(entity.emon, state);
 }
@@ -449,17 +446,15 @@ export function e_survives_at(entity, x, y, state = game) {
     if (noncorporeal(entity.edata)) return true;
     if (is_pool(x, y, state)) {
         return (is_u(entity, state) && (
-            (heroProperty(WWALKING, state) && !Is_waterlevel(state.u?.uz, state))
-            || heroProperty(SWIMMING, state)
-            || Boolean(state.u?.usteed && is_swimmer(state.u.usteed.data))
-            || heroProperty(MAGICAL_BREATHING, state)
-            || amphibious(state.youmonst?.data)
+            (Wwalking(state))
+            || Swimming(state.u)
+            || Amphibious(state)
             || breathless(state.youmonst?.data)
-            || Flying(state) || Levitation(state)))
+            || Flying(state.u) || Levitation(state.u)))
             || is_swimmer(entity.edata) || is_flyer(entity.edata) || is_floater(entity.edata);
     }
     if (is_lava(x, y, state))
-        return (is_u(entity, state) && (Levitation(state) || Flying(state)))
+        return (is_u(entity, state) && (Levitation(state.u) || Flying(state.u)))
             || likes_lava(entity.edata) || is_flyer(entity.edata);
     if (is_db_wall(x, y, state))
         return is_u(entity, state) ? heroPassesWalls(state) : passes_walls(entity.edata);
@@ -478,7 +473,7 @@ function e_missed(entity, chunks, state, random) {
         && (is_u(entity, state) ? !Unaware(state) : !helpless(entity.emon))) {
         misses = 5;
     } else if (is_floater(entity.edata)
-        || (is_u(entity, state) && Levitation(state))) {
+        || (is_u(entity, state) && Levitation(state.u))) {
         misses = 3;
     } else if (chunks && is_pool(entity.ex, entity.ey, state)) {
         misses = 2;

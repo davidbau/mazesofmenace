@@ -90,11 +90,7 @@ import {
     BUFSZ,
     QBUFSZ,
     ROWNO,
-    SICK,
-    SLIMED,
-    STONED,
     SUPPRESS_HISTORY,
-    STRANGLED,
     TER_FULL,
     TER_MAP,
     TER_OBJ,
@@ -416,6 +412,9 @@ import { maybe_reset_pick } from './lock.js';
 import { set_uinwater } from './hack.js';
 import { GLYPH_UNEXPLORED_OFF } from './glyph_offsets.js';
 import { canspotmon } from './display.js';
+import {
+    Sick, Slimed, Stoned, Strangled,
+} from './youprop.js';
 
 export const MAX_COMMAND_COUNT = 32767;
 // C ref: cmd.c extcmd_via_menu()'s choices[MAX_EXT_CMD + 1].
@@ -568,17 +567,13 @@ function accept_menu_prefix(entry) {
     return Boolean(entry && (entry.flags & CMD_M_PREFIX));
 }
 
-function propertyIntrinsic(state, property) {
-    return Boolean(state.u?.uprops?.[property]?.intrinsic);
-}
-
 // C ref: do.c danger_uprops(). These four properties are timeout bits; unlike
 // ordinary property checks, the source tests their intrinsic field directly.
 function dangerUprops(state) {
-    return propertyIntrinsic(state, STONED)
-        || propertyIntrinsic(state, SLIMED)
-        || propertyIntrinsic(state, STRANGLED)
-        || propertyIntrinsic(state, SICK);
+    return Boolean(Stoned(state.u))
+        || Boolean(Slimed(state.u))
+        || Boolean(Strangled(state.u))
+        || Boolean(Sick(state.u));
 }
 
 // C ref: do.c cmd_safety_prevention(). flagName models the source int pointer.
@@ -1187,8 +1182,8 @@ export function redraw_cmd(c, state = game) {
 export function confdir(force_impairment, state = game, { random = null } = {}) {
     if (force_impairment || u_maybe_impaired(state)) {
         const kmax = NODIAG(state.u.umonnum) ? N_DIRS / 2 : N_DIRS;
-        // cmd.c confdir() uses the active game RNG. Planners can supply their
-        // cloned RNG while ordinary callers keep the existing live owner.
+        // cmd.c confdir() uses the active game RNG. Callers can supply their
+        // own RNG while ordinary callers keep the existing live owner.
         const k = dirs_ord[random ? random.rn2(kmax) : rn2(kmax)];
         state.u.dx = xdir[k];
         state.u.dy = ydir[k];
@@ -1668,8 +1663,8 @@ export async function getdir(s, state = game) {
             // cmd.c:4013-4015: refresh the current glyph buffer, then retry
             // the prompt without adding the redraw key to CQ_REPEAT. A queued
             // direction jumps past this check to got_dirsym in C.
-            // Planning clones have no terminal; the live replay owns the
-            // source redraw, while both paths retry the same input prompt.
+            // A hand-built state has no terminal, so only the global game
+            // redraws; both retry the same input prompt.
             if (state === game) await docrt({ refreshOnly: true });
             continue;
         }
