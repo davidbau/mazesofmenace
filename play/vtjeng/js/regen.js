@@ -6,7 +6,6 @@ import {
     A_INT,
     A_WIS,
     ENERGY_REGENERATION,
-    Half_physical_damage,
     Is_waterlevel,
     MAGICAL_BREATHING,
     MAXULEV,
@@ -24,6 +23,7 @@ import { breathless } from './mondata.js';
 import { PM_WIZARD, S_EEL } from './monsters.js';
 import { rehumanize } from './polyself.js';
 import { coreRandom } from './rng.js';
+import { Half_physical_damage } from './youprop.js';
 
 
 function propertyActive(hero, index) {
@@ -83,7 +83,7 @@ export async function regen_hp(wtcap, state = game, env = {}) {
             await rehumanize(state);
         } else if (state.youmonst.data.mlet === S_EEL
                    && !is_pool(hero.ux, hero.uy, state)
-                   && !Is_waterlevel(hero.uz)
+                   && !Is_waterlevel(hero.uz, state)
                    && !Breathless(state)) {
             /* eel out of water loses hp, similar to monster eels;
                as hp gets lower, rate of further loss slows down */

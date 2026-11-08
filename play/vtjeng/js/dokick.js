@@ -21,7 +21,7 @@ import { isok } from './cmd_isok.js';
 import { getdir, yn_function } from './cmd.js';
 import {
     TT_PIT, TT_WEB, TT_BEARTRAP,
-    A_CHA, HALLUC, HALLUC_RES, LEG, OBJ_MINVENT, OBJ_MIGRATING, STATUE_TRAP, STONE_RES, WEB, ZAP_POS, KICKED_WEAPON, is_pit,
+    A_CHA, LEG, OBJ_MINVENT, OBJ_MIGRATING, STATUE_TRAP, STONE_RES, WEB, ZAP_POS, KICKED_WEAPON, is_pit,
     A_LAWFUL,
     A_WIS,
     CORR,
@@ -40,19 +40,16 @@ import {
     A_CON,
     A_DEX,
     A_STR,
-    BLINDED,
     D_BROKEN,
     D_ISOPEN,
     D_NODOOR,
     D_TRAPPED,
     D_WARNED,
-    DEAF,
     ECMD_CANCEL,
     ECMD_FAIL,
     ECMD_OK,
     ECMD_TIME,
     engulfing_u,
-    Maybe_Half_Phys,
     Has_contents,
     CXN_PFX_THE,
     IRONBARS,
@@ -235,6 +232,10 @@ import { breakchestlock } from './lock.js';
 import { is_art, ART_MJOLLNIR } from './artifacts.js';
 import { water_damage } from './trap_water_damage.js';
 import { makemon_runtime } from './makemon_create.js';
+import {
+    Blind, Deaf,
+    Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 // C ref: decl.h:507 `coord kickedloc`, the square the hero just kicked. Three
 // C files write it directly: dokick.c:1325 sets it, and hack.c domove():2708
@@ -269,13 +270,6 @@ function Levitation(state) {
                    && !levitation.blocked);
 }
 
-// youprop.h:103 Blind, which subtracts a blocking term the two wounded-leg
-// and wall-passing macros below do not have.
-function Blind(state) {
-    const blinded = state.u.uprops[BLINDED];
-    return Boolean((blinded.intrinsic || blinded.extrinsic)
-                   && !blinded.blocked);
-}
 
 // youprop.h:138 Wounded_legs, a plain OR with no blocked term: the intrinsic
 // holds the recovery timeout and the extrinsic holds the side bits.
@@ -290,13 +284,6 @@ function Passes_walls(state) {
     return Boolean(passes.intrinsic || passes.extrinsic);
 }
 
-// youprop.h:125 Deaf. HDeaf || EDeaf || u.uroleplay.deaf. The third term is
-// the permanent-deafness roleplay option, matching js/sit.js and js/dothrow.js.
-function Deaf(state) {
-    const value = state.u?.uprops?.[DEAF];
-    return Boolean(value?.intrinsic || value?.extrinsic)
-        || Boolean(state.u?.uroleplay?.deaf);
-}
 
 // C ref: dokick.c:8-10, the martial() macro over is_bigfoot() at :7. A Samurai
 // or a Monk answers TRUE from martial_bonus() without either later term being
@@ -329,7 +316,7 @@ function kickEnvironment(state) {
         encumberMessage: encumber_msg,
         redraw: (x, y) => newsym(x, y),
         mInAir: m_in_air,
-        heroDeaf: Deaf,
+        heroDeaf: (hookState) => Deaf(hookState.u),
         youHear: (line, targetState) => youHear(line, targetState),
     };
 }
@@ -677,10 +664,7 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
     if (trap) {
         if ((is_pit(trap.ttyp) && !Passes_walls(state)) || trap.ttyp === WEB) {
             if (!trap.tseen) await find_trap(trap, { ...rawEnv, state });
-            const hallu = u.uprops[HALLUC];
-            const halluRes = u.uprops[HALLUC_RES];
-            const hallucination = Boolean(hallu.intrinsic)
-                && !(halluRes.intrinsic || halluRes.extrinsic);
+            const hallucination = Hallucination(u);
             await message(`You can't kick something that's in a ${hallucination ? 'tizzy' : trap.ttyp === WEB ? 'web' : 'pit'}!`, state, env);
             return 1;
         }
@@ -718,7 +702,7 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
     let slide = false;
     if (is_pool(x, y, state)) {
         range = Math.trunc(range / 3) + 1;
-    } else if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
+    } else if (Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)) {
         range += random.rnd(3);
     } else {
         if (is_ice(x, y, state)) { range += random.rnd(3); slide = true; }
@@ -737,11 +721,11 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
         if ((!martial(state) && random.rn2(20) > acurr(state, A_DEX))
             || IS_OBSTRUCTED(state.level.at(u.ux, u.uy).typ)
             || closed_door(u.ux, u.uy, state)) {
-            await message(Blind(state) ? "It doesn't come loose."
+            await message(Blind(state.u) ? "It doesn't come loose."
                 : `${The(distant_name(object(), xname, state), state)} ${otense(object(), 'do', state)}n't come loose.`, state, env);
             return !random.rn2(3) || martial(state) ? 1 : 0;
         }
-        await message(Blind(state) ? 'It comes loose.'
+        await message(Blind(state.u) ? 'It comes loose.'
             : `${The(distant_name(object(), xname, state), state)} ${otense(object(), 'come', state)} loose.`, state, env);
         obj_extract_self(object(), env);
         redraw(x, y);
@@ -789,7 +773,7 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
             state.gk.kickedobj = splitobj(object(), 1, env);
         } else {
             if (random.rn2(20)) {
-                if (!Deaf(state)) await message('Thwwpingg!', state, env);
+                if (!Deaf(state.u)) await message('Thwwpingg!', state, env);
                 const messages = ['scatter the coins', 'knock coins all over the place', 'send coins flying in all directions'];
                 await message(`You ${messages[random.rn2(messages.length)]}!`, state, env);
                 await scatter(x, y, random.rnd(3), SCATTER_VIS_EFFECTS | SCATTER_MAY_HIT, object(), state, env);
@@ -802,7 +786,7 @@ export async function really_kick_object(x, y, state = game, rawEnv = {}) {
             }
         }
     }
-    if (slide && !Blind(state))
+    if (slide && !Blind(state.u))
         await message(`Whee!  ${Doname2(object(), state)} ${otense(object(), 'slide', state)} across the ${surface(x, y, state)}.`, state, env);
     obj_extract_self(object(), env);
     await snuff_candle(object(), env);
@@ -854,7 +838,7 @@ async function kick_dumb(x, y, state) {
     // all. Getting that wrong changes the stream rather than the message.
     if (martial(state) || acurr(state, A_DEX) >= 16 || rn2(3)) {
         await ttyPline('You kick at empty space.', state);
-        if (Blind(state)) feel_location(x, y, state);
+        if (Blind(state.u)) feel_location(x, y, state);
     } else {
         await ttyPline('Dumb move!  You strain a muscle.', state);
         await exercise(A_STR, false, state, coreRandom,
@@ -865,7 +849,7 @@ async function kick_dumb(x, y, state) {
     }
     // 876-877. C short-circuits the roll off the air level; otherwise one
     // rn2(2) decides whether this empty kick sends the hero backward.
-    if ((Is_airlevel(u.uz) || Levitation(state)) && rn2(2))
+    if ((Is_airlevel(u.uz, state) || Levitation(state)) && rn2(2))
         await hurtle(-u.dx, -u.dy, 1, true, state);
 }
 
@@ -923,7 +907,7 @@ async function kick_ouch(x, y, kickobjnam, state) {
     await exercise(A_STR, false, state, coreRandom,
                    { encumberMessage: encumber_msg });
     if (isok(x, y)) {
-        if (Blind(state)) feel_location(x, y, state);
+        if (Blind(state.u)) feel_location(x, y, state);
         if (is_drawbridge_wall(x, y, state) >= 0) {
             await ttyPline('The drawbridge is unaffected.', state);
             const position = { x, y };
@@ -938,7 +922,7 @@ async function kick_ouch(x, y, kickobjnam, state) {
     const dmg = rnd(acurr(state, A_CON) > 15 ? 3 : 5);
     await losehp(Maybe_Half_Phys(dmg, state.u), kickstr(maploc, kickobjnam,
         state), KILLED_BY, state);
-    if (Is_airlevel(u.uz) || Levitation(state))
+    if (Is_airlevel(u.uz, state) || Levitation(state))
         await hurtle(-u.dx, -u.dy, rn1(2, 4), true, state);
 }
 
@@ -994,10 +978,10 @@ export async function kick_door(x, y, avrg_attrib, state = game) {
             }, state);
         }
     } else {
-        if (Blind(state)) feel_location(x, y, state);
+        if (Blind(state.u)) feel_location(x, y, state);
         await exercise(A_STR, true, state, coreRandom,
             { encumberMessage: encumber_msg });
-        await ttyPline(`${Deaf(state) || !rn2(3) ? 'Thwack' : 'Whammm'}!!`, state);
+        await ttyPline(`${Deaf(state.u) || !rn2(3) ? 'Thwack' : 'Whammm'}!!`, state);
         if (in_town(x, y, state)) {
             await get_iter_mons_async(async (mon) => {
                 if (!is_watch(mon.data) || !mon.mpeaceful
@@ -1068,7 +1052,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
             maploc.flags = 0;
             maploc.typ = ROOM;
             mkgold(rnd(200), x, y, objects);
-            if (Blind(state)) {
+            if (Blind(state.u)) {
                 await ttyPline('CRASH!  You destroy it.', state);
             } else {
                 await ttyPline('CRASH!  You destroy the throne.', state);
@@ -1089,12 +1073,12 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
                 mksobj_at(gem, x, y, false, true, objects);
             }
             await ttyPline(
-                Blind(state)
+                Blind(state.u)
                     ? `You kick ${something} loose!`
                     : 'You kick loose some ornamental coins and gems!',
                 state,
             );
-            if (!Blind(state)) newsym(x, y, state);
+            if (!Blind(state.u)) newsym(x, y, state);
             maploc.flags = T_LOOTED;
             return ECMD_TIME;
         }
@@ -1115,7 +1099,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
             return ECMD_TIME;
         }
         await ttyPline(
-            `You kick ${Blind(state) ? something : 'the altar'}.`,
+            `You kick ${Blind(state.u) ? something : 'the altar'}.`,
             state,
         );
         const { altar_wrath } = await import('./pray.js');
@@ -1132,7 +1116,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
             await kick_dumb(x, y, state);
             return ECMD_TIME;
         }
-        await ttyPline(`You kick ${Blind(state) ? something : 'the fountain'}.`, state);
+        await ttyPline(`You kick ${Blind(state.u) ? something : 'the fountain'}.`, state);
         if (!rn2(3)) {
             await kick_ouch(x, y, '', state);
             return ECMD_TIME;
@@ -1168,7 +1152,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
         maploc.horizontal = false;
         mksobj_at(ROCK, x, y, true, false, objects);
         del_engr_at(x, y, state);
-        if (Blind(state)) {
+        if (Blind(state.u)) {
             await ttyPline('Crack!  Something broke!', state);
         } else {
             await ttyPline('The headstone topples over and breaks!', state);
@@ -1246,12 +1230,12 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
             return ECMD_TIME;
         }
         if (rn2(5)) {
-            await ttyPline(Deaf(state) ? 'Klunk!' : 'Klunk!  The pipes vibrate noisily.', state);
+            await ttyPline(Deaf(state.u) ? 'Klunk!' : 'Klunk!  The pipes vibrate noisily.', state);
             await exercise(A_DEX, true, state, random);
             return ECMD_TIME;
         } else if (!(maploc.flags & S_LPUDDING) && !rn2(3)
             && !(state.mvitals[PM_BLACK_PUDDING].mvflags & G_GONE)) {
-            if (Blind(state)) {
+            if (Blind(state.u)) {
                 const heard = youHear('a gushing sound.', state);
                 if (heard) await ttyPline(heard, state);
             } else {
@@ -1264,7 +1248,7 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
             return ECMD_TIME;
         } else if (!(maploc.flags & S_LDWASHER) && !rn2(3)
             && !(state.mvitals[PM_AMOROUS_DEMON].mvflags & G_GONE)) {
-            await ttyPline(`${Blind(state) ? 'Something' : 'The dish washer'} returns!`, state);
+            await ttyPline(`${Blind(state.u) ? 'Something' : 'The dish washer'} returns!`, state);
             const sex = gend === 1 || (gend === 2 && rn2(2)) ? MM_MALE : MM_FEMALE;
             if (await makemon_runtime(state.mons[PM_AMOROUS_DEMON], x, y,
                 MM_NOMSG | sex, { state })) newsym(x, y, state);
@@ -1409,7 +1393,7 @@ export async function dokick(state = game) {
         const behind = isok(xx, yy) ? state.level.at(xx, yy) : null;
         const objectBehind = state.level?.objects?.[xx]?.[yy] ?? null;
         if (behind && !IS_OBSTRUCTED(behind.typ) && !IS_DOOR(behind.typ)
-            && (!Is_airlevel(u.uz) || !objectBehind)) {
+            && (!Is_airlevel(u.uz, state) || !objectBehind)) {
             await ttyPline('You have nothing to brace yourself against.', state);
             return ECMD_OK;
         }
@@ -1455,7 +1439,7 @@ export async function dokick(state = game) {
 
         // dokick.c:1428-1439. C uses integer division for both range steps;
         // mdat remains the pre-kick species if the monster died above.
-        if ((Is_airlevel(u.uz) || Levitation(state)) && state.context?.move) {
+        if ((Is_airlevel(u.uz, state) || Levitation(state)) && state.context?.move) {
             let range = state.youmonst.data.cwt
                 + weight_cap(state) + inv_weight(state);
             if (range < 1) range = 1;
@@ -1478,11 +1462,11 @@ export async function dokick(state = game) {
     // 1452-1453. OBJ_AT() read off the per-square pile chain, so that a
     // supplied state rather than the module global answers for it.
     const pile = state.level?.objects?.[x]?.[y] ?? null;
-    if (pile && (!Levitation(state) || Is_airlevel(u.uz) || Is_waterlevel(u.uz)
+    if (pile && (!Levitation(state) || Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)
                  || sobj_at(BOULDER, x, y, state))) {
         const kickName = { value: '' };
         if (await kick_object(x, y, kickName, state)) {
-            if (Is_airlevel(u.uz))
+            if (Is_airlevel(u.uz, state))
                 await hurtle(-u.dx, -u.dy, 1, true, state);
             return ECMD_TIME;
         }
@@ -1914,7 +1898,7 @@ export function deliver_obj_to_mon(mtmp, cnt, deliverflags, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
     const env = objectGenerationEnv({ ...rawEnv, state, random });
-    const at_crime_scene = In_mines(state.u.uz);
+    const at_crime_scene = In_mines(state.u.uz, state);
     let maxobj;
 
     if ((deliverflags & DF_RANDOM) && cnt > 1)

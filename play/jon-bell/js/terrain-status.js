@@ -25,7 +25,7 @@ function currentTerrain() {
     if (!loc)
         return STONE;
     // map_location() records the C lastseentyp equivalent on the cell.
-    let typ = (loc.lastseentyp ?? loc.typ ?? STONE) | 0;
+    let typ = loc.lastseentyp | 0; /* svl.lastseentyp[][] starts zeroed (STONE) */
     if (u.uinwater) {
         typ = X_SUBMERGED;
     } else {

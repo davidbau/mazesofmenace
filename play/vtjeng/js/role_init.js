@@ -2,7 +2,7 @@
 // C ref: src/role.c selection helpers, rigid_role_checks(), role_init(),
 // Hello(), and Goodbye(); src/allmain.c welcome().
 
-import { A_CURRENT, A_ORIGINAL, HALLUC, HALLUC_RES, P_CLERIC_SPELL,
+import { A_CURRENT, A_ORIGINAL, P_CLERIC_SPELL,
     Upolyd } from './const.js';
 import {
     M2_FEMALE,
@@ -50,6 +50,8 @@ import {
     validrace,
     validrole,
 } from './roles.js';
+import { Hallucination,
+} from './youprop.js';
 
 const PM_CLERIC = 337;
 const PM_KNIGHT = 335;
@@ -596,10 +598,7 @@ export function welcomeMessage(state) {
 // Hallucination is the intrinsic effect unless either form of resistance
 // suppresses it. This line precedes the ordinary welcome message.
 export function welcomeHallucinationMessage(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return hallucination?.intrinsic
-        && !(resistance?.intrinsic || resistance?.extrinsic)
+    return Hallucination(state.u)
         ? 'NetHack is filmed in front of an undead studio audience.'
         : null;
 }

@@ -14,7 +14,7 @@ import { chooseInventoryObject, stack_object } from './invent.js';
 import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, PLNMSG_ENVELOPED_IN_GAS, ZAP_POS, ANTI_MAGIC, CORR, DBWALL, D_CLOSED, D_LOCKED, DOOR, DRAWBRIDGE_DOWN, ENGRAVE, ENL_GAMEINPROGRESS, EXPL_MAGICAL, HEADSTONE, HOLE, IS_FURNITURE, Is_airlevel, LEVEL_TELEP, MAGICENLIGHTENMENT, MAGIC_PORTAL, MAGIC_TRAP, POLY_TRAP, SCORR, TELEP_TRAP, TRAPDOOR, TRAP_EXPLODE, VIBRATING_SQUARE, A_CON, A_CHA, W_ARMH, A_WIS, W_ARMG, A_DEX, A_STR, A_INT, W_RING, W_ARMOR, G_GENOD, MAX_OIL_IN_FLASK, MAX_SPELL_STUDY, MM_NOMSG, NO_MINVENT, W_AMUL, W_ART, W_ARTI, W_QUIVER, W_RINGL, W_RINGR, W_SWAPWEP, W_TOOL, W_WEP, COLNO, DB_FLOOR, DB_ICE, DB_UNDER, DRAWBRIDGE_UP, FOUNTAIN, SHOP_BARS_COST, SHOP_DOOR_COST, D_BROKEN, D_NODOOR, HWALL, ICE, ICED_MOAT, ICED_POOL, IRONBARS, IS_WALL, IS_WATERWALL, Is_rogue_level, Is_waterlevel, ismnum, LAVAWALL, PIT, POOL, ROOM, ROWNO, SDOOR, TT_INFLOOR, TT_LAVA, Upolyd, VWALL, WEB, W_NONDIGGABLE, SHOPBASE, BOLT_LIM, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, HEAD, FACE, FOOT, ARM, EYE, LL_CONDUCT, LL_ARTIFACT, LL_WISH, } from './const.js';
 import { isok } from './cmd.js';
 import { isIceAt, isLavaAt, isMoatAt, isPoolAt, closeDrawbridge, destroyDrawbridge, findDrawbridgeAt, openDrawbridge, drawbridgeUnderlyingType } from './dbridge.js';
-import { heroHasArtifactDefense, heroHasCarriedArtifactFlag, artifactById } from './artifact.js';
+import { heroHasCarriedArtifactFlag, artifactById, defends, defendsWhenCarried } from './artifact.js';
 import { adjustHeroAlignment, exerciseAttribute, exerciseWisdom, currentAttribute, poisonHero } from './attrib.js';
 import { canSeeMonster, consumeHallucinatedMenuObjectGlyph, docrt, glyphAt, newsym, shieldeff, unmap_invisible } from './display.js';
 import { formatFeltMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, set_msg_dir, impossible, } from './pline.js';
@@ -51,15 +51,15 @@ import { d, rn1, rn2, rnd } from './rng.js';
 import { promptDirection } from './cmd.js';
 import { cansee, couldsee, vision_note_blocker_change } from './vision.js';
 import { chargeUnpaidUsage, addShopDamage, payForShopDamage, addShopObjectToBill, costlySpot, stolenValue, hotPursuitShopkeeper, makeAngryShopkeeper, deleteObjectContents, shopkeeperInOwnShop, containedBuyCost } from './shk.js';
-import { hasIntrinsicProperty, hasTimedProperty, hasWornProperty } from './properties.js';
+import { hasCarriedProperty, hasIntrinsicProperty, hasTimedProperty, hasWornProperty } from './properties.js';
 import { heroDetectsMonsters, heroIsBlind, heroIsDeaf, heroIsHallucinating } from './senses.js';
-import { AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, AD_DRST, AD_ACID, AD_SPC1, AD_SPC2 } from './monster_attack_types.js';
+import { AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, AD_DRST, AD_ACID, AD_SPC1, AD_SPC2, AD_DRLI } from './monster_attack_types.js';
 import { showInventoryWindow } from './windows.js';
 import { useUpFloorObject } from './invent.js';
 import { changeMonsterForm, copyPetData, normalizeMonsterShape, wakeMonster, maybeUnhideAt, revealMonsterAppearance, checkMonsterGearNextTurn, } from './mon.js';
 import { setMonsterPermanentInvisibility, bypassObjectList, nextUnbypassedObject, bypassObject, adjustMonsterSpeed, monsterSpeedMessage, destroyObjectFromMonsterInventory, findMonsterArmorClass, wornInSlot, removeObjectFromMonsterInventory, removeHeroEquipment, } from './worn.js';
 import { redrawMonsterWormSegments } from './worm.js';
-import { monsterHasMagicResistance } from './mondata.js';
+import { defended, monsterHasMagicResistance, resistsBlndByArtifact } from './mondata.js';
 import { finishHeroMonsterKill, finishHeroLiquidMonsterDeath } from './mon.js';
 import { monsterHitPointsPerLevel, createCritters, makemonAt } from './makemon.js';
 import { recordMappedOverviewState, ceilingName, surfaceName, In_mines, Invocation_lev } from './dungeon.js';
@@ -103,7 +103,7 @@ import { heroStatusLine } from './insight.js';
 import { mergeObjectStacks } from './invent.js';
 import { monsterSpellDeathReason } from './mcastu.js';
 import { putMonsterToSleep, sleptMonst } from './mhitm.js';
-import { heroHasRemovableSpeed, u_slow_down, expelHero, holdingMonsterName, } from './mhitu.js';
+import { heroHasRemovableSpeed, u_slow_down, expelHero, } from './mhitu.js';
 import { finishMonsterKilled, finishMonsterLiquidDeath, healMonster, resolveMonsterLiquid, shieldMonster } from './mon.js';
 import { monsterHasAcidResistance, monsterHasColdResistance, monsterHasDisintegrationResistance, monsterHasPoisonResistance, monsterResistsSleep, monstersForgetHeroResistance, monstersObserveHeroResistance, seenResistanceForDamage } from './mondata.js';
 import { wornMonsterLifeSaver } from './mon.js';
@@ -574,7 +574,7 @@ export async function affectMonsterSpeed(monster, kind, source, state, options) 
         }
         if (kind === 'slow' && state.u?.uswallow
             && state.u?.ustuck === monster && monsterIsWhirly(monster)) {
-            await plineWithContinuation(`You disrupt ${holdingMonsterName(monster, state)}!`);
+            await plineWithContinuation(`You disrupt ${monsterName(monster, { state })}!`);
             await plineWithContinuation('A huge hole opens up...');
             await expelHero(monster, {
                 state, random: options.random, rollOne: options.roll,
@@ -1505,8 +1505,9 @@ export async function drainObjectEnchantment(object, { random = rn2, byHero = fa
     if (!objectCharged(object.otyp)
         && ![WEAPON_CLASS, ARMOR_CLASS].includes(object.oclass) && !weaponTool)
         return false;
-    const artifact = artifactById(object.oartifact);
-    if (artifact?.defense === 'life-drain' || artifact?.carriedDefense === 'life-drain'
+    // C zap.c:1392: defends(AD_DRLI, obj) || defends_when_carried(AD_DRLI,
+    // obj); dragon armor of the matching color resists through defends().
+    if (defends(AD_DRLI, object, state) || defendsWhenCarried(AD_DRLI, object, state)
         || objectResistsDestruction(object, 10, 90, random))
         return false;
     if (byHero)
@@ -2531,7 +2532,7 @@ export async function zapHeroWithObject(object, { ordinary = true, state = game 
         case WAN_STRIKING:
         case SPE_FORCE_BOLT:
             learn = true;
-            if (hero.antimagic || heroHasArtifactDefense('magic', state)) {
+            if (propertyIsActive('antimagic', state)) {
                 await shieldeff(hero.ux, hero.uy);
                 await plineWithContinuation('Boing!');
                 monstersObserveHeroResistance(M_SEEN_MAGR, state);
@@ -2568,7 +2569,7 @@ export async function zapHeroWithObject(object, { ordinary = true, state = game 
         case WAN_MAGIC_MISSILE:
         case SPE_MAGIC_MISSILE:
             learn = true;
-            if (hero.antimagic || heroHasArtifactDefense('magic', state)) {
+            if (propertyIsActive('antimagic', state)) {
                 await shieldeff(hero.ux, hero.uy);
                 await plineWithContinuation('The missiles bounce!');
                 monstersObserveHeroResistance(M_SEEN_MAGR, state);
@@ -2718,8 +2719,9 @@ export async function zapHeroWithObject(object, { ordinary = true, state = game 
 async function elementalSelfZap(kind, damageType, memory, resistance, state) {
     const hero = state.u;
     const damage = d(12, 6);
-    const defense = kind === 'electric' ? 'shock' : kind;
-    const resisted = !!hero[resistance] || heroHasArtifactDefense(defense, state);
+    // C zap.c:zapyourself() reads the plain Shock_resistance /
+    // Fire_resistance / Cold_resistance macros (zap.c:2733, 2756, 2777).
+    const resisted = propertyIsActive(resistance, state);
     if (resisted) {
         await shieldeff(hero.ux, hero.uy);
         await plineWithContinuation(kind === 'electric' ? 'You zap yourself, but seem unharmed.'
@@ -2839,7 +2841,7 @@ export async function flashBurn(duration, viaLightning = false, { state = game, 
             await publish('Your vision clears.');
         return true;
     }
-    if (!viaLightning && heroHasArtifactDefense('blindness', state)) {
+    if (!viaLightning && resistsBlndByArtifact({ youmonst: true }, state)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         return true;
     }
@@ -3676,7 +3678,8 @@ async function damageRayMonster(monster, nativeType, dice, { state, publish, ran
     }
     else if (damageType === AD_ELEC) {
         sourceDamage = spellDamage(rollDice(dice, 6));
-        hit.resisted = monsterHasShockResistance(monster);
+        hit.resisted = monsterHasShockResistance(monster)
+            || defended(monster, AD_ELEC, state);
         hit.damage = hit.resisted ? 0 : sourceDamage;
         if (!inside && dice > 2 && !resistsBlnd({ monster }, state)) {
             monster.mcansee = 0;
@@ -3877,17 +3880,19 @@ export function rayDamageType(type) {
 }
 // Part of C zap.c:zhitm(): select the target monster's resistance for the ray element.
 function rayResistance(monster, damageType, state) {
+    // C zap.c:zhitm(): every elemental case is resists_X(mon) ||
+    // defended(mon, AD_X) — the dragon-scales/wielded-artifact term
+    // (zap.c:4252, 4261, 4279, 4367, 4374).
     if (damageType === AD_MAGM)
-        return monsterHasMagicResistance(monster);
+        return monsterHasMagicResistance(monster) || defended(monster, AD_MAGM, state);
     if (damageType === AD_FIRE)
-        return monsterHasFireResistance(monster);
+        return monsterHasFireResistance(monster) || defended(monster, AD_FIRE, state);
     if (damageType === AD_COLD)
-        return monsterHasColdResistance(monster);
+        return monsterHasColdResistance(monster) || defended(monster, AD_COLD, state);
     if (damageType === AD_DRST)
-        return monsterHasPoisonResistance(monster)
-            || artifactById(monsterWieldedWeapon(monster)?.oartifact, state)?.defense === 'poison';
+        return monsterHasPoisonResistance(monster) || defended(monster, AD_DRST, state);
     if (damageType === AD_ACID)
-        return monsterHasAcidResistance(monster);
+        return monsterHasAcidResistance(monster) || defended(monster, AD_ACID, state);
     return false;
 }
 // C zap.c:zhitu().
@@ -3904,7 +3909,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
     };
     if (damageType === AD_MAGM) {
         const { state, attack, publish, rollDice } = context;
-        if (heroResistsRay(state, 'antimagic', 'magic')) {
+        if (propertyIsActive('antimagic', state)) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await publish('The missiles bounce off!');
             noteRayResistance(context, true);
@@ -3918,7 +3923,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
     else if (damageType === AD_FIRE) {
         const { state, attack, publish, random, rollDice, rollOne } = context;
         const sourceDamage = rollDice(attack[2], 6);
-        const resisted = heroResistsRay(state, 'fireResistance', 'fire');
+        const resisted = propertyIsActive('fireResistance', state);
         if (resisted) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await publish("You don't feel hot!");
@@ -3947,7 +3952,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
     else if (damageType === AD_COLD) {
         const { state, attack, publish, random, rollDice, rollOne } = context;
         const sourceDamage = rollDice(attack[2], 6);
-        const resisted = heroResistsRay(state, 'coldResistance', 'cold');
+        const resisted = propertyIsActive('coldResistance', state);
         if (resisted) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await publish("You don't feel cold.");
@@ -3968,7 +3973,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
     }
     else if (damageType === AD_SLEE) {
         const { state, attack, publish, rollDice } = context;
-        const resisted = heroResistsRay(state, 'sleepResistance', 'sleep');
+        const resisted = propertyIsActive('sleepResistance', state);
         if (resisted) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await publish("You don't feel sleepy.");
@@ -3990,7 +3995,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
                 await publish('You seem unaffected.');
                 return { hit: true, damageType, ...(await ({ resisted: true, damage: 0, heroDied: false })) };
             }
-            if (heroResistsRay(state, 'antimagic', 'magic')) {
+            if (propertyIsActive('antimagic', state)) {
                 await shieldeff(state.u.ux, state.u.uy, state);
                 noteRayResistance(context, true);
                 await publish("You aren't affected.");
@@ -4045,7 +4050,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
     else if (damageType === AD_ELEC) {
         const { state, attack, publish, random, rollDice, rollOne } = context;
         const sourceDamage = rollDice(attack[2], 6);
-        const resisted = heroResistsRay(state, 'shockResistance', 'shock');
+        const resisted = propertyIsActive('shockResistance', state);
         if (resisted) {
             await shieldeff(state.u.ux, state.u.uy, state);
             await publish("You aren't affected.");
@@ -4086,7 +4091,7 @@ export async function hitHeroWithRay({ state = game, attack = heroBreathAttack(s
     }
     else if (damageType === AD_ACID) {
         const { state, attack, publish, random, rollDice } = context;
-        const resisted = heroResistsRay(state, 'acidResistance', 'acid');
+        const resisted = propertyIsActive('acidResistance', state);
         let damage = 0;
         if (resisted) {
             await publish(`The ${displayLiquidName('acid', state)} doesn't hurt.`);
@@ -4142,11 +4147,6 @@ export function heroBreathAttack(state = game, damageType = null) {
         return null;
     return (MONSTER_ATTACKS[form] || []).find(([attackType, attackDamage]) => attackType === AT_BREA
         && (damageType == null || attackDamage === damageType)) || null;
-}
-// Part of C zap.c:zhitu(): combine the hero's intrinsic, extrinsic, and artifact ray defenses.
-function heroResistsRay(state, property, element) {
-    return !!state.u[property] || propertyIsActive(property, state)
-        || heroHasArtifactDefense(element, state);
 }
 // Part of C zap.c:zhitu(): let watching monsters learn or forget the hero's resistance.
 function noteRayResistance(context, resisted) {
@@ -5324,12 +5324,14 @@ function adtypToProp(damageType) {
     return properties[damageType];
 }
 // C zap.c:u_adtyp_resistance_obj().
-//: worn or wielded resistance gives 99%
+//: extrinsic & (W_ARMOR | W_ACCESSORY | W_WEP | W_ART) (zap.c:5687) — the
+// worn-slot sources plus the carried-artifact W_ART pass that
+// set_artifact_intrinsic() installs at addinv/freeinv — gives 99%
 // inventory protection, a dwarvish cloak 90% against heat and cold.
 function protectionChance(state, damageType) {
     const hero = state.u;
     const property = adtypToProp(damageType);
-    if (hasWornProperty(property, state) || heroHasArtifactDefense(damageType, state))
+    if (hasWornProperty(property, state) || hasCarriedProperty(property, null, state))
         return 99;
     const cloak = state.uarmc || hero.uarmc;
     return damageType !== INVENTORY_DAMAGE.ELECTRIC
@@ -5440,15 +5442,13 @@ async function destroyChosenItem(object, damageType, { state, publish, random, r
         await exerciseAttribute(A_STR, false, state);
     return { damage, heroDied };
 }
-// Part of C zap.c:maybe_destroy_item(): determine whether fire or shock resistance prevents item-destruction damage.
+// Part of C zap.c:maybe_destroy_item(): the u_carry Fire_resistance /
+// Shock_resistance macro gates (zap.c:5828, 5860).
 function heroResists(state, damageType) {
-    if (heroHasArtifactDefense(damageType, state))
-        return true;
-    const hero = state.u;
     if (damageType === INVENTORY_DAMAGE.FIRE)
-        return !!(hero.fireResistance);
+        return propertyIsActive('fireResistance', state);
     if (damageType === INVENTORY_DAMAGE.ELECTRIC)
-        return !!(hero.shockResistance);
+        return propertyIsActive('shockResistance', state);
     return false;
 }
 // C zap.c:maybe_destroy_item(): the worn-ring test (uleft/uright or the

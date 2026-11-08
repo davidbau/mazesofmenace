@@ -9,7 +9,6 @@ import {
     A_LAWFUL,
     A_NEUTRAL,
     ANTIMAGIC,
-    BLINDED,
     BLND_RES,
     COLD_RES,
     CONFUSION,
@@ -26,9 +25,7 @@ import {
     GETOBJ_SUGGEST,
     GETOBJ_ALLOWCNT,
     HALF_PHDAM,
-    Maybe_Half_Phys,
     HALF_SPDAM,
-    HALLUC,
     Has_contents,
     HALLUC_RES,
     I_SPECIAL,
@@ -296,6 +293,9 @@ import { ignite_items } from './apply_catch_lit.js';
 import { burn_away_slime } from './timeout.js';
 import { remove_worn_item } from './steal.js';
 import { On_stairs } from './stairs.js';
+import {
+    BBlinded, BInvis, Blind, EBlinded, HBlinded, Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 // C refs: artifact.c defends() and defends_when_carried(). Artifact attack,
 // defense, and carry records all use the same damage-type encoding.
@@ -1142,11 +1142,10 @@ function* set_artifact_intrinsic_steps(otmp, on, wp_mask, state, rawEnv) {
 }
 
 function extrinsicMaskToggle(state, property, wp_mask, on) {
-    const prop = state.u.uprops[property];
     if (on)
-        prop.extrinsic |= wp_mask;
+        state.u.uprops[property].extrinsic |= wp_mask;
     else
-        prop.extrinsic &= ~wp_mask;
+        state.u.uprops[property].extrinsic &= ~wp_mask;
 }
 
 // C ref: artifact.c dispose_of_orig_obj() (312-320). Frees the original
@@ -1825,9 +1824,7 @@ export async function Mb_hit(
     }
 
     /* give the hit message prior to inflicting the effects */
-    const halluc = (state.u?.uprops?.[HALLUC]?.intrinsic ?? 0) !== 0
-        && !(state.u?.uprops?.[HALLUC_RES]?.intrinsic ?? 0)
-        && !(state.u?.uprops?.[HALLUC_RES]?.extrinsic ?? 0);
+    const halluc = Hallucination(state.u);
     const verb = mb_verb[halluc ? 1 : 0][attack_indx];
     if (youattack || youdefend || vis) {
         result = true;
@@ -1996,18 +1993,6 @@ export async function Mb_hit(
 // C ref: artifact.c FATAL_DAMAGE_MODIFIER (63). Local to artifact.c.
 const FATAL_DAMAGE_MODIFIER = 200;
 
-// Local property helpers, following the pattern used in uhitm.js and other
-// combat modules. Each mirrors one youprop.h macro.
-function Blind(state) {
-    const value = state.u?.uprops?.[BLINDED];
-    return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
-}
-function Hallucination(state) {
-    const halluc = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(halluc?.intrinsic)
-        && !Boolean(resistance?.intrinsic || resistance?.extrinsic);
-}
 function Slimed(state) {
     return Boolean(state.u?.uprops?.[SLIMED]?.intrinsic);
 }
@@ -2034,7 +2019,7 @@ export async function artifact_hit(
     const youdefend = (mdef === state.youmonst);
     const vis = (!youattack && magr && cansee(magr.mx, magr.my, state))
               || (!youdefend && cansee(mdef.mx, mdef.my, state))
-              || (youattack && engulfing_u(mdef, state) && !Blind(state));
+              || (youattack && engulfing_u(mdef, state) && !Blind(state.u));
     let realizes_damage;
     let wepdesc;
     let hittee = youdefend ? 'you'
@@ -2231,7 +2216,7 @@ export async function artifact_hit(
                     msg.replace('%wepdesc', wepdesc)
                        .replace('%target', monsterCommonName(mdef, state, 0, nameEnv)),
                     state);
-                if (Hallucination(state) && !state.flags.female)
+                if (Hallucination(state.u) && !state.flags.female)
                     await message(
                         "Good job Henry, but that wasn't Anne.", state);
                 observe_object(otmp, state);
@@ -2273,7 +2258,7 @@ export async function artifact_hit(
         if (!youdefend) {
             const m_lev = mdef.m_lev | 0; /* will be 0 for 1d4 mon */
             const mhpmax = mdef.mhpmax;
-            let drain = monhp_per_lvl(mdef); /* usually 1d8 */
+            let drain = monhp_per_lvl(mdef, { state }); /* usually 1d8 */
             /* note: DRLI attack uses 2d6, attacker doesn't get healed */
 
             /* stop draining HP if it drops too low (still drains level;
@@ -2319,7 +2304,7 @@ export async function artifact_hit(
         } else { /* youdefend */
             const oldhpmax = state.u.uhpmax;
 
-            if (Blind(state)) {
+            if (Blind(state.u)) {
                 await message(
                     youFeel(
                         `an ${is_art(otmp, ART_STORMBRINGER) ? 'unholy blade' : 'object'} drain your ${life}!`,
@@ -2385,7 +2370,7 @@ export async function doinvoke(state = game) {
 async function nothing_special(obj, state) {
     if (carried(obj)) {
         await ttyPline(
-            'You feel a surge of power, but nothing seems to happen.', state);
+            youFeel('a surge of power, but nothing seems to happen.', state), state);
     }
 }
 
@@ -2407,20 +2392,19 @@ export async function invoke_healing(obj, state) {
 
     // C: Sick = u.uprops[SICK].intrinsic, Slimed = u.uprops[SLIMED].intrinsic,
     // BlindedTimeout = u.uprops[BLINDED].intrinsic & TIMEOUT.
-    const blindProp = u.uprops?.[BLINDED] ?? { intrinsic: 0, extrinsic: 0 };
-    const blindedTimeout = blindProp.intrinsic & TIMEOUT;
+    const blindedTimeout = HBlinded(u) & TIMEOUT;
     const sick = (u.uprops?.[SICK]?.intrinsic ?? 0) !== 0;
     const slimed = (u.uprops?.[SLIMED]?.intrinsic ?? 0) !== 0;
-    const hBlinded = blindProp.intrinsic;
+    const hBlinded = HBlinded(u);
     // youprop.h:92 Blinded is a boolean, distinct from BlindedTimeout.
-    const blinded = Boolean(hBlinded) && !blindProp.blocked;
+    const blinded = Boolean(hBlinded) && !BBlinded(u);
     if (healamt || sick || slimed || blinded > creamed)
-        await ttyPline('You feel better.', state);
+        await ttyPline(youFeel('better.', state), state);
 
     if (healamt || sick || slimed || blindedTimeout > creamed) {
         const prefix = (!healamt && !sick && !slimed
             && (hBlinded & ~TIMEOUT) !== 0) ? 'slightly ' : '';
-        await ttyPline(`You feel ${prefix}better.`, state);
+        await ttyPline(youFeel(`${prefix}better.`, state), state);
     } else {
         await nothing_special(obj, state);
         return ECMD_TIME;
@@ -2454,7 +2438,7 @@ async function invoke_energy_boost(obj, state) {
         u.uen += epboost;
         state.disp ??= {};
         state.disp.botl = true;
-        await ttyPline('You feel re-energized.', state);
+        await ttyPline(youFeel('re-energized.', state), state);
     } else {
         await nothing_special(obj, state);
         return ECMD_TIME;
@@ -2485,7 +2469,7 @@ async function invoke_charge_obj(obj, state) {
         return ECMD_CANCEL;
     }
     await recharge(otmp, blessedEffect ? 1 : obj.cursed ? -1 : 0, state);
-    update_inventory(state);
+    update_inventory({ state });
     return ECMD_TIME;
 }
 
@@ -2531,14 +2515,14 @@ async function invoke_create_portal(obj, state) {
     else
         newlev.dlevel = state.dungeons[chosen].dunlev_ureached;
 
-    if (u.uhave?.amulet || In_endgame(u.uz) || In_endgame(newlev)
+    if (u.uhave?.amulet || In_endgame(u.uz, state) || In_endgame(newlev, state)
         || newlev.dnum === u.uz.dnum || !(await next_to_u(state))) {
-        await ttyPline('You feel very disoriented for a moment.', state);
+        await ttyPline(youFeel('very disoriented for a moment.', state), state);
     } else {
-        if (!Blind(state))
+        if (!Blind(state.u))
             await ttyPline('You are surrounded by a shimmering sphere!', state);
         else
-            await ttyPline('You feel weightless for a moment.', state);
+            await ttyPline(youFeel('weightless for a moment.', state), state);
         await goto_level(newlev, false, false, false, state);
     }
     return ECMD_TIME;
@@ -2599,7 +2583,7 @@ export async function invoke_banish(obj, state = game) {
         if (!couldsee(mtmp.mx, mtmp.my, state)) continue;
         if (mtmp.data?.msound === MS_NEMESIS) continue;
 
-        if (In_quest(u.uz) && !state.svq?.quest_status?.killed_nemesis)
+        if (In_quest(u.uz, state) && !state.svq?.quest_status?.killed_nemesis)
             chance += 10;
         if (is_dprince(mtmp.data)) chance += 2;
         if (is_dlord(mtmp.data)) chance++;
@@ -2638,7 +2622,7 @@ export async function invoke_banish(obj, state = game) {
 async function invoke_fling_poison(obj, state) {
     if (await getdir(null, state)) {
         const venom = rn2(2) ? BLINDING_VENOM : ACID_VENOM;
-        const otmp = mksobj(venom, true, false, state);
+        const otmp = mksobj(venom, true, false, { state });
         otmp.spe = 1;
         await throwit(otmp, 0, false, null, state);
     } else {
@@ -2673,7 +2657,7 @@ export async function invoke_blinding_ray(obj, state = game) {
         } else if (state.u.dz) {
             await litroom(true, obj, state);
             const spot = state.level.at(state.u.ux, state.u.uy);
-            await ttyPline(!Blind(state) && spot.lit && !spot.waslit
+            await ttyPline(!Blind(state.u) && spot.lit && !spot.waslit
                 ? 'It is lit here now.' : nothing_seems_to_happen, state);
         } else {
             // Capture vulnerability before lightdamage can rehumanize the hero.
@@ -2708,12 +2692,12 @@ async function arti_invoke_cost(obj, state) {
         const pw_cost = arti_invoke_cost_pw(obj, state);
         if (pw_cost < 0 || state.u.uen < pw_cost) {
             await ttyPline(
-                `You feel that ${the(xnameFresh(obj, state), state)} ${otense(obj, 'are', state)} ignoring you.`,
+                youFeel(`that ${the(xnameFresh(obj, state), state)} ${otense(obj, 'are', state)} ignoring you.`, state),
                 state);
             obj.age += d(3, 10);
             return false;
         } else {
-            await ttyPline('You feel drained...', state);
+            await ttyPline(youFeel('drained...', state), state);
             state.u.uen -= pw_cost;
             state.disp ??= {};
             state.disp.botl = true;
@@ -2792,7 +2776,7 @@ async function arti_invoke(obj, state = game) {
     if (on && obj.age > state.moves) {
         prop.extrinsic ^= W_ARTI;
         await ttyPline(
-            `You feel that ${the(xnameFresh(obj, state), state)} ${otense(obj, 'are', state)} ignoring you.`,
+            youFeel(`that ${the(xnameFresh(obj, state), state)} ${otense(obj, 'are', state)} ignoring you.`, state),
             state);
         obj.age += d(3, 10);
         return ECMD_TIME;
@@ -2807,9 +2791,9 @@ async function arti_invoke(obj, state = game) {
     switch (oart.inv_prop) {
     case CONFLICT:
         if (on)
-            await ttyPline('You feel like a rabble-rouser.', state);
+            await ttyPline(youFeel('like a rabble-rouser.', state), state);
         else
-            await ttyPline('You feel the tension decrease around you.', state);
+            await ttyPline(youFeel('the tension decrease around you.', state), state);
         break;
     case LEVITATION:
         if (on) {
@@ -2821,14 +2805,14 @@ async function arti_invoke(obj, state = game) {
         break;
     case INVIS: {
         // youprop.h BInvis is u.uprops[INVIS].blocked (a mummy wrapping).
-        if (state.u.uprops[INVIS]?.blocked || Blind(state)) {
+        if (BInvis(state.u) || Blind(state.u)) {
             await nothing_special(obj, state);
             return ECMD_TIME;
         }
         newsym(state.u.ux, state.u.uy);
         if (on)
             await ttyPline(
-                `Your body takes on a ${Hallucination(state) ? 'normal' : 'strange'} transparency...`,
+                `Your body takes on a ${Hallucination(state.u) ? 'normal' : 'strange'} transparency...`,
                 state);
         else
             await ttyPline('Your body seems to unfade...', state);
@@ -3011,9 +2995,7 @@ const hcolors = HCOLORS;
 
 // C ref: do_name.c hcolor() (1460-1466).
 export function hcolor(colorpref, state) {
-    const halluc = (state.u?.uprops?.[HALLUC]?.intrinsic ?? 0) !== 0
-        && !(state.u?.uprops?.[HALLUC_RES]?.intrinsic
-            || state.u?.uprops?.[HALLUC_RES]?.extrinsic);
+    const halluc = Hallucination(state.u);
     return (halluc || !colorpref)
         ? hcolors[rn2_on_display_rng(hcolors.length, state)]
         : colorpref;
@@ -3053,8 +3035,8 @@ export async function Sting_effects(orc_count, state = game, env = {}) {
         const oldstr = glow_strength(warn_cnt);
         const newstr = glow_strength(orc_count);
 
-        const blind = (state.u.uprops?.[BLINDED]?.intrinsic ?? 0) !== 0
-            || (state.u.uprops?.[BLINDED]?.extrinsic ?? 0) !== 0;
+        const blind = (HBlinded(state.u)) !== 0
+            || (EBlinded(state.u)) !== 0;
 
         if (orc_count === -1 && warn_cnt > 0) {
             await message(
@@ -3297,7 +3279,7 @@ export async function retouch_equipment(dropflag, state = game, rawEnv = {}) {
     if (had_rings
         !== Number(Boolean(state.uleft)) + Number(Boolean(state.uright))
         && state.uarmg && state.uarmg.cursed)
-        await uncurse(state.uarmg, state); /* temporary ring-removal hack */
+        await uncurse(state.uarmg, { state }); /* temporary ring-removal hack */
     if (had_gloves && !state.uarmg)
         await selftouch('After losing your gloves, you', state, retouchEnv);
 

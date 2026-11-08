@@ -14,13 +14,9 @@ import {
     A_WIS,
     A_CON,
     ALL_SPELLS,
-    BLINDED,
     BY_COOKIE,
     COLNO,
     CONFUSION,
-    INVIS,
-    SEE_INVIS,
-    DEAF,
     UNCHANGING,
     DISP_BEAM,
     DISP_END,
@@ -35,7 +31,6 @@ import {
     GENOCIDED,
     POLY_REVERT,
     POLYMORPH,
-    FAINTED,
     M_SEEN_FIRE,
     ECMD_CANCEL,
     ECMD_OK,
@@ -57,8 +52,6 @@ import {
     G_GONE,
     G_EXTINCT,
     G_GENOD,
-    HALLUC,
-    HALLUC_RES,
     MALE,
     MM_FEMALE,
     MM_EDOG,
@@ -75,7 +68,6 @@ import {
     LS_OBJECT,
     thats_enough_tries,
     SPE_LIM,
-    Maybe_Half_Phys,
     A_STR,
     LEFT_RING,
     RIGHT_RING,
@@ -361,7 +353,6 @@ import {
 } from './display.js';
 import { dropCommandEnv, dropy, flooreffects, trycall } from './do.js';
 import { placebc, set_bc } from './ball.js';
-import { heroIsBlind as Blind } from './startup_a11y.js';
 import { y_n } from './cmd.js';
 import { sokoban_guilt } from './trap.js';
 import {
@@ -411,7 +402,7 @@ import { closed_door, monflee, youHear } from './monmove.js';
 import {
     avoid_ceiling, ceiling, has_ceiling, on_level,
 } from './dungeon.js';
-import { heroUnaware, livelog_printf, verbalize } from './pline.js';
+import { livelog_printf, verbalize, youFeel } from './pline.js';
 import {
     an,
     simpleonames,
@@ -444,6 +435,10 @@ import {
     APRON_MESSAGES, CANDY_WRAPPERS, HAWAIIAN_BACKGROUNDS,
     HAWAIIAN_MOTIFS, SHIRT_MESSAGES,
 } from './read_text_data.js';
+import {
+    Blind, Deaf, ESee_invisible, HSee_invisible, Hallucination, Invis,
+    Maybe_Half_Phys,
+} from './youprop.js';
 
 // Retained for narrower effect-family branches that still fail closed. The
 // source-ordered doread() and seffects() dispatches use note_unported() for
@@ -533,26 +528,23 @@ async function stripspe(obj, state = game) {
     }
 }
 
-function heroIsBlind(state) {
-    return propertyActive(BLINDED, state);
-}
 
 // C refs: read.c p_glow1/2/3() (667-685). Blindness changes both the verb and
 // whether the color formatter is called, which can affect hallucination RNG.
 async function p_glow1(obj, state = game) {
-    const verb = heroIsBlind(state) ? 'vibrate' : 'glow';
+    const verb = Blind(state.u) ? 'vibrate' : 'glow';
     await ttyPline(`${Yobjnam2(obj, verb, state)} briefly.`, state);
 }
 
 async function p_glow2(obj, color, state = game) {
-    const blind = heroIsBlind(state);
+    const blind = Blind(state.u);
     const verb = blind ? 'vibrate' : 'glow';
     const suffix = blind ? '' : ` ${hcolor(color, state)}`;
     await ttyPline(`${Yobjnam2(obj, verb, state)}${suffix} for a moment.`, state);
 }
 
 async function p_glow3(obj, color, state = game) {
-    const blind = heroIsBlind(state);
+    const blind = Blind(state.u);
     const verb = blind ? 'vibrate' : 'glow';
     const suffix = blind ? '' : ` ${hcolor(color, state)}`;
     await ttyPline(`${Yobjnam2(obj, verb, state)} feebly${suffix} for a moment.`, state);
@@ -703,7 +695,7 @@ export async function recharge(obj, curseBless, state = game) {
             if (isCursed) {
                 await stripspe(obj, state);
                 if (obj.lamplit) {
-                    if (!heroIsBlind(state))
+                    if (!Blind(state.u))
                         await ttyPline(`${Tobjnam(obj, 'go', state)} out!`, state);
                     end_burn(obj, true, { state });
                 }
@@ -802,10 +794,10 @@ export async function seffect_charging(scroll, state = game) {
 
     if (confused) {
         if (cursed) {
-            await ttyPline('You feel discharged.', state);
+            await ttyPline(youFeel('discharged.', state), state);
             state.u.uen = 0;
         } else {
-            await ttyPline('You feel charged up!', state);
+            await ttyPline(youFeel('charged up!', state), state);
             state.u.uen += d(blessed ? 6 : 4, 4);
             if (state.u.uen > state.u.uenmax)
                 state.u.uenmax = state.u.uen;
@@ -897,21 +889,14 @@ export async function seffect_confuse_monster(sobj, state = game, env = {}) {
     const scursed = Boolean(sobj.cursed);
     const confused = hconfusion !== 0;
     // youprop.h: Invisible is Invis && !See_invisible.
-    const seeInvisible = state.u.uprops[SEE_INVIS];
-    const altfeedback = propertyActive(BLINDED, state)
-        || (propertyActive(INVIS, state)
-            && !seeInvisible?.intrinsic && !seeInvisible?.extrinsic);
+    const altfeedback = Blind(state.u)
+        || (Invis(state.u)
+            && !HSee_invisible(state.u) && !ESee_invisible(state.u));
     const hands = makeplural(body_part(HAND, state.youmonst));
 
     if (state.youmonst?.data?.mlet !== S_HUMAN || scursed) {
         if (!hconfusion) {
-            let prefix = 'You feel';
-            if (Math.trunc(state.multi ?? 0) < 0) {
-                const { unconscious } = await import('./trap.js');
-                if (unconscious(state) || state.u?.uhs === FAINTED)
-                    prefix = 'You dream that you feel';
-            }
-            await message(`${prefix} confused.`, state);
+            await message(youFeel('confused.', state), state);
         }
         await make_confused(
             hconfusion + random.rnd(100), false, state, { message },
@@ -1149,7 +1134,7 @@ export async function punish(sobj, state = game, rawEnv = {}) {
 
     if (!state.u.uswallow) {
         await placebc(state, env);
-        if (Blind(state)) set_bc(1, state, env);
+        if (Blind(state.u)) set_bc(1, state, env);
         (rawEnv.redraw ?? newsym)(state.u.ux, state.u.uy, state);
     }
 }
@@ -1162,7 +1147,7 @@ export async function seffect_punishment(scroll, state = game) {
         throw new UnsupportedReadError('the selected punishment-scroll branch');
     state.gk.known = true;
     if (scroll.blessed || propertyActive(CONFUSION, state)) {
-        await ttyPline('You feel guilty.', state);
+        await ttyPline(youFeel('guilty.', state), state);
         return;
     }
     await punish(scroll, state);
@@ -1196,7 +1181,7 @@ export async function doread(state = game) {
                 'You break up the cookie and throw away the pieces.', state,
             );
         await outrumor(bcsign(scroll), BY_COOKIE, state);
-        if (!propertyActive(BLINDED, state))
+        if (!Blind(state.u))
             recordLiteracy(
                 state,
                 'became literate by reading a fortune cookie',
@@ -1207,7 +1192,7 @@ export async function doread(state = game) {
 
     if (otyp === T_SHIRT || otyp === ALCHEMY_SMOCK
         || otyp === HAWAIIAN_SHIRT) {
-        if (propertyActive(BLINDED, state)) {
+        if (Blind(state.u)) {
             await ttyPline("You can't feel any Braille writing.", state);
             return ECMD_OK;
         }
@@ -1256,7 +1241,7 @@ export async function doread(state = game) {
             return ECMD_OK;
         }
         await ttyPline(
-            (propertyActive(BLINDED, state)
+            (Blind(state.u)
                 ? 'You feel lettering' : 'There is writing')
                 + ' on the ' + simpleonames(scroll, state)
                 + '.  It reads:  ' + capText + '.',
@@ -1272,7 +1257,7 @@ export async function doread(state = game) {
     }
 
     if (otyp === CREDIT_CARD) {
-        const blind = propertyActive(BLINDED, state);
+        const blind = Blind(state.u);
         if (blind) {
             await ttyPline('You feel the embossed numbers:', state);
         } else {
@@ -1320,7 +1305,7 @@ export async function doread(state = game) {
     }
 
     if (otyp === MAGIC_MARKER) {
-        if (propertyActive(BLINDED, state)) {
+        if (Blind(state.u)) {
             await ttyPline("You can't feel any Braille writing.", state);
             return ECMD_OK;
         }
@@ -1344,7 +1329,7 @@ export async function doread(state = game) {
     }
 
     if (scroll.oclass === COIN_CLASS) {
-        if (propertyActive(BLINDED, state))
+        if (Blind(state.u))
             await ttyPline('You feel the embossed words:', state);
         else if (state.flags?.verbose)
             await ttyPline('You read:', state);
@@ -1357,7 +1342,7 @@ export async function doread(state = game) {
     }
 
     if (is_art(scroll, ART_ORB_OF_FATE)) {
-        if (propertyActive(BLINDED, state))
+        if (Blind(state.u))
             await ttyPline('You feel the engraved signature:', state);
         else
             await ttyPline('It is signed:', state);
@@ -1370,7 +1355,7 @@ export async function doread(state = game) {
     }
 
     if (otyp === CANDY_BAR) {
-        if (propertyActive(BLINDED, state)) {
+        if (Blind(state.u)) {
             await ttyPline("You can't feel any Braille writing.", state);
             return ECMD_OK;
         }
@@ -1389,7 +1374,7 @@ export async function doread(state = game) {
         return ECMD_OK;
     }
 
-    if (propertyActive(BLINDED, state) && otyp !== SPE_BOOK_OF_THE_DEAD) {
+    if (Blind(state.u) && otyp !== SPE_BOOK_OF_THE_DEAD) {
         let what = '';
         if (otyp === SPE_NOVEL) {
             // Unseen novels are already distinguishable from unseen books.
@@ -1441,7 +1426,7 @@ export async function doread(state = game) {
         || (otyp === SCR_REMOVE_CURSE && scroll.cursed);
     const silently = !can_chant(state.youmonst, state);
     if (otyp !== SCR_BLANK_PAPER) {
-        if (propertyActive(BLINDED, state)) {
+        if (Blind(state.u)) {
             await ttyPline(
                 nodisappear
                     ? 'You ' + (silently ? 'cogitate' : 'pronounce')
@@ -1459,7 +1444,7 @@ export async function doread(state = game) {
             );
         }
         if (confused) {
-            if (propertyActive(HALLUC, state)) {
+            if (Hallucination(state.u)) {
                 await ttyPline('Being so trippy, you screw up...', state);
             } else {
                 await ttyPline(
@@ -1508,7 +1493,7 @@ export async function seffect_enchant_armor(scroll, state = game, env = {}) {
     if (!otmp) {
         await strange_feeling(
             sobj,
-            propertyActive(BLINDED, state)
+            Blind(state.u)
                 ? 'Your skin feels warm for a moment.'
                 : 'Your skin glows then fades.',
             state,
@@ -1525,7 +1510,7 @@ export async function seffect_enchant_armor(scroll, state = game, env = {}) {
     if (confused) {
         const oldErodeproof = Boolean(otmp.oerodeproof);
         const newErodeproof = !scursed;
-        const blind = propertyActive(BLINDED, state);
+        const blind = Blind(state.u);
         otmp.oerodeproof = false;
         if (blind) {
             otmp.rknown = false;
@@ -1574,7 +1559,7 @@ export async function seffect_enchant_armor(scroll, state = game, env = {}) {
         : otmp.otyp === SILVER_DRAGON_SCALE_MAIL
             || otmp.otyp === SILVER_DRAGON_SCALES
             || otmp.otyp === SHIELD_OF_REFLECTION;
-    const blind = propertyActive(BLINDED, state);
+    const blind = Blind(state.u);
     if (blind) sameColor = false;
 
     // C first tests whether a very highly enchanted item evaporates; that
@@ -1821,9 +1806,7 @@ export async function seffect_remove_curse(scroll, state = game, env = {}) {
     const sblessed = Boolean(scroll.blessed);
     const scursed = Boolean(scroll.cursed);
     const confused = Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
-    const hallucination = Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !(state.u?.uprops?.[HALLUC_RES]?.intrinsic
-            || state.u?.uprops?.[HALLUC_RES]?.extrinsic);
+    const hallucination = Hallucination(state.u);
     const random = env.random ?? coreRandom;
 
     // pline.c:You_feel() chooses its prefix from youprop.h:Unaware before
@@ -1834,7 +1817,7 @@ export async function seffect_remove_curse(scroll, state = game, env = {}) {
         : (!confused ? 'in touch with the Universal Oneness.'
             : 'the power of the Force against you!');
     await ttyPline(
-        `${heroUnaware(state) ? 'You dream that you feel' : 'You feel'} ${feeling}`,
+        youFeel(feeling, state),
         state,
     );
 
@@ -1904,7 +1887,7 @@ export async function seffect_remove_curse(scroll, state = game, env = {}) {
                 saddle.bknown = 0;
             } else if (saddle.cursed) {
                 await uncurse(saddle, { ...env, state });
-                if (!propertyActive(BLINDED, state)) {
+                if (!Blind(state.u)) {
                     await ttyPline(
                         `${Yobjnam2(saddle, 'glow', state)} ${hcolor('amber', state)}.`,
                         state,
@@ -2053,7 +2036,7 @@ export async function litroom(on, object, state) {
     );
     const swallowed = Boolean(state.u?.uswallow);
     const noOp = swallowed || Boolean(state.u?.uinwater)
-        || Is_waterlevel(state.u?.uz);
+        || Is_waterlevel(state.u?.uz, state);
     const gremlins = [];
 
     if (!on) {
@@ -2066,12 +2049,12 @@ export async function litroom(on, object, state) {
                 // C read.c:litroom() calls potion.c:impact_arti_light() for
                 // carried artifact lights when darkening the room.
                 await impact_arti_light(
-                    current, true, !propertyActive(BLINDED, state), state,
+                    current, true, !Blind(state.u), state,
                 );
             }
             if (current.lamplit) ++stillLit;
         }
-        if (!propertyActive(BLINDED, state)) {
+        if (!Blind(state.u)) {
             if (stillLit) await ttyPline('The ambient light seems dimmer.', state);
             else if (swallowed) {
                 await ttyPline('It seems even darker in here than before.', state);
@@ -2084,12 +2067,12 @@ export async function litroom(on, object, state) {
             for (let current = state.invent; current; current = current.nobj) {
                 if (current.lamplit && artifact_light(current))
                     await impact_arti_light(
-                        current, false, !propertyActive(BLINDED, state), state,
+                        current, false, !Blind(state.u), state,
                     );
             }
         }
         if (swallowed) {
-            if (!propertyActive(BLINDED, state)) {
+            if (!Blind(state.u)) {
                 const engulfer = state.u.ustuck;
                 const name = engulfer ? Monnam(engulfer, state) : 'It';
                 if (engulfer?.data && digests(engulfer.data)) {
@@ -2103,8 +2086,8 @@ export async function litroom(on, object, state) {
                     await ttyPline(`${name} glistens.`, state);
                 }
             }
-        } else if (!propertyActive(BLINDED, state)
-            && (!Is_rogue_level(state.u?.uz)
+        } else if (!Blind(state.u)
+            && (!Is_rogue_level(state.u?.uz, state)
                 || state.level?.at(state.u.ux, state.u.uy)?.typ !== CORR)) {
             await ttyPline(
                 `A lit field ${noOp ? 'briefly ' : ''}surrounds you!`, state,
@@ -2114,7 +2097,7 @@ export async function litroom(on, object, state) {
 
     if (noOp) return;
 
-    if (Is_rogue_level(state.u?.uz)) {
+    if (Is_rogue_level(state.u?.uz, state)) {
         const roomNumber = (state.level.at(state.u.ux, state.u.uy)?.roomno ?? 0)
             - ROOMOFFSET;
         const room = state.level.rooms?.[roomNumber];
@@ -2139,7 +2122,7 @@ export async function litroom(on, object, state) {
         );
     }
 
-    if (!propertyActive(BLINDED, state)) {
+    if (!Blind(state.u)) {
         vision_recalc(2, {
             state,
             redraw: (x, y) => newsym(x, y),
@@ -2178,7 +2161,7 @@ export async function seffect_light(scroll, state = game) {
     const confused = propertyActive(CONFUSION, state);
 
     if (!confused) {
-        if (!propertyActive(BLINDED, state)) state.gk.known = true;
+        if (!Blind(state.u)) state.gk.known = true;
         await litroom(!cursed, scroll, state);
         if (!cursed && await lightdamage(scroll, true, 5, state))
             state.gk.known = true;
@@ -2235,12 +2218,7 @@ export async function seffect_magic_mapping(
             await ttyPline('Your mind is filled with crazy lines!', state);
             // youprop.h defines Hallucination from the intrinsic timeout and
             // Halluc_resistance, not from HALLUC's generic extrinsic value.
-            const hallucinating = Boolean(
-                state.u.uprops[HALLUC]?.intrinsic,
-            ) && !Boolean(
-                state.u.uprops[HALLUC_RES]?.intrinsic
-                || state.u.uprops[HALLUC_RES]?.extrinsic,
-            );
+            const hallucinating = Hallucination(state.u);
             if (hallucinating) {
                 await ttyPline('Wow!  Modern art.', state);
             } else {
@@ -2260,7 +2238,7 @@ export async function seffect_magic_mapping(
                     const location = state.level.at(x, y);
                     if (location.typ !== SDOOR) continue;
                     cvt_sdoor_to_door(location, state);
-                    if (Is_rogue_level(state.u.uz))
+                    if (Is_rogue_level(state.u.uz, state))
                         unblock_point(x, y, state);
                 }
             }
@@ -2477,7 +2455,7 @@ export async function seffect_earth(scroll, state = game) {
         && level.dnum === state.astral_level?.dnum;
     const earthLevel = on_level(level, state.earth_level);
 
-    if (Is_rogue_level(level)
+    if (Is_rogue_level(level, state)
         || !has_ceiling(level, state)
         || (inEndgame && !earthLevel)) return;
 
@@ -2577,7 +2555,7 @@ export async function do_stinking_cloud(sobj, mentionStinking, state = game) {
         return;
     }
     if (!can_center_cloud(cc.x, cc.y, state)) {
-        if (propertyActive(HALLUC, state)) {
+        if (Hallucination(state.u)) {
             await ttyPline('Ugh... someone cut the cheese.', state);
         } else {
             await ttyPline(
@@ -2631,12 +2609,12 @@ export async function seffect_fire(scroll, state = game) {
             await shieldeff(state.u.ux, state.u.uy, state);
             monstseesu(M_SEEN_FIRE, state);
             const hands = makeplural(body_part(HAND, state.youmonst));
-            if (!propertyActive(BLINDED, state)) {
+            if (!Blind(state.u)) {
                 await ttyPline(
                     `Oh, look, what a pretty fire in your ${hands}.`, state,
                 );
             } else {
-                await ttyPline(`You feel a pleasant warmth in your ${hands}.`,
+                await ttyPline(youFeel(`a pleasant warmth in your ${hands}.`, state),
                     state);
             }
         } else {
@@ -2692,14 +2670,8 @@ export async function seffect_fire(scroll, state = game) {
 const G_GENO = 0x0020;
 
 async function youFeelDeadInside(state) {
-    let prefix = 'You feel';
-    if (Math.trunc(state.multi ?? 0) < 0) {
-        const { unconscious } = await import('./trap.js');
-        if (unconscious(state) || state.u?.uhs === FAINTED)
-            prefix = 'You dream that you feel';
-    }
     const { udeadinside } = await import('./polyself.js');
-    await ttyPline(`${prefix} ${udeadinside(state)} inside.`, state);
+    await ttyPline(youFeel(`${udeadinside(state)} inside.`, state), state);
 }
 
 const GENOCIDE_REALLY = 1;
@@ -2975,9 +2947,7 @@ export async function do_genocide(how, state = game) {
             if (is_human(ptr)) adjalign(-Math.sign(state.u.ualign.type), state);
             if (is_demon(ptr)) adjalign(Math.sign(state.u.ualign.type), state);
             if (!(ptr.geno & G_GENO)) {
-                const deafness = state.u?.uprops?.[DEAF];
-                const deaf = Boolean(deafness?.intrinsic || deafness?.extrinsic
-                    || state.u?.uroleplay?.deaf);
+                const deaf = Deaf(state.u);
                 if (!deaf) {
                     if (state.flags?.verbose)
                         await ttyPline('A thunderous voice booms through the caverns:', state);
@@ -2994,7 +2964,7 @@ export async function do_genocide(how, state = game) {
 
     let which = 'all ';
     const realName = ptr.pmnames[NEUTRAL];
-    if (propertyActive(HALLUC, state)) {
+    if (Hallucination(state.u)) {
         if (Upolyd(state.u)) {
             buf = pmname(state.youmonst.data,
                 state.flags?.female ? FEMALE : MALE);
@@ -3164,7 +3134,7 @@ export async function seffect_amnesia(
     state.gk.known = true;
     await forget(blessed ? 0 : ALL_SPELLS, state, random, message);
 
-    if (propertyActive(HALLUC, state)) {
+    if (Hallucination(state.u)) {
         await message(
             'Your mind releases itself from mundane concerns.', state,
         );
@@ -3272,7 +3242,7 @@ export async function seffects(scroll, state = game, env = {}) {
         await seffect_scare_monster(scroll, state);
         break;
     case SCR_BLANK_PAPER:
-        if (propertyActive(BLINDED, state)) {
+        if (Blind(state.u)) {
             await ttyPline(
                 "You don't remember there being any magic words on this scroll.",
                 state,
@@ -3365,7 +3335,7 @@ export async function seffect_enchant_weapon(scroll, state = game) {
         && uwep.oclass !== ARMOR_CLASS) {
         const oldErodeproof = Boolean(uwep.oerodeproof);
         const newErodeproof = !scursed;
-        const blind = propertyActive(BLINDED, state);
+        const blind = Blind(state.u);
         uwep.oerodeproof = 0;
         if (blind) {
             uwep.rknown = false;
@@ -3609,7 +3579,7 @@ async function create_particular_creation(d, state = game) {
             mtmp.mpeaceful = d.makepeaceful;
             set_malign(mtmp, state);
         }
-        if (d.saddled && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE))
+        if (d.saddled && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE, state))
             await put_saddle_on_mon(null, mtmp, { state });
         if (d.hidden
             && ((is_hider(mtmp.data) && mtmp.data.mlet !== S_MIMIC)

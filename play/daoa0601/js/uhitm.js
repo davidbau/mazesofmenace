@@ -8,7 +8,7 @@ import { adjustAttribute, adjustHeroAlignment, attributeChangeMessage, changeHer
 import { monsterSentenceSubject } from './sounds.js';
 import { sessionIsNight } from './calendar.js';
 import { monsterHasMagicResistance } from './mondata.js';
-import { applyArtifactHit, artifactById, artifactEmitsLight, findArtifact, isPermanentlyPoisonedObject, monsterHasArtifactDefense, } from './artifact.js';
+import { applyArtifactHit, artifactById, artifactEmitsLight, defends, findArtifact, isPermanentlyPoisonedObject, } from './artifact.js';
 import { getmattk } from './mhitu.js';
 import { heroIsPunished } from './ball.js';
 import { applyMonsterBlindness, heroBlindingObjectHitMessage } from './blinding_attack.js';
@@ -52,12 +52,12 @@ import { cloneHeroMonsterForm } from './mhitu.js';
 import { deallocateObject, linkObjectToMonsterInventory, mksobj, objectQuantity, objectWeight, set_corpsenm, splitObjectStack, unlinkMonsterObject, unlinkObject } from './mkobj.js';
 import { angerAttackedMonster, angerWatchGuards, applyMonsterGolemEffects, changeMonsterForm, finishMonsterKilled, finishMonsterPetrification, grantMonsterIntrinsic, healMonster, isWatch, removeMonsterFromGame, resolveMonsterCorpseChance, revealMonsterAppearance, turnGolemToStone, wakeAttackedMonster, wakeMonster, wakeMonstersNearWithMessages, } from './mon.js';
 import { paralyzeMonster } from './mhitm.js';
-import { is_neuter, monsterCombatDefense, monsterFireDescription, monsterHasAcidResistance, monsterHasColdResistance, monsterHasDrainResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, monsterHasStoneResistance, monsterIsHelpless, monsterPossessive, monsterResistsSleep, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterSubjectPronoun, cant_drown, carnivorous, herbivorous, is_elf, is_orc, is_shapeshifter, metallivorous, monsterIsAmphibious, monsterIsBreathless, monsterIsHumanoid, monsterCanTeleport, monsterDigests, monsterEnfolds, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHasProperName, monsterHatesBlessings, monsterHatesLight, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsAnimal, monsterIsDemon, monsterIsEel, monsterIsFlyer, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsRider, monsterIsShade, monsterIsBig, monsterIsSlimeproof, monsterIsSlithy, monsterIsThickSkinned, monsterIsUndead, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterPassesWalls, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterHasNoAttacks, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, isHeroDefender, canBlnd, resistsBlnd, monsterStagger, } from './mondata.js';
+import { is_neuter, defended, monsterFireDescription, monsterHasAcidResistance, monsterHasColdResistance, monsterHasDrainResistance, monsterHasFireResistance, monsterHasPoisonResistance, monsterHasShockResistance, monsterHasStoneResistance, monsterIsHelpless, monsterPossessive, monsterResistsSleep, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterSubjectPronoun, cant_drown, carnivorous, herbivorous, is_elf, is_orc, is_shapeshifter, metallivorous, monsterIsAmphibious, monsterIsBreathless, monsterIsHumanoid, monsterCanTeleport, monsterDigests, monsterEnfolds, monsterHasEyes, monsterHasHead, monsterHasNoHands, monsterHasProperName, monsterHatesBlessings, monsterHatesLight, monsterHatesSilver, monsterHidesUnder, monsterIsAmorphous, monsterIsAnimal, monsterIsDemon, monsterIsEel, monsterIsFlyer, monsterIsMindless, monsterIsNoncorporeal, monsterIsNonliving, monsterIsRider, monsterIsShade, monsterIsBig, monsterIsSlimeproof, monsterIsSlithy, monsterIsThickSkinned, monsterIsUndead, monsterIsUnsolid, monsterIsVampireShifter, monsterIsVerySmall, monsterIsWhirly, monsterPassesWalls, monsterSpeciesHatesSilver, monsterSpeciesSticks, monsterHasNoAttacks, formCanBecomeStoneGolem, heroResistsStoning, touchPetrifies, isHeroDefender, canBlnd, resistsBlnd, resistsBlndByArtifact, monsterStagger, } from './mondata.js';
 import { wornMonsterLifeSaver } from './mon.js';
 import { beginMonsterMove, makeMonsterFlee, presentMonsterMoveMessage, presentMonsterPostMove, setMonsterApparentHeroPosition } from './monmove.js';
 import { recordRandom } from './monster_action_types.js';
 import { AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DGST, AD_DISE, AD_DISN, AD_DRCO, AD_DRDX, AD_DREN, AD_DRIN, AD_DRLI, AD_DRST, AD_ELEC, AD_ENCH, AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY, AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPC1, AD_SPC2, AD_SPEL, AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TENT, AT_TUCH, AT_WEAP } from './monster_attack_types.js';
-import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SYMBOL, PM_GREEN_SLIME, requireMonsterData, } from './monster_data.js';
+import { MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, PM_GREEN_SLIME, requireMonsterData, } from './monster_data.js';
 import { destroyObjectFromMonsterInventory, findMonsterArmorClass, removeObjectFromMonsterInventory } from './worn.js';
 import { munslime, munstone } from './muse.js';
 import { objectMaterial, observeObject, objectTypeKnown } from './o_init.js';
@@ -67,10 +67,10 @@ import { stopHeroOccupation } from './allmain.js';
 import { objectAtMonsterDescription } from './pager.js';
 import { petFoodNutrition } from './dogmove.js';
 import { formatFeltMessage, formatHeardMessage, pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent, } from './pline.js';
-import { applyHeroGolemEffects, heroFormSticks, heroHasNoHands, heroHasProtectionFromShapeChangers, heroHatesSilver, heroIsFlaming, heroIsGreenSlime, heroIsNoncorporeal, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, heroMonsterForm, heroPassesWalls, heroSpecies, polymonHero, polymorphHero, releaseHeroGrip, returnHeroToHumanForm, body_part, mbodypart } from './polyself.js';
+import { applyHeroGolemEffects, heroFormSticks, heroHasNoHands, heroHasProtectionFromShapeChangers, heroHatesSilver, heroIsFlaming, heroIsGreenSlime, heroIsNoncorporeal, heroIsPolymorphed, heroIsUnchanging, heroIsVerySmall, heroPassesWalls, heroSpecies, polymonHero, polymorphHero, releaseHeroGrip, returnHeroToHumanForm, body_part, mbodypart } from './polyself.js';
 import { cureHeroSickness, heroIsSick, heroIsSliming, hitMonsterWithSupportedPotion, makeBlinded, makeConfused, makeStunned, setHeroSlimingTimeout, splitMonster, startHeroSliming, } from './potion.js';
 import { ghodHitsu } from './priest.js';
-import { hasWornProperty, propertyIsActive } from './properties.js';
+import { propertyIsActive } from './properties.js';
 import { paranoidQuery } from './cmd.js';
 import { capitalizedDefiniteName } from './objnam.js';
 import { exclam, rayHitMessage } from './zap.js';
@@ -718,17 +718,9 @@ export async function showBarehandSilverHit(monster, hit, { state = game } = {})
     if (!spotted)
         target = target.charAt(0).toUpperCase() + target.slice(1);
     if (!monsterIsNoncorporeal(monster) && !monsterIsAmorphous(monster))
-        target = `${possessive(target)} flesh`;
+        target = `${possessiveName(target)} flesh`;
     await plineWithContinuation(spotted
         ? `Your silver ring sears ${target}!` : `${target} is seared!`);
-}
-// Port only kept: hacklib.ts:possessiveName() (C s_suffix) turns "it" into
-// "its"; this contact subject can be an unseen monster's "it", where the
-// port historically prints "it's", so the two are not interchangeable.
-function possessive(noun) {
-    if (noun.toLowerCase() === 'it')
-        return `${noun}s`;
-    return noun.endsWith('s') ? `${noun}'` : `${noun}'s`;
 }
 const S_BLOB = 2;
 // C uhitm.c:hmon_hitmon_weapon(): dispatch a weapon strike — improvised
@@ -1010,7 +1002,7 @@ async function potionContact(monster, object, { state = game, target = { x: mons
 export function objectCanTouchShade(object, state = game) {
     return !!object && (SHADE_AWARE_OBJECTS.has(object.otyp) || objectMaterial(object, state) === SILVER);
 }
-// Port only kept: C frees consumed objects; the runtime marks them 'gone'
+// Port only: C frees consumed objects; the runtime marks them 'gone'
 // or 'onbill' instead, so consumption is recognized from where.
 function consumedIdentity(object) {
     return object.where === 'gone' || object.where === 'onbill';
@@ -1752,7 +1744,7 @@ export async function mhitmAdFire(call) {
                 heroDied: death.heroDied };
         }
         let damage = context.damage;
-        if (monsterHasFireResistance(defender) || monsterCombatDefense(defender, AD_FIRE, state)) {
+        if (monsterHasFireResistance(defender) || defended(defender, AD_FIRE, state)) {
             if (seen)
                 await publish(`The fire doesn't seem to burn ${monsterName(defender, { state })}!`);
             await shieldeff(defender.mx, defender.my, state);
@@ -1789,7 +1781,7 @@ export async function mhitmAdCold(call) {
         if (!blind)
             await publish(`${monsterName(mdef, { state, capitalized: true })} is covered in frost!`);
         let damage = call.context.damage;
-        if (monsterHasColdResistance(mdef) || monsterCombatDefense(mdef, AD_COLD, state)) {
+        if (monsterHasColdResistance(mdef) || defended(mdef, AD_COLD, state)) {
             await shieldeff(mdef.mx, mdef.my, state);
             if (!blind)
                 await publish(`The frost doesn't chill ${monsterName(mdef, { state })}!`);
@@ -1857,7 +1849,7 @@ export async function mhitmAdCold(call) {
         if (seen)
             await publish(`${monsterName(defender, { state, capitalized: true })} is covered in frost!`);
         let damage = context.damage;
-        if (monsterHasColdResistance(defender) || monsterCombatDefense(defender, AD_COLD, state)) {
+        if (monsterHasColdResistance(defender) || defended(defender, AD_COLD, state)) {
             if (seen)
                 await publish(`The frost doesn't seem to chill ${monsterName(defender, { state })}!`);
             await shieldeff(defender.mx, defender.my, state);
@@ -1887,7 +1879,7 @@ export async function mhitmAdElec(call) {
         if (!blind)
             await publish(`${monsterName(mdef, { state, capitalized: true })} is zapped!`);
         let damage = call.context.damage;
-        if (monsterHasShockResistance(mdef) || monsterCombatDefense(mdef, AD_ELEC, state)) {
+        if (monsterHasShockResistance(mdef) || defended(mdef, AD_ELEC, state)) {
             if (!blind)
                 await publish(`The zap doesn't shock ${monsterName(mdef, { state })}!`);
             await applyMonsterGolemEffects(mdef, AD_ELEC, damage, { state, publish });
@@ -1955,7 +1947,7 @@ export async function mhitmAdElec(call) {
         if (seen)
             await publish(`${monsterName(defender, { state, capitalized: true })} gets zapped!`);
         let damage = context.damage;
-        if (monsterHasShockResistance(defender) || monsterCombatDefense(defender, AD_ELEC, state)) {
+        if (monsterHasShockResistance(defender) || defended(defender, AD_ELEC, state)) {
             if (seen)
                 await publish(`The zap doesn't shock ${monsterName(defender, { state })}!`);
             await shieldeff(defender.mx, defender.my, state);
@@ -1992,7 +1984,7 @@ export async function mhitmAdDrli(call) {
         // gate applies even to the call mhitm_ad_deth() redirects here
         // (no hero form carries AD_DETH).
         if (random(3) || monsterHasDrainResistance(mdef)
-            || monsterHasArtifactDefense(mdef, 'life-drain', state))
+            || defended(mdef, AD_DRLI, state))
             return naturalContinueResult(call.context.damage, state);
         // mhitm_mgc_atk_negated(magr, mdef, TRUE): the hero cannot be
         // cancelled, so the rn2(10) probe always runs.
@@ -2055,7 +2047,7 @@ export async function mhitmAdDrli(call) {
         if (isDeath
             || (random(3) === 0
                 && !(monsterHasDrainResistance(defender)
-                    || monsterCombatDefense(defender, AD_DRLI, state))
+                    || defended(defender, AD_DRLI, state))
                 && !await mhitm_mgc_atk_negated(attacker, defender, {
                     state, visible, random, publish, verbose: true,
                 }))) {
@@ -2658,7 +2650,7 @@ export async function mhitmAdAcid(call) {
         const monster = call.defender;
         const { state } = call.context;
         let damage = call.context.damage;
-        if (monsterHasAcidResistance(monster) || monsterHasArtifactDefense(monster, 'acid', state))
+        if (monsterHasAcidResistance(monster) || defended(monster, AD_ACID, state))
             damage = 0;
         return naturalContinueResult(damage, state);
     }
@@ -2690,7 +2682,7 @@ export async function mhitmAdAcid(call) {
             return damageResult(0);
         const { state, visible, publish, random } = context;
         const resisted = monsterHasAcidResistance(defender)
-            || monsterCombatDefense(defender, AD_ACID, state);
+            || defended(defender, AD_ACID, state);
         if (visible && canSeeMonster(defender)) {
             const subject = monsterName(defender, { state, capitalized: true });
             const liquid = displayLiquidName('acid', state);
@@ -3163,7 +3155,7 @@ export async function mhitmAdDise(call) {
         const { defender, context } = call;
         let damage = context.damage;
         if (MONSTER_SYMBOL[defender.mnum] === S_FUNGUS || defender.mnum === PM_GHOUL
-            || monsterCombatDefense(defender, AD_DISE, context.state)) {
+            || defended(defender, AD_DISE, context.state)) {
             damage = 0;
         }
         return damageResult(damage);
@@ -3591,7 +3583,11 @@ export async function mhitm_ad_drin(call) {
         const baseDamage = attack.damage;
         if (baseDamage === undefined)
             throw new Error('Brain drain requires rolled contact damage');
-        if (!monsterHasHead({ mnum: heroSpecies(state) })) {
+        // C uhitm.c:3225 guards the hero's brains with defends(AD_DRIN, uwep)
+        // before the head check; no artifact's defn is AD_DRIN, so the term
+        // never fires, but it stays for the C shape.
+        if (defends(AD_DRIN, state.uwep || hero.uwep, state)
+            || !monsterHasHead({ mnum: heroSpecies(state) })) {
             await publish("You don't seem harmed.");
             attack.skipBrainDrain = true;
             return { ...effectResult(attack.damage ?? baseDamage, M_ATTK_MISS, !!attack.heroDied),
@@ -4027,7 +4023,7 @@ export async function mhitmAdSlee(call) {
         const { state, publish, rollOne } = context;
         if (!(monster.msleeping || await mhitm_mgc_atk_negated(context.state.u, monster, { ...context, verbose: false }))) {
             const duration = rollOne(10);
-            if (monsterResistsSleep(monster) || monsterHasArtifactDefense(monster, 'sleep', state)) {
+            if (monsterResistsSleep(monster) || defended(monster, AD_SLEE, state)) {
                 await shieldeff(monster.mx, monster.my, state);
             }
             else if (await putMonsterToSleep(monster, duration)) {
@@ -4116,7 +4112,7 @@ export async function mhitmAdSlow(call) {
         const { attacker, defender, context } = call;
         const { state, publish, visible, random } = context;
         const blocked = await mhitm_mgc_atk_negated(attacker, defender, { state, visible, publish, random, verbose: false });
-        if (!monsterCombatDefense(defender, AD_SLOW, state) && !blocked && defender.mspeed !== MSLOW) {
+        if (!defended(defender, AD_SLOW, state) && !blocked && defender.mspeed !== MSLOW) {
             const speed = adjustMonsterSpeed(defender, -1);
             // mon_adjust_speed() announces the change before mhitm_ad_slow() does.
             const message = canSeeMonster(defender)
@@ -4184,7 +4180,7 @@ export async function mhitmAdWere(call) {
         if (!(random(4) !== 0 || state.u.ulycn !== -1
             || heroHasProtectionFromShapeChangers(state))) {
             const weapon = state.uwep || state.u.uwep;
-            if (!(artifactById(weapon?.oartifact, state)?.defense === 'lycanthropy')
+            if (!defends(AD_WERE, weapon, state)
                 && !await mhitm_mgc_atk_negated(monster, state.u, { state, publish, random, verbose: true })) {
                 await publish('You feel feverish.', { urgent: true });
                 await exerciseAttribute(A_CON, false, state);
@@ -4220,7 +4216,7 @@ function clearWaiting(monster) {
 }
 // Part of C mhitm.c:sleep_monst(): apply sleep after species and equipment resistance.
 async function sleepContact(defender, duration, context) {
-    if (monsterResistsSleep(defender) || monsterCombatDefense(defender, AD_SLEE, context.state)) {
+    if (monsterResistsSleep(defender) || defended(defender, AD_SLEE, context.state)) {
         await shieldeff(defender.mx, defender.my, context.state);
         return false;
     }
@@ -5613,11 +5609,6 @@ async function dropCursedFormWeapon(weapon, state) {
     await dropSecondaryWeapon(state);
     return true;
 }
-const MR_FIRE = 0x01;
-const MR_COLD = 0x02;
-const MR_ELEC = 0x10;
-const MR_ACID = 0x40;
-const MR_STONE = 0x80;
 const PM_FLOATING_EYE = MONSTER_NAME.indexOf('floating eye');
 const PM_STONE_GOLEM = MONSTER_NAME.indexOf('stone golem');
 // C uhitm.c:passive()
@@ -5686,7 +5677,7 @@ async function applyAcidPassive({ monster, damage, hit, attackType, weapon, stat
         else {
             await publish(`You are splashed by ${possessiveName(displayedMonsterName(monster, { state }))} ${displayLiquidName('acid', state)}!`);
         }
-        if (heroResistsAcid(state)) {
+        if (propertyIsActive('acidResistance', state)) {
             monstersObserveHeroResistance(M_SEEN_ACID, state);
         }
         else {
@@ -5737,7 +5728,7 @@ async function applyStonePassive({ monster, hit, attackType, weaponWasDestroyed,
     // hmonas turns a small caster's spell slot into a hand strike. Its
     // contact needs the same insulation as a claw, rather than a spell.
     const contactType = attackType === AT_MAGC ? AT_CLAW : attackType;
-    if (!hit || contactIsProtected(contactType, wornMask, !!(state.uwep || state.u.uwep) || weaponWasDestroyed) || heroResists(state, 'stoneResistance', MR_STONE)) {
+    if (!hit || contactIsProtected(contactType, wornMask, !!(state.uwep || state.u.uwep) || weaponWasDestroyed) || propertyIsActive('stoneResistance', state)) {
         return { heroDied: false };
     }
     if (formCanBecomeStoneGolem(state.u.umonnum, state)) {
@@ -5760,7 +5751,7 @@ async function applyStonePassive({ monster, hit, attackType, weaponWasDestroyed,
 }
 // Part of C uhitm.c:passive(): resolve passive magic missiles and observed resistance.
 async function applyMagicMissilePassive({ monster, damage, state, publish, die, }) {
-    if (heroResistsMagic(state)) {
+    if (propertyIsActive('antimagic', state)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         monstersObserveHeroResistance(M_SEEN_MAGR, state);
         await publish('A hail of magic missiles narrowly misses you!');
@@ -5853,7 +5844,7 @@ async function applyColdPassive(context) {
     const { monster, damage, state, publish, random, die, } = context;
     if (!monsterNearHero(monster, state))
         return { heroDied: false };
-    if (heroResists(state, 'coldResistance', MR_COLD)) {
+    if (propertyIsActive('coldResistance', state)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         await publish(formatFeltMessage('a mild chill.', state));
         monstersObserveHeroResistance(M_SEEN_COLD, state);
@@ -5884,7 +5875,7 @@ async function applyStunPassive({ damage, state, publish }) {
 async function applyFirePassive({ monster, damage, state, publish, die }) {
     if (!monsterNearHero(monster, state))
         return { heroDied: false };
-    if (heroResists(state, 'fireResistance', MR_FIRE)) {
+    if (propertyIsActive('fireResistance', state)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         await publish(formatFeltMessage('mildly warm.', state));
         monstersObserveHeroResistance(M_SEEN_FIRE, state);
@@ -5900,7 +5891,7 @@ async function applyFirePassive({ monster, damage, state, publish, die }) {
 }
 // Part of C uhitm.c:passive(): apply electric damage and resistance feedback.
 async function applyElectricPassive({ monster, damage, state, publish, die }) {
-    if (heroResists(state, 'shockResistance', MR_ELEC)) {
+    if (propertyIsActive('shockResistance', state)) {
         await shieldeff(state.u.ux, state.u.uy, state);
         await publish(formatFeltMessage('a mild tingle.', state));
         monstersObserveHeroResistance(M_SEEN_ELEC, state);
@@ -5914,7 +5905,7 @@ async function applyElectricPassive({ monster, damage, state, publish, die }) {
     });
     return { appliedDamage: damage, heroDied };
 }
-// Port only kept: adapts the passive die handler into mdamageu()'s death
+// Port only: adapts the passive die handler into mdamageu()'s death
 // boundary (the injected killer naming is resume plumbing).
 async function damageHero(monster, amount, { state, publish, die }) {
     if (!die)
@@ -5922,35 +5913,6 @@ async function damageHero(monster, amount, { state, publish, die }) {
     return mdamageu(monster, amount, {
         state, publish, die: async (victim) => die({ killer: passiveMonsterName(victim) }),
     });
-}
-// Part of C uhitm.c:passive(): the elemental resist gates read
-// mondata.c's Resists_Elem(&gy.youmonst, ...) — uprops alias, worn items,
-// and the polyform's resist bits.
-function heroResists(state, property, mask) {
-    const hero = state.u;
-    if (hero[property] || hasWornProperty(property, state))
-        return true;
-    const form = heroMonsterForm(state);
-    return form != null && ((MONSTER_RESISTS[form] ?? 0) & mask) !== 0;
-}
-// Part of C uhitm.c:passive(): Resists_Elem(mon, ACID_RES) for AD_ACID.
-function heroResistsAcid(state) {
-    return heroResists(state, 'acidResistance', MR_ACID);
-}
-// Port only kept: C uhitm.c:passive()'s AD_MAGM gate reads Antimagic only;
-// this adds the polyform AD_MAGM/baby-gray-dragon terms, so it is not the
-// Antimagic macro and mondata.ts:monsterHasMagicResistance() also differs.
-function heroResistsMagic(state) {
-    const hero = state.u;
-    if (hero.antimagic
-        || hasWornProperty('antimagic', state))
-        return true;
-    const form = heroMonsterForm(state);
-    if (form == null)
-        return false;
-    const name = MONSTER_NAME[form];
-    return name === 'baby gray dragon'
-        || (MONSTER_ATTACKS[form] || []).some(attack => attack[1] === AD_MAGM);
 }
 // Part of C uhitm.c:passive(): select the weapon or boots exposed by contact.
 function objectTouchedByAttack(state, attackType, weapon) {
@@ -6003,7 +5965,7 @@ export function passiveDamage(level, attack, rollDice) {
         return rollDice(level + 1, sides);
     return 0;
 }
-// Port only kept: names the passive attacker for the injected die handler
+// Port only: names the passive attacker for the injected die handler
 // (the shared monsterName import keeps its own name).
 function passiveMonsterName(monster) {
     return monster.name || monsterTypeName(monster.mnum, !!monster.female);
@@ -6313,7 +6275,7 @@ export async function flashHitsMonster(monster, object, { state = game, onHead =
             }
         }
         else if (visible) {
-            if (monsterHasArtifactDefense(monster, 'blindness', state))
+            if (resistsBlndByArtifact({ monster }, state))
                 await shieldeff(monster.mx, monster.my, state);
             if (state.flags.verbose) {
                 await plineWithContinuation(state.level.requireAt(monster.mx, monster.my).lit

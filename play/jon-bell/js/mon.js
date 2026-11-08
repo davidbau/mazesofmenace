@@ -11,7 +11,7 @@ import { You_feel, You_hear, You_see, pline } from './pline.js';
 import { dismount_steed as dismount_steed_mk, mon_leaving_level as mon_leaving_level_mk, newedog, sticks, unstuck as unstuck_mk, wary_dog } from './dog.js';
 import { m_unleash as m_unleash_mk } from './apply.js';
 import { dmgtype, finish_meating as finish_meating_mk, mon_to_stone, monstone, obj_resists, quickmimic as quickmimic_mk } from './dogmove.js';
-import { m_harmless_trap } from './trap.js';
+import { fill_pit, m_harmless_trap } from './trap.js';
 import { obfree } from './dokick.js';
 import { delobj as delobj_real } from './invent.js';
 import { mon_givit } from './eat.js';
@@ -2082,7 +2082,12 @@ export async function mondead(mtmp) {
     game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
     /* C m_detach() has now vacated the grid cell (mon_leaving_level →
      * remove_monster): the pre-detach `_dyingInGrid` window ends here. */
+    const onmap = isok(mx, my) && m_at(mx, my) === mtmp;
     mtmp._dyingInGrid = false;
+    /* C mon.c:2723-2725: removing a pinned monster lets the existing
+     * boulder settle, before repainting or dropping the monster's pack. */
+    if (onmap)
+        await fill_pit(mx, my);
     /* C mon.c:2718-2720, mon_leaving_level(), is explicit that mx/my must NOT
      * be zeroed here:
      *     #if 0   / * mustn't do this; too many places assume that the stale

@@ -657,6 +657,10 @@ function parse_sym_line_real(line, which_set, st) {
             if (gsym && gsym.range !== SYM_CONTROL && u && parseInt(u[1], 16))
                 game.gp.primary_utf8[gsym.idx] = parseInt(u[1], 16);
         }
+        /* symbols.c:645-648: a glyph line also files its colour (and urep)
+         * customization, e.g. Enhanced1 G_fountain: U+2320/0-150-255. */
+        if (st.start)
+            glyphrep_to_custom_map_entries_real(buf, { value: 0 });
         return 1;
     }
     if (symp.range === SYM_CONTROL) {

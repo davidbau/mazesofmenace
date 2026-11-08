@@ -51,7 +51,6 @@ import {
     G_GENOD,
     GENOCIDED,
     HAIR,
-    HALLUC,
     HALLUC_RES,
     HAND,
     HANDED,
@@ -183,7 +182,7 @@ import { dropx, canletgo } from './do.js';
 import { getlin } from './windows.js';
 import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import { youhiding } from './insight.js';
-import { livelog_printf } from './pline.js';
+import { livelog_printf, youFeel } from './pline.js';
 import {
     deltrap, instapetrify, maketrap, reset_utrap, set_utrap, selftouch, t_at,
     unconscious,
@@ -278,6 +277,9 @@ import { note_unported } from './unported.js';
 import { unpunish } from './read.js';
 import { learn_egg_type } from './timeout.js';
 import { canseemon } from './display.js';
+import {
+    Blind, Hallucination, Invis, See_invisible,
+} from './youprop.js';
 
 // Boundary error for polyself branches that fall outside the current goal.
 // failClosedCommand() in cmd.js converts this to an
@@ -313,27 +315,6 @@ function Levitation(state) {
                    && !levitation.blocked);
 }
 
-// youprop.h:103 Blind and :198 Invis: intrinsic or extrinsic, defeated by a
-// block.
-function Blind(state) {
-    const blinded = uprop(state, BLINDED);
-    return Boolean((blinded.intrinsic || blinded.extrinsic)
-                   && !blinded.blocked);
-}
-
-function Invis(state) {
-    const invis = uprop(state, INVIS);
-    return Boolean((invis.intrinsic || invis.extrinsic) && !invis.blocked);
-}
-
-// youprop.h:120 Hallucination is HHallucination && !Halluc_resistance, and
-// :119 Halluc_resistance is intrinsic or extrinsic.
-function Hallucination(state) {
-    const halluc = uprop(state, HALLUC);
-    const resistance = uprop(state, HALLUC_RES);
-    return Boolean(halluc.intrinsic
-                   && !(resistance.intrinsic || resistance.extrinsic));
-}
 
 // youprop.h:84 Confusion is HConfusion alone.
 function Confusion(state) {
@@ -351,9 +332,6 @@ function Stone_resistance(state) {
     return intrinsicOrExtrinsic(state, STONE_RES);
 }
 
-function See_invisible(state) {
-    return intrinsicOrExtrinsic(state, SEE_INVIS);
-}
 
 function Polymorph_control(state) {
     return intrinsicOrExtrinsic(state, POLYMORPH_CONTROL);
@@ -437,8 +415,7 @@ function polysense(state) {
     state.context.warntype.species = null;
     state.context.warntype.polyd = 0;
     // HWarn_of_mon &= ~FROMRACE — clear the race-sourced warning
-    const wom = state.u.uprops[WARN_OF_MON];
-    wom.intrinsic &= ~FROM_RACE;
+    state.u.uprops[WARN_OF_MON].intrinsic &= ~FROM_RACE;
 
     switch (state.u.umonnum) {
     case M.PM_PURPLE_WORM:
@@ -448,7 +425,7 @@ function polysense(state) {
     case M.PM_VAMPIRE:
     case M.PM_VAMPIRE_LEADER:
         state.context.warntype.polyd = M.M2_HUMAN | M.M2_ELF;
-        wom.intrinsic |= FROM_RACE;
+        state.u.uprops[WARN_OF_MON].intrinsic |= FROM_RACE;
         return;
     default:
         break;
@@ -456,7 +433,7 @@ function polysense(state) {
     if (Number.isInteger(warnidx) && warnidx >= M.LOW_PM) {
         state.context.warntype.speciesidx = warnidx;
         state.context.warntype.species = state.mons[warnidx];
-        wom.intrinsic |= FROM_RACE;
+        state.u.uprops[WARN_OF_MON].intrinsic |= FROM_RACE;
     }
 }
 
@@ -995,13 +972,13 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     let mdat = state.mons[mntmp];
     const sticking = Boolean(sticks(state.youmonst.data)
         && u.ustuck && !u.uswallow);
-    const wasBlind = Blind(state);
+    const wasBlind = Blind(state.u);
     const wasHidingUnder = Boolean(u.uundetected
         && hides_under(state.youmonst.data));
 
     if ((state.svm.mvitals[mntmp].mvflags & G_GENOD) !== 0) {
         const pm_name = pmname(mdat, state.flags?.female ? FEMALE : MALE);
-        await message(`You feel rather ${pm_name}-ish.`, state, env);
+        await message(youFeel(`rather ${pm_name}-ish.`, state), state, env);
         await exercise(A_WIS, true, state, random);
         return 0;
     }
@@ -1139,7 +1116,7 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     // for a home elemental.
     const mlvl = mdat.mlevel;
     if (mdat.mlet === M.S_DRAGON && mntmp >= M.PM_GRAY_DRAGON) {
-        u.mhmax = In_endgame(u.uz)
+        u.mhmax = In_endgame(u.uz, state)
             ? (8 * mlvl)
             : (4 * mlvl + random.d(mlvl, 4));
     } else if (mdat.mlet === M.S_GOLEM) {
@@ -1178,7 +1155,7 @@ export async function polymon(mntmp, state = game, rawEnv = {}) {
     if (u.utrap && u.utraptype === TT_PIT) {
         set_utrap(random.rn1(6, 2), TT_PIT, state);
     }
-    if (wasBlind && !Blind(state)) {
+    if (wasBlind && !Blind(state.u)) {
         set_itimeout(u.uprops[BLINDED], 1);
         await make_blinded(0, true, state, env);
     }
@@ -1406,8 +1383,8 @@ async function polyman(fmt, arg, state, rawEnv = {}) {
     const sticking = Boolean(sticks(state.youmonst.data) && u.ustuck
                              && !u.uswallow);
     const was_mimicking = (M_AP_TYPE(state.youmonst) !== M_AP_NOTHING);
-    const was_blind = Blind(state);
-    const had_see_invis = See_invisible(state);
+    const was_blind = Blind(state.u);
+    const had_see_invis = See_invisible(state.u);
 
     if (Upolyd(u)) {
         u.acurr = { a: [...u.macurr.a] }; /* restore old attribs */
@@ -1452,7 +1429,7 @@ async function polyman(fmt, arg, state, rawEnv = {}) {
         await done(GENOCIDED, state);
     }
 
-    if (See_invisible(state) !== had_see_invis)
+    if (See_invisible(state.u) !== had_see_invis)
         set_mimic_blocking(state); /* See_invisible just toggled */
 
     if (u.twoweap && !could_twoweap(state.youmonst.data))
@@ -1461,7 +1438,7 @@ async function polyman(fmt, arg, state, rawEnv = {}) {
     if (u.utrap && u.utraptype === TT_PIT) {
         set_utrap(rn1(6, 2), TT_PIT, state); /* time to escape resets */
     }
-    if (was_blind && !Blind(state)) { /* reverting from eyeless */
+    if (was_blind && !Blind(state.u)) { /* reverting from eyeless */
         set_itimeout(u.uprops[BLINDED], 1);
         await make_blinded(0, true, state, rawEnv); /* remove blindness */
     }
@@ -1860,7 +1837,7 @@ export async function polyself(psflags, state = game, env = {}) {
                     let pm_name = pmname(state.mons[mntmp],
                         state.flags.female ? FEMALE : MALE);
                     if (the_unique_pm(state.mons[mntmp]))
-                        pm_name = the(pm_name);
+                        pm_name = the(pm_name, state);
                     else if (!type_is_pname(state.mons[mntmp]))
                         pm_name = an(pm_name);
                     await ttyPline(`You can't polymorph into ${pm_name}.`, state);
@@ -2480,10 +2457,10 @@ export async function dogaze(state = game) {
         return ECMD_OK;
     }
 
-    if (Blind(state)) {
+    if (Blind(state.u)) {
         await ttyPline("You can't see anything to gaze at.", state);
         return ECMD_OK;
-    } else if (Hallucination(state)) {
+    } else if (Hallucination(state.u)) {
         await ttyPline("You can't gaze at anything you can see.", state);
         return ECMD_OK;
     }
@@ -2500,13 +2477,13 @@ export async function dogaze(state = game) {
             continue;
         if (canseemon(mtmp, state) && couldsee(mtmp.mx, mtmp.my, state)) {
             looked++;
-            if (Invis(state) && !perceives(mtmp.data)) {
+            if (Invis(state.u) && !perceives(mtmp.data)) {
                 await ttyPline(
                     `${Monnam(mtmp, state)} seems not to `
                     + 'notice your gaze.',
                     state,
                 );
-            } else if (mtmp.minvis && !See_invisible(state)) {
+            } else if (mtmp.minvis && !See_invisible(state.u)) {
                 await ttyPline(
                     "You can't see where to gaze at "
                     + `${Monnam(mtmp, state)}.`,
@@ -2722,7 +2699,7 @@ export async function dohide(state = game) {
         return ECMD_OK;
     }
     if ((is_hider(state.youmonst.data) && !Flying(state)) /* floor hider */
-        && (Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
+        && (Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state))) {
         await ttyPline('There is nowhere to hide beneath you.', state);
         u.uundetected = 0;
         return ECMD_OK;

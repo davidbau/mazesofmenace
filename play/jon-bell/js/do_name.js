@@ -41,6 +41,15 @@ import { m_at as monster_at } from './uhitm.js'; // relocate-fns
 import { y_monnam as y_monnam_real } from './mhitm.js'; // relocate-fns
 export { read_tribute } from './files.js'; // relocate-fns
 
+// C do_name.c:16-27: names share five reusable buffers; retain the cell
+// rather than copying its text when C keeps a char * across other calls.
+export function nextmbuf() {
+    const pool = game._mbufs ||= { index: 0, cells: Array.from({ length: 5 }, () => ({ text: '' })) };
+    pool.index = (pool.index + 1) % pool.cells.length;
+    return pool.cells[pool.index];
+}
+export function currentmbuf() { return game._mbufs.cells[game._mbufs.index]; }
+
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
 const MALE = 0, FEMALE = 1;
 
@@ -778,7 +787,7 @@ export function Monnam(mtmp) {
     if (!bp) return bp;
     let first = bp.charCodeAt(0);
     if (0x61 <= first && first <= 0x7a) first &= ~0x20;
-    return String.fromCharCode(first) + bp.slice(1);
+    return (currentmbuf().text = String.fromCharCode(first) + bp.slice(1));
 }
 
 /* mon_nam(mtmp) — C ref: do_name.c:1041-1046.
@@ -844,6 +853,11 @@ export function hcolor(color) {
 /* C do_name.c:1254-1287; permonst templates represent mons[] entries,
  * without the native addresses used by C's corrupt-pointer diagnostics. */
 export function minimal_monnam(mon, ckloc) {
+    const buf = nextmbuf();
+    buf.text = minimal_monnam_body(mon, ckloc);
+    return buf.text;
+}
+function minimal_monnam_body(mon, ckloc) {
     if (!mon) return '[Null monster]';
     if (!mon.data) return '[Null mon->data]';
     const mndx = mon.data.pmidx | 0;

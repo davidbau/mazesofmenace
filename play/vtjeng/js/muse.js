@@ -16,7 +16,6 @@ import {
     ANTIMAGIC,
     ARTICLE_A,
     BOLT_LIM,
-    BLINDED,
     BZ_M_WAND,
     BZ_OFS_AD,
     BZ_OFS_WAN,
@@ -24,19 +23,15 @@ import {
     D_BROKEN,
     D_CLOSED,
     D_LOCKED,
-    DEAF,
     EXPL_FIERY,
     DRAWBRIDGE_UP,
     EDOG,
-    FAINTED,
     FIRE_TRAP,
     FORCEBUNGLE,
     FORCETRAP,
     HAND,
     G_GONE,
     HALF_SPDAM,
-    HALLUC,
-    HALLUC_RES,
     HOLE,
     IS_AIR,
     IS_DOOR,
@@ -81,7 +76,6 @@ import {
     SCORR,
     SDOOR,
     SHOPBASE,
-    SEE_INVIS,
     STAIRS,
     STONE_RES,
     STRAT_WAITFORU,
@@ -199,7 +193,7 @@ import { coreRandom, d, rn1, rn2, rn2_on_display_rng, rnd } from './rng.js';
 import { in_rooms } from './rooms.js';
 import { add_damage, inhishop } from './shk.js';
 import { stairway_at } from './stairs.js';
-import { heroIsBlind, messageAt } from './startup_a11y.js';
+import { messageAt } from './startup_a11y.js';
 import { pline_mon, verbalize, youFeel } from './pline.js';
 import {
     destroy_drawbridge,
@@ -255,6 +249,9 @@ import {
 import { which_armor } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
+import {
+    Blind, Deaf, HBlinded, Hallucination, See_invisible, Unaware,
+} from './youprop.js';
 
 // The generated catalog stores these values but does not currently export
 // their source enum names.
@@ -308,20 +305,6 @@ function mdistu(mon, state) {
     return dist2(mon.mx, mon.my, state.u?.ux ?? 0, state.u?.uy ?? 0);
 }
 
-// C ref: youprop.h Hallucination (116-120).
-function Hallucination(state) {
-    const halluc = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(halluc?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
-
-// C ref: youprop.h Deaf.
-function Deaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(deafness?.intrinsic || deafness?.extrinsic
-        || state.u?.uroleplay?.deaf);
-}
 
 function activeHeroProperty(state, property) {
     const value = state.u?.uprops?.[property];
@@ -360,7 +343,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
                         await pline_mon(mon,
                             `As ${monsterCommonName(mon, state)} opens `
                             + `the bottle, an enormous `
-                            + `${Hallucination(state)
+                            + `${Hallucination(state.u)
                                 ? rndmonnam({
                                     state,
                                     displayRandom: env.displayRandom,
@@ -553,7 +536,7 @@ async function mreadmsg(mtmp, otmp, state, rawEnv = {}) {
     const vismon = canseemon(mtmp, state);
     let tpindicator = !vismon && sensemon(mtmp, state);
 
-    if (!vismon && Deaf(state))
+    if (!vismon && Deaf(state.u))
         return; /* no feedback */
 
     observe_object(otmp, state);
@@ -570,7 +553,7 @@ async function mreadmsg(mtmp, otmp, state, rawEnv = {}) {
         const similar = same_race(state.youmonst?.data, mtmp.data, state);
         const uniqmon = ((mtmp.data?.geno & M.G_UNIQ) !== 0
             || mtmp.isshk);
-        const recognize = !Hallucination(state)
+        const recognize = !Hallucination(state.u)
             && (mtmp.meverseen || (similar && !uniqmon));
         const mflags = (SUPPRESS_INVISIBLE | SUPPRESS_SADDLE
             | (recognize ? SUPPRESS_IT : AUGMENT_IT));
@@ -611,7 +594,7 @@ async function mquaffmsg(mtmp, otmp, state) {
         await pline_mon(mtmp,
             `${capitalizedMonsterName(mtmp, state)} drinks ${singular(otmp, donameFresh, state)}!`,
             state);
-    } else if (!Deaf(state)) {
+    } else if (!Deaf(state.u)) {
         // Soundeffect is a no-op in the tty build.
         const heardChug = youHear('a chugging sound.', state);
         if (heardChug) await ttyPline(heardChug, state);
@@ -819,7 +802,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} plays ${donameFresh(otmp, state)}!`,
                 state);
-        } else if (!Deaf(state)) {
+        } else if (!Deaf(state.u)) {
             // Soundeffect is a no-op in the tty build.
             const heard = youHear('a bugle playing reveille!', state);
             if (heard) await ttyPline(heard, state);
@@ -879,7 +862,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         if (obj_is_cursed || mtmp.mconf) {
             const nlev = random_teleport_level(state);
             if (mon_has_amulet(mtmp)
-                || In_endgame(state.u?.uz)) {
+                || In_endgame(state.u?.uz, state)) {
                 if (vismon)
                     await pline_mon(mtmp,
                         `${capitalizedMonsterName(mtmp, state)} seems very disoriented for a moment.`,
@@ -952,7 +935,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} ${is_flyer(mtmp.data) ? 'dives' : 'falls'} through...`,
                 state);
-        } else if (!Deaf(state)) {
+        } else if (!Deaf(state.u)) {
             // Soundeffect is a no-op in the tty build.
             const heard = youHear(
                 `something crash through the ${surface(mtmp.mx, mtmp.my, state)}.`,
@@ -1033,7 +1016,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
     }
     case 'trapdoor': {
         // MUSE_TRAPDOOR
-        if (Is_botlevel(state.u?.uz))
+        if (Is_botlevel(state.u?.uz, state))
             return 0;
         await m_flee(mtmp);
         const trapx = selection.x;
@@ -1311,7 +1294,7 @@ export function find_misc(monster, rawEnv = {}) {
         if (obj.otyp === O.WAN_MAKE_INVISIBLE && obj.spe > 0
             && !monster.minvis && !monster.invis_blkd
             && (!monster.mpeaceful
-                || activeHeroProperty(state, SEE_INVIS))
+                || See_invisible(state.u))
             && (!attacktype(species, AT_GAZE) || monster.mcan)) {
             selected = { kind: 'make invisible', object: obj };
         }
@@ -1319,7 +1302,7 @@ export function find_misc(monster, rawEnv = {}) {
         if (obj.otyp === O.POT_INVISIBILITY
             && !monster.minvis && !monster.invis_blkd
             && (!monster.mpeaceful
-                || activeHeroProperty(state, SEE_INVIS))
+                || See_invisible(state.u))
             && (!attacktype(species, AT_GAZE) || monster.mcan)) {
             selected = { kind: 'invisibility', object: obj };
         }
@@ -1574,7 +1557,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         if (vismon && mtmp.minvis) { /* was seen, now invisible */
             if (canspotmon(mtmp, state)) {
                 await ttyPline(messageAt(
-                    `${upstart(s_suffix(nambuf))} body takes on a ${Hallucination(state) ? 'normal' : 'strange'} transparency.`,
+                    `${upstart(s_suffix(nambuf))} body takes on a ${Hallucination(state.u) ? 'normal' : 'strange'} transparency.`,
                     mtmp.mx, mtmp.my, state), state);
             } else {
                 await ttyPline(messageAt(
@@ -1839,7 +1822,7 @@ export function find_defensive(monster, tryescape, rawEnv = {}) {
     if (is_animal(species) || mindless(species)) return null;
     if (!tryescape && dist2(x, y, monster.mux, monster.muy) > 25)
         return null;
-    if (tryescape && Is_knox_level(hero?.uz)
+    if (tryescape && Is_knox_level(hero?.uz, state)
         && !m_next2u(monster, state) && m_next2m(monster, state))
         return null;
     if (hero?.uswallow && stuck) return null;
@@ -2033,10 +2016,10 @@ export function find_defensive(monster, tryescape, rawEnv = {}) {
             && !state.level?.flags?.sokoban_rules
             /* digging wouldn't be effective; assume they know that */
             && !((state.level?.at?.(x, y)?.flags ?? 0) & W_NONDIGGABLE)
-            && !(Is_botlevel(hero?.uz) || In_endgame(hero?.uz))
+            && !(Is_botlevel(hero?.uz, state) || In_endgame(hero?.uz, state))
             && !(is_ice(x, y, state) || is_pool(x, y, state)
                 || is_lava(x, y, state))
-            && !(is_Vlad(monster) && In_V_tower(hero?.uz))) {
+            && !(is_Vlad(monster) && In_V_tower(hero?.uz, state))) {
             def = selected('digging wand', obj);
             defKind = 'digging wand';
         }
@@ -2597,7 +2580,7 @@ export function find_offensive(mtmp, rawEnv = {}) {
                 && !seenres(M_SEEN_FIRE))
                 select(MUSE_WAN_FIRE, obj);
             if (has_offense === MUSE_FIRE_HORN) continue;
-            if (otyp === O.FIRE_HORN && obj.spe > 0 && can_blow(mtmp)
+            if (otyp === O.FIRE_HORN && obj.spe > 0 && can_blow(mtmp, state)
                 && !seenres(M_SEEN_FIRE))
                 select(MUSE_FIRE_HORN, obj);
             if (has_offense === MUSE_WAN_COLD) continue;
@@ -2605,7 +2588,7 @@ export function find_offensive(mtmp, rawEnv = {}) {
                 && !seenres(M_SEEN_COLD))
                 select(MUSE_WAN_COLD, obj);
             if (has_offense === MUSE_FROST_HORN) continue;
-            if (otyp === O.FROST_HORN && obj.spe > 0 && can_blow(mtmp)
+            if (otyp === O.FROST_HORN && obj.spe > 0 && can_blow(mtmp, state)
                 && !seenres(M_SEEN_COLD))
                 select(MUSE_FROST_HORN, obj);
             if (has_offense === MUSE_WAN_LIGHTNING) continue;
@@ -2661,7 +2644,7 @@ export function find_offensive(mtmp, rawEnv = {}) {
             && (!inEndgame || earthLevelHere))
             select(MUSE_SCR_EARTH, obj);
         if (has_offense === MUSE_CAMERA) continue;
-        const blindedByFlash = !heroIsBlind(state)
+        const blindedByFlash = !Blind(state.u)
             && !resists_blnd(state.youmonst ?? state.u, state);
         if (otyp === O.EXPENSIVE_CAMERA
             && (blindedByFlash || hates_light(state.youmonst?.data ?? state.u?.data))
@@ -2767,9 +2750,9 @@ export async function use_offensive(mtmp, rawEnv = {}) {
     }
     case MUSE_CAMERA: {
         const message = env.message ?? ttyPline;
-        if (Hallucination(state)) {
+        if (Hallucination(state.u)) {
             await verbalize('Say cheese!', state, { message });
-        } else if (!heroIsBlind(state)) {
+        } else if (!Blind(state.u)) {
             await message(
                 capitalizedMonsterName(mtmp, state, env)
                     + ' takes a picture of you with '
@@ -2779,10 +2762,10 @@ export async function use_offensive(mtmp, rawEnv = {}) {
             );
         }
         state.m_using = true;
-        if (!heroIsBlind(state)
+        if (!Blind(state.u)
             && !resists_blnd(state.youmonst ?? state.u, state)) {
             await message('You are blinded by the flash of light!', state, env);
-            const blindedTimeout = (state.u.uprops?.[BLINDED]?.intrinsic ?? 0)
+            const blindedTimeout = (HBlinded(state.u))
                 & TIMEOUT;
             await make_blinded(
                 blindedTimeout + random.rnd(1 + 50), false, state, env,
@@ -3061,7 +3044,7 @@ export function searches_for_item(monster, obj, state = game) {
                 && species?.pmidx !== M.PM_KI_RIN;
         }
         if (otyp === O.FROST_HORN || otyp === O.FIRE_HORN)
-            return obj.spe > 0 && can_blow(monster);
+            return obj.spe > 0 && can_blow(monster, state);
         if (isContainer(obj)
             && !(isMagicBag(obj) && obj.cursed)
             && !obj.olocked) {
@@ -3256,7 +3239,7 @@ async function mon_consume_unstone(
             `${capitalizedMonsterName(mon, state)} ${verb} ${distant_name(obj, donameFresh, state)}.`,
             state);
         obj.quan = save_quan;
-    } else if (!Deaf(state)) {
+    } else if (!Deaf(state.u)) {
         const heard = youHear(
             `${(obj.oclass === O.POTION_CLASS) ? 'drinking' : 'chewing'}.`,
             state);
@@ -3286,7 +3269,7 @@ async function mon_consume_unstone(
         }
     }
     if (stoning && vis) {
-        if (Hallucination(state))
+        if (Hallucination(state.u))
             await ttyPline(
                 `What a pity - ${monsterCommonName(mon, state)} just ruined a future piece of art!`,
                 state);
@@ -3395,7 +3378,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
         message,
         redraw,
         mInAir: env.mInAir ?? m_in_air,
-        heroDeaf: env.heroDeaf ?? Deaf,
+        heroDeaf: env.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: env.youHear ?? youHear,
         unsupported: env.unsupported ?? ((reason) => {
             throw new TypeError(`unslime trap requires ${reason}`);
@@ -3605,14 +3588,10 @@ export function cures_sliming(mon, obj) {
 /* C ref: muse.c green_mon() (3268-3307). TRUE if the monster appears green
    based on its display color. Returns FALSE under hallucination. */
 export function green_mon(mon, state = game) {
-    if (Hallucination(state))
+    if (Hallucination(state.u))
         return false;
     return mon.data.mcolor === CLR_GREEN
         || mon.data.mcolor === CLR_BRIGHT_GREEN;
 }
 
 /* C ref: youprop.h Unaware. Local copy for muse_unslime. */
-function Unaware(state) {
-    return Math.trunc(state.multi ?? 0) < 0
-        && (unconscious(state) || state.u?.uhs === FAINTED);
-}

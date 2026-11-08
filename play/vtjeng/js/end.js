@@ -181,12 +181,11 @@ import {
     record_achievement,
     show_conduct,
 } from './insight.js';
-import { livelog_printf } from './pline.js';
+import { livelog_printf, youFeel } from './pline.js';
 import { select_menu } from './windows.js';
 import {
     displayTtyMenuTextWindow, displayTtyTextWindow,
 } from './tty_menu.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { formatkiller, topten as toptenDisplay } from './topten.js';
 import { In_endgame, In_quest, Is_astralevel, plur } from './const.js';
 import {
@@ -194,8 +193,7 @@ import {
     single_level_branch,
 } from './dungeon.js';
 import { Goodbye } from './role_init.js';
-import { reset_utrap, unconscious } from './trap.js';
-import { is_fainted } from './eat.js';
+import { reset_utrap } from './trap.js';
 import { force_launch_placement, launch_in_progress } from './trap_effects.js';
 import {
     clearTtyMessageWindow,
@@ -225,6 +223,7 @@ import {
 import { timet_delta } from './allmain.js';
 import { canspotmon } from './display.js';
 import { tty_exit_nhwindows } from './wintty.js';
+import { Blind, Hallucination } from './youprop.js';
 
 export class UnsupportedEndOfGameError extends Error {
     constructor(message) {
@@ -398,7 +397,7 @@ async function fuzzer_savelife(how, state = game, source = {}) {
                 ? { state, random: source.random }
                 : { state };
             potion = mksobj(POT_WATER, true, false, objectEnv);
-            bless(potion);
+            bless(potion, { state });
             note_unported('potion.c peffects');
             obfree(potion, null, { state });
             ++remedies;
@@ -408,7 +407,7 @@ async function fuzzer_savelife(how, state = game, source = {}) {
                 ? { state, random: source.random }
                 : { state };
             potion = mksobj(POT_RESTORE_ABILITY, true, false, objectEnv);
-            bless(potion);
+            bless(potion, { state });
             note_unported('potion.c peffects');
             obfree(potion, null, { state });
             ++remedies;
@@ -464,11 +463,7 @@ export async function done_in_by(mtmp, how, state = game) {
     const champtr = ismnum(mtmp.cham) ? mons[mtmp.cham] : mptr;
     // C ref: display.h:129 canspotmon(). Hallucination is youprop.h:116-120:
     // the intrinsic timeout defeated by either half of Halluc_resistance.
-    const hallucinating = Boolean(
-        state.u?.uprops?.[23]?.intrinsic  // HALLUC = 23
-        && !(state.u?.uprops?.[24]?.intrinsic  // HALLUC_RES = 24
-            || state.u?.uprops?.[24]?.extrinsic),
-    );
+    const hallucinating = Hallucination(state.u);
     const distorted = hallucinating && canspotmon(mtmp, state);
     const mimicker = M_AP_TYPE(mtmp) === M_AP_MONSTER;
     const imitator = mptr !== champtr || mimicker;
@@ -616,7 +611,7 @@ export async function done2(state = game) {
     state.killer ??= { name: '', format: KILLED_BY_AN };
 
     let abandonTutorial = false;
-    if (In_tutorial(state.u?.uz)
+    if (In_tutorial(state.u?.uz, state)
         && await y_n(
             'Switch from the tutorial back to regular play?', state,
         ) === 'y') {
@@ -791,19 +786,14 @@ export async function done(how, state = game, source = {}) {
             AMULET_OF_LIFE_SAVING, true, true, true, state, lifeEnv,
         );
         await ttyPline(
-            `Your medallion ${heroIsBlind(state)
+            `Your medallion ${Blind(state.u)
                 ? 'feels warm' : 'begins to glow'}!`,
             state,
         );
         if (how === CHOKING)
             await ttyPline('You vomit ...', state);
         // C end.c:1088 calls You_feel before savelife clears the faint.
-        const unaware = Math.trunc(state.multi ?? 0) < 0
-            && (unconscious(state) || is_fainted(state));
-        await ttyPline(
-            `${unaware ? 'You dream that you feel' : 'You feel'} much better!`,
-            state,
-        );
+        await ttyPline(youFeel('much better!', state), state);
         await ttyPline('The medallion crumbles to dust!', state);
         if (state.uamul)
             await useup(state.uamul, lifeEnv);
@@ -1357,10 +1347,10 @@ async function really_done(how, state) {
         );
 
         corpse = mk_named_object(
-            CORPSE, mnum, state.u.ux, state.u.uy, state.plname,
+            CORPSE, mnum, state.u.ux, state.u.uy, state.plname, { state },
         );
         const graveText = `${state.plname}, ${formatkiller(how, true, state)}`;
-        make_grave(state.u.ux, state.u.uy, graveText);
+        make_grave(state.u.ux, state.u.uy, graveText, { state });
         const loc = state.level.at(state.u.ux, state.u.uy);
         if (loc && IS_GRAVE(loc.typ) && !wasAlreadyGrave) {
             loc.flags = 1; // emptygrave: corpse is on the surface, not buried
@@ -1471,7 +1461,7 @@ async function really_done(how, state) {
     if (state.u.uhave?.amulet) {
         state.killer.name += ' (with the Amulet)';
     } else if (how === ESCAPED) {
-        if (Is_astralevel(state.u.uz)) {
+        if (Is_astralevel(state.u.uz, state)) {
             state.killer.name += ' (in celestial disgrace)';
         } else if (carrying(FAKE_AMULET_OF_YENDOR, state)) {
             state.killer.name += ' (with a fake Amulet)';
@@ -1572,10 +1562,10 @@ async function really_done(how, state) {
         } else {
             let where = state.dungeons?.[uz.dnum]?.dname
                 ?? 'The Dungeons of Doom';
-            if (Is_astralevel(uz)) where = 'The Astral Plane';
+            if (Is_astralevel(uz, state)) where = 'The Astral Plane';
             pbuf = `You ${ends[how]} in ${where}`;
-            if (!In_endgame(uz) && !single_level_branch(uz, state)) {
-                const dlevel = In_quest(uz)
+            if (!In_endgame(uz, state) && !single_level_branch(uz, state)) {
+                const dlevel = In_quest(uz, state)
                     ? dunlev(uz) : depth(uz, state);
                 pbuf += ` on dungeon level ${dlevel}`;
             }

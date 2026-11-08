@@ -15,10 +15,8 @@ import {
     A_STR,
     A_WIS,
     ANTIMAGIC,
-    BLINDED,
     COLD_RES,
     CONFUSION,
-    DEAF,
     DRAWBRIDGE_DOWN,
     ECMD_OK,
     ECMD_TIME,
@@ -28,10 +26,7 @@ import {
     FAST,
     FROMOUTSIDE,
     FOUNTAIN,
-    Half_physical_damage,
     HALF_SPDAM,
-    HALLUC,
-    HALLUC_RES,
     HEAD,
     INTRINSIC,
     INVIS,
@@ -124,7 +119,6 @@ import {
     uteetering_at_seen_pit,
 } from './trap.js';
 import { Monnam, hcolor, hliquid, mon_nam } from './do_name.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { note_unported } from './unported.js';
 import { burn_away_slime } from './timeout.js';
 import { canspotmon, shieldeff } from './display.js';
@@ -132,14 +126,12 @@ import { ART_MAGICBANE, SPFX_INTEL, is_art, spec_ability } from './artifacts.js'
 import { update_inventory } from './invent.js';
 import { which_armor } from './worn.js';
 import { ttyPline } from './tty_message.js';
+import { youFeel } from './pline.js';
+import {
+    Blind, Deaf, ETelepat, HBlinded, HSee_invisible, HTelepat,
+    Half_physical_damage, Hallucination, See_invisible,
+} from './youprop.js';
 
-// youprop.h:120 Hallucination: intrinsic only, unless resisted.
-function Hallucination(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(hallucination?.intrinsic)
-        && !Boolean(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // youprop.h:240 Levitation, including its blocking term.
 function Levitation(state) {
@@ -147,12 +139,6 @@ function Levitation(state) {
     return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
 }
 
-// youprop.h:125 Deaf: intrinsic/extrinsic deafness and the roleplay option.
-function Deaf(state) {
-    const value = state.u?.uprops?.[DEAF];
-    return Boolean(value?.intrinsic || value?.extrinsic)
-        || Boolean(state.u?.uroleplay?.deaf);
-}
 
 function Underwater(state) {
     return Boolean(state.u?.uinwater);
@@ -206,7 +192,7 @@ export async function take_gold(state, rawEnv = {}) {
     }
 
     if (!lostMoney) {
-        await message('You feel a strange sensation.', state);
+        await message(youFeel('a strange sensation.', state), state);
     } else {
         await message('You notice you have no gold!', state);
         state.disp ??= {};
@@ -288,7 +274,7 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
         find_hell(destination, state);
         destination.dlevel = state.dungeons[destination.dnum].num_dunlevs - 1;
         if (u.uhave.amulet) {
-            await message('You feel extremely disoriented for a moment.', state, env);
+            await message(youFeel('extremely disoriented for a moment.', state), state, env);
         } else {
             const { schedule_goto } = await import('./do.js');
             schedule_goto(destination, UTOTYPE_NONE, null,
@@ -321,10 +307,10 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
     }
     case 11:
         if (is_vampire(state.youmonst.data)) {
-            await message('You feel unworthy.', state, env);
+            await message(youFeel('unworthy.', state), state, env);
         } else {
             await message('This throne was not meant for those such as you!', state, env);
-            await message('You feel a change coming over you.', state, env);
+            await message(youFeel('a change coming over you.', state), state, env);
             const { polyself } = await import('./polyself.js');
             await polyself(POLY_NOFLAGS, state);
         }
@@ -430,7 +416,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
             break;
         }
         case 4: {
-            await message('You feel much, much better!', state);
+            await message(youFeel('much, much better!', state), state);
             if (Upolyd(u)) {
                 if (u.mh >= u.mhmax - 5) u.mhmax += 4;
                 u.mh = u.mhmax;
@@ -459,7 +445,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
         case 6: {
             const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
             if ((u.uluck ?? 0) + random.rn2(5) < 0) {
-                await message('You feel your luck is changing.', state);
+                await message(youFeel('your luck is changing.', state), state);
                 const { change_luck } = await import('./moveloop_preamble.js');
                 change_luck(1, state);
             } else {
@@ -525,7 +511,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
             );
             const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
             if (luck > 0) {
-                const blind = u.uprops?.[BLINDED]?.intrinsic ?? 0;
+                const blind = HBlinded(u);
                 const { make_blinded } = await import('./potion.js');
                 await make_blinded(
                     (blind & TIMEOUT) + random.rn1(100, 250),
@@ -542,7 +528,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
         }
         case 10: {
             const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
-            const seeInvisible = u.uprops?.[SEE_INVIS]?.intrinsic ?? 0;
+            const seeInvisible = HSee_invisible(u);
             if (luck < 0 || (seeInvisible & INTRINSIC)) {
                 if (state.level?.flags?.nommap) {
                     await message('A terrible drone fills your head!', state);
@@ -560,7 +546,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
                     await do_mapping(state, { ...rawEnv, random });
                 }
             } else {
-                if (!heroIsBlind(state)) {
+                if (!Blind(state.u)) {
                     await message('Your vision becomes clear.', state);
                 } else {
                     const species = state.youmonst?.data;
@@ -578,11 +564,7 @@ async function throne_sit_effect(state, rawEnv = {}) {
                         await message(`Your ${eye} ${vtense(eye, 'tingle')}...`, state);
                     }
                 }
-                const seeInvisibleProp = (u.uprops[SEE_INVIS] ??= {
-                    intrinsic: 0,
-                    extrinsic: 0,
-                });
-                seeInvisibleProp.intrinsic |= FROMOUTSIDE;
+                u.uprops[SEE_INVIS].intrinsic |= FROMOUTSIDE;
                 const { newsym } = await import('./display.js');
                 newsym(u.ux, u.uy);
             }
@@ -591,10 +573,10 @@ async function throne_sit_effect(state, rawEnv = {}) {
         case 11: {
             const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
             if (luck < 0) {
-                await message('You feel threatened.', state);
+                await message(youFeel('threatened.', state), state);
                 aggravate(state, random);
             } else {
-                await message('You feel a wrenching sensation.', state);
+                await message(youFeel('a wrenching sensation.', state), state);
                 const { tele } = await import('./teleport.js');
                 await tele(state);
             }
@@ -626,9 +608,9 @@ async function throne_sit_effect(state, rawEnv = {}) {
         }
     } else if (is_prince(state.youmonst?.data)
                || state.u?.uevent?.uhand_of_elbereth) {
-        await message('You feel very comfortable here.', state);
+        await message(youFeel('very comfortable here.', state), state);
     } else {
-        await message('You feel somehow out of place...', state);
+        await message(youFeel('somehow out of place...', state), state);
     }
 
     if (!specialThrone && !random.rn2(3)) {
@@ -704,7 +686,7 @@ export async function lay_an_egg(state = game, rawEnv = {}) {
 
     if (!state.flags?.female) {
         await message(
-            Hallucination(state)
+            Hallucination(state.u)
                 ? 'You may think you are a platypus, but a male still can\'t lay eggs!'
                 : "Males can't lay eggs!",
             state,
@@ -857,7 +839,7 @@ export async function dosit(state = game, rawEnv = {}) {
                 && amorphous(state.mons[obj.corpsenm])) {
                 await message("It's squishy...", state);
             } else if (obj.otyp === CREAM_PIE) {
-                if (!Deaf(state)) await message('Squelch!', state);
+                if (!Deaf(state.u)) await message('Squelch!', state);
                 const { useupf } = await import('./invent.js');
                 await useupf(obj, obj.quan, { state });
             } else if (!(isBox(obj)
@@ -1026,9 +1008,9 @@ export async function rndcurse(state = game, rawEnv = {}) {
         if (otmp && !otmp.cursed) {
             if (otmp.blessed) await unbless(otmp, objectEnv);
             else await curse(otmp, objectEnv);
-            if (!heroIsBlind(state)) {
+            if (!Blind(state.u)) {
                 await message(`${Yobjnam2(otmp, 'glow', state)} ${hcolor(otmp.cursed ? 'black' : 'brown', state, objectEnv)}.`, state);
-                otmp.bknown = Hallucination(state) ? 0 : 1;
+                otmp.bknown = Hallucination(state.u) ? 0 : 1;
             } else {
                 otmp.bknown = 0;
             }
@@ -1046,18 +1028,20 @@ export async function attrcurse(state = game, rawEnv = {}) {
         ?? (await import('./tty_message.js')).ttyPline;
     const u = state.u;
     const start = random.rnd(11);
+    // The text after You_feel() for each arm; TELEPAT and SEE_INVIS print
+    // their own lines below.
     const effects = [
-        [FIRE_RES, 'You feel warmer.'],
-        [TELEPORT, 'You feel less jumpy.'],
-        [POISON_RES, 'You feel a little sick!'],
-        [TELEPAT, 'Your senses fail!'],
-        [COLD_RES, 'You feel cooler.'],
-        [INVIS, 'You feel paranoid.'],
+        [FIRE_RES, 'warmer.'],
+        [TELEPORT, 'less jumpy.'],
+        [POISON_RES, 'a little sick!'],
+        [TELEPAT, null],
+        [COLD_RES, 'cooler.'],
+        [INVIS, 'paranoid.'],
         [SEE_INVIS, null],
-        [FAST, 'You feel slower.'],
-        [STEALTH, 'You feel clumsy.'],
-        [PROTECTION, 'You feel vulnerable.'],
-        [AGGRAVATE_MONSTER, 'You feel less attractive.'],
+        [FAST, 'slower.'],
+        [STEALTH, 'clumsy.'],
+        [PROTECTION, 'vulnerable.'],
+        [AGGRAVATE_MONSTER, 'less attractive.'],
     ];
 
     for (let index = start - 1; index < effects.length; ++index) {
@@ -1067,18 +1051,16 @@ export async function attrcurse(state = game, rawEnv = {}) {
 
         property.intrinsic &= ~INTRINSIC;
         if (propertyId === TELEPAT) {
-            const telepathy = u.uprops[TELEPAT];
             const blindTelepathy = Boolean(
-                telepathy?.intrinsic || telepathy?.extrinsic,
+                HTelepat(u) || ETelepat(u),
             );
-            if (heroIsBlind(state) && !blindTelepathy) {
+            if (Blind(state.u) && !blindTelepathy) {
                 const { see_monsters } = await import('./display.js');
                 await see_monsters(state, { ...rawEnv, message });
             }
             await message('Your senses fail!', state);
         } else if (propertyId === SEE_INVIS) {
-            const seeInvisible = u.uprops[SEE_INVIS];
-            if (!(seeInvisible?.intrinsic || seeInvisible?.extrinsic)) {
+            if (!See_invisible(u)) {
                 const { newsym, see_monsters, set_mimic_blocking } = await import('./display.js');
                 // A planning clone borrows vision.c's shared obstruction
                 // index, so it admits each point set_mimic_blocking()
@@ -1098,10 +1080,10 @@ export async function attrcurse(state = game, rawEnv = {}) {
                 await see_monsters(state, { ...rawEnv, message });
                 (rawEnv.redraw ?? newsym)(u.ux, u.uy, state);
             }
-            await message(`You ${Hallucination(state)
+            await message(`You ${Hallucination(state.u)
                 ? 'tawt you taw a puttie tat' : 'thought you saw something'}!`, state);
         } else {
-            await message(feedback, state);
+            await message(youFeel(feedback, state), state);
         }
         return propertyId;
     }

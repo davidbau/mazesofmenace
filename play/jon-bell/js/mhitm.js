@@ -425,7 +425,7 @@ function xm_highc_first(bp) {
     if (!bp) return bp;
     let first = bp.charCodeAt(0);
     if (0x61 <= first && first <= 0x7a) first &= ~0x20;
-    return String.fromCharCode(first) + bp.slice(1);
+    return (currentmbuf().text = String.fromCharCode(first) + bp.slice(1));
 }
 
 function xm_same_monst(a, b) {
@@ -511,6 +511,11 @@ function xm_strstri(str, sub) {
  * rndmonnam() consumes in the hallucination arm.
  */
 export function x_monnam(mtmp, article, adjective, suppress, called) {
+    const buf = nextmbuf(); // C do_name.c:834, including the hero early return.
+    buf.text = x_monnam_body(mtmp, article, adjective, suppress, called);
+    return buf.text;
+}
+function x_monnam_body(mtmp, article, adjective, suppress, called) {
     const mdat = mtmp.data;
     const mappear_as_mon = ((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_MONSTER;
     let pm_name, name_at_start = false, bp;
@@ -1328,7 +1333,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
  * RNG: rn2_on_display_rng(SIZE(hcolors)) if Hallucination or !colorpref
  * ---------------------------------------------------------------------------
  */
-import { hcolor } from './do_name.js'; // C do_name.c:1461; single body lives in do_name.js
+import { hcolor, nextmbuf, currentmbuf } from './do_name.js'; // C do_name.c:1461; single body lives in do_name.js
 export { hcolor };
 
 
@@ -1353,6 +1358,7 @@ export function mon_nam_too(mon, other_mon) {
     if (!xm_same_monst(mon, other_mon)) {
         return mon_nam(mon);
     } else {
+        const namebuf = nextmbuf(); // C do_name.c:1198
         let buf = "";
         switch (pronoun_gender(mon, PRONOUN_HALLU)) {
         case 0:
@@ -1369,7 +1375,7 @@ export function mon_nam_too(mon, other_mon) {
             buf = "themselves";
             break;
         }
-        return buf;
+        return (namebuf.text = buf);
     }
 }
 

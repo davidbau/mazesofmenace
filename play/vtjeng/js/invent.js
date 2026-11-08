@@ -17,7 +17,6 @@ import {
     A_LAWFUL,
     A_NEUTRAL,
     A_NONE,
-    BLINDED,
     BY_NEXTHERE,
     BUC_BLESSED,
     BUC_CURSED,
@@ -44,8 +43,6 @@ import {
     FUMBLING,
     GOLD_SYM,
     HAND,
-    HALLUC,
-    HALLUC_RES,
     st_all,
     engulfing_u,
     LEFT_HANDED,
@@ -393,6 +390,7 @@ import {
 import { set_moreluck } from './attrib.js';
 import { is_pole } from './worn.js';
 import { welded } from './wield.js';
+import { Blind, Hallucination } from './youprop.js';
 
 // invent.c owns reroll_menu(); the startup module holds its complete menu
 // implementation so the startup dependency graph stays acyclic. Re-export
@@ -623,7 +621,7 @@ function loot_classify(sort_item, obj, state = game) {
     const oclass = obj.oclass;
     const type = objectType(obj, state);
     const discovered = Boolean(objects[otyp].oc_name_known);
-    if (!heroIsBlind(state)) observe_object(obj, state);
+    if (!Blind(state.u)) observe_object(obj, state);
     const seen = Boolean(obj.dknown);
     const classorder = state.flags?.sortpack
         ? (state.flags.inv_order ?? DEF_SRT_ORDER)
@@ -2252,15 +2250,6 @@ export async function ddoinv(state = game, hooks = {}) {
     return dispinv_with_action(null, state, hooks);
 }
 
-// C ref: hack.h Blind. The engraving and description code below reads only
-// the hero's blindness, not the other senses that macro folds in.
-function heroIsBlind(state) {
-    const blindness = state.u?.uprops?.[BLINDED];
-    return Boolean(
-        (blindness?.intrinsic || blindness?.extrinsic)
-        && !blindness?.blocked,
-    );
-}
 
 // C ref: invent.c carrying_stoning_corpse() (1508-1516). Scans the hero's
 // inventory for the first corpse whose species petrifies on touch.
@@ -2331,7 +2320,7 @@ export function sobj_at(otyp, x, y, state = game) {
 // C ref: invent.c will_feel_cockatrice(). A sighted hero without forced touch
 // never feels a corpse, whatever it is, so feel_cockatrice() is a no-op there.
 export function will_feel_cockatrice(otmp, force_touch, state = game) {
-    return Boolean((heroIsBlind(state) || force_touch)
+    return Boolean((Blind(state.u) || force_touch)
         && !state.uarmg
         && !Stone_resistance(state)
         && otmp.otyp === CORPSE
@@ -2380,7 +2369,7 @@ export function preflight_look_here(
     state = game,
     { objects = null } = {},
 ) {
-    const blind = heroIsBlind(state);
+    const blind = Blind(state.u);
     const { ux, uy } = state.u;
     const skip_dfeature = (lookhere_flags & LOOKHERE_SKIP_DFEATURE) !== 0;
     const skip_objects = state.flags.pile_limit > 0
@@ -2557,7 +2546,7 @@ export async function look_here(
     if (dfeature === 'pool of water' && state.u.uinwater) dfeature = null;
     let skip_dfeature = plan.skip_dfeature;
     if (blind) {
-        const drift = Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz);
+        const drift = Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state);
         if (dfeature?.startsWith('altar ')) {
             await message('You try to feel what is here.', state);
         } else if (is_ice(ux, uy, state)) {
@@ -2921,7 +2910,7 @@ export async function identify_pack(idLimit, learningId, state = game) {
 // that seeing the object for the first time produces (addinv_core2).
 //
 export async function learn_unseen_invent(state = game, env = {}) {
-    if (heroIsBlind(state))
+    if (Blind(state.u))
         return; /* sanity check */
 
     let invupdated = false;
@@ -3132,7 +3121,6 @@ export function initializeInventory(state = game) {
     state.lastinvnr = INVLET_BASIC - 1;
     return state;
 }
-
 
 
 function buriedObjectHead(state) {
@@ -3499,14 +3487,6 @@ function oname(obj) {
     return hasTextExtra(obj, 'oname') ? String(obj.oextra.oname) : '';
 }
 
-function isBlind(env) {
-    const property = env.state.u?.uprops?.[BLINDED];
-    if (!property)
-        throw new Error('Blind requires initialized u.uprops');
-    return Boolean((property.intrinsic || property.extrinsic)
-        && !property.blocked);
-}
-
 // C's `Fumbling`, which reads u.uprops[FUMBLING] the way the property macros
 // in youprop.h do.  Nothing in this port raises it.
 function propertyPresent(state, property) {
@@ -3514,14 +3494,6 @@ function propertyPresent(state, property) {
     return Boolean(value?.intrinsic || value?.extrinsic);
 }
 
-function isHallucinating(env) {
-    const hallucination = env.state.u?.uprops?.[HALLUC];
-    const resistance = env.state.u?.uprops?.[HALLUC_RES];
-    if (!hallucination || !resistance)
-        throw new Error('Hallucination requires initialized u.uprops');
-    return Boolean(hallucination.intrinsic
-        && !(resistance.intrinsic || resistance.extrinsic));
-}
 
 function isCleric(state) {
     return state.urole?.filecode === 'Pri';
@@ -3568,8 +3540,8 @@ export function mergable(otmp, obj, env = {}) {
     let perceptionBlocksComparison;
     const blindOrHallucinating = () => {
         if (perceptionBlocksComparison === undefined) {
-            perceptionBlocksComparison = isBlind(normalized)
-                || isHallucinating(normalized);
+            perceptionBlocksComparison = Blind(normalized.state.u)
+                || Hallucination(normalized.state.u);
         }
         return perceptionBlocksComparison;
     };
@@ -4292,7 +4264,7 @@ function addinv_core2(obj, env, facts) {
     if (env.state.urole?.filecode === 'Arc'
         && obj.oclass === SCROLL_CLASS
         && obj.otyp !== SCR_BLANK_PAPER
-        && !isBlind(env)
+        && !Blind(env.state.u)
         && !objectType(obj, env.state).oc_name_known) {
         observe_object(obj, env.state);
         const message = env.hooks?.message ?? env.message;
@@ -4560,7 +4532,7 @@ export function preflight_addinv_sequence(objects, env = {}, options = {}) {
             ...source,
             oextra: source.oextra ? { ...source.oextra } : source.oextra,
         };
-        if (options.observeObjects && !isHallucinating(projectedEnv))
+        if (options.observeObjects && !Hallucination(projectedEnv.state.u))
             projected.dknown = true;
         const result = projectAddinv(projected, projectedEnv);
         plans.push({ ...plan, ...result });
@@ -4938,7 +4910,7 @@ export async function hold_another_object(
     const normalized = inventoryEnv(env);
     const { state } = normalized;
 
-    if (!isBlind(normalized))
+    if (!Blind(normalized.state.u))
         observe_object(obj, state); /* maximize mergeability */
     if (obj.oartifact) {
         /* place_object may change these */
@@ -5003,7 +4975,7 @@ export async function hold_another_object(
             return null;
         }
         if (state.flags?.autoquiver && !state.uquiver && !obj.owornmask
-            && (is_missile(obj)
+            && (is_missile(obj, state)
                 || ammo_and_launcher(obj, state.uwep, state)
                 || ammo_and_launcher(obj, state.uswapwep, state))) {
             setuqwep(obj, { state });
@@ -5284,7 +5256,7 @@ const CURRENCIES = Object.freeze([
 
 export function currency(amount, state = game, env = {}) {
     const random = env.random ?? coreRandom;
-    const res = isHallucinating({ state })
+    const res = Hallucination(state.u)
         ? CURRENCIES[random.rn2(CURRENCIES.length)]
         : 'zorkmid';
     return amount !== 1 ? makeplural(res) : res;

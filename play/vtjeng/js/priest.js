@@ -23,17 +23,13 @@ import {
     ARTICLE_YOUR,
     A_WIS,
     CLAIRVOYANT,
-    DEAF,
     CONFLICT,
     DISPLACED,
     DRY,
     EPRI,
     FROMOUTSIDE,
-    HALLUC,
-    HALLUC_RES,
     helpless,
     HOT,
-    INVIS,
     IS_ALTAR,
     IS_DOOR,
     IS_ROOM,
@@ -116,7 +112,7 @@ import { coreRandom, d, rn2 } from './rng.js';
 import { exercise, adjalign } from './attrib.js';
 import { currency, money_cnt } from './invent.js';
 import { incr_itimeout } from './potion.js';
-import { livelog_printf, verbalize } from './pline.js';
+import { livelog_printf, verbalize, youFeel } from './pline.js';
 import { mpickobj } from './steal.js';
 import { ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
@@ -126,6 +122,9 @@ import { which_armor } from './worn.js';
 import { canseemon } from './display.js';
 import { m_canseeu } from './vision.js';
 import { buzz } from './zap.js';
+import {
+    Deaf, Hallucination, Invis,
+} from './youprop.js';
 
 // C ref: priest.c local constants.
 const ALGN_SINNED = -4;
@@ -771,8 +770,7 @@ export async function pri_move(priest, env = {}) {
             avoid = false;
         }
     } else {
-        const invisProp = state.u.uprops?.[INVIS];
-        if ((invisProp?.intrinsic || invisProp?.extrinsic) && !invisProp?.blocked)
+        if (Invis(state.u))
             avoid = false;
     }
 
@@ -787,13 +785,10 @@ export async function pri_move(priest, env = {}) {
 export function priestname(mon, article, reveal_high_priest, state = game, env = {}) {
     const aligned_priest = mon.data === state.mons[PM_ALIGNED_CLERIC];
     const high_priest = mon.data === state.mons[PM_HIGH_CLERIC];
-    const hallucination = state.u.uprops[HALLUC] ?? {};
-    const resistance = state.u.uprops[HALLUC_RES] ?? {};
-    const do_hallu = Boolean(hallucination.intrinsic)
-        && !(resistance.intrinsic || resistance.extrinsic);
+    const do_hallu = Hallucination(state.u);
     const randomName = do_hallu ? rndmonnamDetails({ state,
         random: env.displayRandom }) : null;
-    let what = do_hallu ? randomName.name : mon_pmname(mon);
+    let what = do_hallu ? randomName.name : mon_pmname(mon, state);
     if (!mon.ispriest && !mon.isminion) return what;
 
     if (mon.ispriest || aligned_priest || high_priest)
@@ -833,7 +828,7 @@ export function priestname(mon, article, reveal_high_priest, state = game, env =
 
     pname += what;
     if (do_hallu || !high_priest || reveal_high_priest
-        || !Is_astralevel(state.u?.uz)
+        || !Is_astralevel(state.u?.uz, state)
         || m_next2u(mon, state) || state.program_state?.gameover) {
         pname += ' of ';
         pname += halu_gname(mon_aligntyp(mon), state);
@@ -841,18 +836,7 @@ export function priestname(mon, article, reveal_high_priest, state = game, env =
     return pname;
 }
 
-// C ref: youprop.h:125 Deaf. HDeaf || EDeaf || u.uroleplay.deaf.
-function heroDeaf(state) {
-    const prop = state.u?.uprops?.[DEAF];
-    return Boolean(prop?.intrinsic || prop?.extrinsic)
-        || Boolean(state.u?.uroleplay?.deaf);
-}
 
-// C ref: youprop.h:157 Hallucination.
-function heroHallucinating(state) {
-    const prop = state.u?.uprops?.[HALLUC];
-    return Boolean(prop?.intrinsic || prop?.extrinsic) && !prop?.blocked;
-}
 
 // C ref: priest.c intemple(int roomno). Called when the hero enters a TEMPLE
 // room.
@@ -878,10 +862,10 @@ export async function intemple(roomno, env = {}) {
                 || (state.astral_level
                     && u.uz?.dnum === state.astral_level.dnum));
         const can_speak = !helpless(priest);
-        if (can_speak && !heroDeaf(state)
+        if (can_speak && !Deaf(state.u)
             && state.moves >= (epri_p.intone_time ?? 0)) {
             const save_priest = priest.ispriest;
-            if (sanctum && !heroHallucinating(state))
+            if (sanctum && !Hallucination(state.u))
                 priest.ispriest = 0;
             const who = canseemon(priest, state)
                 ? Monnam(priest, state)
@@ -906,7 +890,7 @@ export async function intemple(roomno, env = {}) {
         } else if (state.moves >= (epri_p.enter_time ?? 0)) {
             msg1 = `Pilgrim, you enter a ${!shrined ? 'desecrated' : 'sacred'} place!`;
         }
-        if (msg1 && can_speak && !heroDeaf(state)) {
+        if (msg1 && can_speak && !Deaf(state.u)) {
             await message(`"${msg1}"`, state);
             if (msg2)
                 await message(`"${msg2}"`, state);
@@ -951,7 +935,7 @@ export async function intemple(roomno, env = {}) {
         await message('You have an eerie feeling...', state);
         break;
     case 1:
-        await message('You feel like you are being watched.', state);
+        await message(youFeel('like you are being watched.', state), state);
         break;
     case 2:
         await message(
@@ -1038,7 +1022,7 @@ export async function priest_talk(priest, state = game, env = {}) {
 
         if (helpless(priest)) {
             await message(
-                `${Monnam(priest, state)} breaks out of ${mhis(priest)} reverie!`,
+                `${Monnam(priest, state)} breaks out of ${mhis(priest, { state })} reverie!`,
                 state,
             );
             priest.mfrozen = 0;
@@ -1069,7 +1053,7 @@ export async function priest_talk(priest, state = game, env = {}) {
         if (coaligned && !strayed) {
             const pmoney = money_cnt(priest.minvent);
             if (pmoney > 0) {
-                const bits = heroHallucinating(state)
+                const bits = Hallucination(state.u)
                     ? currency(pmoney, state)
                     : pmoney === 1 ? 'bit' : 'bits';
                 await message(
@@ -1148,13 +1132,11 @@ export async function priest_talk(priest, state = game, env = {}) {
             adjalign(1, state);
         }
         await speak('I bestow upon thee a blessing.', state);
-        if (u.uprops?.[CLAIRVOYANT]) {
-            const timeout = Math.trunc(500 * offer / suggested);
-            incr_itimeout(
-                u.uprops[CLAIRVOYANT],
-                random.rn1(timeout, timeout),
-            );
-        }
+        const timeout = Math.trunc(500 * offer / suggested);
+        incr_itimeout(
+            u.uprops[CLAIRVOYANT],
+            random.rn1(timeout, timeout),
+        );
     } else if (offer < suggested * quan * 3) {
         // C's next tier restores/grows protection. Its loop intentionally
         // compares against 2*suggested, not suggested*quan.

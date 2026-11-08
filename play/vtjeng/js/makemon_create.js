@@ -14,7 +14,6 @@ import {
     AM_NEUTRAL,
     AM_NONE,
     BLCORNER,
-    BLINDED,
     BOLT_LIM,
     COLNO,
     CROSSWALL,
@@ -75,7 +74,6 @@ import {
     ROWNO,
     SCORR,
     SDOOR,
-    SEE_INVIS,
     SHOPBASE,
     P_POLEARMS,
     PIT,
@@ -599,6 +597,7 @@ import {
     which_armor,
 } from './worn.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
+import { Blind, See_invisible } from './youprop.js';
 
 const SUPPORTED_FLAGS = NO_MINVENT
     | MM_NOWAIT
@@ -883,9 +882,9 @@ export function set_mimic_sym(monster, normalized) {
             ? horizontal ? S_hwall : S_vwall
             : horizontal ? S_hcdoor : S_vcdoor;
     } else if (state.level.flags.is_maze_lev
-               && !(In_mines(state.u.uz)
+               && !(In_mines(state.u.uz, state)
                    && in_town(state.u.ux, state.u.uy, state))
-               && !In_sokoban(state.u.uz) && random.rn2(2)) {
+               && !In_sokoban(state.u.uz, state) && random.rn2(2)) {
         appearanceType = M_AP_OBJECT;
         appearance = STATUE;
     } else {
@@ -1663,10 +1662,6 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
     }
 }
 
-function heroIsBlind(state) {
-    const blind = state.u?.uprops?.[BLINDED];
-    return Boolean((blind?.intrinsic || blind?.extrinsic) && !blind?.blocked);
-}
 
 // C ref: makemon.c makemon_rnd_goodpos(). Level generation skips the
 // visibility pass and stair fallback. Runtime generation first avoids every
@@ -1697,7 +1692,7 @@ function makemon_rnd_goodpos(ptr, gpflags, normalized) {
 
     const xofs = nx;
     const yofs = ny;
-    const firstScanStage = state.in_mklev || heroIsBlind(state) ? 1 : 0;
+    const firstScanStage = state.in_mklev || Blind(state.u) ? 1 : 0;
     let scanFlags = gpflags | GP_AVOID_MONPOS;
     for (let scanStage = firstScanStage; scanStage < 2; ++scanStage) {
         const visibleSquaresAllowed = scanStage === 1;
@@ -1973,7 +1968,7 @@ function m_initweap(monster, normalized) {
             // pick-axe and rarely a crystal ball.
             if (ptr.pmidx === PM_ELVEN_MONARCH) {
                 if (random.rn2(3)
-                    || (state.in_mklev && Is_earthlevel(state.u?.uz)))
+                    || (state.in_mklev && Is_earthlevel(state.u?.uz, state)))
                     mongets(monster, PICK_AXE, normalized);
                 if (!random.rn2(50))
                     mongets(monster, CRYSTAL_BALL, normalized);
@@ -2380,7 +2375,7 @@ export function rnd_offensive_item(monster, normalized) {
         9 - Number(ptr.difficulty < 4) + 4 * Number(ptr.difficulty > 6),
     )) {
     case 0: {
-        const helmet = which_armor(monster, W_ARMH);
+        const helmet = which_armor(monster, W_ARMH, state);
         if (isHardHelmet(helmet, state)
             || (ptr.mflags1 & (M1_AMORPHOUS | M1_WALLWALK | M1_UNSOLID))
             || ptr.mlet === S_GHOST) {
@@ -2474,7 +2469,7 @@ export function rnd_misc_item(monster, normalized) {
         if (monster.isgd) return 0;
         return random.rn2(6) ? POT_SPEED : WAN_SPEED_MONSTER;
     case 1:
-        if (monster.mpeaceful && !heroHasProperty(state, SEE_INVIS)) return 0;
+        if (monster.mpeaceful && !See_invisible(state.u)) return 0;
         return random.rn2(6) ? POT_INVISIBILITY : WAN_MAKE_INVISIBLE;
     case 2:
         return POT_GAIN_LEVEL;
@@ -2630,7 +2625,7 @@ function m_initinv(monster, normalized) {
         // generating a level. This arm precedes the generic giant gemstone
         // arm even though minotaurs share S_GIANT.
         if (!random.rn2(8)
-            || (state.in_mklev && Is_earthlevel(state.u?.uz))) {
+            || (state.in_mklev && Is_earthlevel(state.u?.uz, state))) {
             mongets(monster, WAN_DIGGING, normalized);
         }
     } else if (ptr.mlet === S_GIANT && is_giant(ptr)) {
@@ -2970,7 +2965,7 @@ function finishMonsterInventoryAndStrategy(
         const saddleRoll = random.rn2(100);
         if (!saddleRoll && (ptr.mflags2 & M2_DOMESTIC)
             && can_saddle(monster)
-            && !which_armor(monster, W_SADDLE)) {
+            && !which_armor(monster, W_SADDLE, state)) {
             put_saddle_on_mon(null, monster, normalized);
         }
     } else {
@@ -3104,7 +3099,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         } while (++attempts <= 50
             && ((attempts === 1
                 && throws_rocks(ptr)
-                && In_sokoban(state.u.uz))
+                && In_sokoban(state.u.uz, state))
                 || !goodpos(
                     x,
                     y,
@@ -3153,11 +3148,11 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     // C ref: makemon.c:1281-1293.  Monsters created on certain levels
     // start knowing about traps there, and locations where monsters are
     // already experienced with wands set mwandexp.
-    if (In_sokoban(state.u.uz) && !mindless(ptr)) {
+    if (In_sokoban(state.u.uz, state) && !mindless(ptr)) {
         mon_learns_traps(monster, PIT);
         mon_learns_traps(monster, HOLE);
     }
-    if (Is_stronghold(state.u.uz) && !mindless(ptr)) {
+    if (Is_stronghold(state.u.uz, state) && !mindless(ptr)) {
         mon_learns_traps(monster, TRAPDOOR);
     }
     // Quest leader and nemesis both know about all trap types.
@@ -3165,9 +3160,9 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         mon_learns_traps(monster, ALL_TRAPS);
     }
     // Locations where monsters are already experienced with wands.
-    if (Is_stronghold(state.u.uz) || Is_knox_level(state.u.uz)
-        || In_endgame(state.u.uz) || In_hell(state.u.uz, state)
-        || In_V_tower(state.u.uz) || In_quest(state.u.uz)) {
+    if (Is_stronghold(state.u.uz, state) || Is_knox_level(state.u.uz, state)
+        || In_endgame(state.u.uz, state) || In_hell(state.u.uz, state)
+        || In_V_tower(state.u.uz, state) || In_quest(state.u.uz, state)) {
         monster.mwandexp = true;
     }
 

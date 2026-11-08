@@ -211,6 +211,7 @@ export async function bot() {
         return;
     if (game._statusHilitesReset) { /* reset_status_hilites() */
         game._statusHilitesReset = false;
+        game._statusHiliteHeld = false;
         delete game._blTemp;
         delete game._statusFieldColors;
     }
@@ -218,8 +219,10 @@ export async function bot() {
      * so every row-1 field is redrawn whole (check_fields forcefields). */
     /* botl.c:259: with u.uhp == -1 (dosave's flag, or a death that landed on
      * exactly -1) bot() paints nothing, so no BL_RESET rewrite happens. */
-    if (game.disp.botlx && (game.u?.uhp | 0) !== -1)
+    if (game.disp.botlx && (game.u?.uhp | 0) !== -1) {
         game._status1Whole = true;
+        game._statusPartialFrom = null;
+    }
     /* the BL_RESET that -1 swallowed is gone (bot() clears botlx either way),
      * so done()'s later HP:0 paint is a plain BL_FLUSH, not a row-1 rewrite */
     if (game.disp.botlx && (game.u?.uhp | 0) === -1)
@@ -254,7 +257,10 @@ export async function bot() {
      * bot() still clears the pending time update when uhp == -1. */
     if ((game.u?.uhp | 0) !== -1 && game.iflags?.status_updates !== false
         && !suppress_map_output())
+    {
         game._botlPaintedMoves = game.moves | 0;
+        game._statusEverPainted = true;
+    }
     game._botlPaintedDeaf = _live_deaf();
     game._botlPaintedFlying = _live_flying();
     game._botlPaintedRiding = !!game.u?.usteed;
@@ -291,6 +297,9 @@ export async function bot() {
          * the live status, including the new level, and hold that new paint
          * for subsequent delayed flushes. */
         game._lastPaintedBotl = _capture_botl(true);
+        /* column of the T: field as painted; a lone timebot() paint reuses it */
+        { const l2 = _statusLine2().replace(/\x1b\[[0-9;]*m/g, '').lastIndexOf('T:');
+          if (l2 >= 0) game._statusTimeCol = l2; }
         /* The tutorial-exit mark only transfers when the paint really ran
          * (botl.c:259's u.uhp != -1 guard): a declined paint leaves C's
          * physical line at the frozen pre-restore hero. */
@@ -339,6 +348,10 @@ export async function bot() {
     if (game && (game.u?.uhp | 0) !== -1 && game.iflags?.status_updates !== false
         && !suppress_map_output()) {
         _status_note_pushed_fields();
+        /* botl.c:1590-1614 eval_notify_windowport_field: a real paint pushes
+         * every enabled field, so wintty's tty_status[NOW][].valid is now set
+         * for all of them (wintty.c:4513-4518); see timebot(). */
+        game._ttyStatusValid = true;
         let _row3Rendered = false;
         /* wintty.c:1061-1068 clears the physical status before render_status(),
          * not after it.  Retain the new row and its finalx-dependent erasure. */
@@ -367,7 +380,19 @@ export async function bot() {
          * rows (cl_end + data[][] = ' '), so the next render_status starts from
          * an empty row: no stale cells survive from before the cls. */
         if (game._statusBlankAfterDocrt && game._st3 && !_row3Rendered) { game._st3.row = ''; game._st3.signature = undefined; }
+        /* done()'s botlx bot() ran at u.uhp == -1 and delivered no BL_RESET
+         * (botl.c:259; end.c:1045-1046), so the HP:0 paint (end.c:1073) is a
+         * plain BL_FLUSH over cls()-blanked rows: only HP, whose width
+         * changed, and the fields after it on the row are redrawn
+         * (wintty.c:5032 `redraw`); Dlvl/$ and the first row stay blank. */
+        const _hpAt = (game._botlResetLost && !game.disp.botlx && !_threeStatusLines()
+                       && (game.u?.uhp | 0) === 0 && (game.u?.mh | 0) === 0 && game._statusBlankAfterDocrt)
+            ? _statusLine2().replace(/\x1b\[[0-9;]*m/g, '').indexOf('HP:') : -1;
+        if (_hpAt >= 0) game._statusPartialFrom = _hpAt;
+        else if (game._statusBlankAfterDocrt) game._statusPartialFrom = null;
         game._statusBlankAfterDocrt = false;
+        game._statusTimeOnly = null;
+        game._blankTimePaint = null;
         game._statusCornerClips = null; /* botlx's BL_RESET restores every field */
         game._getobj_menu_win = null; // the clipped status rows were repainted
         game._carryStatusClip = null;
@@ -454,9 +479,24 @@ export function timebot() {
            stat_update_time() is a windowport-specific no-op in JS.  It IS the
            paint, though: whatever the run suppressed is now on the line. */
         g._timeBotlFrozenMoves = null;
+        /* wintty.c:4662-4664,4481: check_fields() returns FALSE while any
+         * active field is still !valid (tty_status_init, wintty.c:4349), so
+         * BL_FLUSH renders nothing until a real bot() has pushed every field
+         * in this process — a game restored with u.uhp == -1 never does. */
+        const ttyValid = !!g._ttyStatusValid;
+        if (ttyValid && g._statusBlankAfterDocrt === true)
+        if (g._statusBlankAfterDocrt === true && g._statusEverPainted)
+            g._statusTimeOnly = g.moves | 0; /* botl.c:259 guards bot() only, not timebot() */
         /* botl.c:1285-1294 stat_update_time(): BL_TIME alone goes through
          * eval_notify_windowport_field, so a changed clock marks it chg. */
         _status_note_pushed_time();
+        /* stat_update_time() -> tty_status_update(BL_TIME) writes only the T:
+         * field; over rows cls() blanked (and bot() declined, botl.c:259) it is
+         * the one cell run that appears. */
+        if (ttyValid && (g._statusBlankAfterDocrt === true || g._status_blanked))
+        if ((g._statusBlankAfterDocrt === true || g._status_blanked)
+            && g._statusEverPainted)
+            g._blankTimePaint = 'T:' + (g.moves | 0);
     }
     if (g.disp)
         g.disp.time_botl = 0;
@@ -753,7 +793,10 @@ export async function status_hilite_menu(preserveStatus = false) {
         m.end_menu('Status hilites:');
         const { count, picks } = await m.select_menu(PICK_ONE);
         if (count <= 0) {
-            if (lines.length && !game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
+            if (lines.length && !game.iflags.hilite_delta) {
+                game.iflags.hilite_delta = 3;
+                game._statusHiliteHeld = true; /* no update_all yet: fields stay as delivered */
+            }
             return;
         }
         const fld = picks[0] - 1;
@@ -1115,4 +1158,16 @@ export function title_to_mon(str, rank_indx, title_length) {
     }
     if (title_length) title_length.value = 0;
     return NON_PM;
+}
+
+/* The lone T: field a timebot() painted onto cls()-blanked status rows, at the
+ * column the full status line would give it; '' when nothing was painted. */
+export function status_time_only_row(fullRow) {
+    if (game._statusTimeOnly == null || game._statusBlankAfterDocrt !== true) return '';
+    const plain = String(fullRow || '').replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n))
+        .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    const m = /(^| )T:\d+/.exec(plain);
+    if (!m) return '';
+    const x = m.index + m[1].length;
+    return ' '.repeat(x) + 'T:' + game._statusTimeOnly;
 }

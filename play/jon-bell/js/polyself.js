@@ -1244,19 +1244,13 @@ async function polyman(msg) {
      * RNG-free; make_blinded's only pline on this arm is "You can see
      * again." (js/zap.js:472). */
     if (was_blind && !Blind_vis()) {
-        /* HBlinded=1 is stored with no SET_BOTL, so the "You can see again."
-         * pline's flush_screen() (and the --More-- it pages over the "You
-         * return to human form!" line) leaves the status window as the
-         * urgent_pline's bot() painted it: no Blind.  toggle_blindness flags
-         * the repaint afterwards. */
-        const heldPaint = g._botlPaintHeld;
-        g._botlPaintHeld = true;
-        try {
-            set_HBlinded(1);
-            make_blinded(0, true);
-        } finally {
-            g._botlPaintHeld = heldPaint;
-        }
+        /* HBlinded=1 is stored with no SET_BOTL, but the "You can see again."
+         * pline's flush_screen() still runs bot() whenever disp.botl is
+         * pending -- e.g. set by set_utrap()->float_vs_flight() just above
+         * (polyself.c:256, polyself.c:153) -- and that bot() paints "Blind"
+         * (HBlinded=1) under the --More--.  No paint hold: C has none. */
+        set_HBlinded(1);
+        make_blinded(0, true);
     }
     // C polyself.c:261 check_strangling(TRUE).  Reversion can expose a
     // strangulation amulet which was harmless in a breathless form.

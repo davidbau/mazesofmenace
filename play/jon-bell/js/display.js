@@ -59,6 +59,8 @@
 // C ref: monmove.c audit a2_monmove_27 (loop closure: onscary shadow alias eliminated in a2_monmove_26, unified in js/makemon.js)
 import { game } from './gstate.js';
 import { getnow } from './calendar.js';
+import { nextmbuf } from './do_name.js';
+import { TER_DETECT, TER_MAP } from './const.js';
 import { nh_basename } from './files.js';
 import { pmatch } from './strutil.js';
 import { status_fieldname, COND_NAMES } from './options.js';
@@ -70,7 +72,7 @@ import { PM_HUMAN, PM_ELF } from './pm.generated.js';
 import * as pmNumbers from './pm.generated.js';
 import { waterbody_name, key2txt, invocation_pos, recalc_mapseen_rooms, set_msg_xy } from './cmd.js';
 import { On_stairs } from './stairs.js';
-import { strNsubst } from './hacklib.js';
+import { strNsubst, fuzzymatch } from './hacklib.js';
 import { Inhell } from './makemon.js';
 import { glyph_to_cmap as glyph_to_cmap_real, glyphmap } from './glyphs.js';
 import { symbol_name, primary_showsym, primary_unicode_symbol, rogue_showsyms, symset_cell, defsym_char, SYM_OFFSETS } from './symbols.js';
@@ -181,7 +183,7 @@ import { paniclog, livelog_add } from './files.js';
 import { BUFSZ, ECMD_OK } from './const.js';
 import { D_TRAPPED } from './const.js';
 import { pline, pline_xy, urgent_pline } from './pline.js'; // relocate-fns
-import { armor_status, bot, timebot, weapon_status } from './botl.js'; // relocate-fns
+import { armor_status, bot, timebot, weapon_status, status_time_only_row } from './botl.js'; // relocate-fns
 import { IS_STWALL, WM_W_BOTTOM, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP } from './const.js'; // relocate-fns
 import { update_lastseentyp } from './dungeon.js'; // relocate-fns
 import { init_rumors, others_check } from './rumors.js'; // relocate-fns
@@ -1314,6 +1316,47 @@ export function pager_warning_classes(x, y, glyph) {
     return { classText: classes.classes.join(' or '),
              classCount: classes.matchCount, needsLook: classes.needsLook };
 }
+/* C pager.c:1163-1195,1462-1509: each matching water cmap borrows a
+ * monster-name buffer, even when lookat() will replace the description.
+ * This churn is observable by callers retaining an earlier monster name
+ * across getpos(), such as magic_whistled (apply.c:555-605). */
+export function pager_description_mbufs(x, y, glyph) {
+    const u = game.u, loc = game.level?.at(x, y);
+    if (!loc) return;
+    const distant = Math.max(Math.abs(x - u.ux), Math.abs(y - u.uy)) > 1;
+    if ((u.uswallow || (u.uinwater && !Is_waterlevel(u.uz))) && distant)
+        return; // pager.c:1298-1305: unreconnoitered skips the class scans.
+    if (((game.iflags?.terrainmode | 0) & (TER_DETECT | TER_MAP)) === TER_DETECT
+        && glyph?.cls === GLYPHCLS_CMAP && glyph.cmap === 0) return;
+
+    const byte = (value, dec = false) => typeof value === 'number'
+        ? value : (value?.charCodeAt(0) ?? 32) | (dec ? 0x80 : 0);
+    const selected = byte(glyph?.symbol ?? glyph?.ch, glyph?.dec);
+    const showsyms = pager_showsyms();
+    const savedTyp = loc.typ, resistance = u.uprops[HALLUC_RES];
+    const savedResistance = resistance.extrinsic;
+    try {
+        resistance.extrinsic = 1;
+        // C rotates water before lava; pool also allocates a moat buffer.
+        for (const [idx, types] of [[38, [POOL, MOAT]], [39, [ICE]],
+                                    [48, [WATER]], [40, [LAVAPOOL]], [41, [LAVAWALL]]]) {
+            const dec = dec_mode() && !rogue_graphics();
+            const fallback = dec ? (idx === 39 ? '~' : '\\') : defsym_char(idx);
+            if (selected !== byte(showsyms?.[idx] ?? fallback,
+                                 showsyms?.[idx] == null && dec)) continue;
+            for (const typ of types) {
+                const buf = nextmbuf(); // mon_nam(&gy.youmonst) then Strcpy
+                loc.typ = typ;
+                const text = waterbody_name(x, y);
+                buf.text = text === 'pool of water' ? 'pool'
+                    : text === 'molten lava' ? 'lava' : text;
+            }
+        }
+    } finally {
+        loc.typ = savedTyp;
+        resistance.extrinsic = savedResistance;
+    }
+}
 /* C pager.c:1169-1205 add_cmap_descr(): describe each matching water cmap
  * using its own terrain, with hallucination suppressed.  The pool's second
  * (moat) description is appended without increasing the match count.
@@ -2045,6 +2088,25 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         && game.iflags?.use_color !== false && game.iflags?.customcolors !== false) {
         const cc = glyphmap[(objpile ? GLYPH_OBJ_PILETOP_OFF : GLYPH_OBJ_OFF) + objectType]?.customcolor;
         if (cc && (cc & NH_BASIC_COLOR)) color = cc & 0xff;
+        /* wintty.c:3899-3907: a true-colour customcolor (no NH_BASIC_COLOR bit)
+         * goes out through term_start_extracolor, not the glyph's own colour;
+         * it applies with customsymbols off too (reset_customsymbols leaves
+         * glyphmap[].customcolor alone, utf8map.c:206). */
+        else if (cc && (game.iflags?.colorcount ?? 256) >= 256) color = NO_COLOR;
+    }
+    /* The same wintty.c:3899-3910 test for a cmap glyph customized by the
+     * symset (dat/symbols Enhanced1 `G_fountain: U+2320/0-150-255`): the
+     * cmap-A/B blocks map 1:1 onto GLYPH_CMAP_A_OFF/GLYPH_CMAP_B_OFF
+     * (display.h cmap_to_glyph); walls and altars use per-branch/alignment
+     * glyphs and are not resolved here. */
+    if (cls === GLYPHCLS_CMAP && game.iflags?.use_color !== false
+        && game.iflags?.customcolors !== false) {
+        const cm = cmap ?? _default_cmap_at(loc, ch, color);
+        const gl = cm >= 12 && cm <= 32 ? GLYPH_CMAP_A_OFF + cm - 12
+            : cm >= 34 && cm <= 73 ? GLYPH_CMAP_B_OFF + cm - 34 : -1;
+        const cc = gl >= 0 ? glyphmap[gl]?.customcolor : 0;
+        if (cc && (cc & NH_BASIC_COLOR)) color = cc & 0xff;
+        else if (cc && (game.iflags?.colorcount ?? 256) >= 256) color = NO_COLOR;
     }
     if ((cls === GLYPHCLS_MON ? game.iflags?.use_color
          : (game._gm_use_color ?? game.iflags?.use_color)) === false)
@@ -2181,10 +2243,17 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     }
     /* A glyph changed and restored before a flush is still gnew in C.
      * feel_location followed by display_self is one such pair (display.c:1042). */
-    if (game._docrtTextBackdrop && (loc.disp_ch !== ch || loc.disp_color !== color
+    const _glyphChanged = loc.disp_ch !== ch || loc.disp_color !== color
         || !!loc.disp_decgfx !== !!decgfx || (loc.disp_attr | 0) !== (attr | 0)
-        || loc.disp_cls !== cls || (cls === GLYPHCLS_CMAP && loc.disp_cmap !== cmap)))
+        || loc.disp_cls !== cls || (cls === GLYPHCLS_CMAP && loc.disp_cmap !== cmap);
+    if (game._docrtTextBackdrop && _glyphChanged)
         game._docrtTextBackdrop.dirty.add(y * COLNO + x);
+    /* C display.c:1958-1971: show_glyph sets gbuf[y][x].gnew on any change and
+     * only flush_screen clears it, so feeltrap's map_trap(trap, 1) followed by
+     * newsym's display_self (trap.c:3591-3593) leaves the hero cell gnew and
+     * the next flush reprints it even though its glyph is back to the hero. */
+    if (_glyphChanged)
+        loc.disp_gnew_epoch = _flush_epoch;
     loc.disp_ch = ch;
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
@@ -4108,10 +4177,12 @@ export async function docrt(pageTopl = false, physicalScreen = null) {
      * botl.c:259 can decline the next paint (u.uhp == -1 even while
      * polymorphed), leaving these physical rows blank. */
     game._statusBlankAfterDocrt = true;
+    game._statusTimeOnly = null;
     /* display.c:1748,2197-2198 / wintty.c:1074-1087: cls() clears status
      * before vision/monster redisplay can raise a pline. A menu dismissal
      * keeps bot() disabled, so those messages still see blank status rows. */
     game._statusBlankAfterDocrt = true;
+    game._blankTimePaint = null; /* cls() erased any lone T: paint */
     game.disp ??= {};
     game.disp.botlx = 1;
     /* display.c:1748 cls() -> clear_nhwindow(WIN_MAP) erases the physical
@@ -5509,11 +5580,15 @@ const _HL_COLORS = { black: 30, red: 31, green: 32, brown: 33, blue: 34, magenta
     'bright-magenta': 95, 'bright-cyan': 96, white: 97 };
 let _hlCacheRc = null, _hlCacheRules = null;
 function _hilite_rules() {
-    const rc = String(game._hilite_rc || '');
+    /* botl.c:2784-2810 status_hilite_add_threshold: the live rule chains, in
+     * add order -- config-file rules first, then any added through the
+     * hilite_status menu (botl.c status_hilite_menu_add). */
+    const specs = [...(game.status_field_hilites || []), ...(game.status_condition_hilites || [])];
+    const rc = specs.join('\n');
     if (rc === _hlCacheRc) return _hlCacheRules;
     const rules = [];
-    for (const m of rc.matchAll(/^\s*OPTIONS\s*=\s*hilite_status\s*:\s*([^\n\r]*)/gim)) {
-        for (const spec of m[1].split(/\s+/)) {
+    {
+        for (const spec of specs) {
             const parts = spec.toLowerCase().split('/');
             if (parts.length < 3) continue;
             if (parts[0] === 'condition' || parts[0] === 'conditions') {
@@ -5543,6 +5618,13 @@ function _hilite_rules() {
             const col = _HL_COLORS[cname];
             if (!fld || col === undefined) continue;
             const t = /^(always|([<>]=?|=)?(-?\d+))$/.exec(parts[1]);
+            if (!t && fld === 'title') {
+                /* botl.c:2535-2549 BL_TH_TEXTMATCH on the rank part of the title */
+                rules.push({ fld, beh: 'text', text: parts[1], col,
+                    bold: anames.includes('bold'),
+                    attr: anames.reduce((a, n) => a | (_HL_ATTR[n.trim()] ?? 0), 0) });
+                continue;
+            }
             if (!t) continue;
             /* botl.c parse_status_hl2: "<colour>&bold" also sets HL_BOLD */
             const bold = parts[2].split('&').slice(1).includes('bold');
@@ -5557,12 +5639,17 @@ function _hilite_rules() {
     return rules;
 }
 /* get_hilite()'s best-fit pick among persistent rules for one field value. */
-function _hilite_pick(fld, v) {
+function _hilite_pick(fld, v, txt) {
     let rule = null, exact = false, minV = Infinity, maxV = -Infinity, abs = false;
     for (const r of _hilite_rules()) {
         if (r.fld !== fld) continue;
         if (abs && r.beh === 'always') continue;
         if (r.beh === 'always') { rule = r; continue; }
+        if (r.beh === 'text') {
+            /* botl.c:2540 fuzzymatch(textmatch, txtstr, "\" -_", TRUE) */
+            if (txt != null && r.text && fuzzymatch(r.text, txt, '" -_', true)) { rule = r; exact = true; }
+            continue;
+        }
         if (r.rel === '=' && v === r.val) { rule = r; exact = abs = true; minV = maxV = r.val; }
         else if (exact) continue;
         else if (r.rel === '<' && v < r.val && r.val <= minV) { rule = r; minV = r.val; abs = true; }
@@ -5575,8 +5662,11 @@ function _hilite_pick(fld, v) {
 export function _hilite_status_wrap(row) {
     // C wintty.c:5213-5234: all field highlighting requires hilite_delta.
     if (!game.iflags?.hilite_delta || !row || !_hilite_rules().length) return row;
-    const w = (fld, v, text) => {
-        const r = _hilite_pick(fld, v);
+    /* botl.c:4574: the menu raised hilite_delta without update_all, so the tty
+     * keeps its previously delivered (uncoloured) fields until a reset's bot(). */
+    if (game._statusHiliteHeld) return row;
+    const w = (fld, v, text, txt) => {
+        const r = _hilite_pick(fld, v, txt);
         /* tty term_start_attr fuses the attribute with the colour (\e[1;35m)
          * and term_end_attr closes the run with \e[0m. */
         if (r?.attr) /* term_end_attr closes an attribute run with \e[0m */
@@ -5587,11 +5677,13 @@ export function _hilite_status_wrap(row) {
     /* C botl.c BL_TITLE: the title field is the leading text up to the padding. */
     /* wintty.c hitpointbar: the '[' title ']' bar is drawn with its own attrs, no title colour. */
     const hpbar = !!game.iflags?.wc2_hitpointbar && row.startsWith('[');
-    if (!hpbar && /St:\d/.test(row)) row = row.replace(/^[^\x1b]+(?:\x1b\[\d+C)?/, (m) => w('title', 0, m));
+    /* botl.c:2537-2539: a title text match skips "<plname> the " */
+    const rk = (t) => t.replace(/\x1b\[[\d;]*[mC]/g, '').slice(String(game.plname || '').length + 5);
+    if (!hpbar && /St:\d/.test(row)) row = row.replace(/^[^\x1b]+(?:\x1b\[\d+C)?/, (m) => w('title', 0, m, rk(m)));
     /* BL_TITLE: the colour spans the title field's padding (botl.c:2364), so
      * the field ends one column short of the first stat. */
     row = row.replace(/^(.*?)(?:\x1b\[(\d+)C|( +))(?=St:)/, (m, t, n, sp) => {
-        const r = _hilite_pick('title', 0);
+        const r = _hilite_pick('title', 0, rk(t));
         if (!r || hpbar) return m;
         const pad = n ? +n : sp.length;
         const gap = pad - 1 > 4 ? `\x1b[${pad - 1}C` : ' '.repeat(pad - 1);
@@ -5607,7 +5699,7 @@ export function _hilite_status_wrap(row) {
         }
     }
     return row
-        .replace(/^(.*?)(\x1b\[\d+C| *)(?= St:|St:)/, (m, t, pad) => (t && !hpbar ? w('title', 0, t + pad) : m))
+        .replace(/^(.*?)(\x1b\[\d+C| *)(?= St:|St:)/, (m, t, pad) => (t && !hpbar ? w('title', 0, t + pad, rk(t)) : m))
         .replace(/\b(Lawful|Neutral|Chaotic)\b/, (m) => {
             /* botl.c:2516-2521 BL_TH_TEXTMATCH: the last matching rule wins */
             const r = _hilite_rules().findLast((x) => x.beh === 'text' && x.text === m.toLowerCase());
@@ -5901,7 +5993,7 @@ function _statusLine2Parts() {
     // the FROZEN uhs (the per-turn bot() value) rather than the live one — C shows the
     // "Satiated" even though lesshungry's newuhs() has already crossed the threshold).
     let _uhs = (u.uhs | 0);
-    if (game._saved_hs && game._botlPaintedUhs != null
+    if ((game._saved_hs || game._hsRestoredUnpainted) && game._botlPaintedUhs != null
         && !(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0))))
         _uhs = (game._botlPaintedUhs | 0);
     /* A fainting transition can finish its countdown in the same dispatch
@@ -6003,7 +6095,8 @@ function _statusLine2Parts() {
                             /* botl.c:1164-1188: a --More-- frame holds the last bot() paint (goto_level's set_ustuck(0) only SET_BOTLs) */
                             (_p2s && _p2s.grabbed !== undefined) ? !!_p2s.grabbed : (game._botlPaintedGrab != null ? !!game._botlPaintedGrab : undefined),
                             (_p2s && _p2s.stoned !== undefined) ? !!_p2s.stoned : undefined,
-                            (_p2s && _p2s.riding !== undefined) ? !!_p2s.riding : undefined);
+                            (_p2s && _p2s.riding !== undefined) ? !!_p2s.riding : undefined,
+                            (_p2s && _p2s.slippery !== undefined) ? !!_p2s.slippery : undefined);
     const _m = /^((?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (?:Burdened|Stressed|Strained|Overtaxed|Overloaded))?)(.*)$/.exec(_suffix);
     return { desc: _leveldescField, mid: s, time: _timeStr, hunger: _m[1], conds: _m[2] };
 }
@@ -6306,6 +6399,54 @@ function _status_field_hilites(row) {
             break;
         }
     }
+    /* C botl.c:2534-2546 get_hilite() BL_TH_TEXTMATCH for BL_TITLE and
+     * BL_ALIGN, best fit over the field's thresholds chain in option order;
+     * like the fields above, the tty keeps the colour delivered with the
+     * field's text until update_all or a value change (botl.c:1575-1619). */
+    const endT = row.indexOf(' St:');
+    const am = endT > 0 ? / (Lawful|Neutral|Chaotic)(?= |$)/.exec(row.slice(endT)) : null;
+    const tfields = [];
+    if (endT > 0 && !(game.iflags?.wc2_hitpointbar && row.startsWith('['))) {
+        const text = row.slice(0, endT).trimEnd();
+        /* botl.c:2536-2538: skip past "<name> the " */
+        tfields.push({ field: 'title', text, start: 0, len: Math.max(30, text.length),
+            txtstr: text.slice(String(game.plname || '').length + 5) });
+    }
+    if (am) tfields.push({ field: 'alignment', text: am[1], start: endT + am.index + 1,
+        len: am[1].length, txtstr: am[1] });
+    for (const tf of tfields) {
+        let rule = null, exact = false, isText = false;
+        for (const spec of game.status_field_hilites || []) {
+            const parts = spec.split('/');
+            if (status_fieldname(parts[0].trim()) !== tf.field) continue;
+            for (let i = 1; i + 1 < parts.length; i += 2) {
+                const thr = parts[i].trim();
+                const [colName, ...attrNames] = parts[i + 1].trim().split(/[&+]/);
+                const color = match_str2clr(colName.trim(), true);
+                if (color >= 16) continue;
+                const attr = attrNames.reduce((a, n) => a | (_HL_ATTR[n.trim().toLowerCase()] ?? 0), 0);
+                const lt = thr.toLowerCase();
+                if (lt === 'always') { rule = { color, attr }; isText = false; continue; }
+                if (['up', 'down', 'changed', 'criticalhp'].includes(lt) || /^[<>=]*[-+]?\d+%?$/.test(lt))
+                    continue;
+                if (fuzzymatch(thr, tf.txtstr, '" -_', true)) {
+                    rule = { color, attr }; exact = isText = true;
+                } else if (exact) {
+                    /* already found best fit, skip "noneoftheabove" */
+                } else if (tf.field === 'title' && (game.u.umonnum | 0) !== (game.u.umonster | 0)
+                           && (fuzzymatch(thr, 'none of the above', '" -_', true)
+                               || fuzzymatch(thr, '(polymorphed)', '"()', true)
+                               || fuzzymatch(thr, 'none of the above (polymorphed)', '" -_()', true))) {
+                    rule = { color, attr }; isText = true; /* botl.c:2342-2350 noneoftheabove */
+                }
+            }
+        }
+        /* an 'always' title rule is painted unlatched above */
+        if (!isText) rule = null;
+        let saved = delivered[tf.field];
+        if (!saved || saved.text !== tf.text) saved = delivered[tf.field] = { text: tf.text, rule };
+        if (saved.rule) for (let c = tf.start; c < tf.start + tf.len; c++) result.set(c, saved.rule);
+    }
     // Hunger has its own text/value matcher; temporary rules run afterwards.
     for (const [c, h] of _status_hunger_hilites(row)) result.set(c, h);
     return result;
@@ -6428,7 +6569,7 @@ const _STATUS_BOT_FIELDS = [
      * Track the empty state too, so its first visible text is a change. */
     ..._HL_TEXT_FIELDS.map((tf) => [tf.fld,
         new RegExp(tf.fld === 'hunger'
-            ? '(?:Xp:\\d+(?:/\\d+)?|HD:\\d+)(?: T:\\d+)?(?: (Satiated|Hungry|Weak|Fainting|Fainted|Starved))?'
+            ? '(?:Xp:\\d+(?:/\\d+)?|HD:\\d+)(?: T:\\d+)?(?: (?:\\x1b\\[[0-9;]*m)*(Satiated|Hungry|Weak|Fainting|Fainted|Starved))?'
             : '(?:Xp:\\d+(?:/\\d+)?|HD:\\d+)(?: T:\\d+)?(?: (?:Satiated|Hungry|Weak|Fainting|Fainted|Starved))?(?: (Burdened|Stressed|Strained|Overtaxed|Overloaded))?'),
         (m) => [m.index + m[0].length - (m[1] || '').length, (m[1] || '').length],
         (m) => tf.vals.indexOf(m[1] || '')]),
@@ -6438,18 +6579,25 @@ const _STATUS_BOT_FIELDS = [
         m[1].length + 2]],
     /* BL_ENE " Pw:%s" is percent_matters against BL_ENEMAX (botl.c:715,
      * 1523-1541); compare_blstats() uses the raw value (botl.c:1835). */
+    /* BL_ENEMAX "(%s)" (botl.c:716): plain value direction, like BL_HPMAX. */
+    ['power-max', /Pw:-?\d+\((\d+)\)/, (m) => [m.index + m[0].length - m[1].length - 2,
+        m[1].length + 2]],
     ['power', /Pw:(-?\d+)\((\d+)\)/, (m) => [m.index, m[0].length - m[2].length - 2]],
     /* BL_HP " HP:%s" is percent_matters against BL_HPMAX the same way; with
      * hitpointbar its percentage is re-checked at every bot() even when the
      * value is unchanged (botl.c:1523-1533). */
     ['hitpoints', /HP:(-?\d+)\((\d+)\)/, (m) => [m.index, m[0].length - m[2].length - 2]],
     ['armor-class', /AC:(-?\d+)/, (m) => [m.index, m[0].length]],
+    /* BL_TIME " T:%s" and BL_SCORE " S:%s" (botl.c:723-724) are ANY_LONG,
+     * plain value direction like every other numeric field. */
+    ['time', /(?<![A-Za-z])T:(\d+)/, (m) => [m.index, m[0].length]],
+    ['score', /(?<![A-Za-z])S:(\d+)/, (m) => [m.index, m[0].length]],
     /* BL_LEVELDESC is ANY_STR: compare_blstats() reports any change as 1 */
     ['dungeon-level', /^(Dlvl:-?\d+|Home \d+|Fort Ludios|End Game|\w+ Plane)(?= )/,
         (m) => [m.index, m[0].length], (m) => m[1]],
     ...['St', 'Dx', 'Co', 'In', 'Wi', 'Ch'].map((a, i) => [
         ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'][i],
-        new RegExp(`\\b${a}:(\\d+)(?:/(\\d+|\\*\\*))?`), (m) => [m.index, m[0].length],
+        new RegExp(`(?:\\b|(?<=\\x1b\\[[\\d;]*[mC]))${a}:(\\d+)(?:/(\\d+|\\*\\*))?`), (m) => [m.index, m[0].length],
         /* ACURR() value behind the 18/xx display (botl.c:1065-1080) */
         (m) => m[2] === '**' ? 118 : m[2] ? 18 + +m[2] : +m[1] > 18 ? +m[1] + 100 : +m[1]]),
 ];
@@ -6471,6 +6619,22 @@ const _STATUS_BOT_FIELD_NAMES = new Set(_STATUS_BOT_FIELDS.map((f) => f[0]));
  * allmain.c:75; flagged by js/allmain.js) makes BL_GOLD set gu.update_all
  * mid-loop, so every field evaluated after gold (initblstats[] order) gets
  * chg 0 at that bot(); St..Ch, ahead of gold, do not. */
+/* botl.c:974-975,1510,1534-1541: percent_value lives in each of the two
+ * alternating blstats buffers and is written only on a bot() whose field
+ * changed (or update_all), so prev->percent_value can be several paints old.
+ * init_blstats() (botl.c:1774) zeroes both once; status_initialize
+ * (REASSESS_ONLY) leaves them, so they live outside _blTemp. */
+function _status_pc_slots_chg(fname, pc, chg) {
+    const idx = 1 - ((game._blExpPercent?.idx) | 0); /* this bot()'s buffer */
+    const slots = ((game._blPctSlots ||= {})[fname] ||= [0, 0]);
+    if (chg !== null && pc !== slots[1 - idx]) chg = pc < slots[1 - idx] ? -1 : 1;
+    slots[idx] = pc;
+    return chg;
+}
+function _status_has_rules(fname) {
+    return (game.status_field_hilites || []).some((spec) =>
+        status_fieldname(spec.split('/')[0].trim()) === fname);
+}
 function _status_temp_bot_eval() {
     const hist = (game._blTemp ||= {});
     const rows = [_statusLine1Raw(), _statusLine2Raw()];
@@ -6484,6 +6648,9 @@ function _status_temp_bot_eval() {
         const pc = _status_bot_percent(fname, m);
         const h = hist[fname];
         if (!h || (encReset && !_STATUS_FIELDS_BEFORE_GOLD.has(fname))) {
+            /* update_all: curr->percent_value is still computed (botl.c:1525) */
+            if ((fname === 'power' || fname === 'hitpoints') && _status_has_rules(fname))
+                _status_pc_slots_chg(fname, pc, null);
             hist[fname] = { ...(h || {}), val, percent: pc, rule: null, time: 0, expired: null,
                 chg: false };
             continue;
@@ -6491,8 +6658,9 @@ function _status_temp_bot_eval() {
         let chg = typeof val === 'string' ? (val !== h.val ? 1 : 0)
             : val < h.val ? -1 : val > h.val ? 1 : 0;
         if (chg || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar)) {
-            if (fname === 'power' || fname === 'hitpoints') {
-                if (pc !== h.percent) chg = pc < h.percent ? -1 : 1;
+            if ((fname === 'power' || fname === 'hitpoints')
+                && (_status_has_rules(fname) || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar))) {
+                chg = _status_pc_slots_chg(fname, pc, chg);
                 h.percent = pc;
             }
         }
@@ -6541,7 +6709,8 @@ function _status_temp_hilites(row, cells) {
         if (!frozen && (chg || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar))
             && botField && (fname === 'power' || fname === 'hitpoints')) {
             const ppc = _status_bot_percent(fname, m);
-            if (ppc !== h.percent) chg = ppc < h.percent ? -1 : 1;
+            if (_status_has_rules(fname) || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar))
+                chg = _status_pc_slots_chg(fname, ppc, chg);
             h.percent = ppc;
         }
         /* C botl.c:1523-1541: BL_EXP is percent_matters even for up/down
@@ -6996,7 +7165,8 @@ function _condEn(name, dflt) {
 }
 export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen,
                                    halluFrozen, confFrozen, flyFrozen, sickTypeFrozen, levFrozen,
-                                   slimedFrozen, inLavaFrozen, wLegsFrozen, strangledFrozen, busyFrozen, grabFrozen, stonedFrozen, rideFrozen) {
+                                   slimedFrozen, inLavaFrozen, wLegsFrozen, strangledFrozen, busyFrozen, grabFrozen, stonedFrozen, rideFrozen,
+                                   slipFrozen) {
     const u = game.u;
     if (!u) return '';
     let s = '';
@@ -7174,7 +7344,12 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         s += ' Busy';
     /* C botl.c:1204 test_if_enabled(bl_slippery) = Glib; opt_in, rank 20,
      * sorting after sleep and before submerged/tethered (useroption order). */
-    if (_condEn('slip', false) && ((u.uprops?.[GLIB]?.intrinsic | 0) !== 0))
+    /* `slipFrozen` is the value bot() painted at a frozen --More-- pline:
+     * nh_timeout's make_glib(0) (timeout.c:935, GLIB 21) runs after an earlier
+     * property's expiry pline (e.g. BLINDED 15) has already raised more(). */
+    if (_condEn('slip', false)
+        && ((slipFrozen !== undefined) ? slipFrozen
+            : ((u.uprops?.[GLIB]?.intrinsic | 0) !== 0)))
         s += ' Slip';
     /* C botl.c:1154-1163: bl_tethered (opt_in) is u.utraptype == TT_BURIEDBALL;
      * bl_trapped (opt_in) is any other u.utrap, tethered/in-lava lumped in
@@ -7221,9 +7396,19 @@ function _insertEncSpace(str) {
 }
 let _fitMemo = null; /* repeated identical renders of one frame must not re-run the shrink state */
 export function fit_status_line_width(s, width = 79) {
-    if (_fitMemo && _fitMemo.s === s && _fitMemo.width === width) return _fitMemo.out;
-    const out = _fit_status_line_width(s, width);
+    /* wintty.c:4591-4626,4995: fitting belongs to a status paint. A deferred
+     * more() can display an older paint after the next bot() has changed the
+     * BL_CAP shrink blank; retain the fitted text with that paint's snapshot. */
+    const botl = game._inMovemonMore && game._paintedSnapshot?.botl
+        ? game._paintedSnapshot.botl : game._lastPaintedBotl;
+    const memo = botl?.statusFit;
+    const key = width + ':' + s;
+    if (memo?.has(key)) return memo.get(key);
+    let out;
+    if (_fitMemo && _fitMemo.s === s && _fitMemo.width === width) out = _fitMemo.out;
+    else out = _fit_status_line_width(s, width);
     _fitMemo = { s, width, out };
+    memo?.set(key, out);
     return out;
 }
 function _fit_status_line_width(s, width) {
@@ -7759,7 +7944,10 @@ function _prompt_physical_status_rows() {
          * map y=20 remains on row 21 while getlin/yn holds that frame. */
         const mapRow = _threeStatusLines() && _status_blank_after_docrt() && game.level
             && !_map_row20_clipped() ? render_map_row(ROWNO - 1) : '';
-        return _threeStatusLines() ? [mapRow, '', ''] : ['', ''];
+        /* timebot() after the cls() repainted the T: field alone */
+        const timeRow = !game._status_blanked && game._statusTimeOnly != null
+            ? status_time_only_row(_threeStatusLines() ? _statusRows3()[2] : _statusLine2()) : '';
+        return _threeStatusLines() ? [mapRow, '', timeRow] : ['', timeRow];
     }
     /* end.c:1045-1075: done() paints status before zeroing HP. Deferred
      * message pages can subsequently serialize older status rows, but the
@@ -7921,6 +8109,12 @@ function _buildScreenOutput() {
     } else if (!_blankStatus) {
         _status1 = _statusLine1();
         _status2 = _statusLine2();
+    } else if (!_rows3 && !game._status_blanked && game._statusTimeOnly != null) {
+        _status2 = status_time_only_row(_statusLine2());
+    } else if (game._blankTimePaint && !_rows3 && !game._status_blanked) {
+        /* timebot() over cls()-blanked rows: only the T: field is on the line */
+        const col = game._statusTimeCol ?? -1;
+        if (col >= 0) _status2 = ' '.repeat(col) + game._blankTimePaint;
     }
     if (_rows3 && !_promptStatusRows && !_blankStatus && !_tutorialStatusOverride)
         [_status1, _status2, _status3] = _status_rows3_pinned();
@@ -7937,6 +8131,22 @@ function _buildScreenOutput() {
      * runs bot() first, which the disable skips).  Until the next bot() paint
      * the physical row 21 is that map print — the dashes over blank rows
      * 22-23 — not a blank row. */
+    /* The held prompt rows are physical terminal rows, highlights included
+     * (wintty.c tty_putstatusfield already ran); no bot() repaints them. */
+    /* botl.js bot(): a plain BL_FLUSH over cls()-blanked rows painted only
+     * the fields from HP onward (wintty.c render_status `redraw`). */
+    if (game._statusPartialFrom != null && !_rows3 && !_blankStatus
+        && !_promptStatusRows && !_tutorialStatusOverride) {
+        let vis = 0, tail = '';
+        for (const tk of String(_status2).match(/\x1b\[[0-9;]*[A-Za-z]|[^\x1b]/g) || []) {
+            if (vis >= game._statusPartialFrom) tail += tk;
+            else if (!tk.startsWith('\x1b[')) vis++;
+            else if (tk.endsWith('C')) vis += parseInt(tk.slice(2), 10) || 1;
+        }
+        _status1 = '';
+        _status2 = ' '.repeat(game._statusPartialFrom) + tail;
+    }
+    const _statusOut = (r) => (_promptStatusRows ? r : _status_sgr(r));
     const _r1MapPrint = _rows3 && game.level
         && (!_promptStatusRows || _promptStatusRows.every((r) => r === ''))
         && !_tutorialStatusOverride && _blankStatus
@@ -7945,15 +8155,15 @@ function _buildScreenOutput() {
                : _row1Live && _r1Physical !== undefined ? _r1Physical
                : _row1Live && !_r1Whole ? _status_row1_map_overlay(_status1)
                : _row1Live ? _status_row1_whole_with_tail(_status1)
-               : _status_sgr(_status1)) + '\n';
+               : _statusOut(_status1)) + '\n';
     /* wintty.c:5260 finalx[row][BEFORE] is only advanced by render_status,
      * i.e. by a bot() paint; a flush that ran no bot() leaves it alone. */
     if (_row1Live && game._status1FinalXSeq !== (game._botlPaintSeq | 0)) {
         game._status1FinalX = _status_plain_len(_status1);
         game._status1FinalXSeq = game._botlPaintSeq | 0;
     }
-    output += _status_sgr(_status2);
-    if (_rows3) output += '\n' + _status_sgr(_status3);
+    output += _statusOut(_status2);
+    if (_rows3) output += '\n' + _statusOut(_status3);
     game._screen_output = _docrt_text_frame(game._statusCornerClips
         ? output.split('\n').map((line, row) => docorner_status_row(row, line)).join('\n')
         : output);
@@ -7964,15 +8174,21 @@ function _buildScreenOutput() {
         _paint_grid_row(display, 0, null, game._pending_message || '');
         for (let y = 0; y < (_rows3 ? ROWNO - 1 : ROWNO); y++)
             _paint_grid_row(display, y + 1, _live_grid_map_row(y));
-        const r0 = _rows3 ? 21 : 22;
-        const s1 = _status1.replace(/\x1b\[[0-9;]*[A-Za-z]/g,
-            m => m.match(/\x1b\[\d+C/) ? ' '.repeat(Math.max(0, parseInt(m.slice(2)))) : '');
-        _paint_grid_row(display, r0, _rows3 ? _live_grid_map_row(ROWNO - 1) : null,
-            s1, _status_condition_hilites(s1));
-        _paint_grid_row(display, r0 + 1, null, _status2, _status_condition_hilites(_status2));
-        const h3 = _status_condition_hilites(_status3);
-        if (_rows3)
-            _paint_grid_row(display, 23, null, _status3, h3);
+        /* getline.c:63 and botl.c:255: prompt echo leaves the painted status
+         * alone. These held rows already contain SGR; feeding them back into
+         * field evaluation mistakes a coloured hunger/cap field for an empty
+         * one and restarts its temporary highlight (botl.c:2293-2303). */
+        if (!_promptStatusRows) {
+            const r0 = _rows3 ? 21 : 22;
+            const s1 = _status1.replace(/\x1b\[[0-9;]*[A-Za-z]/g,
+                m => m.match(/\x1b\[\d+C/) ? ' '.repeat(Math.max(0, parseInt(m.slice(2)))) : '');
+            _paint_grid_row(display, r0, _rows3 ? _live_grid_map_row(ROWNO - 1) : null,
+                s1, _status_condition_hilites(s1));
+            _paint_grid_row(display, r0 + 1, null, _status2, _status_condition_hilites(_status2));
+            const h3 = _status_condition_hilites(_status3);
+            if (_rows3)
+                _paint_grid_row(display, 23, null, _status3, h3);
+        }
         for (let r = 24; r < display.rows; r++) display.clearRow(r);
         if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -8775,6 +8991,7 @@ function _capture_botl(paint = false) {
         game._botlPaintedInLava = !!(u.utrap && (u.utraptype | 0) === TT_LAVA);
         game._botlPaintedGrab = !!(u.ustuck && !u.uswallow && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data)) && (u.ustuck.data?.mlet | 0) === 57);
         game._botlPaintedUhs = u.uhs | 0;
+        game._hsRestoredUnpainted = false;
         game._botlPaintedExp = u.uexp ?? 0n;
     }
     /* A snapshot taken before the hero is placed and before any bot() paint
@@ -8794,6 +9011,7 @@ function _capture_botl(paint = false) {
          * bot() paints (wintty.c:4992 render_status); a pinned --More-- page
          * shows the row as of its own flush, not a later paint's. */
         row3: game._st3?.row,
+        statusFit: paint ? new Map() : game._lastPaintedBotl?.statusFit,
         terrainText: hpPaint?.terrainText ?? _terrain_status_text(paint,
             !!((_d?.botl | 0) || (_d?.botlx | 0))),
         /* attrib.c:1329-1337 flags status before changing alignment; keep
@@ -8916,6 +9134,8 @@ function _capture_botl(paint = false) {
         /* botl.c:1208 bl_woundedl, painted-time: a bear trap's pline precedes
          * set_wounded_legs (trap.c), so the --More-- page shows no WLegs. */
         woundedLegs: !!((u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0) || (u.uprops?.[WOUNDED_LEGS]?.extrinsic | 0)),
+        /* botl.c:1204 bl_slippery = Glib (u.uprops[GLIB].intrinsic), painted-time */
+        slippery: !!(u.uprops?.[GLIB]?.intrinsic | 0),
         levitating: (() => {
             const lq = u.uprops && u.uprops[LEVITATION];
             return !!lq && !!((lq.intrinsic | 0) || (lq.extrinsic | 0)) && !(lq.blocked | 0);
@@ -10322,8 +10542,11 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
          * after its own pline's flush, the terminal shows the post-turn map. */
         const _ownFlushSuperseded = !_nextPlineFrame && !_lastFromCls && _pf && i > 0 && i === _pages.length - 1
             && _pf.statusSeq !== undefined && _pf.statusSeq !== (g._statusPaintSeq | 0);
+        /* tty_yn_function's more() precedes its prompt flush (topl.c:390-420).
+         * The final page therefore keeps its own pline's map even without an
+         * ambient snapshot; silent monster movement has only updated gbuf. */
         const _usePlineFrame = _pf && !_ownFlushSuperseded
-            && (_nextPlineFrame || _joinedPlineFrame || _sv || _lonePf || _doneOwnFrame);
+            && (_nextPlineFrame || _joinedPlineFrame || _sv || _lonePf || _doneOwnFrame || _ownFlushPf);
         /* A mapOnly frame froze only the MAP at its pline; bot() repainted the status
          * afterwards (allmain.c:473-478), so its clock is the live one. */
         if (_usePlineFrame) g._paintedSnapshot = { cells: _pf.cells, moves: (_lonePf && _pf.mapOnly) ? _painted_moves() : _pf.moves, botl: _pf.botl || null };
@@ -10346,8 +10569,14 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
          * falls upon you." is not shown until "Analyze throne?" flushes). */
         const _loneStatusPaint = _ownFlushPf && i === _pages.length - 1
             && _sv?.lone ? (_sv.botl || null) : null;
-        const _ownStatusLive = _ownFlushPf && i === _pages.length - 1
-            && _pages[i].length < 80 && !_loneStatusPaint;
+        /* Only a bot() that actually painted after that flush (eat.c:3507's
+         * after the hunger message) moves the physical status; a botl merely
+         * flagged since (dismount_steed's float_down, steed.c:813) is not
+         * shown until the prompt's own flush, after tty's more()
+         * (topl.c:390-392), so the page keeps its pline's status. */
+        const _ownStatusLive = _ownFlushPf && _pf && i === _pages.length - 1
+            && _pages[i].length < 80 && !_loneStatusPaint
+            && (!_pf || _pf.botlSeq === undefined || (_pf.botlSeq | 0) !== (g._botlPaintSeq | 0));
         /* C topl.c:274,390-392: a standing joined line keeps its last pline's
          * map, but a later bot() replaces the physical status before more().
          * The within-page frame above is that line's OWN flush, not the
@@ -10539,11 +10768,11 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
                 const _p = _messages[j];
                 if (!_p) continue;
                 if (_buf.length + 2 + _p.length < TOPL_LIMIT) _buf = _buf + '  ' + _p;
-                else { putmsghistory(_buf); _buf = _p; } /* topl.c:289 remember_topl() */
+                else { _msg_history_arr().push(_buf); _buf = _p; } /* topl.c:289 remember_topl() */
             }
             /* The history's last entry tracks gt.toplines while WIN_STOP holds
              * (see pline()'s WIN_STOP arm); the painted owner is not re-filed. */
-            putmsghistory(_buf);
+            _msg_history_arr().push(_buf);
             g._topl_history_recall = _owner;
             g._topl_win_stop_armed = false;
             g._topl_win_stop = true;
@@ -11248,9 +11477,9 @@ async function _flush_screen_body(mode, repaint = true) {
                         const _m = remainder.slice(_i === 0 ? 0 : _js[_i - 1] + 2, _e);
                         if (_buf === null) _buf = _m;
                         else if (_buf.length + 2 + _m.length < TOPL_LIMIT) _buf += '  ' + _m;
-                        else { putmsghistory(_buf); _buf = _m; }
+                        else { _msg_history_arr().push(_buf); _buf = _m; }
                     }
-                    if (_buf) putmsghistory(_buf);
+                    if (_buf) _msg_history_arr().push(_buf);
                 }
                 const _newRem = remainder.slice(_rel);
                 const _newJoins = (remainderJoins || [])
@@ -11295,14 +11524,14 @@ async function _flush_screen_body(mode, repaint = true) {
                     } else {
                         /* nhgetch already filed a wrapped page. C's
                          * remember_topl (:280) stores it only once. */
-                        if (_wsBuf && !_wsRemembered) putmsghistory(_wsBuf);
+                        if (_wsBuf && !_wsRemembered) _msg_history_arr().push(_wsBuf);
                         _wsBuf = _m;
                         _wsRemembered = false;
                     }
                 }
                 /* History's last entry tracks gt.toplines under WIN_STOP (see
                  * pline()); the painted owner is not filed again by nhgetch. */
-                if (_wsBuf && !_wsRemembered) putmsghistory(_wsBuf);
+                if (_wsBuf && !_wsRemembered) _msg_history_arr().push(_wsBuf);
                 game._topl_history_recall = game._pending_message;
                 game._topl_win_stop_buf = _wsBuf;
             }
@@ -11722,7 +11951,9 @@ export function status_reassess() {
 //      quest synopsis; the bracketed "[<deity> has chosen you...]" line is added
 //      to history but never shown on the topline).
 //
-// Append-only; consumed only by ^P.  This never alters any rendered screen.
+// Inserting history also acknowledges a standing NEED_MORE topline without
+// erasing its physical text (tty/topl.c:700-705).
+// History insertion also acknowledges a standing message (topl.c:702-709).
 function _msg_history_arr() {
     if (!game._msg_history)
         game._msg_history = [];
@@ -11732,6 +11963,40 @@ export function putmsghistory(msg, _restoring) {
     if (msg == null)
         return;
     const text = String(msg);
+    /* C topl.c:700-709: NEED_MORE becomes NON_EMPTY before remember_topl().
+     * A subsequent pline replaces that physical line without joining or
+     * paging it. Keep its paint separately from the deferred message queue. */
+    if (game._topl_unacknowledged) {
+        restore_command_topline();
+        const live = String(game._pending_message || '');
+        if (live) {
+            _msg_history_arr().push(live);
+            game._topl_sticky = live;
+        }
+        game._pending_message = '';
+        game._topl_unacknowledged = false;
+        game._topl_force_breaks = null;
+    }
+    /* C tty_putmsghistory(), topl.c:702-709: NEED_MORE becomes NON_EMPTY
+     * before remember_topl() replaces gt.toplines with the history-only text.
+     * Keep the painted line, but retire it from the join/page channels so the
+     * next pline replaces it.  Quest synopses reach here after docrt() has
+     * announced newly visible monsters (vision.c:856). */
+    const standing = game._pending_message || game._resultMessage;
+    if (standing) {
+        if (game._topl_history_recall !== standing)
+            _msg_history_arr().push(String(standing));
+        game._topl_sticky = String(standing);
+        game._pending_message = '';
+        game._resultMessage = null;
+        game._resultMessageJoins = null;
+        game._toplResultSnapshot = null;
+        game._topl_joins = [];
+        game._topl_joins_src = '';
+        game._topl_unacknowledged = false;
+    }
+    if (game._topl_win_stop)
+        game._topl_win_stop_buf = text;
     // C topl.c:677-715: remember_topl() stores every nonempty topline,
     // including consecutive identical messages (topl.c:170-191).
     _msg_history_arr().push(text);
@@ -11911,7 +12176,8 @@ async function _pline_body(msg, alreadyFlushed, putmesg = null, ...args) {
         game._occ_committed_topl = null;
     }
     else if (game.occupation == null && game._occ_committed_topl?.postMeal
-        && (game._inMovemonBlock || game._inDosounds) && !game._pending_message && !game._resultMessage) {
+        && (game._inMovemonBlock || game._inDosounds || game._inNhTimeout)
+        && !game._pending_message && !game._resultMessage) {
         game._pending_message = game._occ_committed_topl.text;
         game._occ_committed_topl = null;
     }
@@ -12525,7 +12791,7 @@ function _last_changed_gnew_cursor() {
             const loc = lev.at(x, y);
             if (!loc || loc.disp_flush_epoch !== _flush_epoch) continue;
             const a = loc.disp_flushed_cell, b = _buffered_capture_cell(loc);
-            if (!a || a.ch !== b.ch || a.color !== b.color
+            if (!a || loc.disp_gnew_epoch === _flush_epoch || a.ch !== b.ch || a.color !== b.color
                 || !!a.dec !== !!b.dec || (a.attr | 0) !== (b.attr | 0))
                 return [x, y + 1];
         }
@@ -13563,7 +13829,12 @@ function cmap_to_glyph_disp(sym) {
     const cell = _cmap_to_glyph_disp_base(sym);
     if (cell && blank_symbols()) return { ...cell, ch: ' ', dec: false };
     if (cell && rogue_ibm_terrain()) {
-        const symbol = rogue_showsyms()[sym | 0];
+        /* C display.c:1850-1853 aliases S_darkroom in the active showsyms
+         * table, including on Rogue levels. Keep the original cmap for
+         * cmap_to_roguecolor: S_darkroom stays uncolored (display.c:2713). */
+        const symidx = sym === S_DARKROOM_C && !game._symsetDarkroomPending
+            ? (_darkroom_alias_blank() ? SYM_OFFSETS.X : S_ROOM_C) : sym;
+        const symbol = rogue_showsyms()[symidx | 0];
         if (symbol)
             return { ...cell, ch: String.fromCharCode(symbol & 0x7f),
                      color: _cmap_to_roguecolor(sym | 0), dec: false };
@@ -14578,6 +14849,14 @@ export function recorder_time_from_yyyymmddhhmmss(buf) {
     const y = number(0, 4), m = number(4, 6) - 1, day = number(6, 8);
     const h = number(8, 10), min = number(10, 12), s = number(12, 14);
     const utcApprox = Date.UTC(y, m, day, h, min, s) / 1000;
+    for (const offset of [-4, -5]) {
+        const t = utcApprox - offset * 3600;
+        const lt = recorder_localtime(t);
+        if (lt && lt.tm_year + 1900 === y && lt.tm_mon === m && lt.tm_mday === day &&
+            lt.tm_hour === h && lt.tm_min === min && lt.tm_sec === s) {
+            return t;
+        }
+    }
     const result = utcApprox - (-4 * 3600);
     return Number.isFinite(result) && result !== -1 ? result : 0;
 }

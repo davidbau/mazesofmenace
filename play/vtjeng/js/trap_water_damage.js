@@ -19,8 +19,6 @@ import {
     ER_GREASED,
     ER_NOTHING,
     Has_contents,
-    HALLUC,
-    HALLUC_RES,
     OBJ_INVENT,
     OBJ_MINVENT,
     plur,
@@ -72,23 +70,15 @@ import {
 import { erode_obj } from './trap_erode_obj.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { note_unported } from './unported.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { ttyPline } from './tty_message.js';
 import { cansee, couldsee } from './vision.js';
 import { destroy_strings } from './zap_destroy_items.js';
 import { youSee } from './pline.js';
 import { wet_a_towel } from './weapon.js';
 import { blank_novel } from './zap.js';
+import { Blind, Hallucination } from './youprop.js';
 
-function propertyActive(hero, property) {
-    const value = hero?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
-function heroHallucinating(state) {
-    return propertyActive(state.u, HALLUC)
-        && !propertyActive(state.u, HALLUC_RES);
-}
 
 function containerIsWaterproof(obj, objects) {
     return obj.otyp === objects.OILSKIN_SACK
@@ -127,7 +117,7 @@ export async function pot_acid_damage(obj, inInvent, described, rawEnv = {}) {
     let exploded = false;
     const acidContext = state.ga?.acid_ctx;
 
-    if (heroIsBlind(state) && !inInvent) obj.dknown = 0;
+    if (Blind(state.u) && !inInvent) obj.dknown = 0;
     if (acidContext?.ctx_valid) {
         exploded = Boolean(
             obj.dknown ? acidContext.dkn_boom : acidContext.unk_boom,
@@ -224,7 +214,7 @@ function waterOperation(env, name, fallback) {
 }
 
 function floorFireVisible(x, y, state) {
-    return !heroIsBlind(state) && couldsee(x, y, state);
+    return !Blind(state.u) && couldsee(x, y, state);
 }
 
 function fireChance(obj, force, state, random, chance) {
@@ -512,20 +502,20 @@ export async function water_damage(obj, description, force, env = {}) {
                 state,
             );
             state.gm ??= {};
-            state.gm.mentioned_water = !heroHallucinating(state);
+            state.gm.mentioned_water = !Hallucination(state.u);
         }
         await damageContents(obj, env);
         return ER_DAMAGED;
     }
     if (isContainer(obj) && containerIsWaterproof(obj, objects)) {
-        if (in_invent && !heroIsBlind(state) && !state.u?.uinwater) {
+        if (in_invent && !Blind(state.u) && !state.u?.uinwater) {
             await message(
                 `The ${hliquid('water', { ...env, state })}`
                     + ` cannot get into your ${description}.`,
                 state,
             );
             state.gm ??= {};
-            state.gm.mentioned_water = !heroHallucinating(state);
+            state.gm.mentioned_water = !Hallucination(state.u);
             const makeKnown = env.makeKnown ?? env.makeknown;
             if (typeof makeKnown === 'function') {
                 await makeKnown(obj.otyp, state, env);

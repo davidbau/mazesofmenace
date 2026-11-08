@@ -22,7 +22,6 @@ import {
     XKILL_NOCORPSE,
     COLD_RES,
     CONFLICT,
-    DEAF,
     ERODE_CORRODE,
     ERODE_BURN,
     ERODE_NONE,
@@ -198,7 +197,7 @@ import { ART_SNICKERSNEE, ART_TROLLSBANE } from './artifacts.js';
 import { objectType } from './obj.js';
 import { IRON, METAL, SILVER, WAND_CLASS } from './objects.js';
 import { makeplural } from './fruit.js';
-import { heroUnaware, pline_mon } from './pline.js';
+import { pline_mon, youFeel } from './pline.js';
 import { coreRandom } from './rng.js';
 
 import {
@@ -238,7 +237,7 @@ import { mintrap } from './trap_effects.js';
 import { acid_damage, erode_obj } from './trap_erode_obj.js';
 import { simpleonames, xnameFresh } from './objnam.js';
 import { strsubst } from './hacklib.js';
-import { heroIsBlind } from './startup_a11y.js';
+import { Blind, Deaf, Unaware } from './youprop.js';
 
 // C ref: mhitm.c attk_protection() (1475-1518). Return the worn-item mask
 // that protects a target from the attack type. This is a pure source helper;
@@ -364,16 +363,6 @@ function Conflict(state) {
     return Boolean(conflict?.intrinsic || conflict?.extrinsic);
 }
 
-// C ref: youprop.h:125 Deaf, `HDeaf || EDeaf || u.uroleplay.deaf`. Three
-// disjuncts and no blocking term: the third is the deaf conduct, which only
-// `OPTIONS=roleplay:deaf` sets and nothing clears. js/dothrow.js, js/sit.js
-// and js/sounds.js each keep their own copy of this one-line macro beside the
-// call that reads it, as C does.
-function Deaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(deafness?.intrinsic || deafness?.extrinsic
-        || state.u?.uroleplay?.deaf);
-}
 
 // C ref: mhitm.c noises() (26-38). What the hero hears when a fight he cannot
 // see happens near enough. gf.far_noise and gn.noisetime rate-limit the line
@@ -399,7 +388,7 @@ async function noises(magr, mattk, env) {
     state.gf.far_noise ??= false;
     state.gn ??= {};
     state.gn.noisetime ??= 0;
-    if (!Deaf(state)
+    if (!Deaf(state.u)
         && (farq !== state.gf.far_noise
             || state.moves - state.gn.noisetime > 10)) {
         state.gf.far_noise = farq;
@@ -770,7 +759,7 @@ export async function mattackm(magr, mdef, rawEnv = {}) {
             : (x, y) => newsym(x, y)))(mdef.mx, mdef.my);
         if (canseemon(mdef, state) && !sensemon(mdef, state)) {
             const message = requireAttackOperation(env, 'message');
-            if (heroUnaware(state)) {
+            if (Unaware(state)) {
                 const justone = Boolean(mdef.data.geno & G_UNIQ);
                 let montype = noname_monnam(
                     mdef,
@@ -1004,7 +993,7 @@ export async function mattackm(magr, mdef, rawEnv = {}) {
         case AT_BREA:
         case AT_SPIT:
             /* Ranged attacks aren't allowed at point blank range. */
-            if (!monnear(magr, mdef.mx, mdef.my)) {
+            if (!monnear(magr, mdef.mx, mdef.my, state)) {
                 const mmtmp = ((mattk.aatyp === AT_BREA)
                              ? await breamm(magr, mattk, mdef, env)
                              : await spitmm(magr, mattk, mdef, env));
@@ -1404,7 +1393,7 @@ export async function rustm(mdef, obj, state = game, env = {}) {
 // attack when verbose output is enabled; mswings_verb() owns its source RNG.
 async function mswingsm(magr, mdef, otemp, env) {
     const { state, random } = env;
-    if (!state.flags.verbose || heroIsBlind(state)
+    if (!state.flags.verbose || Blind(state.u)
         || !mon_visible(magr, state)) return;
 
     const bash = is_pole(otemp, state)
@@ -1691,10 +1680,10 @@ export async function mon_poly(magr, mdef, damage, state = game, rawEnv = {}) {
                 await message('You are subjected to a freakish metamorphosis.', state);
                 await polyself(POLY_NOFLAGS, state);
             } else if (state.u.umonnum !== state.u.ulycn) {
-                await message('You feel an unnatural urge coming on.', state);
+                await message(youFeel('an unnatural urge coming on.', state), state);
                 await you_were(state, env);
             } else {
-                await message('You feel a natural urge coming on.', state);
+                await message(youFeel('a natural urge coming on.', state), state);
                 await you_unwere(false, state, env);
             }
             damage = 0;

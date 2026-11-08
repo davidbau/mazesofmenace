@@ -1071,7 +1071,15 @@ export function faithful_input_redraw() {
 /* C timeout.c nh_timeout() — a module-level function, not a closure built on
  * the first faithful turn, so a hand-rolled wield-turn (cmd.js doapply) that
  * is the game's FIRST turn still counts every timed property down. */
+/* C allmain.c:273 nh_timeout() runs outside movemon: its plines (timeout.c:947
+ * run_timers -> rot_corpse) still meet a standing done_eating topline (topl.c:257). */
 async function nh_timeout_turn() {
+    const g = game;
+    const was = g._inNhTimeout;
+    g._inNhTimeout = true;
+    try { return await nh_timeout_turn_body(); } finally { g._inNhTimeout = was; }
+}
+async function nh_timeout_turn_body() {
     const g = game;
     // C allmain.c:271-273: slipping precedes even the invulnerable
     // early return inside nh_timeout().
@@ -4213,6 +4221,12 @@ async function moveloop_core_faithful() {
             // svm.moves++ inside) BEFORE the occupation callback (the C trace shows
             // head(turn N) → forcelock rn2(100) → movemon within each turn).
             await faithful_moveloop_turn();
+            // C allmain.c:453-483: every invocation redraws and paints status
+            // after the world block, even when that block stopped the occupation.
+            find_ac();
+            faithful_input_redraw();
+            await moveloop_status_paint();
+            g.context.move = 1;
             // C allmain.c:493-556 — the head world block may itself have interrupted
             // the force (dochugw -> stop_occupation, monmove.c:223-235, "You stop
             // forcing the lock."): C then falls through to rhack with NO forcelock()
@@ -4277,7 +4291,13 @@ async function moveloop_core_faithful() {
         const _res0 = g._resultMessage ?? null;
         const _pend0 = g._pending_message || '';
         const _pendJoins0 = _topl_joins_snapshot(_pend0);
-        if (!forceInterrupted) await faithful_moveloop_turn();
+        if (!forceInterrupted) {
+            await faithful_moveloop_turn();
+            find_ac();
+            faithful_input_redraw();
+        }
+        // This invocation resumes at rhack; its redraw tail has already run.
+        g._ff_input_tail_done = true;
         let _postTail = '';
         let _postJoins = null;
         {
@@ -4730,6 +4750,10 @@ async function moveloop_core_faithful() {
                  * invocation, which stands for the rest of this C call, must
                  * not run it again before rhack. */
                 g._ff_input_tail_done = true;
+                /* Likewise this C call's allmain.c:197 sanity_check() already ran
+                 * at the top of this iteration; the next JS invocation is its
+                 * rhack tail and must not sanity-check again before the key. */
+                g._ff_sanity_done = true;
                 break;
             }
             // C allmain.c:485 — (*go.occupation)(); 0 ends the occupation.
@@ -5423,7 +5447,9 @@ async function moveloop_core_impl() {
     // C allmain.c:197-198 / wizcmds.c:1460-1480: sanity-check envelope.
     // Only the ball checker is ported here; the other subsystem checks remain
     // unported. Preserve the skip flag and diagnostic context around this one.
-    if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
+    if (g._ff_sanity_done) {
+        g._ff_sanity_done = false;
+    } else if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
         if (g.iflags.sanity_no_check) {
             g.iflags.sanity_no_check = false;
         } else {

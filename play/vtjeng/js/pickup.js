@@ -24,7 +24,6 @@ import {
     BUC_UNCURSED,
     BUC_UNKNOWN,
     BUCX_TYPES,
-    BLINDED,
     BY_NEXTHERE,
     BILLED_TYPES,
     WORN_TYPES,
@@ -39,8 +38,6 @@ import {
     CQ_CANNED,
     EXT_ENCUMBER,
     FOOT,
-    HALLUC,
-    Maybe_Half_Phys,
     IS_ALTAR,
     IS_THRONE,
     T_LOOTED,
@@ -301,6 +298,9 @@ import {
     start_corpse_timeout, start_glob_timeout, stop_timer,
 } from './timeout.js';
 import { get_mtraits } from './corpstat.js';
+import {
+    Blind, Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 const INCREASED_BURDEN_MESSAGES = Object.freeze([
     null,
@@ -364,17 +364,12 @@ export class UnsupportedPickupError extends Error {
     }
 }
 
-function heroIsBlind(state) {
-    const blindness = state.u?.uprops?.[BLINDED];
-    return Boolean((blindness?.intrinsic || blindness?.extrinsic)
-        && !blindness?.blocked);
-}
 
 // C ref: pickup.c pickup_object()'s sight-gated observe_object() call. Keep
 // this source boundary independently testable because later object naming can
 // also set dknown and would otherwise mask a wrong early Blind predicate.
 export function observe_pickup_object(obj, state = game) {
-    if (!heroIsBlind(state)) observe_object(obj, state);
+    if (!Blind(state.u)) observe_object(obj, state);
     return obj;
 }
 
@@ -1059,7 +1054,7 @@ function preflightPickupObjects(selected, state) {
     const computedPlans = preflight_addinv_sequence(
         actionable.map(({ obj }) => obj),
         env,
-        { observeObjects: !heroIsBlind(state) },
+        { observeObjects: !Blind(state.u) },
     );
     const addPlans = [];
     let planIndex = 0;
@@ -1837,7 +1832,7 @@ async function able_to_loot(x, y, looting, state) {
         || is_lava(x, y, state)) {
         await ttyPline(
             `You cannot ${verb} things that are deep in the `
-            + `${hliquid(is_lava(x, y, state) ? 'lava' : 'water')}.`,
+            + `${hliquid(is_lava(x, y, state) ? 'lava' : 'water', { state })}.`,
             state,
         );
         return false;
@@ -2052,9 +2047,7 @@ export async function observe_quantum_cat(box, makecat, givemsg, rawEnv = {}) {
     } else {
         box.spe = 0;
         if (givemsg) {
-            const catName = (state.u?.uprops?.[HALLUC]?.intrinsic
-                && !(state.u?.uprops?.[HALLUC + 1]?.intrinsic
-                    || state.u?.uprops?.[HALLUC + 1]?.extrinsic))
+            const catName = Hallucination(state.u)
                 ? rndmonnam({ state }) : 'housecat';
             await ttyPline(
                 `The ${catName} inside the box is dead!`,
@@ -2225,7 +2218,7 @@ export async function use_container(obj, held, more_containers, state) {
         return ECMD_OK;
     } else if (obj.otrapped) {
         if (held)
-            await ttyPline(`You open ${the(xnameFresh(obj, state))}...`, state);
+            await ttyPline(`You open ${the(xnameFresh(obj, state), state)}...`, state);
         await chest_trap(obj, HAND, false, state);
         // Even if the trap fails, you've used up this turn.
         if ((state.multi ?? 0) >= 0) {
@@ -2537,7 +2530,7 @@ async function mbag_item_gone(held, item, silent, state) {
             );
         } else {
             await ttyPline(
-                `You ${heroIsBlind(state) ? 'notice' : 'see'} `
+                `You ${Blind(state.u) ? 'notice' : 'see'} `
                 + `${donameFresh(item, state)} disappear!`,
                 state,
             );
@@ -3081,7 +3074,7 @@ async function in_container(obj, state) {
         // Prohibit Amulets in containers; if you allow it, monsters can't
         // steal them.  Ditto for the Candelabrum, the Bell and the Book.
         await ttyPline(
-            `${The(xnameFresh(obj, state))} cannot be confined in such`
+            `${The(xnameFresh(obj, state), state)} cannot be confined in such`
             + ' trappings.', state);
         return 0;
     } else if (obj.otyp === LEASH && obj.leashmon !== 0) {
@@ -3110,8 +3103,8 @@ async function in_container(obj, state) {
     if (obj.otyp === ICE_BOX || isBox(obj) || obj.otyp === BOULDER
         || (obj.otyp === STATUE
             && bigmonst(state.mons[obj.corpsenm]))) {
-        const objName = the(xnameFresh(obj, state));
-        const contName = the(xnameFresh(state.gc.current_container, state));
+        const objName = the(xnameFresh(obj, state), state);
+        const contName = the(xnameFresh(state.gc.current_container, state), state);
         await ttyPline(
             `You cannot fit ${objName} into ${contName}.`, state);
         return 0;
@@ -3224,7 +3217,7 @@ async function in_container(obj, state) {
 
     // gc.current_container is intact unless the source explosion path above
     // consumed it.
-    const contName = the(xnameFresh(state.gc.current_container, state));
+    const contName = the(xnameFresh(state.gc.current_container, state), state);
     await ttyPline(
         `You put ${donameFresh(obj, state)} into ${contName}.`, state);
 
@@ -3617,7 +3610,7 @@ async function doloot_core(state) {
 
         // pickup.c:2223-2235. Blind cockatrice corpse handling happens
         // before a container menu or interaction.
-        if (heroIsBlind(state) && !state.uarmg) {
+        if (Blind(state.u) && !state.uarmg) {
             for (let nobj = state.level.objects[cc.x][cc.y]; nobj;
                 nobj = nobj.nexthere) {
                 if (nobj.otyp === CORPSE
@@ -4257,8 +4250,8 @@ async function tipcontainer(box, state) {
             `You owe ${loss} ${currency(loss, state)} for lost merchandise.`,
             state,
         );
-    box.owt = weight(box);
-    if (targetbox) targetbox.owt = weight(targetbox);
+    box.owt = weight(box, { state });
+    if (targetbox) targetbox.owt = weight(targetbox, { state });
     if (srcheld || dstheld) await encumber_msg(state);
     if (srcheld || dstheld) update_inventory({ state });
 }

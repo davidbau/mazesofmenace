@@ -9,7 +9,6 @@ import {
     ACID_RES,
     ANTIMAGIC,
     COLD_RES,
-    DEAF,
     DISINT_RES,
     DISP_BEAM,
     DISP_CHANGE,
@@ -21,9 +20,6 @@ import {
     EXPL_NOXIOUS,
     EXPL_WET,
     FIRE_RES,
-    Maybe_Half_Phys,
-    HALLUC,
-    HALLUC_RES,
     INVULNERABLE,
     IS_SINK,
     LARGEST_INT,
@@ -204,6 +200,7 @@ import { note_unported } from './unported.js';
 import { unpunish as removePunishment } from './read.js';
 import { S_expl_tl } from './symbols.js';
 import { canspotmon } from './display.js';
+import { Deaf, Hallucination, Maybe_Half_Phys } from './youprop.js';
 
 // Note: C's table is column first while the screen is row first.  These are
 // the cmap indices for S_expl_tl through S_expl_br in C's explosion[3][3].
@@ -256,14 +253,7 @@ function propertyActive(state, property) {
     return Boolean(value?.intrinsic || value?.extrinsic);
 }
 
-function hallucination(state) {
-    return propertyActive(state, HALLUC)
-        && !propertyActive(state, HALLUC_RES);
-}
 
-function deaf(state) {
-    return propertyActive(state, DEAF) || Boolean(state.u?.uroleplay?.deaf);
-}
 
 function monsterResists(monster, adtyp, olet, state) {
     switch (adtyp) {
@@ -484,7 +474,7 @@ export async function explode(
 
     if (olet === MON_EXPLODE && type < 0) {
         str = state.killer?.name ?? '';
-        doHallu = hallucination(state)
+        doHallu = Hallucination(state.u)
             && (str.includes("'s explosion") || str.includes("s' explosion"));
     }
 
@@ -577,7 +567,7 @@ export async function explode(
             str = 'explosion';
             generic = true;
         }
-        if (!deaf(state) && olet !== SCROLL_CLASS) {
+        if (!Deaf(state.u) && olet !== SCROLL_CLASS) {
             note_unported('sound.c Soundeffect');
             const heard = youHear('a blast.', state);
             if (heard) await messageLine(heard, state, env);
@@ -585,7 +575,7 @@ export async function explode(
         }
     }
 
-    if (!deaf(state) && !didmsg) await messageLine('Boom!', state, env);
+    if (!Deaf(state.u) && !didmsg) await messageLine('Boom!', state, env);
 
     if (dam) {
         for (let i = 0; i < 3; i++) {
@@ -841,7 +831,7 @@ export async function mon_explodes(mon, mattk, state = game, rawEnv = {}) {
     }
     if (mon.mhp > 0) await mondead(mon, state, env);
     state.killer ??= { name: '', format: KILLED_BY };
-    state.killer.name = `${s_suffix(mon_pmname(mon))} explosion`;
+    state.killer.name = `${s_suffix(mon_pmname(mon, state))} explosion`;
     state.killer.format = KILLED_BY_AN;
     await explode(mon.mx, mon.my, type, damage, MON_EXPLODE,
         adtyp_to_expltype(mattk.adtyp), state, env);

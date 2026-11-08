@@ -10,8 +10,6 @@ import {
     GETOBJ_EXCLUDE,
     GETOBJ_NOFLAGS,
     GETOBJ_SUGGEST,
-    HALLUC,
-    HALLUC_RES,
     LL_CONDUCT,
     MAXULEV,
 } from './const.js';
@@ -67,11 +65,11 @@ import {
     spe_GoingStale,
     spe_Unknown,
 } from './spell.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { ttyPline } from './tty_message.js';
 import { livelog_printf } from './pline.js';
 import { getlin } from './windows.js';
 import { Glib } from './wield.js';
+import { Blind, Hallucination } from './youprop.js';
 
 // C ref: write.c cost() (12-57). Returns the base ink cost for a scroll or
 // spellbook type. The table values are copied verbatim from the C source.
@@ -167,7 +165,7 @@ export async function dowrite(pen, state = game, env = {}) {
     const typeword = (paper.otyp === SPE_NOVEL) ? 'book'
         : (paper.oclass === SPBOOK_CLASS) ? 'spellbook'
             : 'scroll';
-    if (heroIsBlind(state)) {
+    if (Blind(state.u)) {
         if (!paper.dknown) {
             await ttyPline(
                 `You don't know whether that ${typeword} is blank or not.`,
@@ -312,7 +310,7 @@ export async function dowrite(pen, state = game, env = {}) {
         const fanfic = !rn2(3);
         const tearup = !rn2(3);
 
-        const halluc = heroHallucinating(state);
+        const halluc = Hallucination(state.u);
         if (!fanfic) {
             await ttyPline(
                 `You ${!tearup ? 'prepare' : 'try'}`
@@ -455,7 +453,7 @@ export async function dowrite(pen, state = game, env = {}) {
     }
     /* can write scrolls when blind, but requires luck too;
        attempts to write books when blind are caught above */
-    if (heroIsBlind(state) && rnl(3)) {
+    if (Blind(state.u) && rnl(3)) {
         /* writing while blind usually fails regardless of whether the
            target scroll is known */
         await ttyPline(
@@ -498,7 +496,7 @@ export async function dowrite(pen, state = game, env = {}) {
     const held = await hold_another_object(
         new_obj,
         'Oops!  %s out of your grasp!',
-        The(aobjnam(new_obj, 'slip', state)),
+        The(aobjnam(new_obj, 'slip', state), state),
         null,
         writeEnv(state),
     );
@@ -537,16 +535,5 @@ function writeEnv(state) {
     };
 }
 
-// C ref: apply.js heroHallucinating(), duplicated here to match the youprop.h
-// pattern each file replicates. Hallucination is the intrinsic timeout alone
-// minus resistance from either source.
-function heroHallucinating(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    if (!hallucination || !resistance)
-        throw new Error('Hallucination requires initialized u.uprops');
-    return Boolean(hallucination.intrinsic
-        && !(resistance.intrinsic || resistance.extrinsic));
-}
 
 /*write.js*/

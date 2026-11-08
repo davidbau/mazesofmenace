@@ -52,11 +52,7 @@ import {
     FROMOUTSIDE,
     FUMBLING,
     HEAD,
-    Half_physical_damage,
-    Maybe_Half_Phys,
     HALF_SPDAM,
-    HALLUC,
-    HALLUC_RES,
     HOLE,
     HURTLING,
     IS_STWALL,
@@ -95,7 +91,6 @@ import {
     RUST_TRAP,
     SLEEP_RES,
     STONE_RES,
-    SEE_INVIS,
     M_SEEN_SLEEP,
     SLP_GAS_TRAP,
     SPIKED_PIT,
@@ -354,7 +349,7 @@ import { encumber_msg } from './pickup.js';
 import { body_part, mbodypart, polyself } from './polyself.js';
 import { makeplural } from './fruit.js';
 import { coreRandom, rn2_on_display_rng } from './rng.js';
-import { heroIsBlind, messageAt } from './startup_a11y.js';
+import { messageAt } from './startup_a11y.js';
 import {
     Flying,
     Levitation,
@@ -382,7 +377,6 @@ import {
     tele_trap,
 } from './teleport.js';
 import { Fire_resistance, fracture_rock, poly_obj, resist } from './zap.js';
-import { Punished } from './steed.js';
 import { ttyPline } from './tty_message.js';
 import { burnarmor } from './trap_erode_obj.js';
 import { burn_floor_objects, destroy_items } from './zap_destroy_items.js';
@@ -416,6 +410,11 @@ import {
     water_damage_monster_equipment,
 } from './trap_water_damage.js';
 import { canseemon, canspotmon } from './display.js';
+import { Punished } from './steed.js';
+import {
+    Blind, Deaf, EInvis, HInvis, Half_physical_damage, Hallucination, Invis,
+    Maybe_Half_Phys, See_invisible,
+} from './youprop.js';
 
 // Effects receive the source owners through their caller's environment.
 // mintrap() supplies live defaults for state-only production callers; planning
@@ -604,10 +603,10 @@ async function trapeffect_sqky_board(monster, trap, trflags, env) {
         || (Flying(state) && (trflags & VIASITTING) !== 0);
     if (monster === state.youmonst) {
         if ((Levitation(state) || Flying(state)) && !forcetrap) {
-            if (!heroIsBlind(state)) {
+            if (!Blind(state.u)) {
                 seetrap(trap, env);
                 await message(
-                    Hallucination(state)
+                    Hallucination(state.u)
                         ? 'You notice a crease in the linoleum.'
                         : 'You notice a loose board below you.',
                     state,
@@ -618,7 +617,7 @@ async function trapeffect_sqky_board(monster, trap, trflags, env) {
         }
 
         seetrap(trap, env);
-        if (heroIsDeaf(state)) {
+        if (Deaf(state.u)) {
             await message('A board beneath you vibrates.', state, env);
         } else {
             await message(
@@ -639,7 +638,7 @@ async function trapeffect_sqky_board(monster, trap, trflags, env) {
     if (mInAir(monster, state)) return Trap_Effect_Finished;
     if (inSight) {
         const heroDeaf = requireTrapOperation(env, 'heroDeaf');
-        if (!heroDeaf(state)) {
+        if (!Deaf(state.u)) {
             await message(
                 messageAt(
                     `A board beneath ${monsterCommonName(monster, state)}`
@@ -764,7 +763,7 @@ async function trapeffect_arrow_trap(mtmp, trap, _trflags, env) {
             const placement = place_object(otmp, state.u.ux, state.u.uy, objectEnv);
             if (placement && typeof placement.then === 'function')
                 await placement;
-            if (!heroIsBlind(state)) observe_object(otmp, state);
+            if (!Blind(state.u)) observe_object(otmp, state);
             stackobj(otmp, objectEnv);
             newsym(state.u.ux, state.u.uy);
         }
@@ -995,7 +994,7 @@ async function trapeffect_dart_trap(mtmp, trap, _trflags, env) {
             const placement = place_object(otmp, state.u.ux, state.u.uy, { state });
             if (placement && typeof placement.then === 'function')
                 await placement;
-            if (!heroIsBlind(state))
+            if (!Blind(state.u))
                 observe_object(otmp, state);
             stackobj(otmp, { state });
             newsym(state.u.ux, state.u.uy);
@@ -1062,7 +1061,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags, env) {
     if (mtmp === state.youmonst) {
         if (trap.once && trap.tseen && !random.rn2(15)) {
             await message(
-                `A trap door in ${the(ceiling(state.u.ux, state.u.uy), state)}`
+                `A trap door in ${the(ceiling(state.u.ux, state.u.uy, state), state)}`
                     + ' opens, but nothing falls out!',
                 state,
                 env,
@@ -1081,7 +1080,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags, env) {
         const placement = place_object(otmp, state.u.ux, state.u.uy, objectEnv);
         if (placement && typeof placement.then === 'function') await placement;
         await message(
-            `A trap door in ${the(ceiling(state.u.ux, state.u.uy), state)}`
+            `A trap door in ${the(ceiling(state.u.ux, state.u.uy, state), state)}`
                 + ` opens and ${an(xnameFresh(otmp, state))} falls on your `
                 + `${body_part(HEAD, state.youmonst)}!`,
             state,
@@ -1118,7 +1117,7 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags, env) {
             await message('It passes harmlessly through you.', state, env);
             harmless = true;
         }
-        if (!heroIsBlind(state)) observe_object(otmp, state);
+        if (!Blind(state.u)) observe_object(otmp, state);
         stackobj(otmp, objectEnv);
         redraw(state.u.ux, state.u.uy);
 
@@ -1528,7 +1527,7 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
         let steedArticle = ARTICLE_THE;
         const steed = state.u.usteed;
 
-        if (steed && has_mgivenname(steed) && !Hallucination(state))
+        if (steed && has_mgivenname(steed) && !Hallucination(state.u))
             steedArticle = ARTICLE_NONE;
 
         // KMH -- You can't escape the Sokoban level traps.
@@ -1593,7 +1592,7 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
         // Wumpus reference. Is_qlocate() is on_level() against the quest's
         // locate level in this port; `trap.once` is C's one-shot latch.
         if (state.urole?.mnum === PM_RANGER
-            && !trap.madeby_u && !trap.once && In_quest(state.u.uz)
+            && !trap.madeby_u && !trap.once && In_quest(state.u.uz, state)
             && on_level(state.u.uz, state.qlocate_level)) {
             await message('Fortunately it has a bottom after all...', state, env);
             trap.once = true;
@@ -1757,15 +1756,6 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
         : mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-// C ref: youprop.h:119-120 Hallucination, the bare HALLUC intrinsic minus
-// either form of Halluc_resistance. Each file that reads this property defines
-// its own copy; see js/pray.js and js/zap.js.
-function Hallucination(state) {
-    const halluc = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(halluc?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // C ref: trap.c domagictrap() (4317-4451). Called from the hero arm of
 // trapeffect_magic_trap() when the 1/30 explosion did not fire.
@@ -1779,19 +1769,6 @@ function Hallucination(state) {
 //   fate 19: increase charisma and tame nearby monsters.
 //   fate 20: uncurse items through read.c:seffects(SPE_REMOVE_CURSE).
 
-// C ref: youprop.h:198 Invis, the intrinsic or extrinsic invisibility source
-// minus its block; :152 See_invisible has no block term. Each C file spells
-// these macros out beside its callers, so domagictrap keeps local copies.
-function Invis(state) {
-    const property = state.u?.uprops?.[INVIS];
-    return Boolean((property?.intrinsic || property?.extrinsic)
-        && !property?.blocked);
-}
-
-function See_invisible(state) {
-    const property = state.u?.uprops?.[SEE_INVIS];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
 async function domagictrap(env) {
     const { state } = env;
@@ -1811,13 +1788,13 @@ async function domagictrap(env) {
                 'You are momentarily blinded by a flash of light!', state,
             );
             await make_blinded(random.rn1(5, 10), false, state, env);
-            if (!heroIsBlind(state))
+            if (!Blind(state.u))
                 await message(`Your ${vision_clears}`, state);
-        } else if (!heroIsBlind(state)) {
+        } else if (!Blind(state.u)) {
             await message(plineYouSee('a flash of light!', state), state);
         }
 
-        if (!heroIsDeaf(state)) {
+        if (!Deaf(state.u)) {
             // Soundeffect(se_deafening_roar_atmospheric, 100) is a no-op
             // under the patched tty recorder build; You_hear() is observable.
             const heard = plineYouHear('a deafening roar!', state);
@@ -1857,29 +1834,28 @@ async function domagictrap(env) {
                 const heard = plineYouHear('a low hum.', state);
                 if (heard !== null) await message(heard, state);
             }
-            const invisProp = state.u.uprops[INVIS];
-            if (!Invis(state)) {
-                if (!heroIsBlind(state))
+            if (!Invis(state.u)) {
+                if (!Blind(state.u))
                     await self_invis_message(state, { message });
-            } else if (!invisProp.extrinsic
+            } else if (!EInvis(state.u)
                        && !pm_invisible(state.youmonst.data)) {
-                if (!heroIsBlind(state)) {
-                    if (!See_invisible(state))
+                if (!Blind(state.u)) {
+                    if (!See_invisible(state.u))
                         await message('You can see yourself again!', state);
                     else
                         await message("You can't see through yourself anymore.", state);
                 }
             } else {
                 await message(
-                    `You feel a little more ${invisProp.intrinsic
-                        ? 'obvious' : 'hidden'} now.`,
+                    plineYouFeel(`a little more ${HInvis(state.u)
+                        ? 'obvious' : 'hidden'} now.`, state),
                     state,
                 );
             }
             // C preserves any existing HInvis value only when it is false;
             // the true arm clears it before redraw.
-            invisProp.intrinsic = invisProp.intrinsic
-                ? 0 : invisProp.intrinsic | FROMOUTSIDE;
+            state.u.uprops[INVIS].intrinsic = HInvis(state.u)
+                ? 0 : HInvis(state.u) | FROMOUTSIDE;
             requireTrapOperation(env, 'redraw')(
                 state.u.ux,
                 state.u.uy,
@@ -1898,7 +1874,7 @@ async function domagictrap(env) {
         case 14:
             {
                 const heard = plineYouHear(
-                    Hallucination(state)
+                    Hallucination(state.u)
                         ? 'the moon howling at you.' : 'distant howling.',
                     state,
                 );
@@ -1908,15 +1884,15 @@ async function domagictrap(env) {
         case 15:
             if (on_level(state.u.uz, state.qstart_level))
                 await message(
-                    `You feel ${(state.flags.female || (Upolyd(state.u) && is_neuter(state.youmonst.data))) ? 'oddly ' : ''}like the prodigal son.`,
+                    plineYouFeel(`${(state.flags.female || (Upolyd(state.u) && is_neuter(state.youmonst.data))) ? 'oddly ' : ''}like the prodigal son.`, state),
                     state,
                 );
             else
                 await message(
                     `You suddenly yearn for ${
-                        Hallucination(state)
+                        Hallucination(state.u)
                             ? 'Cleveland'
-                            : (In_quest(state.u.uz) || at_dgn_entrance('The Quest', state))
+                            : (In_quest(state.u.uz, state) || at_dgn_entrance('The Quest', state))
                                   ? 'your nearby homeland'
                                   : 'your distant homeland'
                     }.`,
@@ -1928,12 +1904,12 @@ async function domagictrap(env) {
             break;
         case 17:
             await message(
-                `You ${Hallucination(state) ? 'smell hamburgers.' : 'smell charred flesh.'}`,
+                `You ${Hallucination(state.u) ? 'smell hamburgers.' : 'smell charred flesh.'}`,
                 state,
             );
             break;
         case 18:
-            await message('You feel tired.', state);
+            await message(plineYouFeel('tired.', state), state);
             break;
         /* very occasionally something nice happens. */
         case 19: /* tame nearby monsters */
@@ -2138,7 +2114,7 @@ export async function dofiretrap(box, rawEnv = {}) {
     const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, random, message };
     const u = state.u;
-    const seeIt = !heroIsBlind(state);
+    const seeIt = !Blind(state.u);
     const origDmg = random.d(2, 4);
     let num = origDmg;
     const towerOfFlame = 'tower of flame'; // trap.c:79 static const.
@@ -2249,7 +2225,7 @@ export async function dofiretrap(box, rawEnv = {}) {
     }
     // C's final ice check and melt_ice() use the hero's coordinates even
     // when dofiretrap() was entered from a trapped chest elsewhere.
-    if (is_ice(u.ux, u.uy)) {
+    if (is_ice(u.ux, u.uy, state)) {
         const { melt_ice } = await import('./zap.js');
         await melt_ice(u.ux, u.uy, null, state, env);
     }
@@ -2375,7 +2351,7 @@ async function trapeffect_fire_trap(mtmp, trap, _trflags, env) {
         && dist2(tx, ty, state.u.ux, state.u.uy) <= 3 * 3) {
         await message('You smell smoke.', state, env);
     }
-    if (is_ice(tx, ty)) {
+    if (is_ice(tx, ty, state)) {
         const { melt_ice } = await import('./zap.js');
         await melt_ice(tx, ty, null, state, env);
     }
@@ -2485,9 +2461,9 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
                 damage = Math.trunc((damage + 3) / 4);
 
             await message(
-                damage >= hp ? 'You feel unbearably torpid!'
-                    : damage >= Math.trunc(hp / 4) ? 'You feel very lethargic.'
-                        : 'You feel sluggish.',
+                damage >= hp ? plineYouFeel('unbearably torpid!', state)
+                    : damage >= Math.trunc(hp / 4) ? plineYouFeel('very lethargic.', state)
+                        : plineYouFeel('sluggish.', state),
                 state,
                 env,
             );
@@ -2731,7 +2707,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                     `${an(xnameFresh(singleobj, state))} start to roll.`,
                     state,
                 );
-            } else if (Hallucination(state)) {
+            } else if (Hallucination(state.u)) {
                 note_unported('sounds.c Soundeffect');
                 announcement = youHear('someone bowling.', state);
             } else {
@@ -2960,7 +2936,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                             'Suddenly the rolling boulder disappears!',
                             x, y, state,
                         ), state, env);
-                    } else if (!heroIsDeaf(state)) {
+                    } else if (!Deaf(state.u)) {
                         const heard = youHear(
                             'a rumbling stop abruptly.', state);
                         if (heard) await message(heard, state, env);
@@ -3075,7 +3051,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                 }
             } else if (IS_STWALL(typ) || IS_TREE(typ, state)) {
                 x2 = x; y2 = y; // object stops here
-                if (!heroIsDeaf(state))
+                if (!Deaf(state.u))
                     await message('Thump!');
                 await wake_nearto(x2, y2, 16, env);
                 break;
@@ -3106,7 +3082,7 @@ async function trapeffect_rolling_boulder_trap(monster, trap, _trflags, env) {
         let style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
 
         feeltrap(trap, env);
-        await message(`${!heroIsDeaf(state) ? 'Click!  ' : ''
+        await message(`${!Deaf(state.u) ? 'Click!  ' : ''
             }You trigger a rolling boulder trap!`, state);
         if (!await launch_obj(BOULDER, trap.launch.x, trap.launch.y,
                 trap.launch2.x, trap.launch2.y, style, state, env)) {
@@ -3130,7 +3106,7 @@ async function trapeffect_rolling_boulder_trap(monster, trap, _trflags, env) {
             if (inSight) {
                 await message(
                     messageAt(
-                        `${!heroIsDeaf(state) ? 'Click!  ' : ''}`
+                        `${!Deaf(state.u) ? 'Click!  ' : ''}`
                             + `${capitalizedMonsterName(monster, state)}`
                             + ` triggers ${trap.tseen
                                 ? 'a rolling boulder trap' : 'something'}.`,
@@ -3186,7 +3162,7 @@ async function trapeffect_poly_trap(mtmp, trap, trflags, env) {
         let verbbuf;
         const steed = state.u?.usteed;
         const steedArticle = steed && has_mgivenname(steed)
-            && !Hallucination(state) ? ARTICLE_NONE : ARTICLE_THE;
+            && !Hallucination(state.u) ? ARTICLE_NONE : ARTICLE_THE;
 
         seetrap(trap, env);
         if (viasitting) {
@@ -3217,13 +3193,13 @@ async function trapeffect_poly_trap(mtmp, trap, trflags, env) {
         } else if (antimagicTrapHero(state)
             || unchangingTrapHero(state)) {
             await shieldeff(state.u.ux, state.u.uy, state);
-            await message('You feel momentarily different.', state, env);
+            await message(plineYouFeel('momentarily different.', state), state, env);
         } else {
             // C explicitly discards steedintrap() and polyself()'s results.
             await steedintrap(trap, null, env);
             deltrap(trap, state);
             newsym(state.u.ux, state.u.uy);
-            await message('You feel a change coming over you.', state, env);
+            await message(plineYouFeel('a change coming over you.', state), state, env);
             await polyself(POLY_NOFLAGS, state);
         }
         return Trap_Effect_Finished;
@@ -3275,7 +3251,7 @@ export async function trapeffect_web(monster, trap, trflags, env) {
         const forcetrap = (trflags & (FORCETRAP | FAILEDUNTRAP)) !== 0;
         const viasitting = (trflags & VIASITTING) !== 0;
         const steed = state.u.usteed;
-        const steedArticle = steed && has_mgivenname(steed) && !Hallucination(state)
+        const steedArticle = steed && has_mgivenname(steed) && !Hallucination(state.u)
             ? ARTICLE_NONE : ARTICLE_THE;
 
         feeltrap(trap, env);
@@ -3309,7 +3285,7 @@ export async function trapeffect_web(monster, trap, trflags, env) {
             const { m_in_air } = await import('./mon.js');
             const { youHear } = await import('./monmove.js');
             const result = await mintrap(steed, trflags, {
-                ...env, mInAir: m_in_air, heroDeaf: heroIsDeaf, youHear,
+                ...env, mInAir: m_in_air, heroDeaf: (hookState) => Deaf(hookState.u), youHear,
             });
             if (result !== Trap_Effect_Finished) {
                 steed.mtrapped = false;
@@ -3411,14 +3387,6 @@ export async function trapeffect_web(monster, trap, trflags, env) {
     return monster.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-// Local helper: checks the Deaf property on the hero. youprop.h defines Deaf
-// as the intrinsic or the extrinsic of property index 16 (DEAF), plus
-// uroleplay.deaf.
-function heroIsDeaf(state) {
-    const deafProp = state.u?.uprops?.[DEAF];
-    return Boolean((deafProp?.intrinsic || deafProp?.extrinsic)
-        || state.u?.uroleplay?.deaf);
-}
 
 // C ref: mon.c mlifesaver() (2825-2836), in the rust-trap death message.
 // `monkilled()` owns the later life-saving operation; this read only selects
@@ -3909,7 +3877,7 @@ export async function trapeffect_landmine(mtmp, trap, trflags, rawEnv = {}) {
         requireTrapOperation(env, 'redraw')(mtmp.mx, mtmp.my);
         await message(
             messageAt(
-                `${heroDeaf(state) ? '' : 'KAABLAMM!!!  '}`
+                `${Deaf(state.u) ? '' : 'KAABLAMM!!!  '}`
                     + `${capitalizedMonsterName(mtmp, state, env)} triggers`
                     + ` ${a_your[Number(Boolean(trap.madeby_u))]} land mine!`,
                 mtmp.mx,
@@ -3920,7 +3888,7 @@ export async function trapeffect_landmine(mtmp, trap, trflags, rawEnv = {}) {
             env,
         );
     }
-    if (!inSight && !heroDeaf(state))
+    if (!inSight && !Deaf(state.u))
         await message('Kaablamm!  You hear an explosion in the distance!', state, env);
 
     await blow_up_landmine(trap, env);
@@ -3969,7 +3937,7 @@ async function trapeffect_vibrating_square(mtmp, trap, _trflags, env) {
 
     const inSight = canseemon(mtmp, state) || mtmp === state.u?.usteed;
     const seeIt = cansee(mtmp.mx, mtmp.my, state);
-    if (seeIt && !heroIsBlind(state)) {
+    if (seeIt && !Blind(state.u)) {
         seetrap(trap, env);
         if (inSight) {
             const monName = mon_nam(mtmp, state, env);
@@ -4242,7 +4210,7 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
     const env = {
         ...defaults,
         mInAir: m_in_air,
-        heroDeaf: heroIsDeaf,
+        heroDeaf: (hookState) => Deaf(hookState.u),
         youHear: plineYouHear,
         ...rawEnv,
         state,

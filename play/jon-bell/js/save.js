@@ -157,7 +157,12 @@ export function savefile_name(plname) {
 }
 
 export const NOT_SAVED = [
+    // C do_name.c:22-23: nextmbuf's storage is process-local static data.
+    '_mbufs',
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
+    // wintty.c:4349 tty_status_init: tty_status[][].valid is window-port
+    // process state; a restored process starts with every field invalid.
+    '_ttyStatusValid',
     // C decl.c:400-401 gh.hitmsg_mid/hitmsg_prev are process globals that
     // savegamestate() never writes; a restored process starts them 0/NULL.
     '_hitmsg_mid', '_hitmsg_prev_ai', '_hitmsg_prev_ao', '_hitmsg_prev_aatyp',
@@ -190,7 +195,7 @@ export const NOT_SAVED = [
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
     // C save.c:265-333 omits blstats; botl.c:1694,1759-1795 initializes
     // field values, colors and temporary highlight timers in each process.
-    '_blTemp', '_statusFieldColors', '_statusHilitesReset',
+    '_blTemp', '_statusFieldColors', '_statusHilitesReset', '_statusHiliteHeld',
     // botl.c:2784 status_hilite_add_threshold keeps rules in
     // blstats[].thresholds, which save.c never writes: a restored process has
     // only its config's hilite_status rules, not ones added from 'O'.
@@ -291,6 +296,17 @@ async function savegamestate() {
     state.__lights = lights_save_snapshot();
     state.__bubbles = bubbles_save_snapshot();
     state.vision_full_recalc = 0;
+    /* C save.c:326 save_msghistory() -> tty_getmsghistory(TRUE) ->
+     * msghistory_snapshot() -> topl.c:572 remember_topl(): the standing
+     * topline (dosave's "Saving...") is filed once before history is written. */
+    if (game._pending_message
+        && !(game._topl_suppress_history || game._topl_suppress_once)) {
+        let text = String(game._pending_message);
+        if (text.endsWith('--More--'))
+            text = text.slice(0, -8);
+        if (text.length > 0)
+            state._msg_history = [...(game._msg_history || []), text];
+    }
     return state;
 }
 

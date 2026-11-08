@@ -93,7 +93,6 @@ import {
     CONFLICT,
     CONFUSION,
     DEAF,
-    DETECT_MONSTERS,
     DISINT_RES,
     DISPLACED,
     DRAIN_RES,
@@ -118,9 +117,7 @@ import {
     G_GONE,
     GLIB,
     HALF_PHDAM,
-    Half_physical_damage,
     HALF_SPDAM,
-    HALLUC,
     HALLUC_RES,
     HANDED,
     HUNGER,
@@ -366,7 +363,6 @@ import { note_unported } from './unported.js';
 import { ATR_INVERSE, ATR_NONE } from './terminal.js';
 import { hidden_gold } from './vault.js';
 import { observable_depth } from './topten.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { find_mac, which_armor } from './worn.js';
 import {
     can_advance,
@@ -387,6 +383,14 @@ import { digests } from './dothrow.js';
 import { dxdy_to_dist_descr } from './getpos.js';
 import { item_what, u_adtyp_resistance_obj } from './zap.js';
 import { count_wsegs, wseg_at } from './worm.js';
+import {
+    BBlinded, BClairvoyant, BInvis, Blind, Blind_telepat, BlindedTimeout,
+    Blindfolded, Blindfolded_only, Blnd_resist, Clairvoyant, Deaf,
+    Detect_monsters, EBlinded, EClairvoyant, EInvis,
+    HBlinded, HClairvoyant, HDetect_monsters, HInvis, Half_physical_damage, Halluc_resistance,
+    Hallucination, Infravision, Invis, Searching, See_invisible,
+    Undead_warning, Warn_of_mon, Warning,
+} from './youprop.js';
 
 // C ref: insight.c trap_predicament() (233-270). The pager self-look
 // description and the status window share this source-owned wording. The
@@ -760,22 +764,22 @@ function background_enlightenment(final, state, lines) {
         + `${u.uhandedness === RIGHT_HANDED ? 'right' : 'left'}-handed`, '');
 
     /* dungeon level; ^X reveals more than the status line does */
-    if (In_endgame(u.uz)) {
+    if (In_endgame(u.uz, state)) {
         const egdepth = observable_depth(u.uz, state);
         const levelName = endgamelevelname(egdepth);
         buf = truncateByteString(`in the endgame, on the `
             + `${levelName.startsWith('Plane') ? 'Elemental ' : ''}`
             + levelName, BUFSZ - 1);
-    } else if (Is_knox_level(u.uz)) {
+    } else if (Is_knox_level(u.uz, state)) {
         /* this gives away the fact that the knox branch is only 1 level */
         buf = `on the ${state.dungeons[u.uz.dnum].dname} level`;
     } else {
         let dgnbuf = state.dungeons[u.uz.dnum].dname;
         if (dgnbuf.slice(0, 4).toLowerCase() === 'the ')
             dgnbuf = lowc(dgnbuf[0]) + dgnbuf.slice(1);
-        tmpbuf = `level ${In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz, state)}`;
-        if (Is_rogue_level(u.uz)) tmpbuf += ', a primitive area';
-        else if (Is_bigroom(u.uz) && !heroIsBlind(state))
+        tmpbuf = `level ${In_quest(u.uz, state) ? dunlev(u.uz) : depth(u.uz, state)}`;
+        if (Is_rogue_level(u.uz, state)) tmpbuf += ', a primitive area';
+        else if (Is_bigroom(u.uz, state) && !Blind(state.u))
             tmpbuf += ', a very big room';
         buf = truncateByteString(`in ${dgnbuf}, on ${tmpbuf}`, BUFSZ - 1);
     }
@@ -1178,7 +1182,7 @@ function weapon_insight(final, state, lines) {
 function walking_on_water(state, levitation, flying) {
     const { u } = state;
     return !u.uinwater && !levitation && !flying
-        && hasProperty(state, WWALKING) && !Is_waterlevel(u.uz)
+        && hasProperty(state, WWALKING) && !Is_waterlevel(u.uz, state)
         && is_pool_or_lava(u.ux, u.uy, state);
 }
 
@@ -1196,12 +1200,10 @@ function status_enlightenment(mode, final, state, lines) {
     const flying = active(FLYING)
         || Boolean(u.usteed && is_flyer(u.usteed.data));
     const actualFlying = flying && !B(FLYING);
-    const blind = active(BLINDED) && !B(BLINDED);
-    const blindfoldedOnly = Boolean(E(BLINDED)
-        && !(H(BLINDED) && !B(BLINDED)));
-    const hallucinating = Boolean(H(HALLUC)
-        && !(H(HALLUC_RES) || E(HALLUC_RES)));
-    const deaf = Boolean(H(DEAF) || E(DEAF) || u.uroleplay?.deaf);
+    const blind = Blind(u);
+    const blindfoldedOnly = Blindfolded_only(u);
+    const hallucinating = Hallucination(u);
+    const deaf = Deaf(u);
     const woundedLegs = Boolean(H(WOUNDED_LEGS) || E(WOUNDED_LEGS));
     const glib = Boolean(H(GLIB));
     const fumbling = Boolean(H(FUMBLING) || E(FUMBLING));
@@ -1302,12 +1304,12 @@ function status_enlightenment(mode, final, state, lines) {
     if (H(CONFUSION)) you_are(lines, final, 'confused', '');
     if (hallucinating) you_are(lines, final, 'hallucinating', '');
     if (blind) {
-        buf = ((H(BLINDED) & FROMOUTSIDE) ? 'permanently'
-            : (H(BLINDED) & FROMFORM) ? 'innately'
+        buf = ((HBlinded(u) & FROMOUTSIDE) ? 'permanently'
+            : (HBlinded(u) & FROMFORM) ? 'innately'
                 : blindfoldedOnly ? 'deliberately' : 'temporarily') + ' blind';
-        if (state.wizard && H(BLINDED) === (H(BLINDED) & TIMEOUT)
-            && !E(BLINDED))
-            buf += ' (' + (H(BLINDED) & TIMEOUT) + ')';
+        if (state.wizard && HBlinded(u) === (HBlinded(u) & TIMEOUT)
+            && !EBlinded(u))
+            buf += ' (' + (HBlinded(u) & TIMEOUT) + ')';
         const noEyes = !haseyes(state.youmonst?.data);
         you_are(lines, final, buf, noEyes ? '' : from_what(BLINDED, state));
     }
@@ -1465,15 +1467,15 @@ export async function attributes_enlightenment(final, state, lines) {
     const b = (index) => Number(prop(index).blocked ?? 0);
     const active = (index) => Boolean(h(index) || e(index));
     const activeUnblocked = (index) => Boolean(active(index) && !b(index));
-    const blind = Boolean((h(BLINDED) || e(BLINDED)) && !b(BLINDED));
-    const seeInvisible = active(SEE_INVIS);
-    const invisible = activeUnblocked(INVIS) && !seeInvisible;
+    const blind = Blind(u);
+    const seeInvisible = See_invisible(u);
+    const invisible = Invis(u) && !seeInvisible;
     const veryFast = Boolean((h(FAST) & ~INTRINSIC) || e(FAST));
-    const clairvoyant = activeUnblocked(CLAIRVOYANT);
+    const clairvoyant = Clairvoyant(u);
     const flying = Boolean((active(FLYING)
         || (u.usteed && is_flyer(u.usteed.data))) && !b(FLYING));
     const levitation = activeUnblocked(LEVITATION);
-    const walking = activeUnblocked(WWALKING) && !Is_waterlevel(u.uz);
+    const walking = activeUnblocked(WWALKING) && !Is_waterlevel(u.uz, state);
     const swimming = Boolean(active(SWIMMING)
         || (u.usteed && is_swimmer(u.usteed.data)));
     const breathlessHero = activeUnblocked(MAGICAL_BREATHING)
@@ -1574,42 +1576,42 @@ export async function attributes_enlightenment(final, state, lines) {
 
     // C ref: insight.c:1559-1561. Halluc_resistance is reported with the
     // source wording supplied by attrib.c from_what() in wizard mode.
-    if (hasProperty(state, HALLUC_RES))
+    if (Halluc_resistance(state.u))
         enl_msg(lines, final, You_, 'resist', 'resisted',
             ' hallucinations', from_what(HALLUC_RES, state));
     if (u.uedibility)
         you_can(lines, final, 'recognize detrimental food', '');
 
-    const blockedBlind = Boolean((h(BLINDED) || e(BLINDED)) && b(BLINDED));
-    if (blockedBlind && (h(BLINDED) || e(BLINDED)))
+    const blockedBlind = Boolean((HBlinded(u) || EBlinded(u)) && BBlinded(u));
+    if (blockedBlind && (HBlinded(u) || EBlinded(u)))
         you_can(lines, final, 'see', from_what(-BLINDED, state));
-    if (activeUnblocked(BLND_RES) && !blind)
+    if (Blnd_resist(u) && !blind)
         you_are(lines, final, 'not subject to light-induced blindness',
             from_what(BLND_RES, state));
     if (seeInvisible) {
         if (!blind)
             enl_msg(lines, final, You_, 'see', 'saw', ' invisible',
                 from_what(SEE_INVIS, state));
-        else if (!(h(BLINDED) & FROMOUTSIDE))
+        else if (!(HBlinded(u) & FROMOUTSIDE))
             enl_msg(lines, final, You_, 'will see', 'would have seen',
                 ' invisible when not blind', '');
         else
             enl_msg(lines, final, You_, 'would see', 'would have seen',
                 ' invisible if not blind', '');
     }
-    if (active(TELEPAT))
+    if (Blind_telepat(u))
         you_are(lines, final, 'telepathic', from_what(TELEPAT, state));
-    if (active(WARNING))
+    if (Warning(u))
         you_are(lines, final, 'warned', from_what(WARNING, state));
     const warntype = state.context?.warntype ?? {};
-    if (active(WARN_OF_MON) && warntype.obj) {
+    if (Warn_of_mon(u) && warntype.obj) {
         const objectWarning = (warntype.obj & M2_ORC) ? 'orcs'
             : (warntype.obj & M2_ELF) ? 'elves'
                 : (warntype.obj & M2_DEMON) ? 'demons' : 'something';
         you_are(lines, final, `aware of the presence of ${objectWarning}`,
             from_what(WARN_OF_MON, state));
     }
-    if (active(WARN_OF_MON) && warntype.polyd) {
+    if (Warn_of_mon(u) && warntype.polyd) {
         const mask = warntype.polyd;
         const polydWarning = (mask & (M2_HUMAN | M2_ELF))
             === (M2_HUMAN | M2_ELF) ? 'humans and elves'
@@ -1621,37 +1623,37 @@ export async function attributes_enlightenment(final, state, lines) {
     }
     const warnedSpecies = warntype.species ?? state.mons?.[
         warntype.speciesidx];
-    if (active(WARN_OF_MON) && warnedSpecies) {
+    if (Warn_of_mon(u) && warnedSpecies) {
         const speciesName = warnedSpecies.pmnames?.[NEUTRAL]
             ?? warnedSpecies.pmnames?.[2] ?? warnedSpecies.name ?? 'monster';
         you_are(lines, final,
             `aware of the presence of ${makeplural(speciesName)}`,
             from_what(WARN_OF_MON, state));
     }
-    if (active(WARN_UNDEAD))
+    if (Undead_warning(u))
         you_are(lines, final, 'warned of undead', from_what(WARN_UNDEAD, state));
 
     // C ref: insight.c:1612-1613. Searching is an intrinsic or extrinsic
     // property, and from_what() supplies its wizard-mode source wording.
-    if (hasProperty(state, SEARCHING))
+    if (Searching(state.u))
         you_have(lines, final, 'automatic searching',
             from_what(SEARCHING, state));
 
     if (clairvoyant) {
         you_are(lines, final, 'clairvoyant', from_what(CLAIRVOYANT, state));
-    } else if (b(CLAIRVOYANT) && active(CLAIRVOYANT)) {
+    } else if (BClairvoyant(u) && Boolean(HClairvoyant(u) || EClairvoyant(u))) {
         let source = from_what(-CLAIRVOYANT, state);
         source = strsubst(source, ' because of ', ' if not for ');
         enl_msg(lines, final, You_, 'could be', 'could have been',
             ' clairvoyant', source);
     }
-    if (hasProperty(state, INFRAVISION))
+    if (Infravision(state.u))
         you_have(lines, final, 'infravision', from_what(INFRAVISION, state));
 
-    if (active(DETECT_MONSTERS)) {
+    if (Detect_monsters(u)) {
         let description = 'sensing the presence of monsters';
-        if (state.wizard && (h(DETECT_MONSTERS) & TIMEOUT))
-            description += ` (${h(DETECT_MONSTERS) & TIMEOUT})`;
+        if (state.wizard && (HDetect_monsters(u) & TIMEOUT))
+            description += ` (${HDetect_monsters(u) & TIMEOUT})`;
         you_are(lines, final, description, '');
     }
     if (u.umconf) {
@@ -1675,9 +1677,9 @@ export async function attributes_enlightenment(final, state, lines) {
     }
     if (invisible)
         you_are(lines, final, 'invisible', from_what(INVIS, state));
-    else if (activeUnblocked(INVIS))
+    else if (Invis(u))
         you_are(lines, final, 'invisible to others', from_what(INVIS, state));
-    else if (b(INVIS) && active(INVIS))
+    else if (BInvis(u) && Boolean(HInvis(u) || EInvis(u)))
         you_are(lines, final, 'visible', from_what(-INVIS, state));
     if (active(DISPLACED))
         you_are(lines, final, 'displaced', from_what(DISPLACED, state));
@@ -3190,17 +3192,10 @@ export async function ustatusline(state = game) {
     if (properties[STRANGLED]?.intrinsic) info += ', being strangled';
     if (properties[VOMITING]?.intrinsic) info += ', nauseated';
     if (properties[CONFUSION]?.intrinsic) info += ', confused';
-    const blind = Boolean(
-        (properties[BLINDED]?.intrinsic || properties[BLINDED]?.extrinsic)
-        && !properties[BLINDED]?.blocked,
-    );
-    if (blind) {
+    if (Blind(u)) {
         info += ', blind';
         if (u.ucreamed) {
-            const blindedTimeout = Number(properties[BLINDED]?.intrinsic ?? 0)
-                & TIMEOUT;
-            const blindfolded = Boolean(properties[BLINDED]?.extrinsic);
-            if (u.ucreamed < blindedTimeout || blindfolded
+            if (u.ucreamed < BlindedTimeout(u) || Blindfolded(u)
                 || !haseyes(state.youmonst.data))
                 info += ', covered';
             info += ' by sticky goop';
@@ -3227,11 +3222,7 @@ export async function ustatusline(state = game) {
     if (u.uundetected) info += ', concealed';
     else if ((state.youmonst?.m_ap_type ?? M_AP_NOTHING) !== M_AP_NOTHING)
         info += ', disguised';
-    const invisible = Boolean(
-        (properties[INVIS]?.intrinsic || properties[INVIS]?.extrinsic)
-        && !properties[INVIS]?.blocked,
-    );
-    if (invisible) info += ', invisible';
+    if (Invis(u)) info += ', invisible';
     if (u.ustuck) {
         if (u.uswallow)
             info += digests(u.ustuck.data)

@@ -8,8 +8,6 @@ import {
     A_INT,
     A_STR,
     A_WIS,
-    HALLUC,
-    HALLUC_RES,
     PICK_ONE,
     TOPLINE_NON_EMPTY,
     TOPLINE_SPECIAL_PROMPT,
@@ -28,20 +26,12 @@ import { rn2_on_display_rng } from './rng.js';
 import { NO_COLOR } from './terminal.js';
 import { menuTitleStyle } from './tty_menu.js';
 import { select_menu } from './windows.js';
+import { setToplinesDirectly } from './topl.js';
+import { Hallucination } from './youprop.js';
 
 const REPROMPT = Symbol('reroll menu needs an explicit choice');
 const REROLL_QUERY = 'Reroll this character?';
-function propertyActive(state, property) {
-    const value = state.u?.uprops?.[property];
-    return Boolean(value?.intrinsic || value?.extrinsic);
-}
 
-function hallucinating(state) {
-    // C ref: youprop.h Hallucination. Unlike ordinary properties, HALLUC's
-    // extrinsic field does not activate it; only the intrinsic timeout does.
-    return Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !propertyActive(state, HALLUC_RES);
-}
 
 // C ref: display.h obj_to_glyph(). The TTY does not print these glyphs for
 // reroll rows (their identifiers are zero), but it still computes them and
@@ -54,9 +44,9 @@ function rerollObjectGlyphInfo(
     if (typeof displayRandom !== 'function')
         throw new TypeError('reroll displayRandom must be a function');
 
-    if (obj.otyp === O.STATUE && hallucinating(state))
+    if (obj.otyp === O.STATUE && Hallucination(state.u))
         return hallucinated_statue_glyph_info(state, displayRandom);
-    if (!hallucinating(state)) return object_glyph_info(obj, state);
+    if (!Hallucination(state.u)) return object_glyph_info(obj, state);
     return random_object_glyph_info(state, displayRandom);
 }
 
@@ -151,9 +141,10 @@ function renderRerollPrompt(state) {
     display.clearRow(0);
     display.putstr(0, 0, prompt, NO_COLOR, 0);
     display.setCursor(prompt.length, 0);
-    state._ttyToplines = prompt.trimEnd();
+    // C's custompline() leaves gt.toplines empty while the prompt is up;
+    // fallbackRerollChoice() rewrites it before anything reads it.
+    setToplinesDirectly(prompt.trimEnd(), state);
     display.topMessage = state._ttyToplines;
-    display.toplines = state._ttyToplines;
     display.toplin = TOPLINE_SPECIAL_PROMPT;
     return prompt;
 }
@@ -177,9 +168,10 @@ async function fallbackRerollChoice(state) {
     // tty_yn_function() keeps the physical prompt un-echoed but appends the
     // accepted key to its logical topline for message history and the next
     // pline() boundary.
-    state._ttyToplines = `${prompt}${response}`;
+    // tty_yn_function() writes this line with Sprintf() (topl.c:539), not
+    // update_topl().
+    setToplinesDirectly(`${prompt}${response}`, state);
     state.nhDisplay.topMessage = state._ttyToplines;
-    state.nhDisplay.toplines = state._ttyToplines;
     state.nhDisplay.toplin = TOPLINE_NON_EMPTY;
     return response;
 }

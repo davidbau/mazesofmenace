@@ -32,7 +32,7 @@ import { add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './co
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './windows.js';
 import { mungspaces } from './hacklib.js';
-import { nh_sprintf, docorner_status_rows } from './display.js';
+import { nh_sprintf, docorner_status_rows, _threeStatusLines } from './display.js';
 import { pline } from './pline.js';
 import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
 // C options.c:6768 match_optname compares names case-insensitively; keep
@@ -2789,6 +2789,15 @@ function pickupMenuDismissCorner() {
     const c = game._pickupMenuCorner;
     game._pickupMenuCorner = null;
     if (c) docorner_status_rows(c.col - 1, c.rows + 1);
+    /* wintty.c:3715-3719: ymax reaching the status window wrecks the bottom line. */
+    if (c && c.rows + 1 >= SCREEN_ROWS - (_threeStatusLines() ? 3 : 2) && game.disp) game.disp.botlx = 1;
+    if (c) {
+        docorner_status_rows(c.col - 1, c.rows + 1);
+        /* wintty.c:3715-3719: select_menu disables bot() during dismissal,
+         * leaving the corner's status reset pending for the next paint. */
+        if (c.rows + 1 >= (_threeStatusLines() ? 21 : 22))
+            game.disp.botlx = true;
+    }
 }
 
 async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = false) {

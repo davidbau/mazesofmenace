@@ -14,7 +14,6 @@ import {
     A_WIS,
     ALTAR,
     ANTIMAGIC,
-    BLINDED,
     BOLT_LIM,
     CC_INCL_CENTER,
     CC_NO_FLAGS,
@@ -34,8 +33,6 @@ import {
     GP_AVOID_MONPOS,
     GP_CHECKSCARY,
     FORCETRAP,
-    HALLUC,
-    HALLUC_RES,
     HOLE,
     IS_STWALL,
     I_SPECIAL,
@@ -227,7 +224,7 @@ import { getpos } from './getpos.js';
 import { in_out_region } from './region.js';
 import { make_blinded, make_confused, make_stunned } from './potion.js';
 import { mon_has_amulet } from './wizard.js';
-import { verbalize } from './pline.js';
+import { verbalize, youFeel } from './pline.js';
 import { y_n, ynq } from './cmd.js';
 import { inhistemple } from './priest.js';
 import { set_voice, yelp } from './sounds.js';
@@ -257,6 +254,7 @@ import { ttyPline } from './tty_message.js';
 import { findgd, uleftvault, vault_occupied } from './vault.js';
 import { couldsee, vision_recalc } from './vision.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
+import { Blind, Blinded, Hallucination } from './youprop.js';
 
 // These generated-monster masks are source data which monsters.js does not
 // currently export. Keep their names and values traceable to monflag.h.
@@ -611,12 +609,6 @@ function monsterTeleportOperation(env, name) {
     return operation;
 }
 
-function heroBlind(state) {
-    const property = state.u?.uprops?.[BLINDED];
-    return (Boolean(property?.intrinsic || property?.extrinsic)
-        && !property?.blocked)
-        || Boolean(state.u?.uroleplay?.blind);
-}
 
 // C ref: teleport.c tele_restrict() (1950-1960). Returns true when the
 // level forbids teleportation, printing a message if the hero can see the
@@ -1295,7 +1287,7 @@ function rloc_to_core(monster, x, y, rawEnv = {}) {
                     ? Amonnam(monster, { ...nameEnv, state })
                     : Monnam(monster, state, nameEnv);
                 text = `${name} ${appearmsg ? 'suddenly ' : ''}`
-                    + `${heroBlind(state) ? 'arrives' : 'appears'}`
+                    + `${Blind(state.u) ? 'arrives' : 'appears'}`
                     + `${next ?? close ?? ''}!`;
             }
             const result = message(messageAt(text, x, y, state), state, env);
@@ -1538,12 +1530,12 @@ export async function scrolltele(scroll, state = game, rawEnv = {}) {
         return;
     }
 
-    if (!heroBlind(state))
+    if (!Blinded(state.u))
         await make_blinded(0, false, state);
 
     if ((state.u?.uhave?.amulet || On_W_tower_level(state.u.uz, state))
         && !random.rn2(3)) {
-        await message("You feel disoriented for a moment.", state);
+        await message(youFeel('disoriented for a moment.', state), state);
         if (!state.wizard)
             return;
         const askYesNo = teleportInput(env, 'y_n', y_n);
@@ -2041,7 +2033,7 @@ export async function domagicportal(trap, state = game) {
 
     await ttyPline('You activated a magic portal!', state);
     if (inEndgame(state) && !u.uhave?.amulet) {
-        await ttyPline('You feel dizzy for a moment, but nothing happens...', state);
+        await ttyPline(youFeel('dizzy for a moment, but nothing happens...', state), state);
         return;
     }
 
@@ -2075,7 +2067,7 @@ export async function tele_trap(trap, state = game) {
             if (Antimagic_prop(state)) {
                 await shieldeff(state.u.ux, state.u.uy, state);
             }
-            await ttyPline('You feel a wrenching sensation.', state);
+            await ttyPline(youFeel('a wrenching sensation.', state), state);
         } else if (!(await next_to_u(state))) {
             await ttyPline('You shudder for a moment.', state);
         } else if (trap.once) {
@@ -2133,7 +2125,7 @@ export async function level_tele_trap(
     if (antimagic && !intentional)
         await shieldeff(state.u.ux, state.u.uy, state);
     if ((antimagic && !intentional) || inEndgame(state)) {
-        await message('You feel a wrenching sensation.', state, env);
+        await message(youFeel('a wrenching sensation.', state), state, env);
         return;
     }
 
@@ -2144,9 +2136,7 @@ export async function level_tele_trap(
         newsym(state.u.ux, state.u.uy);
     await level_tele(state);
 
-    const hallucination = Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !Boolean(state.u?.uprops?.[HALLUC_RES]?.intrinsic
-            || state.u?.uprops?.[HALLUC_RES]?.extrinsic);
+    const hallucination = Hallucination(state.u);
     if (hallucination || Teleport_control_prop(state)) {
         await message(
             `You briefly feel ${hallucination ? 'oriented' : 'centered'}.`,
@@ -2155,7 +2145,7 @@ export async function level_tele_trap(
         );
     } else {
         await message(
-            `You feel ${Confusion(state) ? 'even more ' : ''}disoriented.`,
+            youFeel(`${Confusion(state) ? 'even more ' : ''}disoriented.`, state),
             state,
             env,
         );
@@ -2208,7 +2198,7 @@ export function random_teleport_level(
     }
 
     let min_depth, max_depth;
-    if (In_quest(state.u.uz)) {
+    if (In_quest(state.u.uz, state)) {
         let bottom = dunlevs_in_dungeon(state.u.uz, state);
         const qlocate_depth = state.qlocate_level?.dlevel ?? 0;
 
@@ -2235,7 +2225,7 @@ export function random_teleport_level(
     if (nlev > max_depth) {
         nlev = max_depth;
         /* teleport up if already on bottom */
-        if (Is_botlevel(state.u.uz))
+        if (Is_botlevel(state.u.uz, state))
             nlev -= random.rnd(3);
     }
     if (nlev < min_depth) {
@@ -2351,7 +2341,7 @@ export async function level_tele(state = game) {
     // teleport input is considered.
     if ((u.uhave?.amulet || levelInEndgame(u.uz, state)
         || levelInSokoban(u.uz, state)) && !state.wizard) {
-        await ttyPline('You feel very disoriented for a moment.', state);
+        await ttyPline(youFeel('very disoriented for a moment.', state), state);
         return;
     }
 
@@ -2534,7 +2524,7 @@ export async function level_tele(state = game) {
             killer.format = NO_KILLER_PREFIX;
             killer.name = 'went to heaven prematurely';
         } else if (newlev === -9) {
-            await ttyPline('You feel deliriously happy.', state);
+            await ttyPline(youFeel('deliriously happy.', state), state);
             await ttyPline('(In fact, you\'re on Cloud 9!)', state);
             note_unported('window.c display_nhwindow');
         } else {

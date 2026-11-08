@@ -48,11 +48,8 @@ import {
     Amask2align,
     AGGRAVATE_MONSTER,
     ACH_TUNE,
-    BLND_RES,
-    BLINDED,
     BOLT_LIM,
     CONFUSION,
-    DEAF,
     DIED,
     ESCAPED,
     ASCENDED,
@@ -65,8 +62,6 @@ import {
     FOOT,
     FIXED_ABIL,
     FROMOUTSIDE,
-    HALLUC,
-    HALLUC_RES,
     HUNGRY,
     HVY_ENCUMBER,
     INTRINSIC,
@@ -184,10 +179,9 @@ import { freehand } from './engrave.js';
 import { game } from './gstate.js';
 import { losehp, near_capacity, nomul, You_can_move_again } from './hack.js';
 import {
-    heroDeaf,
-    heroUnaware,
     livelog_printf,
     verbalize,
+    youFeel,
     youHear,
 } from './pline.js';
 import { dist2, upstart, s_suffix } from './hacklib.js';
@@ -227,7 +221,6 @@ import {
     S_WRAITH,
     S_ZOMBIE,
 } from './monsters.js';
-import { Glib } from './wield.js';
 import {
     bless,
     carried,
@@ -292,7 +285,6 @@ import { coreRandom, d, rn1, rn2, rn2_on_display_rng, rnl, rnd, rnz } from './rn
 import { roles } from './roles.js';
 import { randrole } from './role_init.js';
 import { aggravate } from './wizard.js';
-import { Punished } from './steed.js';
 import {
     animate_statue,
     Flying,
@@ -313,7 +305,7 @@ import {
     temple_occupied,
 } from './priest.js';
 import { cansee, couldsee, does_block, unblock_point } from './vision.js';
-import { heroIsBlind, messageAt } from './startup_a11y.js';
+import { messageAt } from './startup_a11y.js';
 import { Monnam, a_monnam, mon_nam, oname } from './do_name.js';
 import { killed, mon_offmap, wake_nearby, xkilled } from './mon.js';
 import { monflee } from './monmove.js';
@@ -331,7 +323,7 @@ import {
     spe_Unknown,
     spelleffects,
 } from './spell.js';
-import { welded } from './wield.js';
+import { welded, Glib } from './wield.js';
 import { bimanual, setnotworn, which_armor } from './worn.js';
 import { encumber_msg, rider_corpse_revival } from './pickup.js';
 import { init_uhunger } from './u_init.js';
@@ -362,6 +354,11 @@ import { note_unported } from './unported.js';
 import { punish, unpunish } from './read.js';
 import { canseemon } from './display.js';
 import { is_pool_or_lava } from './dbridge.js';
+import { Punished } from './steed.js';
+import {
+    Blind, Blinded, BlindedTimeout, Blindfolded, Deaf, EBlinded,
+    HBlinded, HDeaf, HHallucination, Hallucination,
+} from './youprop.js';
 
 // Raised where pray.c reaches a branch this port has not translated.
 // js/cmd.js failClosedCommandRefusals() lists it, so the segment keeps every
@@ -597,15 +594,12 @@ async function offer_too_soon(altaralign, state) {
         return;
     }
 
-    const feeling = Hallucination(state)
+    const feeling = Hallucination(state.u)
         ? 'homesick'
         : altaralign === u.ualign.type
             ? 'an urge to return to the surface'
             : 'ashamed';
-    const prefix = heroUnaware(state)
-        ? 'You dream that you feel'
-        : 'You feel';
-    await ttyPline(`${prefix} ${feeling}.`, state);
+    await ttyPline(youFeel(`${feeling}.`, state), state);
 }
 
 // C ref: pray.c desecrate_altar() (1501-1523). Keep the alignment penalty,
@@ -617,7 +611,7 @@ export async function desecrate_altar(highaltar, altaralign, state = game) {
         u.ugangr += 5;
     }
 
-    await ttyPline('You feel the air around you grow charged...', state);
+    await ttyPline(youFeel('the air around you grow charged...', state), state);
     await ttyPline(
         `Suddenly, you realize that ${align_gname(altaralign, state)} `
             + 'has noticed you...',
@@ -632,7 +626,7 @@ export async function desecrate_altar(highaltar, altaralign, state = game) {
 // C ref: pray.c:1446-1474 consume_offering(). The offering is consumed before
 // its Wisdom exercise; the order matters because exercise() may draw RNG.
 async function consume_offering(otmp, state) {
-    if (Hallucination(state)) {
+    if (Hallucination(state.u)) {
         switch (rn2(3)) {
         case 0:
             await ttyPline(
@@ -654,7 +648,7 @@ async function consume_offering(otmp, state) {
             );
             break;
         }
-    } else if (Blind(state) && state.u.ualign.type === A_LAWFUL) {
+    } else if (Blind(state.u) && state.u.ualign.type === A_LAWFUL) {
         await ttyPline('Your sacrifice disappears!', state);
     } else {
         const effect = state.u.ualign.type === A_LAWFUL
@@ -710,11 +704,11 @@ async function bestow_artifact(maxGiftValue, state) {
 
     artifact_origin(otmp, ONAME_GIFT | ONAME_KNOW_ARTI, state);
     if (otmp.spe < 0) otmp.spe = 0;
-    if (otmp.cursed) await uncurse(otmp, state);
+    if (otmp.cursed) await uncurse(otmp, { state });
     otmp.oerodeproof = true;
 
-    const blind = Blind(state);
-    const hallucinating = Hallucination(state);
+    const blind = Blind(state.u);
+    const hallucinating = Hallucination(state.u);
     let name = hallucinating
         ? 'a doodad'
         : blind
@@ -784,12 +778,12 @@ async function eval_offering(otmp, altaralign, state) {
         if (state.u.ualign.type === altaralign) {
             if (state.u.ualign.record < ALIGNLIM(state)) {
                 await ttyPline(
-                    `You feel appropriately ${align_str(state.u.ualign.type)}.`,
+                    youFeel(`appropriately ${align_str(state.u.ualign.type)}.`, state),
                     state,
                 );
             } else {
                 await ttyPline(
-                    'You feel you are thoroughly on the right path.', state,
+                    youFeel('you are thoroughly on the right path.', state), state,
                 );
             }
             adjalign(5, state);
@@ -928,7 +922,7 @@ async function offer_fake_amulet(otmp, highaltar, altaralign, state) {
 
     if (!otmp.known) {
         await ttyPline(
-            `You realize you have made a ${Hallucination(state)
+            `You realize you have made a ${Hallucination(state.u)
                 ? 'boo-boo' : 'mistake'}.`,
             state,
         );
@@ -937,7 +931,7 @@ async function offer_fake_amulet(otmp, highaltar, altaralign, state) {
     } else {
         // The source reports this only when the hero is Deaf; the earlier
         // You_hear() has already suppressed the thunderclap in that case.
-        if (heroDeaf(state)) await ttyPline('Oh, no.', state);
+        if (Deaf(state.u)) await ttyPline('Oh, no.', state);
         change_luck(-3, state);
         adjalign(-1, state);
         u.ugangr += 3;
@@ -990,7 +984,7 @@ async function offer_different_alignment_altar(otmp, altaralign, state) {
         state,
     );
     if (rn2(8 + u.ulevel) > 5) {
-        await ttyPline(`You feel the power of ${u_gname(state)} increase.`,
+        await ttyPline(youFeel(`the power of ${u_gname(state)} increase.`, state),
             state);
         await exercise(A_WIS, true, state);
         change_luck(1, state);
@@ -1001,7 +995,7 @@ async function offer_different_alignment_altar(otmp, altaralign, state) {
         altar.flags = Align2amask(u.ualign.type)
             | (shrine ? AM_SHRINE : 0);
         newsym(u.ux, u.uy);
-        if (!Blind(state)) {
+        if (!Blind(state.u)) {
             const color = u.ualign.type === A_LAWFUL
                 ? 'white' : u.ualign.type ? 'black' : 'gray';
             await ttyPline(`The altar glows ${hcolor(color, state)}.`, state);
@@ -1091,20 +1085,20 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         if (u.ugangr !== savedAnger) {
             if (u.ugangr) {
                 await ttyPline(
-                    `${u_gname(state)} seems ${Hallucination(state)
+                    `${u_gname(state)} seems ${Hallucination(state.u)
                         ? 'groovy' : 'slightly mollified'}.`,
                     state,
                 );
                 if (u.uluck < 0) change_luck(1, state);
             } else {
                 await ttyPline(
-                    `${u_gname(state)} seems ${Hallucination(state)
+                    `${u_gname(state)} seems ${Hallucination(state.u)
                         ? 'cosmic (not a new fact)' : 'mollified'}.`,
                     state,
                 );
                 if (u.uluck < 0) u.uluck = 0;
             }
-        } else if (Hallucination(state)) {
+        } else if (Hallucination(state.u)) {
             await ttyPline('The gods seem tall.', state);
         } else {
             await ttyPline('You have a feeling of inadequacy.', state);
@@ -1113,7 +1107,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         if (value > maxValue) value = maxValue;
         if (value > -u.ualign.record) value = -u.ualign.record;
         adjalign(value, state);
-        await ttyPline('You feel partially absolved.', state);
+        await ttyPline(youFeel('partially absolved.', state), state);
     } else if (u.ublesscnt > 0) {
         const savedBlesscnt = u.ublesscnt;
         u.ublesscnt -= Math.trunc(
@@ -1122,7 +1116,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         if (u.ublesscnt < 0) u.ublesscnt = 0;
         if (u.ublesscnt !== savedBlesscnt) {
             if (u.ublesscnt) {
-                if (Hallucination(state)) {
+                if (Hallucination(state.u)) {
                     await ttyPline(
                         'You realize that the gods are not like you and I.',
                         state,
@@ -1132,7 +1126,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
                 }
                 if (u.uluck < 0) change_luck(1, state);
             } else {
-                if (Hallucination(state)) {
+                if (Hallucination(state.u)) {
                     await ttyPline(
                         'Overall, there is a smell of fried onions.', state,
                     );
@@ -1154,7 +1148,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         change_luck(luckIncrease, state);
         if (u.uluck < 0) u.uluck = 0;
         if (u.uluck !== originalLuck) {
-            if (Blind(state)) {
+            if (Blind(state.u)) {
                 await ttyPline(
                     `You think ${something} brushed your `
                         + `${makeplural(body_part(FOOT, state.youmonst))}.`,
@@ -1162,10 +1156,10 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
                 );
             } else {
                 await ttyPline(
-                    `You ${Hallucination(state)
+                    `You ${Hallucination(state.u)
                         ? 'see crabgrass' : 'glimpse a four-leaf clover'} at your `
                         + `${makeplural(body_part(FOOT, state.youmonst))}`
-                        + `${Hallucination(state)
+                        + `${Hallucination(state.u)
                             ? '. A funny thing in a dungeon.' : '.'}`,
                     state,
                 );
@@ -1176,7 +1170,7 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
 
 // C ref: pray.c:788-803 at_your_feet(), used for a divine artifact gift.
 async function at_your_feet(str, state) {
-    const blind = Blind(state);
+    const blind = Blind(state.u);
     if (blind) str = 'Something';
     if (state.u.uswallow) {
         const captor = state.u.ustuck;
@@ -1196,12 +1190,6 @@ async function at_your_feet(str, state) {
     }
 }
 
-function Blind(state) {
-    const blinded = state.u?.uprops?.[BLINDED];
-    const resistance = state.u?.uprops?.[BLND_RES];
-    return Boolean(blinded && (blinded.intrinsic || blinded.extrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic));
-}
 
 // The intrinsic half of a youprop.h macro. Every trouble test below that reads
 // one names it here rather than reaching into u.uprops, so a stray `.extrinsic`
@@ -1322,7 +1310,7 @@ export function in_trouble(state = game) {
             return TROUBLE_UNUSEABLE_HANDS;
     }
     // Blindfolded is EBlinded alone, so ublindf is necessarily worn here.
-    if (extrinsic(state, BLINDED) && state.ublindf.cursed)
+    if (Blindfolded(state.u) && state.ublindf.cursed)
         return TROUBLE_CURSED_BLINDFOLD;
 
     /*
@@ -1340,14 +1328,14 @@ export function in_trouble(state = game) {
         if (Cursed_obj(otmp, SADDLE)) return TROUBLE_SADDLE;
     }
 
-    if ((intrinsic(state, BLINDED) & TIMEOUT) > 1
-        && !(intrinsic(state, BLINDED) & ~TIMEOUT)
+    if (BlindedTimeout(state.u) > 1
+        && !(HBlinded(state.u) & ~TIMEOUT)
         && (!state.u.uswallow
             || !attacktype_fordmg(state.u.ustuck.data, AT_ENGL, AD_BLND)))
         return TROUBLE_BLIND;
     /* deafness isn't its own trouble; healing magic cures deafness
        when it cures blindness, so do the same with trouble repair */
-    if ((intrinsic(state, DEAF) & TIMEOUT) > 1) return TROUBLE_BLIND;
+    if ((HDeaf(state.u) & TIMEOUT) > 1) return TROUBLE_BLIND;
 
     for (let i = 0; i < A_MAX; i++)
         if (state.u.acurr.a[i] < state.u.amax.a[i]) return TROUBLE_POISONED;
@@ -1357,7 +1345,7 @@ export function in_trouble(state = game) {
     if (state.u.uhs >= HUNGRY) return TROUBLE_HUNGRY;
     if (intrinsic(state, STUNNED) & TIMEOUT) return TROUBLE_STUNNED;
     if (intrinsic(state, CONFUSION) & TIMEOUT) return TROUBLE_CONFUSED;
-    if (intrinsic(state, HALLUC) & TIMEOUT) return TROUBLE_HALLUCINATION;
+    if (HHallucination(state.u) & TIMEOUT) return TROUBLE_HALLUCINATION;
     return 0;
 }
 
@@ -1443,33 +1431,22 @@ export async function fix_curse_trouble(otmp, what = null, state = game) {
     }
 
     const blindfoldedOnly = Boolean(
-        state.u?.uprops?.[BLINDED]?.extrinsic,
-    ) && !heroIsBlinded(state);
-    if (!heroIsBlind(state) || (otmp === state.ublindf && blindfoldedOnly)) {
+        EBlinded(state.u),
+    ) && !Blinded(state.u);
+    if (!Blind(state.u) || (otmp === state.ublindf && blindfoldedOnly)) {
         await ttyPline(
             `${what ?? Yobjnam2(otmp, 'softly glow', state)} ${hcolor('amber', state)}.`,
             state,
         );
         state.iflags ??= {};
         state.iflags.last_msg = PLNMSG_OBJ_GLOWS;
-        otmp.bknown = Hallucination(state) ? 0 : 1;
+        otmp.bknown = Hallucination(state.u) ? 0 : 1;
     }
     await uncurse(otmp, { state });
     update_inventory({ state });
 }
 
-function heroIsBlinded(state) {
-    const property = state.u?.uprops?.[BLINDED];
-    return Boolean((property?.intrinsic ?? 0) && !(property?.blocked ?? 0));
-}
 
-function heroIsDeaf(state) {
-    const property = state.u?.uprops?.[DEAF];
-    return Boolean(
-        (property?.intrinsic ?? 0) || (property?.extrinsic ?? 0)
-            || state.u?.uroleplay?.deaf,
-    );
-}
 
 // C ref: pray.c fix_worst_trouble() (372-600). Every switch arm is retained
 // in source order. Helpers whose C implementations are not yet available are
@@ -1517,7 +1494,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         state.disp.botl = true;
         break;
     case TROUBLE_SICK:
-        await ttyPline('You feel better.', state);
+        await ttyPline(youFeel('better.', state), state);
         await make_sick(0, null, false, SICK_ALL, state);
         break;
     case TROUBLE_REGION:
@@ -1532,7 +1509,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         });
         break;
     case TROUBLE_HIT: {
-        await ttyPline('You feel much better.', state);
+        await ttyPline(youFeel('much better.', state), state);
         if (Upolyd(state.u)) {
             const maxhp = state.u.mhmax + rnd(5);
             setuhpmax(Math.max(maxhp, 5 + 1), false, state);
@@ -1549,8 +1526,8 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
     }
     case TROUBLE_COLLAPSING:
         await ttyPline(
-            `You feel ${state.u.amax.a[A_STR] - state.u.acurr.a[A_STR] > 6
-                ? 'much ' : ''}stronger.`,
+            youFeel(`${state.u.amax.a[A_STR] - state.u.acurr.a[A_STR] > 6
+                ? 'much ' : ''}stronger.`, state),
             state,
         );
         state.u.acurr.a[A_STR] = state.u.amax.a[A_STR];
@@ -1578,7 +1555,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
                 extrinsic: 0,
             };
             set_itimeout(passesWalls, d(4, 4) + 4);
-            await ttyPline('You feel much slimmer.', state);
+            await ttyPline(youFeel('much slimmer.', state), state);
         }
         break;
     case TROUBLE_CURSED_LEVITATION:
@@ -1641,9 +1618,9 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         break;
     case TROUBLE_POISONED:
         await ttyPline(
-            Hallucination(state)
+            Hallucination(state.u)
                 ? "There's a tiger in your tank."
-                : 'You feel in good health again.',
+                : youFeel('in good health again.', state),
             state,
         );
         for (let i = 0; i < A_MAX; i++) {
@@ -1658,8 +1635,8 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
     case TROUBLE_BLIND: {
         let msgbuf = '';
         let eyes = body_part(EYE, state.youmonst);
-        const cureDeaf = Boolean(intrinsic(state, DEAF) & TIMEOUT);
-        if (heroIsBlinded(state)) {
+        const cureDeaf = Boolean(HDeaf(state.u) & TIMEOUT);
+        if (Blinded(state.u)) {
             const pmidx = state.youmonst?.data?.pmidx;
             if (pmidx !== PM_FLOATING_EYE && pmidx !== PM_CYCLOPS)
                 eyes = makeplural(eyes);
@@ -1669,7 +1646,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         }
         if (cureDeaf) {
             await make_deaf(0, false, state);
-            if (!heroIsDeaf(state))
+            if (!Deaf(state.u))
                 msgbuf += `${msgbuf ? ' and you' : 'You'} can hear again`;
         }
         if (msgbuf) await ttyPline(`${msgbuf}.`, state);
@@ -1690,7 +1667,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         break;
     case TROUBLE_SADDLE:
         otmp = which_armor(state.u.usteed, W_SADDLE, state);
-        if (!heroIsBlind(state)) {
+        if (!Blind(state.u)) {
             await ttyPline(
                 `${Yobjnam2(otmp, 'softly glow', state)} ${hcolor('amber', state)}.`,
                 state,
@@ -1877,7 +1854,7 @@ export async function dopray(state = game) {
     if (state.gp.p_type === 3 && !In_hell(state.u.uz, state)) {
         // C ref: dopray():2265-2270. A coaligned hero in good standing is
         // invulnerable while praying. prayer_done() clears the flag.
-        if (!heroIsBlind(state))
+        if (!Blind(state.u))
             await ttyPline(
                 'You are surrounded by a shimmering light.', state,
             );
@@ -1891,7 +1868,7 @@ export async function dopray(state = game) {
 // water in the hero-square floor pile and returns whether any quantity changed.
 export async function water_prayer(bless_water, state = game) {
     const { u } = state;
-    const bcKnown = !heroIsBlind(state) && !Hallucination(state);
+    const bcKnown = !Blind(state.u) && !Hallucination(state.u);
     let changed = 0;
     let other = false;
 
@@ -1908,7 +1885,7 @@ export async function water_prayer(bless_water, state = game) {
         }
     }
 
-    if (!heroIsBlind(state) && changed) {
+    if (!Blind(state.u) && changed) {
         const subject = other && changed > 1
             ? 'Some of the'
             : other ? 'One of the' : 'The';
@@ -1931,7 +1908,7 @@ export async function prayer_done(state = game) {
     state.u.uinvulnerable = false;
     if (state.gp.p_type === -2) {
         await ttyPline(
-            `You ${heroDeaf(state) ? 'intuit' : 'hear'} diabolical laughter all around you...`,
+            `You ${Deaf(state.u) ? 'intuit' : 'hear'} diabolical laughter all around you...`,
             state,
         );
         await wake_nearby(false, { state });
@@ -1945,7 +1922,7 @@ export async function prayer_done(state = game) {
         await godvoice(alignment, alignment === A_LAWFUL
             ? 'Vile creature, thou durst call upon me?'
             : 'Walk no more, perversion of nature!', state);
-        await ttyPline('You feel like you are falling apart.', state);
+        await ttyPline(youFeel('like you are falling apart.', state), state);
         await rehumanize(state);
         await losehp(rnd(20), 'residual undead turning effect', KILLED_BY_AN, state);
         await exercise(A_CON, false, state, coreRandom, {
@@ -2363,7 +2340,7 @@ async function gcrownu(state) {
         if (classGift === STRANGE_OBJECT && obj?.otyp === LONG_SWORD
             && !obj.oartifact) {
             const before = simpleonames(obj, state);
-            if (!Blind(state))
+            if (!Blind(state.u))
                 await ttyPline('Your sword shines brightly for a moment.', state);
             obj = await oname(
                 obj,
@@ -2453,7 +2430,7 @@ async function gcrownu(state) {
         if (obj.spe < 1) obj.spe = 1;
         unrestrict_weapon_skill(weapon_type(obj, state), state);
     } else if (classGift === STRANGE_OBJECT) {
-        await ttyPline('You feel unworthy.', state);
+        await ttyPline(youFeel('unworthy.', state), state);
     }
     update_inventory({ state });
     add_weapon_skill(1, state);
@@ -2473,12 +2450,12 @@ export async function pleased(g_align, state = game) {
     const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
 
     const satisfaction = u.ualign.record >= 14
-        ? (Hallucination(state) ? 'pleased as punch' : 'well-pleased')
+        ? (Hallucination(state.u) ? 'pleased as punch' : 'well-pleased')
         : u.ualign.record >= STRIDENT
-            ? (Hallucination(state) ? 'ticklish' : 'pleased')
-            : (Hallucination(state) ? 'full' : 'satisfied');
+            ? (Hallucination(state.u) ? 'ticklish' : 'pleased')
+            : (Hallucination(state.u) ? 'full' : 'satisfied');
     await ttyPline(
-        `You feel that ${align_gname(g_align, state)} is ${satisfaction}.`,
+        youFeel(`that ${align_gname(g_align, state)} is ${satisfaction}.`, state),
         state,
     );
 
@@ -2559,7 +2536,7 @@ export async function pleased(g_align, state = game) {
                     repair_buf = ` and ${otense(weapon, 'are', state)} now as good as new`;
 
                 if (weapon.cursed) {
-                    if (!heroIsBlind(state)) {
+                    if (!Blind(state.u)) {
                         await ttyPline(
                             `${Yobjnam2(weapon, 'softly glow', state)} ${hcolor('amber', state)}${repair_buf}.`,
                             state,
@@ -2567,7 +2544,7 @@ export async function pleased(g_align, state = game) {
                         state.iflags.last_msg = PLNMSG_OBJ_GLOWS;
                     } else {
                         await ttyPline(
-                            `You feel the power of ${u_gname(state)} over ${yname(weapon, state)}.`,
+                            youFeel(`the power of ${u_gname(state)} over ${yname(weapon, state)}.`, state),
                             state,
                         );
                     }
@@ -2575,7 +2552,7 @@ export async function pleased(g_align, state = game) {
                     weapon.bknown = 1;
                     repair_buf = '';
                 } else if (!weapon.blessed) {
-                    if (!heroIsBlind(state)) {
+                    if (!Blind(state.u)) {
                         await ttyPline(
                             `${Yobjnam2(weapon, 'softly glow', state)} with ${an(hcolor('light blue', state))} aura${repair_buf}.`,
                             state,
@@ -2583,7 +2560,7 @@ export async function pleased(g_align, state = game) {
                         state.iflags.last_msg = PLNMSG_OBJ_GLOWS;
                     } else {
                         await ttyPline(
-                            `You feel the blessing of ${u_gname(state)} over ${yname(weapon, state)}.`,
+                            youFeel(`the blessing of ${u_gname(state)} over ${yname(weapon, state)}.`, state),
                             state,
                         );
                     }
@@ -2599,7 +2576,7 @@ export async function pleased(g_align, state = game) {
                     if (repair_buf)
                         await ttyPline(
                             `${Yobjnam2(weapon, null, state)} ${otense(
-                                weapon, heroIsBlind(state) ? 'feel' : 'look', state,
+                                weapon, Blind(state.u) ? 'feel' : 'look', state,
                             )} as good as new!`, state,
                         );
                 }
@@ -2639,7 +2616,7 @@ export async function pleased(g_align, state = game) {
             }
             // FALLTHROUGH
         case 2:
-            if (!heroIsBlind(state))
+            if (!Blind(state.u))
                 await ttyPline(
                     `You are surrounded by ${an(hcolor('golden', state))} glow.`,
                     state,
@@ -2668,8 +2645,8 @@ export async function pleased(g_align, state = game) {
             break;
         case 4: {
             let any = 0;
-            if (heroIsBlind(state))
-                await ttyPline(`You feel the power of ${u_gname(state)}.`, state);
+            if (Blind(state.u))
+                await ttyPline(youFeel(`the power of ${u_gname(state)}.`, state), state);
             else
                 await ttyPline(
                     `You are surrounded by ${an(hcolor('light blue', state))} aura.`,
@@ -2679,7 +2656,7 @@ export async function pleased(g_align, state = game) {
                 if (object.cursed
                     && (object !== u.uarmh
                         || u.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)) {
-                    if (!heroIsBlind(state)) {
+                    if (!Blind(state.u)) {
                         await ttyPline(
                             `${Yobjnam2(object, null, state)} ${hcolor('amber', state)}.`,
                             state,
@@ -2714,7 +2691,7 @@ export async function pleased(g_align, state = game) {
                 ?? grant(STEALTH, 'Stealth');
             if (gift) {
                 await ttyPline(`"and thus I grant thee the gift of ${gift}!"`, state);
-                if (gift === 'Telepathy' && heroIsBlind(state)) await see_monsters(state);
+                if (gift === 'Telepathy' && Blind(state.u)) await see_monsters(state);
             } else {
                 const prop = u.uprops[PROTECTION];
                 prop.intrinsic ??= 0;
@@ -2766,14 +2743,6 @@ export async function gods_upset(g_align, state = game) {
     await angrygods(g_align, state);
 }
 
-// C ref: youprop.h:119-120 Hallucination, the bare HALLUC intrinsic minus
-// either form of Halluc_resistance.
-function Hallucination(state) {
-    const halluc = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(halluc?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // C ref: pray.c god_zaps_you() (610-694). Divine retaliation checks the
 // swallowed monster first, then the hero's lightning defenses, and then
@@ -2806,7 +2775,7 @@ async function god_zaps_you(resp_god, state) {
         const reflecting = u.uprops?.[REFLECTING];
         if (reflecting?.intrinsic || reflecting?.extrinsic) {
             await shieldeff(u.ux, u.uy, state);
-            if (heroIsBlind(state)) {
+            if (Blind(state.u)) {
                 await ttyPline("For some reason you're unaffected.", state);
             } else {
                 await ureflects('%s reflects from your %s.', 'It', state);
@@ -2966,9 +2935,7 @@ export async function altar_wrath(x, y, state = game) {
         return;
     }
 
-    const deafness = u.uprops?.[DEAF];
-    const deaf = Boolean(deafness?.intrinsic || deafness?.extrinsic)
-        || Boolean(u.uroleplay?.deaf);
+    const deaf = Deaf(u);
     await ttyPline(
         `${deaf
             ? 'Despite your deafness, you seem to hear'
@@ -3010,8 +2977,8 @@ export async function angrygods(resp_god, state = game) {
     case 0:
     case 1:
         await ttyPline(
-            `You feel that ${align_gname(resp_god, state)} is `
-            + `${Hallucination(state) ? 'bummed' : 'displeased'}.`,
+            youFeel(`that ${align_gname(resp_god, state)} is `
+                + `${Hallucination(state.u) ? 'bummed' : 'displeased'}.`, state),
             state,
         );
         break;
@@ -3044,7 +3011,7 @@ export async function angrygods(resp_god, state = game) {
         await godvoice(resp_god, 'Thou hast angered me.', state);
         {
             const antimagic = u.uprops?.[ANTIMAGIC];
-            if (!heroIsBlind(state)
+            if (!Blind(state.u)
                 && !(antimagic?.intrinsic || antimagic?.extrinsic)) {
                 const aura = an(hcolor('black', state));
                 await ttyPline(
@@ -3128,7 +3095,7 @@ const hallu_gods = [
 // subsequent choice uses a hallucinatory deity or Moloch. All draws belong
 // to this state's display stream; ordinary and resisted perception use none.
 export function halu_gname(alignment, state = game) {
-    if (!Hallucination(state)) return align_gname(alignment, state);
+    if (!Hallucination(state.u)) return align_gname(alignment, state);
     const displayRandom = bound => rn2_on_display_rng(bound, state);
     let which;
     do {

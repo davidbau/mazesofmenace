@@ -748,7 +748,10 @@ export async function explode(x, y, type, dam, olet, expltype) {
     }
 
     if (expl_shopdamage.v)
-        await pay_for_damage('destroy', false);
+        await pay_for_damage(adtyp === AD_FIRE ? 'burn away'
+                             : adtyp === AD_COLD ? 'shatter'
+                               : adtyp === AD_DISN ? 'disintegrate'
+                                 : 'destroy', false);
 
     /* C explode.c:707-715 — explosions are noisy. */
     let noise = dam * dam;

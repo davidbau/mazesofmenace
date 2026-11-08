@@ -91,7 +91,6 @@ import {
     PIT,
     plur,
     HALLUC,
-    HALLUC_RES,
     HOMEMADE_TIN,
     HAND,
     KILLED_BY,
@@ -116,9 +115,7 @@ import {
     DISP_END,
     FLYING,
     FORCEBUNGLE,
-    Maybe_Half_Phys,
     INTRINSIC,
-    INVIS,
     INVIS_BEAM,
     IS_DOOR,
     IS_AIR,
@@ -152,7 +149,6 @@ import {
     SICK_ALL,
     SICK_NONVOMITABLE,
     SLIMED,
-    SEE_INVIS,
     MONSEEN_INFRAVIS,
     MONSEEN_NORMAL,
     MONSEEN_SEEINVIS,
@@ -518,7 +514,7 @@ import {
     make_vomiting,
     set_itimeout,
 } from './potion.js';
-import { heroIsBlind, messageAt } from './startup_a11y.js';
+import { messageAt } from './startup_a11y.js';
 import { P_SKILL } from './startup_skills.js';
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import {
@@ -628,7 +624,7 @@ import {
     zapyourself,
 } from './zap.js';
 import { explode } from './explode.js';
-import { heroUnaware, pline_mon, verbalize, youSee } from './pline.js';
+import { pline_mon, verbalize, youSee, youFeel } from './pline.js';
 import { note_unported } from './unported.js';
 import {
     dbon, dry_a_towel, possibly_unwield, setmnotwielded, uwep_skill_type,
@@ -643,6 +639,11 @@ import {
     retouch_object,
 } from './artifacts.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
+import {
+    BBlinded, Blind, BlindedTimeout, Deaf, HBlinded, HDeaf,
+    HHallucination, Halluc_resistance, Hallucination, Invis, Maybe_Half_Phys,
+    See_invisible,
+} from './youprop.js';
 
 function applyPropertyActive(property, state = game) {
     const value = state.u?.uprops?.[property];
@@ -657,12 +658,6 @@ function applyIsStunned(state) {
     return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
 }
 
-function applyIsHallucinating(state) {
-    const hallu = state.u?.uprops?.[HALLUC];
-    const resist = state.u?.uprops?.[HALLUC_RES];
-    return Boolean((hallu?.intrinsic || hallu?.extrinsic) && !hallu?.blocked
-        && !(resist?.intrinsic || resist?.extrinsic));
-}
 
 function applyIsFumbling(state) {
     return applyPropertyActive(FUMBLING, state);
@@ -728,7 +723,7 @@ export async function display_polearm_positions(onOff, state = game) {
 // y-major scan and the single-target-only result.
 export function find_poleable_mon(pos, state = game) {
     const impaired = applyIsConfused(state) || applyIsStunned(state)
-        || applyIsHallucinating(state);
+        || Hallucination(state.u);
     const rt = isqrt(state.gp.polearm_range_max);
     const lowX = Math.max(state.u.ux - rt, 1);
     const highX = Math.min(state.u.ux + rt, COLNO - 1);
@@ -915,7 +910,7 @@ export async function use_whip(obj, state = game, env = {}) {
         }
     } else if (monster) {
         return await whipattack(monster, rx, ry, proficient, state, env);
-    } else if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
+    } else if (Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)) {
         await ttyPline('You snap your whip through thin air.', state);
     } else {
         await ttyPline(msgSnap, state);
@@ -933,8 +928,8 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
             const rememberedGlyph = glyph_at(rx, ry, state);
             if (spotItNow || !glyph_is_invisible(rememberedGlyph)) {
                 await ttyPline(
-                `${spotItNow ? Amonnam(monster, state) : 'A monster'} is there that you `
-                        + `${heroIsBlind(state) ? "hadn't noticed" : "couldn't see"}.`,
+                `${spotItNow ? Amonnam(monster, { state }) : 'A monster'} is there that you `
+                        + `${Blind(state.u) ? "hadn't noticed" : "couldn't see"}.`,
                     state,
                 );
                 if (!spotItNow) map_invisible(rx, ry, state);
@@ -1115,7 +1110,7 @@ export async function use_pole(obj, autohit, state = game) {
         if (obj === state.uwep && obj.oartifact === ART_SNICKERSNEE) {
             freehit = state.moves !== state.context.snickersnee_turn;
             state.context.snickersnee_turn = state.moves;
-            if (freehit && !applyPropertyActive(DEAF, state))
+            if (freehit && !Deaf(state.u))
                 await ttyPline('Shkinng!', state);
         }
         await thitmonst(monster, state.uwep, state);
@@ -1870,38 +1865,21 @@ async function use_tinning_kit(obj, state = game, env = {}) {
     );
 }
 
-// C ref: youprop.h:120 Hallucination, which is the intrinsic timeout alone
-// minus resistance from either source.
-function heroHallucinating(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    if (!hallucination || !resistance)
-        throw new Error('Hallucination requires initialized u.uprops');
-    return Boolean(hallucination.intrinsic
-        && !(resistance.intrinsic || resistance.extrinsic));
-}
 
-// C ref: youprop.h:125 Deaf, which adds the permanent-deafness roleplay
-// option to the intrinsic and the extrinsic.
-function heroDeaf(state) {
-    const deafness = state.u?.uprops?.[DEAF] ?? {};
-    return Boolean(deafness.intrinsic || deafness.extrinsic
-        || state.u?.uroleplay?.deaf);
-}
 
 // C ref: apply.c use_cream_pie() (3568-3603). Complete the shop alteration
 // and its audible billing before consuming the cream pie.
 async function use_cream_pie(obj, state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
     const env = { ...rawEnv, state, random };
-    const wasblind = heroIsBlind(state);
+    const wasblind = Blind(state.u);
     const wascreamed = Boolean(state.u.ucreamed);
     const several = obj.quan > 1;
 
     if (several)
         obj = splitobj(obj, 1, env);
 
-    if (heroHallucinating(state)) {
+    if (Hallucination(state.u)) {
         await ttyPline('You give yourself a facial.', state);
     } else {
         const pieName = the(xnameFresh(obj, state), state);
@@ -1917,14 +1895,13 @@ async function use_cream_pie(obj, state = game, rawEnv = {}) {
     if (can_blnd(null, state.youmonst, AT_WEAP, obj, state)) {
         const blindinc = random.rnd(25);
         state.u.ucreamed += blindinc;
-        const blindness = state.u.uprops[BLINDED];
         await make_blinded(
-            (blindness.intrinsic & TIMEOUT) + blindinc,
+            (HBlinded(state.u) & TIMEOUT) + blindinc,
             false,
             state,
             env,
         );
-        if (!heroIsBlind(state) || wasblind) {
+        if (!Blind(state.u) || wasblind) {
             await ttyPline(
                 `There's ${wascreamed ? 'more ' : ''}sticky goop all over your ${
                     body_part(FACE, state.youmonst)}.`,
@@ -2003,7 +1980,7 @@ export async function use_trap(obj, state = game, env = {}) {
         || closed_door(state.u.ux, state.u.uy, state)
         || t_at(state.u.ux, state.u.uy, state)) {
         what = 'here';
-    } else if (Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz)) {
+    } else if (Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state)) {
         what = levtyp === AIR ? 'in midair'
             : levtyp === CLOUD ? 'in a cloud' : 'in this place';
     }
@@ -2040,7 +2017,7 @@ export async function use_trap(obj, state = game, env = {}) {
     let attribute = acurr(state, A_DEX);
     currentTrapInfo.time_needed = attribute > 17 ? 2
         : attribute > 12 ? 3 : attribute > 7 ? 4 : 5;
-    if (heroIsBlind(state)) currentTrapInfo.time_needed *= 2;
+    if (Blind(state.u)) currentTrapInfo.time_needed *= 2;
     attribute = acurr(state, A_STR);
     if (ttyp === BEAR_TRAP && attribute < 18) {
         currentTrapInfo.time_needed += attribute > 12 ? 1
@@ -2172,7 +2149,7 @@ export function apply_ok(obj, state = game) {
         || obj.otyp === LUMP_OF_ROYAL_JELLY)
         return GETOBJ_SUGGEST;
 
-    if (obj.otyp === BANANA && heroHallucinating(state))
+    if (obj.otyp === BANANA && Hallucination(state.u))
         return GETOBJ_DOWNPLAY;
 
     if (is_graystone(obj)) {
@@ -2232,7 +2209,7 @@ export function touchstone_ok(obj, state = game) {
 // `#rub` callers.
 export async function use_stone(tstone, state = game, env = {}) {
     const scritch = '"scritch, scritch"';
-    if (!heroIsBlind(state))
+    if (!Blind(state.u))
         observe_object(tstone, state);
 
     const known = tstone.otyp === TOUCHSTONE
@@ -2258,9 +2235,9 @@ export async function use_stone(tstone, state = game, env = {}) {
     if (tstone.otyp === TOUCHSTONE && tstone.cursed
         && obj.oclass === GEM_CLASS && !is_graystone(obj)
         && !obj_resists(obj, 80, 100, { ...env, state })) {
-        if (heroIsBlind(state)) {
-            await ttyPline('You feel something shatter.', state);
-        } else if (heroHallucinating(state)) {
+        if (Blind(state.u)) {
+            await ttyPline(youFeel('something shatter.', state), state);
+        } else if (Hallucination(state.u)) {
             await ttyPline('Oh, wow, look at the pretty shards.', state);
         } else {
             await ttyPline(
@@ -2273,10 +2250,10 @@ export async function use_stone(tstone, state = game, env = {}) {
         return ECMD_TIME;
     }
 
-    if (heroIsBlind(state)) {
+    if (Blind(state.u)) {
         await ttyPline(scritch, state);
         return ECMD_TIME;
-    } else if (heroHallucinating(state)) {
+    } else if (Hallucination(state.u)) {
         await ttyPline('Oh wow, man: Fractals!', state);
         return ECMD_TIME;
     }
@@ -2440,7 +2417,7 @@ export async function dorub(state = game, env = {}) {
             update_inventory({ ...env, state });
         } else if (random.rn2(2)) {
             await ttyPline(
-                `You ${heroIsBlind(state) ? 'smell' : 'see a puff of'} smoke.`,
+                `You ${Blind(state.u) ? 'smell' : 'see a puff of'} smoke.`,
                 state,
             );
         } else {
@@ -2495,7 +2472,7 @@ function selectedDeadObject(rx, ry, state) {
 // *resp`; direct callers that need only the source boolean result may omit it.
 export async function its_dead(rx, ry, state = game, response = null) {
     const { corpse, statue } = selectedDeadObject(rx, ry, state);
-    if ((corpse || statue) && heroHallucinating(state)) {
+    if ((corpse || statue) && Hallucination(state.u)) {
         let answer;
         if (!corpse) {
             answer = "You're both stoned";
@@ -2529,7 +2506,7 @@ export async function its_dead(rx, ry, state = game, response = null) {
         const visglyph = glyph_at(rx, ry, state);
         const corpseglyph = obj_to_glyph(corpse, state);
         let reviver = false;
-        if (heroIsBlind(state) && visglyph !== corpseglyph.glyph)
+        if (Blind(state.u) && visglyph !== corpseglyph.glyph)
             map_object(corpse, true, state);
         if (state.urole?.mnum === PM_HEALER) {
             // apply.c:265-274. This only detects a pending revival; it neither
@@ -2556,7 +2533,7 @@ export async function its_dead(rx, ry, state = game, response = null) {
         const species = state.mons[statue.corpsenm];
         let what;
         let how = 'fine';
-        if (heroIsBlind(state)) {
+        if (Blind(state.u)) {
             what = `${u_at(rx, ry, state) ? 'This' : 'That'} ${
                 humanoid(species) ? 'person' : 'creature'}`;
         } else {
@@ -2595,7 +2572,7 @@ async function use_stethoscope(obj, state = game) {
     if (nohands(state.youmonst.data)) {
         await ttyPline('You have no hands!', state); /* not `body_part(HAND)' */
         return ECMD_OK;
-    } else if (heroDeaf(state)) {
+    } else if (Deaf(state.u)) {
         await ttyPline("You can't hear anything!", state);
         return ECMD_OK;
     } else if (!freehand(state)) {
@@ -3056,7 +3033,7 @@ export async function jump(magic = 0, state = game, env = {}) {
         return ECMD_OK;
     }
     if (jumpPropertyActive(state, LEVITATION)
-        || Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz)) {
+        || Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state)) {
         if (magic) {
             await ttyPline('You flail around a little.', state);
             return ECMD_TIME;
@@ -3149,7 +3126,7 @@ export async function jump(magic = 0, state = game, env = {}) {
             return ECMD_TIME;
         }
         await ttyPline(
-            `${heroHallucinating(state) ? 'You hop up and down a bit.' : 'You decide not to jump after all.'}`,
+            `${Hallucination(state.u) ? 'You hop up and down a bit.' : 'You decide not to jump after all.'}`,
             state,
         );
         return ECMD_OK;
@@ -3194,7 +3171,7 @@ export async function use_lamp(obj, state = game, env = {}) {
     if ((!candle && obj.age === 0)
         || (obj.otyp === MAGIC_LAMP && obj.spe === 0)) {
         if (obj.otyp === BRASS_LANTERN) {
-            await ttyPline(heroIsBlind(state)
+            await ttyPline(Blind(state.u)
                 ? 'Nothing seems to happen.'
                 : 'Your lantern is out of power.', state);
         } else {
@@ -3212,7 +3189,7 @@ export async function use_lamp(obj, state = game, env = {}) {
             );
             const glib = state.u?.uprops?.[GLIB]?.intrinsic ?? 0;
             make_glib((glib & TIMEOUT) + d(2, 10), state, env);
-        } else if (!heroIsBlind(state)) {
+        } else if (!Blind(state.u)) {
             await ttyPline(
                 `${Tobjnam(obj, 'flicker', state)} for a moment, then ${otense(obj, 'die', state)}.`,
                 state,
@@ -3232,7 +3209,7 @@ export async function use_lamp(obj, state = game, env = {}) {
         const plural = obj.quan !== 1;
         await ttyPline(
             `${s_suffix(name)} flame${plural ? 's' : ''} ${otense(obj, 'burn', state)}`
-                + `${heroIsBlind(state) ? '.' : ' brightly!'}`,
+                + `${Blind(state.u) ? '.' : ' brightly!'}`,
             state,
         );
         const cost = objectType(obj, state).oc_cost;
@@ -3286,7 +3263,7 @@ export async function light_cocktail(objp, state = game, env = {}) {
 
     const ownership = shk_your(obj, state);
     await message(
-        `You light ${ownership}potion.${heroIsBlind(state)
+        `You light ${ownership}potion.${Blind(state.u)
             ? '' : '  It gives off a dim light.'}`,
         state,
     );
@@ -3373,7 +3350,7 @@ export async function use_candelabrum(obj, state = game, env = {}) {
         return;
     }
     if (state.u?.uswallow || obj.cursed) {
-        if (!heroIsBlind(state)) {
+        if (!Blind(state.u)) {
             await message(
                 `${The(s, state)} ${vtense(s, 'flicker')} for a moment,`
                     + ` then ${vtense(s, 'die')}.`,
@@ -3388,7 +3365,7 @@ export async function use_candelabrum(obj, state = game, env = {}) {
                 + `${the(xnameFresh(obj, state), state)}.`,
             state,
         );
-        if (!heroIsBlind(state)) {
+        if (!Blind(state.u)) {
             await message(
                 `${obj.spe === 1 ? 'It is' : 'They are'} lit.  `
                     + `${Tobjnam(obj, 'shine', state)} dimly.`,
@@ -3398,7 +3375,7 @@ export async function use_candelabrum(obj, state = game, env = {}) {
     } else {
         await message(
             `${The(xnameFresh(obj, state), state)}'s ${s} burn`
-                + `${heroIsBlind(state) ? '.' : ' brightly!'}`,
+                + `${Blind(state.u) ? '.' : ' brightly!'}`,
             state,
         );
     }
@@ -3415,7 +3392,7 @@ export async function use_candelabrum(obj, state = game, env = {}) {
         }
     } else {
         if (obj.spe === 7) {
-            if (heroIsBlind(state)) {
+            if (Blind(state.u)) {
                 await message(
                     `${Tobjnam(obj, 'radiate', state)} a strange warmth!`,
                     state,
@@ -3525,15 +3502,8 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
         const value = intrinsic(property);
         return value && !(value & ~TIMEOUT) ? value & TIMEOUT : 0;
     };
-    const hallucinating = () => Boolean(
-        intrinsic(HALLUC)
-        && !(state.u?.uprops?.[HALLUC_RES]?.intrinsic
-            || state.u?.uprops?.[HALLUC_RES]?.extrinsic),
-    );
-    const deaf = () => Boolean(
-        intrinsic(DEAF) || state.u?.uprops?.[DEAF]?.extrinsic
-        || state.u?.uroleplay?.deaf,
-    );
+    const hallucinating = () => Hallucination(state.u);
+    const deaf = () => Deaf(state.u);
 
     if (obj?.cursed) {
         const lcount = rn1(90, 10);
@@ -3552,7 +3522,7 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
         }
         case 1:
             await make_blinded(
-                (intrinsic(BLINDED) & TIMEOUT) + lcount,
+                BlindedTimeout(state.u) + lcount,
                 true,
                 state,
                 env,
@@ -3586,7 +3556,7 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
             break;
         case 5:
             await make_hallucinated(
-                (intrinsic(HALLUC) & TIMEOUT) + lcount,
+                (HHallucination(state.u) & TIMEOUT) + lcount,
                 true,
                 0,
                 state,
@@ -3596,7 +3566,7 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
         case 6:
             if (deaf()) await message(nothing_seems_to_happen, state);
             await make_deaf(
-                (intrinsic(DEAF) & TIMEOUT) + lcount,
+                (HDeaf(state.u) & TIMEOUT) + lcount,
                 true,
                 state,
                 env,
@@ -3747,7 +3717,7 @@ export async function fig_transform(figurine, timeout, rawEnv = {}) {
         const monsterName = an(m_monnam(monster, state, env));
         let andVanish = '';
         let suppressSee = (monster.minvis
-            && !applyPropertyActive(SEE_INVIS, state))
+            && !See_invisible(state.u))
             || (monster.data?.mlet === S_MIMIC
                 && M_AP_TYPE(monster) !== M_AP_NOTHING);
 
@@ -3765,10 +3735,10 @@ export async function fig_transform(figurine, timeout, rawEnv = {}) {
 
         switch (figurine.where) {
         case OBJ_INVENT:
-            if (heroIsBlind(state) || suppressSee) {
+            if (Blind(state.u) || suppressSee) {
                 await message(
-                    `You feel something ${locomotion(monster.data, 'drop')} `
-                        + 'from your pack!',
+                    youFeel(`something ${locomotion(monster.data, 'drop')} `
+                        + 'from your pack!', state),
                     state,
                 );
             } else {
@@ -3861,7 +3831,7 @@ export async function figurine_location_checks(
         && !(passes_walls(species) && may_passwall(x, y, state))) {
         if (!quietly) {
             await message(
-                `You cannot place a figurine in ${IS_TREE(type)
+                `You cannot place a figurine in ${IS_TREE(type, state)
                     ? 'a tree' : 'solid rock'}!`,
                 state,
             );
@@ -3900,21 +3870,21 @@ export async function use_figurine(objp, state = game, rawEnv = {}) {
 
     const action = (state.u.dx || state.u.dy)
         ? 'set the figurine beside you'
-        : (Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz)
+        : (Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state)
             || is_pool(x, y, state))
             ? 'release the figurine'
             : state.u.dz < 0
                 ? 'toss the figurine into the air'
                 : 'set the figurine on the ground';
     await (env.message ?? ttyPline)(
-        `You ${action} and it ${heroIsBlind(state) ? 'supposedly ' : ''}`
+        `You ${action} and it ${Blind(state.u) ? 'supposedly ' : ''}`
             + 'transforms.',
         state,
     );
     await make_familiar(obj, x, y, false, env);
     stop_timer(FIG_TRANSFORM, obj, state, env);
     await useup(obj, env);
-    if (heroIsBlind(state)) map_invisible(x, y, state);
+    if (Blind(state.u)) map_invisible(x, y, state);
     objp.obj = null;
     return ECMD_TIME;
 }
@@ -3958,7 +3928,7 @@ export async function use_bell(objp, state = game, rawEnv = {}) {
                 { ...rawEnv, state, random },
             );
             if (monster) {
-                await message(`You summon ${a_monnam(monster, state)}!`);
+                await message(`You summon ${a_monnam(monster, { state })}!`);
                 if (!obj_resists(obj, 93, 100, { state, random })) {
                     await message(`${Tobjnam(obj, 'have', state)} shattered!`);
                     await useup(obj, { ...rawEnv, state });
@@ -4141,13 +4111,13 @@ export async function use_mirror(obj, state = game, env = {}) {
     const random = env.random ?? coreRandom;
     if (!await getdir(null, state)) return ECMD_CANCEL;
 
-    const invisMirror = applyPropertyActive(INVIS, state);
-    const useeit = !heroIsBlind(state)
-        && (!invisMirror || applyPropertyActive(SEE_INVIS, state));
+    const invisMirror = Invis(state.u);
+    const useeit = !Blind(state.u)
+        && (!invisMirror || See_invisible(state.u));
     const visage = beautiful(state);
     const mirror = simpleonames(obj, state);
     if (obj.cursed && random.rn2(2) === 0) {
-        if (!heroIsBlind(state))
+        if (!Blind(state.u))
             await ttyPline(`The ${mirror} fogs up and doesn't reflect!`, state);
         else
             await ttyPline(nothing_seems_to_happen, state);
@@ -4166,7 +4136,7 @@ export async function use_mirror(obj, state = game, env = {}) {
             if (state.u?.uprops?.[FREE_ACTION]?.extrinsic) {
                 await ttyPline('You stiffen momentarily under your gaze.', state);
             } else {
-                const hallucinating = applyIsHallucinating(state);
+                const hallucinating = Hallucination(state.u);
                 await ttyPline(hallucinating
                     ? `Yow!  The ${mirror} stares back!`
                     : "Yikes!  You've frozen yourself!", state);
@@ -4188,7 +4158,7 @@ export async function use_mirror(obj, state = game, env = {}) {
                 false,
                 state,
             );
-        } else if (applyIsHallucinating(state)) {
+        } else if (Hallucination(state.u)) {
             await ttyPline(`You look ${hcolor(null, state)}.`, state);
         } else if (state.u.uprops[SICK]?.intrinsic) {
             await ttyPline('You look peaked.', state);
@@ -4217,7 +4187,7 @@ export async function use_mirror(obj, state = game, env = {}) {
     }
     if (u.uinwater) {
         if (useeit)
-            await ttyPline(applyIsHallucinating(state)
+            await ttyPline(Hallucination(state.u)
                 ? 'You give the fish a chance to fix their makeup.'
                 : 'You reflect the murky water.', state);
         return ECMD_TIME;
@@ -4336,7 +4306,7 @@ export async function use_mirror(obj, state = game, env = {}) {
                 );
             else
                 await ttyPline(
-                    'You feel a bit silly gesturing the mirror in that direction.',
+                    youFeel('a bit silly gesturing the mirror in that direction.', state),
                     state,
                 );
             doReact = false;
@@ -4350,8 +4320,8 @@ export async function use_mirror(obj, state = game, env = {}) {
                 random,
             });
         }
-    } else if (!heroIsBlind(state)) {
-        if (mtmp.minvis && !applyPropertyActive(SEE_INVIS, state)) {
+    } else if (!Blind(state.u)) {
+        if (mtmp.minvis && !See_invisible(state.u)) {
             // The hero cannot distinguish this from no reaction.
         } else if ((mtmp.minvis && !perceives(mtmp.data))
             || !haseyes(mtmp.data) || state.gn.notonhead || !mtmp.mcansee) {
@@ -4409,7 +4379,7 @@ export async function use_towel(obj, state = game, env = {}) {
                     state,
                 );
                 await make_blinded(
-                    ((u.uprops[BLINDED].intrinsic & TIMEOUT)
+                    ((HBlinded(u) & TIMEOUT)
                         + u.ucreamed - old),
                     true,
                     state,
@@ -4457,8 +4427,8 @@ export async function use_towel(obj, state = game, env = {}) {
         // C tests its `Blinded` macro here: HBlinded && !BBlinded.
         // The broader `Blind` macro also includes an extrinsic blindfold.
         const blinded = Boolean(
-            u.uprops?.[BLINDED]?.intrinsic
-                && !u.uprops[BLINDED].blocked,
+            HBlinded(u)
+                && !BBlinded(u),
         );
         if (!blinded) {
             await message("You've got the glop off.", state);
@@ -4498,7 +4468,7 @@ function whistleHowMany(count) {
 // effect and are intentionally not evaluated.
 export async function use_whistle(obj, state = game, env = {}) {
     const message = env.message ?? ttyPline;
-    const deaf = heroDeaf(state);
+    const deaf = Deaf(state.u);
     if (!can_blow(state.youmonst, state)) {
         await message('You are incapable of using the whistle.', state);
         return;
@@ -4509,7 +4479,7 @@ export async function use_whistle(obj, state = game, env = {}) {
     }
     if (deaf) {
         await message(
-            `You feel rushing air tickle your ${body_part(NOSE, state.youmonst)}.`,
+            youFeel(`rushing air tickle your ${body_part(NOSE, state.youmonst)}.`, state),
             state,
         );
     } else {
@@ -4527,7 +4497,7 @@ export async function use_whistle(obj, state = game, env = {}) {
 export async function use_magic_whistle(obj, state = game, env = {}) {
     const message = env.message ?? ttyPline;
     const random = env.random ?? coreRandom;
-    const deaf = heroDeaf(state);
+    const deaf = Deaf(state.u);
     if (!can_blow(state.youmonst, state)) {
         await message('You are incapable of using the whistle.', state);
     } else if (obj.cursed && !random.rn2(2)) {
@@ -4542,7 +4512,7 @@ export async function use_magic_whistle(obj, state = game, env = {}) {
                 ...env, random, message,
             });
     } else {
-        const descriptor = heroHallucinating(state) ? 'normal'
+        const descriptor = Hallucination(state.u) ? 'normal'
             : state.u?.uinwater && !deaf ? 'strange, high-pitched' : 'strange';
         await message(
             `You produce a ${descriptor}${deaf
@@ -4604,7 +4574,7 @@ export async function magic_whistled(obj, state = game, env = {}) {
                     message,
                     redraw: (x, y) => newsym(x, y),
                     mInAir: subject => m_in_air(subject, state),
-                    heroDeaf: () => heroDeaf(state),
+                    heroDeaf: () => Deaf(state.u),
                     youHear,
                     unsupported: name => {
                         note_unported(`trap.c ${name}`);
@@ -5049,9 +5019,9 @@ export async function doapply(state = game, env = {}) {
         if (obj.blessed) {
             await use_magic_whistle(obj, state, env);
             if (!(env.random?.rn2 ?? rn2)(49)) {
-                if (!heroIsBlind(state)) {
+                if (!Blind(state.u)) {
                     await ttyPline(
-                        `${Yobjnam2(obj, 'glow', state)} ${hcolor('brown')}.`,
+                        `${Yobjnam2(obj, 'glow', state)} ${hcolor('brown', state)}.`,
                         state,
                     );
                     set_bknown(obj, true, { ...env, state });
@@ -5199,7 +5169,7 @@ export async function doapply(state = game, env = {}) {
         // apply.c:4401-4403. Hallucinating heroes get the banana's ringing
         // message and the source's initial ECMD_TIME result; otherwise C
         // falls through to the generic default arm below.
-        if (heroHallucinating(state)) {
+        if (Hallucination(state.u)) {
             await ttyPline("It rings! ... But no-one answers.", state);
             return ECMD_TIME;
         }
@@ -5270,7 +5240,7 @@ export async function flip_coin(obj, state = game, env = {}) {
         return ECMD_TIME;
     }
 
-    if (heroHallucinating(state)) {
+    if (Hallucination(state.u)) {
         await message(drawRn2(100)
             ? 'Wow, a double header!'
             : 'The coin miraculously lands on its edge!', state);
@@ -5296,17 +5266,17 @@ async function flip_through_book(obj, state = game) {
     );
 
     if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
-        if (!heroDeaf(state)) {
+        if (!Deaf(state.u)) {
             // The C Soundeffect(se_rustling_paper, 50) expands to nothing in
             // this build. You_hear still applies the acoustics/Unaware rules.
             const heard = youHear(
                 `the pages make an unpleasant ${
-                    heroHallucinating(state) ? 'chuckling' : 'rustling'
+                    Hallucination(state.u) ? 'chuckling' : 'rustling'
                 } sound.`,
                 state,
             );
             if (heard) await ttyPline(heard, state);
-        } else if (!heroIsBlind(state)) {
+        } else if (!Blind(state.u)) {
             await ttyPline(
                 youSee(
                     `the pages glow faintly ${hcolor('red', state)}.`, state,
@@ -5314,20 +5284,18 @@ async function flip_through_book(obj, state = game) {
                 state,
             );
         } else {
-            const prefix = heroUnaware(state)
-                ? 'You dream that you feel' : 'You feel';
-            await ttyPline(`${prefix} the pages tremble.`, state);
+            await ttyPline(youFeel('the pages tremble.', state), state);
         }
-    } else if (heroIsBlind(state)) {
+    } else if (Blind(state.u)) {
         await ttyPline(
             `The pages feel ${
-                heroHallucinating(state) ? 'freshly picked' : 'rough and dry'
+                Hallucination(state.u) ? 'freshly picked' : 'rough and dry'
             }.`,
             state,
         );
     } else if (obj.otyp === SPE_BLANK_PAPER) {
         await ttyPline(
-            `This spellbook ${heroHallucinating(state)
+            `This spellbook ${Hallucination(state.u)
                 ? "doesn't have much of a plot"
                 : 'has nothing written in it'}.`,
             state,
@@ -5335,7 +5303,7 @@ async function flip_through_book(obj, state = game) {
         // C makeknown(obj->otyp) expands to discover_object(type, TRUE, TRUE,
         // TRUE); it also credits the hero's discovery and Wisdom exercise.
         discover_object(obj.otyp, true, true, true, state);
-    } else if (heroHallucinating(state)) {
+    } else if (Hallucination(state.u)) {
         await ttyPline('You enjoy the animated initials.', state);
     } else if (obj.otyp === SPE_NOVEL) {
         await ttyPline(
@@ -5462,17 +5430,14 @@ export function unfixable_trouble_count(isHorn = false, state = game) {
     if (intrinsic(CONFUSION)
         && (!isHorn || (intrinsic(CONFUSION) & ~TIMEOUT) !== 0)) count++;
 
-    const hallucination = intrinsic(HALLUC);
-    const resistance = prop(HALLUC_RES);
-    if (hallucination && !(resistance.intrinsic || resistance.extrinsic)
+    const hallucination = HHallucination(state.u);
+    if (hallucination && !Halluc_resistance(state.u)
         && (!isHorn || (hallucination & ~TIMEOUT) !== 0)) count++;
 
     if (intrinsic(VOMITING)
         && (!isHorn || (intrinsic(VOMITING) & ~TIMEOUT) !== 0)) count++;
 
-    const deafness = prop(DEAF);
-    if ((deafness.intrinsic || deafness.extrinsic || u.uroleplay?.deaf)
-        && (!isHorn || (deafness.intrinsic & ~TIMEOUT) !== 0)) count++;
+    if (Deaf(u) && (!isHorn || (HDeaf(u) & ~TIMEOUT) !== 0)) count++;
 
     return count;
 }

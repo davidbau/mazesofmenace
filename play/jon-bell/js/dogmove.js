@@ -1336,12 +1336,8 @@ async function _dm_doname(obj) {
      * 1505-1527), rather than reducing the object to its species. */
     if ((obj.oclass | 0) === POTION_CLASS_DM)
         return doname_potion(obj);
-    /* C objnam.c:796-798 xname COIN_CLASS → "gold piece"; doname (objnam.c:1283-
-     * 1298) prefixes "N " when quan!=1 (pluralizing → "gold pieces") else "a ". */
-    if ((obj.oclass | 0) === COIN_CLASS) {
-        const q = (obj.quan | 0);
-        return (q !== 1) ? `${q} gold pieces` : an_dm('gold piece');
-    }
+    /* C dogmove.c:457 passes doname for coins too: its objnam.c:1696-1702
+     * wizweight suffix participates in update_topl's paging decision. */
     const generic = await doname(obj);
     if (generic)
         return generic;

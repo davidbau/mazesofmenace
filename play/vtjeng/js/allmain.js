@@ -9,16 +9,12 @@ import { getnow, night } from './calendar.js';
 import { game } from './gstate.js';
 import {
     A_DEX,
-    BLINDED,
-    CLAIRVOYANT,
     COLNO,
     CQ_CANNED,
     CQ_REPEAT,
     LL_ACHIEVE,
     EXT_ENCUMBER,
     FAST,
-    HALLUC,
-    HALLUC_RES,
     HVY_ENCUMBER,
     INTRINSIC,
     MOD_ENCUMBER,
@@ -29,15 +25,11 @@ import {
     POLY_NOFLAGS,
     RLOC_NOMSG,
     RUN_TPORT,
-    SEARCHING,
     SLT_ENCUMBER,
-    TELEPAT,
     TELEPORT,
     TT_LAVA,
     UNCHANGING,
     UNENCUMBERED,
-    WARNING,
-    WARN_OF_MON,
     Upolyd,
     ismnum,
 } from './const.js';
@@ -113,7 +105,6 @@ import {
     unmul,
 } from './hack.js';
 import { encumber_msg } from './pickup.js';
-import { Glib } from './wield.js';
 import {
     docrt,
     cls,
@@ -210,6 +201,11 @@ import { clear_bypasses } from './worn.js';
 import { canseemon } from './display.js';
 import { amulet, intervene } from './wizard.js';
 import { rndcurse } from './sit.js';
+import { Glib } from './wield.js';
+import {
+    BClairvoyant, Blind, EClairvoyant, ETelepat, HClairvoyant, Hallucination,
+    Searching, Warn_of_mon, Warning,
+} from './youprop.js';
 
 // PRNG-owning initializer seam corresponding to the point immediately before
 // allmain.c:newgame() calls mklev(). Asynchronous only because u_init_misc()
@@ -500,10 +496,9 @@ function clairvoyancePlan(state, env) {
     if (typeof random.rn1 !== 'function') {
         throw new TypeError('clairvoyance cadence requires rn1');
     }
-    const clairvoyance = state.u?.uprops?.[CLAIRVOYANT] ?? {};
-    const blocked = Boolean(clairvoyance.blocked);
+    const blocked = Boolean(BClairvoyant(state.u));
     const active = Boolean(
-        clairvoyance.intrinsic || clairvoyance.extrinsic,
+        HClairvoyant(state.u) || EClairvoyant(state.u),
     ) && !blocked;
     const inEndgame = Number.isInteger(state.astral_level?.dnum)
         && state.u?.uz?.dnum === state.astral_level.dnum;
@@ -1159,7 +1154,7 @@ async function finishElapsedTurnAfterChange(state, random, { planning = false } 
     // C allmain.c:342-346. Search can reveal terrain, display a found trap,
     // or animate a statue. Run those effects live and plan remaining upkeep
     // from the resulting map rather than letting the clone consume input.
-    if (propertyActive(state, SEARCHING)
+    if (Searching(state.u)
         && !state.level.flags?.noautosearch
         && (state.multi ?? 0) >= 0) {
         if (planning) return { beforeSearch: true };
@@ -1184,7 +1179,7 @@ async function finishElapsedTurnAfterSearch(state, random, { planning = false } 
         state, random, planning,
         newSym: planning ? () => {} : (x, y) => newsym(x, y),
     };
-    if (propertyActive(state, WARNING)) {
+    if (Warning(state.u)) {
         await warnreveal({
             ...searchEnv,
         });
@@ -1909,15 +1904,8 @@ async function moveloop_core_body() {
         await makewish(g);
     }
 
-    const hallucination = g.u.uprops?.[HALLUC];
-    const hallucinating = Boolean(
-        hallucination?.intrinsic
-        && !hallucination?.blocked
-        && !propertyActive(g, HALLUC_RES),
-    );
-    const blind = Boolean(g.u.uprops?.[BLINDED]?.intrinsic
-        || g.u.uprops?.[BLINDED]?.extrinsic)
-        && !g.u.uprops?.[BLINDED]?.blocked;
+    const hallucinating = Hallucination(g.u);
+    const blind = Blind(g.u);
     // Keep the existing non-hallucinatory vision/region ordering. Hallucination
     // below follows C's sensing layers before spending pending vision work.
     // C ref: allmain.c moveloop_core() (454-472). Both recalculations sit
@@ -1944,9 +1932,9 @@ async function moveloop_core_body() {
             see_objects(g);
             see_traps(g);
             if (g.u.uswallow) await swallowed(false, g);
-        } else if (Boolean(g.u.uprops?.[TELEPAT]?.extrinsic)
-            || propertyActive(g, WARNING)
-            || propertyActive(g, WARN_OF_MON)
+        } else if (Boolean(ETelepat(g.u))
+            || Warning(g.u)
+            || Warn_of_mon(g.u)
             || (g.level?.regions ?? []).some((region) => (
                 region.visible && region.ttl !== -2
             ))) {

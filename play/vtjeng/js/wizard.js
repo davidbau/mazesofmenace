@@ -5,7 +5,6 @@
 import {
     A_LAWFUL,
     BOLT_LIM,
-    DEAF,
     EMIN,
     G_GENOD,
     M_AP_MONSTER,
@@ -88,8 +87,8 @@ import { newsym } from './display.js';
 import { mnexto as moveMonsterNextTo, wake_nearto } from './mon.js';
 import { dist2 } from './hacklib.js';
 import { m_next2u } from './mhitu.js';
-import { verbalize } from './pline.js';
-import { heroIsBlind } from './startup_a11y.js';
+import { verbalize, youFeel } from './pline.js';
+import { Blind, Deaf } from './youprop.js';
 
 // C wizard.c:52-56, ROLL_FROM(wizapp) in clonewiz().
 const WIZARD_APPEARANCES = Object.freeze([
@@ -152,18 +151,10 @@ export async function amulet(state = game, rawEnv = {}) {
     }
 }
 
-function heroIsDeaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(
-        deafness?.intrinsic
-        || deafness?.extrinsic
-        || state.u?.uroleplay?.deaf,
-    );
-}
 
-// C In_endgame() compares the current dungeon number with astral_level.  The
-// shared const.js helper reads the live game object; this local spelling keeps
-// nasty()'s substitute cap clone-local during planning and source-pinned tests.
+// C In_endgame() compares the current dungeon number with astral_level. This
+// local spelling keeps nasty()'s substitute cap clone-local during planning
+// and source-pinned tests.
 function inEndgameState(state) {
     const level = state.u?.uz;
     const astral = state.astral_level;
@@ -300,7 +291,7 @@ export async function resurrect(state = game, rawEnv = {}) {
 
     // wizard.c:774-778. SetVoice() has no screen/state consumer in the port;
     // verbalize() is the ordinary quoted pline immediately after the voice.
-    if (!heroIsDeaf(state)) {
+    if (!Deaf(state.u)) {
         const message = rawEnv.message ?? ttyPline;
         await message('A voice booms out...', state, rawEnv);
         await message(
@@ -330,15 +321,15 @@ export async function intervene(state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
     const message = rawEnv.message ?? ttyPline;
     const effectEnv = { ...rawEnv, state, random, message };
-    const which = Is_astralevel(state.u.uz)
+    const which = Is_astralevel(state.u.uz, state)
         ? random.rnd(4) : random.rn2(6);
     switch (which) {
     case 0:
     case 1:
-        await message('You feel vaguely nervous.', state);
+        await message(youFeel('vaguely nervous.', state), state);
         break;
     case 2:
-        if (!heroIsBlind(state))
+        if (!Blind(state.u))
             await message(`You notice a ${hcolor('black', state)} glow surrounding you.`, state);
         if (typeof rawEnv.rndcurse !== 'function')
             throw new TypeError('intervene requires rndcurse for the curse arm');
@@ -402,7 +393,7 @@ async function resurrectMigratingWizard(state, rawEnv) {
     monster.mtame = 0;
     monster.mpeaceful = false;
     set_malign(monster, state);
-    if (!heroIsDeaf(state)) {
+    if (!Deaf(state.u)) {
         const message = rawEnv.message ?? ttyPline;
         await message('A voice booms out...', state, rawEnv);
         await message(
@@ -427,7 +418,7 @@ export function pick_nasty(difcap, normalized) {
 
     // On the rogue level, prefer monsters with uppercase display symbols.
     // C: Is_rogue_level(&u.uz) && !('A' <= monsym(&mons[res]) && <= 'Z')
-    if (Is_rogue_level(state.u?.uz)) {
+    if (Is_rogue_level(state.u?.uz, state)) {
         const sym = monsterClassSymbol(mons[res].mlet);
         if (!(sym >= 'A' && sym <= 'Z')) {
             res = NASTIES[random.rn2(NASTIES.length)];
@@ -1024,7 +1015,7 @@ const RANDOM_MALEDICTION = Object.freeze([
 // C ref: wizard.c cuss() (846-883). The caller decides whether this source
 // function is reached; Deaf is its first early-return guard.
 export async function cuss(mtmp, state = game, rawEnv = {}) {
-    if (heroIsDeaf(state)) return;
+    if (Deaf(state.u)) return;
 
     const random = rawEnv.random ?? coreRandom;
     const roll = random.rn2 ?? rn2;

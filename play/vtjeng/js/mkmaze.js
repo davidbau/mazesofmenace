@@ -9,7 +9,6 @@ import {
     CLOUD,
     COLNO,
     CORR,
-    DEAF,
     HWALL,
     In_quest,
     IRONBARS,
@@ -151,6 +150,7 @@ import { objectGenerationEnv } from './object_generation.js';
 import { rloc } from './teleport.js';
 import { remove_worm } from './worm.js';
 import { onscary, set_apparxy } from './monmove.js';
+import { Deaf } from './youprop.js';
 
 // C ref: mkmaze.c iswall(). Wall-spine joins accept doors, lava walls,
 // water, secret doors, and iron bars in addition to ordinary wall types.
@@ -210,14 +210,6 @@ export function set_levltyp_lit(x, y, typ, lit, state = game, random = rn2) {
     return ret;
 }
 
-// C ref: youprop.h Deaf (125). The roleplay term is kept beside this
-// endgame-only caller because the source macro is evaluated after fumaroles
-// has consumed every coordinate and cloud-size random number.
-function Deaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(deafness?.intrinsic || deafness?.extrinsic)
-        || Boolean(state.u?.uroleplay?.deaf);
-}
 
 // C ref: mkmaze.c fumaroles(). The Plane of Fire calls create_gas_cloud()
 // immediately after arrival, before vision_reset() and the first map redraw.
@@ -262,7 +254,7 @@ export async function fumaroles(state = game) {
         sound = true;
         if (dist2(x, y, state.u.ux, state.u.uy) < 15) loud = true;
     }
-    if (sound && !Deaf(state))
+    if (sound && !Deaf(state.u))
         await ttyNorep(`You hear a ${loud ? 'loud ' : ''}whoosh!`, state);
 }
 
@@ -1151,7 +1143,7 @@ export async function fixup_special(state = game, env = {}) {
             && env.badStatueSpecies(statue.corpsenm, state)) {
             env.setCorpsenm(statue, env.rndmonnum(objectEnv), objectEnv);
         }
-    } else if (state.urole?.mnum === PM_CLERIC && In_quest(state.u.uz)) {
+    } else if (state.urole?.mnum === PM_CLERIC && In_quest(state.u.uz, state)) {
         state.level.flags.graveyard = true;
     } else if (on_level(state.u.uz, state.stronghold_level)) {
         state.level.flags.graveyard = true;
@@ -1281,7 +1273,7 @@ export async function stolen_booty(state = game) {
     let monster = makemon(state.mons[PM_ORC_CAPTAIN], 0, 0, MM_NONAME,
                           monsterEnv);
     if (monster) {
-        monster = christen_monst(monster, upstart(gang));
+        monster = christen_monst(monster, upstart(gang), { state });
         monster.mpeaceful = false;
         set_malign(monster, state);
         shiny_orc_stuff(monster, state);

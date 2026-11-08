@@ -19,12 +19,9 @@ import {
     COST_DEGRD,
     D_CLOSED,
     D_LOCKED,
-    DEAF,
     DISMOUNT_POLY,
     DISMOUNT_THROWN,
     DOGFOOD,
-    HALLUC,
-    HALLUC_RES,
     helpless,
     IS_DOOR,
     IS_OBSTRUCTED,
@@ -206,10 +203,11 @@ import { which_armor } from './worn.js';
 import { unpaid_cost } from './shk.js';
 import { canseemon, canspotmon, mon_visible } from './display.js';
 import { goodpos } from './teleport.js';
-import { pline_mon } from './pline.js';
+import { pline_mon, youFeel } from './pline.js';
 import { beg, domonnoise } from './sounds.js';
 import { stop_occupation } from './allmain.js';
 import { mattacku } from './mhitu.js';
+import { Deaf, Hallucination } from './youprop.js';
 
 const SQSRCHRADIUS = 5;
 const FARAWAY = COLNO + 2;
@@ -283,25 +281,7 @@ function conflictActive(state) {
     return Boolean(conflict?.intrinsic || conflict?.extrinsic);
 }
 
-// C ref: youprop.h:125 Deaf, `(HDeaf || EDeaf || u.uroleplay.deaf)`. Three
-// disjuncts and no blocking term: the third is the deaf conduct, which only
-// `OPTIONS=roleplay:deaf` sets and nothing clears. js/apply.js and js/mhitm.js
-// each keep their own copy of this one-line macro, as C does.
-function heroDeaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(deafness?.intrinsic || deafness?.extrinsic
-        || state.u?.uroleplay?.deaf);
-}
 
-// C ref: youprop.h:120 Hallucination, over :115-119. The comment at :115 says
-// hallucination is solely a timeout, so the positive term is the intrinsic
-// alone with no worn mask; Halluc_resistance is the intrinsic or the
-// extrinsic.
-function Hallucination(state) {
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 function monsterOffMap(monster) {
     return monster.mx === 0;
@@ -358,7 +338,9 @@ function nearestVisibleGoal(monster, state, clearArea) {
 
 // C ref: dogmove.c droppables(). Return the first carried object this pet
 // does not reserve as its wielded weapon or one preferred utility tool.
-export function droppables(monster) {
+// `env.state` is the state the caller plays on; a planned pet move passes the
+// planning clone, so which_armor() must read that, not the live game.
+export function droppables(monster, env = {}) {
     const species = monster.data;
     const weapon = monster.mw;
     let pickaxe = null;
@@ -384,7 +366,7 @@ export function droppables(monster) {
     for (let obj = monster.minvent; obj; obj = obj.nobj) {
         switch (obj.otyp) {
         case DWARVISH_MATTOCK:
-            if (which_armor(monster, W_ARMS)) break;
+            if (which_armor(monster, W_ARMS, env.state)) break;
             if (pickaxe?.otyp === PICK_AXE && pickaxe !== weapon
                 && (!pickaxe.oartifact || obj.oartifact)) {
                 return pickaxe;
@@ -454,8 +436,8 @@ export async function dog_starve(monster, rawEnv = {}) {
     else if ((rawEnv.canSee ?? cansee)(monster.mx, monster.my, state))
         await message(messageAt(Monnam(monster, state, rawEnv) + ' starves.',
             monster.mx, monster.my, state), state);
-    else await message('You feel ' + (Hallucination(state) ? 'bummed' : 'sad')
-        + ' for a moment.', state);
+    else await message(youFeel(`${Hallucination(state.u) ? 'bummed' : 'sad'}`
+        + ' for a moment.', state), state);
     await (rawEnv.mondied ?? ((subject, env) => mondied(subject, state, env)))(
         monster, { ...rawEnv, state },
     );
@@ -496,7 +478,7 @@ export async function dog_hunger(monster, edog, rawEnv = {}) {
                 await (env.beg ?? beg)(monster, env);
             } else {
                 await (env.message ?? ttyPline)(
-                    'You feel worried about ' + y_monnam(monster, state, env) + '.', state,
+                    youFeel(`worried about ${y_monnam(monster, state, env)}.`, state), state,
                 );
             }
             if (env.stopOccupation) await env.stopOccupation(env);
@@ -1599,7 +1581,7 @@ export async function dog_move(monster, after, rawEnv = {}) {
             ? t_at(x, y, state) : null;
         if (trap) {
             if (monster.mleashed) {
-                if (!heroDeaf(state)) {
+                if (!Deaf(state.u)) {
                     await petMoveOperation(env, 'whimper')(monster, env);
                 }
             } else if (trap.tseen && random.rn2(40)) {
@@ -1739,7 +1721,7 @@ export async function dog_move(monster, after, rawEnv = {}) {
             // says: place_monster() above has already put the pet on the
             // square, so glyph_at() would answer with the pet. The question is
             // whether the hero's map memory holds an object there.
-            const remembersObject = !Hallucination(state)
+            const remembersObject = !Hallucination(state.u)
                 && Boolean(state.level?.flags?.hero_memory)
                 && glyph_is_object(
                     state.level.at(nextX, nextY).remembered_glyph?.glyph,

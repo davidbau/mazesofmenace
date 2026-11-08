@@ -71,12 +71,9 @@ import {
     FIRE_TRAP,
     G_GENOD,
     HALF_SPDAM,
-    HALLUC,
     HEAD,
-    HALLUC_RES,
     HOLE,
     ICE,
-    INVIS,
     IRONBARS,
     KILLED_BY_AN,
     IS_ALTAR,
@@ -152,7 +149,6 @@ import {
     STRAT_CLOSE,
     STRAT_WAITFORU,
     STRAT_WAITMASK,
-    TELEPAT,
     TELEP_TRAP,
     TEMPLE,
     TRAPDOOR,
@@ -221,8 +217,6 @@ import {
 import { mattackm, mdisplacem } from './mhitm.js';
 import { m_next2u, ranged_attk_available } from './mhitu.js';
 import {
-    heroDeaf,
-    heroUnaware,
     youHear,
     youSee,
     verbalize,
@@ -476,6 +470,9 @@ import { extract_from_minvent, is_pole, which_armor } from './worn.js';
 import * as M from './monsters.js';
 import * as O from './objects.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
+import {
+    Blind_telepat, Deaf, Hallucination, Invis, Unaware,
+} from './youprop.js';
 
 
 function movementEnv(env = {}) {
@@ -554,7 +551,7 @@ export async function mb_trapped(mtmp, canseeit, env = {}) {
                 state,
                 env,
             );
-        } else if (!heroDeaf(state)) {
+        } else if (!Deaf(state.u)) {
             const dist = mdistu(mtmp, state);
             const heard = youHear(
                 `a ${dist > 7 * 7 ? 'distant' : 'nearby'} explosion.`,
@@ -764,8 +761,7 @@ async function mind_blast(mtmp, env = {}) {
     } else if (!state.u?.uinvulnerable) {
         const m_sen = sensemon(mtmp, state);
         // C ref: youprop.h Blind_telepat = (HTelepat || ETelepat)
-        const heroTelepat = state.u?.uprops?.[TELEPAT];
-        const blind_telepat = Boolean(heroTelepat?.intrinsic || heroTelepat?.extrinsic);
+        const blind_telepat = Blind_telepat(state.u);
         if (m_sen || (blind_telepat && random.rn2(2)) || !random.rn2(10)) {
             /* hiding monsters are brought out of hiding when hit by a psychic
                blast, so do the same for hiding poly'd hero */
@@ -906,12 +902,6 @@ function requireDochugwOperation(env, name) {
     return operation;
 }
 
-function heroHallucinating(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(hallucination?.intrinsic)
-        && !Boolean(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // Source predicate shared by monmove.c:dochugw() and makemon.c:makemon()'s
 // runtime-creation tail.  makemon() calls dochugw(mtmp, FALSE), so it needs to
@@ -938,7 +928,7 @@ function dochugwInterruptsOccupation(
     }
     const threatRange = (BOLT_LIM + 1) * (BOLT_LIM + 1);
     return !result
-        && (heroHallucinating(state)
+        && (Hallucination(state.u)
             || (!monster.mpeaceful && !noattacks(monster.data)))
         && dist2(monster.mx, monster.my, state.u?.ux, state.u?.uy)
             <= threatRange
@@ -1039,7 +1029,7 @@ export function monhaskey(monster, forUnlocking, state = game) {
 export async function mon_yells(mon, shout, env = {}) {
     const state = env.state ?? game;
     const message = env.message ?? ttyPline;
-    if (heroDeaf(state)) {
+    if (Deaf(state.u)) {
         if (canspotmon(mon, state)) {
             const verb = nolimbs(mon.data) ? 'shakes' : 'waves';
             const poss = mhis(mon, { state });
@@ -1102,7 +1092,7 @@ export async function m_break_boulder(mtmp, x, y, env = {}) {
     if (m_can_break_boulder(mtmp)
         && (otmp = sobj_at(BOULDER, x, y, state)) != null) {
         if (!is_rider(mtmp.data)) {
-            if (!heroDeaf(state) && mdistu(mtmp, state) < 4 * 4) {
+            if (!Deaf(state.u) && mdistu(mtmp, state) < 4 * 4) {
                 const text = `${capitalizedMonsterName(mtmp, state)} mutters ${
                     mtmp.ispriest ? 'a prayer' : 'an incantation'
                 }.`;
@@ -1163,7 +1153,7 @@ async function watch_on_duty(mtmp, rawEnv = {}) {
                             "Halt, thief!  You're under arrest!",
                             env,
                         );
-                        await angry_guards(heroDeaf(state), { ...env, state });
+                        await angry_guards(Deaf(state.u), { ...env, state });
                     } else {
                         await mon_yells(
                             mtmp,
@@ -1430,10 +1420,10 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
         } else {
             rockOkay = Boolean(m_carrying(monster, PICK_AXE, state)
                 || (m_carrying(monster, DWARVISH_MATTOCK, state)
-                    && !which_armor(monster, W_ARMS)));
+                    && !which_armor(monster, W_ARMS, state)));
             treeOkay = Boolean(m_carrying(monster, AXE, state)
                 || (m_carrying(monster, BATTLE_AXE, state)
-                    && !which_armor(monster, W_ARMS)));
+                    && !which_armor(monster, W_ARMS, state)));
         }
         if (rockOkay || treeOkay) throughDoor = true;
     }
@@ -1517,7 +1507,7 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
                 }
 
                 const monsterSeesHero = monster.mcansee
-                    && (!propertyActive(state, INVIS, true)
+                    && (!Invis(state.u)
                         || perceives(species));
                 const checkObject = Boolean(
                     state.level?.objects?.[nx]?.[ny],
@@ -2155,9 +2145,9 @@ export async function monflee(
             if (!monster.mcanmove || !monster.data?.mmove) {
                 message = { kind: 'immobile-flinch' };
             } else if (checksFleeingLight(monster, normalized)) {
-                if (heroUnaware(state)) {
+                if (Unaware(state)) {
                     message = { kind: 'frightened' };
-                } else if (random.rn2(10) || heroDeaf(state)) {
+                } else if (random.rn2(10) || Deaf(state.u)) {
                     message = {
                         kind: 'painful-light',
                         lightSource: fleeingLightSource(state),
@@ -2253,7 +2243,7 @@ export async function distfleeck(monster, env = {}) {
         && monnear(monster, monster.mux, monster.muy, state);
 
     const seesWrongSquare = !monster.mcansee
-        || (propertyActive(state, INVIS, true) && !perceives(monster.data));
+        || (Invis(state.u) && !perceives(monster.data));
     const scaryX = seesWrongSquare ? monster.mux : state.u.ux;
     const scaryY = seesWrongSquare ? monster.muy : state.u.uy;
     const sawScary = onScary(
@@ -2300,7 +2290,7 @@ export function set_apparxy(monster, env = {}) {
     }
 
     const notseen = !monster.mcansee
-        || (propertyActive(state, INVIS, true) && !perceives(monster.data));
+        || (Invis(state.u) && !perceives(monster.data));
     const notthere = propertyActive(state, DISPLACED)
         && !isSpecies(monster, PM_DISPLACER_BEAST, state);
     let displacement;
@@ -2471,8 +2461,7 @@ export async function dochug(monster, rawEnv = {}) {
     // live map.
     const redraw = rawEnv.planning ? () => {} : (rawEnv.redraw ?? newsym);
     const env = { ...rawEnv, state, random, unsupported };
-    const hallucinating = () => activeProperty(state, HALLUC)
-        && !activeProperty(state, HALLUC_RES);
+    const hallucinating = () => Hallucination(state.u);
 
     // PHASE ONE: pre-movement adjustments.
     preflight(monster, state);
@@ -3364,7 +3353,7 @@ export async function postmov(
         // it too.
         const trapResult = await mintrap(monster, NO_TRAP_FLAGS, {
             ...env,
-            heroDeaf,
+            heroDeaf: (hookState) => Deaf(hookState.u),
             mInAir: m_in_air,
             message,
             redraw,
@@ -3443,7 +3432,7 @@ export async function postmov(
                                 state,
                                 env,
                             );
-                        } else if (!heroDeaf(state)) {
+                        } else if (!Deaf(state.u)) {
                             const heard = youHear('a door unlock and open.', state);
                             if (heard) await message(heard, state, env);
                         }
@@ -3471,7 +3460,7 @@ export async function postmov(
                         );
                     } else if (canseeit) {
                         await message(youSee('a door open.', state), state, env);
-                    } else if (!heroDeaf(state)) {
+                    } else if (!Deaf(state.u)) {
                         const heard = youHear('a door open.', state);
                         if (heard) await message(heard, state, env);
                     }
@@ -3513,7 +3502,7 @@ export async function postmov(
                                 state,
                                 env,
                             );
-                        } else if (!heroDeaf(state)) {
+                        } else if (!Deaf(state.u)) {
                             const heard = youHear('a door crash open.', state);
                             if (heard) await message(heard, state, env);
                         }
@@ -3762,7 +3751,7 @@ export async function m_move(monster, rawEnv = {}) {
         const redraw = env.planning ? () => {} : (rawEnv.redraw ?? newsym);
         const trapResult = await mintrap(monster, NO_TRAP_FLAGS, {
             ...env,
-            heroDeaf,
+            heroDeaf: (hookState) => Deaf(hookState.u),
             mInAir: m_in_air,
             message: env.planning
                 ? async () => {}
@@ -3904,7 +3893,7 @@ export async function m_move(monster, rawEnv = {}) {
     // remains an ordinary source message. The wormno goto above skips this
     // branch just as C does.
     if (monster.data?.pmidx === PM_MAIL_DAEMON && !monster.wormno) {
-        if (!heroDeaf(state) && canseemon(monster, state)) {
+        if (!Deaf(state.u) && canseemon(monster, state)) {
             // The clone scan must consume the verbalize branch without
             // writing the live message window.  The live pass keeps the
             // caller's injected message seam (or ttyPline) exactly as C.
@@ -4019,7 +4008,7 @@ export async function m_move(monster, rawEnv = {}) {
             && (goalSquare.lit || !sourceSquare.lit)
             && dist2(oldX, oldY, goalX, goalY) <= 36;
         if (!monster.mcansee
-            || (shouldSee && activeProperty(state, INVIS)
+            || (shouldSee && Invis(state.u)
                 && !perceives(monster.data) && random.rn2(11))
             || M_AP_TYPE(state.youmonst) === M_AP_OBJECT
                 && state.youmonst.mappearance === STRANGE_OBJECT

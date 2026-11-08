@@ -48,7 +48,6 @@ import {
     CORPSTAT_NONE,
     NC_SHOW_MSG,
     NC_VIA_WAND_OR_SPELL,
-    DEAF,
     DOOR,
     D_CLOSED,
     D_LOCKED,
@@ -68,9 +67,6 @@ import {
     GPCOORDS_MAP,
     GPCOORDS_NONE,
     GPCOORDS_SCREEN,
-    HALLUC,
-    HALLUC_RES,
-    Maybe_Half_Phys,
     INTRINSIC,
     KILLED_BY_AN,
     LL_KILLEDPET,
@@ -160,7 +156,6 @@ import {
     ROWNO,
     STOMACH,
     FEMALE,
-    FAINTED,
     IN_SIGHT,
     MALE,
     W_AMUL,
@@ -594,7 +589,7 @@ import {
     place_monster,
     remove_monster,
 } from './monst.js';
-import { livelog_printf, youSee } from './pline.js';
+import { livelog_printf, youFeel, youSee } from './pline.js';
 import { SHTYPES } from './shtypes_data.js';
 import {
     clear_dknown,
@@ -684,7 +679,7 @@ import { end_burn, kill_egg, obj_stop_timers } from './timeout.js';
 import { migrate_to_level, wary_dog } from './dog.js';
 import { m_useup } from './mthrowu.js';
 import { coreRandom, rn2 } from './rng.js';
-import { heroIsBlind, messageAt } from './startup_a11y.js';
+import { messageAt } from './startup_a11y.js';
 import {
     mdrop_special_objs,
     mpickobj,
@@ -706,7 +701,6 @@ import {
 import {
     fill_pit,
     t_at,
-    unconscious,
     Flying,
     Levitation,
 } from './trap.js';
@@ -728,6 +722,10 @@ import { bypass_obj, mon_break_armor, which_armor } from './worn.js';
 import { body_part } from './polyself.js';
 import { mon_explodes } from './explode.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
+import {
+    Blind, Blind_telepat, Deaf, HTelepat, Hallucination, Maybe_Half_Phys,
+    Unaware,
+} from './youprop.js';
 
 function monsterTurnEnv(env = {}) {
     const state = env.state ?? game;
@@ -1128,12 +1126,12 @@ export function sanity_check_single_mon(
     if (mtmp.mleashed) {
         if (!get_mleash(mtmp, state))
             sanityImpossible(
-                `monst ${mtmp.m_id}: leashed but no leash for ${mon_pmname(mtmp)}`,
+                `monst ${mtmp.m_id}: leashed but no leash for ${mon_pmname(mtmp, state)}`,
                 env,
             );
         else if (!mtmp.mtame)
             sanityImpossible(
-                `monst ${mtmp.m_id}: leashed but not tame ${mon_pmname(mtmp)}`,
+                `monst ${mtmp.m_id}: leashed but not tame ${mon_pmname(mtmp, state)}`,
                 env,
             );
     }
@@ -2577,15 +2575,7 @@ function distressPropertyActive(state, property) {
     return Boolean(value?.intrinsic || value?.extrinsic);
 }
 
-function heroHallucinating(state) {
-    return distressPropertyActive(state, HALLUC)
-        && !distressPropertyActive(state, HALLUC_RES);
-}
 
-function distressDeaf(state) {
-    return distressPropertyActive(state, DEAF)
-        || Boolean(state.u?.uroleplay?.deaf);
-}
 
 function distressSpeciesName(monster) {
     const names = monster.data?.pmnames ?? [];
@@ -2919,7 +2909,7 @@ function* apply_newcham_steps(
     const l_oldname = names.l_oldname;
 
     mgender_from_permonst(monster, target, random);
-    if (In_endgame(state.u?.uz) && is_mplayer(olddata)
+    if (In_endgame(state.u?.uz, state) && is_mplayer(olddata)
         && has_mgivenname(monster)) {
         const given = monster.mextra?.mgivenname;
         if (typeof given === 'string') {
@@ -3153,7 +3143,7 @@ function* apply_newcham_steps(
     }
 
     if (state.context?.mon_moving) {
-        if (!u_at(monster.mux, monster.muy)) set_apparxy(monster, normalized);
+        if (!u_at(monster.mux, monster.muy, state)) set_apparxy(monster, normalized);
         if (!monster.mpeaceful
             && onscary(monster.mux, monster.muy, monster, state)
             && monnear(monster, monster.mux, monster.muy, state)) {
@@ -3669,7 +3659,7 @@ function newWereTargetName(target) {
 
 async function announceNewWere(monster, target, normalized) {
     if (normalized.canSeeMonster(monster, normalized)
-        && !heroHallucinating(normalized.state)) {
+        && !Hallucination(normalized.state.u)) {
         await normalized.message(
             `${distressMonnam(monster)} changes into a ${newWereTargetName(target)}.`,
             normalized.state,
@@ -3732,7 +3722,7 @@ async function m_respond_shrieker(monster, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
     const message = rawEnv.message
         ?? (rawEnv.planning ? async () => {} : ttyPline);
-    if (!distressDeaf(state)) {
+    if (!Deaf(state.u)) {
         await message(`${Monnam(monster, state)} shrieks.`, state, rawEnv);
         const stopOccupation = rawEnv.stopOccupation;
         if (typeof stopOccupation === 'function')
@@ -3811,7 +3801,7 @@ export async function qst_guardians_respond(rawEnv = {}) {
             if (canseemon(monster, state)) ++gotMad;
         }
     }
-    if (gotMad && !heroHallucinating(state)) {
+    if (gotMad && !Hallucination(state.u)) {
         const who = gotMad > 1
             ? makeplural(pmname(qGuardian, NEUTRAL))
             : pmname(qGuardian, NEUTRAL);
@@ -3879,11 +3869,11 @@ export async function peacefuls_respond(attacked, rawEnv = {}) {
             if (is_watch(monster.data)) {
                 await message('"Halt!  You\'re under arrest!"', state, rawEnv);
                 await angry_guards(
-                    distressDeaf(state),
+                    Deaf(state.u),
                     { ...rawEnv, state, message },
                 );
             } else {
-                if (!distressDeaf(state) && !random.rn2(5)) {
+                if (!Deaf(state.u) && !random.rn2(5)) {
                     const gasp = maybe_gasp(monster, state, random);
                     if (gasp) {
                         if (gasp.slice(0, 4).toLowerCase() === 'gasp') {
@@ -4008,9 +3998,9 @@ export async function setmangry(monster, via_attack, rawEnv = {}) {
 
     if (via_attack && sengr_at('Elbereth', ux, uy, true, state)
         && (onscary(ux, uy, monster, state) || monster.mpeaceful)) {
-        await message('You feel like a hypocrite.', state, rawEnv);
+        await message(youFeel('like a hypocrite.', state), state, rawEnv);
         adjalign(state.u.ualign.record > 5 ? -5 : -random.rnd(5), state);
-        if (!heroIsBlind(state))
+        if (!Blind(state.u))
             await message('The engraving beneath you fades.', state, rawEnv);
         del_engr_at(ux, uy, state);
     }
@@ -4307,7 +4297,7 @@ export async function were_change(monster, rawEnv = {}) {
 
     await new_were(monster, normalized);
     state.gw.were_changes++;
-    if (humanForm && !distressDeaf(state)
+    if (humanForm && !Deaf(state.u)
         && !normalized.canSeeMonster(monster, normalized)) {
         let howler = null;
         if (monster.data?.pmidx === PM_WEREWOLF) howler = 'wolf';
@@ -4909,7 +4899,7 @@ export function m_detach(
             thiefdead(state);
         if (mtmp.isshk) shkgone(mtmp, state);
         if (mtmp.wormno) wormgone(mtmp, { state });
-        if (In_endgame(state.u.uz))
+        if (In_endgame(state.u.uz, state))
             mtmp.mstate = (mtmp.mstate ?? 0) | MON_ENDGAME_FREE;
 
         if ((mtmp.mstate ?? 0) & MON_DETACH)
@@ -5161,10 +5151,6 @@ export function set_mon_min_mhpmax(mon, minimum_mhpmax) {
     if (mon.mhpmax < minimum_mhpmax) mon.mhpmax = minimum_mhpmax;
 }
 
-function monsterUnaware(state) {
-    return Math.trunc(state.multi ?? 0) < 0
-        && (unconscious(state) || state.u?.uhs === FAINTED);
-}
 
 // C ref: mon.c vamprises() (2890-2994). A shifted vampire revives in its
 // natural form, then breaks a door or its trapped door if necessary. The
@@ -5176,7 +5162,7 @@ export async function vamprises(mtmp, state = game, env = {}) {
         || (state.svm.mvitals[mndx].mvflags & G_GENOD)) return false;
 
     const message = env.message ?? ttyPline;
-    const unaware = monsterUnaware(state);
+    const unaware = Unaware(state);
     const specMon = nonliving(mtmp.data)
         || noncorporeal(mtmp.data)
         || amorphous(mtmp.data);
@@ -5879,7 +5865,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
         obj = oname(obj, MGIVENNAME(mtmp), ONAME_NO_FLAGS, objectEnv);
 
     /* Avoid naming an unseen corpse while blind: hitmu() calls it "something". */
-    if (heroIsBlind(state) && !sensemon(mtmp, state)) clear_dknown(obj);
+    if (Blind(state.u) && !sensemon(mtmp, state)) clear_dknown(obj, state);
 
     stackobj(obj, objectGenerationEnv(objectEnv));
     killRedraw(x, y, { ...env, state });
@@ -6155,7 +6141,7 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
         /* mon.c:3504. A hallucinating hero cannot read a pet's collar, so a
            named pet is named only while the hallucination is off; that is
            what decides both the article and the saddle suppression below. */
-        const namedpet = has_mgivenname(mtmp) && !heroHallucinating(state);
+        const namedpet = has_mgivenname(mtmp) && !Hallucination(state.u);
 
         await message(
             `You ${nonliving(mtmp.data) ? 'destroy' : 'kill'} `
@@ -6353,13 +6339,10 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
         && state.u.ualign.type !== A_CHAOTIC) {
         // mon.c:3650-3663. HTelepat is intrinsic telepathy and ETelepat is
         // equipment-granted telepathy; only the former is removed here.
-        const telepathy = state.u.uprops?.[TELEPAT];
-        if (telepathy)
-            telepathy.intrinsic = (telepathy.intrinsic ?? 0) & ~INTRINSIC;
+        state.u.uprops[TELEPAT].intrinsic = HTelepat(state.u) & ~INTRINSIC;
         change_luck(-2, state);
         await message('You murderer!', state);
-        if (heroIsBlind(state)
-            && !(telepathy?.intrinsic || telepathy?.extrinsic))
+        if (Blind(state.u) && !Blind_telepat(state.u))
             await see_monsters(state, { ...env,
                 ...(env.planning && !env.redraw ? { redraw: () => {} } : {}),
             });
@@ -6369,7 +6352,7 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
     if (is_unicorn(mdat)
         && Math.sign(state.u.ualign.type) === Math.sign(mdat.maligntyp)) {
         change_luck(-5, state);
-        await message('You feel guilty...', state);
+        await message(youFeel('guilty...', state), state);
     }
 
     /* "give experience points" */
@@ -6401,7 +6384,7 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
         state.u.ugangr++;
         change_luck(-4, state);
         await message(
-            heroHallucinating(state)
+            Hallucination(state.u)
                 ? 'Whoopsie-daisy!'
                 : 'That was probably a bad idea...',
             state,
@@ -6419,7 +6402,7 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
            this port, as js/sounds.js yelp() records. The LL_KILLEDPET event
            remains in the canonical in-memory chronicle. */
         const heard = youHear(
-            heroHallucinating(state)
+            Hallucination(state.u)
                 ? 'the studio audience applaud!'
                 : 'the rumble of distant thunder...',
             state,
@@ -6617,7 +6600,7 @@ export function ok_to_obliterate(mtmp, state = game) {
 // It is not part of the saved game, matching the C function static.
 
 export async function elemental_clog(mon, state = game, env = {}) {
-    if (!In_endgame(state.u?.uz)) return;
+    if (!In_endgame(state.u?.uz, state)) return;
 
     let m1 = null;
     let m2 = null;
@@ -6632,7 +6615,7 @@ export async function elemental_clog(mon, state = game, env = {}) {
         || (state.moves - messageMove) > 200) {
         if (!messageMove || random.rn2(2)) {
             const message = env.message ?? ttyPline;
-            await message('You feel besieged.', state, env);
+            await message(youFeel('besieged.', state), state, env);
         }
         state.elemental_clog_msgmv = state.moves;
     }
@@ -6671,7 +6654,7 @@ export async function elemental_clog(mon, state = game, env = {}) {
         await mongone(target, { ...env, state });
         // C intentionally relocates `mon`, not the monster just obliterated.
         return rloc_to(mon, mx, my, { ...env, state });
-    } else if (!Is_astralevel(state.u?.uz)) {
+    } else if (!Is_astralevel(state.u?.uz, state)) {
         const destination = {
             ...state.u.uz,
             dlevel: state.u.uz.dlevel - 1,
@@ -6686,7 +6669,7 @@ export async function elemental_clog(mon, state = game, env = {}) {
 // calls are empty under this build's lint.h configuration; the state-changing
 // branches are the complete function body here.
 export function deal_with_overcrowding(mtmp, state = game, env = {}) {
-    if (In_endgame(state.u?.uz))
+    if (In_endgame(state.u?.uz, state))
         return elemental_clog(mtmp, state, env);
     else
         return m_into_limbo(mtmp, state, env);

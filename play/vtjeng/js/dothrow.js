@@ -42,7 +42,6 @@ import {
     ARM,
     AUGMENT_IT,
     BACKTRACK,
-    BLINDED,
     BOLT_LIM,
     BRK_FROM_INV,
     BRK_KNOWN2BREAK,
@@ -52,7 +51,6 @@ import {
     CXN_PFX_THE,
     CQ_CANNED,
     D_ISOPEN,
-    DEAF,
     DB_UNDER,
     DB_MOAT,
     DISP_END,
@@ -73,8 +71,6 @@ import {
     FIRE_TRAP,
     FUMBLING,
     FOOT,
-    HALLUC,
-    HALLUC_RES,
     GETOBJ_ALLOWCNT,
     GETOBJ_DOWNPLAY,
     GETOBJ_EXCLUDE,
@@ -102,7 +98,6 @@ import {
     PRONOUN_HALLU,
     PRONOUN_NO_IT,
     Has_contents,
-    Maybe_Half_Phys,
     HOLE,
     IS_ALTAR,
     PASSES_WALLS,
@@ -423,7 +418,7 @@ import {
 } from './do_name.js';
 import { genders } from './roles.js';
 import { encumber_msg } from './pickup.js';
-import { verbalize } from './pline.js';
+import { verbalize, youFeel } from './pline.js';
 import { body_part, polymon } from './polyself.js';
 import { makeplural } from './fruit.js';
 import { coreRandom, d, rn2, rnd } from './rng.js';
@@ -463,7 +458,6 @@ import { set_malign } from './makemon.js';
 import { makemon_runtime } from './makemon_create.js';
 import { explode, explode_oil } from './explode.js';
 import { align_gname } from './pray.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { in_out_region, m_in_out_region } from './region.js';
 import { check_special_room, in_rooms } from './rooms.js';
 import {
@@ -481,7 +475,6 @@ import {
 } from './shk.js';
 import { erode_obj } from './trap_erode_obj.js';
 import { dotrap, mintrap } from './trap_effects.js';
-import { Punished } from './steed.js';
 import { move_bc, drag_ball, drop_ball } from './ball.js';
 import { note_unported } from './unported.js';
 import { cutworm } from './worm.js';
@@ -489,6 +482,10 @@ import { snuff_candle } from './apply_splash_lit.js';
 import { make_blinded, potionbreathe, potionhit } from './potion.js';
 import { unsplitobj } from './obj.js';
 import { canseemon, canspotmon } from './display.js';
+import { Punished } from './steed.js';
+import {
+    Blind, Deaf, HBlinded, Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 // C refs: youprop.h Confusion (84), Stunned (81), Fumbling (129) and
 // Stone_resistance (65). Each is the union of the intrinsic and extrinsic
@@ -500,21 +497,6 @@ function propertyHeld(state, property) {
     return Boolean(held?.intrinsic || held?.extrinsic);
 }
 
-// C ref: youprop.h Hallucination, HHallucination && !Halluc_resistance. Resistance is a
-// separate property from the hallucination source, so it must be checked at
-// the same admission point rather than folded into propertyHeld().
-function hallucinating(state) {
-    return Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !propertyHeld(state, HALLUC_RES);
-}
-
-// C ref: youprop.h Deaf (125), `HDeaf || EDeaf || u.uroleplay.deaf`. The third
-// term is the deaf conduct, which only `OPTIONS=roleplay:deaf` sets and nothing
-// clears; js/display.js statusConditionActive() spells the same union for the
-// status line.
-function Deaf(state) {
-    return propertyHeld(state, DEAF) || Boolean(state.u?.uroleplay?.deaf);
-}
 
 // A branch of dothrow.c this port has not translated. js/cmd.js
 // failClosedCommandRefusals() lists it, so the segment keeps every frame the
@@ -596,7 +578,7 @@ export async function hurtle(
     // A planning copy of a monster's knockback must print nothing live.
     const message = planning ? async () => {} : ttyPline;
     if (Punished(state) && state.uball?.where !== OBJ_INVENT) {
-        await message('You feel a tug from the iron ball.', state);
+        await message(youFeel('a tug from the iron ball.', state), state);
         nomul(0, state);
         return;
     }
@@ -645,7 +627,7 @@ function propertyPresent(state, property) {
 }
 
 function heroWwalking(state) {
-    return !Is_waterlevel(state.u?.uz)
+    return !Is_waterlevel(state.u?.uz, state)
         && propertyPresent(state, WWALKING);
 }
 
@@ -719,7 +701,7 @@ function mhurtleTrapEnvironment(rawEnv, state) {
         state,
         random: rawEnv.random ?? coreRandom,
         mInAir: rawEnv.mInAir ?? m_in_air,
-        heroDeaf: rawEnv.heroDeaf ?? Deaf,
+        heroDeaf: rawEnv.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: rawEnv.youHear ?? youHear,
         message: rawEnv.message
             ?? ((line, target) => ttyPline(line, target ?? state)),
@@ -917,7 +899,7 @@ export async function hurtle_step(arg, x, y) {
     let mayPass = true;
 
     if (!isok(x, y)) {
-        await message('You feel the spirits holding you back.', state);
+        await message(youFeel('the spirits holding you back.', state), state);
         return false;
     }
     if (!await in_out_region(x, y, { state })) return false;
@@ -1102,7 +1084,7 @@ export async function hurtle_step(arg, x, y) {
             }
             return false;
         }
-        if (!Is_waterlevel(state.u.uz) && !stoppingShort) {
+        if (!Is_waterlevel(state.u.uz, state) && !stoppingShort) {
             await norepMessage(
                 `You move over ${an(isMoat(x, y, state) ? 'moat' : 'pool')}.`,
                 state,
@@ -1255,7 +1237,7 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
                 state,
                 rawEnv,
             );
-            await breakmsg(obj, !heroIsBlind(state), { ...rawEnv, state });
+            await breakmsg(obj, !Blind(state.u), { ...rawEnv, state });
             // Crackable armor may pass breaktest() but survive breakobj().
             if (!await breakobj(obj, u.ux, u.uy, true, true,
                 { ...rawEnv, state, random })) {
@@ -1288,7 +1270,7 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
         const blindinc = ((otyp === CREAM_PIE || otyp === BLINDING_VENOM)
             && can_blnd(state.youmonst, state.youmonst, AT_WEAP, obj, state))
             ? random.rnd(25) : 0;
-        await breakmsg(obj, !heroIsBlind(state), { ...rawEnv, state });
+        await breakmsg(obj, !Blind(state.u), { ...rawEnv, state });
         if (await breakobj(obj, u.ux, u.uy, true, true,
             { ...rawEnv, state, random }))
             obj = null;
@@ -1331,14 +1313,14 @@ export async function toss_up(obj, hitsroof, state = game, rawEnv = {}) {
         }
 
         if (blindinc) {
-            if (otyp === BLINDING_VENOM && !heroIsBlind(state))
+            if (otyp === BLINDING_VENOM && !Blind(state.u))
                 await message('It blinds you!', state, rawEnv);
             u.ucreamed = (u.ucreamed ?? 0) + blindinc;
-            const blindedTimeout = (u.uprops?.[BLINDED]?.intrinsic ?? 0)
+            const blindedTimeout = (HBlinded(u))
                 & TIMEOUT;
             await make_blinded(blindedTimeout + blindinc, false, state,
                 rawEnv);
-            if (!heroIsBlind(state))
+            if (!Blind(state.u))
                 await message(`Your ${vision_clears}`, state, rawEnv);
         }
 
@@ -1606,7 +1588,7 @@ export async function hero_breaks(
 ) {
     const state = rawEnv.state ?? game;
     const fromInventory = Boolean(breakFlags & BRK_FROM_INV);
-    const inView = !heroIsBlind(state)
+    const inView = !Blind(state.u)
         && (fromInventory || cansee(x, y, state));
     let outcome = breakFlags & BRK_KNOWN_OUTCOME;
     if (!outcome) {
@@ -1629,7 +1611,7 @@ export async function hero_breaks(
 // cause and never bills a floor object to the hero as an inventory loss.
 export async function breaks(obj, x, y, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const inView = !heroIsBlind(state) && cansee(x, y, state);
+    const inView = !Blind(state.u) && cansee(x, y, state);
     if (!breaktest(obj, { ...rawEnv, state })) return 0;
     await breakmsg(obj, inView, { ...rawEnv, state });
     return await breakobj(obj, x, y, false, false, { ...rawEnv, state });
@@ -1677,7 +1659,7 @@ export async function release_camera_demon(obj, x, y, env = {}) {
             MM_NOMSG, { ...env, state, random, message });
         if (monster) {
             if (canspotmon(monster, state)) {
-                const name = hallucinating(state)
+                const name = Hallucination(state.u)
                     ? An(rndmonnam({ state, random: env.displayRandom }))
                     : 'The picture-painting demon';
                 await message(`${name} is released!`, state, env);
@@ -2615,7 +2597,7 @@ async function gem_accept(mon, obj, state = game, rawEnv = {}) {
         ret = 1;
     }
 
-    if (!heroIsBlind(state)) await message(text, state, env);
+    if (!Blind(state.u)) await message(text, state, env);
     if (!(await tele_restrict(mon, state, { ...env, message }))) {
         rloc(mon, RLOC_MSG, {
             ...env,
@@ -2637,8 +2619,8 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
     const arw = autoreturn_weapon(obj);
     let impaired = propertyHeld(state, CONFUSION)
         || propertyHeld(state, STUNNED)
-        || heroIsBlind(state)
-        || hallucinating(state)
+        || Blind(state.u)
+        || Hallucination(state.u)
         || propertyHeld(state, FUMBLING);
     const tetheredWeapon = Boolean(arw?.tethered && (wep_mask & W_WEP));
 
@@ -2669,7 +2651,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
     if ((u.dx || u.dy || u.dz < 1)
         && calc_capacity(obj.owt, state) > SLT_ENCUMBER
         && currentHp < (polyd ? 5 : 10) && currentHp !== maxHp
-        && obj.owt > currentHp * 2 && !Is_airlevel(u.uz)) {
+        && obj.owt > currentHp * 2 && !Is_airlevel(u.uz, state)) {
         await ttyPline(
             `You have so little stamina, ${the(xnameFresh(obj, state), state)}`
             + ' drops from your grasp.', state,
@@ -2725,7 +2707,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
         throwit_return(true, state);
         return;
     } else if (obj.otyp === BOOMERANG && !u.uinwater) {
-        if (Is_airlevel(u.uz) || Levitation(state))
+        if (Is_airlevel(u.uz, state) || Levitation(state))
             await hurtle(-u.dx, -u.dy, 1, true, state);
         mon = await boomhit(
             obj, u.dx, u.dy, state, throwit_mon_hit, endmultishot,
@@ -2769,7 +2751,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
             }
         }
 
-        if (Is_airlevel(u.uz) || Levitation(state)) {
+        if (Is_airlevel(u.uz, state) || Levitation(state)) {
             urange -= range;
             if (urange < 1) urange = 1;
             range -= urange;
@@ -2792,7 +2774,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
         );
         obj = pobj.obj;
         setThrownObject(state, obj);
-        if (Is_airlevel(u.uz) || Levitation(state))
+        if (Is_airlevel(u.uz, state) || Levitation(state))
             await hurtle(-u.dx, -u.dy, urange, true, state);
         if (!obj) {
             if (tetheredWeapon) await tmp_at(DISP_END, 0, state);
@@ -2840,7 +2822,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
                 const damageRoll = rn2(2);
                 if (!damageRoll) {
                     await ttyPline(
-                        heroIsBlind(state)
+                        Blind(state.u)
                             ? `Something lands ${
                                 Levitation(state) ? 'beneath' : 'at'} your ${
                                 makeplural(body_part(FOOT, state.youmonst))}.`
@@ -2851,7 +2833,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
                 } else {
                     let damage = damageRoll + rnd(3);
                     await ttyPline(
-                        heroIsBlind(state)
+                        Blind(state.u)
                             ? `${Tobjnam(obj, 'hit', state)} your ${body_part(ARM, state.youmonst)}!`
                             : `${Tobjnam(obj, 'fly', state)} back toward you, `
                                 + `hitting your ${body_part(ARM, state.youmonst)}!`, state,
@@ -2907,7 +2889,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
             return;
         }
     }
-    if (!Deaf(state) && !u.uinwater
+    if (!Deaf(state.u) && !u.uinwater
         && (is_pool(bx, by, state)
             || (is_lava(bx, by, state) && !is_flammable(obj, state)))) {
         note_unported('sounds.c Soundeffect');
@@ -3090,7 +3072,7 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
                  && objectType(obj, state).oc_unique
                  && otyp !== AMULET_OF_YENDOR)
                 || !mon.mpeaceful) {
-                if (mon.mpeaceful && !Deaf(state)) {
+                if (mon.mpeaceful && !Deaf(state.u)) {
                     fully_identify_obj(obj, state);
                     await verbalize(
                         `${s_suffix(The(xnameFresh(obj, state), state))} part in this is finished.`,
@@ -3408,8 +3390,8 @@ async function throw_gold(obj, state = game) {
        the struct on first use, and both arms below write into it. */
     state.gb ??= {};
     if (u.dz) {
-        if (u.dz < 0 && !Is_airlevel(u.uz) && !u.uinwater
-            && !Is_waterlevel(u.uz)) {
+        if (u.dz < 0 && !Is_airlevel(u.uz, state) && !u.uinwater
+            && !Is_waterlevel(u.uz, state)) {
             await ttyPline(
                 `The gold hits the ${ceiling(u.ux, u.uy, state)}, then falls `
                 + `back on top of your ${body_part(HEAD, state.youmonst)}.`,

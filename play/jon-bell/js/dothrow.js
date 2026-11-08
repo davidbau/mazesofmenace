@@ -1185,7 +1185,7 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
     }
     if (is_wet_towel(thrownObj))
         await dry_a_towel(thrownObj, -1, false);
-    u._oldcap = near_capacity();
+    /* C keeps go.oldcap untouched here: only encumber_msg() writes it. */
     /* C ref: dothrow.c:240-274 — the multishot ROLL, the volley message and
      * THE LOOP.  `multishot` is C's local; _throw_obj_multishot() is
      * dothrow.c:161-238 factored out because both this body and (before this

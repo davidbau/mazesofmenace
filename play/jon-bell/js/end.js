@@ -1042,7 +1042,7 @@ export async function do_death_sequence(opts) {
             /* topl.c:289 files the buffer once.  WIN_STOP paging already
              * tracks its live buffer as the last history entry. */
             if (_wsBuf && g._msg_history?.at(-1) !== _wsBuf)
-                putmsghistory(_wsBuf);
+                (g._msg_history ||= []).push(_wsBuf);
             if (_wsBuf.length + 2 + 'You die...'.length < TOPL_LIMIT_END) {
                 g._topl_win_stop = false;
                 g._topl_win_stop_armed = false;
@@ -1057,7 +1057,7 @@ export async function do_death_sequence(opts) {
                 /* notdied stays 1: buffered, not drawn, WIN_STOP survives into
                  * tty_yn_function, which therefore raises no more(). */
                 g._topl_win_stop_buf = 'You die...';
-                putmsghistory('You die...');
+                (g._msg_history ||= []).push('You die...');
                 _youDieFiled = true; /* gt.toplines is now "You die..." (topl.c:289-290): filed once, here */
             }
         } else {
@@ -1095,7 +1095,7 @@ export async function do_death_sequence(opts) {
          * owner an ESC'd page left drawn (topl.c:300) still reaches ^P history. */
         const _stand = String(g._pending_message || '');
         if (_stand && !_youDieFiled && g._msg_history?.at(-1) !== _stand)
-            putmsghistory(_stand);
+            (g._msg_history ||= []).push(_stand);
         g._pending_message = '';
     }
     g._topl_unacknowledged = false;

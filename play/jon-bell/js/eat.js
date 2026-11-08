@@ -749,6 +749,7 @@ async function newuhs_body(incr) {
         /* u.uhs was restored without SET_BOTL: flushes during the message
          * plines below still show the last bot() paint (eat.c:3404-3407). */
         g._hsRestored = true;
+        g._hsRestoredUnpainted = true;
     }
     /* C eat.c:3411-3448 — FAINTING branch. */
     if (newhs === FAINTING) {

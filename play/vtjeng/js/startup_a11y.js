@@ -16,7 +16,6 @@ import {
     AM_MASK,
     AM_NEUTRAL,
     AM_SANCTUM,
-    BLINDED,
     BOLT_LIM,
     COLNO,
     CLOUD,
@@ -38,8 +37,6 @@ import {
     GPCOORDS_SCREEN,
     GLOC_INTERESTING,
     GRAVE,
-    HALLUC,
-    HALLUC_RES,
     ICE,
     IRONBARS,
     IS_ROOM,
@@ -198,6 +195,7 @@ import {
     S_vodoor,
     S_water,
 } from './symbols.js';
+import { Blind, Hallucination } from './youprop.js';
 
 // mhidden_description() is owned by pager.c.  Keep this compatibility export
 // for status-line and startup callers while pager.js remains the sole JS
@@ -809,10 +807,6 @@ function speciesName(monster) {
     return names[monster.female ? 1 : 0] ?? names[2] ?? 'monster';
 }
 
-function heroHallucinating(state) {
-    return Boolean(state?.u?.uprops?.[HALLUC]?.intrinsic)
-        && !propertyActive(state.u, HALLUC_RES);
-}
 
 export function monsterSurfaceDescription(monster, state) {
     const x = monster.mx;
@@ -930,7 +924,7 @@ export function hiddenObjectPhrase(object, state, { includeArticle = true } = {}
 export function describeMonster(monster, env = {}) {
     const state = env.state;
     const hallucinating = env.hallucinating
-        ?? (state ? heroHallucinating(state) : false);
+        ?? (state ? Hallucination(state.u) : false);
     const namedMonster = env.species
         ? { ...monster, data: env.species }
         : monster;
@@ -1260,8 +1254,8 @@ function observeBufferedObject(object, synthetic, x, y, state) {
     const dx = x - state.u.ux;
     const dy = y - state.u.uy;
     if (dx * dx + dy * dy <= 2
-        && !heroIsBlind(state)
-        && !heroHallucinating(state)
+        && !Blind(state.u)
+        && !Hallucination(state.u)
         && (synthetic || object.where === OBJ_FLOOR)
         && !state.iflags?.terrainmode) {
         observe_object(object, state);
@@ -1441,18 +1435,6 @@ export function collectLookaroundMessages(state, { includeRoom = true } = {}) {
     return messages;
 }
 
-function propertyActive(hero, index) {
-    const property = hero?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
-
-// C ref: youprop.h Blind() (103). Exported because mon.c make_corpse():927
-// needs it too and this is the copy nearest its other visibility helpers.
-export function heroIsBlind(state) {
-    const property = state.u?.uprops?.[BLINDED];
-    return Boolean(property?.intrinsic || property?.extrinsic)
-        && !property?.blocked;
-}
 
 function singularMovementVerb(species) {
     const verb = locomotion(species, 'move');

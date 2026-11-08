@@ -22,7 +22,6 @@ import {
     COULD_SEE,
     CORR,
     ALTAR,
-    DEAF,
     CQ_CANNED,
     DB_MOAT,
     DB_LAVA,
@@ -69,11 +68,8 @@ import {
     DIGTYP_STATUE,
     DIGTYP_TREE,
     DIGTYP_UNDIGGABLE,
-    FAINTED,
     FORCEBUNGLE,
     Has_contents,
-    HALLUC,
-    HALLUC_RES,
     IRONBARS,
     IN_SIGHT,
     IS_WATERWALL,
@@ -135,7 +131,6 @@ import {
     BEAR_TRAP,
     KILLED_BY,
     KILLED_BY_AN,
-    Maybe_Half_Phys,
     HEAD,
     STOMACH,
     MM_NOMSG,
@@ -212,7 +207,7 @@ import { cvt_sdoor_to_door } from './detect.js';
 import {
     cmap_to_glyph, feel_newsym, flush_screen, map_glyphinfo, newsym, tmp_at,
 } from './display.js';
-import { verbalize } from './pline.js';
+import { verbalize, youFeel } from './pline.js';
 import { in_rooms } from './rooms.js';
 import { acurr, acurrstr, adjalign, exercise } from './attrib.js';
 import {
@@ -231,8 +226,6 @@ import { cansee, does_block, m_canseeu, recalc_block_point, unblock_point } from
 import { coreRandom } from './rng.js';
 import { set_voice } from './sounds.js';
 import {
-    Flying,
-    Levitation,
     b_trapped,
     conjoined_pits,
     cnv_trap_obj,
@@ -245,12 +238,13 @@ import {
     delfloortrap,
     uteetering_at_seen_pit,
     uescaped_shaft,
+    Flying,
+    Levitation,
 } from './trap.js';
 import { feeltrap, seetrap } from './trap_effects.js';
 import { bimanual } from './worn.js';
 import { On_stairs, stairway_at } from './stairs.js';
 import { dist2, s_suffix } from './hacklib.js';
-import { unconscious } from './trap.js';
 import {
     displayPendingTtyMessageWindow, ttyPline,
 } from './tty_message.js';
@@ -263,7 +257,6 @@ import {
 import { altar_wrath, altarmask_at, desecrate_altar } from './pray.js';
 import { note_unported } from './unported.js';
 import { angry_priest } from './priest.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { mk_tt_object } from './mkroom.js';
 import { mkclass } from './makemon.js';
 import {
@@ -303,13 +296,11 @@ import { AD_DGST, AT_ENGL, MZ_HUGE } from './monsters.js';
 import { canseemon } from './display.js';
 import { expels } from './mhitu.js';
 import { body_part, mbodypart } from './polyself.js';
+import {
+    Blind, Deaf,
+    Hallucination, Maybe_Half_Phys, Unaware,
+} from './youprop.js';
 
-// C ref: youprop.h Unaware. The draft-message random roll is skipped while a
-// negative multi represents unconsciousness or fainting.
-function unaware(state) {
-    return Math.trunc(state.multi ?? 0) < 0
-        && (unconscious(state) || state.u?.uhs === FAINTED);
-}
 
 // C ref: dig.c pick_can_reach() (141-164). A pick reaches a target in a pit
 // only when the hero's pit links to it; otherwise the hero must be able to
@@ -946,13 +937,6 @@ export function watchman_canseeu(mtmp, state = game) {
         && mtmp.mpeaceful;
 }
 
-function heroDeaf(state) {
-    const deafness = state.u?.uprops?.[DEAF] ?? {};
-    return Boolean(
-        deafness.intrinsic || deafness.extrinsic
-        || state.u?.uroleplay?.deaf,
-    );
-}
 
 // C ref: dig.c watch_dig() (1377-1410). This is called by the monster watch,
 // chewing, and wand-digging paths before their terrain mutation. The optional
@@ -987,7 +971,7 @@ export async function watch_dig(mtmp, x, y, zap, rawEnv = {}) {
             { message },
         );
         const anger = rawEnv.angryGuards ?? angry_guards;
-        await anger(heroDeaf(state), { ...rawEnv, state, message });
+        await anger(Deaf(state.u), { ...rawEnv, state, message });
     } else {
         const target = IS_DOOR(lev.typ) ? 'door'
             : IS_TREE(lev.typ, state) ? 'tree'
@@ -1149,7 +1133,7 @@ export async function use_pick_axe2(obj, state = game, env = {}) {
                     seetrap(trap, { redraw: (x, y) => newsym(x, y, state) });
                     await message('There is a spider web there!', state);
                 }
-                await message(`${Yobjnam2(obj, 'become')} entangled in the web.`, state);
+                await message(`${Yobjnam2(obj, 'become', state)} entangled in the web.`, state);
                 nomul(-random.d(2, 2), state);
                 state.multi_reason = 'stuck in a spider web';
                 state.nomovemsg = 'You pull free.';
@@ -1535,7 +1519,7 @@ export async function digactualhole(
 
     const oldType = location.typ;
     const surfaceType = IS_FURNITURE(oldType)
-        ? (IS_ROOM(oldType) && !Is_earthlevel(state.u.uz) ? 'floor' : 'ground')
+        ? (IS_ROOM(oldType) && !Is_earthlevel(state.u.uz, state) ? 'floor' : 'ground')
         : surface(x, y, state);
     let furniture = '';
     if (IS_FURNITURE(oldType)) {
@@ -1678,7 +1662,7 @@ async function dig_up_grave(coordinate, rawEnv = {}) {
     await exercise(A_WIS, false, state, random);
     if (state.urole?.mnum === PM_ARCHEOLOGIST) {
         adjalign(-Math.sign(state.u.ualign.type) * 3, state);
-        await message('You feel like a despicable grave-robber!', state, rawEnv);
+        await message(youFeel('like a despicable grave-robber!', state), state, rawEnv);
     } else if (state.urole?.mnum === PM_SAMURAI) {
         adjalign(-Math.sign(state.u.ualign.type), state);
         await message('You disturb the honorable dead!', state, rawEnv);
@@ -1687,11 +1671,7 @@ async function dig_up_grave(coordinate, rawEnv = {}) {
         await message('You have violated the sanctity of this grave!', state, rawEnv);
     }
 
-    const hallucinating = Boolean(
-        state.u?.uprops?.[HALLUC]?.intrinsic
-        && !state.u?.uprops?.[HALLUC_RES]?.intrinsic
-        && !state.u?.uprops?.[HALLUC_RES]?.extrinsic,
-    );
+    const hallucinating = Hallucination(state.u);
     const whatHappens = location.emptygrave ? -1 : random.rn2(5);
     switch (whatHappens) {
     case 0:
@@ -1702,7 +1682,7 @@ async function dig_up_grave(coordinate, rawEnv = {}) {
         break;
     }
     case 2: {
-        if (!heroIsBlind(state)) {
+        if (!Blind(state.u)) {
             const surprise = hallucinating
                 ? 'Dude!  The living dead'
                 : "The grave's owner is very upset";
@@ -1736,7 +1716,7 @@ async function dig_up_grave(coordinate, rawEnv = {}) {
         break;
     }
     case 3: {
-        if (!heroIsBlind(state)) {
+        if (!Blind(state.u)) {
             const surprise = hallucinating
                 ? 'I want my mummy'
                 : "You've disturbed a tomb";
@@ -1952,7 +1932,7 @@ export async function zap_dig(
         return;
     }
     if (u.dz) {
-        if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz) && !u.uinwater) {
+        if (!Is_airlevel(u.uz, state) && !Is_waterlevel(u.uz, state) && !u.uinwater) {
             const stway = stairway_at(u.ux, u.uy, state);
             if (u.dz < 0 || stway) {
                 if (stway) {
@@ -2005,7 +1985,7 @@ export async function zap_dig(
     let diridx = 8;
     if (trapWithHero) diridx = xytodir(u.dx, u.dy);
     const mazeDig = Boolean(
-        state.level?.flags?.is_maze_lev && !Is_earthlevel(u.uz),
+        state.level?.flags?.is_maze_lev && !Is_earthlevel(u.uz, state),
     );
     let zx = u.ux + u.dx;
     let zy = u.uy + u.dy;
@@ -2080,16 +2060,16 @@ export async function zap_dig(
                     room.typ = ROOM;
                     room.flags = 0;
                     unblock_point(zx, zy, state);
-                } else if (!heroIsBlind(state)) {
+                } else if (!Blind(state.u)) {
                     await ttyPline('The wall glows then fades.', state);
                 }
                 break;
-            } else if (IS_TREE(room.typ)) {
+            } else if (IS_TREE(room.typ, state)) {
                 if (!(room.flags & W_NONDIGGABLE)) {
                     room.typ = ROOM;
                     room.flags = 0;
                     unblock_point(zx, zy, state);
-                } else if (!heroIsBlind(state)) {
+                } else if (!Blind(state.u)) {
                     await ttyPline('The tree shudders but is unharmed.', state);
                 }
                 break;
@@ -2098,7 +2078,7 @@ export async function zap_dig(
                     room.typ = CORR;
                     room.flags = 0;
                     unblock_point(zx, zy, state);
-                } else if (!heroIsBlind(state)) {
+                } else if (!Blind(state.u)) {
                     await ttyPline('The rock glows then fades.', state);
                 }
                 break;
@@ -2120,7 +2100,7 @@ export async function zap_dig(
                     room.flags = D_NODOOR;
                 }
                 digdepth -= 2;
-            } else if (IS_TREE(room.typ)) {
+            } else if (IS_TREE(room.typ, state)) {
                 room.typ = ROOM;
                 room.flags = 0;
                 digdepth -= 2;
@@ -2204,23 +2184,19 @@ export async function draft_message(unexpected, env) {
     const state = env.state;
     const random = env.random ?? coreRandom;
     const message = env.planning ? async () => {} : (env.message ?? (async () => {}));
-    const hallucinating = Boolean(
-        state.u?.uprops?.[HALLUC]?.intrinsic
-        && !state.u?.uprops?.[HALLUC_RES]?.intrinsic
-        && !state.u?.uprops?.[HALLUC_RES]?.extrinsic,
-    );
+    const hallucinating = Hallucination(state.u);
     if (unexpected) {
         if (!hallucinating) {
-            await message('You feel an unexpected draft.', state, env);
+            await message(youFeel('an unexpected draft.', state), state, env);
             return;
         }
         const weak = [A_STR, A_DEX, A_CON, A_CHA, A_INT, A_WIS]
             .some((attribute) => acurr(state, attribute) < 6);
-        await message(`You feel like you are ${weak ? '4-F' : '1-A'}.`, state, env);
+        await message(youFeel(`like you are ${weak ? '4-F' : '1-A'}.`, state), state, env);
         return;
     }
     if (!hallucinating) {
-        await message('You feel a draft.', state, env);
+        await message(youFeel('a draft.', state), state, env);
         return;
     }
     const reactions = ['enlisting', 'marching', 'protesting', 'fleeing'];
@@ -2228,7 +2204,7 @@ export async function draft_message(unexpected, env) {
     let index = random.rn1(2, 1 - alignment);
     if ((state.u?.ualign?.record ?? 0) < 4)
         index += random.rn1(3, alignment - 1);
-    await message(`You feel like ${reactions[index]}.`, state, env);
+    await message(youFeel(`like ${reactions[index]}.`, state), state, env);
 }
 
 // C ref: dig.c mdig_tunnel() (1413-1490). This is the monster movement arm,
@@ -2280,7 +2256,7 @@ export async function mdig_tunnel(monster, rawEnv = {}) {
                 return true;
             }
         } else if (state.flags?.verbose
-            && !unaware(state)
+            && !Unaware(state)
             && !random.rn2(3)) {
             await draft_message(true, { ...rawEnv, state, message });
         }

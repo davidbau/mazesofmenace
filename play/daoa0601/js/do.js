@@ -23,14 +23,14 @@ import { AD_POLY } from './monster_attack_types.js';
 import { A_DEX, DB_FLOOR, DB_UNDER, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, GETOBJ_SUGGEST, HOLE, IS_ALTAR, IS_SINK, LOST_DROPPED, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PARANOID_AUTOALL, RLOC_NOMSG, ROOM, SORTLOOT_INVLET, TRAPDOOR, WATER, ALTAR, AM_NONE, COLNO, Align2amask, FOUNTAIN, Is_waterlevel, ROWNO, SINK, THRONE, W_ARMOR, W_ACCESSORY, W_SADDLE, DISMOUNT_FELL, MAGIC_PORTAL, In_endgame, Is_valley, Is_airlevel, Is_astralevel, ACH_ENDG, ACH_ASTR, Is_rogue_level, Is_knox_level, UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, TT_BURIEDBALL, PIT, SPIKED_PIT, TT_PIT, VIBRATING_SQUARE, STAIRS, HAND, FACE, LEG, STOMACH, I_SPECIAL, TIMEOUT, W_ARTI, W_ART, CORR, Luck, WT_SPLASH_THRESHOLD, is_hole, is_pit } from './const.js';
 import { paranoidQuery, commandResultCancelled, commandResultFailed, resetOccupations } from './cmd.js';
 import { makeBlinded } from './potion.js';
-import { gulp_blnd_check, holdingMonsterName, } from './mhitu.js';
+import { gulp_blnd_check } from './mhitu.js';
 import { BOULDER, CORPSE, CRYSKNIFE, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LEASH, LOADSTONE, MEATBALL, MEAT_RING, MEAT_STICK, POT_OIL, TIN, WORM_TOOTH } from './object_data.js';
 import { makePlural, withIndefiniteArticle, ownedObjectName, verbForSubject, objectCombatName, objectDescription, objectQuestion, observeObjectForNaming, simpleObjectNameWithArticle, ownedObjectAction, definiteObjectAction, definiteName, objectNameIsPlural } from './objnam.js';
 import { objectTypeKnown, oinit } from './o_init.js';
 import { billForObject, deleteObject, objectIsUnpaid, stolenValue, sellHeroDroppedObject, SELL_DELIBERATE, SELL_NORMAL, setSellDisposition, setShopResidency, fixShopDamage, dopay } from './shk.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { callObjectType, displayColorName, displayLiquidName, monsterName, objectMonsterName, randomDisplayMonsterName } from './do_name.js';
-import { threateningMonsterNearby, loseHeroHp, impactDisturbsZombies, switchHeroTerrain, burnAwayHeroSlime, blockMonsterNotices, noticeAllMonsters, unblockMonsterNotices, heroLocomotion, nearCapacity, checkSpecialRoom, endVoluntaryMultiTurn, applyHeroLiquidEffects, SLT_ENCUMBER } from './hack.js';
+import { threateningMonsterNearby, loseHeroHp, impactDisturbsZombies, switchHeroTerrain, burnAwayHeroSlime, blockMonsterNotices, noticeAllMonsters, unblockMonsterNotices, heroLocomotion, nearCapacity, checkSpecialRoom, nomul, applyHeroLiquidEffects, SLT_ENCUMBER, heroResistsFire } from './hack.js';
 import { buryFloorObjectsAt, buriedBallToPunishment, applyPickAxeDirection } from './dig.js';
 import { canSpotMonster, newsym, docrt, consumeHallucinatedMenuObjectGlyph, OBJECT_CLASS_SYMBOLS, map_object, flush_screen, reglyphSymbolSet, map_background, } from './display.js';
 import { cansee, vision_note_blocker_change, vision_recalc, vision_reset, vision_reset_new_level } from './vision.js';
@@ -39,7 +39,7 @@ import { heroSpecies, heroFormSticks, heroIsPolymorphed, body_part, mbodypart } 
 import { rollPhysicalWeaponDamage } from './weapon.js';
 import { useUpFloorObject, stack_object } from './invent.js';
 import { deleteFloorTrap, resetUtrap, petrifyMonsterImmediately, seeTrap, deleteTrap, climbOutOfPit, dotrap, trapAt, selfTouchPetrifyingWeapons, floatHeroDown, waterDamageObject, lava_damage, } from './trap.js';
-import { heroHasArtifactDefense, heroHasCarriedArtifactFlag } from './artifact.js';
+import { heroHasCarriedArtifactFlag } from './artifact.js';
 import { waterbodyName } from './pager.js';
 import { isLavaAt, isPoolAt } from './dbridge.js';
 import { chooseObjectCategories, autopickupAtHero } from './pickup.js';
@@ -212,8 +212,8 @@ export async function dropBoulderIntoLiquid(boulder, x, y, state = game, { publi
             await publish('You find yourself on dry land again!');
         }
         else if (lava && Math.abs(state.u.ux - x) <= 1 && Math.abs(state.u.uy - y) <= 1) {
-            const fireResistant = state.u.fireResistance
-                || heroHasArtifactDefense('fire', state);
+            // C do.c:132-137 reads the plain Fire_resistance macro.
+            const fireResistant = heroResistsFire(state);
             await publish(`You are hit by molten ${displayLiquidName('lava', state)}${fireResistant ? '.' : '!'}`);
             await burnAwayHeroSlime(state, publish);
             let damage = d(fireResistant ? 1 : 3, 6);
@@ -802,7 +802,7 @@ export async function dropHeroObject(object, { state = game, publish = plineWith
             throw new Error('Swallowed hero has no swallowing monster');
         // barrier between you and the floor
         if (state.flags?.verbose !== false) {
-            const swallowerName = holdingMonsterName(hero.ustuck, state);
+            const swallowerName = monsterName(hero.ustuck, { state });
             const into = monsterDigests(hero.ustuck)
                 ? `${possessiveName(swallowerName)} ${mbodypart(hero.ustuck.mnum, STOMACH)}`
                 : swallowerName;
@@ -1463,7 +1463,7 @@ export async function dodown() {
         const where = propertyIsActive('levitation', game) || Is_airlevel(game.u.uz)
             || Is_waterlevel(game.u.uz) ? 'in place' : 'to the ground';
         await plineWithContinuation(`You are rooted ${where}.`);
-        endVoluntaryMultiTurn(game);
+        nomul(0, game);
         game.context.move = 1;
         return false;
     }
@@ -1571,7 +1571,7 @@ export async function doup() {
         const where = propertyIsActive('levitation', game) || Is_airlevel(game.u.uz)
             || Is_waterlevel(game.u.uz) ? 'in place' : 'to the ground';
         await plineWithContinuation(`You are rooted ${where}.`);
-        endVoluntaryMultiTurn(game);
+        nomul(0, game);
         game.context.move = 1;
         return false;
     }

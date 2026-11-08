@@ -2870,6 +2870,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // level as starting level." and pages it.  obj_delivery(TRUE) is left
     // unwired for the same reason as its do.c:1831 sibling above.
     engr_reset_text_pointers();     /* do.c:1968 save_currentstate() -> savelev -> save_engravings */
+    /* do.c:1969 save_currentstate() runs with program_state.in_checkpoint set, so the
+     * save's tty_getmsghistory() remember_topl() (topl.c:170-191) copies gt.toplines into
+     * the ring slot at maxrow but neither advances maxrow nor clears toplines; until the
+     * next message overwrites it, that slot is the FIRST line of a ^P full window. */
+    g._ckptToplSlot = String(g._pending_message || g._resultMessage || '') || null;
     if ((g.iflags.purge_monsters | 0))
         await dmonsfree();
     notice_all_mons(true);          /* do.c:1973 */

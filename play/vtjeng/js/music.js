@@ -3,10 +3,8 @@
 // (sndprocs.h:273); their arguments, including obj_to_instr, are not evaluated.
 import {
     ACH_TUNE, A_DEX, A_WIS, ALTAR, AM_MASK, AM_SANCTUM, Amask2align,
-    ARTICLE_THE,
-    BLINDED, COLNO, CONFUSION, D_NODOOR, DEAF, DOOR,
-    DRAWBRIDGE_DOWN, ECMD_OK, ECMD_TIME, FOUNTAIN, FUMBLING, GRAVE,
-    Maybe_Half_Phys, HALLUC, HALLUC_RES, IS_DRAWBRIDGE, KILLED_BY,
+    ARTICLE_THE, COLNO, CONFUSION, D_NODOOR, DEAF, DOOR,
+    DRAWBRIDGE_DOWN, ECMD_OK, ECMD_TIME, FOUNTAIN, FUMBLING, GRAVE, IS_DRAWBRIDGE, KILLED_BY,
     CORR, M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPE, NO_KILLER_PREFIX,
     PIT, ROWNO, ROOM, SCORR, SDOOR, SHOPBASE, SINK, STRAT_WAITMASK,
     SUPPRESS_SADDLE, STUNNED, THRONE, TT_BURIEDBALL, TT_PIT, XKILL_NOMSG,
@@ -64,14 +62,14 @@ import { block_point, cansee, does_block, recalc_block_point, unblock_point } fr
 import { getlin } from './windows.js';
 import { flash_str, resist, ubuzz, zapyourself } from './zap.js';
 import { canseemon } from './display.js';
+import { youFeel } from './pline.js';
+import {
+    Blind, Deaf, Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 function property(state, index) {
     const p = state.u.uprops[index];
     return Boolean(p?.intrinsic || p?.extrinsic);
-}
-function Deaf(state) { return property(state, DEAF) || state.u.uroleplay?.deaf; }
-function Hallucination(state) {
-    return Boolean(state.u.uprops[HALLUC]?.intrinsic) && !property(state, HALLUC_RES);
 }
 
 // C ref: music.c awaken_scare() (45-60). The waiting arm excludes scare
@@ -137,7 +135,7 @@ export async function awaken_soldiers(bugler, state = game, env = {}) {
             mon.mstrategy &= ~STRAT_WAITMASK;
             if (canSeeMonster(mon)) {
                 await message(`${Monnam(mon, state)} is now ready for battle!`, state);
-            } else if (!Deaf(state)) {
+            } else if (!Deaf(state.u)) {
                 await norep('You hear the rattle of battle gear being readied.', state);
             }
         } else {
@@ -526,17 +524,17 @@ export async function do_improvisation(instr, state = game, env = {}) {
             mundane = true;
         }
     }
-    let mode = (stunned ? 1 : 0) | (confused ? 2 : 0) | (Hallucination(state) ? 4 : 0);
+    let mode = (stunned ? 1 : 0) | (confused ? 2 : 0) | (Hallucination(state.u) ? 4 : 0);
     if (!random.rn2(2)) {
         if (mode === 3) mode = !random.rn2(2) ? 1 : 2;
         if (mode & 4) mode = 4;
     }
     switch (mode) {
     case 0: await message(`You start playing ${yname(instr, state)}.`, state); break;
-    case 1: await message(!Deaf(state) ? 'You radiate an obnoxious droning sound.'
-        : 'You feel a monotonous vibration.', state); break;
-    case 2: await message(!Deaf(state) ? 'You generate a raucous noise.'
-        : 'You feel a jarring vibration.', state); break;
+    case 1: await message(!Deaf(state.u) ? 'You radiate an obnoxious droning sound.'
+        : youFeel('a monotonous vibration.', state), state); break;
+    case 2: await message(!Deaf(state.u) ? 'You generate a raucous noise.'
+        : youFeel('a jarring vibration.', state), state); break;
     case 4: await message('You disseminate a kaleidoscopic display of floating butterflies.', state); break;
     default: await message('What you perform is quite far from music...', state); break;
     }
@@ -544,7 +542,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
     switch (itmp.otyp) {
     case MAGIC_FLUTE:
         await consume_obj_charge(instr, true, { state });
-        await message(`You ${!Deaf(state) ? '' : 'seem to '}produce ${Hallucination(state) ? 'piped' : 'soft'}${same ? ', familiar' : ''} music.`, state);
+        await message(`You ${!Deaf(state.u) ? '' : 'seem to '}produce ${Hallucination(state.u) ? 'piped' : 'soft'}${same ? ', familiar' : ''} music.`, state);
         await put_monsters_to_sleep(state.u.ulevel * 5, state, {
             ...env,
             message,
@@ -554,9 +552,9 @@ export async function do_improvisation(instr, state = game, env = {}) {
         break;
     case WOODEN_FLUTE:
         special &= random.rn2(acurr(state, A_DEX)) + state.u.ulevel > 25;
-        await message(!Deaf(state)
+        await message(!Deaf(state.u)
             ? `${Tobjnam(instr, special ? 'trill' : 'toot', state)}${same ? ' a familiar tune' : ''}.`
-            : `You feel ${yname(instr, state)} ${special ? 'trill' : 'toot'}.`, state);
+            : youFeel(`${yname(instr, state)} ${special ? 'trill' : 'toot'}.`, state), state);
         if (special)
             await charm_snakes(state.u.ulevel * 3, state, { ...env, message, random });
         await exercise(A_DEX, true, state, random);
@@ -574,8 +572,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
         } else {
             // BZ_OFS_AD(AD_COLD/AD_FIRE) = adtyp-1; BZ_U_WAND leaves it unchanged.
             const type = instr.otyp === FROST_HORN ? 2 : 1;
-            const blinded = state.u.uprops[BLINDED];
-            if (!((blinded?.intrinsic || blinded?.extrinsic) && !blinded?.blocked))
+            if (!(Blind(state.u)))
                 await message(`A ${flash_str(type, false, state)} blasts out of the horn!`, state);
             // gc.current_wand already lives at state.current_wand in zap.js.
             state.current_wand = instr;
@@ -586,14 +583,14 @@ export async function do_improvisation(instr, state = game, env = {}) {
         break;
     }
     case TOOLED_HORN:
-        await message(!Deaf(state)
+        await message(!Deaf(state.u)
             ? `You produce a frightful, grave${same ? ', yet familiar,' : ''} sound.`
             : 'You blow into the horn.', state);
         await awaken_monsters(state.u.ulevel * 30, state, env);
         await exercise(A_WIS, false, state, random);
         break;
     case BUGLE:
-        await message(!Deaf(state)
+        await message(!Deaf(state.u)
             ? `You extract a loud${same ? ', familiar' : ''} noise from ${yname(instr, state)}.`
             : 'You blow into the bugle.', state);
         await awaken_soldiers(state.youmonst, state, { ...env, message, random });
@@ -601,9 +598,9 @@ export async function do_improvisation(instr, state = game, env = {}) {
         break;
     case MAGIC_HARP:
         await consume_obj_charge(instr, true, { state });
-        await message(!Deaf(state)
+        await message(!Deaf(state.u)
             ? `${Tobjnam(instr, 'produce', state)} very attractive${same ? ' and familiar' : ''} music.`
-            : 'You feel very soothing vibrations.', state);
+            : youFeel('very soothing vibrations.', state), state);
         await charm_monsters(Math.trunc((state.u.ulevel - 1) / 3) + 1, state, {
             ...env, message, random,
         });
@@ -611,10 +608,10 @@ export async function do_improvisation(instr, state = game, env = {}) {
         break;
     case WOODEN_HARP:
         special &= random.rn2(acurr(state, A_DEX)) + state.u.ulevel > 25;
-        await message(!Deaf(state)
+        await message(!Deaf(state.u)
             ? `${Yname2(instr, state)} ${special ? (same ? 'produces a familiar, lilting melody' : 'produces a lilting melody')
                 : (same ? 'twangs a familiar tune' : 'twangs')}.`
-            : 'You feel soothing vibrations.', state);
+            : youFeel('soothing vibrations.', state), state);
         if (special)
             await calm_nymphs(state.u.ulevel * 3, state, { ...env, message, random });
         await exercise(A_DEX, true, state, random);
@@ -630,7 +627,7 @@ export async function do_improvisation(instr, state = game, env = {}) {
         break;
     case LEATHER_DRUM:
         if (!mundane) {
-            if (!Deaf(state)) {
+            if (!Deaf(state.u)) {
                 await message(`You beat a ${same ? 'familiar ' : ''}deafening row!`, state);
                 incr_itimeout(state.u.uprops[DEAF], random.rn1(20, 30));
             } else {
@@ -667,7 +664,7 @@ export async function do_play_instrument(instr, state = game, env = {}) {
     }
     if (instr.otyp !== LEATHER_DRUM && instr.otyp !== DRUM_OF_EARTHQUAKE
         && !(state.u.uprops[STUNNED]?.intrinsic || state.u.uprops[CONFUSION]?.intrinsic
-            || Hallucination(state))) c = await ynq('Improvise?', state);
+            || Hallucination(state.u))) c = await ynq('Improvise?', state);
     if (c === 'q') {
         await message('Never mind.', state);
         return ECMD_OK;
@@ -688,9 +685,9 @@ export async function do_play_instrument(instr, state = game, env = {}) {
         }
         tune = [...tune].map(highc).join('').replaceAll('H', 'B');
     }
-    await message(!Deaf(state)
-        ? `You extract a strange sound from ${the(xnameFresh(instr, state))}!`
-        : `You can feel ${the(xnameFresh(instr, state))} emitting vibrations.`, state);
+    await message(!Deaf(state.u)
+        ? `You extract a strange sound from ${the(xnameFresh(instr, state), state)}!`
+        : `You can feel ${the(xnameFresh(instr, state), state)} emitting vibrations.`, state);
     if (state.stronghold_level?.dnum === state.u.uz.dnum
         && state.stronghold_level.dlevel === state.u.uz.dlevel) {
         await exercise(A_WIS, true, state, random);
@@ -712,7 +709,7 @@ export async function do_play_instrument(instr, state = game, env = {}) {
                     }
                 }
             }
-        } else if (!Deaf(state)) {
+        } else if (!Deaf(state.u)) {
             if (state.u.uevent.uheard_tune < 1) state.u.uevent.uheard_tune = 1;
             let nearby = false;
             for (let y = state.u.uy - 1; y <= state.u.uy + 1 && !nearby; y++) {

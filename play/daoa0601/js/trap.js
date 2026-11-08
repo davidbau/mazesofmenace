@@ -33,9 +33,9 @@ import { d, rnl, rn2, rnd, rn2Display, rn1 } from './rng.js';
 import { DISCARDED_CALL_LOG, recordRandom } from './monster_action_types.js';
 import { plineWithContinuation, pline, set_msg_xy, formatSeenMessage, formatFeltMessage, formatHeardMessage, publishHeardMessage, recordGameLogEvent, impossible, } from './pline.js';
 import { requireInitializedHero } from './hero_types.js';
-import { AD_PHYS, AD_CORR, AD_FIRE, AD_RUST, AD_MAGM, AD_RBRE, AT_BREA, AT_MAGC } from './monster_attack_types.js';
+import { AD_PHYS, AD_CORR, AD_FIRE, AD_RUST, AD_MAGM, AD_SLEE, AD_RBRE, AT_BREA, AT_MAGC } from './monster_attack_types.js';
 import { removeObjectFromMonsterInventory, destroyObjectFromMonsterInventory, findMonsterArmorClass, wornInSlot, applyMonsterEquipmentProperties, initializeMonsterArmor, } from './worn.js';
-import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap, monsterResistsSleep, monsterHasFireResistance, monsterHasMagicResistance, monsterHasStoneResistance, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterIsHelpless, monsterPassesWalls, acidic, extra_nasty, is_neuter, likes_gems, metallivorous, monsterDigests, monsterHasNoLimbs, monsterIsAmorphous, monsterIsAnimal, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsFloater, monsterIsFlyer, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsNonliving, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterThrowsRocks, strongmonst, monsterObjectPronoun, grounded, passes_rocks, monsterIsGolem, touchPetrifies, heroResistsStoning, formCanBecomeStoneGolem, PM_STONE_GOLEM, cant_drown, monsterIsAmphibious, monsterStagger, isHeroDefender, resistsBlnd, } from './mondata.js';
+import { monsterKnowsTrap, monsterLearnsTrap, monstersSeeTrap, monsterResistsSleep, monsterHasFireResistance, defended, monsterHasMagicResistance, monsterHasStoneResistance, monstersForgetHeroResistance, monstersObserveHeroResistance, monsterIsHelpless, monsterPassesWalls, acidic, extra_nasty, is_neuter, likes_gems, metallivorous, monsterDigests, monsterHasNoLimbs, monsterIsAmorphous, monsterIsAnimal, monsterIsBig, monsterIsBreathless, monsterIsClinger, monsterIsFloater, monsterIsFlyer, monsterIsHider, monsterIsHumanoid, monsterIsMindless, monsterIsNonliving, monsterIsUnsolid, monsterIsVampireShifter, monsterIsWhirly, monsterThrowsRocks, strongmonst, monsterObjectPronoun, grounded, passes_rocks, monsterIsGolem, touchPetrifies, heroResistsStoning, formCanBecomeStoneGolem, PM_STONE_GOLEM, cant_drown, monsterIsAmphibious, monsterStagger, isHeroDefender, resistsBlnd, } from './mondata.js';
 import { teleportMonsterFromTrap, mlevel_tele_trap, clearFixedTeleportDestination, heroTeleportDestinationOk, heroTeleportTrapBlock, teleds, teleportHero, activateMagicPortal, askTeleportDestination, triggerLevelTeleportTrap, relocateObjectRandomly, heroCanTeleport, heroControlsTeleport, safe_teleds, teleportHeroAtWill, heroTeleportRestricted, finishTeleportArrival, randomTeleportDepth, } from './teleport.js';
 import { countLevelFeatures, makemonNear } from './mklev.js';
 import { canFallThrough } from './dungeon.js';
@@ -46,12 +46,12 @@ import { recordHeroKillConduct, finishHeroDeath, beginHeroLifeSaving, completeHe
 import { loseHeroExperience, addExperience, checkExperienceLevel } from './exper.js';
 import { billDummyObject, mksobj, objectWeight, unlinkObject, mkcorpstat, rndmonnumAdj, objectIsFlammable, objectIsRottable, placeCreatedObject, placeObject, placeObjectSynchronously, remove_object, splitObjectStack, updateIceObjectTimersAt, chargeAlteredUnpaidObject, } from './mkobj.js';
 import { buryObject, buryFloorObjectsAt, buriedBallNear, buriedBallToPunishment, unearthFloorObjectsAt, liquidForHole, } from './dig.js';
-import { monsterAtPosition, monsterHasMapPosition, dismountHero, steedIsGrounded, monsterOccupiesPosition } from './steed.js';
+import { monsterAtPosition, monsterHasMapPosition, dismountHero, monsterOccupiesPosition } from './steed.js';
 import { gotoLevel, scheduleLevelChange, woundHeroLegs, dropBoulderIntoLiquid, applyFloorEffects } from './do.js';
 import { hasCarriedProperty, hasWornProperty, refreshMovementProperties, existingPropertyRecord, propertySourceIsActive, propertyIsBlocked, propertyIsActive, clearLevitationMasks, levitationAtWill, grantIntrinsicProperty, hasIntrinsicProperty, hasInvokedProperty, removeIntrinsicProperty, } from './properties.js';
 import { ordinalSuffix, possessiveName, dist2, distmin } from './hacklib.js';
-import { heroHasArtifactDefense, artifactById, hasMagicKey, heroHasCarriedArtifactFlag } from './artifact.js';
-import { burnAwayHeroSlime, loseHeroHp, blocksDiagonalDoor, blocksMove, badRock, roomsAt, finishDestinationSpotEffects, EXT_ENCUMBER, HVY_ENCUMBER, calcCapacity, inventoryWeight, nearCapacity, applyHeroLiquidEffects, endVoluntaryMultiTurn, heroLocomotion, applyHeroLocationEffects, heroCanSwim, moveObject, dropEmergencyObject, pickEmergencyDrop, heroResistsFire as heroResistsFireWithoutArtifactDefense, UNENCUMBERED, SLT_ENCUMBER, nomul, setHeroInWater, crawlDestinationAllowed, spotChecks, finishHeroHelplessness, maybeHalfPhysicalDamage, } from './hack.js';
+import { artifactById, defendsWhenCarried, hasMagicKey, heroHasCarriedArtifactFlag } from './artifact.js';
+import { burnAwayHeroSlime, loseHeroHp, blocksDiagonalDoor, blocksMove, badRock, roomsAt, finishDestinationSpotEffects, EXT_ENCUMBER, HVY_ENCUMBER, calcCapacity, inventoryWeight, nearCapacity, applyHeroLiquidEffects, heroLocomotion, applyHeroLocationEffects, heroCanSwim, moveObject, dropEmergencyObject, pickEmergencyDrop, heroResistsFire, UNENCUMBERED, SLT_ENCUMBER, nomul, setHeroInWater, crawlDestinationAllowed, spotChecks, finishHeroHelplessness, maybeHalfPhysicalDamage, } from './hack.js';
 import { adjustAttribute, adjustHeroAlignment, attributeChangeMessage, changeHeroLuck, currentAttribute, exerciseAttribute, minHeroMaxHitPoints, poisonHero } from './attrib.js';
 import { displayMessageWindow } from './topl.js';
 import { abusePet, tameMonster, makePetWary } from './dog.js';
@@ -83,7 +83,6 @@ import { bot, rankOf, roleSwitch } from './botl.js';
 import { createPoisonGasCloud } from './region.js';
 import { stopHeroOccupation } from './allmain.js';
 import { reset_faint } from './eat.js';
-import { holdingMonsterName, holdingMonsterSubject } from './mhitu.js';
 // C trap.c:burnarmor()
 export async function burnArmorByFire(victim, state, emitMessage, calls = [], random = rn2, { visible = victim === state.u, } = {}) {
     const monster = 'mnum' in victim ? victim : null;
@@ -956,18 +955,21 @@ export function monsterTrapIsHarmless(monster, trap, state) {
                 [94, 96].includes(monster.mnum) ||
                 whirly);
         case SLP_GAS_TRAP:
-            return monsterResistsSleep(monster);
+            // C trap.c:1134
+            return monsterResistsSleep(monster) || defended(monster, AD_SLEE, state);
         case RUST_TRAP:
             return monster.mnum !== PM_IRON_GOLEM;
         case FIRE_TRAP:
-            return monsterHasFireResistance(monster);
+            // C trap.c:1142
+            return monsterHasFireResistance(monster) || defended(monster, AD_FIRE, state);
         case PIT:
         case SPIKED_PIT:
         case HOLE:
         case TRAPDOOR:
             return monsterIsClinger(monster.mnum) && !sokoban;
         case ANTI_MAGIC:
-            return monsterHasMagicResistance(monster);
+            // C trap.c:1174
+            return monsterHasMagicResistance(monster) || defended(monster, AD_MAGM, state);
         case STATUE_TRAP:
         case MAGIC_TRAP:
         case VIBRATING_SQUARE:
@@ -2048,7 +2050,9 @@ export async function applyMonsterAntiMagicTrap(monster, { rollDice = d, rollOne
     const weapon = monsterWeapon(monster);
     if (artifactById(weapon?.oartifact)?.name === 'Magicbane')
         damage += rollOne(4);
-    if (monsterInventory(monster).some((object) => artifactById(object?.oartifact)?.carriedDefense === 'magic')) {
+    if (
+    // C trap.c:2425: o->oartifact && defends_when_carried(AD_MAGM, o)
+    monsterInventory(monster).some((object) => defendsWhenCarried('magic', object, state))) {
         damage += rollOne(4);
     }
     if (monsterPassesWalls(monster.mnum))
@@ -2449,9 +2453,8 @@ export async function triggerHeroAntiMagicTrap(trap) {
         return;
     }
     await seeTrap(trap);
-    if (hero.antimagic ||
-        propertyIsActive('antimagic', game) ||
-        heroHasArtifactDefense('magic', game)) {
+    // C trap.c:2351 reads the plain Antimagic macro.
+    if (propertyIsActive('antimagic', game)) {
         const damage = implosionDamage();
         const hitPoints = heroIsPolymorphed(game) ? (hero.mh ?? 1) : (hero.uhp ?? 1);
         const feeling = damage >= hitPoints
@@ -2475,19 +2478,18 @@ export async function triggerHeroAntiMagicTrap(trap) {
         maximumAlreadyDrained,
     }));
 }
-// Part of C trap.c:trapeffect_anti_magic(): test wall-passing protection against compression.
-function heroPassesWallsForAntiMagic() {
-    return !!game.u?.passesWalls || monsterPassesWalls(heroSpecies());
-}
 // Part of C trap.c:trapeffect_anti_magic(): test the wielded artifact's magic defense.
 function heroWieldsMagicbane() {
     return artifactById(heroObject('uwep')?.oartifact)?.name === 'Magicbane';
 }
 // Part of C trap.c:trapeffect_anti_magic(): detect carried non-quest magic defense.
 function heroCarriesNonQuestMagicDefense() {
+    // C trap.c:2365-2367: o->oartifact && !is_quest_artifact(otmp)
+    // && defends_when_carried(AD_MAGM, otmp)
     return (game.inventory || []).some((object) => {
         const artifact = artifactById(object?.oartifact);
-        return artifact && !artifact.questArtifact && artifact.carriedDefense === 'magic';
+        return !!artifact && !artifact.questArtifact
+            && defendsWhenCarried('magic', object, game);
     });
 }
 // Part of C trap.c:trapeffect_anti_magic(): roll and reduce hero compression damage.
@@ -2503,13 +2505,9 @@ function implosionDamage() {
         damage += rnd(4);
     if (heroCarriesNonQuestMagicDefense())
         damage += rnd(4);
-    if (heroPassesWallsForAntiMagic())
+    if (heroPassesWalls(game))
         damage = Math.trunc((damage + 3) / 4);
     return damage;
-}
-// Port only: form a possessive monster-message subject.
-function possessive(subject) {
-    return /s$/iu.test(subject) ? `${subject}'` : `${subject}'s`;
 }
 // C trap.c:trapeffect_dart_trap()
 // The dart twin of the arrow trap: the hero branch — the 1-in-15
@@ -2602,8 +2600,8 @@ export async function triggerHeroPolymorphTrap(trap, viaSitting) {
         }
         return;
     }
-    if (propertyIsActive('antimagic', game) || heroHasArtifactDefense('magic', game)
-        || heroIsUnchanging(game)) {
+    // C trap.c:2486 reads the plain Antimagic macro.
+    if (propertyIsActive('antimagic', game) || heroIsUnchanging(game)) {
         await shieldeff(game.u.ux, game.u.uy);
         await plineWithContinuation(formatFeltMessage('momentarily different.'));
         return;
@@ -2693,7 +2691,7 @@ async function triggerBearTrap(trap, { failedUntrap = false, forceTrap = false, 
 export async function dotrap(trap, { finishTeleport = null, gotoLevel = null, viaSitting = false, failedUntrap = false, forceTrap = false, forceBungle = false, noWebMessage = false, tookPlunge = false, recursiveTrap = false, } = {}) {
     if (!trap)
         return { died: false, shortCircuited: false };
-    endVoluntaryMultiTurn();
+    nomul(0, game);
     requirePlayingGame(game);
     const hero = game.u;
     const pit = is_pit(trap.ttyp);
@@ -3028,7 +3026,7 @@ export async function launchRollingBoulder(start, endpoint, { state = requireIni
                 if (state.u.halfPhysicalDamage || heroHasCarriedArtifactFlag('SPFX_HPHDAM', state))
                     damage = Math.trunc((damage + 1) / 2);
                 if (state.multi)
-                    endVoluntaryMultiTurn(state);
+                    nomul(0, state);
                 const hit = await hitHeroWithObject(boulder, damage, 9 + (boulder.spe ?? 0), {
                     state, publish, rollOne, killer: killerObjectName(boulder, state),
                 });
@@ -4256,7 +4254,7 @@ export async function finishMonsterVibratingSquare(monster, event, { state = gam
         const subject = monsterName(monster, { state });
         const location = event.wholeBody
             ? subject
-            : `${possessive(subject)} ${makePlural(mbodypart(monster.mnum, FOOT).replace(/^rear /u, ''))}`;
+            : `${possessiveName(subject)} ${makePlural(mbodypart(monster.mnum, FOOT).replace(/^rear /u, ''))}`;
         await publish(formatSeenMessage(`a strange vibration beneath ${location}.`));
     }
     event.finished = true;
@@ -4468,7 +4466,7 @@ export async function floatHeroUp(state = game, previous = null) {
             throw new Error('A swallowed hero must have a swallowing monster.');
         await plineWithContinuation(monsterIsAnimal(hero.ustuck)
             ? `You float away from the ${surfaceName(hero.ux, hero.uy, state)}.`
-            : `You spiral up into ${holdingMonsterName(hero.ustuck, state)}.`);
+            : `You spiral up into ${monsterName(hero.ustuck, { state })}.`);
     }
     else if (heroIsHallucinating(state)) {
         await plineWithContinuation("Up, up, and awaaaay!  You're walking on air!");
@@ -4483,10 +4481,10 @@ export async function floatHeroUp(state = game, previous = null) {
     if (steed && !monsterIsFloater(steed.mnum)
         && !monsterIsFlyer(steed.mnum)) {
         if (levitationAtWill(state)) {
-            await plineWithContinuation(`${holdingMonsterSubject(steed, state)} magically floats up!`);
+            await plineWithContinuation(`${monsterName(steed, { state, capitalized: true })} magically floats up!`);
         }
         else {
-            await plineWithContinuation(`You cannot stay on ${holdingMonsterName(steed, state)}.`);
+            await plineWithContinuation(`You cannot stay on ${monsterName(steed, { state })}.`);
             await dismountHero(DISMOUNT_GENERIC, { state });
         }
     }
@@ -4557,7 +4555,7 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
         return 0;
     }
     state.context.botl = true;
-    endVoluntaryMultiTurn(state); // C nomul(0)
+    nomul(0, state); // C nomul(0)
     if (before.flyingBlocked) {
         // controlled flight is no longer overridden by levitation
         floatVsFlight(state);
@@ -4605,10 +4603,10 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
     if (!propertyIsActive('flying', state)) {
         if (!hero.uswallow && hero.ustuck) {
             if (heroFormSticks(state)) {
-                await plineWithContinuation(`You aren't able to maintain your hold on ${holdingMonsterName(hero.ustuck, state)}.`);
+                await plineWithContinuation(`You aren't able to maintain your hold on ${monsterName(hero.ustuck, { state })}.`);
             }
             else {
-                await plineWithContinuation(`Startled, ${holdingMonsterName(hero.ustuck, state)} can no longer hold you!`);
+                await plineWithContinuation(`Startled, ${monsterName(hero.ustuck, { state })} can no longer hold you!`);
             }
             setHeroGrip(null, state);
         }
@@ -4668,7 +4666,7 @@ export async function floatHeroDown(hmask = 0, emask = 0, state = game, previous
                 if (contact.died)
                     return 1;
             }
-            else if (hero.usteed && !steedIsGrounded(hero.usteed, state)) {
+            else if (hero.usteed && !grounded(hero.usteed.mnum, state)) {
                 await plineWithContinuation('You settle more firmly in the saddle.');
             }
             else if (heroIsHallucinating(state)) {
@@ -4815,7 +4813,7 @@ export async function triggerHeroFireTrap(box = null, { publish = plineWithConti
         : !!(game.underwater || hero.uinwater);
     if (underwater) {
         await publish(`A cascade of steamy bubbles erupts from the ${source}!`);
-        if (heroResistsFire())
+        if (heroResistsFire(game))
             await publish('You are uninjured.');
         else if (await loseHeroHp(rnd(3), 'boiling water', {
             publish,
@@ -4826,7 +4824,7 @@ export async function triggerHeroFireTrap(box = null, { publish = plineWithConti
     }
     await publish(`A tower of flame ${box ? 'bursts' : 'erupts'} from the ${source}!`);
     let damage = originalDamage;
-    if (heroResistsFire()) {
+    if (heroResistsFire(game)) {
         await shieldeff(hero.ux, hero.uy);
         monstersObserveHeroResistance(M_SEEN_FIRE);
         damage = rn2(2);
@@ -4852,12 +4850,6 @@ const PM_STRAW_GOLEM = 249;
 const PM_PAPER_GOLEM = 250;
 const PM_LEATHER_GOLEM = 253;
 const PM_WOOD_GOLEM = 254;
-// Port only kept: hack.ts:heroResistsFire() reads only the u.fireResistance
-// alias; C trap.c:dofiretrap() gates on Fire_resistance and this adds the
-// wielded artifact defense term (artifact.c:defends), so they differ.
-function heroResistsFire() {
-    return !!game.u.fireResistance || heroHasArtifactDefense('fire');
-}
 // Part of C trap.c:dofiretrap(): reduce the burning hero form's maximum health.
 function reduceMonsterFormMaximumHitPoints(hero, damage) {
     const formLevel = MONSTER_LEVEL[hero.umonnum] ?? 0;
@@ -6003,7 +5995,7 @@ async function tryDisarm(trap, { state, publish, random, rollOne, luckRandom, en
     const here = trap.tx === state.u.ux && trap.ty === state.u.uy;
     const boulder = (state.level?.objects?.[trap.tx]?.[trap.ty] || [])
         .some(object => object.otyp === BOULDER);
-    if (boulder && !heroPassesWallsForUntrap(state) && !here) {
+    if (boulder && !heroPassesWalls(state) && !here) {
         await publish('There is a boulder in your way.');
         return 0;
     }
@@ -6064,16 +6056,6 @@ async function tryDisarm(trap, { state, publish, random, rollOne, luckRandom, en
         await publish(`${owner} ${trapName(trap.ttyp, { state })} is difficult to ${action}.`);
     }
     return 1;
-}
-// Port only kept: C youprop.h:Passes_walls() reads only the uprops alias,
-// and polyself.ts:heroPassesWalls() also tests a stale form species when
-// not polymorphed; this gate keeps the form term polymorph-only.
-function heroPassesWallsForUntrap(state) {
-    if (state.u.passesWalls)
-        return true;
-    const form = (state.u.mtimedone ?? 0) > 0 ? state.u.umonnum : null;
-    return form !== null && form !== undefined && Number.isInteger(form)
-        && monsterPassesWalls(form);
 }
 // Part of C trap.c:try_disarm(): injure a held monster or become entangled on failed rescue.
 async function failMonsterRescue(monster, trap, { state, publish, random, rollOne, }) {
@@ -7192,7 +7174,7 @@ export async function lava_effects(options) {
                 result = { entered: true, moved: false, died: false };
                 break lavaOutcome;
             }
-            const fireResistant = heroResistsFireWithoutArtifactDefense(state);
+            const fireResistant = heroResistsFire(state);
             const waterWalkingBeforeBootsBurn = heroHasWaterWalking(state);
             const survives = fireResistant
                 || (waterWalkingBeforeBootsBurn && damage < (hero.uhp ?? 0));
@@ -7343,7 +7325,7 @@ export async function lava_effects(options) {
                 if (!rescue) {
                     // C lava_effects(): two recoveries without a landing give the hero
                     // five turns to find another way out before the lava becomes fatal again.
-                    if (!heroResistsFireWithoutArtifactDefense(state))
+                    if (!heroResistsFire(state))
                         setPropertyTimeout('fireResistance', 5, state);
                     if (!heroHasWaterWalking(state))
                         setPropertyTimeout('waterWalking', 5, state);
@@ -7444,7 +7426,7 @@ export async function sinkHeroIntoLava({ state = game, publish = plineWithContin
     }
     if (hero.invulnerable || hero.uinvulnerable)
         return { sank: false, died: false };
-    if (!heroResistsFireWithoutArtifactDefense(state))
+    if (!heroResistsFire(state))
         hero.uhp = Math.trunc(((hero.uhp ?? 1) + 2) / 3);
     hero.utrap -= 1 << 8;
     if (hero.utrap < 1 << 8) {

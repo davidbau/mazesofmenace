@@ -8,11 +8,9 @@ import {
     ANY_SHOP,
     BARRACKS,
     BEEHIVE,
-    BLINDED,
     BOLT_LIM,
     CONFLICT,
     COURT,
-    DEAF,
     ECMD_CANCEL,
     ECMD_OK,
     ECMD_TIME,
@@ -20,10 +18,7 @@ import {
     EPRI,
     FEMALE,
     HAIR,
-    HALLUC,
-    HALLUC_RES,
     HEAD,
-    INVIS,
     IRONBARS,
     IS_WALL,
     FULL_MOON,
@@ -223,6 +218,9 @@ import { which_armor } from './worn.js';
 import { t_at } from './trap.js';
 import { note_unported } from './unported.js';
 import { canseemon, canspotmon } from './display.js';
+import {
+    Blind, Deaf, Hallucination, Invis,
+} from './youprop.js';
 
 const FOUNTAIN_MESSAGES = Object.freeze([
     'bubbling water.',
@@ -237,33 +235,7 @@ const SINK_MESSAGES = Object.freeze([
     'dishes being washed!',
 ]);
 
-function propertyActive(hero, propertyIndex) {
-    const property = hero?.uprops?.[propertyIndex];
-    return Boolean(property?.intrinsic || property?.extrinsic);
-}
 
-// C ref: youprop.h:120 Hallucination, over :116-119. HHallucination is the
-// intrinsic alone -- no worn item confers hallucination -- while
-// Halluc_resistance adds the extrinsic to it.
-function Hallucination(state) {
-    return Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !propertyActive(state.u, HALLUC_RES);
-}
-
-// C ref: youprop.h:125 Deaf, which adds the permanent-deafness roleplay option
-// to the intrinsic and the extrinsic.
-function Deaf(state) {
-    return propertyActive(state.u, DEAF)
-        || Boolean(state.u?.uroleplay?.deaf);
-}
-
-// C ref: youprop.h:103 Blind. Blindness subtracts a blocking term the other
-// properties here do not have.
-function Blind(state) {
-    const blinded = state.u?.uprops?.[BLINDED];
-    return Boolean(blinded?.intrinsic || blinded?.extrinsic)
-        && !blinded?.blocked;
-}
 
 // C ref: strchr(u.ushops, roomno). Checks whether a 0-terminated room-number
 // buffer contains a specific room number.
@@ -476,7 +448,7 @@ async function temple_priest_sound(mtmp, state, hallu, { random, pline }) {
 
 async function oracle_sound(mtmp, state, hallu, { random, pline }) {
     if (mtmp.data !== state.mons?.[PM_ORACLE]) return false;
-    if (Hallucination(state) || !canseemon(mtmp, state)) {
+    if (Hallucination(state.u) || !canseemon(mtmp, state)) {
         const messages = [
             'a strange wind.',
             'convulsive ravings.',
@@ -498,12 +470,12 @@ export async function dosounds(
 ) {
     const hero = state.u;
     const flags = state.level?.flags ?? {};
-    if (Deaf(state) || state.flags?.acoustics === false
+    if (Deaf(state.u) || state.flags?.acoustics === false
         || hero?.uswallow || hero?.uinwater) {
         return;
     }
 
-    const hallu = Hallucination(state) ? 1 : 0;
+    const hallu = Hallucination(state.u) ? 1 : 0;
 
     if (flags.nfountains && random(400) === 0) {
         await hear(FOUNTAIN_MESSAGES[random(3) + hallu], state, pline);
@@ -633,7 +605,7 @@ export async function dosounds(
     }
     // C ref: sounds.c:330-334 temple ambient sound.
     if (flags.has_temple && random(200) === 0
-        && !(Is_astralevel(state.u?.uz)
+        && !(Is_astralevel(state.u?.uz, state)
             || (state.sanctum_level
                 && on_level(state.u?.uz, state.sanctum_level)))) {
         const monster = get_iter_mons(
@@ -730,12 +702,12 @@ export async function growl(mtmp, state = game, random = coreRandom) {
         return;
 
     /* presumably nearness and soundok checks have already been made */
-    if (Hallucination(state))
+    if (Hallucination(state.u))
         growl_verb = h_sounds[random.rn2(h_sounds.length)];
     else
         growl_verb = growl_sound(mtmp);
     if (growl_verb) {
-        if (canseemon(mtmp, state) || !Deaf(state)) {
+        if (canseemon(mtmp, state) || !Deaf(state.u)) {
             await ttyPline(
                 `${capitalizedMonsterName(mtmp, state)} `
                 + `${vtense(null, growl_verb)}!`,
@@ -768,28 +740,28 @@ export async function yelp(mtmp, state = game, random = coreRandom) {
         return;
 
     /* presumably nearness and soundok checks have already been made */
-    if (Hallucination(state)) {
+    if (Hallucination(state.u)) {
         yelp_verb = h_sounds[random.rn2(h_sounds.length)];
     } else {
         switch (mtmp.data.msound) {
         case MS_MEW:
-            yelp_verb = !Deaf(state) ? 'yowl' : 'arch';
+            yelp_verb = !Deaf(state.u) ? 'yowl' : 'arch';
             break;
         case MS_BARK:
         case MS_GROWL:
-            yelp_verb = !Deaf(state) ? 'yelp' : 'recoil';
+            yelp_verb = !Deaf(state.u) ? 'yelp' : 'recoil';
             break;
         case MS_ROAR:
-            yelp_verb = !Deaf(state) ? 'snarl' : 'bluff';
+            yelp_verb = !Deaf(state.u) ? 'snarl' : 'bluff';
             break;
         case MS_SQEEK:
-            yelp_verb = !Deaf(state) ? 'squeal' : 'quiver';
+            yelp_verb = !Deaf(state.u) ? 'squeal' : 'quiver';
             break;
         case MS_SQAWK:
-            yelp_verb = !Deaf(state) ? 'screak' : 'thrash';
+            yelp_verb = !Deaf(state.u) ? 'screak' : 'thrash';
             break;
         case MS_WAIL:
-            yelp_verb = !Deaf(state) ? 'wail' : 'cringe';
+            yelp_verb = !Deaf(state.u) ? 'wail' : 'cringe';
             break;
         default:
             break;
@@ -815,7 +787,7 @@ export async function whimper(mtmp, rawEnv = {}) {
     let whimper_verb = 0;
 
     if (helpless(mtmp) || !mtmp.data?.msound) return;
-    if (Hallucination(state)) {
+    if (Hallucination(state.u)) {
         whimper_verb = h_sounds[random.rn2(h_sounds.length)];
     } else {
         switch (mtmp.data.msound) {
@@ -985,7 +957,7 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
     const markInvisible = rawEnv.mapInvisible ?? rawEnv.markInvisible
         ?? (rawEnv.planning ? () => {} : map_invisible);
     const ptr = mtmp.data;
-    if (Deaf(state)) return ECMD_OK;
+    if (Deaf(state.u)) return ECMD_OK;
     if (is_silent(ptr) && !mtmp.isshk) return ECMD_OK;
 
     let msound = ptr?.msound ?? MS_SILENT;
@@ -1001,11 +973,11 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
     } else if (msound === MS_ORC
                && (same_race(ptr, state.youmonst?.data)
                    || same_race(ptr, state.mons?.[state.urace?.mnum])
-                   || Hallucination(state))) {
+                   || Hallucination(state.u))) {
         msound = MS_HUMANOID;
     } else if (msound === MS_MOO && !mtmp.mtame) {
         msound = MS_BELLOW;
-    } else if (Hallucination(state) && mon_is_gecko(mtmp, state)) {
+    } else if (Hallucination(state.u) && mon_is_gecko(mtmp, state)) {
         msound = MS_SELL;
     }
 
@@ -1035,7 +1007,7 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
         }
         break;
     case MS_SELL:
-        if (!Hallucination(state) || is_silent(ptr)
+        if (!Hallucination(state.u) || is_silent(ptr)
             || (mtmp.isshk && !random.rn2(2))) {
             await shk_chat(mtmp, state, { ...rawEnv, random });
         } else {
@@ -1244,7 +1216,7 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
         // FALLTHROUGH: peaceful giants use generic humanoid dialogue.
     case MS_HUMANOID:
         if (!mtmp.mpeaceful) {
-            if (In_endgame(state.u?.uz) && is_mplayer(ptr))
+            if (In_endgame(state.u?.uz, state) && is_mplayer(ptr))
                 await mplayer_talk(mtmp, state, { random, message });
             else
                 plineMsg = 'threatens you.';
@@ -1268,7 +1240,7 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
         else if (likes_magic(ptr)) plineMsg = 'talks about spellcraft.';
         else if (ptr?.mlet === S_CENTAUR) plineMsg = 'discusses hunting.';
         else if (is_gnome(ptr)) {
-            const gnomeplan = Hallucination(state) ? random.rn2(4) : 0;
+            const gnomeplan = Hallucination(state.u) ? random.rn2(4) : 0;
             if (gnomeplan % 2) {
                 verbalMsg = gnomeplan === 1
                     ? 'Phase one, collect underpants.'
@@ -1482,7 +1454,7 @@ async function dochat(state) {
         await ttyPline('Your speech is unintelligible underwater.', state);
         return ECMD_OK;
     }
-    const shopGoods = !Deaf(state) && !Blind(state)
+    const shopGoods = !Deaf(state.u) && !Blind(state.u)
         ? shop_object(u.ux, u.uy, state) : null;
     if (shopGoods) {
         /* standing on something in a shop and chatting causes the shopkeeper
@@ -1535,10 +1507,10 @@ async function dochat(state) {
         const otmp = vobj_at(tx, ty, state);
         if (otmp && otmp.otyp === STATUE) {
             /* Talking to a statue */
-            if (!Blind(state)) {
+            if (!Blind(state.u)) {
                 await ttyPline(
                     /* if hallucinating, you can't tell it's a statue */
-                    `The ${Hallucination(state) ? rndmonnam({ state })
+                    `The ${Hallucination(state.u) ? rndmonnam({ state })
                         : 'statue'} seems not to notice you.`,
                     state,
                 );
@@ -1546,16 +1518,16 @@ async function dochat(state) {
             return ECMD_OK;
         }
         const typ = state.level.at(tx, ty).typ;
-        if (!Deaf(state) && (IS_WALL(typ) || typ === SDOOR)) {
+        if (!Deaf(state.u) && (IS_WALL(typ) || typ === SDOOR)) {
             /* Talking to a wall; secret door remains hidden by behaving
                like a wall; IS_WALL() test excludes solid rock even when
                that serves as a wall bordering a corridor */
-            if (Blind(state)
+            if (Blind(state.u)
                 && !IS_WALL(state.level.lastseentyp?.[tx]?.[ty] ?? STONE)) {
                 /* when blind, you can only talk to a wall if it has
                    already been mapped as a wall */
                 /* (C's empty statement: the arm prints nothing) */
-            } else if (!Hallucination(state)) {
+            } else if (!Hallucination(state.u)) {
                 await ttyPline("It's like talking to a wall.", state);
             } else {
                 let idx = rn2(10);
@@ -1590,7 +1562,7 @@ async function dochat(state) {
     // sounds.c:1388-1395. Chat prods a waiting monster, and an eating tame
     // monster makes noise instead of entering its sound-specific arm.
     mtmp.mstrategy &= ~STRAT_WAITMASK;
-    if (!Deaf(state) && mtmp.mtame && mtmp.meating) {
+    if (!Deaf(state.u) && mtmp.mtame && mtmp.meating) {
         if (!canspotmon(mtmp, state))
             map_invisible(mtmp.mx, mtmp.my, state);
         await ttyPline(
@@ -1602,7 +1574,7 @@ async function dochat(state) {
 
     // sounds.c:1397-1406. This remains a complete common tail even though the
     // witnessed quest leader is audible and therefore skips it.
-    if (Deaf(state)) {
+    if (Deaf(state.u)) {
         const xresponse = humanoid(state.youmonst.data)
             ? 'falls on deaf ears' : 'is inaudible';
         const name = canspotmon(mtmp, state)
@@ -1623,10 +1595,8 @@ export async function dotalk(state = game) {
 // at the head square (never a worm tail) which is able to see and react.
 export function responsive_mon_at(x, y, state = game) {
     let mtmp = isok(x, y) ? m_at(x, y, state) : null;
-    const invisibility = state.u?.uprops?.[INVIS];
     const invisible = Boolean(
-        (invisibility?.intrinsic || invisibility?.extrinsic)
-        && !invisibility?.blocked,
+        Invis(state.u),
     );
     if (mtmp && (helpless(mtmp)
         || !mtmp.mcansee
@@ -1722,7 +1692,7 @@ export async function tiphat(state = game, rawEnv = {}) {
             vismon = false;
             mtmp = null;
         }
-        if (vismon || unseen || (statue && Hallucination(state))
+        if (vismon || unseen || (statue && Hallucination(state.u))
             || (range === 1 && mtmp && responsive_mon_at(x, y, state)
                 && !is_silent(mtmp.data))
             || !(accessible(x, y, state)
@@ -1731,7 +1701,7 @@ export async function tiphat(state = game, rawEnv = {}) {
         }
     }
 
-    if (unseen || (statue && Hallucination(state))) {
+    if (unseen || (statue && Hallucination(state.u))) {
         await message(
             `That ${unseen ? 'unseen ' : ''}creature is ignoring you!`,
             state,
@@ -1782,7 +1752,7 @@ export async function tiphat(state = game, rawEnv = {}) {
             }
         } else if (vismon && humanoid(mtmp.data)) {
             const reactions = ['curses', 'gestures rudely', 'gestures offensively'];
-            const deaf = Deaf(state);
+            const deaf = Deaf(state.u);
             const which = !deaf ? random.rn2(3) : random.rn1(2, 1);
             const twice = (deaf || which > 0 || random.rn2(3))
                 ? 0 : random.rn1(2, 1);
@@ -1791,7 +1761,7 @@ export async function tiphat(state = game, rawEnv = {}) {
                 + `${twice ? ` and ${reactions[twice]}` : ''} at you...`,
                 state,
             );
-        } else if (next2u(x, y, state) && !Deaf(state)
+        } else if (next2u(x, y, state) && !Deaf(state.u)
             && await monsterNoise(mtmp, state)) {
             if (!vismon) map_invisible(x, y, state);
         } else if (vismon) {

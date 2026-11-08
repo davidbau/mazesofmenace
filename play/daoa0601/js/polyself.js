@@ -28,7 +28,7 @@ import { reassessStatusFields } from './botl.js';
 import { heroIsUnaware, heroIsBlind, heroIsHallucinating, setHeroBlindnessTimeout, syncBlindness } from './senses.js';
 import { heroHasInvoluntaryDelay, promptDirection, yn_function } from './cmd.js';
 import { clearHeroStrangulation, heroHasFreeAction, heroIsStrangled, pendingArmorAction, cancelDonning, findArmorClass, removeHeroArmor, isBeingDonned, removeEyewear } from './do_wear.js';
-import { endVoluntaryMultiTurn, nomul, roomsAt, applyHeroLocationEffects, loseHeroHp, roundDiv, finishHeroHelplessness } from './hack.js';
+import { nomul, roomsAt, applyHeroLocationEffects, loseHeroHp, roundDiv, finishHeroHelplessness } from './hack.js';
 import { makeBlinded, setSlipperyHands, cureHeroSickness, heroIsSick, clearHeroSliming, heroIsSliming, resetHeroSlimingCountdown } from './potion.js';
 import { displayLiquidName, monsterName, monsterTypeName } from './do_name.js';
 import { newuhs } from './eat.js';
@@ -414,9 +414,12 @@ export function heroIsAmphibious(state = game) {
     return !!state.u.magicalBreathing
         || monsterIsAmphibious(heroSpecies(state));
 }
-// C youprop.h:Passes_walls().
+// C youprop.h:Passes_walls() = HPasses_walls || EPasses_walls. The form
+// term lives in the intrinsic: polyself.c:set_uasmon() PROPSETs
+// PASSES_WALLS from passes_walls(mdat), which setHeroSpecies() mirrors as
+// the 'form' intrinsic origin, so the projected flag is the whole macro.
 export function heroPassesWalls(state = game) {
-    return !!state.u.passesWalls || monsterPassesWalls(heroSpecies(state));
+    return !!state.u.passesWalls;
 }
 const PM_FIRE_ELEMENTAL = MONSTER_NAME.indexOf('fire elemental');
 const PM_SALAMANDER = MONSTER_NAME.indexOf('salamander');
@@ -584,7 +587,7 @@ export async function returnHeroToHumanForm(state = game, { publish = plineWithC
         if (died)
             return { ...restored, died };
     }
-    endVoluntaryMultiTurn(state);
+    nomul(0, state);
     state.context.botl = true;
     state.vision_full_recalc = 1;
     await encumber_msg(state, publish);

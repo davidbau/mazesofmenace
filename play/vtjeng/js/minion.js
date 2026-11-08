@@ -9,7 +9,6 @@ import {
     A_NEUTRAL,
     ARTICLE_A,
     CONFLICT,
-    DEAF,
     EXACT_NAME,
     G_GONE,
     LL_UMONST,
@@ -50,9 +49,8 @@ import { getlin } from './windows.js';
 import { coreRandom } from './rng.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { rloc, tele_restrict } from './teleport.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { vision_recalc } from './vision.js';
-import { livelog_printf, verbalize } from './pline.js';
+import { livelog_printf, verbalize, youFeel } from './pline.js';
 import { align_gname } from './pray.js';
 import { set_voice } from './sounds.js';
 import { ttyPline } from './tty_message.js';
@@ -68,6 +66,7 @@ import {
 } from './objects.js';
 import { bless, mksobj } from './obj.js';
 import { mpickobj } from './steal.js';
+import { Blind, Deaf } from './youprop.js';
 
 function guardianRandom(state, rawEnv = {}) {
     return rawEnv.random ?? state.random ?? coreRandom;
@@ -85,7 +84,7 @@ export async function lose_guardian_angel(mon, state = game, rawEnv = {}) {
     const env = { ...rawEnv, state, random };
     if (mon) {
         if (canspotmon(mon, state)) {
-            if (!heroDeaf(state)) {
+            if (!Deaf(state.u)) {
                 await (rawEnv.message ?? ttyPline)(
                     `${Monnam(mon, state)} rebukes you, saying:`, state,
                 );
@@ -118,15 +117,15 @@ export async function gain_guardian_angel(state = game, rawEnv = {}) {
     const env = { ...rawEnv, state, random, message };
     await Hear_again(state, env);
     if (conflictActive(state)) {
-        if (!heroDeaf(state)) await message('A voice booms:', state);
-        else await message('You feel a booming voice:', state);
+        if (!Deaf(state.u)) await message('A voice booms:', state);
+        else await message(youFeel('a booming voice:', state), state);
         set_voice(null, 0, 80, voice_deity, state);
         await verbalize('Thy desire for conflict shall be fulfilled!', state,
             { message });
         await lose_guardian_angel(null, state, env);
     } else if ((state.u?.ualign?.record ?? 0) > 8) {
-        if (!heroDeaf(state)) await message('A voice whispers:', state);
-        else await message('You feel a soft voice:', state);
+        if (!Deaf(state.u)) await message('A voice whispers:', state);
+        else await message(youFeel('a soft voice:', state), state);
         set_voice(null, 0, 80, voice_deity, state);
         await verbalize('Thou hast been worthy of me!', state, { message });
         const at = enexto(state.u.ux, state.u.uy,
@@ -142,8 +141,8 @@ export async function gain_guardian_angel(state = game, rawEnv = {}) {
                 state.u.uconduct.pets++;
             }
             newsym(angel.mx, angel.my, state);
-            await message(heroIsBlind(state)
-                ? 'You feel the presence of a friendly angel near you.'
+            await message(Blind(state.u)
+                ? youFeel('the presence of a friendly angel near you.', state)
                 : 'An angel appears near you.', state);
             angel.m_lev = random.rn1(8, 15);
             angel.mhp = angel.mhpmax = random.d(angel.m_lev, 10)
@@ -178,11 +177,6 @@ function transientLightEnv(state) {
     };
 }
 
-function heroDeaf(state) {
-    const deaf = state.u?.uprops?.[DEAF];
-    return Boolean(deaf?.intrinsic || deaf?.extrinsic
-        || state.u?.uroleplay?.deaf);
-}
 
 // C ref: minion.c summon_minion() (198-255). The deity creates a hostile
 // minion without recomputing malign after overriding its initial peacefulness.
@@ -225,13 +219,13 @@ export async function summon_minion(alignment, talk, state = game, rawEnv = {}) 
     }
     if (talk) {
         const deity = align_gname(alignment, state);
-        await message(heroDeaf(state)
-            ? `You feel ${s_suffix(deity)} booming voice:`
+        await message(Deaf(state.u)
+            ? youFeel(`${s_suffix(deity)} booming voice:`, state)
             : `The voice of ${deity} booms:`, state);
         set_voice(mon, 0, 80, 0, state);
         await verbalize('Thou shalt pay for thine indiscretion!', state, env);
         if (canspotmon(mon, state))
-            await message(`${Amonnam(mon, state, env)} appears before you.`, state);
+            await message(`${Amonnam(mon, { ...env, state })} appears before you.`, state);
         mon.mstrategy &= ~STRAT_APPEARMSG;
     }
     mon.mpeaceful = false;
@@ -247,14 +241,14 @@ export async function demon_talk(mtmp, state = game, env = {}) {
     // newsym() paints the live game; a monster turn's planning pass
     // (monmove.c dochug() on a planning copy) leaves that to the live pass.
     const redraw = env.planning ? () => {} : newsym;
-    const deaf = heroDeaf(state);
+    const deaf = Deaf(state.u);
 
     if (is_art(state.uwep, ART_EXCALIBUR)
         || is_art(state.uwep, ART_DEMONBANE)) {
         if (canseemon(mtmp, state))
-            await message(`${Amonnam(mtmp, state)} looks very angry.`, state);
+            await message(`${Amonnam(mtmp, { state })} looks very angry.`, state);
         else
-            await message('You feel tension building.', state);
+            await message(youFeel('tension building.', state), state);
         mtmp.mpeaceful = 0;
         mtmp.mtame = 0;
         set_malign(mtmp, state);
@@ -277,7 +271,7 @@ export async function demon_talk(mtmp, state = game, env = {}) {
         mtmp.minvis = 0;
         mtmp.perminvis = 0;
         if (wasUnseen && canspotmon(mtmp, state)) {
-            await message(`${Amonnam(mtmp, state)} appears before you.`, state);
+            await message(`${Amonnam(mtmp, { state })} appears before you.`, state);
             mtmp.mstrategy &= ~STRAT_APPEARMSG;
         }
         redraw(mtmp.mx, mtmp.my, state);
@@ -286,11 +280,11 @@ export async function demon_talk(mtmp, state = game, env = {}) {
     if (state.youmonst?.data?.mlet === M.S_DEMON) {
         if (!deaf) {
             await message(
-                `${Amonnam(mtmp, state)} says, "Good hunting, ${state.flags?.female ? 'Sister' : 'Brother'}."`,
+                `${Amonnam(mtmp, { state })} says, "Good hunting, ${state.flags?.female ? 'Sister' : 'Brother'}."`,
                 state,
             );
         } else if (canseemon(mtmp, state)) {
-            await message(`${Amonnam(mtmp, state)} says something.`, state);
+            await message(`${Amonnam(mtmp, { state })} says something.`, state);
         }
         if (!await tele_restrict(mtmp, state, env))
             await rloc(mtmp, RLOC_MSG, { ...env, state, random });
@@ -318,27 +312,27 @@ export async function demon_talk(mtmp, state = game, env = {}) {
 
     if (!deaf) {
         await message(
-            `${Amonnam(mtmp, state)} demands ${demand} ${currency(demand, state)} for safe passage.`,
+            `${Amonnam(mtmp, { state })} demands ${demand} ${currency(demand, state)} for safe passage.`,
             state,
         );
         offer = await bribe(mtmp, 'How much will you offer?', state, env);
     } else if (canseemon(mtmp, state)) {
-        await message(`${Amonnam(mtmp, state)} seems to be demanding something.`, state);
+        await message(`${Amonnam(mtmp, { state })} seems to be demanding something.`, state);
     }
 
     if (!deaf && offer >= demand) {
         await message(
-            `${Amonnam(mtmp, state)} vanishes, laughing about cowardly mortals.`,
+            `${Amonnam(mtmp, { state })} vanishes, laughing about cowardly mortals.`,
             state,
         );
     } else if (offer > 0
         && random.rnd(5 * acurr(state, A_CHA)) > demand - offer) {
         await message(
-            `${Amonnam(mtmp, state)} scowls at you menacingly, then vanishes.`,
+            `${Amonnam(mtmp, { state })} scowls at you menacingly, then vanishes.`,
             state,
         );
     } else {
-        await message(`${Amonnam(mtmp, state)} gets angry...`, state);
+        await message(`${Amonnam(mtmp, { state })} gets angry...`, state);
         mtmp.mpeaceful = 0;
         set_malign(mtmp, state);
         return 0;
@@ -611,7 +605,7 @@ export async function msummon(mon = null, rawEnv = {}) {
             created.mextra.emin.renegade =
                 (atyp !== state.u.ualign.type) ^ !created.mpeaceful;
         }
-        if (created.data.mlet === M.S_ANGEL && !heroIsBlind(state)) {
+        if (created.data.mlet === M.S_ANGEL && !Blind(state.u)) {
             hasTransientLight = true;
             if (!env.planning && typeof env.showTransientLight === 'function') {
                 await env.showTransientLight(created.mx, created.my, state, env);

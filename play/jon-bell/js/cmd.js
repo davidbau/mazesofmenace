@@ -75,7 +75,7 @@ import { visible_region_at, poisoncloud_at, reg_damg, regions_list, region_hero_
 import { wizcustom_glyphids, region_glyph, glyph_is_gascloud, glyph_cmap_at, getpos_cmap_matches, rebuild_screen_output } from './display.js';
 import { You_feel } from './pline.js';
 import { rogue_graphics, ibm_mode } from './display.js';
-import { pager_water_classes, pager_mixed_text } from './display.js';
+import { pager_water_classes, pager_mixed_text, pager_description_mbufs } from './display.js';
 import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_background, reglyph_darkroom, trap_glyph_char, trap_glyph_entry, newsym, newsym_force, flush_screen, nh_sprintf, mon_visible, sensemon, docrt, canspotmon, canseemon, level_transition_capture_old_paint, level_transition_arrival_more, canspotself, _topl_record_join, force_more, topl_force_break_now, await_more_dismiss, await_topl_more_dismiss, await_menu_key, see_nearby_objects, terrain_glyph, _topl_visualLen, map_trap, map_engraving, _topl_merge_result, _topl_joins_snapshot, _topl_snapshot_result, _topl_stash_result, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_painted_frame, map_object, map_invisible, feel_location, unmap_object, feel_newsym, unmap_invisible, under_water, under_ground, GLYPHCLS_INVIS, GLYPHCLS_SWALLOW, GLYPHCLS_OBJ, GLYPHCLS_MON, show_glyph_cell, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR, GLYPHCLS_UNEXPLORED, display_self, glyph_is_this_trap, glyph_is_invisible_at, glyph_is_warning_at, last_flush_forced_cursor, last_flush_status_end, topl_park_cursor, getobj_never_mind, putmsghistory, warning_of as warning_of_real, pager_boulder_symbol, pager_showsyms, pager_text_glyph, pager_glyph_prefix, pager_obj_glyph_utf8, pager_cmap_description } from './display.js';
 import { update_lastseentyp } from './dungeon.js';
 import { pline, livelog_printf, You_hear, You_see } from './pline.js';
@@ -207,7 +207,7 @@ import { ECMD_TIME, ECMD_OK, ECMD_CANCEL, ECMD_FAIL, WT_TOOMUCH_DIAGONAL, DIR_W,
 import { In_endgame, Is_stronghold, Is_knox_level, Is_botlevel, In_sokoban, IS_POOL, DB_MOAT, Is_firelevel as Is_firelevel_cmd } from './const.js';
 import { dunlev, builds_up, endgamelevelname, at_dgn_entrance, describe_level_buf, In_tutorial, on_level } from './dungeon.js';
 import { goto_hell, assign_rnd_level } from './dungeon.js';
-import { dungeon_branch } from './dungeon.js';
+import { dungeon_branch, dunlevs_in_dungeon } from './dungeon.js';
 import { In_W_tower_wz } from './dochug.js';
 import { remdun_mapseen, mapseen_notreachable, recalc_mapseen_reachability } from './dungeon.js';
 /* throne_sit_effect's C home is sit.c:38.  Real, full port (172 body lines:
@@ -7630,6 +7630,20 @@ export async function level_tele() {
     // levelport whose monster-teleport prompt never ran blanked the status rows
     // under a later typed-name levelport.
     g._levtele_menu = false;
+    // C teleport.c:1176-1186 — the debug fuzzer picks a random connected
+    // dungeon/level and schedules the goto without prompting.
+    if (g.iflags?.debug_fuzzer) {
+        const newlevel = { dnum: 0, dlevel: 0 };
+        do {
+            newlevel.dnum = rn2(g._n_dgns);
+        } while (newlevel.dnum === g.astral_level.dnum
+                 || g.dungeons[newlevel.dnum].flags?.unconnected
+                 || !g.dungeons[newlevel.dnum].num_dunlevs);
+        newlevel.dlevel = 1 + rn2(dunlevs_in_dungeon(newlevel));
+        u.ucamefrom = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
+        schedule_goto(newlevel, 0 /* UTOTYPE_NONE */, null, null);
+        return;
+    }
     // C teleport.c:1185-1189 — carrying the Amulet, in the endgame or in
     // Sokoban, a non-wizard hero cannot levelport at all.
     if ((u.uhave?.amulet || In_endgame(u.uz) || In_sokoban(u.uz)) && !wizard()) {
@@ -8948,6 +8962,12 @@ export async function doprev_message(liveTopline) {
         : _ring + (_noLiveTopl ? 0 : 1);
     const _recent = history.slice(-_recentN);
     let reversed = _pmw === 'r' ? _recent.slice().reverse() : _recent;
+    /* topl.c:178-189 + do.c:1379: a checkpoint's remember_topl() leaves a copy of
+     * gt.toplines in the maxrow slot, which the full window (topl.c:34-38) lists first. */
+    if (_pmw === 'f' && g._ckptToplSlot && _recent.length
+        && String(_recent[_recent.length - 1] || '').replace(/\s+/g, ' ').trim()
+            === g._ckptToplSlot.replace(/\s+/g, ' ').trim())
+        reversed = [g._ckptToplSlot, ...(history.length > _ring ? _recent.slice(1) : _recent)];
     /* C topl.c:39,72,84: gt.toplines is included even when empty; full and
      * combination put it last, reversed puts it first. */
     if (_noLiveTopl) reversed = _pmw === 'r' ? ['', ...reversed] : [...reversed, ''];
@@ -11240,7 +11260,11 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
          * swallowed with a bell INSIDE the wait, so process_menu_window's loop
          * never turns over and a live count survives it (reset_count stays
          * FALSE); only default_menu_cmds reach the switch and reset it. */
-        if ('<>^|,\\~.-@:'.indexOf(String.fromCharCode(k & 0xff)) < 0)
+        /* getline.c:250 `c == x`: a key equal to ttyDisplay->dismiss_more (ESC
+         * left it at 1) also ends the wait; it is not in resp, so the switch
+         * default bells with reset_count still TRUE and the count is dropped. */
+        if (k !== (g._ttyDismissMore | 0)
+            && '<>^|,\\~.-@:'.indexOf(String.fromCharCode(k & 0xff)) < 0)
             resetMenuCount = false;
     }
 }
@@ -14760,7 +14784,7 @@ export async function mstatusline(mtmp) {
             info += ', single segment';
         } else {
             ++nsegs;
-            let segndx = _wseg_at_local(mtmp, g.gb?.bhitpos?.x, g.gb?.bhitpos?.y);
+            let segndx = _wseg_at_local(mtmp, (g.bhitpos ?? g.gb?.bhitpos)?.x, (g.bhitpos ?? g.gb?.bhitpos)?.y);
             info += _Sprintf_local(', %d%s of %d segments',
                 segndx, _ordin_local(segndx), nsegs);
         }
@@ -16075,6 +16099,7 @@ export async function doapply() {
     let itemKey, itemCh;
     let selObj = null;
     let viaInvMenu = false;
+    let answeredApplyPrompt = null;
     let queuedItemKey = 0;
     {
         const queued = cmdq_peek(g.gi?.in_doagain ? CQ_REPEAT : CQ_CANNED);
@@ -16119,6 +16144,8 @@ export async function doapply() {
             finally { g._topl_suppress_history = _sh; }
             itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);
             putmsghistory(qbuf + ' ' + key2txt(itemKey & 0xff), false);
+            /* topl.c:547-549 clears a prompt that wrapped onto another row. */
+            answeredApplyPrompt = topl_park_cursor(null, qbuf + ' ')[1] === 0 ? qbuf : null;
         }
         itemCh = String.fromCharCode(itemKey);
         if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
@@ -16159,6 +16186,7 @@ export async function doapply() {
          * a '?' with nothing suggested falls back to exactly this altlets set
          * (invent.c:1969), matching a hero carrying only downplayed items. */
         if (itemKey === 63 /* '?' */ || itemKey === 42 /* '*' */) {
+            answeredApplyPrompt = null; /* display_pickinv clears WIN_MESSAGE */
             itemKey = await getobj_redo_menu(itemKey, toolSlots, altlets, null,
                                              { word: 'use or apply', allownone: false, buf: '' });
             viaInvMenu = true; /* the menu window wiped the answered prompt off row 0 */
@@ -16595,14 +16623,27 @@ export async function doapply() {
                             g._paintedSnapshot = { cells: _PF.cells, moves: _PF.moves, botl: _PF.botl || null };
                             g._inMovemonMore = true;
                         }
+                        /* This repaint replays a flush that already happened inside the
+                         * wield turn's movemon (pline.c:273-274 bot()); the status flags
+                         * still raised now (regen_hp's botl, allmain.c:474-475) were set
+                         * AFTER it and belong to the moveloop tail, so the replayed
+                         * bot() must not consume them. */
+                        const _replayBotl = !!(_PF && g.disp?.botl);
+                        const _replayBotlx = !!(_PF && g.disp?.botlx);
                         try { await flush_screen(1); } finally {
                             g._paintedSnapshot = _prevSnapPg;
                             g._inMovemonMore = _prevInPg;
+                            if (_replayBotl) g.disp.botl = true;
+                            if (_replayBotlx) g.disp.botlx = true;
                         }
                         set_cursor(_pm.length, 0);
                     };
                     await _showPg();
-                    await await_topl_more_dismiss(_showPg);
+                    /* topl.c:232-235 more(): ESC sets WIN_STOP, so every later
+                     * pline of this wield turn is skipped (update_topl:257) and
+                     * raises no further page before getdir's prompt. */
+                    if ((await await_topl_more_dismiss(_showPg)) === 27)
+                        break;
                 }
                 g._pending_message = _pgs[_pgs.length - 1];
             }
@@ -16943,7 +16984,14 @@ export async function doapply() {
      * `void`, so C's `res` stays ECMD_TIME and the apply spends the turn.
      * otyp 262 (js/cmd.js:35287 CL_CANDELABRUM_OF_INVOCATION). */
     if (selObj && (selObj.otyp | 0) === _AP_CANDELABRUM_OF_INVOCATION) {
+        const shownBefore = g._toplShownSeq | 0;
         await use_candelabrum(selObj);
+        /* apply.c:1346-1350 can return silently while Blind. tty_yn_function
+         * leaves a single-row prompt painted (topl.c:544-549); preserve that
+         * residue only if no message or inventory menu has overwritten it. */
+        if (answeredApplyPrompt && (g._toplShownSeq | 0) === shownBefore
+            && !g._pending_message && !g._resultMessage)
+            g._resultMessage = g._ynStaleTopline = answeredApplyPrompt;
         g.context.move = 1; /* C: res is still ECMD_TIME */
         return g.context.move;
     }
@@ -27518,7 +27566,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         } else {
             /* C: clear_nhwindow(WIN_MESSAGE); pline("Saving..."); */
             await pline('Saving...');
-            putmsghistory('Saving...'); /* topl.c remember_topl(); dosave0 clears the topline */
+            (game._msg_history ||= []).push('Saving...'); /* topl.c remember_topl(); dosave0 clears the topline */
             /* C save.c:55 `if (dosave0()) {` — write the save file, which is
              * what the NEXT segment's runSegment() restores from.  It goes
              * through input.storage (js/storage.js), so a segment that runs
@@ -29859,6 +29907,7 @@ export async function getpos(ccp, force, goal) {
 }
 
 export async function do_look_moreinfo(x, y) {
+    pager_description_mbufs(x, y, _glyph_at(x, y));
     const target = await _do_look_lookat(x, y);
     if (!target || !target.firstmatch)
         return target;
@@ -37863,16 +37912,50 @@ async function _tip_target_destination(box) {
         undefined, undefined, fullScreen);
     game._screen_output = `\x1b[${column}C${title}\n${painted.split('\n').slice(1).join('\n')}`;
     set_cursor(column + 6, lines.length - 1);
-    const finish = (cancelled, target) => {
+    const finish = async (cancelled, target) => {
         /* C pickup.c:3932-3933 -> wintty.c:982,3684-3687: dismissing the
          * menu clears its rectangle before row_refresh. Control-byte symbols
          * cannot repaint the old physical glyph left under the window. */
         if (fullScreen) {
             // C wintty.c:971-979 erase_menu_or_text: offx 0 dismisses via docrt.
-            docrt_flags(0);
+            await docrt();
+            /* wintty.c:978-979 `docrt(); flush_screen(1);`: docrt's seen-stone
+             * row-20 blanks precede the botlx bot() that rewrites status row 1. */
+            status_r1_menu_docrt();
+            game._r1botAfterMap = game.level;
+            game._r1textOver = true;
+            await flush_screen(1);
+            const savedBotDisabled = game._bot_disabled;
+            game._bot_disabled = true;
+            game._statusBlankAfterDocrt = true;
+            try { docrt_flags(0); await flush_screen(1); }
+            finally { game._bot_disabled = savedBotDisabled; }
+            /* windows.c:1859-1863 / wintty.c:978-979: the map is reprinted with bot()
+             * disabled, so the botlx BL_RESET that follows rewrites row 1 whole
+             * on top of it (same ordering as the wiz_intrinsic dismissal). */
+            game._status1WholeNext = true;
+            game._r1botAfterMap = game.level;
         } else {
             docorner_blank_utf8_captures(column - 1, lines.length + 1);
+            // C wintty.c:971-979 erase_menu_or_text: offx 0 dismisses via docrt
+            // + flush_screen(1) inside windows.c:1859-1863's bot_disabled span;
+            // the botlx bot() then rewrites status row 1 over map y=20.
+            return (async () => {
+                const oldBotDisabled = game._bot_disabled;
+                game._bot_disabled = true;
+                try {
+                    await docrt();
+                    await flush_screen(1);
+                } finally { game._bot_disabled = oldBotDisabled; }
+                status_r1_menu_docrt();
+                game._r1botAfterMap = game.level;
+                game._r1textOver = true;
+                game._statusBlankAfterDocrt = true;
+                if (game.disp) game.disp.botlx = 1;
+                return { cancelled, target };
+            })();
         }
+        docorner_blank_utf8_captures(column - 1, lines.length + 1);
         return { cancelled, target };
     };
     /* C wintty.c:1700-1730 MENU_SEARCH: the getlin's clear_nhwindow blanks
@@ -37883,7 +37966,7 @@ async function _tip_target_destination(box) {
         undefined, undefined, fullScreen).split('\n');
     for (;;) {
         const key = await nhgetch();
-        if (key === 27) return finish(true, null);
+        if (key === 27) return await finish(true, null);
         if (key === 0x3a) {
             /* pmatchi() runs against tty_add_menu's stored "%c - %s" text;
              * unavailable rows have no identifier and are skipped. */
@@ -37895,14 +37978,14 @@ async function _tip_target_destination(box) {
             titleErased = true;
             game._screen_output = frameRows().join('\n');
             set_cursor(column + 6, lines.length - 1);
-            if (finished && picked) return finish(false, picked.obj);
+            if (finished && picked) return await finish(false, picked.obj);
             continue;
         }
         if (key === 10 || key === 13 || key === 32 || key === 45)
-            return finish(false, null);
+            return await finish(false, null);
         const target = targets.find((obj) => key === (typeof obj.invlet === 'number'
             ? obj.invlet : (obj.invlet || '').charCodeAt(0)));
-        if (target) return finish(false, target);
+        if (target) return await finish(false, target);
     }
 }
 
@@ -38990,11 +39073,14 @@ async function use_trap(otmp) {
         /* topl.c:545-548 — tty_yn_function leaves the answered prompt on the
          * topline (TOPLINE_NON_EMPTY); tty_nhgetch cleared our copy while
          * reading the key, and C wipes it only at the NEXT key read. */
-        game._pending_message = `${query} [yn] (n)`;
         if (answer !== 'y') {
+            /* a later pline overwrites the dead prompt (topl.c:257-266), so
+             * park it on the stale-yn channel rather than as a pending line. */
+            game._resultMessage = game._ynStaleTopline = `${query} [yn] (n)`;
             reset_trapset();
             return;
         }
+        game._pending_message = `${query} [yn] (n)`;
         /* topl.c:262,271 — the answered prompt left toplin NON_EMPTY, not
          * NEED_MORE, so the next pline neither joins it nor pages it: it
          * remember_topl()s and overwrites. */
@@ -43350,7 +43436,7 @@ export async function yn_function_menu(query, resp, def) {
     if (count > 1 && res === def) res = picks[1];
     // C logs the answered query, then clears WIN_MESSAGE immediately.
     await pline('%s %s', query, key2txt(res.charCodeAt(0)));
-    if (g._pending_message) putmsghistory(g._pending_message);
+    if (g._pending_message) (g._msg_history ||= []).push(g._pending_message);
     g._pending_message = '';
     g._topl_unacknowledged = false;
     _buildScreenOutput();

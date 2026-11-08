@@ -11,8 +11,6 @@ import {
     D_NODOOR,
     D_TRAPPED,
     HEALTHY_TIN,
-    HALLUC,
-    HALLUC_RES,
     IS_ROOM,
     MM_ESHK,
     PL_NSIZ,
@@ -67,6 +65,8 @@ import {
     shktools,
     shkwands,
 } from './shtypes_data.js';
+import { Hallucination,
+} from './youprop.js';
 
 // C ref: shknam.c saleable() (805-825).
 export function saleable(shkp, obj, state = game) {
@@ -107,10 +107,7 @@ export function shkname(shopkeeper, state = game, env = {}) {
     }
 
     let name = extension.shknam;
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    if (state.u?.uprops?.[HALLUC]?.intrinsic
-        && !(resistance?.intrinsic || resistance?.extrinsic)
-        && !state.program_state?.gameover) {
+    if (Hallucination(state.u) && !state.program_state?.gameover) {
         const roll = env.random?.rn2 ?? rn2;
         let count = 0;
         while (count < SHTYPES.length && SHTYPES[count].prob !== 0) ++count;
@@ -140,10 +137,7 @@ export function Shknam(shopkeeper, state = game, env = {}) {
 // marker when they are not ordinary personal names; compare only after the
 // same one-character skip that C performs.
 export function is_izchak(shopkeeper, override_hallucination, state = game) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    const hallucinating = Boolean(hallucination?.intrinsic
-        && !(resistance?.intrinsic || resistance?.extrinsic));
+    const hallucinating = Hallucination(state.u);
     if (hallucinating && !override_hallucination) return false;
     if (!shopkeeper.isshk) return false;
     if (!in_town(shopkeeper.mx, shopkeeper.my, state)) return false;

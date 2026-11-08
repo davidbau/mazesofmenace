@@ -13,14 +13,12 @@ import {
     ARTICLE_A,
     ARTICLE_THE,
     ARTICLE_YOUR,
-    BLINDED,
     COLD_RES,
     CLOUD,
     CONFUSION,
     CONFLICT,
     COLNO,
     CORR,
-    DEAF,
     DB_ICE,
     DB_UNDER,
     DIED,
@@ -62,10 +60,6 @@ import {
     FROMOUTSIDE,
     GOLD_SYM,
     GP_ALLOW_U,
-    HALLUC,
-    HALLUC_RES,
-    Half_physical_damage,
-    Maybe_Half_Phys,
     HEADSTONE,
     ICE,
     IS_AIR,
@@ -168,7 +162,6 @@ import {
     TT_WEB,
     Upolyd,
     VIBRATING_SQUARE,
-    WARNING,
     WATER,
     WEB,
     WOUNDED_LEGS,
@@ -451,7 +444,6 @@ import {
     is_waterwall,
 } from './dbridge.js';
 import { waterbody_name } from './pager.js';
-import { Cold_resistance } from './zap.js';
 import {
     enexto,
     goodpos,
@@ -538,7 +530,7 @@ import {
 import { tty_raw_print } from './tty_rawprint.js';
 import { init_objects, objdescr_is } from './o_init.js';
 import { note_unported } from './unported.js';
-import { heroUnaware, livelog_printf } from './pline.js';
+import { livelog_printf, youFeel } from './pline.js';
 import { makeplural } from './fruit.js';
 import { On_stairs } from './stairs.js';
 import { select_menu } from './windows.js';
@@ -551,6 +543,11 @@ import {
     vision_recalc,
 } from './vision.js';
 import { canspotmon, mon_visible, sensemon } from './display.js';
+import { Cold_resistance } from './zap.js';
+import {
+    Blind, Deaf, Half_physical_damage, Hallucination, Maybe_Half_Phys,
+    Warning,
+} from './youprop.js';
 
 function reset_tmp_anything(state) {
     state.tmp_anything ??= {};
@@ -726,7 +723,7 @@ export function weight_cap(state = game) {
     // hack.c:4330-4333. Levitation and the Plane of Air both provide the
     // full carrying capacity even when no equipment changes u.uprops.
     if (propertyActiveUnblocked(state, LEVITATION)
-        || Is_airlevel(state.u.uz)
+        || Is_airlevel(state.u.uz, state)
         || (state.u.usteed && strongmonst(state.u.usteed.data))) {
         capacity = MAX_CARR_CAP;
     } else {
@@ -945,11 +942,6 @@ function propertyPresent(state, property) {
     return Boolean(value?.intrinsic || value?.extrinsic);
 }
 
-function heroHallucinating(state) {
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return propertyIntrinsic(state, HALLUC)
-        && !Boolean(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // C ref: hack.c in_town() (3562-3585). A Mine Town level with subrooms uses
 // the containing room as its town boundary. A variant without subrooms treats
@@ -971,7 +963,7 @@ export function in_town(x, y, state = game) {
 // disposition, helplessness, and scare checks than canspotmon().
 export function monster_nearby(state = game) {
     const { ux, uy } = state.u;
-    const hallucinating = heroHallucinating(state);
+    const hallucinating = Hallucination(state.u);
     for (let x = ux - 1; x <= ux + 1; ++x) {
         for (let y = uy - 1; y <= uy + 1; ++y) {
             if (!isok(x, y) || (x === ux && y === uy)) continue;
@@ -1252,7 +1244,7 @@ export async function u_rooted(state = game) {
     const species = state.youmonst?.data;
     if (!species?.mmove) {
         const inPlace = propertyActiveUnblocked(state, LEVITATION)
-            || Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz);
+            || Is_airlevel(state.u.uz, state) || Is_waterlevel(state.u.uz, state);
         await ttyPline(
             `You are rooted ${inPlace ? 'in place' : 'to the ground'}.`,
             state,
@@ -1404,27 +1396,7 @@ export async function losehp(n, knam, k_format, state = game, env = {}) {
     }
 }
 
-function heroIsBlind(state) {
-    const blindness = state.u?.uprops?.[BLINDED];
-    return Boolean(
-        (blindness?.intrinsic || blindness?.extrinsic)
-        && !blindness?.blocked,
-    );
-}
 
-// youprop.h:125 Deaf is (HDeaf || EDeaf || u.uroleplay.deaf). Unlike Blind it
-// has no blocked term, so a source of deafness is never suppressed.
-//
-// This is the raw property. pline.c You_hear() applies its own wider test --
-// deafness that an unaware hero still dreams through, plus flags.acoustics --
-// which is why moverock_core() cannot infer `!Deaf` from youHear() printing.
-function heroIsDeaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(
-        deafness?.intrinsic || deafness?.extrinsic
-        || state.u?.uroleplay?.deaf,
-    );
-}
 
 // C ref: hack.c test_move()'s IS_OBSTRUCTED entry test, narrowed to the wall
 // and rock destinations the ported half of test_move() refuses. It answers
@@ -1989,7 +1961,7 @@ async function cannot_push_msg(otmp, sx, sy, state, env) {
     } else {
         await message(`You try to move ${what}, but in vain.`, state);
     }
-    if (heroIsBlind(state)) feel_location(sx, sy, state);
+    if (Blind(state.u)) feel_location(sx, sy, state);
 }
 
 // C ref: hack.c cannot_push() (262-312). A failed push can instead let giants
@@ -2083,7 +2055,7 @@ export async function still_chewing(x, y, state = game) {
     if (!boulder && ((IS_OBSTRUCTED(lev.typ) && !may_dig(x, y, state))
         || (lev.typ === IRONBARS && (lev.flags & W_NONDIGGABLE)))) {
         const what = lev.typ === IRONBARS ? 'bars'
-            : IS_TREE(lev.typ) ? 'tree' : 'hard stone';
+            : IS_TREE(lev.typ, state) ? 'tree' : 'hard stone';
         await ttyPline(`You hurt your teeth on the ${what}.`, state);
         nomul(0, state);
         return 1;
@@ -2102,12 +2074,12 @@ export async function still_chewing(x, y, state = game) {
         digging.pos = { x, y };
         digging.level ??= {};
         assign_level(digging.level, state.u.uz);
-        digging.effort = (IS_OBSTRUCTED(lev.typ) && !IS_TREE(lev.typ)
+        digging.effort = (IS_OBSTRUCTED(lev.typ) && !IS_TREE(lev.typ, state)
             ? 30 : 60) + Math.trunc(state.u.udaminc ?? 0);
-        const prep = boulder || IS_TREE(lev.typ) || lev.typ === IRONBARS
+        const prep = boulder || IS_TREE(lev.typ, state) || lev.typ === IRONBARS
             ? 'on a' : 'a hole in the';
         const target = boulder ? 'boulder'
-            : IS_TREE(lev.typ) ? 'tree'
+            : IS_TREE(lev.typ, state) ? 'tree'
                 : IS_OBSTRUCTED(lev.typ) ? 'rock'
                     : lev.typ === IRONBARS ? 'bar' : 'door';
         await ttyPline(`You start chewing ${prep} ${target}.`, state);
@@ -2118,7 +2090,7 @@ export async function still_chewing(x, y, state = game) {
     if (digging.effort <= 100) {
         if (state.flags?.verbose) {
             const target = boulder ? 'boulder'
-                : IS_TREE(lev.typ) ? 'tree'
+                : IS_TREE(lev.typ, state) ? 'tree'
                     : IS_OBSTRUCTED(lev.typ) ? 'rock'
                         : lev.typ === IRONBARS ? 'bars' : 'door';
             await ttyPline(`You continue chewing on the ${target}.`, state);
@@ -2131,7 +2103,7 @@ export async function still_chewing(x, y, state = game) {
     state.u.uconduct ??= {};
     if (!(state.u.uconduct.food ?? 0)) {
         const target = boulder ? 'a boulder'
-            : IS_TREE(lev.typ) ? 'a tree'
+            : IS_TREE(lev.typ, state) ? 'a tree'
                 : IS_OBSTRUCTED(lev.typ) ? 'rock'
                     : lev.typ === IRONBARS ? 'iron bars' : 'a door';
         livelog_printf(
@@ -2165,7 +2137,7 @@ export async function still_chewing(x, y, state = game) {
             lev.typ = DOOR;
             lev.flags = D_NODOOR;
         }
-    } else if (IS_TREE(lev.typ)) {
+    } else if (IS_TREE(lev.typ, state)) {
         digtxt = 'You chew through the tree.';
         lev.typ = ROOM;
     } else if (lev.typ === IRONBARS) {
@@ -2360,7 +2332,7 @@ async function dopush(sx, sy, rx, ry, otmp, state, env) {
     otmp.next_boulder = 0;
     movobj(otmp, rx, ry, state); /* does newsym(rx,ry) */
     // 210-215.
-    if (heroIsBlind(state)) {
+    if (Blind(state.u)) {
         // hack.c:211-212 feels both the boulder's destination and the square
         // it left.  The destination may be two cells away, so feel_location()
         // must use display.c's sign-clamped seenv indexing.
@@ -2439,7 +2411,7 @@ async function moverock_core(sx, sy, state, env) {
     while ((otmp = sobj_at(BOULDER, sx, sy, state)) !== null) {
         // 355-363. C identifies an unseen boulder by its remembered glyph,
         // then maps the live object before refusing the push.
-        if (heroIsBlind(state)
+        if (Blind(state.u)
             && glyph_to_obj(glyph_at(sx, sy, state)) !== BOULDER) {
             const message = requiredMessageOperation(
                 env, 'unseen boulder feedback',
@@ -2493,8 +2465,8 @@ async function moverock_core(sx, sy, state, env) {
         // 412-421. Levitation and the air level have distinct source feedback
         // and are not interchangeable with the ordinary push transaction.
         if (propertyActiveUnblocked(state, LEVITATION)
-            || Is_airlevel(state.u?.uz)) {
-            if (heroIsBlind(state)) feel_location(sx, sy, state);
+            || Is_airlevel(state.u?.uz, state)) {
+            if (Blind(state.u)) feel_location(sx, sy, state);
             await message(
                 `You don't have enough leverage to push ${the(xnameFresh(otmp, state), state)}.`,
                 state,
@@ -2502,7 +2474,7 @@ async function moverock_core(sx, sy, state, env) {
             return -1;
         }
         if (verysmall(state.youmonst?.data) && !u.usteed) {
-            if (heroIsBlind(state)) feel_location(sx, sy, state);
+            if (Blind(state.u)) feel_location(sx, sy, state);
             await message(
                 `You're too small to push that ${xnameFresh(otmp, state)}.`,
                 state,
@@ -2530,7 +2502,7 @@ async function moverock_core(sx, sy, state, env) {
         // 443-448. Sokoban's diagonal rule is local to moverock_core(); the
         // result of cannot_push() remains the source return value.
         if (state.level?.flags?.sokoban_rules && u.dx && u.dy) {
-            if (heroIsBlind(state)) feel_location(sx, sy, state);
+            if (Blind(state.u)) feel_location(sx, sy, state);
             await message(
                 `${The(xnameFresh(otmp, state), state)} won't roll diagonally `
                 + `on this ${surface(sx, sy, state)}.`,
@@ -2565,7 +2537,7 @@ async function moverock_core(sx, sy, state, env) {
                 const heard = the(xnameFresh(otmp, state), state);
                 const line = youHear(`a monster behind ${heard}.`, state);
                 if (line !== null) await message(line, state);
-                if (!heroIsDeaf(state)) deliver_part1 = true;
+                if (!Deaf(state.u)) deliver_part1 = true;
                 map_invisible(rx, ry, state);
             }
             if (state.flags?.verbose) {
@@ -2606,7 +2578,7 @@ async function moverock_core(sx, sy, state, env) {
                     place_object(otmp, rx, ry, objectEnv);
                     redraw(sx, sy, state);
                     await message(
-                        `${(!heroIsDeaf(state) || !heroIsBlind(state))
+                        `${(!Deaf(state.u) || !Blind(state.u))
                             ? 'KAABLAMM!!' : 'Gadzooks'}!  `
                             + `${Tobjnam(otmp, 'trigger', state)} `
                             + `${ttmp.madeby_u ? 'your' : 'a'} land mine.`,
@@ -2621,17 +2593,17 @@ async function moverock_core(sx, sy, state, env) {
             case SPIKED_PIT:
             case PIT: {
                 obj_extract_self(otmp, objectEnv);
-                if (!heroIsBlind(state) && state.viz_array?.[ry])
+                if (!Blind(state.u) && state.viz_array?.[ry])
                     state.viz_array[ry][rx] |= IN_SIGHT;
                 const { flooreffects } = await import('./do.js');
                 if (!await flooreffects(otmp, rx, ry, 'fall', effectEnv))
                     place_object(otmp, rx, ry, objectEnv);
-                if (mtmp && !heroIsBlind(state)) redraw(rx, ry, state);
+                if (mtmp && !Blind(state.u)) redraw(rx, ry, state);
                 return sobj_at(BOULDER, sx, sy, state) ? -1 : 0;
             }
             case HOLE:
             case TRAPDOOR:
-                if (heroIsBlind(state)) {
+                if (Blind(state.u)) {
                     await message(
                         `Kerplunk!  You no longer feel `
                             + `${the(xnameFresh(otmp, state), state)}.`,
@@ -2800,7 +2772,7 @@ export async function test_move(
     // branch, and the pass-wall and tunnelling forms deliberately fall through
     // instead of being treated as ordinary refusals.
     if (IS_OBSTRUCTED(location.typ) || location.typ === IRONBARS) {
-        if (heroIsBlind(state) && mode === DO_MOVE)
+        if (Blind(state.u) && mode === DO_MOVE)
             feel_location(x, y, state);
         if (passesWalls && may_passwall(x, y, state)) {
             // The source intentionally continues into the common checks.
@@ -2836,7 +2808,7 @@ export async function test_move(
                 if (is_db_wall(x, y, state)) {
                     await message('That drawbridge is up!', state);
                 } else if (passesWalls && !may_passwall(x, y, state)
-                    && In_sokoban(state.u?.uz)) {
+                    && In_sokoban(state.u?.uz, state)) {
                     await message('The Sokoban walls resist your ability.', state);
                 } else if (state.flags?.mention_walls) {
                     const glyph = back_to_glyph(x, y, state);
@@ -2858,7 +2830,7 @@ export async function test_move(
     } else if (IS_DOOR(location.typ) && closed_door(x, y, state)) {
         // hack.c:1074-1137. TEST_TRAV and TEST_TRAP jump to testdiag;
         // TEST_MOVE and DO_MOVE return after this closed-door arm.
-        if (heroIsBlind(state) && mode === DO_MOVE)
+        if (Blind(state.u) && mode === DO_MOVE)
             feel_location(x, y, state);
         if (passesWalls) {
             // The source falls through to the common checks.
@@ -2899,7 +2871,7 @@ export async function test_move(
                     state.context.move = (ux !== state.u.ux || uy !== state.u.uy)
                         ? 1 : 0;
                 } else if (x === ux || y === uy) {
-                    if (heroIsBlind(state)
+                    if (Blind(state.u)
                         || propertyIntrinsic(state, STUNNED)
                         || acurr(state, A_DEX) < 10
                         || propertyPresent(state, FUMBLING)) {
@@ -2947,7 +2919,7 @@ export async function test_move(
             && (!doorless_door(location, state)
                 || await block_door(x, y, state, { message }))) {
             if (mode === DO_MOVE) {
-                if (heroIsBlind(state)) feel_location(x, y, state);
+                if (Blind(state.u)) feel_location(x, y, state);
                 if (state.u?.uinwater || state.flags?.mention_walls) {
                     await message(
                         "You can't move diagonally into an intact doorway.",
@@ -3028,7 +3000,7 @@ export async function test_move(
     if (sobj_at(BOULDER, x, y, state)
         && (state.level?.flags?.sokoban_rules || !passesWalls)) {
         if (mode !== TEST_TRAV && run >= 2
-            && !(heroIsBlind(state) || heroHallucinating(state))
+            && !(Blind(state.u) || Hallucination(state.u))
             && !could_move_onto_boulder(
                 x,
                 y,
@@ -3126,7 +3098,7 @@ function travelMapSet(state, x, y) {
 function travelSquareVisible(x, y, state) {
     const location = state.level?.at(x, y);
     return Boolean(location?.seenv
-        || (!heroIsBlind(state) && couldsee(x, y, state)));
+        || (!Blind(state.u) && couldsee(x, y, state)));
 }
 
 // C ref: hack.c findtravelpath() (1266-1523). TRAVP_TRAVEL grows a shortest
@@ -3516,7 +3488,7 @@ export async function domove_bump_mon(mtmp, glyph, state = game) {
             && !propertyActiveUnblocked(state, PROT_FROM_SHAPE_CHANGERS)
             && !sensemon(mtmp, state)) {
             await stumble_onto_mimic(mtmp, state);
-        } else if (mtmp.mpeaceful && !heroHallucinating(state)) {
+        } else if (mtmp.mpeaceful && !Hallucination(state.u)) {
             await ttyPline(`Pardon me, ${m_monnam(mtmp, state)}.`, state);
         } else {
             await ttyPline(`You move right into ${mon_nam(mtmp, state)}.`, state);
@@ -3555,7 +3527,7 @@ export async function domove_attackmon_at(
 
 // C ref: hack.c air_turbulence() (2342-2362).
 export async function air_turbulence(state = game) {
-    if (Is_airlevel(state.u.uz) && rn2(4)
+    if (Is_airlevel(state.u.uz, state) && rn2(4)
         && !propertyActiveUnblocked(state, LEVITATION)
         && !heroIsFlying(state)) {
         switch (rn2(3)) {
@@ -3590,7 +3562,7 @@ export async function water_turbulence(x, y, state = game) {
         x = state.u.ux + state.u.dx;
         y = state.u.uy + state.u.dy;
         if (isok(x, y) && !is_pool(x, y, state)
-            && !Is_waterlevel(state.u.uz) && near_capacity(state) > wtmod) {
+            && !Is_waterlevel(state.u.uz, state) && near_capacity(state) > wtmod) {
             await ttyPline(
                 'You are carrying too much to climb out of the water.', state,
             );
@@ -3761,7 +3733,7 @@ export async function avoid_running_into_trap_or_liquid(
     const wouldStop = (state.context.run ?? 0) >= 2;
     if (!state.context.run) return false;
     if (await avoid_moving_on_trap(x, y, wouldStop, state)
-        || (heroIsBlind(state)
+        || (Blind(state.u)
             && await avoid_moving_on_liquid(x, y, wouldStop, state))) {
         nomul(0, state);
         if (wouldStop) state.context.move = 0;
@@ -3781,8 +3753,8 @@ export async function avoid_trap_andor_region(x, y, state = game) {
     const paranoidTrap = Boolean(paranoia & PARANOID_TRAP);
     const impaired = propertyIntrinsic(state, STUNNED)
         || propertyIntrinsic(state, CONFUSION);
-    if (paranoidTrap && !heroIsBlind(state) && !impaired
-        && !heroHallucinating(state)
+    if (paranoidTrap && !Blind(state.u) && !impaired
+        && !Hallucination(state.u)
         && (!state.context.nopick || state.context.run)) {
         const newreg = visible_region_at(x, y, state);
         const oldreg = visible_region_at(state.u.ux, state.u.uy, state);
@@ -3816,8 +3788,8 @@ export async function avoid_trap_andor_region(x, y, state = game) {
             TEST_MOVE, state,
         )
         && (immune_to_trap(state.youmonst, trap.ttyp, state)
-            !== TRAP_CLEARLY_IMMUNE || heroHallucinating(state))) {
-        const traptype = heroHallucinating(state)
+            !== TRAP_CLEARLY_IMMUNE || Hallucination(state.u))) {
+        const traptype = Hallucination(state.u)
             ? rnd(TRAPNUM - 1) : Math.trunc(trap.ttyp);
         const prompt = `Really ${u_locomotion('step', state)} ${
             into_vs_onto(traptype) ? 'into' : 'onto'
@@ -3841,7 +3813,7 @@ export function carryingTooMuchToMove(state = game) {
         ? state.u.mh < 5 && state.u.mh !== state.u.mhmax
         : state.u.uhp < 10 && state.u.uhp !== state.u.uhpmax;
     return (wtcap >= OVERLOADED || (wtcap > SLT_ENCUMBER && lowHitPoints))
-        && !Is_airlevel(state.u.uz);
+        && !Is_airlevel(state.u.uz, state);
 }
 
 // C ref: hack.c carrying_too_much() (2616-2636).
@@ -3906,7 +3878,7 @@ export function runStopsBeforeMonster(monster, run, state) {
     if (!run || !monster || is_safemon(monster, state))
         return false;
     const appearance = (monster.m_ap_type ?? 0) & M_AP_TYPMASK;
-    const seen = !heroIsBlind(state)
+    const seen = !Blind(state.u)
         && mon_visible(monster, state)
         && ((appearance !== M_AP_FURNITURE && appearance !== M_AP_OBJECT)
             || propertyActiveUnblocked(state, PROT_FROM_SHAPE_CHANGERS));
@@ -4062,7 +4034,7 @@ async function domove_fight_empty(x, y, state) {
     if (!state.u.uinwater) {
         boulder = sobj_at(BOULDER, x, y, state);
         if (glyph_is_statue(glyph)
-            || (heroHallucinating(state) && glyph_is_monster(glyph))) {
+            || (Hallucination(state.u) && glyph_is_monster(glyph))) {
             boulder = sobj_at(STATUE, x, y, state);
         }
         // 2267-2276. A hero who force-fights while wielding a digging tool starts
@@ -4103,7 +4075,7 @@ async function domove_fight_empty(x, y, state) {
     if (boulder) {
         buf = ansimpleoname(boulder, state);
     } else if (state.u.uinwater && !is_pool(x, y, state)) {
-        buf = Is_waterlevel(state.u.uz) && location.typ === AIR
+        buf = Is_waterlevel(state.u.uz, state) && location.typ === AIR
             ? 'an air bubble' : 'nothing';
     } else if (solid) {
         // C ref: hack.c:2302-2310. An attack does not identify unseen
@@ -4697,7 +4669,7 @@ async function domove_core(state = game) {
         u.umoved = true;
         newsym(oldx, oldy);
         // vision_recalc() redraws the hero; C has no second arrival newsym().
-        vision_recalc(1);
+        vision_recalc(1, { state });
         await invocation_message(state);
     }
     // C ref: hack.c domove_core():2976-2987. The attached objects return
@@ -4793,7 +4765,7 @@ export async function pickup_checks(state = game, env = {}) {
                 await message(`You pick up ${s_suffix(mon_nam(u.ustuck, state, env))} tongue.`, state);
                 await message("But it's kind of slimy, so you drop it.", state);
             } else {
-                await message(`You don't ${heroIsBlind(state) ? 'feel' : 'see'} anything in here to pick up.`, state);
+                await message(`You don't ${Blind(state.u) ? 'feel' : 'see'} anything in here to pick up.`, state);
             }
             return 1;
         }
@@ -4801,7 +4773,7 @@ export async function pickup_checks(state = game, env = {}) {
     }
     // youprop.h: Wwalking excludes the Water Plane; Breathless reads raw
     // magical-breathing sources, while Flying includes a steed and blocking.
-    const waterWalking = propertyPresent(state, WWALKING) && !Is_waterlevel(u.uz);
+    const waterWalking = propertyPresent(state, WWALKING) && !Is_waterlevel(u.uz, state);
     const breathlessHero = propertyPresent(state, MAGICAL_BREATHING)
         || breathless(state.youmonst.data);
     const cannotDive = () => waterWalking || is_floater(state.youmonst.data)
@@ -4867,7 +4839,7 @@ export async function pickup_checks(state = game, env = {}) {
             await message('You cannot reach the bottom of the pit.', state);
         } else if (u.usteed && P_SKILL(P_RIDING, state) < P_BASIC) {
             await rider_cant_reach(state, env);
-        } else if (heroIsBlind(state)) {
+        } else if (Blind(state.u)) {
             await message('You cannot reach anything here.', state);
         } else {
             let surf = surface(u.ux, u.uy, state);
@@ -4926,7 +4898,7 @@ export async function lookaround(state = game) {
         return;
     }
 
-    if (heroIsBlind(state) || state.context.run === 0) return;
+    if (Blind(state.u) || state.context.run === 0) return;
 
     const here = state.level.at(u.ux, u.uy);
 
@@ -5112,7 +5084,7 @@ function domove_monster_trap_env(state, env = {}) {
         message,
         redraw: env.redraw ?? ((tx, ty) => newsym(tx, ty, state)),
         mInAir: env.mInAir ?? ((mon, st) => m_in_air(mon, st)),
-        heroDeaf: env.heroDeaf ?? heroIsDeaf,
+        heroDeaf: env.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: env.youHear ?? ((line, st) => youHear(line, st)),
         // hack.c:2198-2199 calls minliquid() after the swap and consumes the
         // rloc() result inside that source function. Supply the complete
@@ -5324,7 +5296,7 @@ export async function domove_swap_with_pet(
         await newexplevel(state, { message, random });
         if (random.rn2(4)) {
             await message(
-                'You feel guilty about losing your pet like this.',
+                youFeel('guilty about losing your pet like this.', state),
                 state,
             );
             state.u.ugangr++;
@@ -5436,7 +5408,7 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
     const levitating = propertyActiveUnblocked(state, LEVITATION);
     const flying = heroIsFlying(state);
     const waterWalking = propertyPresent(state, WWALKING)
-        && !Is_waterlevel(u.uz);
+        && !Is_waterlevel(u.uz, state);
     const swimming = propertyPresent(state, SWIMMING)
         || Boolean(u.usteed && is_swimmer(u.usteed.data));
     const hasMagicalBreathing = propertyPresent(state, MAGICAL_BREATHING);
@@ -5448,7 +5420,7 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
     if (u.uinwater) {
         let stillInWater = false;
         if (!is_pool(u.ux, u.uy, state)) {
-            if (Is_waterlevel(u.uz)) {
+            if (Is_waterlevel(u.uz, state)) {
                 await message('You pop into an air bubble.', state);
                 state.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
             } else if (is_lava(u.ux, u.uy, state)) {
@@ -5459,7 +5431,7 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
             } else {
                 await back_on_ground(false, state);
             }
-        } else if (Is_waterlevel(u.uz)) {
+        } else if (Is_waterlevel(u.uz, state)) {
             stillInWater = true;
         } else if (levitating) {
             await message(
@@ -5478,7 +5450,7 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
         }
         if (!stillInWater) {
             const wasUnderwater = Boolean(
-                u.uinwater && !Is_waterlevel(u.uz),
+                u.uinwater && !Is_waterlevel(u.uz, state),
             );
             await set_uinwater(false, state, rawEnv);
             if (wasUnderwater) {
@@ -5509,7 +5481,7 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
                 u.uinwater ? DISMOUNT_FELL : DISMOUNT_GENERIC,
                 state,
             );
-            if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) return false;
+            if (Is_airlevel(u.uz, state) || Is_waterlevel(u.uz, state)) return false;
             if (newspot) await check_special_room(false, state);
             return true;
         }
@@ -5680,8 +5652,7 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
 
         // C ref: hack.c:3402-3410. Warning reads the raw HWarning/EWarning
         // fields (including blocked bits) and looks up this square's timer.
-        const warning = u.uprops[WARNING];
-        if ((warning?.intrinsic || warning?.extrinsic)
+        if (Warning(u)
             && is_ice(u.ux, u.uy, state)) {
             const warnings = [
                 'The ice seems very soft and slushy.',
@@ -5739,7 +5710,7 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
                     state,
                 );
             } else if (monster.mpeaceful) {
-                const name = heroIsBlind(state) && !sensemon(monster, state)
+                const name = Blind(state.u) && !sensemon(monster, state)
                     ? 'something'
                     : a_monnam(monster, { ...rawEnv, state });
                 await message(`You surprise ${name}!`, state);
@@ -5870,18 +5841,15 @@ export async function invocation_message(state = game, env = {}) {
         : propertyActiveUnblocked(state, LEVITATION) || heroIsFlying(state)
             ? 'beneath you'
             : `under your ${makeplural(body_part(FOOT, state.youmonst))}`;
-    const feelPrefix = heroUnaware(state)
-        ? 'You dream that you feel'
-        : 'You feel';
     await (env.message ?? ttyPline)(
-        `${feelPrefix} a strange vibration ${beneath}.`, state, env,
+        youFeel(`a strange vibration ${beneath}.`, state), state, env,
     );
     u.uevent ??= {};
     u.uevent.uvibrated = 1;
 
     if (candelabrum?.spe === 7 && candelabrum.lamplit) {
         await (env.message ?? ttyPline)(
-            `${The(xnameFresh(candelabrum, state), state)} ${heroIsBlind(state)
+            `${The(xnameFresh(candelabrum, state), state)} ${Blind(state.u)
                 ? 'throbs palpably' : 'glows with a strange light'}!`,
             state, env,
         );

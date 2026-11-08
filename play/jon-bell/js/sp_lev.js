@@ -15,7 +15,7 @@ import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
 import { dig_corridor, mineralize, make_grave, remove_object } from './mklev.js';
 import { add_to_container, mkgold, blessorcurse } from './mklev.js';
-import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, } from './const.js';
+import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, EGD, } from './const.js';
 import { oinit } from './o_init.js';
 import { level_finalize_topology, fill_special_room, clear_level_structures, find_branch_room, OC_MERGE, add_door, themeroom_lspo_map_redo_maploc_rng, mdrop_obj_md } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
@@ -75,7 +75,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { create_drawbridge } from './dbridge.js';
 import { impossible } from './pline.js';
-import { map_background, map_object, map_trap, newsym_force as newsym_force_real, terrain_glyph, GLYPHCLS_CMAP } from './display.js';
+import { map_background, map_object, map_trap, newsym_force as newsym_force_real, terrain_glyph, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR } from './display.js';
 import { enexto_core, rloc } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { m_into_limbo } from './dog.js';
@@ -4212,8 +4212,12 @@ function flip_visuals(flp, minx, miny, maxx, maxy) {
                 }
                 lev.seenv = seenv;
             }
+            /* glyph_is_cmap() spans every cmap range (display.h:723-725),
+               remembered traps and engravings included */
+            const rgcls = lev.remembered_glyph?.cls;
             if ((IS_WALL(lev.typ) || lev.typ === SDOOR)
-                && lev.remembered_glyph?.cls === GLYPHCLS_CMAP) {
+                && (rgcls === GLYPHCLS_CMAP || rgcls === GLYPHCLS_TRAP
+                    || rgcls === GLYPHCLS_ENGR)) {
                 const tg = terrain_glyph(lev, x, y);
                 lev.remembered_glyph = { ch: tg.ch, color: tg.color,
                                          decgfx: tg.dec, cls: GLYPHCLS_CMAP, wallSymbol: tg.wallSymbol };
@@ -4239,6 +4243,32 @@ export async function flip_level(flp, extras) {
     const FlipX = (val) => (maxx - val) + minx;
     const FlipY = (val) => (maxy - val) + miny;
     const inFlipArea = (x, y) => x >= minx && x <= maxx && y >= miny && y <= maxy;
+    /* C ref: sp_lev.c:924-959 flip_vault_guard — for #wizfliplevel, flip
+     * guard's egd data; not needed for level creation */
+    const flip_vault_guard = (grd) => {
+        const egd = EGD(grd);
+        if (inFlipArea(egd.gdx, egd.gdy)) {
+            if (flp & 1)
+                egd.gdy = FlipY(egd.gdy);
+            if (flp & 2)
+                egd.gdx = FlipX(egd.gdx);
+        }
+        if (inFlipArea(egd.ogx, egd.ogy)) {
+            if (flp & 1)
+                egd.ogy = FlipY(egd.ogy);
+            if (flp & 2)
+                egd.ogx = FlipX(egd.ogx);
+        }
+        for (let i = egd.fcbeg | 0; i < (egd.fcend | 0); ++i) {
+            const fx = egd.fakecorr[i].fx, fy = egd.fakecorr[i].fy;
+            if (inFlipArea(fx, fy)) {
+                if (flp & 1)
+                    egd.fakecorr[i].fy = FlipY(fy);
+                if (flp & 2)
+                    egd.fakecorr[i].fx = FlipX(fx);
+            }
+        }
+    };
     const Flip_coord = (cc) => {
         if (cc && cc.x && inFlipArea(cc.x, cc.y)) {
             if (flp & 1)
@@ -4326,7 +4356,8 @@ export async function flip_level(flp, extras) {
     // monsters — sp_lev.c:639-674
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.isgd) {
-            // extras-only flip_vault_guard() call skipped — extras=false here
+            if (extras) // flip mtmp->mextra->egd
+                flip_vault_guard(mtmp);
             if (mtmp.mx === 0) // not on map so don't flip guard->mx,my
                 continue;
         }
@@ -4360,10 +4391,12 @@ export async function flip_level(flp, extras) {
                 flip_worm_segs_horizontal(mtmp, minx, maxx);
         }
     }
-    // migrating monsters (extras only) — skipped, extras=false here
+    // migrating monsters (extras only) — sp_lev.c:674-688
     if (extras) {
         for (let mtmp = game.gm?.migrating_mons; mtmp; mtmp = mtmp.nmon) {
-            if (mtmp.ispriest && mtmp.epri?.shrpos
+            if (mtmp.isgd && EGD(mtmp) && on_level(EGD(mtmp).gdlevel, game.u?.uz))
+                flip_vault_guard(mtmp); // egd
+            else if (mtmp.ispriest && mtmp.epri?.shrpos
                 && on_level(mtmp.epri.shrlevel, game.u?.uz))
                 Flip_coord(mtmp.epri.shrpos);
             else if (mtmp.isshk && mtmp.eshk?.shk
@@ -4386,8 +4419,12 @@ export async function flip_level(flp, extras) {
                     hits.push({ x, y, ep: etmp });
             }
         }
-        for (const h of hits) {
+        /* detach every record before re-filing any: two engravings that
+         * trade squares (y and FlipY(y)) would otherwise have the second
+         * delete clobber the first one's re-filed entry */
+        for (const h of hits)
             del_engr_at(h.x, h.y);
+        for (const h of hits) {
             const newY = (flp & 1) ? FlipY(h.y) : h.y;
             const newX = (flp & 2) ? FlipX(h.x) : h.x;
             refile_engr_at(h.ep, newX, newY);

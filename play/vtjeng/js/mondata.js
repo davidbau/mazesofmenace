@@ -8,17 +8,13 @@ import {
     ALL_TRAPS,
     ACID_RES,
     ANTIMAGIC,
-    BLINDED,
     BLND_RES,
     COLD_RES,
     DRAIN_RES,
     DISINT_RES,
     FEMALE,
-    FAINTED,
     FIRE_RES,
     G_GENOD,
-    HALLUC,
-    HALLUC_RES,
     INTRINSIC,
     M_SEEN_ACID,
     M_SEEN_COLD,
@@ -94,7 +90,6 @@ import { is_fshk } from './shk.js';
 import { objdescr_is } from './o_init.js';
 import { MONSTER_CLASS_EXPLANATIONS } from './symbol_data.js';
 import { MAXMCLASSES } from './symbols.js';
-import { unconscious } from './trap.js';
 // monstunseesu() below reads m_canseeu(), which reads perceives() from this
 // file; the two modules reach each other the way this file and js/dungeon.js
 // already do, and neither side uses the other's exports at module scope.
@@ -119,6 +114,9 @@ export function set_mon_data(monster, species, state = game) {
     }
 }
 import { which_armor } from './worn.js';
+import {
+    Blind, Blnd_resist, EBlinded, Hallucination, Unaware,
+} from './youprop.js';
 
 function hasAttackType(species, attackType) {
     return Boolean(species?.mattk?.some(
@@ -255,10 +253,8 @@ export function resists_blnd_by_arti(mon, state = game) {
 // line; monsters retain their mblinded/mcansee/sleeping flags.
 export function resists_blnd(mon, state = game) {
     const isYou = mon === state.youmonst;
-    const blinded = state.u?.uprops?.[BLINDED];
-    const heroBlind = Boolean((blinded?.intrinsic || blinded?.extrinsic)
-        && !blinded?.blocked);
-    const heroUnaware = heroUnawareForBlindness(state);
+    const heroBlind = Blind(state.u);
+    const heroUnaware = Unaware(state);
     if (isYou
         ? (heroBlind || heroUnaware)
         : (mon?.mblinded || !mon?.mcansee || !haseyes(mon?.data)
@@ -270,8 +266,7 @@ export function resists_blnd(mon, state = game) {
         return true;
     }
     if (resists_blnd_by_arti(mon, state)) return true;
-    const blindResist = state.u?.uprops?.[BLND_RES];
-    if (isYou && (blindResist?.intrinsic || blindResist?.extrinsic)) {
+    if (isYou && Blnd_resist(state.u)) {
         // mondata.c explicitly calls impossible() for this inconsistent state
         // before returning TRUE; keep the source-named diagnostic gap.
         note_unported('pline.c impossible');
@@ -289,7 +284,7 @@ export function can_blnd(magr, mdef, aatyp, obj, state = game) {
     const isYou = mdef === state.youmonst;
     // youprop.h:88-96. Blindfolded is EBlinded, which lenses do not set;
     // attacks that specifically check all eyewear use ublindf below.
-    const blindfolded = Boolean(state.u?.uprops?.[BLINDED]?.extrinsic);
+    const blindfolded = Boolean(EBlinded(state.u));
     if (!isYou && !mdef?.mcansee && !mdef?.mblinded) return false;
     if (magr?.data?.pmidx === M.PM_RAVEN
         && mdef?.data?.pmidx === M.PM_RAVEN) return false;
@@ -319,7 +314,7 @@ export function can_blnd(magr, mdef, aatyp, obj, state = game) {
         if (magr === state.youmonst && state.u?.uswallow) return false;
         break;
     case M.AT_ENGL:
-        if (isYou && (blindfolded || heroUnawareForBlindness(state)
+        if (isYou && (blindfolded || Unaware(state)
             || state.u?.ucreamed)) return false;
         if (!isYou && mdef?.msleeping) return false;
         break;
@@ -348,15 +343,6 @@ export function can_blnd(magr, mdef, aatyp, obj, state = game) {
     return true;
 }
 
-// youprop.h:125 Unaware; trap.c unconscious() (6775-6786) and
-// eat.c is_fainted(). The turn multiplier belongs to game state, while the
-// pending wake message distinguishes an unconscious hero from another
-// immobilizing effect. Reuse trap.js's source owner for the pending-message
-// test so the two macros cannot drift.
-function heroUnawareForBlindness(state) {
-    if (Math.trunc(state.multi ?? 0) >= 0) return false;
-    return unconscious(state) || state.u?.uhs === FAINTED;
-}
 export function nohands(species) { return flag1(species, M.M1_NOHANDS); }
 export function nolimbs(species) {
     return species != null
@@ -1848,13 +1834,6 @@ export function gender(monster) {
     return monster.female ? FEMALE : MALE;
 }
 
-// youprop.h:116-120 Hallucination: the intrinsic timeout, defeated by either
-// half of Halluc_resistance.
-function hallucinatingHero(state) {
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(state.u?.uprops?.[HALLUC]?.intrinsic
-        && !(resistance?.intrinsic || resistance?.extrinsic));
-}
 
 // C ref: mondata.c pronoun_gender() (1191-1210). Which row of role.c genders[]
 // a monster's pronouns come from: 0 male, 1 female, 2 neuter, and 3 -- "they"
@@ -1869,7 +1848,7 @@ export function pronoun_gender(mtmp, pg_flags, env = {}) {
     const override_vis = (pg_flags & PRONOUN_NO_IT) !== 0;
     const hallu_rand = (pg_flags & PRONOUN_HALLU) !== 0;
 
-    if (hallu_rand && hallucinatingHero(state)) return random.rn2(4); /* 0..3 */
+    if (hallu_rand && Hallucination(state.u)) return random.rn2(4); /* 0..3 */
     if (!override_vis) {
         const canSpotMonster = env.canSpotMonster ?? canspotmon;
         if (!canSpotMonster(mtmp, state)) return NEUTRAL;

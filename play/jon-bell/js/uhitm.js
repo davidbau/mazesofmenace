@@ -41,7 +41,7 @@ import { is_art } from './artifact.js'; /* obj.h:439 is_art */
 // @ts-nocheck
 import { game, wizard, discover } from './gstate.js';
 import { rehumanize, uunstick } from './polyself.js';
-import { The as The_objnam, quest_info, helm_simple_name, cloak_simple_name, an, doname, mshot_xname } from './objnam.js';
+import { The, quest_info, helm_simple_name, cloak_simple_name, an, doname, mshot_xname } from './objnam.js';
 import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
          Yobjnam2 as Yobjnam2_real,
          singular,
@@ -1764,7 +1764,8 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
                 otmp.where = 0; /* OBJ_FREE before dealloc. */
                 await _uh_dealloc_and_bump(otmp);
             }
-        } else if (cell?.disp_cls === 'mon') {
+        } else if (cell?.disp_cls === 'mon' && !cell.disp_is_warning) {
+            /* Warning digits share cls 'mon' here, but aren't monster glyphs. */
             /* C uhitm.c:6245-6251 — glyph_is_monster(glyph): the painted
              * disguise monster (mappearance), named via pmname(). */
             const mtmp_name = monPmname(cell.disp_mon_pm, Mgender(mtmp));
@@ -2846,7 +2847,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         };
         let _curAdtyp = 0, _knockedBreak = false, _caitiffDone = false;
         let weapon_used = false;
-        /* C uhitm.c:5487-5515 — approximate two-weapon mode: `altwep` toggles
+        /* C uhitm.c:5487-5515 — alternating two-weapon mode: `altwep` toggles
          * each use_weapon row so a multi-weapon form alternates uwep and
          * uswapwep.  Returns the swing's weapon and a reader for
          * `*originalweapon` after the hit. */
@@ -5378,10 +5379,6 @@ export function setmnotwielded(mon, obj) {
  * the call sites here are exactly that shape: "%s weapons" at :4305 and
  * "%s hissing!" at :4883 both take a plural mon_nam().  The C ref it cited
  * (objnam.c) was wrong too; s_suffix is hacklib.c's. */
-
-function The(str) {
-    return The_objnam(str);
-}
 
 /* can_blnd is the real mhitm.c:1214 body imported from js/mhitm.js; the former
  * local stub wrongly refused already-blind defenders (C only checks

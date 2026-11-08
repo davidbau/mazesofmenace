@@ -25,6 +25,7 @@ import { pline_mon } from './dog.js'; // relocate-fns
 import { Monnam } from './mcastu.js'; // relocate-fns
 import { pronoun_gender } from './mondata.js'; // relocate-fns
 import { _cnutritE } from './eat.js'; // relocate-fns
+import { currentmbuf } from './do_name.js';
 
 // C ref: apply.c:3895-3905 maybe_dunk_boulders(x,y) — while x,y has lava or
 // water, dunk any boulder sitting there into it.  RNG-free (obj_extract_self
@@ -86,7 +87,8 @@ export async function magic_whistled(obj) {
             await fill_pit(mon.mx | 0, mon.my | 0);
         }
         const old_seen = canspotmon(mon);
-        const old_name = old_seen ? y_monnam(mon) : '';
+        if (old_seen) y_monnam(mon);
+        const old_name = old_seen ? currentmbuf() : null; // C apply.c:555 retains mnam.
         const old_x = mon.mx | 0, old_y = mon.my | 0;
         if ((mon.m_ap_type | 0) & M_AP_TYPMASK) seemimic(mon);
         await mnexto(mon, known ? RLOC_NONE : RLOC_MSG);
@@ -111,7 +113,7 @@ export async function magic_whistled(obj) {
                 appear_name = `${name} appears`;
             }
         } else if (old_seen && ++disappear === 1) {
-            disappear_name = `${old_name} disappears`;
+            disappear_name = `${old_name.text} disappears`;
         }
     }
 

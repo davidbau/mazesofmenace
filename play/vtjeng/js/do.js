@@ -36,7 +36,6 @@ import {
     BOTH_SIDES,
     BLINDED,
     COLNO,
-    DEAF,
     CORR,
     DIR_DOWN,
     DIR_UP,
@@ -59,7 +58,6 @@ import {
     GRAVE,
     G_GENOD,
     HAND,
-    Maybe_Half_Phys,
     IS_ALTAR,
     IS_WATERWALL,
     IS_SINK,
@@ -139,8 +137,6 @@ import {
     W_ARTI,
     I_SPECIAL,
     SINK,
-    HALLUC,
-    HALLUC_RES,
     HOLE,
     is_pit,
     u_at,
@@ -226,7 +222,7 @@ import { floating_above } from './fountain.js';
 import { artifact_has_invprop } from './artifacts.js';
 import { record_achievement } from './insight.js';
 import { game } from './gstate.js';
-import { livelog_printf, youSee } from './pline.js';
+import { livelog_printf, youFeel, youSee } from './pline.js';
 import { dist2, s_suffix, upstart } from './hacklib.js';
 import { get_obj_location } from './light.js';
 import {
@@ -397,7 +393,6 @@ import {
 import { dotrap, seetrap } from './trap_effects.js';
 import { glyph_to_cmap } from './glyphs.js';
 import { ttyNorep, ttyPline } from './tty_message.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { note_unported } from './unported.js';
 import { create_mplayers } from './mplayer.js';
 import { block_point, cansee, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
@@ -412,6 +407,9 @@ import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import { done } from './end.js';
 import { tutorial } from './nhlua.js';
 import { canseemon, canspotmon } from './display.js';
+import {
+    Blind, Deaf, EBlinded, HBlinded, Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 // A fail-closed boundary for goto_level() branches outside the ordinary
 // staircase descent and positive-decimal level teleport ports.
@@ -461,7 +459,7 @@ export async function revive_corpse(corpse, state = game, rawEnv = {}) {
     case OBJ_INVENT:
         await message(wielded
             ? `The ${cname} writhes out of your grasp!`
-            : 'You feel squirming in your backpack!', state, env);
+            : youFeel('squirming in your backpack!', state), state, env);
         break;
     case OBJ_FLOOR:
         if (cansee(coordinate.x, coordinate.y, state)
@@ -496,7 +494,7 @@ export async function revive_corpse(corpse, state = game, rawEnv = {}) {
         break;
     case OBJ_CONTAINED: {
         const name = canspotmon(monster, state)
-            ? Amonnam(monster, state) : 'Something';
+            ? Amonnam(monster, { state }) : 'Something';
         if (!container) {
             note_unported('pline.c impossible');
         } else if (carrier && canseemon(carrier, state)) {
@@ -520,7 +518,7 @@ export async function revive_corpse(corpse, state = game, rawEnv = {}) {
                 const trap = t_at(monster.mx, monster.my, state);
                 if (trap) trap.tseen = true;
                 await message(`${canspotmon(monster, state)
-                    ? Amonnam(monster, state) : 'Something'}`
+                    ? Amonnam(monster, { state }) : 'Something'}`
                     + ' claws itself out of the ground!', state, env);
                 (env.newsym ?? newsym)(monster.mx, monster.my, state);
             } else if (dist2(monster.mx, monster.my,
@@ -574,8 +572,8 @@ export async function revive_mon(body, _timeout, rawEnv = {}) {
             when = rider_revival_time(body, true, env);
         } else {
             if (!obj_has_timer(body, ROT_CORPSE, state))
-                await message(`You feel ${is_rider(species) ? 'much ' : ''}`
-                    + 'less hassled.', state, env);
+                await message(youFeel(`${is_rider(species) ? 'much ' : ''}`
+                    + 'less hassled.', state), state, env);
             action = ROT_CORPSE;
             when = Math.max(1, random.d(5, 50) - (state.moves - body.age));
         }
@@ -606,20 +604,19 @@ export async function zombify_mon(body, timeout, rawEnv = {}) {
 // continuation while cream remains.
 export async function wipeoff(state = game) {
     const hero = state.u;
-    const blinded = hero.uprops[BLINDED];
     let creamDelta = hero.ucreamed;
-    let blindDelta = blinded.intrinsic & TIMEOUT;
+    let blindDelta = HBlinded(hero) & TIMEOUT;
 
     if (creamDelta > 4) creamDelta = 4;
     hero.ucreamed -= creamDelta;
     if (blindDelta > 4) blindDelta = 4;
-    incr_itimeout(blinded, -blindDelta);
+    incr_itimeout(hero.uprops[BLINDED], -blindDelta);
 
-    if (!blinded.intrinsic) {
+    if (!HBlinded(hero)) {
         await ttyPline("You've got the glop off.", state);
         hero.ucreamed = 0;
         if (!await gulp_blnd_check(state)) {
-            set_itimeout(blinded, 1);
+            set_itimeout(hero.uprops[BLINDED], 1);
             await make_blinded(0, true, state);
         }
         return 0;
@@ -837,12 +834,11 @@ async function familiar_level_msg(state) {
         null, // no message
     ];
     const which = rn2(4);
-    const halluc = heroPropertyActive(state.u, HALLUC)
-        && !heroPropertyActive(state.u, HALLUC_RES);
+    const halluc = Hallucination(state.u);
     let mesg = halluc ? halu_fam_msgs[which] : fam_msgs[which];
     if (mesg && mesg.includes('%s')) {
-        const blind = Boolean(state.u.uprops?.[BLINDED]?.intrinsic
-            || state.u.uprops?.[BLINDED]?.extrinsic);
+        const blind = Boolean(HBlinded(state.u)
+            || EBlinded(state.u));
         mesg = mesg.replace('%s', !blind ? 'looks' : 'seems');
     }
     if (mesg)
@@ -854,14 +850,6 @@ function next2u(x, y, state) {
     return dist2(x, y, state.u.ux, state.u.uy) <= 2;
 }
 
-// C's Deaf macro has the role conduct and the active property as separate
-// sources. Keeping this local avoids making a display-only dependency part of
-// the floor mutation owner.
-function heroIsDeaf(state) {
-    const deaf = state.u?.uprops?.[DEAF];
-    return Boolean(deaf?.intrinsic || deaf?.extrinsic
-        || state.u?.uroleplay?.deaf);
-}
 
 // C ref: do.c boulder_hits_pool() (50-145). A boulder consumes itself when it
 // reaches a pool, moat, water wall, or lava, with one source rn2(10) deciding
@@ -926,21 +914,21 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
                     + `${the(xnameFresh(otmp, state), state)} into the ${what}.`,
                 state,
             );
-            if (state.flags?.verbose !== false && !heroIsBlind(state)) {
+            if (state.flags?.verbose !== false && !Blind(state.u)) {
                 await message('Now you can cross it!', state);
             }
         }
     }
     if (!fillsUp || !pushing) {
         if (!state.u?.uinwater) {
-            const visible = pushing ? !heroIsBlind(state) : cansee(rx, ry, state);
+            const visible = pushing ? !Blind(state.u) : cansee(rx, ry, state);
             if (visible) {
                 await message(
                     `There is a large splash as ${the(xnameFresh(otmp, state), state)} `
                         + `${fillsUp ? 'fills' : 'falls into'} the ${what}.`,
                     state,
                 );
-            } else if (!heroIsDeaf(state)) {
+            } else if (!Deaf(state.u)) {
                 const heard = youHear(`a${lava ? ' sizzling' : ''} splash.`, state);
                 if (heard) await message(heard, state);
             }
@@ -978,7 +966,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
                 rawEnv.planning ? { planning: true, message } : {},
             );
         } else if (!fillsUp && state.flags?.verbose !== false
-            && (pushing ? !heroIsBlind(state) : cansee(rx, ry, state))) {
+            && (pushing ? !Blind(state.u) : cansee(rx, ry, state))) {
             await message('It sinks without a trace!', state);
         }
     }
@@ -1076,7 +1064,7 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
             }
             if (verb && !deletedWithBoulder) {
                 const message = rawEnv.message ?? ttyPline;
-                const blind = heroIsBlind(state);
+                const blind = Blind(state.u);
                 if (blind && u_at(x, y, state)) {
                     const heard = youHear('a CRASH! beneath you.', state);
                     if (heard) await message(heard, state);
@@ -1112,9 +1100,9 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
             return result;
         }
         if (is_pool(x, y, state)) {
-            const blind = heroIsBlind(state);
+            const blind = Blind(state.u);
             const floating = Levitation(state) || Flying(state);
-            if ((blind || floating) && !heroIsDeaf(state)
+            if ((blind || floating) && !Deaf(state.u)
                 && u_at(x, y, state)) {
                 if (!state.u?.uinwater) {
                     if (weight(obj, { state }) > WT_SPLASH_THRESHOLD) {
@@ -1141,7 +1129,7 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
             // names the pit, and its message ignores `verb`.
             if (is_pit(trap.ttyp)) {
                 const message = rawEnv.message ?? ttyPline;
-                if (heroIsBlind(state) && !heroIsDeaf(state)) {
+                if (Blind(state.u) && !Deaf(state.u)) {
                     const heard = youHear(
                         `${the(xname(obj, state), state)} tumble downwards.`,
                         state,
@@ -1280,12 +1268,6 @@ function teleport_sink(state = game, random = coreRandom) {
     return false;
 }
 
-function heroHallucinating(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(hallucination?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // C ref: do.c polymorph_sink() (404-456). Keep the saved sink loot bit
 // separate from the cleared feature flags: fountain and throne preserve it,
@@ -1375,7 +1357,7 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
         );
         break;
     case RIN_AGGRAVATE_MONSTER: {
-        const insects = heroHallucinating(state)
+        const insects = Hallucination(state.u)
             ? makeplural(rndmonnam({ state })) : 'flies';
         await ttyPline(
             `Several ${insects} buzz angrily around the sink.`, state,
@@ -1428,7 +1410,7 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
             const otmp2 = otmp.nexthere;
             if (otmp !== state.uball && otmp !== state.uchain
                 && !obj_resists(otmp, 1, 99, { state, random })) {
-                if (!heroIsBlind(state)) {
+                if (!Blind(state.u)) {
                     await ttyPline(
                         `Suddenly, ${donameFresh(otmp, state)} ${otense(otmp, 'vanish', state)} from the sink!`,
                         state,
@@ -1461,7 +1443,7 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
         break;
     }
 
-    if (!heroIsBlind(state) && !ideed) {
+    if (!Blind(state.u) && !ideed) {
         ideed = true;
         switch (obj.otyp) {
         case RIN_ADORNMENT:
@@ -1478,7 +1460,7 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
                 youSee('the ring slide right down the drain!', state), state);
             break;
         case RIN_SEE_INVISIBLE: {
-            const sinkContents = heroHallucinating(state)
+            const sinkContents = Hallucination(state.u)
                 ? 'oxygen molecules' : 'air';
             await ttyPline(
                 youSee(`some ${sinkContents} in the sink.`, state), state);
@@ -1912,7 +1894,6 @@ export const _dropInternals = Object.freeze({
     dosinkring,
     engulfer_digests_food,
     engulfer_polyfood,
-    heroHallucinating,
     teleport_sink,
 });
 
@@ -2101,7 +2082,7 @@ export async function doaltarobj(obj, state = game, env = {}) {
     // A monster's drop reaches this through flooreffects() with the caller's
     // message seam, which a planning clone keeps off the live terminal.
     const message = env.message ?? ttyPline;
-    if (heroIsBlind(state)) return;
+    if (Blind(state.u)) return;
 
     if (obj.oclass !== COIN_CLASS) {
         if (!state.context?.mon_moving) {
@@ -2129,7 +2110,7 @@ export async function doaltarobj(obj, state = game, env = {}) {
             `There is ${an(color)} flash as ${name} ${verb} the altar.`,
             state,
         );
-        if (!heroHallucinating(state)) obj.bknown = 1;
+        if (!Hallucination(state.u)) obj.bknown = 1;
     } else {
         const name = Doname2(obj, state);
         const verb = otense(obj, 'land', state);
@@ -2231,7 +2212,7 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
             normalized.state, normalized);
     }
     stackobj(obj, normalized);
-    if (heroIsBlind(normalized.state) && Levitation(normalized.state)) {
+    if (Blind(normalized.state.u) && Levitation(normalized.state)) {
         // display.c map_object() refuses any state but the module-global
         // game, because its draw half paints that game whatever state it is
         // handed. The once-per-turn planning clone therefore binds this
@@ -2434,7 +2415,7 @@ export async function dodown(state = game, env = {}) {
 
         // do.c:1180-1190 checks the displayed cmap glyph only when the hero
         // is blind and levitation is not blocked; unknown stairs stay hidden.
-        if (!levitation.blocked && heroIsBlind(state)) {
+        if (!levitation.blocked && Blind(state.u)) {
             const glyph = state.level?.at(u.ux, u.uy)?.glyph;
             if (stairs_down)
                 stairs_down = glyph_to_cmap(glyph) === S_dnstair;
@@ -2442,9 +2423,9 @@ export async function dodown(state = game, env = {}) {
                 ladder_down = glyph_to_cmap(glyph) === S_dnladder;
         }
 
-        if (Is_airlevel(u.uz)) {
+        if (Is_airlevel(u.uz, state)) {
             await ttyPline(`You are floating in the ${surface(u.ux, u.uy, state)}.`, state);
-        } else if (Is_waterlevel(u.uz)) {
+        } else if (Is_waterlevel(u.uz, state)) {
             await ttyPline(
                 `You are floating in ${is_pool(u.ux, u.uy, state)
                     ? 'the water' : 'a bubble of air'}.`,
@@ -2705,11 +2686,6 @@ function discard_unreachable_levels(state, leavingTutorial) {
 // including endgame/tutorial transitions, portal fallback, flight, falling,
 // and the unreachable-level cleanup. Gehennom, Knox, Mines, Sokoban and the
 // Rogue-level arms are implemented below.
-//
-// One caution about `state`: In_endgame() and In_tutorial() are js/const.js's
-// renderings of the dungeon.h macros and read the module-level game. They
-// ignore the state passed here, as every other caller of those two does. On
-// the live path the two are the same object.
 // C ref: do.c final_level(). Keep its source call order at Astral arrival.
 async function final_level(state = game) {
     iter_mons((monster) => reset_hostility(monster, state), state);
@@ -2742,15 +2718,15 @@ export async function goto_level(
     if (newdungeon) {
         // do.c:1504-1515. Endgame entry requires the Amulet. Wizard mode may
         // bypass the Earth plane, while ordinary entry is redirected there.
-        if (In_endgame(newlevel)) {
+        if (In_endgame(newlevel, state)) {
             if (!u.uhave?.amulet) return;
             if (!state.wizard && state.earth_level)
                 assign_level(newlevel, state.earth_level);
-        } else if (In_tutorial(newlevel)) {
+        } else if (In_tutorial(newlevel, state)) {
             // nhlua.c tutorial() calls the optional Lua transition callback;
             // the callback result is discarded by C.
             await tutorial(true, state);
-        } else if (In_tutorial(u.uz)) {
+        } else if (In_tutorial(u.uz, state)) {
             await tutorial(false, state);
             up = false;
             leaving_tutorial = true;
@@ -2883,7 +2859,7 @@ export async function goto_level(
     // do.c:1652-1664. Endgame and tutorial levels cannot be reached again;
     // savelev still performs the timer/light teardown, then the in-memory
     // snapshots and map-overview rows for discarded levels are removed.
-    const cant_go_back = (newdungeon && In_endgame(newlevel))
+    const cant_go_back = (newdungeon && In_endgame(newlevel, state))
         || leaving_tutorial;
     if (!cant_go_back) {
         update_mlstmv(state);
@@ -2971,7 +2947,7 @@ export async function goto_level(
     // do.c:1721-1745. A portal arrival lands the hero on the destination
     // level's own magic portal, which mklev() places when the branch is laid
     // out. Endgame portals use the random-arrival arm below, as in C.
-    if (portal && !In_endgame(u.uz)) {
+    if (portal && !In_endgame(u.uz, state)) {
         const ttrap = (state.level?.traps ?? []).find(
             (trap) => trap.ttyp === MAGIC_PORTAL,
         );
@@ -2992,7 +2968,7 @@ export async function goto_level(
         }
     // do.c:1802-1810 places the hero at a random spot after a fall or a
     // level teleport.
-    } else if (at_stairs && !In_endgame(u.uz) && up) {
+    } else if (at_stairs && !In_endgame(u.uz, state) && up) {
         // do.c:1747-1764. Ascending at stairs: place the hero on the
         // downstair of the destination level (the stairway that connects
         // back to the level she came from).
@@ -3022,7 +2998,7 @@ export async function goto_level(
                 state,
             );
         }
-    } else if (at_stairs && !In_endgame(u.uz)) {
+    } else if (at_stairs && !In_endgame(u.uz, state)) {
         // do.c:1765-1800. Descending at stairs.
         const stway = stairway_find_from(u.uz0, state.ga?.at_ladder, state);
         if (stway) {
@@ -3187,7 +3163,7 @@ export async function goto_level(
     // The if/else-if chain is mutually exclusive: exactly one arm fires. Keep
     // the branch tests ahead of the ordinary main-dungeon messages because
     // the arrival achievement is part of the level-change output order.
-    if (In_endgame(u.uz)) {
+    if (In_endgame(u.uz, state)) {
         // C ref: do.c:1884-1890. A first arrival in an endgame dungeon
         // records Endgame, then runs final_level() before recording Astral on
         // a newly created Astral level.
@@ -3208,10 +3184,10 @@ export async function goto_level(
                     mon_catchup_elapsed_time(monster, elapsed, { state }),
             });
         }
-    } else if (In_quest(u.uz)) {
+    } else if (In_quest(u.uz, state)) {
         // C ref: do.c:1891-1892.
         await onquest(state);
-    } else if (Is_knox_level(u.uz)) {
+    } else if (Is_knox_level(u.uz, state)) {
         // C ref: do.c:1893-1904. Croesus stops the alarm after his death;
         // on a fresh level the alarm always sounds. The C Soundeffect call is
         // silent in the tty recorder, while every living monster is woken.
@@ -3225,11 +3201,11 @@ export async function goto_level(
                 mtmp.msleeping = false;
             }
         }
-    } else if (In_mines(u.uz)) {
+    } else if (In_mines(u.uz, state)) {
         // C ref: do.c:1905-1907. Only a cross-dungeon arrival counts; moving
         // between Mines levels does not record the achievement again.
         if (newdungeon) record_achievement(ACH_MINE, state);
-    } else if (In_sokoban(u.uz)) {
+    } else if (In_sokoban(u.uz, state)) {
         // C ref: do.c:1908-1910.
         if (newdungeon) record_achievement(ACH_SOKO, state);
     } else {
@@ -3247,7 +3223,7 @@ export async function goto_level(
             record_achievement(ACH_BGRM, state);
         }
         // C ref: do.c:1918-1931.  Main-dungeon quest portal message.
-        if (!In_quest(u.uz0)
+        if (!In_quest(u.uz0, state)
             && at_dgn_entrance('The Quest', state)
             && !(u.uevent?.qcompleted || u.uevent?.qexpelled
                  || state.svq?.quest_status?.leader_is_dead)) {

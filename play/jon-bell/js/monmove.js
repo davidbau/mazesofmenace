@@ -269,9 +269,8 @@ function flees_light(mtmp) {
     const armLight = uarm && uarm.lamplit && artifact_light(uarm);
     if (!wepLight && !armLight)
         return false;
-    /* C: mon->mcansee && couldsee(mon->mx, mon->my) */
-    /* couldsee stub: assume visible if mcansee is set; L15 refines */
-    return !!(mtmp.mcansee);
+    /* C monmove.c:455: the monster must have line of sight to the hero's light. */
+    return !!mtmp.mcansee && couldsee(mtmp.mx, mtmp.my);
 }
 /* C youprop.h:195-198: all Invis components alias u.uprops[INVIS].
  * attrcurse's u.HInvis snapshot is not a live alias; consulting it after
@@ -479,6 +478,12 @@ const PM_DEATH_MV = 311, PM_PESTILENCE_MV = 312, PM_FAMINE_MV = 313;
 function _is_rider_mv(mndx) {
     return mndx === PM_DEATH_MV || mndx === PM_PESTILENCE_MV || mndx === PM_FAMINE_MV;
 }
+/* C ref: monmove.c:133 m_can_break_boulder(mtmp) =
+ *   is_rider(mtmp->data) || (!mtmp->mspec_used
+ *       && (mtmp->isshk || mtmp->ispriest || mtmp->data->msound == MS_LEADER)).
+ * msound is not in the packed monst row, so it is read from mtmp.data or the
+ * permonstTemplate() shim; isshk/ispriest come from the live monster, and
+ * is_rider from mnum. */
 function _m_can_break_boulder_mv(mtmp, mndx) {
     if (_is_rider_mv(mndx))
         return true;
@@ -591,8 +596,8 @@ export function mon_allowflags(mtmp) {
      *                                || verysmall(youmonst)) */
     if (_passes_bars_mv(mtmp) && (mtmp !== (game.u?.ustuck ?? null) || _u_squeezable_mv()))
         allowflags |= ALLOW_BARS_MV;
-    /* C mon.c:2110-2113: is_displacer → ALLOW_MDISP is #if 0'd out; mfndpos
-     * does it instead. Not ported here, matching C. */
+    /* C mon.c:2110-2113: the is_displacer → ALLOW_MDISP arm is compiled out
+     * by #if 0 in C; mfndpos() handles displacers itself. */
     if ((mf2 & M2_MINION_MAF) || _is_rider_mv(mndx))
         allowflags |= ALLOW_SANCT_MV;
     /* C: is_unicorn(mtmp->data) && !noteleport_level(mtmp) → NOTONL */
@@ -2518,6 +2523,9 @@ export async function m_move(mtmp, after) {
         /* C monmove.c:2051-2052 / steed.c:913-921: placement can refuse a
          * ridden steed.  Preserve its coordinates and finish impossible's
          * messages before continuing the move. */
+        /* C monmove.c:2051 remove_monster(omx, omy): clears the grid cell, which
+         * with two monsters stacked on <omx,omy> is the OTHER one's slot. */
+        { const _gridmon = m_at(omx, omy); if (_gridmon) _gridmon._mapRemoved = true; }
         place_monster(mtmp, nix, niy);
         if (_topline_more_pending()) await flush_pending_messages();
         await msg_mon_movement(mtmp, omx, omy);

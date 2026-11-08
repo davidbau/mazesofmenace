@@ -8,7 +8,6 @@
 import { rm_doormask } from './game.js';
 import {
     BEAR_TRAP,
-    BLINDED,
     BOLT_LIM,
     BUFSZ,
     QBUFSZ,
@@ -43,14 +42,8 @@ import {
     GPCOORDS_SCREEN,
     GPCOORDS_MAP,
     GPCOORDS_NONE,
-    HALLUC,
     HALLUC_RES,
     I_SPECIAL,
-    INFRAVISION,
-    INVIS,
-    SEE_INVIS,
-    TELEPAT,
-    DETECT_MONSTERS,
     MONSEEN_NORMAL,
     MONSEEN_SEEINVIS,
     MONSEEN_INFRAVIS,
@@ -252,7 +245,6 @@ import { rn2, rn2_on_display_rng } from './rng.js';
 import {
     describeMonster,
     furnitureDescription,
-    heroIsBlind,
     monsterSurfaceDescription,
 } from './startup_a11y.js';
 import {
@@ -283,6 +275,10 @@ import { getlin, select_menu } from './windows.js';
 import {
     cmdq_key_char, getdir, key2extcmddesc, key2txt, y_n, yn_function,
 } from './cmd.js';
+import {
+    Blind, Detect_monsters, EDetect_monsters, EHalluc_resistance,
+    Hallucination, Infravision, Invis, See_invisible, Unblind_telepat,
+} from './youprop.js';
 
 export const WHAT_IS_A_LOCATION = 'a monster, object or location';
 
@@ -302,31 +298,16 @@ export class UnsupportedHelpError extends Error {
     }
 }
 
-function propertyActive(state, index) {
-    const property = state.u?.uprops?.[index];
-    return Boolean(property?.intrinsic || property?.extrinsic)
-        && !property?.blocked;
-}
 
-function heroHallucinating(state) {
-    return propertyActive(state, HALLUC)
-        && !propertyActive(state, HALLUC_RES);
-}
 
-function heroBlind(state) {
-    return propertyActive(state, BLINDED)
-        || Boolean(state.u?.uroleplay?.blind);
-}
 
 // pager.c keeps two explanations for the remembered invisible-monster glyph.
 // Active clairvoyance and blindness use the short form, matching the generic
 // symbol pass in do_screen_description(); lookat() itself always returns the
 // longer source string.
 function invisibleGlyphDescription(state) {
-    const detect = state.u?.uprops?.[DETECT_MONSTERS] ?? {};
-    const special = (Number(detect.intrinsic) & I_SPECIAL)
-        || (Number(detect.extrinsic) & I_SPECIAL);
-    return (special || heroBlind(state))
+    const special = (EDetect_monsters(state.u) & I_SPECIAL) !== 0;
+    return (special || Blind(state.u))
         ? 'unseen creature' : 'remembered, unseen, creature';
 }
 
@@ -335,8 +316,8 @@ function invisibleGlyphDescription(state) {
 // monster presentation is not interchangeable because it would skip that
 // source draw.
 function mon_to_glyph(monster, state) {
-    const mnum = heroHallucinating(state)
-        ? rn2_on_display_rng(NUMMONS)
+    const mnum = Hallucination(state.u)
+        ? rn2_on_display_rng(NUMMONS, state)
         : monster?.data?.pmidx;
     if (!Number.isInteger(mnum)) return null;
     return mnum + (monster?.female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF);
@@ -376,7 +357,7 @@ export function whatisMenuItems(state = game) {
     ];
     // C ref: pager.c do_look() gates the separator and list choices, rather
     // than the entire menu, on !u.uswallow && !Hallucination (1748).
-    if (state.u?.uswallow || heroHallucinating(state)) return ordinaryChoices;
+    if (state.u?.uswallow || Hallucination(state.u)) return ordinaryChoices;
     return [
         ...ordinaryChoices,
         {
@@ -429,7 +410,7 @@ export function whatisMenuItems(state = game) {
 
 function menuLines(state) {
     const items = whatisMenuItems(state);
-    if (state.u?.uswallow || heroHallucinating(state)) return items;
+    if (state.u?.uswallow || Hallucination(state.u)) return items;
     return [...items.slice(0, 3), { text: '' }, ...items.slice(3)];
 }
 
@@ -573,13 +554,11 @@ export function self_lookat(state = game) {
     const species = state.mons?.[u.umonnum] ?? state.youmonst?.data;
     if (!species?.pmnames)
         throw new UnsupportedWhatisError('a hero form without monster names');
-    const telepathyProperty = state.u?.uprops?.[TELEPAT] ?? {};
-    const unblindTelepathy = Boolean(telepathyProperty.extrinsic)
-        && !telepathyProperty.blocked;
-    const invisible = propertyActive(state, INVIS)
+    const unblindTelepathy = Boolean(Unblind_telepat(state.u));
+    const invisible = Invis(state.u)
         && (unblindTelepathy
-            || propertyActive(state, DETECT_MONSTERS)
-            || !heroBlind(state));
+            || Detect_monsters(state.u)
+            || !Blind(state.u));
     const race = !Upolyd(u) ? (state.urace?.adj ?? '') + ' ' : '';
     let description = (invisible ? 'invisible ' : '') + race
         + pmname(species, Ugender(state)) + ' called ' + state.plname;
@@ -613,7 +592,7 @@ export function self_lookat(state = game) {
 // the C monbuf/howmonseen side channel; lookat() returns the permonst pointer
 // separately, as its caller does.
 function look_at_monster(monster, x, y, state, output = null) {
-    const hallucinating = heroHallucinating(state);
+    const hallucinating = Hallucination(state.u);
     const name = describeMonster(monster, {
         state,
         hallucinating,
@@ -669,7 +648,7 @@ function look_at_monster(monster, x, y, state, output = null) {
             if (seen & MONSEEN_XRAYVIS) labels.push('astral vision');
             if (seen & MONSEEN_DETECT) labels.push('monster detection');
             if (seen & MONSEEN_WARNMON) {
-                labels.push(heroHallucinating(state)
+                labels.push(Hallucination(state.u)
                     ? 'paranoid delusion'
                     : 'warned of ' + warningMonsterName(monster, state));
             }
@@ -768,8 +747,8 @@ export function object_from_map(glyph, x, y, state) {
     const dx = x - (hero?.ux ?? 0);
     const dy = y - (hero?.uy ?? 0);
     if (object && dx * dx + dy * dy <= 2
-        && !heroIsBlind(state)
-        && !heroHallucinating(state)
+        && !Blind(state.u)
+        && !Hallucination(state.u)
         && (fakeobj || object.where === OBJ_FLOOR)
         && !state.iflags?.terrainmode)
         observe_object(object, state);
@@ -855,13 +834,12 @@ export async function look_all(nearby, doMons, state = game) {
     const lines = [];
     let count = 0;
     // display.h:canspotself(). Invisible includes the see-invisible exception.
-    const invisible = propertyActive(state, INVIS)
-        && !propertyActive(state, SEE_INVIS);
-    const telepathy = state.u?.uprops?.[TELEPAT] ?? {};
-    const canSpotSelf = heroBlind(state) || state.u.uswallow
+    const invisible = Invis(state.u)
+        && !See_invisible(state.u);
+    const canSpotSelf = Blind(state.u) || state.u.uswallow
         || (!invisible && !state.u.uundetected)
-        || (Boolean(telepathy.extrinsic) && !telepathy.blocked)
-        || propertyActive(state, DETECT_MONSTERS);
+        || Boolean(Unblind_telepat(state.u))
+        || Detect_monsters(state.u);
     for (let y = loY; y <= hiY; ++y) {
         for (let x = loX; x <= hiX; ++x) {
             const glyph = glyph_at(x, y, state);
@@ -1013,8 +991,8 @@ export async function look_traps(nearby, state = game) {
             } else {
                 const trap = t_at(x, y, state);
                 if (trap?.tseen
-                    && ((!Is_waterlevel(state.u?.uz)
-                        && !Is_airlevel(state.u?.uz))
+                    && ((!Is_waterlevel(state.u?.uz, state)
+                        && !Is_airlevel(state.u?.uz, state))
                         || couldsee(x, y, state))) {
                     obscuring = displayedGlyphCharacter(
                         glyph, x, y, state,
@@ -1181,11 +1159,7 @@ export function waterbody_name(x, y, state = game, env = {}) {
         state,
         displayRandom: env.displayRandom,
     });
-    const hallucinating = Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
-        && !Boolean(
-            state.u?.uprops?.[HALLUC_RES]?.intrinsic
-            || state.u?.uprops?.[HALLUC_RES]?.extrinsic,
-        )
+    const hallucinating = Hallucination(state.u)
         && !state.program_state?.gameover;
     if (typ === LAVAPOOL) return `molten ${liquid('lava')}`;
     if (typ === ICE)
@@ -1259,7 +1233,7 @@ function lookatOrdinaryTerrain(x, y, glyph, state) {
     if (index === S_altar) {
         const mask = altarmask_at(x, y, state);
         const alignment = Amask2align(mask & AM_MASK);
-        const high = Is_astralevel(state.u?.uz)
+        const high = Is_astralevel(state.u?.uz, state)
             && dist2(x, y, state.u?.ux, state.u?.uy) > 2
             && Boolean(mask & AM_SANCTUM);
         return `${high ? 'aligned' : align_str(alignment)} `
@@ -1273,7 +1247,7 @@ function lookatOrdinaryTerrain(x, y, glyph, state) {
         return (mask & ~D_TRAPPED) === D_BROKEN ? 'broken door' : 'doorway';
     }
     if (index === S_cloud)
-        return Is_airlevel(state.u?.uz) ? 'cloudy area' : 'fog/vapor cloud';
+        return Is_airlevel(state.u?.uz, state) ? 'cloudy area' : 'fog/vapor cloud';
     if (index === S_pool || index === S_water
         || index === S_lava || index === S_lavawall || index === S_ice)
         return waterbody_name(x, y, state);
@@ -1282,7 +1256,7 @@ function lookatOrdinaryTerrain(x, y, glyph, state) {
     if (index === S_stone) {
         const location = state.level?.at(x, y);
         if (!location?.seenv) return 'unexplored';
-        if (state.u?.uinwater && !Is_waterlevel(state.u?.uz)) {
+        if (state.u?.uinwater && !Is_waterlevel(state.u?.uz, state)) {
             return dist2(x, y, state.u?.ux, state.u?.uy) <= 2
                 ? 'land' : 'unknown';
         }
@@ -1300,13 +1274,11 @@ export function lookat(x, y, state = game) {
     let buf = '';
     let monbuf = '';
     let pm = null;
-    const invisible = propertyActive(state, INVIS)
-        && !propertyActive(state, SEE_INVIS);
-    const telepathyProperty = state.u?.uprops?.[TELEPAT] ?? {};
-    const telepathy = Boolean(telepathyProperty.extrinsic)
-        && !telepathyProperty.blocked;
-    const detection = propertyActive(state, DETECT_MONSTERS);
-    const canSpotSelf = heroBlind(state)
+    const invisible = Invis(state.u)
+        && !See_invisible(state.u);
+    const telepathy = Boolean(Unblind_telepat(state.u));
+    const detection = Detect_monsters(state.u);
+    const canSpotSelf = Blind(state.u)
         || u.uswallow
         || (!invisible && !u.uundetected)
         || telepathy || detection;
@@ -1317,10 +1289,10 @@ export function lookat(x, y, state = game) {
             || glyph !== mon_to_glyph(u.ustuck, state))
         && selfTerrainAllowed) {
         buf = self_lookat(state);
-        if ((invisible || u.uundetected) && !heroBlind(state)
+        if ((invisible || u.uundetected) && !Blind(state.u)
             && !u.uswallow && !state.iflags?.save_uswallow) {
             const seen = [];
-            if (propertyActive(state, INFRAVISION)) seen.push('infravision');
+            if (Infravision(state.u)) seen.push('infravision');
             if (telepathy) seen.push('telepathy');
             if (detection) seen.push('monster detection');
             if (seen.length) buf += ' [seen: ' + seen.join(', ') + ']';
@@ -1339,7 +1311,7 @@ export function lookat(x, y, state = game) {
             buf = look_at_monster(monster, x, y, state, side);
             monbuf = side.monbuf ?? '';
             pm = monster.data ?? null;
-        } else if (heroHallucinating(state)) {
+        } else if (Hallucination(state.u)) {
             buf = rndmonnam({ state });
         }
     } else if (glyph_is_object(glyph)) {
@@ -1354,7 +1326,7 @@ export function lookat(x, y, state = game) {
     } else if (glyph === GLYPH_NOTHING_OFF) {
         buf = 'dark part of a room';
     } else if (glyph === GLYPH_UNEXPLORED_OFF) {
-        buf = state.u?.uinwater && !Is_waterlevel(state.u?.uz)
+        buf = state.u?.uinwater && !Is_waterlevel(state.u?.uz, state)
             ? (dist2(x, y, state.u?.ux, state.u?.uy) <= 2
                 ? 'land' : 'unknown')
             : 'unexplored area';
@@ -1366,7 +1338,7 @@ export function lookat(x, y, state = game) {
     return {
         buf,
         monbuf,
-        pm: pm && !heroHallucinating(state) ? pm : null,
+        pm: pm && !Hallucination(state.u) ? pm : null,
     };
 }
 
@@ -1440,7 +1412,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
             if (description === 'water') {
                 if (index === S_pool) description = 'pool of water';
                 else if (index === S_water) {
-                    description = Is_waterlevel(state.u?.uz)
+                    description = Is_waterlevel(state.u?.uz, state)
                         ? 'limitless water' : 'wall of water';
                 }
             }
@@ -1467,36 +1439,14 @@ export function do_screen_description(cc, looked, sym, state = game) {
                 },
             } : state;
             // C temporarily sets EHalluc_resistance while the scratch terrain
-            // is named. Mirror that global property through the shared hero
-            // property table, then restore the exact prior record before any
-            // later matching or lookat work can observe it.
-            const properties = viewState.u?.uprops;
-            let savedResistance;
-            let temporaryProperties = false;
-            if (properties) {
-                savedResistance = properties[HALLUC_RES];
-                properties[HALLUC_RES] = {
-                    ...(savedResistance ?? {}),
-                    extrinsic: 1,
-                };
-            } else {
-                temporaryProperties = true;
-                viewState = {
-                    ...viewState,
-                    u: { ...viewState.u, uprops: [] },
-                };
-                viewState.u.uprops[HALLUC_RES] = { extrinsic: 1 };
-            }
+            // is named, then restores it before any later matching or lookat
+            // work can observe it.
+            const savedResistance = EHalluc_resistance(viewState.u);
+            viewState.u.uprops[HALLUC_RES].extrinsic = 1;
             try {
                 description = waterbody_name(cc.x, cc.y, viewState);
             } finally {
-                if (temporaryProperties) {
-                    // The temporary view is discarded with no state write.
-                } else if (savedResistance === undefined) {
-                    delete properties[HALLUC_RES];
-                } else {
-                    properties[HALLUC_RES] = savedResistance;
-                }
+                viewState.u.uprops[HALLUC_RES].extrinsic = savedResistance;
             }
             if (description === 'pool of water') description = 'pool';
             else if (description === 'molten lava') description = 'lava';
@@ -1557,7 +1507,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
     // C's restricted-vision arm precedes every generic class.  The swallow
     // explanation remains in the list and must not reset a prior match.
     const submerged = Boolean(
-        state.u?.uinwater && !Is_waterlevel(state.u?.uz),
+        state.u?.uinwater && !Is_waterlevel(state.u?.uz, state),
     );
     if (looked && (((state.u?.uswallow || submerged)
             && dist2(cc.x, cc.y, state.u?.ux, state.u?.uy) > 2)
@@ -1618,7 +1568,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
         if (resetTrap) hitTrap = false;
         if (!state.iflags?.terrainmode
             || (state.iflags.terrainmode & TER_OBJ) !== 0) {
-            const rogue = Is_rogue_level(state.u?.uz);
+            const rogue = Is_rogue_level(state.u?.uz, state);
             const boulderSymbols = rogue
                 ? state.go?.ov_rogue_syms : state.go?.ov_primary_syms;
             // C falls back to def_oc_syms[ROCK_CLASS], independently of the
@@ -1662,7 +1612,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
         if (glyph === GLYPH_UNEXPLORED_OFF
             || (looked && symbolByte === misc_symbol(SYM_UNEXPLORED, state).ttychar)) {
             appendGeneric(
-                state.u?.uinwater && !Is_waterlevel(state.u?.uz)
+                state.u?.uinwater && !Is_waterlevel(state.u?.uz, state)
                     ? 'land' : 'unexplored',
                 false,
             );
@@ -1697,7 +1647,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
                 || altIndex === S_engrcorr || altIndex === S_grave
                 || (altIndex >= S_arrow_trap
                     && altIndex < S_arrow_trap + MAXTCHARS)
-                || (heroHallucinating(state) && liquid)) {
+                || (Hallucination(state.u) && liquid)) {
                 needToLook = true;
             }
         }
@@ -1725,7 +1675,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
     // re-enters check_monsters for a pet/hero override, preserving any text
     // already accumulated for the displayed byte.
     if (!stopBeforeGeneric) {
-        const rogue = Is_rogue_level(state.u?.uz);
+        const rogue = Is_rogue_level(state.u?.uz, state);
         const overrideSymbols = rogue
             ? state.go?.ov_rogue_syms : state.go?.ov_primary_syms;
         for (let index = SYM_OFF_X; index < SYM_MAX; ++index) {

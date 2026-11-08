@@ -302,6 +302,8 @@ export async function u_init_misc() {
     /* C ref u_init.c:1005: u.ublesscnt = 300 — "no prayers just yet".
      * Prayer cooldown counter; decremented in moveloop, no RNG involved. */
     u.ublesscnt = 300;
+    /* C zero-fills struct you (u_init.c:645 memset); god anger starts at 0. */
+    u.ugangr = 0;
     /* C ref u_init.c:1006 + attrib.c:1099-1100:
      *   u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type =
      *       aligns[flags.initalign].value;

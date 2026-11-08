@@ -10,7 +10,7 @@
 import {
     A_INT,
     DISP_CHANGE, D_CLOSED, D_LOCKED, SPACE_POS, POOL, MOAT,
-    DRAWBRIDGE_UP, LAVAPOOL, SHOCK_RES, HALLUC, HALLUC_RES,
+    DRAWBRIDGE_UP, LAVAPOOL, SHOCK_RES,
     N_DIRS, xdir, ydir, XKILL_GIVEMSG,
     A_STR,
     A_WIS,
@@ -20,10 +20,8 @@ import {
     ACH_INVK,
     ACH_NOVL,
     ANTIMAGIC,
-    CLAIRVOYANT,
     CMDQ_KEY,
     CONFUSION,
-    BLINDED,
     CLOUD, IS_TREE,
     ERODE_CORRODE,
     EF_GREASE,
@@ -32,7 +30,6 @@ import {
     DISP_BEAM, DISP_END, D_ISOPEN, IS_DOOR, IS_STWALL, Is_waterlevel, ZAP_POS, EXPL_FIERY, EXPL_FROSTY,
     ECMD_OK,
     ECMD_TIME,
-    Maybe_Half_Phys,
     KILLED_BY_AN,
     LL_CONDUCT,
     MAX_SPELL_STUDY,
@@ -169,7 +166,7 @@ import {
     ttyNorep,
     ttyPline,
 } from './tty_message.js';
-import { livelog_printf } from './pline.js';
+import { livelog_printf, youFeel } from './pline.js';
 import {
     P_SKILL,
     SPELL_KNOWLEDGE_KEEN,
@@ -195,7 +192,6 @@ import { mkundead } from './mkroom.js';
 import { iter_mons_async, wakeup, xkilled } from './mon.js';
 import { monflee, monfleeMessage, youHear } from './monmove.js';
 import { noveltitle, hcolor, hliquid, mon_nam, Monnam } from './do_name.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { find_ac } from './u_init_inventory_attrs.js';
 import { note_unported } from './unported.js';
 // C spell.c:spelleffects() passes scroll-duplicate fake spellbooks to
@@ -212,6 +208,9 @@ import { explode } from './explode.js';
 import { clearTtyMessageWindow } from './tty_message.js';
 import { mkinvokearea } from './mklev.js';
 import { S_goodpos } from './symbols.js';
+import {
+    BClairvoyant, Blind, BlindedTimeout, Hallucination, Maybe_Half_Phys,
+} from './youprop.js';
 
 // C ref: spell.c's spellmenu arguments. 0..MAXSPELL-1 double as svs.spl_book[]
 // indices while swapping two spells.
@@ -445,17 +444,16 @@ export async function cursed_book(book, state = game, env = {}) {
     const timeout = state.u?.uprops ?? {};
     switch (random.rn2(level)) {
     case 0:
-        await message('You feel a wrenching sensation.', state);
+        await message(youFeel('a wrenching sensation.', state), state);
         await tele(state, { ...env, random, message });
         break;
     case 1:
-        await message('You feel threatened.', state);
+        await message(youFeel('threatened.', state), state);
         aggravate(state, random);
         break;
     case 2: {
-        const prior = timeout[BLINDED]?.intrinsic ?? 0;
         await make_blinded(
-            (prior & TIMEOUT) + random.rn1(100, 250), true, state,
+            BlindedTimeout(state.u) + random.rn1(100, 250), true, state,
             { message },
         );
         break;
@@ -632,7 +630,7 @@ async function deadbook(book, state = game, env = {}) {
         && !On_stairs(state.u.ux, state.u.uy, state)) {
         if (book.cursed) {
             await message(
-                spellPropertyActive(BLINDED, state)
+                Blind(state.u)
                     ? 'The Book seems to be ignoring you!'
                     : "The runes appear scrambled.  You can't read them!",
                 state,
@@ -1560,7 +1558,7 @@ export async function cast_protection(state = game, env = {}) {
     const gain = loglev - Math.trunc(u.uspellprot / (4 - Math.min(3, natac)));
     const message = env.message ?? ttyPline;
     if (gain > 0) {
-        if (!heroIsBlind(state)) {
+        if (!Blind(state.u)) {
             // decl.c c_color_names.c_golden is "golden". Naming uses display
             // RNG, independently of spelleffects' optional core RNG adapter.
             const displayEnv = { state, displayRandom: env.displayRandom };
@@ -1673,7 +1671,7 @@ export async function spelleffects_check(spell, state = game, env = {}) {
 
     // Amulet of Yendor energy drain
     if (state.u.uhave?.amulet && state.u.uen >= energy) {
-        await env.message('You feel the amulet draining your energy away.', state);
+        await env.message(youFeel('the amulet draining your energy away.', state), state);
         state.u.uen = Math.max(0, state.u.uen - random.rnd(2 * energy));
         state.disp ??= {};
         state.disp.botl = true;
@@ -1896,7 +1894,7 @@ export async function spelleffects(spell_otyp, atme, force, state = game,
     // temporary spellbook blessed for the map scan; BClairvoyant blocks only
     // the effect, with the Cornuthaum message retained from the source.
     case SPE_CLAIRVOYANCE:
-        if (!state.u.uprops?.[CLAIRVOYANT]?.blocked) {
+        if (!BClairvoyant(state.u)) {
             if (role_skill >= P_SKILLED) pseudo.blessed = 1;
             await do_vicinity_map(pseudo, state, env);
         } else if (state.uarmh?.otyp === CORNUTHAUM) {
@@ -2000,10 +1998,8 @@ export async function propagate_chain_lightning(clq, sourceZap, state = game) {
 // C ref: spell.c cast_chain_lightning() (1003–1101). Process one breadth
 // wave per delay, retaining C's bhitpos-based head test and Pw decrement.
 export async function cast_chain_lightning(state = game, env = {}) {
-    const halluc = state.u.uprops[HALLUC];
-    const resistance = state.u.uprops[HALLUC_RES];
     const clq = { q: [], head: 0, tail: 0,
-        displayed_beam: halluc.intrinsic && !(resistance.intrinsic || resistance.extrinsic)
+        displayed_beam: Hallucination(state.u)
             ? rn2_on_display_rng(6, state) : AD_ELEC - 1 };
     // Source TODO: no damage to the engulfer. Display RNG was already drawn.
     if (state.u.uswallow) return;
@@ -2115,7 +2111,7 @@ export async function throwspell(state = game) {
     if (state.u.uinwater) {
         await ttyPline("You're joking!  In this weather?", state);
         return 0;
-    } else if (Is_waterlevel(state.u.uz)) {
+    } else if (Is_waterlevel(state.u.uz, state)) {
         await ttyPline('You had better wait for the sun to come out.', state);
         return 0;
     }

@@ -198,7 +198,8 @@ import { harmless_missile as harmless_missile_mu } from './throw_vertical.js';
  * elsewhere in js/ and this file carries a file-local no-op or `return false`
  * shadow of two of them (resists_blnd at :220, make_blinded at :314), so the
  * real ones are imported under aliases rather than reached by bare name. */
-import { make_blinded as make_blinded_real_mu, BlindedTimeout as BlindedTimeout_mu } from './zap.js';
+import { BlindedTimeout as BlindedTimeout_mu } from './zap.js';
+import { make_blinded, make_blinded as make_blinded_real_mu } from './potion.js';
 import { mon_explodes as mon_explodes_mu } from './explode.js';
 import { make_hallucinated as make_hallucinated_mu } from './potion.js';
 import { mondead as mondead_mu, wake_nearto as wake_nearto_mu } from './mon.js';
@@ -253,7 +254,6 @@ import { xname, bimanual as bimanual_mu } from './do_wear.js';
 /* ohitmon dependencies (C mthrowu.c:321).  Each is imported under a `_mu` alias
  * because this file carries older file-local stubs of several of these names. */
 import { miss as miss_mu, hit as hit_mu,
-         make_blinded as make_blinded_real,
          incr_HBlinded as incr_HBlinded_mu } from './zap.js';
 import { distant_name as distant_name_mu, killer_xname as killer_xname_mu } from './objnam.js';
 import { The as The_mu } from './objnam.js';
@@ -417,11 +417,8 @@ function DEADMONSTER(mon) { return !!(mon && mon.mhp <= 0); }
  * keeps working and there is still exactly one implementation. */
 export { make_confused };
 import { make_stunned } from './potion.js';
-/* Keep the historical export path, but share zap.js's canonical stateful
- * implementation instead of dropping blindness entirely. */
-export function make_blinded(dur, vis) {
-    return make_blinded_real_mu(dur, vis);
-}
+/* make_blinded's one body is potion.c:260-331 in js/potion.js; keep the export path. */
+export { make_blinded };
 const u_slow_down = u_slow_down_uh;
 /* mdamageu — C ref: nethack-c-v5/upstream/src/mhitu.c:1902-1927.
  * Apply n points of damage to the hero. No RNG consumed (showdamage is
@@ -3079,7 +3076,7 @@ function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
             pline(je_Monnam(mtmp) + ' blinds you!');
         /* C youprop.h BlindedTimeout == (Blinded & TIMEOUT). */
         const blindedTimeout = ((gs.u?.uprops?.[BLINDED]?.intrinsic) | 0) & TIMEOUT;
-        make_blinded_real(blindedTimeout + (mhm.damage | 0), false);
+        make_blinded(blindedTimeout + (mhm.damage | 0), false);
         if (!Blind(gs)) /* => Eyes of the Overworld */
             Your1('vision quickly clears.');
     }
@@ -5893,7 +5890,7 @@ async function gulpmu(mtmp, mattk) {
                 const was_blinded = Blinded_gu();
                 if (!was_blinded)
                     pline("You can't see in here!");
-                make_blinded_real(tmp, false);
+                make_blinded(tmp, false);
                 if (!was_blinded && !Blind(game))
                     Your1('vision quickly clears.'); /* => Eyes of the Overworld */
             } else {

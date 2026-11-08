@@ -48,7 +48,6 @@ import { m_respond, hideunder, healmon, normal_shape, minliquid, mlifesaver } fr
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { OC_CHARGED } from './oc_cost_data.js';
 import { useupall } from './cmd.js';
-import { _delobj_useupf } from './cmd.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_STONE_GOLEM, PM_CLAY_GOLEM, PM_WOOD_GOLEM,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM, PM_GLASS_GOLEM,
          PM_PAPER_GOLEM, PM_STRAW_GOLEM } from './pm.generated.js';
@@ -2461,7 +2460,7 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
                  * draw (the focused wand case misses the owlbear here). */
                 if (saymiss
                     || (canseemon(mon) && !disguised_as_non_mon(mon)))
-                    miss(flash_str(fltyp, false), mon);
+                    await miss(flash_str(fltyp, false), mon);
             }
         } else if (_u_at(sx, sy) && range >= 0) {
             nomul(0);
@@ -2487,6 +2486,10 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
                     if (await _buzz_hit_monster(steed, type, nd, fltyp, sayhit))
                         break;
                     range -= 2;
+                } else if (saymiss
+                           || (canseemon(steed) && !disguised_as_non_mon(steed))) {
+                    /* C zap.c:4943-4945 — buzzmonst's miss arm, reached by goto */
+                    await miss(flash_str(fltyp, false), steed);
                 }
             } else if (!forcemiss && zap_hit(u.uac | 0, 0)) {
                 range -= 2;
@@ -3746,7 +3749,8 @@ export async function boomhit(obj, dx, dy) {
     const g = game, u = g.u;
 
     if (!g.bhitpos)
-        g.bhitpos = { x: 0, y: 0 };
+        g.bhitpos = (g.gb ||= {}).bhitpos = { x: 0, y: 0 };
+    else (g.gb ||= {}).bhitpos = g.bhitpos;
     g.bhitpos.x = u.ux | 0;
     g.bhitpos.y = u.uy | 0;
 
@@ -4107,7 +4111,7 @@ function obj_shudders(obj) {
  * obfree() -> dealloc_obj() teardown of timers, lights, and contents. */
 async function _zp_delobj(obj) {
     const g = game;
-    await _delobj_useupf(obj);
+    await delobj(obj); /* js/invent.js:1156 — the one delobj port */
     // C invent.c:1458 -> mkobj.c:2765-2767: deleted objects lose their timers.
     {
         if ((obj.where | 0) !== 9 /* OBJ_DELETED */) return;
@@ -5657,7 +5661,10 @@ async function _bhit_zapped_wand(ddx, ddy, range, obj) {
     const g = game, u = g.u;
     let x = u.ux | 0, y = u.uy | 0;
     let shopdoor = false; /* C zap.c:3839 */
-    g.bhitpos = { x, y };
+    g.bhitpos = (g.gb ||= {}).bhitpos = { x, y }; /* one object: gb.bhitpos (zap.c:3848) */
+    g.bhitpos = (g.gb ||= {}).bhitpos = { x, y };
+    g.bhitpos = (g.gb ||= {}).bhitpos = { x, y }; // gb.bhitpos alias (mstatusline reads it, insight.c:3303)
+    g.bhitpos = (g.gb ||= {}).bhitpos = { x, y }; /* C gb.bhitpos is one shared global */
     while (range-- > 0) {
         x = g.bhitpos.x + ddx; y = g.bhitpos.y + ddy;
         g.bhitpos.x = x; g.bhitpos.y = y;

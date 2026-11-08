@@ -676,6 +676,11 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
              * covering the row leaves those glyphs on the terminal. */
             if (rows3 && screenRow === 21 && !inWindow)
                 output += render_map_row_clipped(ROWNO - 1, COLNO - 1).str;
+            /* timebot() alone (botl.c:275-293) painted the T: field */
+            if (!rows3 && screenRow === 23 && !inWindow && game._blankTimePaint) {
+                const tcol = game._statusTimeCol ?? -1;
+                if (tcol >= 0) output += `\x1b[${tcol}C` + game._blankTimePaint;
+            }
             if (screenRow < 23) output += '\n';
             continue;
         }

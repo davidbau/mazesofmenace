@@ -31,7 +31,7 @@ import { useUpFloorObject, feelPetrifyingCorpse, willFeelPetrifyingCorpse, holdA
 import { doBlindingRay, getObjectLocation, releaseHold, zapHeroWithObject, beginImmediateZap, finishImmediateZap, hitFloorPileWithWand, hitMonsterWithWand, lightDamage, rayPositionIsOpen, flashBurn, objectResistsDestruction, zappable, } from './zap.js';
 import { prepareMapPositionHighlights, selectMapPosition, showGetposInstructions } from './getpos.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
-import { endVoluntaryMultiTurn, heroMayDisplaceMonster, nomul, shouldShowGetposTip, showGetposTip, loseHeroHp, checkHeroAttackOverexertion, heroIsOnStairs, isInvocationPosition, finishDestinationSpotEffects, roomsAt, exceedsActionCapacity, nearCapacity, distu } from './hack.js';
+import { heroMayDisplaceMonster, nomul, shouldShowGetposTip, showGetposTip, loseHeroHp, checkHeroAttackOverexertion, heroIsOnStairs, isInvocationPosition, finishDestinationSpotEffects, roomsAt, exceedsActionCapacity, nearCapacity, distu } from './hack.js';
 import { distmin, possessiveName } from './hacklib.js';
 import { applyCaitiffPenalty, prepareAppliedWeaponAttack, do_attack } from './uhitm.js';
 import { setHeroGrip, revealMonsterAppearance, wakeMonstersNearWithMessages, monsterInAir, moveMonsterNextToHero, monsterFliesOrFloats, finishHeroMonsterKill, finishHeroMonsterKillOutcome, finishHurtleMonsterDeath, } from './mon.js';
@@ -39,7 +39,7 @@ import { makeDeaf, startHeroSickness, makeConfused, makeHallucinated, makeStunne
 import { hurtleHero, hurtleJumpTo, hitMonsterWithAppliedWeapon, walkPathCells } from './dothrow.js';
 import { heroIsInvisible } from './hero_invisibility.js';
 import { stumbleOntoMimic } from './uhitm.js';
-import { heroIsUnaware, blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, setHeroBlindnessTimeout, } from './senses.js';
+import { heroIsUnaware, blindfolded, heroIsBlind, heroIsBlinded, heroIsDeaf, heroIsHallucinating, heroIsUnderwater, setHeroBlindnessTimeout, } from './senses.js';
 import { heroIsBreathless, heroPassesWalls, heroPolyGender, heroSpecies, heroHasNoHands, heroIsFlying, body_part, mbodypart } from './polyself.js';
 import { heroStatusLine, monsterStatusLine } from './insight.js';
 import { dotrap, fillPitWithBoulderAt, deleteTrap, feelTrap, trapName, mintrap, resolveImmediatePetrification, resetUtrap, maketrap, activateStatueTrapAt, fireDamageObject, } from './trap.js';
@@ -70,7 +70,7 @@ import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { addShopDamage, carriedObjectOwner, chargeUnpaidUsage, costlySpot, deleteObject, dopay, findObjectOwner, objectOwnershipPrefix, payForShopDamage, shopkeeperIsMuted } from './shk.js';
 import { ensureHeroSkills, uwepSkillType, dryTowel, heroStrengthDamageBonus, monsterWieldedWeapon, unwieldMonsterWeapon, } from './weapon.js';
 import { castSpell, knownSpell } from './spell.js';
-import { addObjectToMonsterInventory, removeWornHeroItem } from './steal.js';
+import { addObjectToMonsterInventory } from './steal.js';
 import { monsterAtPosition, stuckSteed, useSaddle, strikeSteed } from './steed.js';
 import { heroIsPetrifying, petrifyFromCorpseContact } from './stoning.js';
 import { ceilingName, surfaceName, canDigDown } from './dungeon.js';
@@ -252,7 +252,7 @@ export async function useStethoscope(object) {
     }
     if (direction.dz) {
         if (hero.uinwater || game.underwater)
-            await hear('faint splashing.');
+            await publishHeardMessage('faint splashing.', pline);
         else if (direction.dz < 0 || !heroCanReachFloor(game, { checkPit: true })) {
             const destination = direction.dz < 0 ? ceilingName(hero.ux, hero.uy)
                 : heroCanReachFloor(game) ? 'bottom of the pit' : surfaceName(hero.ux, hero.uy);
@@ -263,14 +263,14 @@ export async function useStethoscope(object) {
             if (corpse.found)
                 spentTime ||= corpse.spentTime;
             else if (Is_stronghold(hero.uz))
-                await hear('the crackling of hellfire.');
+                await publishHeardMessage('the crackling of hellfire.', pline);
             else
                 await pline(`The ${surfaceName(hero.ux, hero.uy)} seems healthy enough.`);
         }
         return spentTime;
     }
     if (object.cursed && !rn2(2)) {
-        await hear('your heart beat.');
+        await publishHeardMessage('your heart beat.', pline);
         return spentTime;
     }
     // Native does a second confdir() after its cursed-heartbeat branch.
@@ -281,7 +281,7 @@ export async function useStethoscope(object) {
     }
     const x = hero.ux + (hero.dx ?? 0), y = hero.uy + (hero.dy ?? 0);
     if (!isok(x, y)) {
-        await hear('a faint typing noise.');
+        await publishHeardMessage('a faint typing noise.', pline);
         return false;
     }
     const monster = monsterAtPosition(game.level, x, y);
@@ -296,7 +296,7 @@ export async function useStethoscope(object) {
     const location = game.level.requireAt(x, y);
     if (location.typ === SDOOR || location.typ === SCORR) {
         const door = location.typ === SDOOR;
-        await hear(`a hollow sound.  This must be a secret ${door ? 'door' : 'passage'}!`);
+        await publishHeardMessage(`a hollow sound.  This must be a secret ${door ? 'door' : 'passage'}!`, pline);
         if (door)
             convertSecretDoor(location);
         else {
@@ -312,13 +312,6 @@ export async function useStethoscope(object) {
     if (!floor.found)
         await pline('You hear nothing special.');
     return spentTime || floor.spentTime;
-}
-// Port only: module-local You_hear adapter (formats the line for a deaf
-// or unconscious hero).
-async function hear(sound) {
-    const message = formatHeardMessage(sound);
-    if (message)
-        await pline(message);
 }
 // Part of C apply.c:use_stethoscope(): the monster-revelation and status-report branch.
 // Also C mkobj.c:init_dummyobj(): inlined here (the name-formatting dummy
@@ -378,7 +371,7 @@ async function diagnoseFloorObjects(x, y) {
         if (object.otyp === CORPSE && one) {
             diagnosis = `${corpsePronoun(object, species)}'s dead`;
         }
-        await hear(`a voice say, "${diagnosis}, Jim."`);
+        await publishHeardMessage(`a voice say, "${diagnosis}, Jim."`, pline);
         return { found: true, spentTime: true };
     }
     if (object.otyp === CORPSE) {
@@ -1045,7 +1038,9 @@ async function showMonsterReflection(monster, object, mirror, invisible, state) 
         }
         else
             await pline(`It steals your ${mirror}!`);
-        await removeWornHeroItem(object, state);
+        // C apply.c:1163 uses setnotworn() so a stolen wielded mirror does
+        // not arm the "begin bashing with your bare hands" notice.
+        await setnotworn(object, state);
         if (state.program_state.gameover)
             return true;
         await freeInventoryObject(object, state);
@@ -1191,24 +1186,15 @@ export async function useBell(object, { state = game } = {}) {
 function result(object, state) {
     return { spentTime: true, heroDied: !!state.program_state?.gameover, object };
 }
-// Port only: candle-type test shared by the apply light family.
+// C obj.h:Is_candle()
 function isCandle(object) {
     return object.otyp === TALLOW_CANDLE || object.otyp === WAX_CANDLE;
-}
-// Port only: shared in-or-under-water guard for the bell/lamp family
-// (C tests Underwater and u.uinwater inline at each site).
-function inOrUnderWater(state) {
-    return !!(state.u.uinwater || state.underwater || state.u.underwater);
 }
 // Part of C apply.c:use_lamp(): the Shk_Your() capitalized pronoun
 // prefix of the lamp on/off messages.
 function lampOwner(object, state) {
     const owner = carriedObjectOwner(object, state);
     return owner.charAt(0).toUpperCase() + owner.slice(1); // C Shk_Your().
-}
-// Port only: the() definite-name wrapper for the light family messages.
-function theName(object, state) {
-    return definiteObjectAction(object, null, state);
 }
 // Part of C apply.c:use_lamp(), apply.c:use_candle(): the verbalize()
 // purchase notice.
@@ -1236,7 +1222,7 @@ export async function useLamp(object, { state = game } = {}) {
         endObjectBurn(object, state);
         return result(object, state);
     }
-    if (inOrUnderWater(state)) {
+    if (heroIsUnderwater(state)) {
         await plineWithContinuation(isCandle(object)
             ? "Sorry, fire and water don't mix." : 'This is not a diving lamp.');
         return result(object, state);
@@ -1256,7 +1242,7 @@ export async function useLamp(object, { state = game } = {}) {
         }
         else
             await plineWithContinuation(heroIsBlind(state) ? 'Nothing seems to happen.'
-                : `${theName(object, state)} ${objectQuantity(object) === 1 ? 'flickers' : 'flicker'} for a moment, then ${objectQuantity(object) === 1 ? 'dies' : 'die'}.`);
+                : `${definiteObjectAction(object, null, state)} ${objectQuantity(object) === 1 ? 'flickers' : 'flicker'} for a moment, then ${objectQuantity(object) === 1 ? 'dies' : 'die'}.`);
         return result(object, state);
     }
     if (lamp) {
@@ -1291,7 +1277,7 @@ export async function useCandelabrum(object, { state = game } = {}) {
             await plineWithContinuation(`To attach candles, apply them instead of the ${objectName(object, state)}.`);
         return result(object, state);
     }
-    if (inOrUnderWater(state)) {
+    if (heroIsUnderwater(state)) {
         await plineWithContinuation('You cannot make fire under water.');
         return result(object, state);
     }
@@ -1303,10 +1289,10 @@ export async function useCandelabrum(object, { state = game } = {}) {
     if (object.spe < 7) {
         await plineWithContinuation(`There ${object.spe === 1 ? 'is' : 'are'} only ${object.spe} ${candles} in the ${objectName(object, state)}.`);
         if (!heroIsBlind(state))
-            await plineWithContinuation(`${object.spe === 1 ? 'It is' : 'They are'} lit.  ${theName(object, state)} shines dimly.`);
+            await plineWithContinuation(`${object.spe === 1 ? 'It is' : 'They are'} lit.  ${definiteObjectAction(object, null, state)} shines dimly.`);
     }
     else
-        await plineWithContinuation(`${theName(object, state)}'s ${candles} burn${heroIsBlind(state) ? '.' : ' brightly!'}`);
+        await plineWithContinuation(`${definiteObjectAction(object, null, state)}'s ${candles} burn${heroIsBlind(state) ? '.' : ' brightly!'}`);
     if (!isInvocationPosition(state.u.ux, state.u.uy, state) || heroIsOnStairs(state)) {
         await plineWithContinuation(`The ${candles} ${object.spe === 1 ? 'is' : 'are'} being rapidly consumed!`);
         object.age = Math.trunc((object.age + 1) / 2);
@@ -1318,8 +1304,8 @@ export async function useCandelabrum(object, { state = game } = {}) {
     else {
         if (object.spe === 7)
             await plineWithContinuation(heroIsBlind(state)
-                ? `${theName(object, state)} radiates a strange warmth!`
-                : `${theName(object, state)} glows with a strange light!`);
+                ? `${definiteObjectAction(object, null, state)} radiates a strange warmth!`
+                : `${definiteObjectAction(object, null, state)} glows with a strange light!`);
         object.known = true;
     }
     beginObjectBurn(object, state);
@@ -1358,7 +1344,7 @@ export async function useCandle(object, { state = game } = {}) {
         await announcePurchase(`You ${candelabrum.lamplit ? 'burn' : 'use'} ${pronoun}, you bought ${pronoun}!`);
     }
     if (count < 7 && candelabrum.spe === 7)
-        await plineWithContinuation(`${theName(candelabrum, state)} now has seven${candelabrum.lamplit ? ' lit' : ''} candles attached.`);
+        await plineWithContinuation(`${definiteObjectAction(candelabrum, null, state)} now has seven${candelabrum.lamplit ? ' lit' : ''} candles attached.`);
     if (candelabrum.lamplit)
         state.vision_full_recalc = 1;
     await useUpInventoryStack(object, state);
@@ -1547,7 +1533,7 @@ export async function lightCocktail(object, { state = game } = {}) {
         }
         return result(object, state);
     }
-    if (inOrUnderWater(state)) {
+    if (heroIsUnderwater(state)) {
         await plineWithContinuation('There is not enough oxygen to sustain a fire.');
         return result(object, state);
     }
@@ -2279,18 +2265,13 @@ function scheduleFigurineRetry(figurine, carrier, currentTurn, state) {
         carrier,
     };
 }
-// Part of C hacklib.c:s_suffix(): local possessive for the "pack" phrase;
-// the general port is possessiveName() in hacklib.ts.
-function possessive(noun) {
-    return /s$/i.test(noun) ? `${noun}'` : `${noun}'s`;
-}
 // Part of C apply.c:fig_transform(): the OBJ_MINVENT "%s pack|empty water|
 // thin air" carrier description (canseemon + wormno + is_pool).
 function monsterCarrierDescription(monster, state) {
     if (canSeeMonster(monster)
         && (!monster.wormno || cansee(monster.mx, monster.my))) {
         const owner = monsterName(monster, { state, article: 'a' });
-        return `${possessive(owner)} pack`;
+        return `${possessiveName(owner)} pack`;
     }
     return isPoolAt(monster.mx, monster.my, state) ? 'empty water' : 'thin air';
 }
@@ -3454,17 +3435,13 @@ export async function usePolearm(object, { state = game, ensureWielded, autohit 
     wipeHeroEngraving(2, state);
     return { spentTime: !freehit };
 }
-// Port only: prompt adapter passing the pick-axe direction query through.
-async function pickAxeDirection(prompt) {
-    return promptDirection(`${prompt} `);
-}
 // Part of C apply.c:doapply(): the PICK_AXE case, wiring the dig.c
 // use_pick_axe() port to the apply dispatch.
 async function applyPickAxe(item) {
     const result = await usePickAxe(item, {
         state: game,
+        readDirection: (prompt) => promptDirection(`${prompt} `),
         ensureWielded: () => wieldTool(item, 'swing', { swapWeapons: doswapweapon }, game),
-        readDirection: pickAxeDirection,
         payShopkeeper: dopay,
         attackMonster: (monster, struckAt, permission) => do_attack(monster, struckAt.x, struckAt.y, { permission }),
     });
@@ -3904,7 +3881,10 @@ export async function breakWand(wand, { state = game } = {}) {
     await freeInventoryObject(wand, state);
     if (state.program_state.gameover)
         return { spentTime: true, heroDied: true };
-    await removeWornHeroItem(wand, state);
+    // C apply.c:do_break_wand(): freeinv(obj) + setnotworn(obj); a broken
+    // wielded wand must not arm the "begin bashing with your bare hands"
+    // notice the way steal.c:remove_worn_item()'s uwepgone() would.
+    await setnotworn(wand, state);
     if (state.program_state.gameover)
         return { spentTime: true, heroDied: true };
     if (!await zappable(wand, { state })) {
@@ -4018,7 +3998,7 @@ async function discardBrokenWand(state) {
     state._currentWand = null;
     if (wand)
         await delobj(wand, state);
-    endVoluntaryMultiTurn(state);
+    nomul(0, state);
 }
 // Part of C apply.c:do_break_wand(): the per-square object-pile zap of
 // the ray sweep.

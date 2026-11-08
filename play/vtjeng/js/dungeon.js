@@ -13,7 +13,6 @@ import {
     AM_MASK,
     Amask2align,
     Align2amask,
-    BLINDED,
     CLOUD,
     COLNO,
     DBWALL,
@@ -30,8 +29,6 @@ import {
     DELPHI,
     DOOR,
     FLYING,
-    HALLUC,
-    HALLUC_RES,
     ICE,
     IS_AIR,
     IS_ALTAR,
@@ -114,6 +111,7 @@ import { ttyPline } from './tty_message.js';
 import { add_menu_heading, getlin, select_menu } from './windows.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
 import { tty_clear_map_window } from './wintty.js';
+import { Blind, Hallucination } from './youprop.js';
 
 export const BR_STAIR = 0;
 export const BR_NO_END1 = 1;
@@ -371,7 +369,7 @@ export function level_range(dgn, baseValue, randc, chain, pd, state = game) {
 
 function parent_dlevel(name, pd, state, random) {
     const dnum = parent_dnum(name, pd);
-    const branchIndex = find_branch(name, pd);
+    const branchIndex = find_branch(name, pd, state);
     const tmpBranch = pd.tmpbranch[branchIndex];
     const { base, count } = level_range(
         dnum,
@@ -453,7 +451,7 @@ export function insert_branch(newBranch, extractFirst, state = game) {
 }
 
 function add_branch(dgn, childEntryLevel, pd, state, random) {
-    const branchIndex = find_branch(state.dungeons[dgn].dname, pd);
+    const branchIndex = find_branch(state.dungeons[dgn].dname, pd, state);
     const tmpBranch = pd.tmpbranch[branchIndex];
     const branch = {
         next: null,
@@ -758,9 +756,8 @@ export function Can_rise_up(x, y, lev, state = game) {
 // exists, and mon.c m_in_air().
 //
 // dungeon.h:141 In_endgame() and :114 Is_earthlevel() are spelled out against
-// `state` rather than imported from js/const.js, whose copies read the module
-// singleton `game`: every other topology predicate in this file is
-// state-scoped, and grounded() is called with the planning clone in
+// `state`: every other topology predicate in this file is state-scoped, and
+// grounded() is called with the planning clone in
 // js/unported_monster_actions.js, which carries its own hero.
 export function has_ceiling(level, state = game) {
     const inEndgame = level?.dnum != null
@@ -1137,22 +1134,7 @@ function dname_to_dnum(name, state) {
     return index;
 }
 
-// C ref: youprop.h Blind (103) and Hallucination (116). Both are read once,
-// by the same-level arm of u_on_newpos() below. Blindness is intrinsic or
-// extrinsic unless an artifact blocks it; hallucination is solely an intrinsic
-// timeout that either kind of resistance suppresses.
-function heroBlind(state) {
-    const blindness = state.u?.uprops?.[BLINDED];
-    return Boolean((blindness?.intrinsic || blindness?.extrinsic)
-        && !blindness?.blocked);
-}
 
-function heroHallucinating(state) {
-    const halluc = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(halluc?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
 
 // C ref: dungeon.c u_on_newpos() (1567-1601). The one place that writes the
 // hero's map position, and with it the ridden steed's, which always shares it.
@@ -1194,8 +1176,8 @@ export function u_on_newpos(
         map_location(x, y, false, state);
         state.iflags ??= {};
         state.iflags.terrain_typ = MAX_TYPE;
-    } else if (!heroBlind(state)
-        && !heroHallucinating(state)
+    } else if (!Blind(state.u)
+        && !Hallucination(state.u)
         && !hero.uswallow) {
         // still on same level; might have come close enough to
         // generic object(s) to redisplay them as specific objects
@@ -2577,7 +2559,7 @@ export function recalc_mapseen(state = game) {
     mapseen.flags.sokosolved = in_sokoban_level(u.uz, state)
         && !state.level?.flags?.sokoban_rules ? 1 : 0;
     // flags.bigroom keeps its previous value while the hero cannot see.
-    if (!heroBlind(state))
+    if (!Blind(state.u))
         mapseen.flags.bigroom = on_level(u.uz, state.bigroom_level) ? 1 : 0;
     else if (mapseen.flags.forgot)
         mapseen.flags.bigroom = 0;

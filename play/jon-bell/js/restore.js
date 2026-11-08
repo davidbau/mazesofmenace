@@ -42,7 +42,7 @@ import { set_residency } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
-import { phase_of_the_moon, friday_13th, getnow } from './calendar.js';
+import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from './calendar.js';
 import { impossible } from './pline.js';
 import { minimal_monnam } from './do_name.js';
 import { describe_level_buf } from './dungeon.js';
@@ -334,6 +334,10 @@ async function restgamestate(state) {
     /* decl.c:808 gw.wailmsg is process-local (save.c omits it): hack.c:4217's
      * once-per-50-moves wail throttle starts at 0 in the restoring process. */
     game.wailmsg = 0;
+    /* decl.c:547 gn.nomovemsg is process-local (save.c omits it): a stale
+     * "You're finally finished." (eat.c:3315) must not survive into the
+     * restoring process, where done_eating (eat.c:551) would print it. */
+    game.nomovemsg = null;
     game.gb ||= {};
     game.gb.bhitpos = { x: 0, y: 0 };
     game.bhitpos = game.gb.bhitpos;
@@ -344,9 +348,12 @@ async function restgamestate(state) {
     for (const k of Object.keys(game.youmonst))
         delete game.youmonst[k];
     game.youmonst.cham = game.u.mcham;
-    /* C restore.c:615-617: in C, localtime() and mktime() preserve ubirthday
-     * across save/restore. state.u restored above preserves game.u.ubirthday
-     * without timezone roundtrip drift. */
+    /* C restore.c:615-617: the saved birthday is local date text (save.c:288)
+     * and mktime() re-reads it with the recording moment's tm_isdst (patch 001
+     * calendar.c:160), so a birthday outside that DST state moves one hour. */
+    // C restore.c:615-617: parsing the saved local date can change the epoch.
+    if (state.__ubirthday !== undefined)
+        game.u.ubirthday = time_from_yyyymmddhhmmss(state.__ubirthday);
     // C restore.c:625 — time while the game was saved is not playing time.
     (game.urealtime ||= { realtime: 0, finish_time: 0 }).start_timing = getnow();
     /* C restore.c:627 runs set_uasmon() before restobjchn()/setworn() (686-689):
@@ -587,6 +594,9 @@ export async function dorecover(save) {
         await baseTopline.flush();
         delete g._base_topline;
     }
+    /* A restored game is a fresh process: the tty status window has never
+     * been rendered, so a lone timebot() has no field positions to paint at. */
+    g._statusEverPainted = false;
     await docrt();
     /* C restore.c:932-933: finish docrt's notice pages before clearing them. */
     if (_topline_more_pending())

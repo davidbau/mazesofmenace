@@ -46,7 +46,6 @@ import {
     GENOCIDED,
     HATCH_EGG,
     HALLUC,
-    HALLUC_RES,
     GLIB,
     INTRINSIC,
     INVIS,
@@ -146,7 +145,6 @@ import {
     update_inventory, useup, useupall,
 } from './invent.js';
 import { game } from './gstate.js';
-import { heroIsBlind } from './startup_a11y.js';
 import {
     inv_weight, NODIAG, You_can_move_again, nomul, spoteffects, } from './hack.js';
 import {
@@ -210,7 +208,7 @@ import {
 import { m_at } from './monst.js';
 import { cansee } from './vision.js';
 import {
-    heroDeaf, heroUnaware, verbalize, youFeel, youHear, youSee,
+    verbalize, youFeel, youHear, youSee,
 } from './pline.js';
 import { AD_ELEC } from './monsters.js';
 import { buzz } from './zap.js';
@@ -219,6 +217,10 @@ import { coreRandom,
     createCoreRandom, rn1, rn2, rn2_on_display_rng, rnd,
 } from './rng.js';
 import { ttyNorep, ttyPline, ttyUrgentPline } from './tty_message.js';
+import {
+    Blind, Deaf, HDeaf, Hallucination, Invis, See_invisible, Unaware,
+    Warn_of_mon,
+} from './youprop.js';
 
 const NO_CLEANUP_ERROR = Symbol('no cleanup error');
 
@@ -507,7 +509,7 @@ export async function hatch_egg(egg, timeout, rawEnv = {}) {
         if (yours) {
             const speaker = siblings ? 'Their' : 'Its';
             const sound = ing_suffix(cry_sound(monster));
-            const verb = is_silent(monster.data) || heroDeaf(state)
+            const verb = is_silent(monster.data) || Deaf(state.u)
                 ? 'seems' : 'sounds';
             await message(
                 `${speaker} ${sound} ${verb} like `
@@ -515,7 +517,7 @@ export async function hatch_egg(egg, timeout, rawEnv = {}) {
                     + `${egg.spe ? '.' : '?'}"`,
                 state,
             );
-        } else if (monster.data.mlet === S_DRAGON && !heroDeaf(state)) {
+        } else if (monster.data.mlet === S_DRAGON && !Deaf(state.u)) {
             set_voice(monster, 0, 80, 0, state);
             await verbalize('Gleep!', state, { message });
         }
@@ -755,20 +757,7 @@ function heroPropertyActive(state, propertyIndex) {
         && !property?.blocked;
 }
 
-function hallucinating(state) {
-    const hallucination = state.u?.uprops?.[HALLUC];
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    return Boolean(hallucination?.intrinsic)
-        && !(resistance?.intrinsic || resistance?.extrinsic);
-}
 
-function deaf(state) {
-    const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(
-        deafness?.intrinsic || deafness?.extrinsic
-        || state.u?.uroleplay?.deaf,
-    );
-}
 
 // C ref: timeout.c slip_or_trip() (1222-1341). This is called only after the
 // Fumbling property has been decremented, so FROMOUTSIDE and ice-only checks
@@ -797,8 +786,8 @@ export async function slip_or_trip(state = game, env = {}) {
         // a single floor item, so the timeout refers to it by pronoun.
         if (state.iflags?.last_msg === PLNMSG_ONE_ITEM_HERE) {
             what = object.quan === 1
-                ? 'it' : hallucinating(state) ? 'they' : 'them';
-        } else if (object.dknown || !heroPropertyActive(state, BLINDED)) {
+                ? 'it' : Hallucination(state.u) ? 'they' : 'them';
+        } else if (object.dknown || !Blind(state.u)) {
             what = donameFresh(object, state);
         } else {
             otherObject = sobj_at(ROCK, u.ux, u.uy, state);
@@ -807,7 +796,7 @@ export async function slip_or_trip(state = game, env = {}) {
                 : something;
         }
 
-        if (hallucinating(state)) {
+        if (Hallucination(state.u)) {
             what = highc(what[0]) + what.slice(1);
             await message(
                 `Egads!  ${what} bite${object.quan === 1 ? 's' : ''} `
@@ -874,7 +863,7 @@ export async function slip_or_trip(state = game, env = {}) {
         switch (random.rn2(4)) {
         case 1:
             await message(
-                `You trip over your own ${hallucinating(state)
+                `You trip over your own ${Hallucination(state.u)
                     ? 'elbow'
                     : makeplural(body_part(FOOT, state.youmonst))}.`,
                 state,
@@ -882,7 +871,7 @@ export async function slip_or_trip(state = game, env = {}) {
             break;
         case 2:
             await message(
-                `You slip ${hallucinating(state)
+                `You slip ${Hallucination(state.u)
                     ? 'on a banana peel' : 'and nearly fall'}.`, state,
             );
             break;
@@ -1025,12 +1014,12 @@ async function slime_dialogue(state = game, env = {}) {
 
         if (text.includes('%')) {
             if (index === 4) {
-                if (!heroIsBlind(state)) {
+                if (!Blind(state.u)) {
                     text = text.replace('%s', hcolor('green', state, displayEnv));
                     await urgentMessage(text, state);
                 }
             } else {
-                const monster = hallucinating(state)
+                const monster = Hallucination(state.u)
                     ? rndmonnam({ state, random: displayRandom })
                     : 'green slime';
                 await urgentMessage(text.replace('%s', an(monster)), state);
@@ -1049,7 +1038,7 @@ async function slime_dialogue(state = game, env = {}) {
             nomul(0, state);
         break;
     case 2: {
-        const deafTimeout = Math.trunc(u.uprops[DEAF]?.intrinsic ?? 0)
+        const deafTimeout = Math.trunc(HDeaf(u))
             & TIMEOUT;
         if (deafTimeout > 0 && deafTimeout < 5)
             set_itimeout(u.uprops[DEAF], 5);
@@ -1090,7 +1079,7 @@ export async function sickness_dialogue(state = game, env = {}) {
         if (!((state.u.usick_type ?? 0) & SICK_NONVOMITABLE))
             text = text.replace('illness', 'sickness');
 
-        if (hallucinating(state) && text.includes("Death's door")) {
+        if (Hallucination(state.u) && text.includes("Death's door")) {
             // C passes youmonst to mhe(); its species is irrelevant when the
             // hallucination flag selects the pronoun RNG branch.
             const pronoun = mhe(state.youmonst, { state, random });
@@ -1119,7 +1108,7 @@ export async function levitation_dialogue(state = game, env = {}) {
             ?? (env.planning ? async () => {} : ttyPline);
         if (i === 1) {
             const danger = is_pool_or_lava(u.ux, u.uy, state)
-                && !Is_waterlevel(u.uz);
+                && !Is_waterlevel(u.uz, state);
             const urgentMessage = env.urgentMessage
                 ?? (env.planning ? message : ttyUrgentPline);
             await urgentMessage(
@@ -1251,7 +1240,7 @@ async function vomiting_dialogue(state, env = {}) {
         text = vomitingTexts[4];
         if (cantvomit(state.youmonst.data)) {
             text = 'gag uncontrollably.';
-        } else if (hallucinating(state)) {
+        } else if (Hallucination(state.u)) {
             text = 'are about to hurl!';
         }
         break;
@@ -1261,7 +1250,7 @@ async function vomiting_dialogue(state, env = {}) {
             await morehungry(20, state, env);
             if (state.u.uhs < FAINTING) {
                 await message(
-                    `You ${hallucinating(state) ? 'hurl chunks' : 'vomit'}!`,
+                    `You ${Hallucination(state.u) ? 'hurl chunks' : 'vomit'}!`,
                     state,
                 );
             }
@@ -1319,7 +1308,7 @@ export async function stoned_dialogue(state = game, env = {}) {
             await heal_legs(state, { ...env, how: 2, message });
         break;
     case 2: {
-        const deafTimeout = u.uprops[DEAF].intrinsic & TIMEOUT;
+        const deafTimeout = HDeaf(u) & TIMEOUT;
         if (deafTimeout > 0 && deafTimeout < 5)
             set_itimeout(u.uprops[DEAF], 5);
         if (u.uprops[VOMITING].intrinsic)
@@ -1584,10 +1573,10 @@ async function decrement_property_timeouts(state, env) {
             if (!property.intrinsic) await stop_occupation(state, occupationEnv);
             break;
         case BLINDED: {
-            const wasBlind = heroPropertyActive(state, BLINDED);
+            const wasBlind = Blind(state.u);
             set_itimeout(property, 1);
             await make_blinded(0, true, state, env);
-            if (wasBlind && !heroPropertyActive(state, BLINDED))
+            if (wasBlind && !Blind(state.u))
                 await stop_occupation(state, occupationEnv);
             break;
         }
@@ -1596,13 +1585,13 @@ async function decrement_property_timeouts(state, env) {
             await make_deaf(0, true, state, env);
             state.disp ??= {};
             state.disp.botl = true;
-            if (!deaf(state)) await stop_occupation(state, occupationEnv);
+            if (!Deaf(state.u)) await stop_occupation(state, occupationEnv);
             break;
         case INVIS:
             (env.newsym ?? newsym)(u.ux, u.uy, state);
-            if (!heroPropertyActive(state, INVIS) && !property.blocked
-                && !heroPropertyActive(state, BLINDED)) {
-                await message(!propertySource(state, SEE_INVIS)
+            if (!Invis(state.u) && !property.blocked
+                && !Blind(state.u)) {
+                await message(!See_invisible(state.u)
                     ? 'You are no longer invisible.'
                     : 'You can no longer see through yourself.', state);
                 await stop_occupation(state, occupationEnv);
@@ -1623,7 +1612,7 @@ async function decrement_property_timeouts(state, env) {
         case HALLUC:
             set_itimeout(property, 1);
             await make_hallucinated(0, true, 0, state);
-            if (!hallucinating(state)) await stop_occupation(state, occupationEnv);
+            if (!Hallucination(state.u)) await stop_occupation(state, occupationEnv);
             break;
         case SLEEPY:
             if (unconscious(state) || propertySource(state, SLEEP_RES)) {
@@ -1654,7 +1643,7 @@ async function decrement_property_timeouts(state, env) {
                     set_itimeout(property, 1);
                     break;
                 }
-                if (!heroUnaware(state))
+                if (!Unaware(state))
                     await message('You no longer feel safe from acid.', state);
             }
             break;
@@ -1664,7 +1653,7 @@ async function decrement_property_timeouts(state, env) {
                     set_itimeout(property, 1);
                     break;
                 }
-                if (!heroUnaware(state))
+                if (!Unaware(state))
                     await message('You no longer feel secure from petrification.', state);
                 await wielding_corpse(state.uwep, null, false, state, env);
                 await wielding_corpse(state.uswapwep, null, false, state, env);
@@ -1675,7 +1664,7 @@ async function decrement_property_timeouts(state, env) {
                 await message('Your temporary ability to survive burning has ended.', state);
             break;
         case WWALKING:
-            if (!(propertySource(state, WWALKING) && !Is_waterlevel(u.uz)))
+            if (!(propertySource(state, WWALKING) && !Is_waterlevel(u.uz, state)))
                 await message('Your temporary ability to walk on liquid has ended.', state);
             break;
         case DISPLACED:
@@ -1683,7 +1672,7 @@ async function decrement_property_timeouts(state, env) {
                 await toggle_displacement(null, 0, false, state);
             break;
         case WARN_OF_MON:
-            if (!propertySource(state, WARN_OF_MON)) {
+            if (!Warn_of_mon(state.u)) {
                 const species = state.context.warntype.species;
                 state.context.warntype.species = null;
                 state.context.warntype.speciesidx = NON_PM;
@@ -1728,7 +1717,7 @@ async function decrement_property_timeouts(state, env) {
                 state.multi_reason = 'fumbling';
                 state.nomovemsg = '';
                 if (inv_weight(state) > -WT_NOISY_INV) {
-                    if (!deaf(state)) await message('You make a lot of noise!', state);
+                    if (!Deaf(state.u)) await message('You make a lot of noise!', state);
                     await wake_nearby(false, { ...env, state, random, message });
                 }
             }
@@ -1831,7 +1820,7 @@ export async function nh_timeout(state = game, env = {}) {
         u.usptime = u.uspmtime;
         --u.uspellprot;
         find_ac(state);
-        if (!heroPropertyActive(state, BLINDED))
+        if (!Blind(state.u))
             await (env.norepMessage ?? ttyNorep)(
                 `The ${hcolor('golden', state, displayEnv)} haze around you ${u.uspellprot ? 'becomes less dense' : 'disappears'}.`,
                 state,
@@ -2393,7 +2382,7 @@ export async function lantern_message(obj, env = {}) {
     switch (obj.where) {
     case OBJ_INVENT:
         await message('Your lantern is getting dim.', state);
-        if (hallucinating(state))
+        if (Hallucination(state.u))
             await message('Batteries have not been invented yet.', state);
         break;
     case OBJ_FLOOR:
@@ -2440,7 +2429,7 @@ export async function burn_object(obj, timeout, rawEnv = {}) {
     }
 
     const location = get_obj_location(obj, 0, state);
-    const blind = heroIsBlind(state);
+    const blind = Blind(state.u);
     let canseeit = false;
     let whose;
     if (location) {
@@ -2593,7 +2582,7 @@ export async function burn_object(obj, timeout, rawEnv = {}) {
                         needNewsym = true;
                         break;
                     }
-                    await message(hallucinating(state)
+                    await message(Hallucination(state.u)
                         ? many ? 'They shriek!' : 'It shrieks!'
                         : blind ? '' : many ? 'Their flames die.' : 'Its flame dies.', state);
                 }

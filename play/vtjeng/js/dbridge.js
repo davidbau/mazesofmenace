@@ -1,9 +1,8 @@
 // dbridge.c — drawbridge terrain, entity, and transition functions.
 import {
-    BURNING, CONFUSION, CRUSHING, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DEAF,
+    BURNING, CONFUSION, CRUSHING, DB_DIR, DB_EAST, DB_ICE, DB_LAVA,
     DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR,
-    DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DROWNING, D_NODOOR, FUMBLING, HALLUC,
-    HALLUC_RES, ICE, ICED_MOAT,
+    DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DROWNING, D_NODOOR, FUMBLING, ICE, ICED_MOAT,
     IS_LAVA, IS_WALL, IS_DRAWBRIDGE, IS_WATERWALL, KILLED_BY_AN, LAVAPOOL,
     MAGICAL_BREATHING, MOAT, NO_KILLER_PREFIX, OBJ_AT, PASSES_WALLS,
     POOL, ROOM, STUNNED, SWIMMING, WATER, WWALKING, Is_waterlevel,
@@ -26,7 +25,7 @@ import {
     noncorporeal, passes_walls, mhe,
 } from './mondata.js';
 import { AD_DGST, AD_PHYS, PM_LONG_WORM_TAIL } from './monsters.js';
-import { heroUnaware as plineHeroUnaware, youHear, youSee } from './pline.js';
+import { youHear, youSee } from './pline.js';
 import { minliquid, monkilled, wake_nearto, xkilled } from './mon.js';
 import { m_at, place_monster, remove_monster } from './monst.js';
 import { coreRandom, rn2_on_display_rng } from './rng.js';
@@ -42,6 +41,7 @@ import { mksobj_at } from './obj.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { ttyPline } from './tty_message.js';
 import { vtense } from './objnam.js';
+import { Deaf, Hallucination, Unaware } from './youprop.js';
 
 // C refs: dbridge.c is_pool() (46-60) and is_moat() (100-112). The `flags`
 // field is the live JavaScript owner of drawbridgemask on map records.
@@ -345,11 +345,11 @@ export async function destroy_drawbridge(x, y, state = game, rawEnv = {}) {
             if (state.program_state?.gameover) return;
         } else {
             if (inview) {
-                if (!is_u(bridgeEntity, state) && heroHallucinating(state))
+                if (!is_u(bridgeEntity, state) && Hallucination(state.u))
                     await say(`${E_phrase(bridgeEntity, 'get', state)} into some heavy metal!`);
                 else
                     await say(`${E_phrase(bridgeEntity, 'are', state)} hit by a huge chunk of metal!`);
-            } else if (!heroDeaf(state)
+            } else if (!Deaf(state.u)
                 && !is_u(bridgeEntity, state) && !is_pool(x, y, state)) {
                 await hear('a crushing sound.');
             }
@@ -400,10 +400,6 @@ function heroPassesWalls(state) { return heroProperty(PASSES_WALLS, state); }
 function heroConfused(state) { return heroProperty(CONFUSION, state); }
 function heroStunned(state) { return heroProperty(STUNNED, state); }
 function heroFumbling(state) { return heroProperty(FUMBLING, state); }
-function heroUnaware(state) { return plineHeroUnaware(state); }
-function heroHallucinating(state) {
-    return heroProperty(HALLUC, state) && !heroProperty(HALLUC_RES, state);
-}
 function entityCanSee(entity, state) {
     return is_u(entity, state) || canseemon(entity.emon, state);
 }
@@ -453,7 +449,7 @@ export function e_survives_at(entity, x, y, state = game) {
     if (noncorporeal(entity.edata)) return true;
     if (is_pool(x, y, state)) {
         return (is_u(entity, state) && (
-            (heroProperty(WWALKING, state) && !Is_waterlevel(state.u?.uz))
+            (heroProperty(WWALKING, state) && !Is_waterlevel(state.u?.uz, state))
             || heroProperty(SWIMMING, state)
             || Boolean(state.u?.usteed && is_swimmer(state.u.usteed.data))
             || heroProperty(MAGICAL_BREATHING, state)
@@ -479,7 +475,7 @@ function e_missed(entity, chunks, state, random) {
     if (automiss(entity, state)) return true;
     let misses;
     if (is_flyer(entity.edata)
-        && (is_u(entity, state) ? !heroUnaware(state) : !helpless(entity.emon))) {
+        && (is_u(entity, state) ? !Unaware(state) : !helpless(entity.emon))) {
         misses = 5;
     } else if (is_floater(entity.edata)
         || (is_u(entity, state) && Levitation(state))) {
@@ -495,7 +491,7 @@ function e_missed(entity, chunks, state, random) {
 
 function e_jumps(entity, state, random) {
     let chances = 4;
-    if (is_u(entity, state) ? (heroUnaware(state) || heroFumbling(state))
+    if (is_u(entity, state) ? (Unaware(state) || heroFumbling(state))
         : (helpless(entity.emon) || !entity.edata?.mmove || entity.emon?.wormno)) {
         return false;
     }
@@ -523,7 +519,7 @@ async function e_died(entity, xkillFlags, how, state, env) {
             if (!e_survives_at(entity, entity.ex, entity.ey, state)) {
                 const target = enexto(entity.ex, entity.ey, entity.edata, { state });
                 if (target) {
-                    await ttyPline(`A ${heroHallucinating(state) ? 'normal' : 'strange'} force teleports you away...`, state);
+                    await ttyPline(`A ${Hallucination(state.u) ? 'normal' : 'strange'} force teleports you away...`, state);
                     await teleds(target.x, target.y, TELEDS_NO_FLAGS, state, env);
                 }
             }
@@ -565,10 +561,6 @@ function nokiller(state) {
     for (const entity of occupants(state)) m_to_e(null, 0, 0, entity, state);
 }
 
-function heroDeaf(state) {
-    const deaf = state.u?.uprops?.[DEAF];
-    return Boolean(deaf?.intrinsic || deaf?.extrinsic || state.u?.uroleplay?.deaf);
-}
 
 // C refs: dbridge.c e_died(), automiss(), e_missed(), e_jumps(), do_entity(),
 // and nokiller() (380-769). C state mutation and RNG order stay in source order.
@@ -606,7 +598,7 @@ export async function close_drawbridge(x, y, state = game, env = {}) {
     await do_entity(first, state, { ...env, random: randomEnv });
     set_entity(x2, y2, second, state);
     await do_entity(second, state, { ...env, random: randomEnv });
-    if (OBJ_AT(x, y, state) && !heroDeaf(state)) {
+    if (OBJ_AT(x, y, state) && !Deaf(state.u)) {
         const heard = youHear('smashing and crushing.', state);
         if (heard) await (env.message ?? ttyPline)(heard, state);
     }
@@ -711,7 +703,7 @@ async function do_entity(entity, state, env = {}) {
         if (atPortcullis && !e_jumps(entity, state, random)) {
             if (inview)
                 await message(`${E_phrase(entity, 'are', state)} crushed by the falling portcullis!`, state);
-            else if (!heroDeaf(state)) {
+            else if (!Deaf(state.u)) {
                 const heard = youHear('a crushing sound.', state);
                 if (heard) await message(heard, state);
             }
@@ -771,7 +763,7 @@ async function do_entity(entity, state, env = {}) {
         }
         return;
     }
-    if (is_pool(entity.ex, entity.ey, state) && !inview && !heroDeaf(state)) {
+    if (is_pool(entity.ex, entity.ey, state) && !inview && !Deaf(state.u)) {
         const heard = youHear('a splash.', state);
         if (heard) await message(heard, state);
     }
@@ -786,7 +778,7 @@ async function do_entity(entity, state, env = {}) {
     if ((pool || lava) && inview && !is_u(entity, state)) {
         // C dbridge.c:743-753 uses a different visible-monster line while
         // hallucinating; its liquid name is literal in that arm.
-        if (heroHallucinating(state)) {
+        if (Hallucination(state.u)) {
             await message(`${E_phrase(entity, 'drink', state)} the `
                 + `${lava ? 'lava' : 'moat'} and disappears.`, state);
         } else {

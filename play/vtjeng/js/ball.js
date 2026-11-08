@@ -20,7 +20,6 @@ import {
     OBJ_FLOOR,
     POOL,
     SLT_ENCUMBER,
-    Maybe_Half_Phys,
     HEAD,
     KILLED_BY,
     LEG,
@@ -84,11 +83,12 @@ import { body_part } from './polyself.js';
 import { hard_helmet } from './do_wear.js';
 import { encumber_msg } from './pickup.js';
 import { coreRandom, rn1, rn2, rnd } from './rng.js';
-import { heroIsBlind } from './startup_a11y.js';
 import { setnotworn, setuqwep, setuswapwep } from './worn.js';
 import { setuwep, welded } from './wield.js';
 import { note_unported } from './unported.js';
 import { ttyPline } from './tty_message.js';
+import { youFeel } from './pline.js';
+import { Blind, Maybe_Half_Phys } from './youprop.js';
 
 const BCPOS_DIFFER = 0;
 const BCPOS_CHAIN = 1;
@@ -175,9 +175,6 @@ export function set_bc(already_blind, state = game, rawEnv = {}) {
     }
 }
 
-function blind(state) {
-    return heroIsBlind(state);
-}
 
 function moveObject(object, x, y, state) {
     if (!object || object.where !== OBJ_FLOOR) return;
@@ -252,7 +249,7 @@ function unplacebc_core(state) {
         return;
     }
     if (state.u.uswallow) {
-        if (Is_waterlevel(state.u.uz)) {
+        if (Is_waterlevel(state.u.uz, state)) {
             if (!carried(ball) && ball.where === OBJ_FLOOR)
                 remove_object(ball, { state });
             if (chain.where === OBJ_FLOOR)
@@ -263,14 +260,14 @@ function unplacebc_core(state) {
 
     if (!carried(ball) && ball.where === OBJ_FLOOR) {
         remove_object(ball, { state });
-        if (heroIsBlind(state) && (state.u.bc_felt & BC_BALL))
+        if (Blind(state.u) && (state.u.bc_felt & BC_BALL))
             state.level.at(ball.ox, ball.oy).remembered_glyph = rememberedGlyph(state.u.bglyph);
         maybe_unhide_at(ball.ox, ball.oy, state);
         newsym(ball.ox, ball.oy, state);
     }
     if (chain.where === OBJ_FLOOR)
         remove_object(chain, { state });
-    if (heroIsBlind(state) && (state.u.bc_felt & BC_CHAIN))
+    if (Blind(state.u) && (state.u.bc_felt & BC_CHAIN))
         state.level.at(chain.ox, chain.oy).remembered_glyph = rememberedGlyph(state.u.cglyph);
     maybe_unhide_at(chain.ox, chain.oy, state);
     newsym(chain.ox, chain.oy, state);
@@ -445,7 +442,7 @@ export function move_bc(before, control, ballx, bally, chainx, chainy, state = g
     const chain = state.uchain;
     if (!ball || !chain) return;
 
-    if (blind(state)) {
+    if (Blind(state.u)) {
         if (!before) {
             if ((control & BC_CHAIN) && (control & BC_BALL)) {
                 if (state.u.bc_felt & BC_BALL)
@@ -719,7 +716,7 @@ async function dragBallTail(
     if (chainInWater || (chainTrap && (is_pit(chainTrap.ttyp)
         || is_hole(chainTrap.ttyp)))) {
         if (Levitation(state)) {
-            await ttyPline('You feel a tug from the iron ball.', state);
+            await ttyPline(youFeel('a tug from the iron ball.', state), state);
             if (chainTrap) chainTrap.tseen = true;
         } else {
             await ttyPline('You are jerked back by the iron ball!', state);
@@ -787,7 +784,7 @@ async function dragBallTail(
 // it, then refreshes the old square and runs arrival effects.
 export async function drop_ball(x, y, state = game) {
     const { u } = state;
-    if (heroIsBlind(state)) {
+    if (Blind(state.u)) {
         u.bc_order = bc_order(state);
         u.bglyph = u.bc_order ? u.cglyph : memoryGlyph(x, y, state);
     }
@@ -851,7 +848,7 @@ export async function drop_ball(x, y, state = game) {
     }
     state.vision_full_recalc = 1;
 
-    if (heroIsBlind(state)) {
+    if (Blind(state.u)) {
         if (u.bc_felt & BC_CHAIN) {
             state.level.at(state.uchain.ox, state.uchain.oy).remembered_glyph =
                 rememberedGlyph(u.cglyph);
@@ -860,7 +857,7 @@ export async function drop_ball(x, y, state = game) {
         u.cglyph = u.bc_order ? u.bglyph : memoryGlyph(u.ux, u.uy, state);
     }
     movobj(state.uchain, u.ux, u.uy, state);
-    if (heroIsBlind(state)) u.bc_order = bc_order(state);
+    if (Blind(state.u)) u.bc_order = bc_order(state);
     newsym(u.ux0, u.uy0, state);
     if (u.ux0 !== u.ux || u.uy0 !== u.uy)
         await spoteffects(true, state);
