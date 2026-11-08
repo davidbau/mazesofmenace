@@ -2173,7 +2173,13 @@ export async function m_move(mtmp, after) {
             } else if (_tt) {
                 await mintrap(mtmp, 0);
             }
+            if (mtmp.mstate | 0)
+                return MMOVE_DONE_MV; /* C postmov:1515. */
         }
+        /* C postmov (monmove.c:1514-1515): mnexto can send an
+         * overcrowded tengu into limbo; stop before redrawing its new cell. */
+        if (mtmp.mstate | 0)
+            return MMOVE_DONE_MV;
         newsym(mtmp.mx | 0, mtmp.my | 0);
         /* C monmove.c:1847 — `return postmov(..., MMOVE_MOVED, ...)`. */
         return postmov(mtmp, MMOVE_MOVED_MV);

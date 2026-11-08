@@ -1,4 +1,5 @@
 import { pline_The, verbalize } from './pline.js';
+import { monstseesu, monstunseesu } from './mondata.js';
 import { pline_mon } from './pline.js';
 import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
@@ -276,51 +277,7 @@ export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
 }
 /* Preserve mcastu's historical public API while sharing display.c's body. */
 export { shieldeff };
-/* C mondata.c:1557-1568 monstseesu(seenres) — every monster that can SEE the
- * hero records that the hero resisted this damage type (m_setseenres), so it
- * stops choosing that attack.  RNG-free.
- * NOTE the m_canseeu() guard: it is in C for BOTH functions.  js/potion.js:2745
- * carries a monstseesu WITHOUT it (a separate defect, file-local there). */
-export function monstseesu(seenres) {
-    if (!seenres || game.u.uswallow)
-        return;
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1)
-            continue; /* DEADMONSTER */
-        if (!m_canseeu_mc(mtmp))
-            continue;
-        mtmp.seen_resistance = (mtmp.seen_resistance | 0) | seenres;
-    }
-}
-/* C mondata.c:1571-1582 monstunseesu(seenres) — the mirror; monsters in line of
- * sight FORGET the hero's resistance. */
-export function monstunseesu(seenres) {
-    if (!seenres || game.u.uswallow)
-        return;
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1)
-            continue; /* DEADMONSTER */
-        if (!m_canseeu_mc(mtmp))
-            continue;
-        mtmp.seen_resistance = (mtmp.seen_resistance | 0) & ~seenres;
-    }
-}
-/* C vision.h:50-53 m_canseeu(m) —
- *   (!Invis || perceives(m->data)) && !Underwater && couldsee(m->mx, m->my)
- * The FOURTH copy of this body in js/ (js/mhitm.js:176, js/dochug.js:68,
- * js/priest.js:540 hold the others, and js/mhitu.js:199 holds an always-false
- * STUB of it).  Copied rather than imported to avoid adding a module cycle;
- * consolidating the five is fleet-feedback work, not this target's. */
-function m_canseeu_mc(mtmp) {
-    const u = game.u;
-    if (!u)
-        return false;
-    const Invis_ = Invis();
-    const ptr = mtmp.data || permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
-    const perceives = !!(((ptr && ptr.mflags1) || 0) & M1_SEE_INVIS_MC);
-    return (!Invis_ || perceives) && !u.uinwater
-        && !!couldsee(mtmp.mx | 0, mtmp.my | 0);
-}
+export { monstseesu, monstunseesu };
 const M1_SEE_INVIS_MC = 0x01000000;   /* monflag.h */
 const M_SEEN_MAGR_MC = 0x0001;        /* monst.h:76 */
 const HEAD_MC = 8;                    /* hack.h body-part index (js/cmd.js:35893) */

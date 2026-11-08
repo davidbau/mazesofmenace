@@ -2612,10 +2612,6 @@ export async function impact_arti_light(obj, worsen, seeit) {
     await _H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, 'glow') : '');
     await dealloc_obj(otmp);
 }
-function _Yobjnam2_glow(obj) {
-    return `Your ${_simpleoname(obj)} glows`;
-}
-
 /* C ref: potion.c:2419 dip_potion_explosion — does the dipped potion explode? */
 async function _dip_potion_explosion(obj, dmg) {
     const u = game.u;

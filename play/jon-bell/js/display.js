@@ -5567,7 +5567,9 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
 function _status_hp_temp_rule(cur, max) {
     const h = game._blTemp?.hitpoints;
     if (!h || _status_hp_crit_rule_active(cur, max)) return null;
-    if (h.rule) return h.time && !game.multi && h.time < (game.moves | 0) ? null : h.rule;
+    /* botl.c:1578 uses the move count latched by status_eval_next_unhilite,
+     * which can still precede svm.moves during unmul()'s message flush. */
+    if (h.rule) return h.time && !game.multi && h.time < (game.bl_hilite_moves | 0) ? null : h.rule;
     return h.expired && (game.moves | 0) <= h.expired.time ? h.expired.rule : null;
 }
 /* C botl.c:2364-2560 get_hilite() + tty_putstatusfield: persistent
@@ -5712,6 +5714,21 @@ export function _hilite_status_wrap(row) {
 }
 function _statusLine1() { return _hilite_status_wrap(_statusLine1Raw()); }
 function _statusLine2() { return _hilite_status_wrap(_statusLine2Raw()); }
+/* wintty.c:5032 render_status() writes only fields marked redraw.  After a
+ * partial paint, opening a corner menu (wintty.c:1427-1440) leaves the blank
+ * prefix and first status row untouched, just like an ordinary map flush. */
+function _status_partial_row(row, line) {
+    const from = game._statusPartialFrom;
+    if (from == null || _threeStatusLines()) return line;
+    if (row === 1) return '';
+    let vis = 0, tail = '';
+    for (const tk of String(line).match(/\x1b\[[0-9;]*[A-Za-z]|[^\x1b]/g) || []) {
+        if (vis >= from) tail += tk;
+        else if (!tk.startsWith('\x1b[')) vis++;
+        else if (tk.endsWith('C')) vis += parseInt(tk.slice(2), 10) || 1;
+    }
+    return ' '.repeat(from) + tail;
+}
 /* C botl.c:259-270: HP -1 suppresses painting, leaving the previous status
  * on the terminal. done() can then zero HP without another paint (end.c:1073).
  * Menu overlays must keep those same rows, including their frozen fields.
@@ -5728,12 +5745,13 @@ export function botl_frozen_status_line(row) {
         const _held = game._botlPaintHeld;
         if (_pendingBotl) game._botlPaintHeld = true;
         try {
-            return _status_sgr(row === 1 ? _statusLine1() : _statusLine2());
+            return _status_sgr(_status_partial_row(row, row === 1 ? _statusLine1() : _statusLine2()));
         } finally {
             if (_pendingBotl) game._botlPaintHeld = _held;
         }
     }
-    return null;
+    return game._statusPartialFrom != null && !_threeStatusLines()
+        ? _status_sgr(_status_partial_row(row, row === 1 ? _statusLine1() : _statusLine2())) : null;
 }
 function _statusLine1Raw() {
     const u = game.u;
@@ -6689,9 +6707,27 @@ function _status_temp_hilites(row, cells) {
     for (const [fname, re, span, valOf] of fields) {
         const m = re.exec(row);
         if (!m) continue;
+        /* wintty.c:4513-4543: HP text and the bar retain the same delivered
+         * colour on a held page, even if a later bot() expires its rule. */
+        const hpPaint = fname === 'hitpoints' && game._inMovemonMore
+            && game._paintedSnapshot?.botl;
+        if (hpPaint && Object.hasOwn(hpPaint, 'hpTempRule')) {
+            const shown = hpPaint.hpTempRule;
+            if (shown) {
+                const [st, len] = span(m);
+                for (let c = st; c < st + len; c++) cells.set(c, shown);
+            }
+            continue;
+        }
         const val = valOf ? valOf(m) : +m[1];
         const pc = fname === 'experience' ? _status_exp_percentage(row) : 0;
-        const h = hist[fname] ||= { val, percent: pc, rule: null, time: 0 };
+        /* botl.c:1597-1614, wintty.c:5248: a deferred page retains the
+         * attributes delivered at its own paint.  Comparing that page's old
+         * attribute values with a later bot() invents a reverse change. */
+        const attrHistory = game._inMovemonMore
+            ? game._paintedSnapshot?.botl?.attrHilites?.[fname] : null;
+        const h = attrHistory ? { ...attrHistory }
+            : (hist[fname] ||= { val, percent: pc, rule: null, time: 0 });
         // BL_EXP was evaluated at bot(); rendering a held row is not a paint.
         const botField = _STATUS_BOT_FIELD_NAMES.has(fname);
         /* A frozen row (a --More-- frame holding the pline-time paint, its T:
@@ -6734,7 +6770,14 @@ function _status_temp_hilites(row, cells) {
             h.val = val;
         }
         h.lastPaintMoves = game.moves | 0;
-        if (h.rule && h.time && !game.multi && h.time < (game.moves | 0)) {
+        /* C botl.c:1577-1582: bot()-evaluated fields expire against the
+         * count latched by status_eval_next_unhilite().  unmul() can flush
+         * a message after moves advances but before that eval runs.
+         * Fields first evaluated at a read boundary use the completed
+         * paint's live count (the driver's eval can lag that read).
+         * A stale row still carries its old highlight below. */
+        const hiliteMoves = botField ? (game.bl_hilite_moves | 0) : (game.moves | 0);
+        if (h.rule && h.time && !game.multi && h.time < hiliteMoves) {
             h.expired = { rule: h.rule, time: h.time };
             h.rule = null; h.time = 0; h.chg = true;
         }
@@ -7051,7 +7094,9 @@ export function _statusRows3(pinnedRow) {
      * and version placement after indenting the condition field. */
     const front = `${p.desc}${p.time}`;
     if (p.conds) {
-        const x = front.length + 1, hungerX = row2.length - p.hunger.length + 1;
+        /* wintty.c:5048-5056 uses field columns, excluding SGR colours. */
+        const x = _status_plain_len(front) + 1;
+        const hungerX = _status_plain_len(row2.slice(0, row2.length - p.hunger.length)) + 1;
         const start = x < hungerX && hungerX + p.conds.length < 79
             ? hungerX : x + p.conds.length < 79 ? 80 - p.conds.length : x;
         if (start > x)
@@ -7096,7 +7141,9 @@ function _statusRow3(p, row1, row2, extras) {
         let x = f.x;
         if (f.redraw) {
             if (f.id === 'conditions' && f.text) {
-                const hungerX = row2.length - p.hunger.length;
+                /* wintty.c:5048-5056: the hunger field's column is a screen
+                 * position, independent of alignment's colour escapes. */
+                const hungerX = _status_plain_len(row2.slice(0, row2.length - p.hunger.length));
                 const start = x < hungerX && hungerX + f.text.length < 78
                     ? hungerX : x + f.text.length < 78 ? 80 - f.text.length - 1 : x;
                 if (start > x) { put(x, ' '.repeat(start - x)); x = start; }
@@ -8137,15 +8184,15 @@ function _buildScreenOutput() {
      * the fields from HP onward (wintty.c render_status `redraw`). */
     if (game._statusPartialFrom != null && !_rows3 && !_blankStatus
         && !_promptStatusRows && !_tutorialStatusOverride) {
-        let vis = 0, tail = '';
-        for (const tk of String(_status2).match(/\x1b\[[0-9;]*[A-Za-z]|[^\x1b]/g) || []) {
-            if (vis >= game._statusPartialFrom) tail += tk;
-            else if (!tk.startsWith('\x1b[')) vis++;
-            else if (tk.endsWith('C')) vis += parseInt(tk.slice(2), 10) || 1;
-        }
-        _status1 = '';
-        _status2 = ' '.repeat(game._statusPartialFrom) + tail;
+        _status1 = _status_partial_row(1, _status1);
+        _status2 = _status_partial_row(2, _status2);
     }
+    /* do.c:1510 tutorial(TRUE) leaves the stashed hero's status on the
+     * terminal: a held --More-- page still shows the departure map's y=20 tail
+     * past the text, because render_status cl_end()s only when finalx shrank
+     * (wintty.c:5251-5255). */
+    const _tutRow1Tail = _rows3 && !_promptStatusRows && !_blankStatus
+        && !!_tutorialStatusOverride && game._inMovemonMore && !!game._paintedSnapshot;
     const _statusOut = (r) => (_promptStatusRows ? r : _status_sgr(r));
     const _r1MapPrint = _rows3 && game.level
         && (!_promptStatusRows || _promptStatusRows.every((r) => r === ''))
@@ -8155,6 +8202,7 @@ function _buildScreenOutput() {
                : _row1Live && _r1Physical !== undefined ? _r1Physical
                : _row1Live && !_r1Whole ? _status_row1_map_overlay(_status1)
                : _row1Live ? _status_row1_whole_with_tail(_status1)
+               : _tutRow1Tail ? _status_row1_whole_with_tail(_status1)
                : _statusOut(_status1)) + '\n';
     /* wintty.c:5260 finalx[row][BEFORE] is only advanced by render_status,
      * i.e. by a bot() paint; a flush that ran no bot() leaves it alone. */
@@ -9012,6 +9060,9 @@ function _capture_botl(paint = false) {
          * shows the row as of its own flush, not a later paint's. */
         row3: game._st3?.row,
         statusFit: paint ? new Map() : game._lastPaintedBotl?.statusFit,
+        attrHilites: Object.fromEntries(['strength', 'dexterity', 'constitution',
+            'intelligence', 'wisdom', 'charisma'].filter(f => game._blTemp?.[f])
+            .map(f => [f, { ...game._blTemp[f] }])),
         terrainText: hpPaint?.terrainText ?? _terrain_status_text(paint,
             !!((_d?.botl | 0) || (_d?.botlx | 0))),
         /* attrib.c:1329-1337 flags status before changing alignment; keep
@@ -10141,13 +10192,16 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
                 (m) => m && pages[i].length > m.length + 2 && pages[i].endsWith('  ' + m));
             if (um) {
                 const prefix = pages[i].slice(0, pages[i].length - um.length - 2);
-                const tail = um + '  ' + pages[i + 1];
+                /* wintty.c:2277-2281 clears the entire message window.
+                 * Recompute every remaining join from that fresh urgent
+                 * message; old page boundaries no longer measure its line. */
                 const tailStart = consumed + prefix.length + 2;
+                const tail = full.slice(tailStart);
                 const tailJoins = joins.filter(j => j >= tailStart && j < tailStart + tail.length)
                     .map(j => j - tailStart);
                 const tailPages = _topl_more_pages(tail, tailJoins);
                 if (tailPages[0] !== um)
-                    pages.splice(i, 2, prefix, ...tailPages);
+                    pages.splice(i, pages.length - i, prefix, ...tailPages);
             }
         }
         /* topl.c:300: when the display_nhwindow(WIN_MESSAGE) that raised these
@@ -11904,6 +11958,9 @@ export function status_r1_menu_docrt() {
     game._r1docrtLvl = game.level;
 }
 export function status_reassess() {
+    /* botl.c:1718: update_all survives a bot() suppressed by u.uhp == -1;
+     * only evaluate_and_notify_windowport() clears it (botl.c:1679). */
+    game._statusUpdateAll = true;
     delete game._statusFieldColors; // C botl.c:1719 update_all = TRUE
     /* botl.c:1574-1576: the next bot() runs with update_all, so every field
      * gets chg 0 and time 0 -- the up/down/changed temp hilites are dropped
@@ -14838,10 +14895,6 @@ export function recorder_localtime(t) {
              tm_wday: d.getUTCDay() };
 }
 
-/* C calendar.c:120-175 and patch 001: mktime() retains tm_isdst from the
- * recording moment's localtime(now), not from the date being parsed.
- * Restore (restore.c:617) uses the same parser as getnow(), so retain the
- * established UTC-4 recording offset used by calendar.js:getnow(). */
 export function recorder_time_from_yyyymmddhhmmss(buf) {
     if (typeof buf !== 'string' || buf.length !== 14)
         return 0;
@@ -14849,14 +14902,15 @@ export function recorder_time_from_yyyymmddhhmmss(buf) {
     const y = number(0, 4), m = number(4, 6) - 1, day = number(6, 8);
     const h = number(8, 10), min = number(10, 12), s = number(12, 14);
     const utcApprox = Date.UTC(y, m, day, h, min, s) / 1000;
-    for (const offset of [-4, -5]) {
-        const t = utcApprox - offset * 3600;
-        const lt = recorder_localtime(t);
-        if (lt && lt.tm_year + 1900 === y && lt.tm_mon === m && lt.tm_mday === day &&
-            lt.tm_hour === h && lt.tm_min === min && lt.tm_sec === s) {
-            return t;
-        }
-    }
+    // C calendar.c:158-169 (patch 001) copies the recording moment's
+    // tm_isdst into mktime(), even for a saved winter date. Do not infer
+    // DST from buf: save.c:288 / restore.c:617 can shift the birthday.
+    // calendar.c:157-166 (patch 001): mktime inherits the recording moment's
+    // tm_isdst=1, even when restore.c:617 parses a winter birthday saved by
+    // save.c:288.  Do not infer DST from the date in the save file.
+    // C patch 001 keeps localtime(now)'s tm_isdst in t before mktime().
+    // Do not infer DST from the saved date: winter birthdays (restore.c:617)
+    // are parsed with the same recording offset as getnow().
     const result = utcApprox - (-4 * 3600);
     return Number.isFinite(result) && result !== -1 ? result : 0;
 }

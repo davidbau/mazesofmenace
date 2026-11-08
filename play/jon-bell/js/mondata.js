@@ -21,12 +21,11 @@ import { rn2, rnd } from './rng.js';
 import './trap.js';
 import { is_were } from './were.js';
 import { clear_path } from './vision.js';
-import { monstseesu as monstseesu_real } from './mcastu.js'; // relocate-fns
+import { m_canseeu } from './dochug.js';
 import { PM_YELLOW_DRAGON } from './pm.generated.js';
 import { PM_HORSE, PM_PONY, PM_ROCK_MOLE, PM_WARHORSE, PM_WOODCHUCK } from './pm.generated.js'; // relocate-fns
 import { ALL_TRAPS, NO_TRAP } from './const.js'; // relocate-fns
 import { mon_knows_traps as mon_knows_traps_real } from './makemon.js'; // relocate-fns
-import { sticks as sticks_real } from './dog.js'; // relocate-fns
 
 /* ---------------------------------------------------------------------------
  * MONSYM class ordinals (permonst.mlet) — C ref: nethack-c/include/defsym.h
@@ -1844,15 +1843,31 @@ export function cantvomit(ptr) {
     return pmidx === PM_PONY || pmidx === PM_HORSE || pmidx === PM_WARHORSE;
 }
 
-/* C ref: mondata.c:1552-1568 monstseesu(seenres) — every monster that can see
- * the hero records that the hero RESISTED this damage type, so it stops
- * choosing that attack.  RNG-free; the mirror of js/mhitm.js's exported
- * monstunseesu(), which clears the same bit on the same monster set.  Was a
- * throwing stub here, shadowing nothing (C has one body; js/muse.js:441 carries
- * the same transcription file-locally) — drinksink's scalding-water arm
- * (fountain.c:617) is a live caller, so give it the real body. */
+/* C mondata.c:1556-1568 monstseesu(seenres) — monsters in line of sight
+ * remember the hero resisting effect M_SEEN_foo.  RNG-free.  The one body;
+ * js/mcastu.js re-exports it. */
 export function monstseesu(seenres) {
-    return monstseesu_real(seenres);
+    if (!seenres || game.u.uswallow)
+        return;
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if ((mtmp.mhp | 0) < 1)
+            continue; /* DEADMONSTER */
+        if (m_canseeu(mtmp))
+            mtmp.seen_resistance = (mtmp.seen_resistance | 0) | seenres; /* m_setseenres */
+    }
+}
+
+/* C mondata.c:1571-1582 monstunseesu(seenres) — the mirror; monsters in line of
+ * sight FORGET the hero's resistance.  RNG-free.  The one body. */
+export function monstunseesu(seenres) {
+    if (!seenres || game.u.uswallow)
+        return;
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if ((mtmp.mhp | 0) < 1)
+            continue; /* DEADMONSTER */
+        if (m_canseeu(mtmp))
+            mtmp.seen_resistance = (mtmp.seen_resistance | 0) & ~seenres; /* m_clearseenres */
+    }
 }
 
 /* C ref: mondata.c:1617 mon_knows_traps — has mtmp seen this trap type? */
@@ -1870,7 +1885,12 @@ export function mon_learns_traps(mtmp, ttyp) {
         mtmp.mtrapseen = (mtmp.mtrapseen | 0) | (1 << (ttyp - 1));
 }
 
-/* C ref: mondata.h sticks(ptr) — the hero's form can hold a monster.  Read only
- * as the second half of `u.ustuck && !sticks(...)`, and u.ustuck is null for
- * every turn of the guard escort. */
-export function sticks(ptr) { return sticks_real(ptr); }
+const AD_STCK = 19, AD_WRAP = 28; /* C monattk.h:61,70 */
+
+/* C ref: nethack-c-v5/upstream/src/mondata.c:652-660
+ * creature sticks other creatures it hits */
+export function sticks(ptr) {
+    return Boolean(dmgtype(ptr, AD_STCK)
+                   || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
+                   || attacktype(ptr, AT_HUGS));
+}

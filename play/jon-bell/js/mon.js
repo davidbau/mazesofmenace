@@ -63,7 +63,7 @@ import { rloco as steal_rloco, thiefdead } from './steal.js';
 import { place_monster, poly_steed } from './steed.js';
 import { minimal_monnam } from './do_name.js';
 import { Mgender, mon_pmname, pmname } from './do_name.js';
-import { MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, NEUTRAL, W_SADDLE, has_edog, has_egd, has_emin, has_epri, has_eshk } from './const.js';
+import { MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, NEUTRAL, W_SADDLE, has_edog, has_egd, has_emin, has_epri, has_eshk, has_mgivenname } from './const.js';
 import { deal_with_overcrowding, enexto_out, rloc, rloc_to, tele_restrict, vamprises } from './teleport.js';
 import { obj_stop_timers, stop_timer } from './timeout.js';
 import { tt_doppel } from './topten.js';
@@ -486,6 +486,9 @@ const _MUMMY_ZOMBIE_MNDX = new Set([
  * consumed regardless — bug-for-bug faithful, see this function's header. */
 async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags, mtmp = null) {
     const otmp = await mksobj(CORPSE, true, false);
+    /* C mkobj.c:2083: mksobj_at places the random corpse before the species
+     * override and timer restart below, including its initial ice checks. */
+    place_object(otmp, x | 0, y | 0);
     /* C mkobj.c:2101 mkcorpstat — `otmp->spe = (corpstatflags & CORPSTAT_SPE_VAL)`.
      * RNG-free, but it is the corpse's recorded gender and make_corpse's caller
      * cannot set it any other way. */
@@ -507,7 +510,6 @@ async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags, mtmp = null) {
         obj_stop_timers(otmp); /* C mkobj.c:2111-2114: drop the random species' timer */
         start_corpse_timeout(otmp);
     }
-    place_object(otmp, x | 0, y | 0);
     return otmp;
 }
 
@@ -2697,7 +2699,7 @@ export async function newcham(mtmp, mdat, ncflags) {
      * so the later newsym/noname_monnam sequence starts at the same display
      * draw as C. */
     const l_oldname = x_monnam(mtmp, ARTICLE_THE, null,
-        mtmp.mextra?.mgivenname ? SUPPRESS_SADDLE : 0, false);
+        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
 
     /* mdat = 0 -> caller wants a random monster shape */
     if (newmndx === NON_PM) {

@@ -2,6 +2,7 @@
 // Kept dependency-light so death, equipment, combat, and command callers can
 // share it without routing input through cmd.js/end.js cycles.
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline_flush_point, force_more, force_more_lone_frame, topl_park_cursor, _topline_more_pending, restore_occupation_topline, putmsghistory, restore_command_topline } from './display.js';
 import { yn_function_menu } from './cmd.js';
@@ -81,6 +82,14 @@ async function read_yn(prompt, acceptQ) {
     const g = game;
     restore_command_topline();
     const choices = acceptQ ? 'ynq' : 'yn';
+    /* C cmd.c:5513-5516 yn_function: for the fuzzer, usually force a valid
+     * response (rn2(20) then rn2(len)); the rare 1-in-20 falls to the
+     * windowport.  ESC is not in ynchars/ynqchars so no re-pick applies. */
+    if (g.iflags?.debug_fuzzer && rn2(20)) {
+        const res = choices[rn2(choices.length)];
+        (g.program_state ||= {}).input_state = 0; // otherInp
+        return res;
+    }
     // C cmd.c:5640-5645 calls yn_function, whose query_menu route precedes tty input.
     const menuAnswer = await yn_function_menu(prompt, choices, 'n');
     if (menuAnswer !== null) return menuAnswer;

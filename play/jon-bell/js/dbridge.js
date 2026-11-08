@@ -1,6 +1,5 @@
 // dbridge.js — C ref: dbridge.c.
 import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, IS_DRAWBRIDGE, IS_WALL, IS_WATERWALL, Is_juiblex_level as Is_juiblex_level_real, LAVAPOOL, LAVAWALL, MOAT, POOL, STONE, WATER, W_NONDIGGABLE, isok } from './const.js';
-import { is_ice as is_ice_real } from './engrave.js';
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 
@@ -33,11 +32,16 @@ export function is_moat(x, y) {
     return false;
 }
 
-/* C ref: dbridge.c:84-95 is_ice(x,y) — ICE, or DRAWBRIDGE_UP over DB_ICE.
- * Same host module and shape as is_moat above; needed by really_kick_object's
- * slide check (dokick.c:588). */
+/* C ref: dbridge.c:85-98 is_ice(x,y). */
 export function is_ice(x, y) {
-    return is_ice_real(x, y);
+    if (!isok(x, y))
+        return false;
+    const loc = game.level.at(x, y);
+    const ltyp = loc.typ;
+    if (ltyp === ICE || (ltyp === DRAWBRIDGE_UP
+                        && (loc.drawbridgemask & DB_UNDER) === DB_ICE))
+        return true;
+    return false;
 }
 
 /* C ref: dbridge.c:169-173 is_db_wall(x, y) — verify drawbridge wall is UP.

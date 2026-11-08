@@ -41,7 +41,7 @@ import { destroy_drawbridge } from './dig.js';
 import { nomul, stop_occupation } from './allmain.js';
 import { monstunseesu, seemimic } from './mhitm.js';
 import { resists_magm } from './mondata.js';
-import { monstseesu as monstseesu_real } from './mcastu.js';
+import { monstseesu } from './mondata.js';
 import { discover_object } from './o_init.js';
 import { QBUFSZ, BZ_OFS_AD, BOLT_LIM, M_AP_NOTHING, ANTIMAGIC, HALF_SPDAM, isok, IS_DOOR, SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE, POOL, OBJ_FLOOR, KILLED_BY_AN, TELL, TEMPLE, RLOC_MSG, NOTELL } from './const.js';
 import { doorlock } from './lock.js';
@@ -607,13 +607,6 @@ const se_zap = 'se_zap';
 function Soundeffect(seid, vol) { /* sndprocs.h:272 no-op without USER_SOUNDS */ }
 
 
-/* C ref: mondata.c:1552-1568 monstseesu(seenres) — every monster that can see
- * the hero records that the hero RESISTED this damage type, so it stops
- * choosing that attack.  RNG-free; mirrors js/mhitm.js's ported
- * monstunseesu(), which clears the same bit on the same monster set. */
-function monstseesu(seenres) {
-    return monstseesu_real(seenres);
-}
 
 /* C muse.c:2797 mon_reflects / muse.c:2836 ureflects — ONE body each
  * (js/zap.js _mon_reflects_zap, js/makemon.js ureflects), re-exported. */

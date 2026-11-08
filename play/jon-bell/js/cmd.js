@@ -220,7 +220,7 @@ import { remdun_mapseen, mapseen_notreachable, recalc_mapseen_reachability } fro
  * body in js/sit.js (special_throne_effect case 8), never at module-eval
  * time, so ESM's live-binding semantics resolve it regardless of load order. */
 import { throne_sit_effect as throne_sit_effect_real, attrcurse, rndcurse } from './sit.js';
-import { is_ice as is_ice_real } from './engrave.js';
+import { is_ice, is_ice as _is_ice } from './dbridge.js';
 import { dryup as dryup_real } from './fountain.js';
 import { initedog as initedog_cu } from './dog.js';
 const MM_EDOG_CU = 0x00000800;
@@ -1279,6 +1279,16 @@ async function tty_get_ext_cmd_inner() {
             const expanded = extcmd_autocomplete(buf);
             if (expanded !== null)
                 buf = expanded;
+        }
+        /* C ref: win/tty/getline.c:196-202 `else if (c == kill_char || c == '\177')`
+         * (tested last): the pty's VKILL is ^U, so it erases the whole line,
+         * autocompleted tail included, and prompting continues.  Without it a
+         * fuzzer-typed `...^UU` kept the stale prefix instead of autocompleting
+         * "U" to #untrap (rn2(20) @ getdir(cmd.c:3996) follows in C). */
+        else if (keyCode === 21) {
+            buf = '';
+            typed = 0;
+            literalPrefix = '';
         }
         g._pending_message = '# ' + literalPrefix + buf.slice(typed);
         /* The per-character echo.  C does this with putsyms() (getline.c:107,
@@ -8964,7 +8974,7 @@ export async function doprev_message(liveTopline) {
     let reversed = _pmw === 'r' ? _recent.slice().reverse() : _recent;
     /* topl.c:178-189 + do.c:1379: a checkpoint's remember_topl() leaves a copy of
      * gt.toplines in the maxrow slot, which the full window (topl.c:34-38) lists first. */
-    if (_pmw === 'f' && g._ckptToplSlot && _recent.length
+    if (_pmw === 'f' && g._ckptToplSlot && !_noLiveTopl && _recent.length
         && String(_recent[_recent.length - 1] || '').replace(/\s+/g, ' ').trim()
             === g._ckptToplSlot.replace(/\s+/g, ' ').trim())
         reversed = [g._ckptToplSlot, ...(history.length > _ring ? _recent.slice(1) : _recent)];
@@ -11634,6 +11644,10 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
         if (invmenuFirst && !oneloop) {
             g._topl_suppress_history = _sh;
             oneloop = true;
+            /* topl.c:274: earlier plines already blocked on overflow before
+             * invent.c:1927 putmsghistory retires the final standing line.
+             * Drain those deferred pages before the history write clears them. */
+            if (_topline_more_pending()) await flush_screen(1);
             /* invent.c:1922-1927 — force_invmenu files the bare qbuf once */
             if (!msggiven) putmsghistory(`What do you want to ${word}?`, false);
             msggiven = true;
@@ -18517,6 +18531,14 @@ async function _weapon_prinv_line(obj, wornMsg) {
         : bp + text.slice(0, 175 - bp.length - (f ? 1 : 0)));
     const quan = (obj.quan == null) ? 1 : (obj.quan | 0);
     let bp = cat((quan !== 1 && !fruitName) ? makeplural_objnam(name) : name, charge, !eggLaid);
+    /* C objnam.c:1549-1559 — the wizmgender suffix precedes the worn phrase. */
+    if (((obj.otyp | 0) === 265 /* CORPSE */ || (obj.otyp | 0) === 476 /* STATUE */
+         || (obj.otyp | 0) === 241 /* FIGURINE */)
+        && game.flags?.debug && game.iflags?.wizmgender) {
+        const cg = spe & 3; /* CORPSTAT_GENDER */
+        bp = cat(bp, ` (${cg === 0 ? 'unspecified gender' : cg === 2 ? 'male'
+            : cg === 1 ? 'female' : 'neuter'})`, true);
+    }
     bp = cat(bp, wornMsg ? ` ${wornMsg}` : '', wornMsg !== '(wielded)');
     bp = _doname_weight(obj, cat(bp, unpaidSfx, true), false);
     if (quan !== 1)
@@ -18557,6 +18579,8 @@ function _oc_charged_prinv(obj) {
 // Sets _screen_output with updated row 0, cursor at col (msg+.--More--).length-1, row 0.
 async function _topline_more(msg) {
     const g = game;
+    /* C win/tty/topl.c:209-210: more() skips both paint and input while fuzzing. */
+    if (g.iflags?.debug_fuzzer) return 0;
     /* C ref: topl.c more() — when the line leaves no room for "--More--" on its
      * row (strlen + 8 > CO-1), more() parks it on the next row (cw->curx > CO-8
      * -> tty_curs(1, cury+1)); the splice below would instead wrap the text. */
@@ -20857,7 +20881,7 @@ async function display_nhwindow(win, _blocking) {
     }
     if (offx > 0) {
         docorner_blank_utf8_captures(offx, lines.length + 1);
-        docorner_status_rows(offx + 1, lines.length + 1);
+        docorner_status_rows(offx, lines.length + 1);
         /* wintty.c:3711-3716 docorner(): a corner reaching the status rows
          * "wrecked the bottom line", so botlx is set and bot() repaints. */
         if (lines.length + 1 >= (_threeStatusLines() ? 21 : 22)) {
@@ -22944,11 +22968,6 @@ function _defsym_expl(name) { return DEFSYM_EXPLANATION[_DEFSYM_EXPL_IDX[name]] 
 function _is_lava(x, y) { return flooreffects_is_lava(x, y); }
 function _likes_lava() { return pooleffects_likes_lava(game.u?.umonnum | 0); }
 function _Fire_resistance() { return pooleffects_Fire_resistance(); }
-/* was `return false` — a file-local stub shadowing the real port; same class
- * as the money_cnt/hliquid re-points above.  Real body: js/engrave.js:81
- * is_ice(x,y) (C: mkobj.c surface() family — `levl[x][y].typ === ICE`), sync,
- * no RNG. */
-function _is_ice(x, y) { return is_ice_real(x, y); }
 function _Cold_resistance() {
     if (_uprop_active('COLD_RES')) return true;
     const row = monsPack.mons[game.u?.umonnum | 0];
@@ -27566,13 +27585,25 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         } else {
             /* C: clear_nhwindow(WIN_MESSAGE); pline("Saving..."); */
             await pline('Saving...');
-            (game._msg_history ||= []).push('Saving...'); /* topl.c remember_topl(); dosave0 clears the topline */
+            /* No explicit history filing here: the standing "Saving..." topline
+             * is filed once by save.c:326 save_msghistory -> topl.c:572
+             * remember_topl() (js/save.js savegamestate). */
+            /* "Saving..." stays the standing topline; dosave0's
+             * save_msghistory() files it once (save.c:326 -> topl.c:572
+             * remember_topl(), js/save.js savegamestate). */
+            /* C save.c:326 -> topl.c:572 remembers the standing topline
+             * during save_msghistory(); savegamestate() handles it there. */
+            /* save.c:326 -> topl.c:572 snapshots the standing topline once;
+             * savegamestate() handles that history entry in dosave0(). */
+            /* save.c:326 -> topl.c:572 files the standing topline once;
+             * savegamestate() includes it in the saved history snapshot. */
             /* C save.c:55 `if (dosave0()) {` — write the save file, which is
              * what the NEXT segment's runSegment() restores from.  It goes
              * through input.storage (js/storage.js), so a segment that runs
              * with no storage handle takes C's `else docrt()` arm instead. */
             if (!await dosave0()) {
                 /* C save.c:67 — dosave0() failed; repaint and stay in play. */
+                (game._msg_history ||= []).push('Saving...'); /* docrt's next pline remember_topl()s it; on success the dosave0 snapshot files it once (save.js) */
                 await docrt();
             } else {
                 /* C save.c:57-65 — dosave0() succeeded. */
@@ -37936,7 +37967,40 @@ async function _tip_target_destination(box) {
             game._status1WholeNext = true;
             game._r1botAfterMap = game.level;
         } else {
+            /* C wintty.c:982,3684-3716: a corner menu restores gbuf via
+             * row_refresh, without docrt's vision/monster redraws (and
+             * their hallucination RNG draws). select_menu holds bot_disabled. */
             docorner_blank_utf8_captures(column - 1, lines.length + 1);
+            /* wintty.c:982,3684-3721: a corner menu uses docorner(),
+             * preserving rows outside its rectangle. Only reaching the
+             * status window requests botlx; select_menu keeps bot() disabled
+             * during dismissal (windows.c:1859-1863). */
+            docorner_status_rows(column - 1, lines.length + 1);
+            if (lines.length + 1 >= (_threeStatusLines() ? 21 : 22))
+            docorner_status_rows(column - 1, lines.length + 1);
+            if (game.disp && lines.length + 1 >= (_threeStatusLines() ? 21 : 22))
+                game.disp.botlx = 1;
+            /* C wintty.c:981-982: an offx > 0 menu closes with docorner(),
+             * which reprints gbuf without recomputing hallucinated glyphs. */
+            docorner_status_rows(column - 1, lines.length + 1);
+            if (lines.length + 1 >= (_threeStatusLines() ? 21 : 22)
+                && game.disp) game.disp.botlx = 1;
+            /* C wintty.c:979-980 erase_menu_or_text: a menu with offx != 0 is
+             * dismissed by docorner(offx, maxrow + 1, 0), a row_refresh from
+             * tty's own glyph buffer -- never docrt(), whose newsym of every
+             * monster would draw random_monster on the DISPLAY rng while
+             * hallucinating. */
+            const oldBotDisabled = game._bot_disabled;
+            game._bot_disabled = true;
+            try {
+                docorner_blank_utf8_captures(column - 1, lines.length + 1);
+                docorner_status_rows(column - 1, lines.length + 1);
+                /* wintty.c:3715-3719: BL_RESET stays pending under the
+                 * disabled bot(). */
+                if (lines.length + 1 >= (_threeStatusLines() ? 21 : 22))
+                    game.disp.botlx = 1;
+            } finally { game._bot_disabled = oldBotDisabled; }
+            return { cancelled, target };
             // C wintty.c:971-979 erase_menu_or_text: offx 0 dismisses via docrt
             // + flush_screen(1) inside windows.c:1859-1863's bot_disabled span;
             // the botlx bot() then rewrites status row 1 over map y=20.
@@ -37944,7 +38008,12 @@ async function _tip_target_destination(box) {
                 const oldBotDisabled = game._bot_disabled;
                 game._bot_disabled = true;
                 try {
-                    await docrt();
+                    /* offx != 0 dismisses via docorner() -> row_refresh
+                     * (wintty.c:982,3650), which never reaches docrt's
+                     * swallowed(1) and its DISP-stream swallow_to_glyph
+                     * draws (display.c:2439). */
+                    if (!(game.u?.uswallow | 0))
+                        await docrt();
                     await flush_screen(1);
                 } finally { game._bot_disabled = oldBotDisabled; }
                 status_r1_menu_docrt();
@@ -37954,7 +38023,14 @@ async function _tip_target_destination(box) {
                 if (game.disp) game.disp.botlx = 1;
                 return { cancelled, target };
             })();
+            /* C wintty.c:982,3684-3719: a corner menu restores only its
+             * covered rows; it requests status reset only if it reached them. */
+            docorner_status_rows(column - 1, lines.length + 1);
+            if (lines.length + 1 >= (_threeStatusLines() ? 21 : 22) && game.disp)
+                game.disp.botlx = 1;
         }
+        /* C wintty.c:982,3684-3709: a corner menu restores gbuf with
+         * docorner(), without docrt()'s vision and hallucination redraws. */
         docorner_blank_utf8_captures(column - 1, lines.length + 1);
         return { cancelled, target };
     };
@@ -42645,7 +42721,6 @@ export async function quest_chat(mtmp) {
         await chat_with_guardian();
         break;
     default:
-        await real_impossible(`quest_chat: Unknown quest character ${mon_nam(mtmp)}.`);
         await real_impossible("quest_chat: Unknown quest character %s.", mon_nam(mtmp));
     }
 }
@@ -43090,11 +43165,6 @@ export function dfeature_at(x, y, buf) {
  * (and NOT on the Juiblex level).  Also a `return false` constant until now,
  * which is why look_here()/dolook() on a pool tile never said "There is a pool
  * of water here." */
-/* C ref: dbridge.c:84-96 is_ice(x,y) —
- *   ltyp == ICE || (ltyp == DRAWBRIDGE_UP && (drawbridgemask & DB_UNDER) == DB_ICE) */
-function is_ice(x, y) {
-    return is_ice_real(x, y);
-}
 /* C pager.c:614-650 ice_descr().  Besides its text result this records the
  * ice-strength bucket in iflags.ice_rating for mention_decor. */
 export function ice_descr(x, y) {

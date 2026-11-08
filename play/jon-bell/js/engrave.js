@@ -15,7 +15,7 @@ import { rn1, rn2, rnd } from './rng.js';
 import { goodpos } from './trap.js';
 import { is_pool, is_pool_or_lava } from './look.js';
 import { Is_airlevel, Is_waterlevel, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok, COLNO, ROWNO, NO_MM_FLAGS } from './const.js';
-import { db_under_typ } from './dbridge.js';
+import { db_under_typ, is_ice } from './dbridge.js';
 import { impossible } from './pline.js';
 import { permonstTemplate, is_demon } from './makemon.js';
 import { PM_GHOUL, PM_AIR_ELEMENTAL } from './pm.generated.js';
@@ -138,15 +138,7 @@ function uHallu(u) {
 function body_part_fingertip() { return body_part(FINGERTIP); }
 function body_part_hand() { return 'hand'; }
 
-export function is_ice(x, y) {
-    if (!isok(x, y)) return false;
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false; /* C: !isok(x, y) -> FALSE */
-    const typ = loc.typ | 0;
-    return typ === ICE
-        || (typ === DRAWBRIDGE_UP
-            && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_ICE);
-}
+export { is_ice };
 
 /* C engrave.c:473. welded() also identifies the weapon's curse. */
 export function freehand() {

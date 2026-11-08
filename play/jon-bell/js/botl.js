@@ -385,7 +385,10 @@ export async function bot() {
          * plain BL_FLUSH over cls()-blanked rows: only HP, whose width
          * changed, and the fields after it on the row are redrawn
          * (wintty.c:5032 `redraw`); Dlvl/$ and the first row stay blank. */
-        const _hpAt = (game._botlResetLost && !game.disp.botlx && !_threeStatusLines()
+        /* A pending reassessment still pushes every field (botl.c:1584),
+         * whose dirty text is compared with the blank window data
+         * (wintty.c:4701-4736), even if bot() lost the BL_RESET at HP -1. */
+        const _hpAt = (game._botlResetLost && !game._statusUpdateAll && !game.disp.botlx && !_threeStatusLines()
                        && (game.u?.uhp | 0) === 0 && (game.u?.mh | 0) === 0 && game._statusBlankAfterDocrt)
             ? _statusLine2().replace(/\x1b\[[0-9;]*m/g, '').indexOf('HP:') : -1;
         if (_hpAt >= 0) game._statusPartialFrom = _hpAt;
@@ -396,6 +399,7 @@ export async function bot() {
         game._statusCornerClips = null; /* botlx's BL_RESET restores every field */
         game._getobj_menu_win = null; // the clipped status rows were repainted
         game._carryStatusClip = null;
+        game._statusUpdateAll = false; // botl.c:1679, after the enabled paint
     }
     // C ref: botl.c:277 — bot() resets disp flags after rendering
     if (game && game.disp) {

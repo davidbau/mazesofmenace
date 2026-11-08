@@ -44,7 +44,7 @@ import monKbMsizePack from './makemon_msize.json' with { type: 'json' };
 import monKbMattkPack from './makemon_mattk.json' with { type: 'json' };
 import monKbMonsPack from './makemon_mons.json' with { type: 'json' };
 import { rn2, rn1, rnd, d, pushRngLogEntry } from './rng.js';
-import { newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
+import { newsym, mon_visible as mon_visible_disp, canspotmon as canspotmon_disp, map_invisible, glyph_is_invisible_at, tmp_at, obj_to_glyph, DISP_END, DISP_FLASH, DISP_TETHER, DISP_FREEMEM, Unaware as Unaware_real, shieldeff, _topline_more_pending, _more_never_dismissed, flush_pending_messages, pline_flush_point } from './display.js';
 import { bot as bot_um } from './botl.js';
 import { pline, urgent_pline as urgent_pline_disp } from './pline.js';
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep, spec_abon,
@@ -182,7 +182,8 @@ import { fall_asleep } from './timeout.js';
  * closes an existing cycle rather than opening a new one). js/mhitm.js also
  * carries a same-named copy but it is a local, unexported stub there — do
  * not pick it by filename. */
-import { monstseesu as monstseesu_mc, monstunseesu as monstunseesu_mc } from './mcastu.js';
+import { monstunseesu } from './mondata.js';
+import { monstseesu } from './mondata.js';
 import { retouch_equipment as retouch_equipment_mu } from './display.js';
 import { bot as bot_mu } from './botl.js';
 /* C display.c:2064 cls()'s opening display_nhwindow(WIN_MESSAGE, FALSE) — the
@@ -449,8 +450,6 @@ export async function mdamageu(mtmp, n) {
         if ((u.uhp | 0) < 1) done_in_by(mtmp, DIED);
     }
 }
-function monstseesu(flag) { return monstseesu_mc(flag); }
-function monstunseesu(flag) { return monstunseesu_mc(flag); }
 function ugolemeffects(typ, dmg) { return ugolemeffects_mh(typ, dmg); }
 async function burnarmor(mon) { return await burnarmor_real(mon); }
 // C zap.c:5964-6097 destroy_items — canonical port in js/zap.js
@@ -6648,6 +6647,10 @@ export async function mattacku(mtmp) {
                         || (!(mtmp.mspec_used | 0) && tmp > (j = rnd(20 + i)));
                     j_stale = j;
                     if (engulfed) {
+                        /* C mhitu.c:851: flush_screen(1) before gulpmu,
+                         * even when engulf_target will reject the attack.
+                         * Use the synchronous repaint without deferred paging. */
+                        pline_flush_point();
                         sum[i] = await gulpmu(mtmp, mattk);
                     } else {
                         await missmu_je(mtmp, (tmp === j), mattk);

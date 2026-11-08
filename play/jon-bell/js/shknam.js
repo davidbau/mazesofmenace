@@ -126,15 +126,8 @@ async function mkshobj_at_shk(shp, shpIndx, sx, sy, mkspecl) {
     const depthVal = depth_of_level(game.u?.uz) | 0;
     /* C: rn2(100) < depth(&u.uz) && !MON_AT(sx,sy) && makemon(mimic) */
     if (rn2(100) < depthVal) {
-        /* C: MON_AT(sx,sy) — check if monster present; JS: scan fmon */
-        let hasMon = false;
-        for (let m = game.fmon; m; m = m.nmon) {
-            if ((m.mhp | 0) < 1) continue; /* DEADMONSTER — C MON_AT reads the grid, which m_detach cleared */
-            if (m.mx === sx && m.my === sy) {
-                hasMon = true;
-                break;
-            }
-        }
+        /* C MON_AT(sx,sy): the map grid, which includes long-worm tail segments */
+        const hasMon = m_at(sx, sy) != null;
         if (!hasMon) {
             const S_MIMIC = 13; /* defsym.h S_MIMIC */
             const ptr = mkclass(S_MIMIC);

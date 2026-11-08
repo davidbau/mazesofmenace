@@ -19,7 +19,7 @@ import { A_CHA, A_CON, A_DEX, A_NONE, A_STR, ACCESSIBLE, AIR, BEAR_TRAP, CLOUD, 
 import { use_container, pickupFloorObject, handlesPetrifyingCorpseBareHanded } from './pickup.js';
 import { useCrystalBall, convertSecretDoor, findit, openit } from './detect.js';
 import { digActualHole, digCheck, liquidFlow, liquidForHole, watchDigging, freeHeroFromBuriedBall, usePickAxe, } from './dig.js';
-import { canSeeMonster, canSenseMonster, canSpotMonster, feel_newsym, glyphAt, howMonsterSeen, map_invisible, map_object, newsym, unmap_invisible } from './display.js';
+import { canSeeMonster, canSenseMonster, canSpotMonster, feel_newsym, glyphAt, map_invisible, map_object, newsym, unmap_invisible } from './display.js';
 import { displayColorName, displayLiquidName, monsterLeashName, monsterName, monsterReflexiveAction, objectMonsterName, monsterTypeName } from './do_name.js';
 import { attachEggHatchTimer, killEgg, beginObjectBurn, endObjectBurn, objectTimers, stopLevelTimer, stopObjectTimer, scheduleObjectTimer, } from './timeout.js';
 import { heroHasFreeHand, wipeHeroEngraving, heroCanReachFloor } from './engrave.js';
@@ -28,7 +28,7 @@ import { paralyzeMonster } from './mhitm.js';
 import { explode } from './explode.js';
 import { makeFamiliar } from './dog.js';
 import { useUpFloorObject, feelPetrifyingCorpse, willFeelPetrifyingCorpse, holdAnotherObject, freeInventoryObject, useUpInventoryStack, consumeInventoryItem, consumeObjectCharge, delobj, inventoryCommandLetter, inventoryItemDescription, chooseInventoryObject, getobj, addInventoryItem, } from './invent.js';
-import { doBlindingRay, getObjectLocation, releaseHold, zapHeroWithObject, beginImmediateZap, finishImmediateZap, hitFloorPileWithWand, hitMonsterWithWand, lightDamage, rayPositionIsOpen, flashBurn, objectResistsDestruction, zappable, } from './zap.js';
+import { bhit, getObjectLocation, releaseHold, zapHeroWithObject, beginImmediateZap, finishImmediateZap, hitFloorPileWithWand, hitMonsterWithWand, lightDamage, rayPositionIsOpen, flashBurn, objectResistsDestruction, zappable, } from './zap.js';
 import { prepareMapPositionHighlights, selectMapPosition, showGetposInstructions } from './getpos.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { heroMayDisplaceMonster, nomul, shouldShowGetposTip, showGetposTip, loseHeroHp, checkHeroAttackOverexertion, heroIsOnStairs, isInvocationPosition, finishDestinationSpotEffects, roomsAt, exceedsActionCapacity, nearCapacity, distu } from './hack.js';
@@ -77,13 +77,19 @@ import { ceilingName, surfaceName, canDigDown } from './dungeon.js';
 import { isLavaAt, isPoolAt, isPoolOrLavaAt } from './dbridge.js';
 import { summonUndead } from './undead_summoning.js';
 import { summonVaultGuardSoon } from './vault.js';
-import { cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
+import { cansee, couldsee, howMonsterSeen, vision_note_blocker_change, vision_recalc, vision_reset } from './vision.js';
 import { wieldTool, doswapweapon } from './wield.js';
 import { setnotworn, adjustMonsterSpeed } from './worn.js';
 import { showPagedPickOneMenu } from './windows.js';
 import { snapshotMenuUnderlay } from './wintty.js';
 import { monsterCarriesAmulet } from './wizard.js';
 import { useMagicMarker } from './write.js';
+// C apply.c:do_blinding_ray(): the bhit() dispatch of a light source.
+export async function doBlindingRay(object, { dx, dy }, { state = game } = {}) {
+    requireLiveGame(state);
+    requirePlayingGame(state);
+    return bhit(object, COLNO, state, { x: dx, y: dy });
+}
 // C apply.c:use_camera()
 export async function useCamera(object, { state = game } = {}) {
     requireLiveGame(state);

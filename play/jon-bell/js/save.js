@@ -363,6 +363,14 @@ export async function dosave0() {
             for (let mon = head; mon; mon = mon.nmon)
                 if (mon.ispriest) forget_temple_entry(mon);
         }
+        /* C save.c:168 savelev(nhfp, ledger_no(&u.uz)) -> save.c:494 marks the
+         * level being saved VISITED, so the restored game's level_info has it
+         * (lev_by_name's "branch to ..." needs both ends VISITED). */
+        if (g.u?.uz) {
+            const cur = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + (g.u.uz.dlevel | 0);
+            g.level_info = g.level_info || {};
+            (g.level_info[cur] = g.level_info[cur] || { flags: 0 }).flags |= VISITED;
+        }
         /* Detach before C's inactive-level copy pass: those getlev/savelev
          * operations work on file records, not on the live current level. */
         const state = decode_save_graph(encode_save_graph(await savegamestate()));

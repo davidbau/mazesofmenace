@@ -43,7 +43,7 @@ import { game, wizard, discover } from './gstate.js';
 import { rehumanize, uunstick } from './polyself.js';
 import { The, quest_info, helm_simple_name, cloak_simple_name, an, doname, mshot_xname } from './objnam.js';
 import { corpse_xname, the as the_sh, xname, cxname as cxname_sh, Tobjnam as Tobjnam_sh, makeplural, simpleonames, obj_is_pname, bare_artifactname, otense, distant_name, vtense,
-         Yobjnam2 as Yobjnam2_real,
+         Yobjnam2,
          singular,
          makesingular } from './objnam.js';
 import { rn2, rnd, d, rn1, pushRngLogEntry } from './rng.js';
@@ -9025,10 +9025,6 @@ async function mhitm_really_poison(magr, mattk, mdef, mhm) {
  * Use makemon.js's canonical pmname table; the old local stubs always called
  * the attacker "it", corrupting the poison killer/name text for gendered
  * monsters without consuming or suppressing any C RNG. */
-
-function Yobjnam2(obj, verb) {
-    return Yobjnam2_real(obj, verb);
-}
 
 /* C ref: uhitm.c:349-359 mon_maybe_unparalyze(struct monst *mtmp) —
  *     if (!mtmp->mcanmove) {

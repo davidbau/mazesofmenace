@@ -61,7 +61,7 @@ import { objectWeight, quantity, splitObjectStack, placeObject, updateIceObjectT
 import { floorObjectDescription, stack_object, freeInventoryObject, delobj, objectAt } from './invent.js';
 import { insideRoom, searchSpecial } from './mkroom.js';
 import { useUpFloorObject } from './invent.js';
-import { autopickupAllows, autopickupAtHero } from './pickup.js';
+import { autopickupAllows, autopickupAtHero, pickupAtHero, pickupSourceAtHero } from './pickup.js';
 import { reviveCorpseImmediately } from './do.js';
 import { intemple } from './priest.js';
 import { recordAchievement } from './insight.js';
@@ -2591,6 +2591,25 @@ export function pickupLocationProblem({ state = game, objects, monster = null, }
         spendsTurn: false,
     } : null;
 }
+// C hack.c:dopickup(): the #pickup command.  Always reset multi, run the
+// location checks (pickup_checks()), and hand what remains to pickup()
+// (pickup.ts:pickupAtHero()); the swallowed-with-inventory case (-2)
+// carries through the same stomach pass inside it.
+export async function dopickup() {
+    const count = Math.max(0, game._commandCount || 0);
+    setMulti(0);
+    const source = pickupSourceAtHero();
+    const problem = pickupLocationProblem({
+        state: game, objects: source.objects, monster: source.monster,
+    });
+    if (problem) {
+        for (const message of problem.messages)
+            await plineWithContinuation(message);
+        game.context.move = problem.spendsTurn ? 1 : 0;
+        return;
+    }
+    await pickupAtHero(count);
+}
 // C hack.c:spoteffects(TRUE) also applies when expulsion or a body change leaves
 // the hero on the same square. It does not count as a movement attempt.
 export async function applyHeroLocationEffects(publish = plineWithContinuation, { pick = true } = {}) {
@@ -4142,16 +4161,22 @@ export async function captureRunmodeDelay(g = game, enabled = false, sourceTurn 
         if (!topline)
             return;
         for (const [col, cell] of topline.entries()) {
-            g.nhDisplay?.setCell(col, 0, cell.ch, cell.color, cell.attr);
+            g.nhDisplay?.setCell(col, 0, cell.ch, cell.color, cell.attr, cell.altFont);
         }
     };
     const retainedTopline = preservePhysicalTopline && !g._pending_message
-        ? (suppliedRetainedTopline
-            || g.nhDisplay?.grid?.[0])?.map(cell => ({ ...cell }))
+        ? suppliedRetainedTopline
+            ?? g.nhDisplay?.grid?.[0]?.map((cell, col) => ({
+                // Only the fallback copy reads the live screen; a supplied
+                // topline keeps the per-cell shift state it was drawn with.
+                ...cell, altFont: g.nhDisplay?.altFontAt(col, 0) ?? false,
+            }))
         : null;
     await flush_screen(1);
     const logicalTopline = retainedTopline
-        ? g.nhDisplay?.grid?.[0]?.map(cell => ({ ...cell }))
+        ? g.nhDisplay?.grid?.[0]?.map((cell, col) => ({
+            ...cell, altFont: g.nhDisplay?.altFontAt(col, 0) ?? false,
+        }))
         : null;
     restoreTopline(retainedTopline);
     g.nhDisplay?.setCursor((g.u?.ux ?? 1) - 1, (g.u?.uy ?? 0) + 1);

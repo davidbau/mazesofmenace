@@ -1,4 +1,4 @@
-import { is_ice as is_ice_real } from './engrave.js';
+import { is_ice } from './dbridge.js';
 // mkmaze.js — set_levltyp / set_levltyp_lit
 // Ported from nethack-c/src/mkmaze.c:77-140
 
@@ -114,13 +114,6 @@ function IS_FOUNTAIN(typ) {
 // #define IS_SINK(typ) ((typ) == SINK)
 function IS_SINK(typ) {
     return typ === SINK;
-}
-
-// is_ice — C ref: dbridge.c:85-97 is_ice(coordxy, coordxy).
-// C tests (drawbridgemask & DB_UNDER) == DB_ICE, i.e. the whole 3-bit
-// "underneath" field equals DB_ICE — not a bit test against DB_ICE alone.
-function is_ice(x, y) {
-    return is_ice_real(x, y);
 }
 
 export function set_levltyp(x, y, newtyp) {

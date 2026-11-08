@@ -1086,10 +1086,18 @@ async function _ff_tele_poly_changes() {
             if (game.mvl_change && !property(UNCHANGING)) {
                 if ((game.multi | 0) >= 0) {
                     await stop_occupation();
-                    if (game.mvl_change === 1)
-                        await polyself(POLY_NOFLAGS);
-                    else
-                        await you_were();
+                    /* These plines run inside the per-turn world block, so a
+                     * committed post-meal topline (eat.c done_eating) is paged
+                     * by the first of them (update_topl more()) before their
+                     * own text, as the nh_timeout dialogues above do. */
+                    const _wasMB = game._inMovemonBlock;
+                    game._inMovemonBlock = true;
+                    try {
+                        if (game.mvl_change === 1)
+                            await polyself(POLY_NOFLAGS);
+                        else
+                            await you_were();
+                    } finally { game._inMovemonBlock = _wasMB; }
                     game.mvl_change = 0;
                 }
             }

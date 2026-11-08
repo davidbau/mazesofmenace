@@ -47,7 +47,7 @@ import { remove_worm, wormgone, count_wsegs } from './worm.js';
 import { helpless, seemimic, update_inventory } from './mhitm.js';
 import { mon_has_amulet } from './wizard.js';
 import { yelp, growl } from './sounds.js';
-import { levl_follower, pronoun_gender } from './mondata.js';
+import { levl_follower, pronoun_gender, sticks } from './mondata.js';
 import { vision_recalc } from './vision.js';       /* C vision.c */
 import { depth } from './dungeon.js';              /* C dungeon.c depth() */
 import { fill_pit, mintrap } from './trap.js';              /* C trap.c:5391 */
@@ -71,7 +71,6 @@ const AT_HUGS = 7;     /* C monattk.h:20 — crushing bearhug */
 const AT_ENGL = 11;    /* C monattk.h:22 — engulf */
 const AT_WEAP = 254;   /* C monattk.h:28 — uses weapon */
 const AD_STCK = 19;    /* C monattk.h:60 — sticks to you */
-const AD_WRAP = 28;    /* C monattk.h:69 — special "stick" for eels */
 import { dmgtype as _dmgtype_real, finish_meating } from './dogmove.js';
 /* mklev.js holds the real healmon (mon.c:1080); js/monmove.js and js/mhitm.js
  * each carry a stub of the same name — import the live one explicitly. */
@@ -100,9 +99,8 @@ import { redraw_worm } from './worm.js';                /* C worm.c:989 */
 /* ── make_familiar()'s callees (C dog.c:103-215).  makemon is the real,
  * async port (js/mklev.js:4914) — awaited below, not this module's own
  * makedog() which builds a monster inline without it.  set_malign and
- * christen_monst are aliased: this file still carries its own dormant
- * `set_malign`/`attacktype` stubs (js/dog.js, `sticks()`'s comment explains
- * why) that would otherwise shadow the real ones. ── */
+ * christen_monst are aliased to distinguish the real implementations from
+ * this file's local helpers. ── */
 import { makemon } from './mklev.js';
 import { minliquid } from './mon.js';        /* C makemon.c / mon.c:1116 */
 import { is_pool } from './look.js';                    /* C dbridge.c:46 */
@@ -1531,11 +1529,7 @@ export function newedog(mtmp) {
         };
     }
 }
-export function sticks(ptr) {
-    return (_dmgtype_real(ptr, AD_STCK)
-            || (_dmgtype_real(ptr, AD_WRAP) && !_attacktype_real(ptr, AT_ENGL))
-            || _attacktype_real(ptr, AT_HUGS)) ? true : false;
-}
+export { sticks } from './mondata.js'; // C mondata.c:654; preserve existing imports.
 export async function unstuck(mtmp, skipDocrt = false) {
     const u = game.u;
     const stuck = u && u.ustuck;

@@ -44,11 +44,6 @@ import { stopHeroOccupation } from './allmain.js';
 import { encumber_msg } from './pickup.js';
 import { makeMonsterFlee } from './monmove.js';
 import { monsterCanEngulf, monsterCanTeleport, monsterIsAnimal, monsterIsSlithy, monsterThrowsRocks, touchPetrifies, } from './mondata.js';
-// Port only: format a thief's visible or unseen sentence subject.
-// C Some_Monnam: unseen thieves are "Someone" or "Something".
-function wornItemRemover(monster, state) {
-    return monsterName(monster, { state, capitalized: true, augmentIt: true });
-}
 // Part of C steal.c:worn_item_removal(): describe equipment before removing it.
 async function wornTheftObjectDescription(object) {
     // C steal.c:worn_item_removal() starts from doname(), then massages only
@@ -176,8 +171,7 @@ export async function stealFromHero(monster, random, calls) {
         // C steal.c:381-405: not even a thousand men in armor can strip a
         // naked man. steal() returns 1 so mhitm_ad_sedu() lets it flee.
         if (!animal && game.uchain && draw(4)) {
-            await plineWithContinuation(`${wornItemRemover(monster, game)} takes off ${await wornTheftObjectDescription(game.uchain)}.`);
-            await removeWornHeroItem(game.uchain, game);
+            await wornItemRemoval(monster, game.uchain, game, plineWithContinuation);
         }
         else if (!animal && game.u.utrap && game.u.utraptype === TT_BURIEDBALL && !draw(4)) {
             await plineWithContinuation(`${subject} takes off your unseen chain.`);
@@ -304,7 +298,7 @@ export async function stealFromHero(monster, random, calls) {
         const verb = removalItem === object && wasWeapon ? 'disarms'
             : wasAccessory ? 'removes' : 'takes off';
         // worn_item_removal() names the thief again with Some_Monnam().
-        removalMessage = `${wornItemRemover(monster, game)} ${verb} ${description}.`;
+        removalMessage = `${monsterName(monster, { state: game, capitalized: true, augmentIt: true })} ${verb} ${description}.`;
     }
     if (removalMessage && !charmed) {
         await plineWithContinuation(removalMessage);
@@ -538,21 +532,33 @@ export async function stealHeroQuestObject(monster, state, publish, random, roll
     const object = chooseQuestTheftTarget(monster, state, rollOne);
     if (!object)
         return;
-    if ((object === state.uarm || object === state.uarmu) && state.uarmc)
-        await removeForQuestTheft(monster, state.uarmc, state, publish);
-    if (object === state.uarmu && state.uarm)
-        await removeForQuestTheft(monster, state.uarm, state, publish);
+    if ((object === state.uarm || object === state.uarmu) && state.uarmc) {
+        observeObjectForNaming(state.uarmc, { state });
+        await wornItemRemoval(monster, state.uarmc, state, publish);
+    }
+    if (object === state.uarmu && state.uarm) {
+        observeObjectForNaming(state.uarm, { state });
+        await wornItemRemoval(monster, state.uarm, state, publish);
+    }
     if ((object === state.uarmg || (object === state.uright || object === state.uleft) && state.uarmg)
         && state.uwep) {
-        if (state.u.twoweap && state.uswapwep)
-            await removeForQuestTheft(monster, state.uswapwep, state, publish);
-        if (state.uwep)
-            await removeForQuestTheft(monster, state.uwep, state, publish);
+        if (state.u.twoweap && state.uswapwep) {
+            observeObjectForNaming(state.uswapwep, { state });
+            await wornItemRemoval(monster, state.uswapwep, state, publish);
+        }
+        if (state.uwep) {
+            observeObjectForNaming(state.uwep, { state });
+            await wornItemRemoval(monster, state.uwep, state, publish);
+        }
     }
-    if ((object === state.uright || object === state.uleft) && state.uarmg)
-        await removeForQuestTheft(monster, state.uarmg, state, publish);
-    if (object.owornmask)
-        await removeForQuestTheft(monster, object, state, publish);
+    if ((object === state.uright || object === state.uleft) && state.uarmg) {
+        observeObjectForNaming(state.uarmg, { state });
+        await wornItemRemoval(monster, state.uarmg, state, publish);
+    }
+    if (object.owornmask) {
+        observeObjectForNaming(object, { state });
+        await wornItemRemoval(monster, object, state, publish);
+    }
     if (state.program_state.gameover)
         return;
     if (object.unpaid)
@@ -586,13 +592,12 @@ function chooseQuestTheftTarget(monster, state, rollOne) {
     }
     return candidates[candidates.length > 1 ? rollOne(candidates.length) - 1 : 0];
 }
-// Part of C steal.c:worn_item_removal(): announce and remove the selected worn quest item.
-async function removeForQuestTheft(monster, object, state, publish) {
-    observeObjectForNaming(object, { state });
-    const description = (await inventoryItemDescription(object))
-        .replace(/^(?:the|an|a) /, object === state.uchain ? 'the ' : 'your ')
-        .replace(' (being worn)', '').replace(' (alternate weapon; not wielded)', '')
-        .replace(/ \(on (left|right) hand\)/, ' (from $1 hand)');
+// C steal.c:worn_item_removal().
+// The thief's pre-removal line — Some_Monnam(), the worn-slot verb, and
+// the massaged doname() — then remove_worn_item(obj, TRUE).  Callers that
+// need the object observed first do so before this runs.
+async function wornItemRemoval(monster, object, state, publish) {
+    const description = await wornTheftObjectDescription(object);
     const mask = object.owornmask ?? 0;
     const verb = mask & W_WEAPONS ? 'disarms' : mask & W_ACCESSORY ? 'removes' : 'takes off';
     await publish(`${monsterName(monster, { state, capitalized: true, augmentIt: true })} ${verb} ${description}.`);
@@ -666,7 +671,8 @@ export async function dropMonsterObject(monster, object, state = game, { verbose
         });
     return landed;
 }
-// Port only: observe and name a monster's dropped object at a distance.
+// Part of C steal.c:mdrop_obj(): distant_name(obj, doname) for its
+// observation side effects, taken before the object leaves the inventory.
 async function distantDropObjectName(object, state) {
     observeDistantObjectForNaming(object, state);
     return await inventoryItemDescription(inventoryItem(object));
