@@ -170,7 +170,7 @@ import { FIRE_TRAP } from './const.js';
 import { check_caitiff, wakeup, wakeup_attack, seemimic } from './mhitm.js';
 import { ghod_hitsu } from './priest.js';
 import { Adjmonnam as Adjmonnam_uh } from './mhitm.js';
-import { defended as defended_real } from './mondata.js';
+import { defended } from './mondata.js';
 import { passive as passive_uh } from './mhitm.js';
 import { attacktype } from './mondata.js';
 import { attacktype_fordmg as attacktype_fordmg_uh } from './makemon.js';
@@ -6329,7 +6329,7 @@ export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
 export async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
         /* uhitm */
-        if (Resists_Elem(mdef, ACID_RES) || defended_real(mdef, 8 /* AD_ACID */))
+        if (Resists_Elem(mdef, ACID_RES) || defended(mdef, 8 /* AD_ACID */))
             mhm.damage = 0;
     } else {
         /* mhitm */
@@ -6337,7 +6337,7 @@ export async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
             mhm.damage = 0;
             return;
         }
-        if (Resists_Elem(mdef, ACID_RES) || defended_real(mdef, 8 /* AD_ACID */)) {
+        if (Resists_Elem(mdef, ACID_RES) || defended(mdef, 8 /* AD_ACID */)) {
             if (game.v?.vis && canseemon(mdef))
                 pline("%s is covered in %s, but it seems harmless.",
                       Monnam(mdef), hliquid("acid"));
@@ -8347,11 +8347,6 @@ export function u_slow_down() {
  * in mhitm_ad_slow above; it is imported at the top of this file now. */
 
 /* pline_The: prepend "The " to format string, then call pline */
-
-/* C mondata.c:91-125 — use the shared artifact/dragon-defense predicate. */
-function defended(mdef, adtyp) {
-    return defended_real(mdef, adtyp);
-}
 
 /* mhitm_ad_phys — physical damage handler.
  * C ref: uhitm.c:3982 mhitm_ad_phys */

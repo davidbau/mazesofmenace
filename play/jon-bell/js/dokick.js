@@ -137,7 +137,8 @@ import { FUMBLING, W_ARMF, P_NONE, P_MARTIAL_ARTS, NATTK,
 import { PM_SHADE } from './pm.generated.js';
 import { canspotmon, map_invisible, unmap_invisible, unmap_object, glyph_is_invisible_at, glyph_is_warning_at, save_glyph_cell, restore_glyph_cell } from './display.js';
 import { attack_checks, mon_nam, special_dmgval, use_skill } from './uhitm.js';
-import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_attack, christen_monst as christen_monst_real } from './mhitm.js';
+import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_attack } from './mhitm.js';
+import { christen_monst } from './do_name.js';
 /* rndorcname — the one real port (do_name.c:1538-1555); replaces the local
  * no-RNG stub that used to shadow it.  See the note above christen_orc(). */
 import { rndorcname } from './mhitm.js';
@@ -2203,17 +2204,6 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
 export { obj_extract_self } from './mklev.js';
 export { add_to_minv } from './mklev.js';
 function upstart(s) { if (s && s.length > 0) { const c = s.charCodeAt(0); return ((c >= 97 && c <= 122) ? String.fromCharCode(c - 32) : s.charAt(0)) + s.slice(1); } return s; }
-/* christen_monst — C ref: nethack-c/src/do_name.c:30-46 new_mgivenname
- * + nethack-c/src/do_name.c:132-153 christen_monst. The shared port
- * handles allocation, unlike the flat
- * `mtmp.mname` write this replaces: 3.7 renamed mname to
- * mextra->mgivenname, and C's new_mgivenname allocates mextra/MGIVENNAME
- * unconditionally when lth>0 — that allocation, not the string content,
- * is what flips has_mgivenname/mextra_present. */
-function christen_monst(mtmp, name) {
-    return christen_monst_real(mtmp, name);
-}
-
 export function christen_orc(mtmp, gang, other) {
     const BUFSZ = 256;
     /* C do_name.c:1560 `orcname = rndorcname(buf2)` — a `char buf2[BUFSZ]`,

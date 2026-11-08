@@ -76,6 +76,16 @@ const MENU_SEARCH = ':';
 // group accelerator for gold that is not on the current page.
 const GOLD_SYM = '$';
 
+// C's iflags.menu_overlay, which wintty.c tty_display_nhwindow() reads for
+// every NHW_MENU and NHW_TEXT window it shows: when the option is off, the
+// window clears the screen and starts at column 0 instead of overlaying the
+// map. The option belongs to the game, not to the window, so every tty
+// layout reads it here from the state it draws for; no caller passes it.
+// scripts/menu-overlay-source.test.mjs fails when other code reads it.
+export function menuOverlay(state) {
+    return state.iflags?.menu_overlay !== false;
+}
+
 export function menuTitleStyle(state = game) {
     const style = state.iflags?.menu_headings;
     return {
@@ -431,7 +441,8 @@ export function ttyTextWindowData(lines, columns) {
 
 // C refs: tty_display_nhwindow(NHW_MENU) and process_text_window(). A menu
 // with cw->data follows the text-window line loop but retains menu geometry.
-export function ttyMenuTextLayout(display, rawLines, overlay = true) {
+export function ttyMenuTextLayout(state, rawLines) {
+    const display = state.nhDisplay;
     // C tty_putstr() stores each NHW_MENU row's attribute and color alongside
     // its compressed text; keep that metadata until process_text_window draws.
     const data = ttyTextWindowData(rawLines, display.cols);
@@ -445,7 +456,7 @@ export function ttyMenuTextLayout(display, rawLines, overlay = true) {
     // Under H2344_BROKEN, tty_display_nhwindow() clears only for a terminal-
     // height window or disabled overlays. An over-wide line can still make
     // offx zero; erase_menu_or_text() then requests docrt() at dismissal.
-    const clearsScreen = maxrow >= display.rows || !overlay;
+    const clearsScreen = maxrow >= display.rows || !menuOverlay(state);
     if (clearsScreen) offx = 0;
     return {
         firstColumn: offx,
@@ -500,11 +511,7 @@ export async function displayTtyMenuTextWindow(
     }
     if (display.toplin !== TOPLINE_EMPTY) clearTtyMessageWindow(state);
 
-    const layout = ttyMenuTextLayout(
-        display,
-        rawLines,
-        state.iflags?.menu_overlay !== false,
-    );
+    const layout = ttyMenuTextLayout(state, rawLines);
     const pageSize = Math.max(1, display.rows - 1);
     const pageCount = Math.max(1, Math.ceil(layout.lines.length / pageSize));
 
@@ -652,7 +659,8 @@ function assignMenuAccelerators(spec, pageSize) {
     }
 }
 
-export function ttyMenuLayout(display, spec, pageIndex = 0) {
+export function ttyMenuLayout(state, spec, pageIndex = 0) {
+    const display = state.nhDisplay;
     // tty_end_menu() limits each page to the smaller of 52 accelerators or
     // all terminal rows except the dmore() footer.
     const pageSize = Math.min(52, Math.max(1, display.rows - 1));
@@ -703,7 +711,7 @@ export function ttyMenuLayout(display, spec, pageIndex = 0) {
     let offx = Math.min(82, Math.floor(display.cols / 2),
         display.cols - maxcol - 1);
     if (offx < 0) offx = 0;
-    const fullScreen = spec.overlay === false || maxrow >= display.rows
+    const fullScreen = !menuOverlay(state) || maxrow >= display.rows
         || offx === 0;
     if (fullScreen) offx = 0;
 
@@ -732,7 +740,7 @@ export function renderTtyMenu(state = game, spec, pageIndex = 0,
     previous = null) {
     const display = state.nhDisplay;
     if (!display) throw new Error('tty menu requires an initialized display');
-    const layout = ttyMenuLayout(display, spec, pageIndex);
+    const layout = ttyMenuLayout(state, spec, pageIndex);
     const restoredRows = Math.min(display.rows, layout.maxrow + 1);
     const visibleRows = Math.min(display.rows, layout.maxrow);
     if (!layout.fullScreen) {
@@ -947,7 +955,7 @@ export async function displayTtyTextWindow(state = game, lines) {
     const snapshot = copyRegion(display, 0, display.rows);
     const baseCursor = [display.cursorCol, display.cursorRow];
 
-    if (maxrow >= display.rows || state.iflags?.menu_overlay === false) {
+    if (maxrow >= display.rows || !menuOverlay(state)) {
         display.clearScreen();
     } else {
         // A window short enough to overlay clears only the message window
@@ -1832,7 +1840,6 @@ export function buildRoleFilterMenuSpec(state = game) {
         ],
         how: PICK_ANY,
         cancelValue: null,
-        overlay: state.iflags?.menu_overlay !== false,
     };
 }
 

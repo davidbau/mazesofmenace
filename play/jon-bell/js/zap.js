@@ -122,7 +122,7 @@ import { exercise, get_artifact, arti_spfx, arti_cspfx, ART_NONARTIFACT, acurr, 
  * js/zap.js already imported discover_object from here, so no new edge. */
 import { discover_object, observe_object, isWanNothingNodir } from './o_init.js';
 import { FF_FAITHFUL, drain_pending_death_in_place } from './fastforward.js';
-import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name, shield_simple_name, shirt_simple_name, xname_ring, xname_wand, Tobjnam, simpleonames, distant_name as distant_name_real, aobjnam, Yobjnam2, otense, killer_xname, is_quest_artifact } from './objnam.js';
+import { obj_typename, an, An, makeplural, The, vtense, cloak_simple_name, suit_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name, shield_simple_name, shirt_simple_name, xname_ring, xname_wand, Tobjnam, simpleonames, distant_name, aobjnam, Yobjnam2, otense, killer_xname, is_quest_artifact } from './objnam.js';
 import { nomul } from './allmain.js';
 import { set_bc } from './ball.js';
 import { xname, yname, silly_thing_dw, hard_helmet } from './do_wear.js';
@@ -151,8 +151,6 @@ import { mksobj_at } from './mklev.js';
 import { stairway_at } from './stairs.js';
 import { erosion_matters, is_flammable, is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable } from './mklev.js';
 
-/* C objnam.c:347 distant_name — use the canonical object naming body. */
-async function distant_name(otmp, func) { return await distant_name_real(otmp, func); }
 import { polyself, polymon, rehumanize as rehumanize_real } from './polyself.js';
 import { speed_up, healup, potionbreathe, make_slimed, make_stoned, self_invis_message, do_enlightenment_effect as do_enlightenment_effect_real, make_stunned, set_itimeout, make_blinded } from './potion.js';
 import { dryup } from './fountain.js';
@@ -6951,10 +6949,7 @@ function drain_carried(o) {
 }
 
 export async function drain_item(obj, by_you) {
-    /* C zap.c:1398 costly_alteration(obj, COST_DRAIN) — shop billing logic lives in costly_alteration_real in js/cmd.js. */
-    async function costly_alteration(_o, _alter_type) {
-        return await costly_alteration_real(_o, _alter_type);
-    }
+    /* C zap.c:1398 costly_alteration(obj, COST_DRAIN) — shared body in js/mkobj.js */
 
     // Is this a charged/enchanted object?
     if (!obj || obj.spe <= 0)
@@ -6973,7 +6968,7 @@ export async function drain_item(obj, by_you) {
 
     // Charge for the cost of the object
     if (by_you)
-        await costly_alteration(obj, COST_DRAIN); // COST_DRAIN (hack.h:285)
+        await costly_alteration_real(obj, COST_DRAIN); // COST_DRAIN (hack.h:285)
 
     // Drain the object and any implied effects
     obj.spe--;

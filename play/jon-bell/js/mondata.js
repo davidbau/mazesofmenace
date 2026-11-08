@@ -3,7 +3,6 @@ import { acurr, arti_defn_adtyp } from './attrib.js';
 import { Breathless } from './cmd.js';
 import { ACID_RES, ANTIMAGIC, A_CHA, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, FAINTED, FEMALE, FIRE_RES, LOW_PM, MALE, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_NOTHING, M_SEEN_POISON, M_SEEN_REFL, M_SEEN_SLEEP, NATTK, NEUTRAL, PRONOUN_HALLU, PRONOUN_NO_IT, W_AMUL, W_ARM, POISON_RES, REFLECTING, SHOCK_RES, SLEEP_RES, STONE_RES, STRANGLED, Upolyd, W_ACCESSORY, W_ARMC, W_ARMH, W_ARMOR, W_SWAPWEP, W_WEP } from './const.js';
 import { canspotmon, impossible_sync } from './display.js';
-import { dmgtype as dmgtype_real } from './dogmove.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { attacktype_fordmg, dmgtype_fromattack, hates_silver, humanoid, is_demon, monPmname, permonstTemplate, sliparm } from './makemon.js';
@@ -904,9 +903,13 @@ export function mons_see_trap(ttmp) {
     }
 }
 
-function dmgtype(mon_data, ad_type) { return dmgtype_real(mon_data, ad_type); }
-
 const AD_ANY = -1; /* monattk.h */
+const AT_ANY = -1; /* monattk.h */
+
+/* C mondata.c:711 dmgtype -- does monster-type deal out a particular type of damage from any attack */
+export function dmgtype(ptr, dtyp) {
+    return dmgtype_fromattack(ptr, dtyp, AT_ANY) ? true : false;
+}
 
 /* C mondata.c:53 attacktype */
 export function attacktype(ptr, atyp) { return attacktype_fordmg(ptr, atyp, AD_ANY) ? true : false; }

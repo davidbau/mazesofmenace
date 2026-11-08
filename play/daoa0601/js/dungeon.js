@@ -1,6 +1,7 @@
 // dungeon.js — Dungeon graph and special-level placement.
 // C ref: dungeon.c — init_dungeons(), init_level(), place_level().
 // Data ref: dat/dungeon.lua.
+import { definitionInteger, definitionString, optionalDefinitionString } from './lua/hero.js';
 import { game, requireGameLevel, requireLiveGame, requirePlayingGame } from './gstate.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
 import { rn2 } from './rng.js';
@@ -27,7 +28,7 @@ import { roomForIndex, roomsAt, switchHeroTerrain } from './hack.js';
 import { place_lregion } from './mkmaze.js';
 import { formatKiller } from './topten.js';
 import { isok } from './cmd.js';
-import { panic } from './diagnostics.js';
+import { panic } from './end.js';
 import { displayLiquidName } from './do_name.js';
 import { onQuestStart } from './quest.js';
 import { monsterDigests, monsterEnfolds, monsterIsAnimal } from './mondata.js';
@@ -45,10 +46,6 @@ const DUNGEON_ALIGNMENT_BITS = {
 // C dungeon.c:get_dgn_flags(): the Lua DUNGEON.flags list packed to bits.
 function packedDungeonFlags(flags) {
     return flags.reduce((bits, name) => bits | DUNGEON_FLAG_BITS[name], 0);
-}
-// C dungeon.c:get_dgn_align(): the Lua DUNGEON.alignment packed to bits.
-function packedDungeonAlignment(alignment) {
-    return DUNGEON_ALIGNMENT_BITS[alignment];
 }
 // Port only: Amask2align() with AM_NONE kept as null.
 function alignmentType(mask) {
@@ -881,25 +878,6 @@ function definitionArray(value, path) {
         throw new TypeError(`${path} must be a Lua array`);
     return value;
 }
-// Part of C nhlua.c:get_table_str() (required string fields).
-function definitionString(value, path) {
-    if (typeof value !== 'string')
-        throw new TypeError(`${path} must be a string`);
-    return value;
-}
-// Part of C nhlua.c:get_table_str_opt() as dungeon.c reads optional strings.
-function optionalDefinitionString(value, path) {
-    return value == null ? undefined : definitionString(value, path);
-}
-// Part of C nhlua.c:get_table_int() and get_table_int_opt() with their
-// fallback values, as dungeon.c reads integer fields.
-function definitionInteger(value, path, fallback) {
-    if (value == null && fallback !== undefined)
-        return fallback;
-    if (typeof value !== 'number' || !Number.isSafeInteger(value))
-        throw new TypeError(`${path} must be an integer`);
-    return value;
-}
 // Part of C dungeon.c:get_dgn_flags(): one flag name from the Lua table.
 function definitionFlag(value, path) {
     switch (value) {
@@ -921,25 +899,20 @@ function definitionFlags(value, path) {
     return definitionArray(value, path)
         .map((flag, index) => definitionFlag(flag, `${path}[${index + 1}]`));
 }
-// Part of C dungeon.c:791: dgnaligns2i[get_table_option(L, "alignment", ...)]
-// — the alignment name read.
+// C dungeon.c:get_dgn_align(): the alignment option read and its
+// dgnaligns2i[] packing — "unaligned" is the get_table_option default and
+// both "unaligned" and "noalign" pack to D_ALIGN_NONE (dungeon.c:786-798).
 function definitionAlignment(value, path) {
     if (value == null)
-        return 'unaligned';
-    if (typeof value !== 'string')
-        throw new TypeError(`${path} must be an alignment name`);
-    switch (value) {
-        case 'lawful':
-        case 'neutral':
-        case 'chaotic':
-        case 'unaligned':
-        case 'noalign':
-            return value;
-        default: throw new TypeError(`${path} is not a dungeon alignment`);
-    }
+        return DUNGEON_ALIGNMENT_BITS.unaligned;
+    if (value !== 'lawful' && value !== 'neutral' && value !== 'chaotic'
+        && value !== 'unaligned' && value !== 'noalign')
+        throw new TypeError(`${path} is not a dungeon alignment`);
+    return DUNGEON_ALIGNMENT_BITS[value];
 }
-// Part of C dungeon.c:897: brtypes2i[get_table_option(L, "branchtype", ...)]
-// — the branch-type name read.
+// Part of C dungeon.c:init_dungeon_branches(): the branch-type name read —
+// brtypes2i[get_table_option(L, "branchtype", "stair", brtypes)]
+// (dungeon.c:897).
 function definitionBranchType(value, path) {
     if (value == null)
         return 'stair';
@@ -953,8 +926,9 @@ function definitionBranchType(value, path) {
         default: throw new TypeError(`${path} is not a dungeon branch type`);
     }
 }
-// Part of C dungeon.c:899: brdirstr2i[get_table_option(L, "direction", ...)]
-// — the up/down direction read.
+// Part of C dungeon.c:init_dungeon_branches(): the up/down direction read —
+// brdirstr2i[get_table_option(L, "direction", "down", brdirstr)]
+// (dungeon.c:899).
 function definitionBranchUp(value, path) {
     if (value == null || value === 'down')
         return false;
@@ -975,7 +949,7 @@ function branchDefinition(value, path) {
         branchType: definitionBranchType(source.branchtype, `${path}.branchtype`),
     };
 }
-// Part of C dungeon.c:init_dungeon_levels(): one Lua LEVEL entry.
+// C dungeon.c:init_dungeon_levels(): one Lua LEVEL entry.
 function levelDefinition(value, path) {
     const source = definitionRecord(value, path);
     const flags = definitionFlags(source.flags, `${path}.flags`);
@@ -988,12 +962,12 @@ function levelDefinition(value, path) {
         chain: optionalDefinitionString(source.chainlevel, `${path}.chainlevel`),
         variants: definitionInteger(source.nlevels, `${path}.nlevels`, 0) || 1,
         alignment: alignmentType(((packedDungeonFlags(flags)
-            | packedDungeonAlignment(alignment)) & D_ALIGN_MASK) >> 4),
+            | definitionAlignment(source.alignment, `${path}.alignment`)) & D_ALIGN_MASK) >> 4),
         flags,
         bonetag: optionalDefinitionString(source.bonetag, `${path}.bonetag`),
     };
 }
-// Part of C dungeon.c:init_dungeon_dungeons(): one Lua DUNGEON entry.
+// C dungeon.c:init_dungeon_dungeons(): one Lua DUNGEON entry.
 function dungeonDefinition(value, path) {
     const source = definitionRecord(value, path);
     const flags = definitionFlags(source.flags, `${path}.flags`);
@@ -1016,7 +990,7 @@ function dungeonDefinition(value, path) {
             unconnected: flags.includes('unconnected'),
             // The pinned loader assigns packed D_ALIGN_* directly to this
             // three-bit field, so its high alignment bits are truncated.
-            alignment: alignmentType(packedDungeonAlignment(alignment) & AM_MASK),
+            alignment: alignmentType(definitionAlignment(source.alignment, `${path}.alignment`) & AM_MASK),
         },
         branches: definitionArray(source.branches, `${path}.branches`)
             .map((branch, index) => branchDefinition(branch, `${path}.branches[${index + 1}]`)),
@@ -1271,21 +1245,26 @@ export async function init_dungeons() {
         castleTune.push(String.fromCharCode('A'.charCodeAt(0) + rn2(7)));
     game.castleTune = castleTune.join(''); // init_castle_tune()
     game.dungeons = loaded.map(entry => entry.dungeon);
-    resolveDungeonIdentities(game);
     game.branches = branches;
     exposeSpecialLevels(loaded);
-    // C dungeon.c:fixup_level_locations() leaves Fort Ludios floating by
-    // replacing its source dungeon with the out-of-range n_dgns sentinel.
-    // mk_knox_portal() resolves that endpoint only after an eligible deep
-    // vault is generated.
-    const knoxBranch = branches.find(branch => game.dungeons?.[branch.end2?.dnum]?.dname === 'Fort Ludios');
+    fixupLevelLocations(game);
+}
+// C dungeon.c:fixup_level_locations(): the named-dungeon identities
+// (resolveDungeonIdentities() above, also used by save/restore), Fort
+// Ludios left floating by replacing its source dungeon with the
+// out-of-range n_dgns sentinel (mk_knox_portal() resolves that endpoint
+// only after an eligible deep vault is generated), and the dummy surface
+// that shifts the Planes up one floor, placing Earth at depth -1 instead
+// of zero.
+function fixupLevelLocations(state = game) {
+    resolveDungeonIdentities(state);
+    const branches = state.branches || [];
+    const knoxBranch = branches.find(branch => state.dungeons?.[branch.end2?.dnum]?.dname === 'Fort Ludios');
     if (knoxBranch)
-        knoxBranch.end1.dnum = loaded.length;
-    // C fixup_level_locations(): the dummy surface shifts the Planes up
-    // one floor, placing Earth at depth -1 instead of zero.
-    const dummy = game.specialLevels?.get('dummy');
+        knoxBranch.end1.dnum = (state.dungeons ?? []).length;
+    const dummy = state.specialLevels?.get('dummy');
     if (dummy) {
-        const dungeon = requireDungeon(game.dungeons, dummy.dnum);
+        const dungeon = requireDungeon(state.dungeons, dummy.dnum);
         if (dungeon.num_dunlevs > 1 - dungeon.depth_start)
             dungeon.depth_start--;
     }
@@ -1570,7 +1549,7 @@ function overviewYouCause(cause) {
         .replace(' his ', ' your ')
         .replace(' her ', ' your ');
 }
-// Part of C dungeon.c:show_overview(): the end-of-game dungeon-history projection.
+// C dungeon.c:show_overview(): the end-of-game dungeon-history projection.
 // C dungeon.c show_overview() with why > 0: the end-of-game disclosure
 // bypasses the interesting-level filter and prints every visited level in
 // every dungeon with its full mapseen projection.  Endgame levels print

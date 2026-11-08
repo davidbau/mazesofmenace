@@ -48,7 +48,7 @@ export function raw_term_active() {
 export function end_screen() {
     const st = _state();
     st.rows = new Array(RAWTERM_ROWS).fill('');
-    st.row = 0;
+    st.row = game._rawCursorFrozen ? (game._rawCursorFrozen[1] | 0) : 0;
     _publish();
 }
 
@@ -87,9 +87,12 @@ function _publish() {
     const g = game;
     const st = _state();
     g._screen_output = raw_term_screen();
+    const row = Math.min(st.row, RAWTERM_ROWS - 1);
     const d = g.nhDisplay;
     if (d) {
         d.cursorCol = 0;
-        d.cursorRow = Math.min(st.row, RAWTERM_ROWS - 1);
+        d.cursorRow = row;
     }
+    if (g._rawCursorFrozen)
+        g._rawCursorFrozen = [0, row, 1];
 }

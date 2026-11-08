@@ -5,7 +5,7 @@ import { objectClassForType, objectSkill, AKLYS, AMULET_OF_GUARDING, CLOAK_OF_PR
 import { game } from './gstate.js';
 import { currentAttribute } from './attrib.js';
 import { currentHungerState } from './eat.js';
-import { renderStatusLine2, writeStatusLines, hitpointBar, conditionStyle } from './wintty.js';
+import { renderStatusLine2, writeStatusLines, hitpointBar, hitpointBarFill, conditionStyle } from './wintty.js';
 import { statusVersion } from './extversion.js';
 import { criticallyLowHp } from './pray.js';
 import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, BL_AC, BL_ALIGN, BL_ARMOR, BL_ATTCLR_MAX, BL_CAP, BL_CH, BL_CHARACTERISTICS, BL_CONDITION, BL_CO, BL_DX, BL_ENE, BL_ENEMAX, BL_EXP, BL_FLUSH, BL_GOLD, BL_HP, BL_HD, BL_HPMAX, BL_HUNGER, BL_IN, BL_LEVELDESC, BL_WI, BL_MASK_BAREH, BL_MASK_BLIND, BL_MASK_BUSY, BL_MASK_CONF, BL_MASK_DEAF, BL_MASK_ELF_IRON, BL_MASK_FLY, BL_MASK_FOODPOIS, BL_MASK_GLOWHANDS, BL_MASK_GRAB, BL_MASK_HALLU, BL_MASK_HELD, BL_MASK_HOLDING, BL_MASK_ICY, BL_MASK_INLAVA, BL_MASK_LEV, BL_MASK_PARLYZ, BL_MASK_RIDE, BL_MASK_SLEEPING, BL_MASK_SLIME, BL_MASK_SLIPPERY, BL_MASK_STONE, BL_MASK_STRNGL, BL_MASK_STUN, BL_MASK_SUBMERGED, BL_MASK_TERMILL, BL_MASK_TETHERED, BL_MASK_TRAPPED, BL_MASK_UNCONSC, BL_MASK_WOUNDEDL, BL_SCORE, BL_STR, BL_TH_ALWAYS_HILITE, BL_TH_CONDITION, BL_TH_CRITICALHP, BL_TH_NONE, BL_TH_TEXTMATCH, BL_TH_UPDOWN, BL_TH_VAL_ABSOLUTE, BL_TH_VAL_PERCENTAGE, BL_TIME, BL_TITLE, BL_VERS, BL_WEAPON, BL_TERRAIN, BL_XP, CLR_MAX, COLNO, EQ_VALUE, GE_VALUE, GT_VALUE, HL_ATTCLR_BLINK, HL_ATTCLR_BOLD, HL_ATTCLR_DIM, HL_ATTCLR_INVERSE, HL_ATTCLR_ITALIC, HL_ATTCLR_ULINE, HL_BLINK, HL_BOLD, HL_DIM, HL_INVERSE, HL_ITALIC, HL_NONE, HL_ULINE, ICE, In_endgame, Is_knox_level, LARGEST_INT, LE_VALUE, LT_VALUE, MAXBLSTATS, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, NO_LTEQGT, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_SABER, P_SHORT_SWORD, P_UNICORN_HORN, SICK_NONVOMITABLE, SICK_VOMITABLE, TT_BURIEDBALL, TT_LAVA, TXT_VALUE, Upolyd, MAX_TYPE } from './const.js';
@@ -313,19 +313,24 @@ export function statusConditionBit(text) {
     const index = definitions.findIndex(condition => condition.text[0] === text[0]);
     return index >= 0 ? 1 << index : 0;
 }
+// C botl.c:condopt(): set one condition's enabled bit in the choice
+// mask (condtests[]'s choice); the addr==NULL init pass that resets every
+// choice to its default and sorts cond_idx[] is the defaultMask constant.
+function condopt(mask, index, negated) {
+    return negated ? mask & ~(1 << index) : mask | (1 << index);
+}
 // C botl.c:parse_cond_option(): match one cond_ element against the
 // condition table (its first four letters, or the complete name when
-// shorter) and flip its bit; condopt() is inlined as the mask update and
-// C's init-to-defaults pass is the defaultMask constant.  Config parsing
-// supplies the negation separately.
+// shorter) and set its bit through condopt(); C's init-to-defaults pass
+// is the defaultMask constant.  Config parsing supplies the negation
+// separately.
 export function setConditionOption(option, enabled, mask = defaultMask) {
     const name = option.slice(5).toLowerCase();
     const index = definitions.findIndex(condition => name.length >= Math.min(4, condition.option.length)
         && condition.option.toLowerCase().startsWith(name));
     if (index < 0)
         return null;
-    const bit = 1 << index;
-    return enabled ? mask | bit : mask & ~bit;
+    return condopt(mask, index, !enabled);
 }
 // C botl.c:cond_cmp(); the bl_unconsc test reads trap.c:unconscious() as
 // heroIsUnconscious (botl.c:1214 does the same through the cond cache).
@@ -555,23 +560,6 @@ export function statusTerrain(state) {
     if (state.iflags.terrain_typ === undefined || state.iflags.terrain_typ === MAX_TYPE)
         classifyStatusTerrain(state);
     return descriptions[state.iflags.terrain_typ ?? MAX_TYPE] ?? '';
-}
-// Part of C wintty.c:status_update(): the bar_pos computation for the
-// hitpoint bar.
-// ── botl.c:percentage() feeding wintty.c's bar_pos ──
-// botl.c:percentage() feeding wintty.c:5220-5229's bar_pos, the number of
-// lit cells in the fixed thirty-character bar.  Dead heroes light nothing;
-// a nonzero health fraction keeps one cell even above the display cap.
-export function hitpointBarFill(hp, maximum) {
-    const health = Math.max(0, hp);
-    let percent = maximum ? Math.trunc(100 * health / maximum) : 0;
-    if (health && !percent)
-        percent = 1;
-    if (percent >= 100)
-        return 30;
-    if (!percent)
-        return 0;
-    return Math.max(1, Math.min(29, Math.trunc(30 * percent / 100)));
 }
 // botl.c initblstats evaluates gold as the eleventh field.  A forced
 // gu.update_all from the gold encoding check therefore re-evaluates gold
@@ -1941,10 +1929,11 @@ function isFieldArrayValue(text, values, minimum, maximum) {
     }
     return null;
 }
-// Part of C botl.c:s_to_anything(): atoi()/atol() semantics for the
-// numeric parse.
-// botl.c s_to_anything(): C's atoi()/atol() semantics stop at the first
-// non-digit, so a leading number is read and anything after it ignored.
+// C botl.c:s_to_anything(): atoi()/atol() semantics for the numeric
+// parse of a status-hilite threshold.  C's atoi()/atol() stop at the
+// first non-digit, so a leading number is read and anything after it is
+// ignored; the port's thresholds are all ANY_LONG/ANY_INT, so the union's
+// pointer cases reduce to this number.
 function cAtoi(text) {
     const match = /^[+-]?\d+/.exec(text.trim());
     return match ? Number.parseInt(match[0], 10) : 0;

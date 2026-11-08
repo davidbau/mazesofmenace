@@ -345,6 +345,11 @@ export class NethackGame {
                  * makelevel() loads themerms.lua (nhlib.lua shuffle).  restgamestate()
                  * here copies every own property of the save onto game. */
                 game._luathemes_loaded = {};
+                /* C cfgfiles.c configfile is process state, not saved; the
+                 * restoring process resolves its own rc name, so undo the
+                 * save's copy of the previous process's name. */
+                set_configfile_for_session(this._seed, this._datetime,
+                                           this._nethackrc, this._moves);
                 /* C restore.c:902-903 dorecover() — `if (!wizard && !discover)
                  * (void) delete_savefile();`.  Wizard/explore restores keep it
                  * until restore_preamble()'s "keep the save file?" prompt. */

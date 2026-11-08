@@ -193,6 +193,7 @@ export const NOT_SAVED = [
     // globals that save.c never writes; a restored process pushes afresh.
     '_bldrpush_oid', '_bldrpushtime',
     'nhDisplay', '_rawterm', '_screen_output', '_preNhgetchHook',
+    '_rawCursorFrozen', '_configfile', '_generated_configfile', '_hilite_rc',
     // C save.c:265-333 omits blstats; botl.c:1694,1759-1795 initializes
     // field values, colors and temporary highlight timers in each process.
     '_blTemp', '_statusFieldColors', '_statusHilitesReset', '_statusHiliteHeld',

@@ -1491,7 +1491,6 @@ export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
 export { mon_leave, relmon };
 /* mondata.c:53 attacktype — expose the canonical mhitm predicate rather than
  * retaining a false-returning shadow for external callers. */
-export function attacktype(data, attk) { return _attacktype_real(data, attk); }
 /* weapon.c:797 mon_wield_item — was an empty-body stub here (returning
  * undefined, so every `if (mon_wield_item(mtmp))` caller read it as "did not
  * take time").  The real port lives in js/uhitm.js beside its siblings

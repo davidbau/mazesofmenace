@@ -13,7 +13,11 @@ import { random_teleport_level, get_level, may_passwall } from './cmd.js';
 import { quest_monster_died } from './quest.js';
 import { kop_revival, record_death_achievement } from './mklev.js';
 import { lifesaved_monster, mlifesaver } from './mon.js';
-import { done as _done_sil } from './end.js';
+import { done as _done_sil, deadhero } from './end.js';
+import { polymon } from './polyself.js';
+import { poly_when_stoned } from './mondata.js';
+import { PM_STONE_GOLEM } from './pm.generated.js';
+import { STONING } from './const.js';
 import { burn_away_slime as _burn_away_slime_sil } from './timeout.js';
 import { safe_teleds as _safe_teleds_sil } from './teleport.js';
 import { urgent_pline as _urgent_pline_sil } from './pline.js';
@@ -25,7 +29,7 @@ import { is_ice, sengr_at } from './engrave.js';
 import { MONS_CWT } from './mklev.js';
 /* water_damage()'s container arms (C trap.c:4750-4757) recurse into the
  * contents, and its waterproof arm calls makeknown(). */
-import { splash_lit, water_damage_chain, instapetrify as instapetrify_real, can_ride as can_ride_real, surface as surface_real, body_part as body_part_real, mbodypart as mbodypart_real } from './cmd.js';
+import { splash_lit, water_damage_chain, can_ride as can_ride_real, surface as surface_real, body_part as body_part_real, mbodypart as mbodypart_real } from './cmd.js';
 import { flooreffects } from './do.js';
 import { discover_object } from './o_init.js';
 // @ts-nocheck
@@ -592,7 +596,7 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
     if (mtmp === game.u.usteed)
         await dismount_steed(DISMOUNT_GENERIC);
     const dropCorpse = !nocorpse && await corpse_chance_mon(mtmp);
-    if (dropCorpse && (_gp_accessible(_dx, _dy) || _gp_is_pool(_dx, _dy))) {
+    if (dropCorpse && (accessible_mv(_dx, _dy) || _gp_is_pool(_dx, _dy))) {
         const make_corpse = _trapFns.make_corpse_fn;
         if (make_corpse) await make_corpse(mtmp, _dx, _dy);
     }
@@ -1058,14 +1062,6 @@ function _gp_is_waterwall(x, y) {
 function _gp_may_passwall(x, y) {
     return may_passwall(x, y);
 }
-/* C ref: monmove.c:2180-2184 closed_door(x,y) — the real port. */
-function _gp_closed_door(x, y) {
-    return closed_door_mv(x, y);
-}
-/* C ref: monmove.c:2187-2194 accessible(x,y) — the real port. */
-function _gp_accessible(x, y) {
-    return accessible_mv(x, y);
-}
 /* C ref: mondata.h:19-33/134 monster-flag predicates read by goodpos(). */
 const _GP_M1_SWIM = 0x00000002, _GP_M1_AMORPHOUS = 0x00000004,
       _GP_M1_WALLWALK = 0x00000008, _GP_M1_AMPHIBIOUS = 0x00000200,
@@ -1215,14 +1211,14 @@ export function goodpos(x, y, mtmp, gpflags) {
         }
         if (_gp_passes_walls(mdat) && _gp_may_passwall(x, y))
             return true;
-        if (_gp_amorphous(mdat) && _gp_closed_door(x, y))
+        if (_gp_amorphous(mdat) && closed_door_mv(x, y))
             return true;
         /* avoid onscary() if caller has specified that restriction */
         if (checkscary && (mtmp.m_id ? onscary(x, y, mtmp)
                                      : _gp_goodpos_onscary(x, y, mdat)))
             return false;
     }
-    if (!_gp_accessible(x, y)) {
+    if (!accessible_mv(x, y)) {
         if (!(_gp_is_pool(x, y) && ignorewater)
             && !(is_lava(x, y) && ignorelava))
             return false;
@@ -5484,7 +5480,25 @@ function selftouch_Stone_resistance() {
     const p = (game.u && game.u.uprops) ? game.u.uprops[STONE_RES] : null;
     return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
 }
-async function instapetrify(arg) { return instapetrify_real(arg); }
+/* C trap.c:3844-3855: resolve resistance/polymorph before petrification,
+ * then await the canonical death path, including wizard survival and lifesaving. */
+export async function instapetrify(str) {
+    // C youprop.h:63-65: Stone_resistance has no blocked-property term.
+    if (selftouch_Stone_resistance())
+        return;
+    const ym = game.youmonst?.data ? game.youmonst
+        : { data: permonstTemplate((game.u?.umonnum | 0)) };
+    if (poly_when_stoned(ym.data) && await polymon(PM_STONE_GOLEM))
+        return;
+    await _urgent_pline_sil('You turn to stone...');
+    /* The fresh line stays live so lifesaving's "But wait..." joins it. */
+    deadhero(STONING, { noDeathLine: true, remainderIsFresh: true });
+    game.svk ||= {};
+    game.svk.killer ||= {};
+    game.svk.killer.format = KILLED_BY;
+    game.svk.killer.name = str || '';
+    await _done_sil(STONING);
+}
 /* ---------------------------------------------------------------------------
  * selftouch — hero touches a cockatrice/chickatrice corpse via a wielded
  * weapon (primary and/or secondary), petrifying unless Stone_resistance.
@@ -6520,7 +6534,7 @@ import { closed_door as closed_door_mv, accessible as accessible_mv } from './mo
 export { _gp_uprop_he, lev_flags, lev_typ }; // relocate-fns
 export { mon_knows_traps, mon_learns_traps } from './mondata.js'; // relocate-fns
 export { blocking_terrain, linedup, m_carrying, m_has_launcher_and_ammo, m_useup, thitu } from './mthrowu.js'; // relocate-fns
-export { BOLT_LIM, BOULDER, Blind_thitu, _gp_closed_door, _gp_is_waterwall, _lo_hero_monst, _monstseesu_stub, _monstunseesu_stub, _thitu_stone_missile, _tr_passes_rocks, upstart_local }; // relocate-fns
+export { BOLT_LIM, BOULDER, Blind_thitu, _gp_is_waterwall, _lo_hero_monst, _monstseesu_stub, _monstunseesu_stub, _thitu_stone_missile, _tr_passes_rocks, upstart_local }; // relocate-fns
 export { allunworn, armcat_to_wornmask, bypass_objlist, clear_bypasses, extract_from_minvent, m_dowear, mon_adjust_speed, mon_break_armor, nxt_unbypassed_obj, update_mon_extrinsics, wearmask_to_obj } from './worn.js'; // relocate-fns
 export { Monnam_t, OBJ_MINVENT_TR, _IMM_S_VORTEX, _MDW_MFAST, _MDW_MZ_HUMAN, _WORN_MZ_HUGE, _which_armor, selftouch_Stone_resistance, sgn }; // relocate-fns
 

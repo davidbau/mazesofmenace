@@ -47,7 +47,7 @@ import { PM_GRAY_OOZE as PM_GRAY_OOZE_MK } from './pm.generated.js';
 import { PM_YELLOW_DRAGON as PM_YELLOW_DRAGON_MC, PM_WHITE_UNICORN as PM_WHITE_UNICORN_MC, PM_BLACK_UNICORN as PM_BLACK_UNICORN_MC } from './pm.generated.js';
 import { nexttodoor } from './mkroom.js';
 import { OBJ_MINVENT, OBJ_LUAFREE } from './const.js';
-import { fill_supply_chest, save_mtraits, free_omid, bless as bless_obj, curse as curse_obj, weight } from './mkobj.js'; // C mkobj.c:1888 weight()
+import { fill_supply_chest, save_mtraits, free_omid, bless as bless_obj, curse, weight } from './mkobj.js'; // C mkobj.c:1888 weight()
 import { cant_revive } from './read.js';
 import { init_fruit_chain } from './options.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_SVB_BASES, } from './mkobj_data.js';
@@ -2253,9 +2253,6 @@ const QUEST_FILL_READY = new Set([
     'Ran-fila', 'Ran-filb', 'Rog-fila', 'Rog-filb', 'Sam-fila', 'Sam-filb',
     'Tou-fila', 'Tou-filb', 'Val-filb', 'Cav-filb', 'Val-fila',
 ]);
-function curse(otmp) {
-    return curse_obj(otmp);
-}
 const HEAVY_IRON_BALL = 477;
 const CANDELABRUM_OF_INVOCATION = 262;
 /* C invent.c:4517 merged(&otmp, &obj) + shk.c:1187 obfree(obj, otmp), for

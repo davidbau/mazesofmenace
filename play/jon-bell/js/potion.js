@@ -98,7 +98,7 @@ import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { getObjName, discover_object, observe_object, objdescr_is } from './o_init.js';
 import './lock.js';
 import { surface as surface_cmd, body_part, reorder_invent } from './cmd.js';
-import { trycall as trycall_cmd } from './do.js';
+import { trycall } from './do.js';
 import { attacktype_fordmg, splitobj, mhe } from './makemon.js';
 import { mhis_mon } from './mhitu.js';
 import { is_ice } from './engrave.js';
@@ -618,7 +618,7 @@ export async function dopotion_unported(otmp) {
             discover_object(otmp.otyp, true, true, true);
             more_experienced(0, 10);
         } else {
-            await trycall_cmd(otmp);
+            await trycall(otmp);
         }
     }
     await useup(otmp);
@@ -2298,18 +2298,6 @@ function split_mon(monst, ptr) {
 function makeknown(otyp) {
     discover_object(otyp, true, true, true);
 }
-/* C do.c:395 trycall(obj) — `if (!oc_name_known && !oc_uname) docall(obj)`.
- * Was a throwing stub; js/cmd.js holds the shared real body.  That body's
- * docall() is no longer a no-op (it puts up the "Call a <thing>:" getlin and
- * consumes keystrokes), so this wrapper is async now — the note that used to
- * end "its docall() is itself still a no-op, so this is behaviour-preserving"
- * described the tree before that landed and would have licensed an unawaited
- * call.  This wrapper has no live caller in this file; _docall_potion is what
- * the potion paths drive. */
-async function trycall(obj) {
-    return await trycall_cmd(obj);
-}
-
 const SICK_ALL = 3;
 
 export function healup(nhp, nxtra, curesick, cureblind) {
@@ -2408,7 +2396,7 @@ async function _hold_potion(potobj, drop_fmt, drop_arg, hold_msg) {
 
 // C potion.c:2409 — identification prompt precedes consumption.
 async function _poof(potion) {
-    if (potion.dknown) await trycall_cmd(potion);
+    if (potion.dknown) await trycall(potion);
     await useup(potion);
 }
 
@@ -2794,7 +2782,7 @@ async function potion_dip(obj, potion) {
             + `${_potion_Blind() ? 'wrinkled'
                 : obj_dip_hcolor(potion.odiluted ? NH_ORANGE : NH_RED)} around the edges.`);
         potion.in_use = false; /* didn't go poof */
-        if (potion.dknown) await trycall_cmd(potion);
+        if (potion.dknown) await trycall(potion);
         return ECMD_TIME;
     }
 
@@ -3080,19 +3068,6 @@ function _Yname2(obj) {
 const NH_ORANGE = 'orange';
 const NH_RED = 'red';
 function obj_dip_hcolor(pref) { return hcolor(pref); }
-
-async function _costlyAlterationInventoryDip(obj) {
-    if ((obj.where | 0) === OBJ_INVENT || (obj.where | 0) === OBJ_FREE) {
-        if (!obj.unpaid) return;
-        /* cmd.js now exports the canonical billing implementation, including
-         * bill_dummy_object() and the unpaid inventory settlement. */
-        await costly_alteration(obj, 10);
-        return;
-    }
-    throw new Error('not yet ported: costly_alteration non-inventory arm '
-        + '(mkobj.c:757-822) — unreached by any dodip/potion_dip target');
-}
-
 
 /* C getobj callbacks (potion.c), returning the real const.js GETOBJ_* codes.
  *
@@ -3855,7 +3830,7 @@ export async function potionbreathe(obj) {
         if (kn)
             makeknown(obj.otyp);
         else
-            await trycall_cmd(obj);
+            await trycall(obj);
     }
 }
 

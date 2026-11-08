@@ -81,7 +81,7 @@ import { acid_damage as acid_damage_um } from './trap.js';
 import { done, do_death_sequence, deadhero, done_in_by, pending_death_is_final, delayed_killer } from './end.js';
 /* C potion.c:194 make_slimed() — mhitm_ad_slim's hero-defender arm. */
 import { make_slimed } from './potion.js';
-import { polymon as polymon_polyself, polyself as polyself_real } from './polyself.js';
+import { polymon, polyself as polyself_real } from './polyself.js';
 /* C end.c:1023 done(), run at C's own position inside the attack loop. */
 import { drain_pending_death_in_place } from './fastforward.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_SEEN_NOTHING, M_SEEN_FIRE, M_SEEN_SLEEP, M_SEEN_REFL, SLEEP_RES as SLEEP_RES_MU, FIRE_RES as FIRE_RES_MU, COLD_RES as COLD_RES_MGP, DISINT_RES as DISINT_RES_MGP, SHOCK_RES as SHOCK_RES_MGP, STONE_RES as STONE_RES_MU, REFLECTING as REFLECTING_MU, NATTK, Upolyd as Upolyd_fn, INVIS, DISPLACED as DISPLACED_MU, SEE_INVIS, P_WHIP, Is_rogue_level, CONFUSION, SLIMED, CQ_CANNED, DETECT_MONSTERS as DETECT_MONSTERS_MU, DEAF, PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MU, CONFLICT as CONFLICT_MU, is_pit as is_pit_mu, NEW_MOON, ERODE_CORRODE, ERODE_ROT, PROTECTION, W_AMUL, MM_IGNOREWATER, MM_IGNORELAVA, } from './const.js';
@@ -169,12 +169,8 @@ import { m_canseeu as m_canseeu_dh } from './dochug.js';
  * (`export function ureflects(_fmt,_arg1,_arg2){ return false; }`) — do not
  * pick it by filename; the makemon.js one is the real body. */
 import { ureflects as ureflects_mm } from './makemon.js';
-/* C mondata.c:79-85 poly_when_stoned(ptr) — the real port lives in
- * js/mhitm.js (mhitm.js is already imported extensively above, no new
- * cycle). js/dogmove.js ALSO carries a same-named
- * `function poly_when_stoned(data) { return false; }` stub — do not pick it
- * by filename; the mhitm.js one is the real body. */
-import { poly_when_stoned as poly_when_stoned_mh } from './mondata.js';
+/* C mondata.c:79-85 poly_when_stoned(ptr) — the one port lives in mondata.js. */
+import { poly_when_stoned } from './mondata.js';
 /* C timeout.c:955-980 fall_asleep(how_long,wakeup_msg) — RNG-free. */
 import { fall_asleep } from './timeout.js';
 /* C mondata.c:1557-1568 monstseesu(seenres) — RNG-free. The real port lives
@@ -235,7 +231,8 @@ import { failed_grab as failed_grab_mu } from './dogmove.js';
 import monMsizePack_mu from './makemon_msize.json' with { type: 'json' };
 const MONS_MSIZE_MU = monMsizePack_mu.msize;
 import { place_monster as place_monster_mu } from './steed.js';
-import { unstuck as unstuck_mu, attacktype as attacktype_mu, sticks as sticks_mu } from './dog.js';
+import { unstuck as unstuck_mu, sticks as sticks_mu } from './dog.js';
+import { attacktype as attacktype_mu } from './mondata.js';
 import { dismount_steed as dismount_steed_mu, number_leashed as number_leashed_mu } from './cmd.js';
 import { DISMOUNT_ENGULFED } from './const.js';
 import { _movemon_page_frames_reset as _movemon_page_frames_reset_mu } from './display.js';
@@ -359,8 +356,6 @@ function m_seenres(mon, mask) {
 function canseemon(mon) { return canseemon_mu(mon); }
 function couldsee(x, y) { return couldsee_mu(x, y); }
 function m_canseeu(mon) { return m_canseeu_dh(mon); }
-function poly_when_stoned(mdat) { return poly_when_stoned_mh(mdat); }
-async function polymon(pm) { return await polymon_polyself(pm); }
 function resists_blnd(mon) { return resists_blnd_real_mu(mon); }
 // C ref: allmain.c:755 stop_occupation() — interrupt the current occupation:
 // pline "You stop <occtxt>." and clear go.occupation.  hitmu()/missmu()

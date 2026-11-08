@@ -4,7 +4,7 @@
 import { game, requireLiveGame } from './gstate.js';
 import { flush_screen } from './display.js';
 import { vision_recalc } from './vision.js';
-import { coordinateDescription } from './pager.js';
+import { coordinateDescription } from './getpos.js';
 import { messageTypeFor } from './message_types.js';
 import { heroIsBlind, heroIsDeaf, heroIsUnaware } from './senses.js';
 import { displayMessageWindow, rememberToplines, replaceTopline, updateTopline, } from './topl.js';
@@ -12,7 +12,8 @@ import { nhgetch, rawPrint, writeRawText } from './input.js';
 import { BUFSZ, LL_NONE, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PLNMSG_UNKNOWN, xdir, ydir } from './const.js';
 import { isok } from './cmd.js';
 import { NO_COLOR } from './terminal.js';
-import { diagnosticReason, fuzzerMode, panic } from './diagnostics.js';
+import { diagnosticReason, fuzzerMode } from './diagnostics.js';
+import { panic } from './end.js';
 import { paniclog } from './novel_tribute.js';
 import { FUZZER_IMPOSSIBLE_PANIC } from './diagnostics.js';
 // C pline.c:set_msg_dir(). The next vpline consumes the location, even when hidden.
@@ -86,9 +87,9 @@ export async function plineWithContinuation(msg, { noRepeat = false, urgent = fa
     }
     const length = new TextEncoder().encode(msg).length;
     if (length > 5 * BUFSZ - 1) {
-        // diagnostics.js statically imports this module; a static import
-        // back would be a load cycle, so panic() is fetched lazily.
-        const { panic } = await import('./diagnostics.js');
+        // end.js statically imports this module; a static import back would
+        // be a load cycle, so panic() is fetched lazily.
+        const { panic } = await import('./end.js');
         await panic(`pline attempting to print ${length} characters!`);
     }
     msg = truncatePlineMessage(msg);
@@ -227,7 +228,9 @@ export function truncateRawMessage(message) {
     const bytes = new TextEncoder().encode(message.split('\0', 1)[0] ?? '');
     return new TextDecoder().decode(bytes.subarray(0, BUFSZ - 1));
 }
-// C pline.c:raw_printf()/vraw_printf().
+// C pline.c:vraw_printf(): C raw_printf() is the vararg wrapper; this is
+// the shared body — the BUFSZ-1 truncation, raw_print and the early
+// count.
 export function rawPrintf(message) {
     rawPrint(truncateRawMessage(message));
     // Both raw_printf() and vraw_printf() increment the early-message count.

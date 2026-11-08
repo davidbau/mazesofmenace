@@ -1739,8 +1739,7 @@ export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
             /* hack.h y_n(): the answered prompt stays on the topline (end.js y_n) */
             /* hack.h:1329 y_n(): the answered prompt stays on the topline */
             if (!game.gi?.in_doagain) {
-                game._topl_sticky = `${q} [yn] (n)`;
-                game._topl_empty_sticky = game._topl_sticky;
+                game._topl_sticky = `${q} [yn] (n)`;  /* topl.c:544 leaves toplin NON_EMPTY: parse() erases it */
             }
             if (ans === 'y')
                 return true;

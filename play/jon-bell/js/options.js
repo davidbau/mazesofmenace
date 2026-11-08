@@ -1092,22 +1092,14 @@ export function parseNethackrc(rc) {
                  * so cond_barehanded turns the "Bare" condition on. */
                 else {
                     const cu = menuname.slice(5);
-                    if (cu.length >= 4 && 'barehanded'.startsWith(cu))
-                        result.flags.cond_barehanded = !menunegated;
-                    if (cu.length >= 4 && 'busy'.startsWith(cu))
-                        result.flags.cond_busy = !menunegated;
-                    if (cu.length >= 4 && 'paralyzed'.startsWith(cu))
-                        result.flags.cond_paralyzed = !menunegated;
-                    if (cu.length >= 4 && 'sleep'.startsWith(cu))
-                        result.flags.cond_sleep = !menunegated;
-                    if (cu.length >= 4 && 'unconscious'.startsWith(cu))
-                        result.flags.cond_unconscious = !menunegated;
-                    if (cu.length >= 4 && 'tethered'.startsWith(cu))
-                        result.flags.cond_tethered = !menunegated;
-                    if (cu.length >= 4 && 'trap'.startsWith(cu))
-                        result.flags.cond_trap = !menunegated;
-                    if (cu.length >= 4 && 'woundedlegs'.startsWith(cu))
-                        result.flags.cond_woundedlegs = !menunegated;
+                    for (let ci = 0; ci < CONDTESTS.length; ci++) {
+                        const cname = CONDTESTS[ci][0];
+                        const minlen = cname.length >= 4 ? 4 : cname.length;
+                        if (cu.length >= minlen && cname.toLowerCase().startsWith(cu)) {
+                            result.flags['cond_' + cname] = !menunegated;
+                            break;
+                        }
+                    }
                 }
                 continue;
             }
@@ -3459,7 +3451,7 @@ const CONDTESTS = [
 ];
 
 function cond_enabled_arr() {
-    if (!game._condEnabled) game._condEnabled = CONDTESTS.map(c => c[2]);
+    if (!game._condEnabled) game._condEnabled = CONDTESTS.map(c => game.flags?.['cond_' + c[0]] ?? c[2]);
     return game._condEnabled;
 }
 

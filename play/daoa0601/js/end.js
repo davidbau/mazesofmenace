@@ -1,5 +1,7 @@
 // end.js — End-of-game disclosure and terminal presentation.
-// C refs: end.c disclose()/really_done(), insight.c, dungeon.c.
+// C refs: end.c disclose()/really_done(), panic(), insight.c, dungeon.c;
+// rip.c's tombstone lives in rip.ts.
+import { tombstoneLine, tombstoneYear, tombstoneDeathRows } from './rip.js';
 import { goodbye } from './role.js';
 import { AMULET_CLASS, GEM_CLASS } from './objclass.js';
 import { OBJ_NAME } from './object_data.js';
@@ -14,9 +16,14 @@ import { endmultishot } from './dothrow.js';
 import { BUFSZ, MGIVENNAME, M_AP_MONSTER, M_AP_TYPE, PARANOID_DIE, PARANOID_QUIT, PLNMSG_OK_DONT_DIE, ismnum, A_CON, A_WIS, ACH_BLND, ACH_NUDE, ACH_UWIN, ASCENDED, BASICENLIGHTENMENT, BURNING, CHOKING, DIED, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, GENOCIDED, MAGICENLIGHTENMENT, PANICKED, PICK_ONE, QUIT, STARVING, STONING, TRICKED, In_endgame, Is_astralevel, Is_knox_level, KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, TT_LAVA, Upolyd, LL_CONDUCT, } from './const.js';
 import { isok, setMulti, paranoidQuery } from './cmd.js';
 import { PanicTermination } from './panic_termination.js';
+import { beginPanicOutput, rawPrintf } from './pline.js';
+import { rawPrint } from './input.js';
+import { paniclog } from './novel_tribute.js';
+import { saveErrorGame } from './save.js';
+import { diagnosticReason, fuzzerMode, FUZZER_OFF } from './diagnostics.js';
 import { nomul, heroGoldAmount } from './hack.js';
 import { achievementEntries, recordAchievement, finalConductLines, listGenocided, setVanqOrder, enlightenment, vanquishedLines, vanquishedTypeCount, } from './insight.js';
-import { game, requireInitializedGame } from './gstate.js';
+import { game, requireInitializedGame, requireLiveGame } from './gstate.js';
 import { releaseHeroFromMonster } from './mon.js';
 import { heroFormSticks } from './polyself.js';
 import { monsterName, monsterTypeName } from './do_name.js';
@@ -36,7 +43,8 @@ import { NO_COLOR } from './terminal.js';
 import { d, rn2 } from './rng.js';
 import { mksobj, isContainer, placeObjectSynchronously } from './mkobj.js';
 import { makePlural, withIndefiniteArticle, objectDescription, definiteName, objectName, simpleObjectName, observeObjectForNaming, } from './objnam.js';
-import { recordObjectEncounter, recordObjectKnowledge } from './o_init.js';
+import { recordObjectEncounter } from './o_init.js';
+import { recordObjectKnowledge } from './u_init.js';
 import { isQuantumBox } from './quantum_cat.js';
 import { deepestLevelReached, depth, In_quest } from './dungeon.js';
 import { hiddenGold, payVaultGuardOnExit } from './vault.js';
@@ -277,22 +285,6 @@ function terminalLine(row, col, value, attr = 0) {
     for (let index = 0; index < value.length; index++)
         display?.setCell(col + index, row, value.charAt(index), NO_COLOR, attr);
 }
-// C rip.c:center()
-function tombstoneLine(value) {
-    const text = String(value).slice(0, 16);
-    const col = 28 - Math.trunc((text.length + 1) / 2);
-    return `${' '.repeat(col - 19)}${text}${' '.repeat(37 - col - text.length)}`;
-}
-// Part of C rip.c:genl_outrip(): the death year (yyyymmdd(when)/10000
-// % 10000, printed %4d).
-function tombstoneYear(when) {
-    const year = Number(new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York', year: 'numeric',
-    }).format(new Date(when * 1000)));
-    // C calendar.c:yyyymmdd() treats tm_year below 70 as a two-digit year.
-    const calendarYear = year < 1970 ? year + 100 : year;
-    return String(calendarYear % 10000).padStart(4, ' ');
-}
 // Part of C end.c:really_done(): the "You died in %s" dungeon name
 // (svd.dungeons[u.uz.dnum].dname).
 function currentDungeonName() {
@@ -330,32 +322,9 @@ function finalLocationLine(verb, score) {
     }
     return `${text} with ${score} point${plur(score)},`;
 }
-// C rip.c:genl_outrip().  The stone receives up to four cause rows, each at
-// most sixteen characters, split backward at a word boundary when possible.
-function tombstoneDeathRows(cause) {
-    let remaining = String(cause || '');
-    const rows = [];
-    for (let row = 0; row < 4; row++) {
-        if (!remaining) {
-            rows.push('');
-            continue;
-        }
-        let count = remaining.length;
-        if (count > 16) {
-            const space = remaining.lastIndexOf(' ', 16);
-            // Native's backward scan reaches zero after a space at index
-            // one, so that case hard-splits just like an unbroken word.
-            count = space > 1 ? space : 16;
-        }
-        rows.push(remaining.slice(0, count));
-        remaining = remaining[count] === ' '
-            ? remaining.slice(count + 1) : remaining.slice(count);
-    }
-    return rows;
-}
 // Part of C end.c:really_done(): the end-of-game NHW_TEXT summary —
 // tombstone, goodbye line, location, gold and level lines.
-// Also C rip.c:genl_outrip(): the stone itself is composed in here.
+// Also C rip.c:genl_outrip(): the stone itself is composed in rip.ts.
 function deathSummaryLines(killer, { gold, score, moves }, endtime, { deathVerb = 'died', deathCause = null, deathType = null, } = {}) {
     const name = game.plname || 'player';
     const year = tombstoneYear(endtime);
@@ -1330,5 +1299,29 @@ export async function doneObjectCleanup() {
     const chain = game.uchain || game.u.uchain;
     if (chain?.where === 'free')
         await restoreBallAndChainPlacement(-1);
+}
+// C end.c:panic(): full body; the window-exit preamble lives in beginPanicOutput().
+export async function panic(reason, { state = game } = {}) {
+    requireLiveGame(state);
+    reason = diagnosticReason(reason);
+    const termination = new PanicTermination(reason);
+    const alreadyPanicking = state.program_state.panicking || 0;
+    state.program_state.panicking = alreadyPanicking + 1;
+    if (alreadyPanicking)
+        throw termination;
+    await beginPanicOutput();
+    const useful = state.program_state.something_worth_saving;
+    rawPrint(state.program_state.gameover
+        ? 'Postgame wrapup disrupted.'
+        : useful ? 'Suddenly, the dungeon collapses.' : 'Program initialization has failed.');
+    // The pinned sysconf has WIZARDS=*, with no SUPPORT or RECOVER setting.
+    if (!state.flags?.debug)
+        rawPrintf('Report error to "wizard"'
+            + (useful ? '\nand it may be possible to rebuild.' : '.'));
+    if (useful && fuzzerMode(state) === FUZZER_OFF)
+        await saveErrorGame();
+    rawPrint(reason);
+    paniclog('panic', reason, state);
+    throw termination;
 }
 //# sourceMappingURL=end.js.map

@@ -20,7 +20,7 @@ import { newobj } from './game.js'; // relocate-fns
 import { mungspaces, upstart } from './hacklib.js'; // relocate-fns
 import { update_inventory } from './inventory_refresh.js'; // relocate-fns
 import { mhe } from './makemon.js'; // relocate-fns
-import { christen_monst as _fl_christen_monst, distant_monnam, helpless, objtyp_is_callable, roguename } from './mhitm.js'; // relocate-fns
+import { new_mgivenname, distant_monnam, helpless, objtyp_is_callable, roguename } from './mhitm.js'; // relocate-fns
 import { OC_USES_KNOWN, dealloc_obj, wipeout_text } from './mklev.js'; // relocate-fns
 import { discover_object, undiscover_object } from './o_init.js'; // relocate-fns
 import { CXN_NORMAL, Ysimple_name2, simpleonames as _ia_simpleonames, an, getObjDescr, oname, xname_flags } from './objnam.js';
@@ -598,8 +598,24 @@ async function do_mgivenname() {
         if (!await _alreadynamed(mtmp, monnambuf, buf))
             await pline(`${monnambuf.charAt(0).toUpperCase()}${monnambuf.slice(1)} will not accept the name ${buf}.`);
     } else {
-        await _fl_christen_monst(mtmp, buf);
+        christen_monst(mtmp, buf);
     }
+}
+
+/* christen_monst — C ref: nethack-c-v5/upstream/src/do_name.c:133-152
+ * Give a monster a name.  Truncates to PL_PSIZ (63) if necessary. */
+export function christen_monst(mtmp, name) {
+    const PL_PSIZ = 63;
+    let lth = (name && name.length > 0) ? (name.length + 1) : 0;
+    if (lth > PL_PSIZ) {
+        lth = PL_PSIZ;
+        name = name.substring(0, PL_PSIZ - 1);
+    }
+    new_mgivenname(mtmp, lth); /* removes old name if one is present */
+    if (lth)
+        mtmp.mextra.mgivenname = name; /* C: Strcpy(MGIVENNAME(mtmp), name) */
+    if (mtmp.mleashed) update_inventory(); /* C do_name.c:149-150 */
+    return mtmp;
 }
 
 /* C do_name.c:157-195: reject attempts to erase or nearly match a fixed name. */

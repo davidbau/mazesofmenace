@@ -33,7 +33,6 @@ import { set_cursor, topline_more_loop } from './read.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { body_part, carrying, getObjFromGetobj, instapetrify as instapetrify_eat, will_feel_cockatrice } from './cmd.js'; // relocate-fns
 import { HAND } from './const.js'; // relocate-fns
-import { poly_when_stoned as poly_when_stoned_eat } from './mondata.js'; // relocate-fns
 import { corpse_xname, killer_xname, makeplural } from './objnam.js'; // relocate-fns
 import { currency, _delobj_useupf as delobj_core } from './cmd.js'; // relocate-fns
 import { display_minventory, force_decor, instapetrify, mbodypart } from './cmd.js'; // relocate-fns
@@ -986,7 +985,7 @@ export async function feel_cockatrice(obj, force) {
     if (!will_feel_cockatrice(obj, force)) return;
     /* C invent.c:4348-4361: "the <cockatrice> corpse" via corpse_xname */
     const name = corpse_xname(obj, null, 4 /* CXN_PFX_THE */);
-    if (game.youmonst?.data && poly_when_stoned_eat(game.youmonst.data))
+    if (game.youmonst?.data && poly_when_stoned(game.youmonst.data))
         await pline(`You touched ${name} with your bare ${makeplural(body_part(HAND))}.`);
     else
         await pline(`Touching ${name} is a fatal mistake...`);

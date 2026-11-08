@@ -84,7 +84,7 @@ import monMattkPackAt from './makemon_mattk.json' with { type: 'json' }; // relo
 import monsPackAt from './makemon_mons.json' with { type: 'json' }; // relocate-fns
 import monPmnamesPackAt from './makemon_pmnames.json' with { type: 'json' }; // relocate-fns
 import { COULD_SEE, IN_SIGHT } from './const.js'; // relocate-fns
-import { _sparkle_on, flash_glyph_at, mon_to_glyph } from './display.js'; // relocate-fns
+import { _sparkle_on, flash_glyph_at, impossible_sync, mon_to_glyph } from './display.js'; // relocate-fns
 import { MONS, NORMAL_SPEED } from './fastforward.js'; // relocate-fns
 import { dealloc_monst } from './dog.js'; // relocate-fns
 import { describe_level_buf } from './dungeon.js'; // relocate-fns
@@ -1913,9 +1913,13 @@ function plur(n) {
 const RIN_SLOW_DIGESTION = 193;
 
 export function set_ustuck(mtmp) {
-    /* C mon.c:3423-3427 iflags.sanity_check/debug_fuzzer m_next2u() check
-     * only reports through impossible(); not ported (impossible-only).
-     * C mon.c:3429 disp.botl = TRUE: the status line must be redrawn whenever
+    /* C mon.c:3423-3427 — sanity check: a stuck monster must be adjacent. */
+    if (game.iflags?.sanity_check || game.iflags?.debug_fuzzer) {
+        if (mtmp && !_sm_m_next2u(mtmp))
+            impossible_sync('Sticking to %s at distu %d?',
+                            mon_nam_wm(mtmp), mdistu_mcd(mtmp));
+    }
+    /* C mon.c:3429 disp.botl = TRUE: the status line must be redrawn whenever
      * the stuck monster changes, including when clearing an attachment. */
     if (game.disp)
         game.disp.botl = 1;

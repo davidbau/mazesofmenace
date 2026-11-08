@@ -46,7 +46,7 @@ import { OC_NAME } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { weight } from './weight.js';
-import { bless as bless_obj, unbless as unbless_obj, curse as curse_obj, uncurse as uncurse_obj } from './mkobj.js';
+import { bless as bless_obj, unbless as unbless_obj, curse, uncurse as uncurse_obj } from './mkobj.js';
 import { name_to_mon, set_mon_data, set_malign, rndmonnum, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn, emits_light } from './makemon.js';
 import { can_saddle } from './steed.js';
 import { del_light_source } from './light.js';
@@ -2491,9 +2491,6 @@ function bless(otmp) {
 }
 function unbless(otmp) {
     return unbless_obj(otmp);
-}
-function curse(otmp) {
-    return curse_obj(otmp);
 }
 function uncurse(otmp) {
     return uncurse_obj(otmp);

@@ -1,13 +1,20 @@
 // Tame monster state.
-// C refs: dog.c tamedog(), newedog(), initedog(), pick_familiar_pm(), make_familiar(), and abuse_dog().
-import { SCROLL_CLASS, SPBOOK_CLASS } from './objclass.js';
+// C refs: dog.c makedog(), tamedog(), newedog(), initedog(), pet_type(),
+// pick_familiar_pm(), make_familiar(), abuse_dog(), and dogfood().
+import { SCROLL_CLASS, SPBOOK_CLASS, FOOD_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS } from './objclass.js';
 import { currentAttribute } from './attrib.js';
-import { A_CHA, DISMOUNT_THROWN, G_EXTINCT, MM_EDOG, MM_FEMALE, MM_IGNOREWATER, MM_MALE, MM_NOMSG, NO_MINVENT, COLNO, In_endgame, LARGEST_INT, MAGIC_PORTAL, MAX_NUM_WORMS, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_LEFTOVERS, MIGR_PORTAL, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP, MIGR_WITH_HERO, MON_ARRIVE_AFTER_YOU, MON_ARRIVE_BEFORE_YOU, MON_ARRIVE_WITH_YOU, MON_FLOOR, MON_LIMBO, MON_MIGRATING, MON_STILL_ARRIVING, NEED_HTH_WEAPON, RLOC_NOMSG, ROWNO, STRAT_ARRIVE, STRAT_WAITFORU, EYE, LL_CONDUCT, } from './const.js';
+import { A_CHA, DISMOUNT_THROWN, G_EXTINCT, GP_AVOID_MONPOS, MM_EDOG, MM_FEMALE, MM_IGNOREWATER, MM_MALE, MM_NOMSG, NO_MINVENT, COLNO, In_endgame, LARGEST_INT, MAGIC_PORTAL, MAX_NUM_WORMS, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_LEFTOVERS, MIGR_PORTAL, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP, MIGR_WITH_HERO, MON_ARRIVE_AFTER_YOU, MON_ARRIVE_BEFORE_YOU, MON_ARRIVE_WITH_YOU, MON_FLOOR, MON_LIMBO, MON_MIGRATING, MON_STILL_ARRIVING, NEED_HTH_WEAPON, RLOC_NOMSG, ROWNO, STRAT_ARRIVE, STRAT_WAITFORU, EYE, LL_CONDUCT, G_GENOD, MAX_EGG_HATCH_TIME, } from './const.js';
 import { isPoolAt } from './dbridge.js';
 import { makemonNear } from './mklev.js';
 import { canSpotMonster, newsym, canSeeMonster } from './display.js';
-import { plineWithContinuation, recordGameLogEvent } from './pline.js';
+import { plineWithContinuation, recordGameLogEvent, impossible } from './pline.js';
 import { game, requireLiveGame, requireGameLevel, requirePlayingGame } from './gstate.js';
+import { artifactById, artifactByName } from './artifact.js';
+import { veganCorpse } from './food_traits.js';
+import { AD_POLY } from './monster_attack_types.js';
+import { objectMaterial } from './o_init.js';
+import { objectIsMetallic, objectIsOrganic, objectIsRustprone } from './object_properties.js';
+import { objectResistsDestruction } from './zap.js';
 import { withIndefiniteArticle, corpseName, objectName, observeObjectForNaming, pluralizeObjectNoun } from './objnam.js';
 import { heroHasConflict } from './hero_conflict.js';
 import { publishMonsterYelp, publishMonsterGrowl } from './sounds.js';
@@ -15,22 +22,23 @@ import { sessionIsNight } from './calendar.js';
 import { releaseMonsterLeash } from './apply.js';
 import { finishMonsterEating, dogEat } from './dogmove.js';
 import { monsterName, setMonsterGivenName, monsterTypeName } from './do_name.js';
-import { dismountHero, monsterHasMapPosition, placeMonsterOnMap } from './steed.js';
+import { dismountHero, monsterHasMapPosition, placeMonsterOnMap, putSaddleOnMonster } from './steed.js';
 import { cansee, monsterEmitsLight, vision_recalc } from './vision.js';
-import { MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
-import { CORPSE, RIN_AGGRAVATE_MONSTER, } from './object_data.js';
+import { MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_MOVE, MONSTER_NAME, MONSTER_SIZE, MONSTER_SYMBOL, } from './monster_data.js';
+import { CORPSE, RIN_AGGRAVATE_MONSTER, EXPENSIVE_CAMERA, AMULET_OF_STRANGULATION, APPLE, BANANA, CARROT, CLOVE_OF_GARLIC, EGG, ENORMOUS_MEATBALL, GLOB_OF_GREEN_SLIME, LUMP_OF_ROYAL_JELLY, MEATBALL, MEAT_RING, MEAT_STICK, RIN_SLOW_DIGESTION, SLIME_MOLD, TIN, TRIPE_RATION, } from './object_data.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { initializeUnplacedMonsterWormBody, redrawMonsterWorm, removeMonsterWormBody } from './worm.js';
-import { setMonsterMalign, makemonAt, rndmonstAdj, monsterBirthLimit } from './makemon.js';
+import { setMonsterMalign, makemonAt, rndmonstAdj, monsterBirthLimit, newMonsterHitPoints } from './makemon.js';
 import { stairway_find, stairway_find_from } from './stairs.js';
-import { levelFollower, carnivorous, herbivorous, is_domestic, monsterHasEyes, monsterIsDemon, monsterIsCovetous, monsterIsHuman, monsterIsHumanoid, regenerates, speciesHasWeaponAttack, } from './mondata.js';
-import { wakeMonstersNearWithMessages, releaseHeroFromMonster, detachMonsterFromLevel, healMonster, restoreMonsterShape, sendMonsterToLimbo, resolveMonsterLiquid, finishLiquidDeathForCurrentMover, nearHero } from './mon.js';
+import { levelFollower, carnivorous, herbivorous, is_domestic, monsterHasEyes, monsterIsDemon, monsterIsCovetous, monsterIsHuman, monsterIsHumanoid, regenerates, speciesHasWeaponAttack, sameMonsterRace, monsterHasAcidResistance, monsterHasPoisonResistance, monsterHasStoneResistance, metallivorous, acidic, poisonous, is_elf, is_shapeshifter, monsterHatesSilver, monsterIsNoncorporeal, monsterIsRider, monsterIsUndead, monsterIsVampireShifter, fleshPetrifies, } from './mondata.js';
+import { wakeMonstersNearWithMessages, releaseHeroFromMonster, detachMonsterFromLevel, healMonster, restoreMonsterShape, sendMonsterToLimbo, resolveMonsterLiquid, finishLiquidDeathForCurrentMover, nearHero, seeMonsterCloseup } from './mon.js';
 import { questMonsterFlags3 } from './role_monsters.js';
 import { heroFormSticks, heroSpecies, body_part } from './polyself.js';
 import { ensureHeroSkills, wieldMonsterWeapon } from './weapon.js';
-import { ACCFOOD, DOGFOOD, MANFOOD, dogFood } from './pet_food.js';
 import { heroIsHallucinating } from './senses.js';
 import { hasShopkeeperData } from './shop_types.js';
+import { enexto_gpflags } from './teleport.js';
+import { nextIdent } from './mkobj.js';
 import { possessiveName } from './hacklib.js';
 import { depth } from './dungeon.js';
 import { dropSpecialMonsterObjects } from './steal.js';
@@ -465,12 +473,136 @@ function defaultFallDestination(state) {
         dlevel: Math.min((uz.dlevel ?? 1) + 1, bottom),
     };
 }
+// Role-keyed default dog names (C dog.c:makedog() reads data from the role
+// table; the port keys them by RoleKey).
+const DEFAULT_DOG_NAMES = {
+    caveman: 'Slasher',
+    ranger: 'Sirius',
+    samurai: 'Hachi',
+    barbarian: 'Idefix',
+};
+// C dog.c:makedog()
+// Also C dog.c:pet_type(): the starting-pet species choice is inlined here.
+// Also C dog.c:initedog(): the newborn pet's tame state and edog fields are inlined here.
+export async function makedog() {
+    const g = game;
+    if (g.preferred_pet === 'n') {
+        g.context.startingpet_typ = -1;
+        return null;
+    }
+    const role = g.urole?.key;
+    if (role !== 'archeologist' && role !== 'barbarian'
+        && role !== 'caveman' && role !== 'ranger' && role !== 'rogue'
+        && role !== 'samurai' && role !== 'tourist' && role !== 'valkyrie'
+        && role !== 'priest' && role !== 'healer' && role !== 'knight'
+        && role !== 'monk' && role !== 'wizard')
+        return null;
+    if (!g.level)
+        throw new Error('Starting pet needs an initialized level');
+    let pettype = g.urole?.petnum;
+    if (pettype == null || pettype < 0) {
+        if (g.preferred_pet === 'c')
+            pettype = 32; // PM_KITTEN
+        else if (g.preferred_pet === 'd')
+            pettype = 16; // PM_LITTLE_DOG
+        else
+            pettype = rn2(2) ? 32 : 16;
+    }
+    g.context.startingpet_typ = pettype;
+    // C makemon() places a monster made on the hero with enexto_core(),
+    // first avoiding scary squares and only then accepting them.
+    const spot = enexto_gpflags(pettype, g.u.ux, g.u.uy, GP_AVOID_MONPOS);
+    if (!spot)
+        return null;
+    const monsterId = nextIdent();
+    // C makemon() rolls the pet through newmonhp(): adj_lev() lowers dogs and
+    // kittens to level one and the Knight's pony to level two, and an
+    // all-ones roll gains a point.
+    const { level, hp } = newMonsterHitPoints(pettype);
+    const female = !!rn2(2);
+    // Dogs, cats, and ponies are neutral. C's peace_minded() reaches its two
+    // random branches only for a neutral hero, and the first denominator is
+    // derived from the live alignment record rather than the role name.
+    if ((g.initAlignment?.value ?? 0) === 0) {
+        const record = g.u?.ualign?.record ?? 0;
+        if (rn2(16 + Math.max(-15, record)))
+            rn2(2); // 2 + abs(monster alignment), which is 0 here
+    }
+    const pet = {
+        mnum: pettype, m_id: monsterId,
+        mx: spot.x,
+        my: spot.y,
+        mhp: hp,
+        mhpmax: hp,
+        m_lev: level,
+        female,
+        mtame: 0,
+        mpeaceful: 1,
+        malign: 0,
+        mcanmove: 1,
+        mcansee: 1,
+        mblinded: 0,
+        movement: 0,
+        mmove: MONSTER_MOVE[pettype] ?? 0,
+        mspeed: 0,
+        symbol: pettype === 100 ? 'u' : pettype === 32 ? 'f' : 'd',
+        pet: true,
+        mtrack: [],
+        // C dog.c initedog(): initialize the pet's training and hunger state.
+        edog: {
+            droptime: 0,
+            dropdist: 10000,
+            // The pet is created before u_init_inventory_attrs(). At this
+            // point C's ACURR(A_CHA) clamps the zeroed attribute to 3; the
+            // finalized hero Charisma must not be read retroactively.
+            apport: g.u?.acurr?.a?.[A_CHA] ?? 3,
+            whistletime: 0,
+            hungrytime: (g.moves ?? 0) + 1000,
+            ogoal: { x: -1, y: -1 },
+            abuse: 0,
+            revivals: 0,
+            mhpmax_penalty: 0,
+            killed_by_u: 0,
+        },
+    };
+    if (!g.level.monsters)
+        g.level.monsters = [];
+    g.level.monsters.push(pet);
+    if (!g.context.startingpet_mid) {
+        g.context.startingpet_mid = pet.m_id;
+        if (pettype === MONSTER_NAME.indexOf('pony') && !g.u.uroleplay?.pauper)
+            await putSaddleOnMonster(null, pet);
+        g.bhitpos = { x: pet.mx, y: pet.my };
+        g.notonhead = false;
+        await seeMonsterCloseup(pet, { photo: g.inventory.some(object => object.otyp === EXPENSIVE_CAMERA) });
+    }
+    else {
+        await impossible('makedog() when startingpet_mid is already non-zero?');
+    }
+    const name = pettype === MONSTER_NAME.indexOf('little dog')
+        ? g.flags.dogname || DEFAULT_DOG_NAMES[role]
+        : pettype === MONSTER_NAME.indexOf('kitten') ? g.flags.catname
+            : pettype === MONSTER_NAME.indexOf('pony') ? g.flags.horsename : null;
+    const petnameUsed = g.petname_used ?? 0;
+    g.petname_used = petnameUsed + 1;
+    if (!petnameUsed && name)
+        setMonsterGivenName(pet, name);
+    // C initedog() tames the pet after mpickobj() can forget an unseen saddle.
+    pet.mtame = 10;
+    setMonsterMalign(pet, g);
+    if (!g.u.uconduct)
+        g.u.uconduct = {};
+    g.u.uconduct.pets = (g.u.uconduct.pets || 0) + 1;
+    return pet;
+}
 // Part of C dog.c:mon_leave(): the no_charge reset via picked_container().
-function clearNoCharge(object) {
+// Named for its caller's carried-object loop; shk.c:clear_no_charge() is a
+// different function that walks a floor list with shop residency checks.
+function clearCarriedNoCharge(object) {
     // C dog.c mon_leave() resets shop pricing on carried containers.
     object.no_charge = false;
     for (const content of object.contents || [])
-        clearNoCharge(content);
+        clearCarriedNoCharge(content);
 }
 // Part of C dog.c:mon_arrive(): the no-room failure path (relmon(),
 // m_into_limbo()).
@@ -490,7 +622,7 @@ async function failArrival(monster, when, state) {
 // residency and carry only a tail length between levels.
 export async function prepareMonsterDeparture(monster, state) {
     for (const object of monster.minvent || monster.inventory || [])
-        clearNoCharge(object);
+        clearCarriedNoCharge(object);
     setShopResidency(monster, true, state);
     if (monster.wormno) {
         const x = monster.mx, y = monster.my;
@@ -944,5 +1076,168 @@ function keepAccessible(monster, current) {
             return true;
     }
     return false;
+}
+// ────────────────────────────────────────────────────────────────────────────
+// Pet food preferences and hazards. C refs: dog.c dogfood(), obj.h, mondata.h.
+export const DOGFOOD = 0;
+export const CADAVER = 1;
+export const ACCFOOD = 2;
+export const MANFOOD = 3;
+export const APPORT = 4;
+export const POISON = 5;
+export const UNDEF = 6;
+export const TABU = 7;
+const SILVER = 14;
+const S_KOBOLD = 11, S_ORC = 15, S_FUNGUS = 32, S_OGRE = 41, S_YETI = 51;
+const PM_GHOUL = MONSTER_NAME.indexOf('ghoul');
+const PM_KILLER_BEE = MONSTER_NAME.indexOf('killer bee');
+const PM_QUEEN_BEE = MONSTER_NAME.indexOf('queen bee');
+const PM_LIZARD = MONSTER_NAME.indexOf('lizard');
+const PM_LICHEN = MONSTER_NAME.indexOf('lichen');
+const PM_PYROLISK = MONSTER_NAME.indexOf('pyrolisk');
+const PM_GREEN_SLIME = MONSTER_NAME.indexOf('green slime');
+const PM_RUST_MONSTER = MONSTER_NAME.indexOf('rust monster');
+const PM_GELATINOUS_CUBE = MONSTER_NAME.indexOf('gelatinous cube');
+const FLAMING_SPECIES = new Set(['fire vortex', 'flaming sphere', 'fire elemental', 'salamander']
+    .map(name => MONSTER_NAME.indexOf(name)));
+// C dog.c:dogfood(): rank an object as pet food, from DOGFOOD to TABU.
+// Lower ranks are preferred. TABU forbids eating or fetching; UNDEF is merely
+// unsuitable. The object resistance check belongs here even for ordinary food.
+export function dogFood(monster, object, random, calls, state) {
+    // C stores weapon poison and a container's trap in the same bit.
+    if ((object.opoisoned || object.otrapped) && !monsterHasPoisonResistance(monster))
+        return POISON;
+    const artifact = artifactById(object.oartifact, state);
+    const questArtifact = artifactByName(state.urole?.artifactName, state);
+    if ((artifact !== null && artifact.id === questArtifact?.id)
+        || objectResistsDestruction(object, 0, 95, range => {
+            calls.push(range);
+            return random(range);
+        }))
+        return object.cursed ? TABU : APPORT;
+    if (object.oclass === ROCK_CLASS)
+        return UNDEF;
+    if (object.oclass === FOOD_CLASS)
+        return foodQuality(monster, object, state);
+    return nonfoodQuality(monster, object, state);
+}
+// Part of C dog.c:dogfood(): the FOOD_CLASS branch.
+function foodQuality(monster, object, state) {
+    const carni = carnivorous(monster.mnum), herbi = herbivorous(monster.mnum);
+    const flesh = [CORPSE, TIN, EGG].includes(object.otyp) ? object.corpsenm : undefined;
+    if (object.otyp === CORPSE && flesh !== undefined && monsterIsRider({ mnum: flesh }))
+        return TABU;
+    if ((object.otyp === CORPSE || object.otyp === EGG)
+        && fleshPetrifies(flesh) && !monsterHasStoneResistance(monster))
+        return POISON;
+    if (object.otyp === LUMP_OF_ROYAL_JELLY && monster.mnum === PM_KILLER_BEE) {
+        const queenGenocided = !!((state.mvitals?.[PM_QUEEN_BEE]?.mvflags ?? 0) & G_GENOD);
+        const queenPresent = !queenGenocided && requireGameLevel(state).monsters.some(other => other.mnum === PM_QUEEN_BEE && other.mhp > 0);
+        return queenPresent ? TABU : DOGFOOD;
+    }
+    if (!carni && !herbi)
+        return object.cursed ? UNDEF : APPORT;
+    const starving = !!(monster.mtame && !monster.isminion && monster.edog?.mhpmax_penalty);
+    const blindWithEyes = !monster.mcansee && monsterHasEyes(monster.mnum);
+    if (monster.mnum === PM_GHOUL)
+        return ghoulFood(object, flesh, starving, state);
+    switch (object.otyp) {
+        case TRIPE_RATION:
+        case MEATBALL:
+        case MEAT_RING:
+        case MEAT_STICK:
+        case ENORMOUS_MEATBALL:
+            return carni ? DOGFOOD : MANFOOD;
+        case EGG:
+            if (flesh === PM_PYROLISK && !FLAMING_SPECIES.has(monster.mnum))
+                return POISON;
+            return carni ? CADAVER : MANFOOD;
+        case CORPSE:
+            return corpseQuality(monster, object, flesh, starving, carni, herbi, state);
+        case GLOB_OF_GREEN_SLIME:
+            return starving || monster.mnum === PM_GREEN_SLIME
+                || FLAMING_SPECIES.has(monster.mnum) || monsterIsNoncorporeal(monster)
+                ? ACCFOOD : POISON;
+        case CLOVE_OF_GARLIC:
+            if (monsterIsUndead(monster.mnum) || monsterIsVampireShifter(monster))
+                return TABU;
+            return herbi || starving ? ACCFOOD : MANFOOD;
+        case TIN:
+            return metallivorous(monster.mnum) ? ACCFOOD : MANFOOD;
+        case APPLE:
+            return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+        case CARROT:
+            return herbi || blindWithEyes ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+        case BANANA:
+            if (MONSTER_SYMBOL[monster.mnum] === S_YETI && herbi)
+                return DOGFOOD;
+            return herbi || starving ? ACCFOOD : MANFOOD;
+        default:
+            if (starving)
+                return ACCFOOD;
+            return object.otyp > SLIME_MOLD
+                ? carni ? ACCFOOD : MANFOOD
+                : herbi ? ACCFOOD : MANFOOD;
+    }
+}
+// Part of C dog.c:dogfood(): the ghoul preference for old corpses and
+// stale eggs.
+function ghoulFood(object, flesh, starving, state) {
+    if (object.otyp === CORPSE) {
+        if (oldCorpse(object, state))
+            return DOGFOOD;
+        return starving && !veganCorpse(flesh) ? ACCFOOD : POISON;
+    }
+    if (object.otyp === EGG) {
+        if (state.moves - object.age > 2 * MAX_EGG_HATCH_TIME)
+            return CADAVER;
+        return starving ? ACCFOOD : POISON;
+    }
+    return TABU;
+}
+// Part of C dog.c:dogfood(): the CORPSE case of the food switch.
+function corpseQuality(monster, object, flesh, starving, carni, herbi, state) {
+    if ((oldCorpse(object, state) && MONSTER_SYMBOL[monster.mnum] !== S_FUNGUS)
+        || (acidic(flesh ?? -1) && !monsterHasAcidResistance(monster))
+        || (poisonous(flesh ?? -1) && !monsterHasPoisonResistance(monster)))
+        return POISON;
+    if (flesh !== undefined && (monster.mtame ?? 0) > 1 && !starving
+        && (is_shapeshifter(flesh)
+            || MONSTER_ATTACKS[flesh]?.some(([, damage]) => damage === AD_POLY)))
+        return MANFOOD;
+    if (veganCorpse(flesh))
+        return herbi ? CADAVER : MANFOOD;
+    if (flesh !== undefined && MONSTER_FLAGS1[flesh] !== undefined
+        && monsterIsHumanoid(monster.mnum) && sameMonsterRace(monster.mnum, flesh)
+        && !monsterIsUndead(monster.mnum)
+        && ![S_KOBOLD, S_ORC, S_OGRE].includes(MONSTER_SYMBOL[flesh] ?? 0)) {
+        const elf = is_elf(monster.mnum);
+        return starving && carni && !elf ? ACCFOOD : TABU;
+    }
+    return carni ? CADAVER : MANFOOD;
+}
+// Part of C dog.c:dogfood(): peek at iced corpse age to spot an old corpse.
+function oldCorpse(object, state) {
+    // Ice slows decay without changing the object's timers or stored age.
+    const age = object.on_ice
+        ? object.age + Math.trunc((state.moves - object.age) / 2) : object.age;
+    return age + 50 <= state.moves
+        && object.corpsenm !== PM_LIZARD && object.corpsenm !== PM_LICHEN;
+}
+// Part of C dog.c:dogfood(): the non-food default branch.
+function nonfoodQuality(monster, object, state) {
+    if (object.otyp === AMULET_OF_STRANGULATION || object.otyp === RIN_SLOW_DIGESTION)
+        return TABU;
+    const material = objectMaterial(object, state);
+    if (monsterHatesSilver(monster) && material === SILVER)
+        return TABU;
+    if (monster.mnum === PM_GELATINOUS_CUBE && objectIsOrganic(object, state))
+        return ACCFOOD;
+    if (metallivorous(monster.mnum) && objectIsMetallic(object, state)
+        && (objectIsRustprone(object, state) || monster.mnum !== PM_RUST_MONSTER)) {
+        return objectIsRustprone(object, state) && !object.oerodeproof ? DOGFOOD : ACCFOOD;
+    }
+    return !object.cursed && object.oclass !== BALL_CLASS && object.oclass !== CHAIN_CLASS
+        ? APPORT : UNDEF;
 }
 //# sourceMappingURL=dog.js.map

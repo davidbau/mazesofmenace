@@ -85,7 +85,7 @@ import { PM_VIOLET_FUNGUS, PM_WRAITH, PM_NURSE,
          PM_GENETIC_ENGINEER, PM_DISPLACER_BEAST, PM_DISENCHANTER,
          PM_NEWT } from './pm.generated.js';
 import { dmgtype } from './dogmove.js';
-import { attacktype } from './makemon.js';
+import { attacktype } from './mondata.js';
 /* C monattk.h — AT_MAGC (ranged spellcasting) and the AD_ damage types
  * cpostfx's hallucination test reads.  Values verified against the copies
  * already in js/mhitu.js (AD_STUN=12), js/polyself.js (AD_HALU=36) and

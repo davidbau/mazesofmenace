@@ -12,7 +12,8 @@ import { killer_xname as _thitu_killer_xname, an, doname, mshot_xname, obj_is_pn
 import { pline, pline_The } from './pline.js';
 import { potionhit as potionhit_thitu } from './potion.js';
 import { rn2, rnd } from './rng.js';
-import { BOLT_LIM, BOULDER, Blind_thitu, _gp_closed_door, _gp_is_waterwall, _lo_hero_monst, _monstseesu_stub, _monstunseesu_stub, _thitu_stone_missile, _tr_passes_rocks, sgn, upstart_local } from './trap.js';
+import { closed_door } from './monmove.js';
+import { BOLT_LIM, BOULDER, Blind_thitu, _gp_is_waterwall, _lo_hero_monst, _monstseesu_stub, _monstunseesu_stub, _thitu_stone_missile, _tr_passes_rocks, sgn, upstart_local } from './trap.js';
 import { clear_path, couldsee } from './vision.js';
 import { weight } from './weight.js';
 import { extract_from_minvent } from './worn.js';
@@ -288,16 +289,15 @@ export function linedup(ax, ay, bx, by, boulderhandling) {
  * <x,y> block a linedup() sight line?  RNG-free.
  *   if (!isok(x,y) || IS_OBSTRUCTED(levl[x][y].typ) || closed_door(x,y)
  *       || is_waterwall(x,y) || levl[x][y].typ == LAVAWALL) return TRUE;
- * Reuses this file's own goodpos() helpers for the closed-door and waterwall
- * tests (_gp_closed_door / _gp_is_waterwall), which are already C-faithful
- * ports of monmove.c:2204 and dbridge.c:37. */
+ * closed_door is the real monmove.c:2204 port (js/monmove.js); the waterwall
+ * test reuses trap.js's _gp_is_waterwall (dbridge.c:37). */
 export function blocking_terrain(x, y) {
     if (!isok(x, y))
         return true;
     const typ = game.level?.at(x, y)?.typ | 0;
     if (IS_OBSTRUCTED(typ))
         return true;
-    if (_gp_closed_door(x, y))
+    if (closed_door(x, y))
         return true;
     if (_gp_is_waterwall(x, y))
         return true;

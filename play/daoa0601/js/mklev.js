@@ -9,7 +9,7 @@
 import { stack_object } from './invent.js';
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS, SPBOOK_no_NOVEL, } from './objclass.js';
 import { recorderLocalEpochSeconds, recorderTimestamp } from './calendar.js';
-import { rotCorpse } from './corpse_rot.js';
+import { rotCorpse } from './dig.js';
 import { mksobj, mksobj_at, mkobj, mkobj_at, mkgold, mkcorpstat, set_corpsenm, rndmonnum, rndmonnumAdj, linkObjectToMonsterInventory, curseObjectState, deallocateObject, objectWeight, nextIdent, placeCreatedObject, updateIceObjectTimersAt, addBuriedObject } from './mkobj.js';
 import { restoreMonsterInventoryOwnership } from './mon.js';
 import { oinit, objectMaterial } from './o_init.js';
@@ -26,18 +26,17 @@ import { nameObjectFromTopten } from './topten.js';
 import { normalDemon } from './minion.js';
 import { randomMonsterRelocation } from './teleport.js';
 import { restoreLevelChains, restoreMonsterWormHeads, validMonsterWormBodies } from './restore.js';
-import { restoreLevelPetHistory } from './save.js';
+import { restoreLevelPetHistory } from './restore.js';
 import { currentLuaLifecycle } from './lua/lifecycle.js';
-import { panic } from './diagnostics.js';
+import { panic } from './end.js';
 import { PanicTermination } from './panic_termination.js';
 import { finishHeroDeath } from './end.js';
 import { LUA_SOURCES } from './generated/lua_sources.js';
 import { buriedBallToPunishment, buryObject, unearthFloorObjectsAt } from './dig.js';
 import { GameMap } from './game.js';
 import { ageStoresFuel } from './pickup.js';
-import { prepareBonesObjectForRestore, prepareBonesObjectForSave } from './bones_object.js';
-import { encodeSavedGraph } from './saved_graph.js';
 import { decodeBonesPayload } from './bones_validation.js';
+import { encodeSavedGraph } from './saved_graph.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { SHOP_TYPES, RANDOM_SHOP_TYPES } from './shknam.js';
 import { GP_ALLOW_XY, GP_CHECKSCARY, RLOC_ERR, RLOC_NOMSG, PL_NSIZ, A_CHA, COLNO, ROWNO, STONE, MAX_TYPE, ROOM, CORR, DOOR, STAIRS, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, OROOM, VAULT, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, THEMEROOM, SHOPBASE, ROOMOFFSET, MAXNROFROOMS, SHARED, SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, HEADSTONE, MARK, DUST, DIR_N, DIR_S, DIR_E, DIR_W, DIR_180, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT, IS_WALL, IS_STWALL, COULD_SEE, IN_SIGHT, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, ZAP_POS, IS_FURNITURE, IS_POOL, IS_AIR, IS_LAVA, In_endgame, Is_earthlevel, Is_stronghold, Is_oracle_level, Is_waterlevel, Is_knox_level, Is_rogue_level, SPACE_POS, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL, ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, ICED_POOL, ICED_MOAT, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA, DB_UNDER, DB_FLOOR, SHOP_HOLE_COST, AIR, TRICKED, A_NONE, A_LAWFUL, AM_SHRINE, Align2amask, LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_BRANCH, LR_PORTAL, MM_ASLEEP, MM_NOGRP, MM_EPRI, MM_ESHK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, MM_EDOG, NO_MINVENT, G_EXTINCT, G_GENOD, G_GONE, HEALTHY_TIN, ANTI_MAGIC, TT_BURIEDBALL, TT_BEARTRAP, TT_WEB, TT_PIT, TT_LAVA, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND, is_hole, is_pit } from './const.js';
@@ -53,7 +52,7 @@ import { premap_detect, convertSecretDoor } from './detect.js';
 import { deleteEngravingAt, makeEngravingAt, make_grave, randomEngraving, restoreEngravings, sanitizeEngravings, wipeEngravingAt } from './engrave.js';
 import { addObjectToMonsterInventory } from './steal.js';
 import { insideShopRoomAt, addShopDamage, fixShopDamage, deleteObject } from './shk.js';
-import { PM_SOLDIER, antholeMonsterType, markRandomSpecialRoom, mkshop, occupied, roomHasStair, somex, somey, somexyspace, insideRoom } from './mkroom.js';
+import { PM_SOLDIER, antholeMonsterType, do_mkroom, roomHasStair, somex, somey, somexyspace, insideRoom } from './mkroom.js';
 import { bound_digging, generateAstralLevel, generateBigRoom, generateDungeonMazeFile, generateElementalPlane, generateFakeWizardLevel, generateKnoxLevel, generateLuaQuestLevel, generateMedusaLevel, generateMinesEnd, generateMinetown, generateOracleLevel, generateRandomMaze, generateSokobanLevel, generateSpecialAndFixup, generateVladsTowerLevel, generateWizardLevel, isLuaQuestPrototype, mazeFloorPoint, mkportal, place_lregion, setLevelTerrainType, wallification } from './mkmaze.js';
 import { getbones, levelAllowsBones, restoreBonesMonsters } from './bones.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
@@ -61,7 +60,7 @@ import { restoreLevelRegions } from './region.js';
 import { beginObjectBurn } from './timeout.js';
 import { vision_note_blocker_change, vision_reset_new_level } from './vision.js';
 import { goodPosition, enexto, enexto_gpflags } from './teleport.js';
-import { isIceAt, isLavaAt, isPoolAt } from './dbridge.js';
+import { isIceAt, isLavaAt, isPoolAt, isPoolOrLavaAt } from './dbridge.js';
 import { addToContainer, beginLuaThemerooms, callLuaThemerooms, check_room, create_room, dig_corridor, fill_special_room, fillVault, finishLevelTrapConstruction, load_special, medusaPetrifiable, putGeneratedMonsterInventoryInStatue, themerooms_generate } from './sp_lev.js';
 import { finishHeroLiquidMonsterDeath, finishMonsterLiquidDeath, purgeDeadMonsters, removeMonsterFromGame, resolveMonsterLiquid, revealMonsterAppearance, sendMonsterToLimbo } from './mon.js';
 import { fractureRock } from './zap.js';
@@ -162,38 +161,6 @@ export async function finishBuriedZombieTimer(event, state = game) {
     event.filledByBoulder = result.filled ? result.boulder : null;
     event.buriedFloorObjects = result.buriedFloorObjects;
     return event;
-}
-// C dig.c:rot_organic(): the timer callback, burying a container's
-// contents before the object rots away.
-// Also C dig.c:rot_corpse(): the corpse-rot half runs here too.
-export async function runClaimedObjectRotTimer(claimed, state = game) {
-    const object = claimed?.object;
-    const kind = claimed?.timer?.kind;
-    if (!object || (kind !== OBJECT_TIMER_KIND.ROT_CORPSE
-        && kind !== OBJECT_TIMER_KIND.ROT_ORGANIC))
-        return null;
-    if (kind === OBJECT_TIMER_KIND.ROT_ORGANIC) {
-        while (object.contents?.length) {
-            const content = object.contents[0];
-            if (!content)
-                throw new Error('Rotting container is missing its first object');
-            content.ox = object.ox;
-            content.oy = object.oy;
-            if ((await buryObject(content, state)).outcome === 'skipped') {
-                return { kind: 'blocked-organic-rot', object };
-            }
-        }
-    }
-    const { where, ox: x, oy: y } = object;
-    if (kind === OBJECT_TIMER_KIND.ROT_CORPSE)
-        await rotCorpse(object, state);
-    else
-        await deleteObject(object, state);
-    return { kind, object, where, x, y };
-}
-// Part of C nhlua.c:l_nhcore_init(): entry adapter; LuaLifecycle.startCore() initializes the core.
-export async function l_nhcore_init() {
-    await currentLuaLifecycle().startCore(game);
 }
 // C mklev.c:mklev()
 export async function mklev() {
@@ -675,6 +642,15 @@ async function maybePlaceKnoxPortal(x, y) {
     await place_branch(branch, x, y);
     return true;
 }
+// C mklev.c:occupied():
+export function occupied(x, y, state = game) {
+    const location = state.level?.at?.(x, y);
+    if (!location)
+        return false;
+    const trapped = state.level?.traps?.some(trap => trap.tx === x && trap.ty === y);
+    return !!(trapped || IS_FURNITURE(location.typ)
+        || isPoolOrLavaAt(x, y, state));
+}
 // Part of C mklev.c:makelevel(): the depth-dependent random special-room selection.
 // C ref: mklev.c makelevel() random-special-room else-if chain.  Every failed
 // depth-eligible predicate owns its draw; once one type is selected, room
@@ -684,31 +660,31 @@ async function maybeMakeSpecialRoom(roomThreshold) {
     const medusaDepth = depth_of_level(game.medusa_level);
     if (uDepth > 1 && uDepth < medusaDepth
         && requireGameLevel().nroom >= roomThreshold && rn2(uDepth) < 3)
-        return mkshop();
+        return do_mkroom(SHOPBASE);
     if (uDepth > 4 && !rn2(6))
-        return markRandomSpecialRoom(COURT);
+        return do_mkroom(COURT);
     if (uDepth > 5 && !rn2(8)
         && !((game.mvitals?.[MONSTER_NAME.indexOf('leprechaun')]?.mvflags ?? 0) & G_GONE))
-        return markRandomSpecialRoom(LEPREHALL);
+        return do_mkroom(LEPREHALL);
     if (uDepth > 6 && !rn2(7))
-        return markRandomSpecialRoom(ZOO);
+        return do_mkroom(ZOO);
     if (uDepth > 8 && !rn2(5))
-        return markRandomSpecialRoom(TEMPLE);
+        return do_mkroom(TEMPLE);
     if (uDepth > 9 && !rn2(5)
         && !((game.mvitals?.[MONSTER_NAME.indexOf('killer bee')]?.mvflags ?? 0) & G_GONE))
-        return markRandomSpecialRoom(BEEHIVE);
+        return do_mkroom(BEEHIVE);
     if (uDepth > 11 && !rn2(6))
-        return markRandomSpecialRoom(MORGUE);
+        return do_mkroom(MORGUE);
     if (uDepth > 12 && !rn2(8) && antholeMonsterType() !== null)
-        return markRandomSpecialRoom(ANTHOLE);
+        return do_mkroom(ANTHOLE);
     if (uDepth > 14 && !rn2(4)
         && !((game.mvitals?.[PM_SOLDIER]?.mvflags ?? 0) & G_GONE))
-        return markRandomSpecialRoom(BARRACKS);
+        return do_mkroom(BARRACKS);
     if (uDepth > 15 && !rn2(6))
-        return markRandomSpecialRoom(SWAMP);
+        return do_mkroom(SWAMP);
     if (uDepth > 16 && !rn2(8)
         && !((game.mvitals?.[MONSTER_NAME.indexOf('cockatrice')]?.mvflags ?? 0) & G_GONE))
-        return markRandomSpecialRoom(COCKNEST);
+        return do_mkroom(COCKNEST);
     return false;
 }
 // C mklev.c:makerooms()
@@ -1973,7 +1949,11 @@ async function fillRandomRoomObjects(croom, pos) {
         }
     }
 }
-// C mklev.c:mksink().
+// C mklev.c:fill_ordinary_room(): a recursive ordinary-room fill —
+// subrooms first, then the sleeping monster, traps, gold, and the
+// non-rogue furniture; mksink() is inlined in the one-in-60 arm below
+// and fillRandomRoomObjects() above is the shared skip_nonrogue
+// random-object tail.
 export async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM))

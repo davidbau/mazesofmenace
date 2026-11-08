@@ -155,12 +155,11 @@ import { obj_typename, getObjDescr, armor_simple_name, xname_armor, xname_amulet
  * mstatusline print "your <mon> ... AC 0" (commit 60d255c4), so the obj-taking
  * copies are imported under an explicit `_obj` suffix rather than by silently
  * winning or losing a name race. */
-import { cloak_simple_name as cloak_simple_name_obj,
+import { cloak_simple_name,
          suit_simple_name, suit_simple_name as suit_simple_name_obj,
          shirt_simple_name, shirt_simple_name as shirt_simple_name_obj,
-         helm_simple_name as helm_simple_name_obj,
-         gloves_simple_name as gloves_simple_name_obj,
-         boots_simple_name as boots_simple_name_obj,
+         helm_simple_name,
+         gloves_simple_name, boots_simple_name,
          shield_simple_name, shield_simple_name as shield_simple_name_obj,
          vtense } from './objnam.js';
 import { getObjName } from './o_init.js';
@@ -549,26 +548,6 @@ function armorMeta(obj) {
  * split depends on oc_name_known && dknown; every cloak has oc_delay 0 so this
  * never feeds armoroff()'s nomovemsg, but keep the discovery-state branch
  * faithful for the other callers. */
-function cloak_simple_name(row, obj) {
-    if (!obj && row) obj = row;
-    return cloak_simple_name_obj(obj);
-}
-/* C ref: objnam.c:5510 helm_simple_name(helmet) — !hard_helmet ? "hat" : "helm".
- * hard_helmet (do_wear.c:568) = is_helmet && (is_metallic || is_crackable). */
-function helm_simple_name(obj) {
-    return helm_simple_name_obj(obj);
-}
-/* C ref: objnam.c:5529 gloves_simple_name(gloves) — "gauntlets" when the name
- * the hero can currently see contains "gauntlets" (actual name once the type is
- * known, description otherwise); needs dknown. */
-function gloves_simple_name(row, obj) {
-    return gloves_simple_name_obj(obj);
-}
-/* C ref: objnam.c:5548 boots_simple_name(boots) — "shoes" when the description
- * contains "shoes", or the actual name does and the type is known. */
-function boots_simple_name(row, obj) {
-    return boots_simple_name_obj(obj);
-}
 /* C ref: objnam.c:5435 armor_simple_name(armor) — the category dispatcher over
  * the family above.  It had no combined form here at all, only the seven
  * per-category helpers, so js/mhitu.js's steal() ARMOR_CLASS arm (C
@@ -582,10 +561,10 @@ export function armor_simple_name_dw(obj) {
     const row = armorRow(obj);
     switch (armorMeta(obj).armcat) {
     case ARM_SUIT:   return suit_simple_name(obj);
-    case ARM_CLOAK:  return cloak_simple_name(row, obj);
+    case ARM_CLOAK:  return cloak_simple_name(obj);
     case ARM_HELM:   return helm_simple_name(obj);
-    case ARM_GLOVES: return gloves_simple_name(row, obj);
-    case ARM_BOOTS:  return boots_simple_name(row, obj);
+    case ARM_GLOVES: return gloves_simple_name(obj);
+    case ARM_BOOTS:  return boots_simple_name(obj);
     case ARM_SHIELD: return shield_simple_name(obj);
     case ARM_SHIRT:  return shirt_simple_name(obj);
     /* C's default is simpleonames() + impossible(); an unknown armcat cannot
@@ -822,7 +801,7 @@ export async function wielding_corpse(obj, how, voluntary) {
         makeplural(body_part(HAND))}.`);
     const hbuf = how
         ? `${voluntary ? 'removing' : 'losing'} ${is_gloves(how)
-            ? gloves_simple_name_obj(how)
+            ? gloves_simple_name(how)
             : petrify_simpleonames(how).replace('set of ', '')}`
         : 'resistance timing out';
     await corpse_instapetrify(`${hbuf} while wielding ${petrify_killer_xname(obj)}`.slice(0, 255));
@@ -1535,10 +1514,10 @@ export async function armoroff(otmp) {
         switch (armcat) {
         case ARM_SUIT: what = suit_simple_name_obj(otmp); g.afternmv = 'Armor_off'; break;
         case ARM_SHIELD: what = shield_simple_name_obj(otmp); g.afternmv = 'Shield_off'; break;
-        case ARM_HELM: what = helm_simple_name_obj(otmp); g.afternmv = 'Helmet_off'; break;
-        case ARM_GLOVES: what = gloves_simple_name_obj(otmp); g.afternmv = 'Gloves_off'; break;
-        case ARM_BOOTS: what = boots_simple_name_obj(otmp); g.afternmv = 'Boots_off'; break;
-        case ARM_CLOAK: what = cloak_simple_name_obj(otmp); g.afternmv = 'Cloak_off'; break;
+        case ARM_HELM: what = helm_simple_name(otmp); g.afternmv = 'Helmet_off'; break;
+        case ARM_GLOVES: what = gloves_simple_name(otmp); g.afternmv = 'Gloves_off'; break;
+        case ARM_BOOTS: what = boots_simple_name(otmp); g.afternmv = 'Boots_off'; break;
+        case ARM_CLOAK: what = cloak_simple_name(otmp); g.afternmv = 'Cloak_off'; break;
         case ARM_SHIRT: what = shirt_simple_name_obj(otmp); g.afternmv = 'Shirt_off'; break;
         default: await equipment_impossible('Taking off unknown armor (%d: %d), delay %d', otmp.otyp, armcat, delay);
         }
@@ -1605,7 +1584,7 @@ async function select_off(otmp) {
             buf = `free a weapon ${body_part(HAND)}`;
             why = u.uwep;
         } else if (u.uarmg && (u.uarmg.cursed || Glib_dw())) {
-            buf = `take off your ${Glib_dw() ? 'slippery ' : ''}${gloves_simple_name_obj(u.uarmg)}`;
+            buf = `take off your ${Glib_dw() ? 'slippery ' : ''}${gloves_simple_name(u.uarmg)}`;
             why = !Glib_dw() ? u.uarmg : glibdummy;
         }
         if (why) {
@@ -1620,7 +1599,7 @@ async function select_off(otmp) {
             set_bknown(u.uwep, 1);
             return 0;
         } else if (Glib_dw()) {
-            await pline(`${u.uarmg.unpaid ? 'The' : 'Your'} ${gloves_simple_name_obj(u.uarmg)} are too slippery to take off.`);
+            await pline(`${u.uarmg.unpaid ? 'The' : 'Your'} ${gloves_simple_name(u.uarmg)} are too slippery to take off.`);
             return 0;
         }
         if (await better_not_take_that_off(otmp)) return 0;
@@ -1637,7 +1616,7 @@ async function select_off(otmp) {
     if (otmp === u.uarm || otmp === u.uarmu) {
         why = null;
         if (u.uarmc && u.uarmc.cursed) {
-            buf = `remove your ${cloak_simple_name_obj(u.uarmc)}`;
+            buf = `remove your ${cloak_simple_name(u.uarmc)}`;
             why = u.uarmc;
         } else if (otmp === u.uarmu && u.uarm && u.uarm.cursed) {
             buf = `remove your ${c_suit}`;
@@ -1685,7 +1664,7 @@ async function armor_or_accessory_off(obj) {
         || (obj === u.uarmu && (u.uarmc || u.uarm))) {
         let why = '', what = '';
         if (obj !== u.uskin) {
-            if (u.uarmc) what += cloak_simple_name_obj(u.uarmc);
+            if (u.uarmc) what += cloak_simple_name(u.uarmc);
             if (obj === u.uarmu && u.uarm) {
                 if (u.uarmc) what += ' and ';
                 what += suit_simple_name_obj(u.uarm);
@@ -1729,7 +1708,7 @@ async function better_not_take_that_off(gloves) {
     const corpse = carrying_stoning_corpse();
     if (!corpse || u_safe_from_fatal_corpse(corpse, st_corpse | st_petrifies))
         return false;
-    const question = `Take off your ${gloves_simple_name_obj(gloves)} despite carrying a dead ${obj_pmname(corpse)}?`;
+    const question = `Take off your ${gloves_simple_name(gloves)} despite carrying a dead ${obj_pmname(corpse)}?`;
     /* C calls paranoid_ynq(TRUE,...): even without ParanoidConfirm this is
      * the whole-word getlin reader, not ordinary y/n. */
     return !(await paranoid_query(true, question));
@@ -2357,7 +2336,7 @@ export async function canwearobj(otmp, maskbox, noisy) {
         } else if (Glib_dw()) {
             /* prevent slippery bare fingers from transferring to gloved fingers */
             if (noisy)
-                await pline(`Your ${fingers_or_gloves(false)} are too slippery to pull on ${gloves_simple_name(armorRow(otmp), otmp)}.`);
+                await pline(`Your ${fingers_or_gloves(false)} are too slippery to pull on ${gloves_simple_name(otmp)}.`);
             err++;
         } else
             maskbox.mask = W_ARMG;
@@ -2370,7 +2349,7 @@ export async function canwearobj(otmp, maskbox, noisy) {
                 if (noisy)
                     await pline(`You can't wear that over your ${
                         (u.uarm && !u.uarmc) ? c_armor
-                                             : cloak_simple_name(armorRow(u.uarmc), u.uarmc)}.`);
+                                             : cloak_simple_name(u.uarmc)}.`);
             }
             err++;
         } else
@@ -2378,14 +2357,14 @@ export async function canwearobj(otmp, maskbox, noisy) {
     } else if (is_cloak(otmp)) {                        /* do_wear.c:2172 */
         if (u.uarmc) {
             if (noisy)
-                await already_wearing(an(cloak_simple_name(armorRow(u.uarmc), u.uarmc)));
+                await already_wearing(an(cloak_simple_name(u.uarmc)));
             err++;
         } else
             maskbox.mask = W_ARMC;
     } else if (is_suit(otmp)) {                         /* do_wear.c:2179 */
         if (u.uarmc) {
             if (noisy)
-                await pline(`You cannot wear armor over a ${cloak_simple_name(armorRow(u.uarmc), u.uarmc)}.`);
+                await pline(`You cannot wear armor over a ${cloak_simple_name(u.uarmc)}.`);
             err++;
         } else if (u.uarm) {
             if (noisy)
@@ -2533,7 +2512,7 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
         {
             const u = g.u;
             if (u.uarmg && Glib_dw()) {
-                await Your(`${gloves_simple_name_obj(u.uarmg)} are too slippery to remove, so you cannot put on the ring.`);
+                await Your(`${gloves_simple_name(u.uarmg)} are too slippery to remove, so you cannot put on the ring.`);
                 return ECMD_TIME; /* always uses move */
             }
             if (u.uarmg && u.uarmg.cursed) {
@@ -4077,7 +4056,7 @@ export async function disintegrate_arm(atmp) {
 
     if ((otmp = maybe_destroy_armor(u.uarmc, atmp, resistedc)) !== null) {
         /* cloak/robe/apron/smock (ID'd apron)/wrapping */
-        await urgent_pline(`Your ${cloak_simple_name_obj(otmp)} crumbles and turns to dust!`);
+        await urgent_pline(`Your ${cloak_simple_name(otmp)} crumbles and turns to dust!`);
     } else if (!resistedc.value
                && (otmp = maybe_destroy_armor(u.uarm, atmp, resistedsuit)) !== null) {
         const suit = suit_simple_name_obj(otmp);
@@ -4092,12 +4071,12 @@ export async function disintegrate_arm(atmp) {
                && (otmp = maybe_destroy_armor(u.uarmu, atmp, resisted)) !== null) {
         await urgent_pline(`Your ${shirt_simple_name_obj(otmp)} crumbles into tiny threads and falls apart!`);
     } else if ((otmp = maybe_destroy_armor(u.uarmh, atmp, resisted)) !== null) {
-        await urgent_pline(`Your ${helm_simple_name_obj(otmp)} turns to dust and is blown away!`);
+        await urgent_pline(`Your ${helm_simple_name(otmp)} turns to dust and is blown away!`);
     } else if ((otmp = maybe_destroy_armor(u.uarmg, atmp, resisted)) !== null) {
-        await urgent_pline(`Your ${gloves_simple_name_obj(otmp)} vanish!`);
+        await urgent_pline(`Your ${gloves_simple_name(otmp)} vanish!`);
         losing_gloves = true;
     } else if ((otmp = maybe_destroy_armor(u.uarmf, atmp, resisted)) !== null) {
-        await urgent_pline(`Your ${boots_simple_name_obj(otmp)} disintegrate!`);
+        await urgent_pline(`Your ${boots_simple_name(otmp)} disintegrate!`);
     } else if ((otmp = maybe_destroy_armor(u.uarms, atmp, resisted)) !== null) {
         await urgent_pline(`Your ${shield_simple_name_obj(otmp)} crumbles away!`);
     } else {
@@ -4190,6 +4169,6 @@ export const shk_your = ownership_prefix;
 export function fingers_or_gloves(check_gloves) {
     const uarmg = game.u?.uarmg || null;
     if (check_gloves && uarmg)
-        return gloves_simple_name(armorRow(uarmg), uarmg);
+        return gloves_simple_name(uarmg);
     return makeplural(body_part(FINGER));
 }

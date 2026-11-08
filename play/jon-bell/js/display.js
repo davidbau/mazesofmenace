@@ -2230,7 +2230,8 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_nul_gbuf = false;
     if (y === ROWNO - 1 && (nulCustom || loc.disp_cls !== cls || loc.disp_ch !== ch
         || loc.disp_color !== color || !!loc.disp_decgfx !== !!decgfx
-        || (loc.disp_attr | 0) !== (attr | 0))
+        || (loc.disp_attr | 0) !== (attr | 0)
+        || (cls === GLYPHCLS_CMAP && loc.disp_cmap !== cmap))
         && !utf8 && ch !== ROGUE_HERO_CH) {
         let repaint = game._r1GlyphRepaint;
         if (!repaint || repaint.level !== game.level)
@@ -4742,7 +4743,12 @@ export function capture_painted_frame() {
 /* The status half of a pre-movemon frame (pickup-encumber prinv page). C ref:
  * pline.c:273-274 flush_screen() -> bot() at the encumber_msg instant. */
 export function capture_pre_movemon_botl() {
-    return game?.level ? _capture_botl() : null;
+    if (!game?.level) return null;
+    const savedCap = game._botlPaintedCap;
+    const f = _capture_botl();
+    game._botlPaintedCap = savedCap;
+    if (f && savedCap != null) f.cap = savedCap | 0;
+    return f;
 }
 /* Install the map as of the last flush_screen() and the last painted status
  * as the frozen frame for ONE
@@ -6291,8 +6297,8 @@ function _status_field_hilites(row) {
             continue;
         }
         const fname = status_fieldname(parts[0].trim());
-        /* botl.c BL_HPMAX / BL_ENEMAX: the parenthesized maximum is its own field */
-        const maxLabel = { 'hitpoints-max': 'HP:', 'power-max': 'Pw:' }[fname];
+        /* botl.c BL_HPMAX / BL_ENEMAX / BL_EXP: sub-fields sharing a prefix label */
+        const maxLabel = { 'hitpoints-max': 'HP:', 'power-max': 'Pw:', experience: 'Xp:' }[fname];
         const label = maxLabel ?? labels[fname];
         if (!label) continue;
         const fm = new RegExp(`(?:^| )(${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\S*)`).exec(row);
@@ -6300,13 +6306,19 @@ function _status_field_hilites(row) {
         let text = fm[1];
         let start = fm.index + fm[0].length - text.length;
         let body = text.slice(label.length);
-        if (maxLabel) {
+        if (fname === 'experience') {
+            /* C botl.c:726 BL_EXP "/%s"; wintty.c:5218-5221 skips '/' before starting color/attr */
+            const si = text.indexOf('/');
+            if (si < 0) continue;
+            text = text.slice(si + 1); start += si + 1; body = text;
+        } else if (maxLabel) {
             const pi = text.indexOf('(');
             if (pi < 0) continue;
             text = text.slice(pi); start += pi; body = text.slice(1);
         }
-        const sm = maxLabel ? null : /^(\d+)\/(\d+)/.exec(body);
-        const cur = sm ? (+sm[1] === 18 ? 18 + +sm[2] : +sm[1]) : parseInt(body, 10);
+        const sm = maxLabel ? null : /^(\d+)\/(\d+|\*\*)/.exec(body);
+        const cur = sm ? (fname === 'strength'
+            ? (sm[2] === '**' ? 118 : +sm[1] === 18 ? 18 + +sm[2] : +sm[1]) : +sm[1]) : parseInt(body, 10);
         const max = maxLabel ? null : /\((\d+)\)/.exec(body);
         let always = null, hit = null, exact = false, critRule = null;
         /* C botl.c:2395-2470 get_hilite() best fit: among percentage/absolute
@@ -6334,8 +6346,14 @@ function _status_field_hilites(row) {
             if (!pm) continue;
             let v = cur;
             if (pm[3]) {
-                if (!max || !(+max[1] > 0)) continue;
-                v = Math.trunc((cur * 100) / +max[1]);
+                if (fname === 'experience' || fname === 'experience-level') {
+                    v = /Xp:\d+\/\d+/.test(row) ? _status_exp_percentage(row)
+                        : _exp_percentage(cur, game.u.uexp || 0);
+                } else {
+                    if (!max || !(+max[1] > 0)) continue;
+                    v = Math.trunc((cur * 100) / +max[1]);
+                    if (v === 0 && cur !== 0) v = 1;
+                }
             }
             const want = +pm[2], rel = pm[1] || '=';
             if (rel === '=' ? v === want : false) {
@@ -7249,14 +7267,14 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         /* C ref: botl.c:792 conditions[] bl_grab ranking 2 (sorts first) and
          * botl.c:1164-1188: with u.ustuck and !u.uswallow and not a
          * Upolyd sticks() form, Grab == (u.ustuck->data->mlet == S_EEL). */
-        if ((grabFrozen !== undefined) ? grabFrozen
+        if (_condEn('grab', true) && ((grabFrozen !== undefined) ? grabFrozen
             : (u.ustuck && !u.uswallow
                && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data))
-               && (u.ustuck.data?.mlet | 0) === 57 /* S_EEL */))
+               && (u.ustuck.data?.mlet | 0) === 57 /* S_EEL */)))
             s += ' Grab';
         /* `strangledFrozen` is the value bot() painted at a frozen --More-- pline,
          * threaded in like slimedFrozen; undefined for every other render. */
-        if ((strangledFrozen !== undefined) ? strangledFrozen : ip(STRANGLED)) s += ' Strngl';
+        if (_condEn('strngl', true) && ((strangledFrozen !== undefined) ? strangledFrozen : ip(STRANGLED))) s += ' Strngl';
         /* `sickTypeFrozen` is the usick_type bits bot() had painted at a frozen
          * --More-- pline (0 when not sick); undefined reads the live state.
          * make_sick (potion.c:292-302) plines "You feel deathly sick" BEFORE it
@@ -7264,14 +7282,14 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
          * the status line without TermIll. */
         const sick = (sickTypeFrozen !== undefined) ? (sickTypeFrozen | 0) !== 0 : ip(SICK);
         const sty = (sickTypeFrozen !== undefined) ? (sickTypeFrozen | 0) : (u.usick_type | 0);
-        if (sick && (sty & SICK_VOMITABLE)) s += ' FoodPois';
-        if ((slimedFrozen !== undefined) ? slimedFrozen : ip(SLIMED)) s += ' Slime';
-        if ((stonedFrozen !== undefined) ? stonedFrozen : ip(STONED)) s += ' Stone';
-        if (sick && (sty & SICK_NONVOMITABLE)) s += ' TermIll';
+        if (_condEn('foodPois', true) && sick && (sty & SICK_VOMITABLE)) s += ' FoodPois';
+        if (_condEn('slime', true) && ((slimedFrozen !== undefined) ? slimedFrozen : ip(SLIMED))) s += ' Slime';
+        if (_condEn('stone', true) && ((stonedFrozen !== undefined) ? stonedFrozen : ip(STONED))) s += ' Stone';
+        if (_condEn('termIll', true) && sick && (sty & SICK_NONVOMITABLE)) s += ' TermIll';
     }
     /* C ref: botl.c:1156-1157 test_if_enabled(bl_inlava) = (u.utraptype == TT_LAVA)
      * when u.utrap; conditions[] ranking 8 (botl.c:796) sorts after rank 6, before 10. */
-    if ((inLavaFrozen !== undefined) ? inLavaFrozen : (u.utrap && (u.utraptype | 0) === TT_LAVA))
+    if (_condEn('lava', true) && ((inLavaFrozen !== undefined) ? inLavaFrozen : (u.utrap && (u.utraptype | 0) === TT_LAVA)))
         s += ' InLava';
     /* C ref: botl.c:975 condtests[bl_blind].test = (Blind) ? TRUE : FALSE,
      * rendered as "Blind" from the conditions[] table (botl.c:635).  bl_blind is
@@ -7380,7 +7398,9 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     /* C botl.c:1198 test_if_enabled(bl_bareh) = (!uarmg && !uwep); rank 20
      * sorts after every rank<=15 condition above.  Enabled by cond_barehanded. */
     if (game.flags?.cond_barehanded
-        && !_equipView().uarmg && !_equipView().uwep) {
+        && (game._lastPaintedBotl?.bare != null && !game._botlPreInv
+            ? game._lastPaintedBotl.bare
+            : (!_equipView().uarmg && !_equipView().uwep))) {
         if (game._botlPreInv && (game.u.uarmg || game.u.uwep)) {
             if (_threeStatusLines()) s += '     ';
             else s += ' Bare';
@@ -9192,6 +9212,10 @@ function _capture_botl(paint = false) {
             return !!lq && !!((lq.intrinsic | 0) || (lq.extrinsic | 0)) && !(lq.blocked | 0);
         })(),
         hallucinating: game._botlPaintedHallu ?? _hallucinating_dsp(),
+        /* botl.c:1205 bl_bareh is a bot()-time condition like weapon/armor: the
+         * newgame bot() (allmain.c:891) ran before ini_inv wielded the starting
+         * weapon, so a Rogue's step-0 row keeps "Bare" until the next bot(). */
+        bare: game.flags?.cond_barehanded ? (!u.uarmg && !u.uwep) : undefined,
         weapon: game.flags?.weaponstatus ? weapon_status() : undefined,
         armor: game.flags?.armorstatus ? (hpPaint?.armor ?? armor_status()) : undefined,
     };

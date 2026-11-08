@@ -1951,7 +1951,6 @@ export async function display_pickinv(
         returnCount: Boolean(allowcnt),
         cancelValue,
         ...(emptyValue !== undefined ? { emptyValue } : {}),
-        overlay: state.iflags?.menu_overlay !== false,
     }));
 
     let sortflags = state.flags.sortloot === 'f'
@@ -2199,7 +2198,6 @@ export async function display_used_invlets(
         items: rows,
         how,
         cancelValue: null,
-        overlay: state.iflags?.menu_overlay !== false,
     }));
     return menu(items, state, PICK_ONE);
 }
@@ -4473,7 +4471,7 @@ function projectAddinv(obj, projectedEnv) {
         projectedResult: target,
         // pickup.c lift_object() applies the 52-slot limit one object at a
         // time, after merge_choice(), and excludes gold.  Expose that exact
-        // projected fact to pickup's atomic floor-transaction planner.
+        // projected fact to pickup's floor-transaction preflight.
         addedOrdinarySlot: target === obj && obj.oclass !== COIN_CLASS,
     };
 }
@@ -5793,7 +5791,6 @@ async function invdisp_nothing(hdr, txt, state = game, hooks = {}) {
             items: rows,
             how,
             cancelValue: null,
-            overlay: state.iflags?.menu_overlay !== false,
         })
     ));
     await menu(items, state, PICK_NONE);
@@ -5921,7 +5918,6 @@ export async function display_minventory(
                 items: rows,
                 how,
                 cancelValue: null,
-                overlay: state.iflags?.menu_overlay !== false,
             })
         ));
         selected = await menu(items, state, pickings);

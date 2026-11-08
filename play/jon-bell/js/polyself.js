@@ -36,7 +36,8 @@ import { newhp, newpw } from './exper.js';
 import {
     find_ac, donning, encumber_msg, takeoff_slot_noac, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
-import { useup, could_twoweap, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment, instapetrify as instapetrify_real } from './cmd.js';
+import { useup, could_twoweap, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment } from './cmd.js';
+import { instapetrify } from './trap.js';
 import { welded, untwoweapon } from './wield.js';
 import { dropx } from './do.js';
 import { acurrstr } from './dokick.js';
@@ -2576,7 +2577,6 @@ export async function dohide() {
 }
 
 // ── stubs for unported dohide helpers ──
-async function instapetrify(kbuf) { return instapetrify_real(kbuf); }
 function plur(x) { return (x === 1) ? "" : "s"; }
 
 const M1_METALLIVORE = 0x80000000; /* monflag.h */

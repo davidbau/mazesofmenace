@@ -3556,7 +3556,7 @@ export function glyph_is_invisible(glyph) {
  * The two halves land in different places: the memory write goes to the
  * `state` handed in, and show_glyph_cell() below takes no state and paints the
  * module-global `game`. map_invisible() therefore refuses any other state,
- * and map_invisible_planning() below makes the memory write alone for one.
+ * and map_invisible_memory_only() below makes the memory write alone for one.
  */
 function mapInvisibleMemory(x, y, state) {
     if (x === state.u?.ux && y === state.u?.uy) return;
@@ -3582,10 +3582,10 @@ export function map_invisible(x, y, state = game) {
 // also paints the window, which belongs to the game, so this skips that half.
 // js/artifacts.js Mb_hit() and js/mcastu.js mcast_disappear() call it when
 // they are handed such a state.
-export function map_invisible_planning(x, y, state) {
+export function map_invisible_memory_only(x, y, state) {
     if (!state || state === game) {
         throw new TypeError(
-            'map_invisible_planning() requires a state other than the game',
+            'map_invisible_memory_only() requires a state other than the game',
         );
     }
     mapInvisibleMemory(x, y, state);
@@ -6832,6 +6832,38 @@ function mapViewport(rows, statusRowCount, state = game) {
     return { height, top };
 }
 
+// _buildScreenOutput() repaints row 0 from _pending_message, and the wrapped
+// rows of a show_topl() layout from _pendingMessageLayout, at every flush.
+// C keeps no such copy: once docorner()'s cl_end() erases a message cell, only
+// a later message or a full redraw writes it again. Drop the cells that
+// cl_end() erases on rows 0..ymax-1, from `column` rightwards, so the next
+// flush does not restore them. gt.toplines (state._ttyToplines) is a separate
+// C value and keeps the whole message for Ctrl-P and line sharing.
+//
+// A corner menu's dismissal is the case this changes: tty_display_nhwindow()
+// leaves an already acknowledged (TOPLINE_EMPTY) message on row 0 beside the
+// menu, and erase_menu_or_text()'s docorner(offx, ...) erases it from
+// column offx - 1, one column left of the menu's leading blank.
+function clipProjectedMessage(column, ymax, state) {
+    const msg = state._pending_message;
+    if (!msg || ymax <= 0) return;
+    const layout = state._pendingMessageLayout;
+    const rows = layout?.text === msg ? layout.rows : [msg];
+    const clipped = rows.map((text, row) =>
+        (row < ymax ? text.slice(0, column) : text));
+    if (clipped.every((text, row) => text === rows[row])) return;
+    if (column === 0) delete state._ttyMixedFirstCell;
+    // A row emptied before the last row keeps its place in the layout, so
+    // the rows after it stay on their physical lines.
+    while (clipped.length > 1 && clipped.at(-1) === '') clipped.pop();
+    const text = clipped.join('');
+    state._pending_message = text;
+    if (layout?.text === msg) {
+        if (text) state._pendingMessageLayout = { text, rows: clipped };
+        else delete state._pendingMessageLayout;
+    }
+}
+
 // C ref: win/tty/wintty.c docorner()'s ordinary map-window path and
 // display.c row_refresh(). More can overwrite the top map rows with its
 // wrapped prompt. Once it is dismissed, C clears each physical row and
@@ -6863,6 +6895,7 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
             || unexplored.rgb !== undefined);
 
     const firstStatusRow = display.rows - statusRowCount;
+    clipProjectedMessage(Math.max(0, xmin - 1), lastRow, state);
     for (let screenRow = 0; screenRow < lastRow; ++screenRow) {
         display.setCursor(Math.max(0, xmin - 1), screenRow);
         display.clearToEol();
@@ -7725,9 +7758,7 @@ export function conditionbitmask2str(mask) {
     return text && alias ? alias : text;
 }
 function hiliteMenu(state, spec, helpers) {
-    return helpers?.selectMenu ? helpers.selectMenu(spec) : select_menu(state, {
-        ...spec, overlay: state.iflags?.menu_overlay !== false,
-    });
+    return helpers?.selectMenu ? helpers.selectMenu(spec) : select_menu(state, spec);
 }
 function hilitePicks(selection) {
     if (selection == null) return null;

@@ -5,6 +5,12 @@
 // C ref: nethack-c/src/mklev.c:1055-1132 (fill_supply_chest body)
 //        nethack-c/src/mkobj.c:2680-2699  (add_to_container)
 import { rn2 } from './rng.js';
+import { costly_spot, billable, stolen_value } from './shk.js';
+import { SHOPBASE } from './const.js';
+import { in_rooms } from './hack.js';
+import { set_bknown } from './mklev.js';
+import { verbalize } from './pline.js';
+import { bill_dummy_object } from './cmd.js';
 import { mksobj, mkobj, add_to_container, dealloc_obj, newoextra, newomid } from './mklev.js';
 import { attach_fig_transform_timeout } from './timeout.js';
 import { copy_mextra, dead_species } from './mon.js';
@@ -734,3 +740,72 @@ export async function splitobj(obj, num) {
     return otmp;
 }
 
+
+
+const COSTLY_ALTERATION_VERBS = [
+    'cancel', 'drain', 'uncharge', 'unbless', 'uncurse', 'disenchant',
+    'degrade', 'dilute', 'erase', 'burn', 'neutralize', 'destroy', 'splatter',
+    'bite', 'open', 'break the lock on', 'rust', 'rot', 'tarnish', 'crack',
+];
+export async function costly_alteration(obj, alter_type) {
+    const u = game.u || {};
+
+    if (alter_type < 0 || alter_type >= COSTLY_ALTERATION_VERBS.length) {
+        await impossible("invalid alteration type (%d)", alter_type);
+        alter_type = 0;
+    }
+
+    let ox = 0, oy = 0, objroom = 0;
+    if ((obj.where | 0) === 3 /* OBJ_INVENT, carried() */
+        || (obj.where | 0) === 0 /* OBJ_FREE */) {
+        /* OBJ_FREE catches obj_no_longer_held()'s crysknife -> worm-tooth
+           transformation; the item has left inventory but not necessarily
+           landed yet, and 'unpaid' survives the move. */
+        if (!obj.unpaid)
+            return;
+    } else {
+        const xp = {}, yp = {};
+        if (!get_obj_location(obj, xp, yp, 1 /* CONTAINED_TOO */)) {
+            xp.value = u.ux | 0;
+            yp.value = u.uy | 0;
+        }
+        ox = xp.value | 0;
+        oy = yp.value | 0;
+        if (!costly_spot(ox, oy))
+            return;
+        objroom = in_rooms(ox, oy, SHOPBASE)[0] | 0;
+        const shkpBox = { value: null };
+        if (!(await billable(shkpBox, obj, objroom, false)))
+            return;
+    }
+
+    const quan = obj.quan ?? 1;
+    const those = quan === 1 ? 'that' : 'those';
+    const them = quan === 1 ? 'it' : 'them';
+
+    /* learn_bknown = (alter_type == COST_UNCURS || alter_type == COST_UNBLSS) */
+    const learn_bknown = (alter_type === 4 || alter_type === 3);
+
+    switch (obj.where | 0) {
+    case 0: /* OBJ_FREE */
+    case 3: /* OBJ_INVENT */
+        if (learn_bknown)
+            set_bknown(obj, 1);
+        await verbalize(`You ${COSTLY_ALTERATION_VERBS[alter_type]} ${those} `
+            + `${simpleonames(obj)}, you pay for ${them}!`);
+        await bill_dummy_object(obj);
+        break;
+    case 1:
+        if (learn_bknown)
+            obj.bknown = 1;
+        if (costly_spot(u.ux | 0, u.uy | 0)
+            && objroom === (u.ushops ? u.ushops.charCodeAt(0) : 0)) {
+            await verbalize(`You ${COSTLY_ALTERATION_VERBS[alter_type]} ${those}, `
+                + `you pay for ${them}!`);
+            await bill_dummy_object(obj);
+        } else {
+            await stolen_value(obj, ox, oy, false, false);
+        }
+        break;
+    }
+}

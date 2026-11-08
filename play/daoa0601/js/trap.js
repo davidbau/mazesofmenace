@@ -12,7 +12,8 @@ import { isok, promptDirection, heroHasInvoluntaryDelay, setMulti } from './cmd.
 import { armorSimpleName, heroHasWaterWalking, heroHasDrainResistance, objectIsHardHelmet, heroHasFreeAction, destroyWornArmor, } from './do_wear.js';
 import { delobj, consumeObjectCharge, useUpInventoryStack, chooseInventoryObject, inventoryItemDescription, objectAt, currency, } from './invent.js';
 import { objectDescription as fullObjectDescription, verbForSubject, objectNameIsPlural, definiteName, objectCombatName, objectName, observeObjectForNaming, ownedObjectAction, ownedObjectName, simpleObjectName, corpseName, withIndefiniteArticle, objectDescription, makePlural, objectQuestion, simpleObjectNameWithArticle, bareArtifactOrPlainName, killerObjectName, definiteObjectAction, erosionMatters, } from './objnam.js';
-import { learnObjectType, observeObject, objectMaterial, recordObjectKnowledge, objectTypeKnown } from './o_init.js';
+import { learnObjectType, observeObject, objectMaterial, objectTypeKnown } from './o_init.js';
+import { recordObjectKnowledge } from './u_init.js';
 import { cansee, couldsee, vision_recalc, vision_note_blocker_change, vision_reset } from './vision.js';
 import { endObjectBurn, beginObjectBurn, stopLevelTimer, putHeroToSleep } from './timeout.js';
 import { LIGHT_TYPES, TIMED_LIGHT_TYPES } from './light.js';
@@ -5772,7 +5773,7 @@ function weldedTwoHandedWeapon(state) {
     const weapon = state.uwep || state.u?.uwep;
     return isWeldedPrimary(weapon, state) && isBimanualObject(weapon);
 }
-// Part of C trap.c:untrap_prob(): the disarm failure roll; also inlines
+// C trap.c:untrap_prob(): the disarm failure roll; also inlines
 // C artifact.c:attacks() — attack?.damageType === 'fire' is the
 // fiery-blade test that guarantees the web-cut roll.
 function untrapFailureRoll(trap, state, random) {

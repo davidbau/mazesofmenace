@@ -117,7 +117,7 @@ import { Monnam, perceives as perceives_dm } from './mcastu.js';
 import { mon_givit as mon_givit_dg } from './eat.js';
 import { _mon_reflects_zap as mon_reflects_dm } from './zap.js';
 import { attk_protection, erode_armor } from './mhitm.js';
-import { attacktype, max_passive_dmg, resist_conflict, poly_when_stoned } from './mondata.js';
+import { dmgtype, attacktype, max_passive_dmg, resist_conflict, poly_when_stoned } from './mondata.js';
 import { Adjmonnam as Adjmonnam_gz } from './mhitm.js';
 import { resists_blnd as resists_blnd_gz } from './mondata.js';
 import { mhitm_ad_blnd as mhitm_ad_blnd_gz } from './uhitm.js';
@@ -4492,12 +4492,7 @@ function passes_walls(mon_data) {
     return ((mon_data.mflags1 | 0) & M1_WALLWALK_DM) !== 0;
 }
 
-/* C ref: mondata.c:dmgtype(ptr, dtyp) — checks if monster has given damage type.
- * Implemented via dmgtype_fromattack(ptr, dtyp, AT_ANY) which is already ported. */
-const AT_ANY = -1;
-export function dmgtype(mon_data, ad_type) {
-    return dmgtype_fromattack(mon_data, ad_type, AT_ANY) ? true : false;
-}
+export { dmgtype };
 
 /* C ref: nethack-c/src/mhitm.c:806-845 engulf_target(magr, mdef)
  * Returns TRUE if aggressor can engulf defender (size and position checks). */

@@ -17,7 +17,7 @@ import { status_r1_docorner, status_r1_menu_docrt, _threeStatusLines, _strengthS
 import { allow_category, menu_class_present, u_safe_from_fatal_corpse } from './pickup.js';
 import { autopick_testobj, deferred_decor, describe_decor } from './pickup.js';
 import { FUMBLING, UNENCUMBERED, OBJ_INVENT, BUFSZ } from './const.js';
-import { blow_up_landmine } from './trap.js';
+import { blow_up_landmine, instapetrify } from './trap.js';
 import { impossible as trapmove_impossible } from './pline.js';
 import { safe_qbuf, safe_qbuf as safe_qbuf_invent } from './shk.js';
 import { Shk_Your as shk_Shk_Your, shk_your as shk_shk_your } from './shk.js';
@@ -8892,7 +8892,7 @@ export async function doprev_message(liveTopline) {
      * second the one before, then the whole window (maxcol back at maxrow). */
     let _comboWindow = false;
     if (_pmw === 'c' && history.length) {
-        if (g._prevmsg_history_length !== history.length) {
+        if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {
             g._prevmsg_combo = 0;
             g._prevmsg_history_length = history.length;
         }
@@ -11644,12 +11644,13 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
         if (invmenuFirst && !oneloop) {
             g._topl_suppress_history = _sh;
             oneloop = true;
-            /* topl.c:274: earlier plines already blocked on overflow before
-             * invent.c:1927 putmsghistory retires the final standing line.
-             * Drain those deferred pages before the history write clears them. */
-            if (_topline_more_pending()) await flush_screen(1);
-            /* invent.c:1922-1927 — force_invmenu files the bare qbuf once */
-            if (!msggiven) putmsghistory(`What do you want to ${word}?`, false);
+            /* invent.c:1922-1927 files the bare qbuf once. Complete earlier
+             * update_topl overflows (topl.c:274) before putmsghistory demotes
+             * only the final standing line (topl.c:700-709). */
+            if (!msggiven) {
+                await flush_pending_messages();
+                putmsghistory(`What do you want to ${word}?`, false);
+            }
             msggiven = true;
             itemRaw = (lets || altlets) ? 63 : 42;
         } else if (invmenuFirst && lastIlet) {
@@ -13848,24 +13849,8 @@ async function use_camera(obj) {
  * separately as a cross-file patch. */
 // mbodypart is ported below (body_part enum block, near body_part()/legs_in_no_shape).
 
-/* C trap.c:3844-3855: resolve resistance/polymorph before petrification,
- * then await the canonical death path, including wizard survival and lifesaving. */
-export async function instapetrify(str) {
-    // C youprop.h:63-65: Stone_resistance has no blocked-property term.
-    const stone = game.u?.uprops?.[STONE_RES];
-    if (stone?.intrinsic || stone?.extrinsic)
-        return;
-    if (poly_when_stoned(_hero_youmonst().data) && await polymon(PM_STONE_GOLEM))
-        return;
-    await urgent_pline('You turn to stone...');
-    /* The fresh line stays live so lifesaving's "But wait..." joins it. */
-    deadhero(STONING, { noDeathLine: true, remainderIsFresh: true });
-    game.svk ||= {};
-    game.svk.killer ||= {};
-    game.svk.killer.format = KILLED_BY;
-    game.svk.killer.name = str || '';
-    await done(STONING);
-}
+/* instapetrify lives in trap.js (C trap.c:3844); re-exported for callers. */
+export { instapetrify } from './trap.js';
 
 /* Underwater — C ref: nethack-c/include/youprop.h:279 `#define Underwater
  * u.uinwater`.  (The u_handsy/use_saddle guard above already spells this out
@@ -38921,10 +38906,6 @@ export { dead_species };
 // C artifact.c:526-532 confers_luck(obj) — LUCKSTONE always confers luck;
 // otherwise only an artifact with the SPFX_LUCK special-ability bit does.
 import { confers_luck as confers_luck_real } from './attrib.js';
-// Stub: curse (unported helper for freeinv_core; not exported from js/mklev.js).
-export function curse(otmp) {
-    return curse_obj(otmp);
-}
 /* C hack.c:97-103 — obj_to_any(struct obj *obj): wrap an obj pointer in the
  * shared `anything` union.
  *     anything *
@@ -39298,7 +39279,7 @@ function _freeinv_core_finish(obj) {
     const g = game;
     const LOADSTONE = 471, FIGURINE = 241, FIG_TRANSFORM = 6;
     if (obj.otyp === LOADSTONE) {
-        curse(obj);
+        curse_obj(obj);
     } else if (confers_luck(obj)) {
         set_moreluck();
         SET_BOTL();
@@ -43023,73 +43004,8 @@ function _highc(c) {
 
 
 
-const COSTLY_ALTERATION_VERBS = [
-    'cancel', 'drain', 'uncharge', 'unbless', 'uncurse', 'disenchant',
-    'degrade', 'dilute', 'erase', 'burn', 'neutralize', 'destroy', 'splatter',
-    'bite', 'open', 'break the lock on', 'rust', 'rot', 'tarnish', 'crack',
-];
-export async function costly_alteration(obj, alter_type) {
-    const u = game.u || {};
-
-    if (alter_type < 0 || alter_type >= COSTLY_ALTERATION_VERBS.length) {
-        await real_impossible("invalid alteration type (%d)", alter_type);
-        alter_type = 0;
-    }
-
-    let ox = 0, oy = 0, objroom = 0;
-    if ((obj.where | 0) === 3 /* OBJ_INVENT, carried() */
-        || (obj.where | 0) === 0 /* OBJ_FREE */) {
-        /* OBJ_FREE catches obj_no_longer_held()'s crysknife -> worm-tooth
-           transformation; the item has left inventory but not necessarily
-           landed yet, and 'unpaid' survives the move. */
-        if (!obj.unpaid)
-            return;
-    } else {
-        const xp = {}, yp = {};
-        if (!get_obj_location(obj, xp, yp, 1 /* CONTAINED_TOO */)) {
-            xp.value = u.ux | 0;
-            yp.value = u.uy | 0;
-        }
-        ox = xp.value | 0;
-        oy = yp.value | 0;
-        if (!costly_spot(ox, oy))
-            return;
-        objroom = in_rooms(ox, oy, SHOPBASE)[0] | 0;
-        const shkpBox = { value: null };
-        if (!(await shk_billable(shkpBox, obj, objroom, false)))
-            return;
-    }
-
-    const quan = obj.quan ?? 1;
-    const those = quan === 1 ? 'that' : 'those';
-    const them = quan === 1 ? 'it' : 'them';
-
-    /* learn_bknown = (alter_type == COST_UNCURS || alter_type == COST_UNBLSS) */
-    const learn_bknown = (alter_type === 4 || alter_type === 3);
-
-    switch (obj.where | 0) {
-    case 0: /* OBJ_FREE */
-    case 3: /* OBJ_INVENT */
-        if (learn_bknown)
-            set_bknown(obj, 1);
-        await verbalize(`You ${COSTLY_ALTERATION_VERBS[alter_type]} ${those} `
-            + `${_ia_simpleonames(obj)}, you pay for ${them}!`);
-        await bill_dummy_object(obj);
-        break;
-    case 1:
-        if (learn_bknown)
-            obj.bknown = 1;
-        if (costly_spot(u.ux | 0, u.uy | 0)
-            && objroom === (u.ushops ? u.ushops.charCodeAt(0) : 0)) {
-            await verbalize(`You ${COSTLY_ALTERATION_VERBS[alter_type]} ${those}, `
-                + `you pay for ${them}!`);
-            await bill_dummy_object(obj);
-        } else {
-            await stolen_value(obj, ox, oy, false, false);
-        }
-        break;
-    }
-}
+import { costly_alteration } from './mkobj.js';
+export { costly_alteration };
 
 // ── dfeature_at (invent.c) ─────────────────────────────────────────────────
 // C ref: invent.c dfeature_at(coordxy x, coordxy y, char *buf)

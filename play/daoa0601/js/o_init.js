@@ -5,7 +5,7 @@
 // Fisher-Yates description/color shuffles.  Other startup owners remain
 // partial; the implementation below is the source of truth.
 import { RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, GEM_CLASS, VENOM_CLASS, } from './objclass.js';
-import { objectClassForType, objectBaseMaterial, oc_color, objectUsesKnown, objectUnique, FLINT, getObjectClassBounds, OBJECT_PROB, AMULET_OF_YENDOR, BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD, CANDELABRUM_OF_INVOCATION, MAGIC_HARP, WOODEN_HARP, SPE_NOVEL, OBJECT_COLOR, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_TOUGH, OBJECT_INITIAL_KNOWN, requireObjectData, ARROW as FIRST_OBJECT, OBJ_NAME, } from './object_data.js';
+import { objectClassForType, objectBaseMaterial, oc_color, objectUsesKnown, objectUnique, objectMagic, OBJECT_BASES, POT_WATER, HELMET, LEATHER_GLOVES, CLOAK_OF_PROTECTION, CLOAK_OF_DISPLACEMENT, SPEED_BOOTS, LEVITATION_BOOTS, FLINT, getObjectClassBounds, OBJECT_PROB, AMULET_OF_YENDOR, BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD, CANDELABRUM_OF_INVOCATION, MAGIC_HARP, WOODEN_HARP, SPE_NOVEL, OBJECT_COLOR, OBJECT_DESCRIPTIONS, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_TOUGH, OBJECT_INITIAL_KNOWN, requireObjectData, ARROW as FIRST_OBJECT, OBJ_NAME, } from './object_data.js';
 import { game } from './gstate.js';
 import { artifactInfoLines, discoveredArtifacts } from './artifact.js';
 import { ATR_INVERSE, addMenuHeading, showTextWindow } from './windows.js';
@@ -113,35 +113,18 @@ export function initializeObjectDescriptions() {
         throw new RangeError('Invalid fluorite color selection');
     descriptionIndex[objectId('fluorite')] = requireObjectData(descriptionIndex, fluoriteSource);
     colors[objectId('fluorite')] = requireObjectData(colors, fluoriteSource);
-    function shuffle(low, high, shuffleMaterial) {
-        for (let current = low; current <= high; current++) {
-            // Objects without an unidentified description are pre-known and
-            // skipped by C without drawing.
-            if (requireObjectData(OBJECT_DESCRIPTIONS, current) === null)
-                continue;
-            let picked;
-            do
-                picked = current + rn2(high - current + 1);
-            while (requireObjectData(OBJECT_DESCRIPTIONS, picked) === null);
-            swapObjectField(descriptionIndex, current, picked);
-            swapObjectField(colors, current, picked);
-            swapObjectField(toughness, current, picked);
-            if (shuffleMaterial)
-                swapObjectField(materials, current, picked);
-        }
-    }
     // Whole-class ranges, then the four shuffled armor sub-ranges.
-    shuffle(201, 211, true); // amulets (exclude fake/real Amulet of Yendor)
-    shuffle(297, 321, true); // potions (exclude fixed clear water)
-    shuffle(173, 200, true); // rings
-    shuffle(323, 363, true); // magical scrolls and extra labels
-    shuffle(366, 406, true); // spellbooks through chain lightning
-    shuffle(410, 437, true); // wands, including unnamed appearances
-    shuffle(478, 480, true); // venoms
-    shuffle(97, 100, false); // randomized helms
-    shuffle(159, 162, false); // gloves
-    shuffle(146, 149, false); // magical cloaks
-    shuffle(166, 172, false); // magical boots
+    shuffle(201, 211, true, descriptionIndex, colors, materials, toughness); // amulets (exclude fake/real Amulet of Yendor)
+    shuffle(297, 321, true, descriptionIndex, colors, materials, toughness); // potions (exclude fixed clear water)
+    shuffle(173, 200, true, descriptionIndex, colors, materials, toughness); // rings
+    shuffle(323, 363, true, descriptionIndex, colors, materials, toughness); // magical scrolls and extra labels
+    shuffle(366, 406, true, descriptionIndex, colors, materials, toughness); // spellbooks through chain lightning
+    shuffle(410, 437, true, descriptionIndex, colors, materials, toughness); // wands, including unnamed appearances
+    shuffle(478, 480, true, descriptionIndex, colors, materials, toughness); // venoms
+    shuffle(97, 100, false, descriptionIndex, colors, materials, toughness); // randomized helms
+    shuffle(159, 162, false, descriptionIndex, colors, materials, toughness); // gloves
+    shuffle(146, 149, false, descriptionIndex, colors, materials, toughness); // magical cloaks
+    shuffle(166, 172, false, descriptionIndex, colors, materials, toughness); // magical boots
     game.objectDescriptionIndex = descriptionIndex;
     game.objectDescriptions = descriptionIndex.map((index) => requireObjectData(OBJECT_DESCRIPTIONS, index));
     game.objectColors = colors;
@@ -149,6 +132,26 @@ export function initializeObjectDescriptions() {
     game.objectToughness = toughness;
     game.wandNothingDirection = rn2(2);
     return game.objectDescriptions;
+}
+// C o_init.c:shuffle(): swap the description index, color, and toughness
+// of every unidentified row in [o_low, o_high], and its material too when
+// domaterial.  The port skips pre-known rows directly (rows without a
+// separate unidentified description) instead of C's num_to_shuffle < 2
+// early return.
+function shuffle(o_low, o_high, domaterial, descriptionIndex, colors, materials, toughness) {
+    for (let current = o_low; current <= o_high; current++) {
+        if (requireObjectData(OBJECT_DESCRIPTIONS, current) === null)
+            continue;
+        let picked;
+        do
+            picked = current + rn2(o_high - current + 1);
+        while (requireObjectData(OBJECT_DESCRIPTIONS, picked) === null);
+        swapObjectField(descriptionIndex, current, picked);
+        swapObjectField(colors, current, picked);
+        swapObjectField(toughness, current, picked);
+        if (domaterial)
+            swapObjectField(materials, current, picked);
+    }
 }
 // Part of C o_init.c:shuffle(): swap one row's description, color,
 // toughness, and material.
@@ -442,9 +445,10 @@ function discoveryClassOrder() {
     const classes = inventoryClassOrder();
     return classes.includes(VENOM_CLASS) ? classes : [...classes, VENOM_CLASS];
 }
-// Part of C o_init.c:disco_output_sorted(): the per-class discoveries
-// rows, in the discosort order; sortloot_descr() is inlined here too
-// (classifyLoot replaces the numeric sortloot key).
+// C o_init.c:disco_output_sorted(): the per-class discoveries rows in the
+// discosort order; sortloot_descr() is inlined here too (classifyLoot
+// replaces the numeric sortloot key) and the cross-class alphabetical
+// qsort runs in discoveryRows() above.
 function classDiscoveries(oclass, order) {
     const entries = [];
     for (const type of game._objectDiscoveryOrder ?? []) {
@@ -582,15 +586,9 @@ export function recordObjectEncounter(otyp, state = game) {
         state._encounteredObjectTypes = new Set();
     state._encounteredObjectTypes.add(otyp);
 }
-// C u_init.c:knows_object()
-// Mark a type known without an encounter; the pauper guard lives at the
-// callers.
-export function recordObjectKnowledge(otyp, state = game) {
-    discoverKnownType(otyp, false, state);
-}
 // Part of C o_init.c:discover_object(): mark a type known, credit Wisdom
 // once, reprice gems.
-function discoverKnownType(otyp, creditHero, state) {
+export function discoverKnownType(otyp, creditHero, state) {
     if (!Number.isInteger(otyp) || otyp < FIRST_OBJECT)
         return;
     const known = OBJECT_INITIAL_KNOWN[otyp] || state._knownObjectTypes?.has(otyp);
@@ -635,5 +633,35 @@ export function discoverObject(otyp, markKnown, markEncountered, creditHero, sta
 // credits Wisdom once. Restoring saved knowledge does not grant that credit.
 export function learnObjectType(otyp, state = game) {
     discoverObject(otyp, true, true, true, state);
+}
+// C o_init.c:obj_shuffle_range()
+// Includes the fixed-description exceptions.
+export function appearanceRange(object) {
+    const type = object.otyp;
+    const armorRanges = [
+        [HELMET, OBJECT_NAMES.indexOf('helm of telepathy')],
+        [LEATHER_GLOVES, OBJECT_NAMES.indexOf('gauntlets of dexterity')],
+        [CLOAK_OF_PROTECTION, CLOAK_OF_DISPLACEMENT], [SPEED_BOOTS, LEVITATION_BOOTS],
+    ];
+    if (object.oclass === ARMOR_CLASS) {
+        for (const [low, high] of armorRanges)
+            if (low !== undefined && high !== undefined && type >= low && type <= high)
+                return [low, high];
+    }
+    let low = OBJECT_BASES[object.oclass] ?? type;
+    let high = (OBJECT_BASES[object.oclass + 1] ?? type + 1) - 1;
+    if (object.oclass === POTION_CLASS)
+        high = POT_WATER - 1;
+    else if ([AMULET_CLASS, SCROLL_CLASS, SPBOOK_CLASS].includes(object.oclass)) {
+        high = low;
+        while (objectClassForType(high) === object.oclass
+            && !objectUnique(high) && objectMagic(high))
+            high++;
+        high--;
+    }
+    else if (![RING_CLASS, WAND_CLASS, VENOM_CLASS].includes(object.oclass)) {
+        low = high = type;
+    }
+    return type >= low && type <= high ? [low, high] : [type, type];
 }
 //# sourceMappingURL=o_init.js.map

@@ -11,7 +11,8 @@ import { mapVicinity } from './detect.js';
 import { mksobj, objectWeight } from './mkobj.js';
 import { deleteObject, chargeUnpaidUsage } from './shk.js';
 import { useHeroSkill, ensureHeroSkills, initializedSkills, requiredSkill } from './weapon.js';
-import { recordObjectKnowledge, learnObjectType, observeObject, objectTypeKnown, OBJ_DESCR } from './o_init.js';
+import { learnObjectType, observeObject, objectTypeKnown, OBJ_DESCR } from './o_init.js';
+import { recordObjectKnowledge } from './u_init.js';
 import { findArmorClass, takeoffSlotObject } from './do_wear.js';
 import { canSeeMonster, canSpotMonster, flush_screen, shieldeff, map_invisible, zapdir_to_glyph, TemporaryMapEffect, } from './display.js';
 import { displayColorName, displayLiquidName, monsterName, novelTitle } from './do_name.js';
@@ -817,7 +818,7 @@ export async function rejectCasting(state = game) {
         return false;
     return true;
 }
-// Part of C spell.c:age_spells(): compute remaining knowledge from its expiry turn.
+// C spell.c:age_spells(): compute remaining knowledge from its expiry turn.
 // The spl_book know-counter is stored as the turn on which it expires.
 // Casting does not refresh it; every elapsed global turn ages all memorized
 // spells. The per-turn decrnknow loop becomes an expiry-deadline subtraction.

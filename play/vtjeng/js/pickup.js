@@ -770,7 +770,6 @@ export async function query_objlist(
         // the same { value, count } rows as PICK_ANY.
         returnSelections: true,
         cancelValue: null,
-        overlay: state.iflags?.menu_overlay !== false,
     });
     if (selected === null) {
         // select_menu() uses null for C's select_menu() == -1. The caller
@@ -908,7 +907,6 @@ export async function query_category(
     }
     const selected = await select_menu(state, {
         title, ...menuTitleStyle(state), items, how, returnCount: true, cancelValue: null,
-        overlay: state.iflags?.menu_overlay !== false,
     });
     let picks = selected === null ? [] : how === PICK_ANY ? selected
         : [selected];
@@ -981,7 +979,7 @@ function preflightPickupObjects(selected, state) {
     const actionable = planSafePrefix.filter(({ obj }) =>
         obj !== state.uchain
         // pickup.c:1830-1831 returns from pickup_object() after the Rider
-        // revival, before any lift or inventory planning. Keep that corpse
+        // revival, before any lift or addinv preflight. Keep that corpse
         // out of this port's admission projection; pickup_object() performs
         // the impure helper at its source position below.
         && !(obj.otyp === CORPSE && is_rider(state.mons[obj.corpsenm]))
@@ -1040,7 +1038,7 @@ function preflightPickupObjects(selected, state) {
     // pickup.c:pickup_object() runs lift_object() and asks this question
     // before pick_obj() reaches addinv(). Leave the addinv plan empty here so
     // the accepted answer can build it at that source position; a declined
-    // lift must not reach inventory planning at all.
+    // lift must not reach preflight_addinv_sequence() at all.
     if (calc_capacity(addedWeight, state) > promptLimit)
         return { addPlans: selected.map(() => null), env, unliftable: [] };
     const computedPlans = preflight_addinv_sequence(
@@ -1141,8 +1139,8 @@ export function autopick_testobj(otmp, calc_costly, state = game) {
     return pickit;
 }
 
-function autopickTestObject(otmp, calc_costly, state, dryRun) {
-    if (!dryRun) return autopick_testobj(otmp, calc_costly, state);
+function autopickTestObject(otmp, calc_costly, state, preflightOnly) {
+    if (!preflightOnly) return autopick_testobj(otmp, calc_costly, state);
     // preflight_projected_random_arrival_pickup() runs before movement. The
     // source matcher calls doname(), which can set dknown; name a shallow copy
     // there so admission does not write through to the live floor object.
@@ -1155,20 +1153,22 @@ function autopickTestObject(otmp, calc_costly, state, dryRun) {
 
 // C ref: pickup.c autopick() (975-1003). Return the count and menu items
 // together because JavaScript does not need C's out-parameter allocation.
-export function autopick(olist, follow, state = game, { dryRun = false } = {}) {
+export function autopick(
+    olist, follow, state = game, { preflightOnly = false } = {},
+) {
     let n = 0;
     let check_costly = true;
 
     /* first count the number of eligible items */
     for (let curr = olist; curr; curr = FOLLOW(curr, follow)) {
-        if (autopickTestObject(curr, check_costly, state, dryRun)) ++n;
+        if (autopickTestObject(curr, check_costly, state, preflightOnly)) ++n;
         check_costly = false; /* only need to check once per autopickup */
     }
 
     const pick_list = [];
     if (n) {
         for (let curr = olist; curr; curr = FOLLOW(curr, follow)) {
-            if (autopickTestObject(curr, false, state, dryRun)) {
+            if (autopickTestObject(curr, false, state, preflightOnly)) {
                 pick_list.push({ obj: curr, count: curr.quan });
             }
         }
@@ -1180,7 +1180,7 @@ export function autopick(olist, follow, state = game, { dryRun = false } = {}) {
 // loop, while deriving eligibility through the complete source autopick path.
 function planAutomaticPickupAndRefreshCapacityCache(
     state,
-    { dryRun = false, head = undefined, follow = BY_NEXTHERE } = {},
+    { preflightOnly = false, head = undefined, follow = BY_NEXTHERE } = {},
 ) {
     const { u } = state;
     const sourceHead = head === undefined
@@ -1190,7 +1190,7 @@ function planAutomaticPickupAndRefreshCapacityCache(
         sourceHead,
         follow,
         state,
-        { dryRun },
+        { preflightOnly },
     );
     const selectedObjects = new Set(selected.map(({ obj }) => obj));
     const sourceObjects = [];
@@ -1239,7 +1239,7 @@ export function preflight_projected_random_arrival_pickup(state) {
         const plan = planAutomaticPickupAndRefreshCapacityCache(state, {
             head,
             follow: 0,
-            dryRun: true,
+            preflightOnly: true,
         });
         // pickup() has no floor redraw or check_here tail while swallowed;
         // this admission only needs to establish that its selected objects
@@ -1300,7 +1300,7 @@ export function preflight_projected_random_arrival_pickup(state) {
     } else {
         const plan = planAutomaticFloorPickupAndRefreshCapacityCache(
             state,
-            { dryRun: true },
+            { preflightOnly: true },
         );
         remaining = plan.remaining;
         pickedSome = Boolean(plan.selected.length);
@@ -2137,7 +2137,6 @@ async function in_or_out_menu(
         how: PICK_ONE,
         preselected: defaultChoice,
         cancelValue: null,
-        overlay: state.iflags?.menu_overlay !== false,
     });
     return choice ?? defaultChoice;
 }
@@ -3633,7 +3632,6 @@ async function doloot_core(state) {
                 items,
                 how: PICK_ANY,
                 cancelValue: null,
-                overlay: state.iflags?.menu_overlay !== false,
             });
             const n = result ? result.length : 0;
             if (n > 0) {
@@ -3973,7 +3971,6 @@ async function tipcontainer_gettarget(box, state) {
         items,
         how: PICK_ONE,
         preselected: FLOOR_TARGET,
-        overlay: state.iflags?.menu_overlay !== false,
     });
 
     // pickup.c:3936-3947. Interpret the result.
@@ -4294,7 +4291,6 @@ async function choose_tip_container_menu(state) {
         ...(state.invent ? { preselected: TIP_INVENTORY } : {}),
         cancelValue: TIP_MENU_CANCEL,
         emptyValue: TIP_MENU_EMPTY,
-        overlay: state.iflags?.menu_overlay !== false,
     });
     if (result === TIP_MENU_CANCEL) return ECMD_CANCEL;
     if (result && result !== TIP_INVENTORY

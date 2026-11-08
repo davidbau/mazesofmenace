@@ -2475,26 +2475,8 @@ export function noit_mon_nam(mtmp) {
                     false);
 }
 
-/* ---------------------------------------------------------------------------
- * christen_monst — C ref: nethack-c/src/do_name.c:132-153
- *
- * Give a monster a name. Truncates to PL_PSIZ (63) if necessary.
- * Returns the monster pointer.
- * ---------------------------------------------------------------------------
- */
-export function christen_monst(mtmp, name) {
-    const PL_PSIZ = 63;
-    let lth = (name && name.length > 0) ? (name.length + 1) : 0;
-    if (lth > PL_PSIZ) {
-        lth = PL_PSIZ;
-        name = name.substring(0, PL_PSIZ - 1);
-    }
-    new_mgivenname(mtmp, lth); /* removes old name if one is present */
-    if (lth)
-        mtmp.mextra.mgivenname = name; /* C: Strcpy(MGIVENNAME(mtmp), name) */
-    if (mtmp.mleashed) update_inventory(); /* C do_name.c:148-149 */
-    return mtmp;
-}
+/* christen_monst — C do_name.c:133; single body lives in do_name.js */
+export { christen_monst } from './do_name.js';
 
 /* new_mgivenname — C ref: nethack-c/src/do_name.c:30-46
  * Allocate space for a monster's name; removes old name if one is present.

@@ -72,11 +72,11 @@ export function activeObjectSymbols() {
 export function objectClassSymbol(index) {
     return activeObjectSymbols()[index] ?? '';
 }
-// Part of C symbols.c:get_othersym(): the SYM_BOULDER lookup for the active symbol set.
-// symbols.c:get_othersym(SYM_BOULDER, which_set): the active set's override,
-// else the default rock-class symbol.  optfn_boulder() fills both sets'
-// overrides, while the BOULDER= statement (cfgfiles.c) only fills the
-// primary one. A named primary selection can display that slot on Rogue.
+// Part of C symbols.c:get_othersym(): the SYM_BOULDER lookup for the active
+// symbol set — the active set's override, else the default rock-class
+// symbol.  optfn_boulder() fills both sets' overrides, while the
+// BOULDER= statement (cfgfiles.c) only fills the primary one. A named
+// primary selection can display that slot on Rogue.
 export function currentBoulderSymbol(state = game) {
     if (shownSymbolSet(state).rogue) {
         const set = activeRogueSymset(state);
@@ -386,10 +386,12 @@ export function reglyph_darkroom() {
         }
     }
 }
-// Part of C symbols.c:switch_symbols(), symbols.c:assign_graphics():
-// re-resolve memory characters after a set change.  Object classes differ
-// on Rogue, and terrain characters and branch wall colors also depend on
-// the selected set.
+// Part of C display.c:reset_glyphmap(): re-resolve memory characters after
+// a symbol-set change — the gm_symchange pass symbols.c:assign_graphics()
+// runs once it has copied the selected set; symbols.c:switch_symbols()
+// copies without resetting, and its callers assign next.  Object classes
+// differ on Rogue, and terrain characters and branch wall colors also
+// depend on the selected set.
 export function reglyphSymbolSet() {
     if (!game.level)
         return;
@@ -550,7 +552,9 @@ export function back_to_glyph(loc, x, y) {
         glyph: typ === ALTAR ? altarToGlyph(loc.flags) : cmapToGlyph(symbol, currentWallGlyphOffset()),
     };
 }
-// Part of C display.h:cmap_walls_to_glyph(): the branch wall offset.
+// C display.h:cmap_walls_to_glyph(): the branch-dependent wall offset the
+// macro selects (mines, Gehennom, Knox, Sokoban, main); cmapToGlyph()
+// (glyph_numbers.ts) applies the - S_vwall shift around it.
 function currentWallGlyphOffset() {
     const branch = game.dungeons[game.u.uz?.dnum ?? 0];
     return branch?.dname === 'The Gnomish Mines' ? GlyphOffset.cmapMines
@@ -1032,8 +1036,10 @@ const decFurnitureSymbols = new Map([
     [CmapSymbol.explosionTopLeft + 1, 'o'], [CmapSymbol.explosionTopLeft + 3, 'x'],
     [CmapSymbol.explosionTopLeft + 5, 'x'], [CmapSymbol.explosionTopLeft + 7, 's'],
 ]);
-// Part of C symbols.c:assign_graphics(): selects the active dungeon symbols. DEC
-// characters retain their alternate font so they do not match ASCII letters.
+// Part of C display.c:map_glyphinfo(): the cmap symbol for the active set —
+// the showsyms lookup over what symbols.c:assign_graphics() selected.  DEC
+// characters retain their alternate font so they do not match ASCII
+// letters.
 export function cmapSymbolAppearance(symbol) {
     const defaultSymbol = MAP_SYMBOLS[symbol]?.ch ?? DEFAULT_EFFECT_SYMBOLS.get(symbol);
     if (defaultSymbol === undefined)
@@ -1108,8 +1114,8 @@ export function canSpotHeroSelf() {
         || heroDetectsMonsters();
     return canSeeSelf || sensesSelf;
 }
-// Part of C display.h:random_obj_to_glyph(): the hallucinated object
-// glyph.  Generic object slots 0..17 are excluded; a randomly selected
+// C display.h:random_obj_to_glyph(): the hallucinated object glyph.
+// Generic object slots 0..17 are excluded; a randomly selected
 // corpse consumes a second display draw for its color.
 function randomHallucinatedObjectGlyph() {
     const firstObject = OBJECT_BASES[WEAPON_CLASS];
@@ -1178,9 +1184,11 @@ function objectGlyph(object) {
             statueGlyph: object.otyp === STATUE, piletop,
         };
 }
-// Part of C display.h:statue_to_glyph(), display.h:corpse_to_glyph(),
+// C display.h:statue_to_glyph(), display.h:corpse_to_glyph(),
 // display.h:generic_obj_to_glyph(): the piletop-adjusted glyph number.
-// An unobserved potion uses its class number in the same object range.
+// An unobserved potion uses its class number in the same object range;
+// the Hallucination arm of statue_to_glyph() lives in objectGlyph()
+// above with the hallucinated monster draw.
 function objectGlyphNumber(object, piletop) {
     if (object.otyp === STATUE) {
         const female = ((object.spe ?? 0) & CORPSTAT_GENDER) === CORPSTAT_FEMALE;
@@ -1459,8 +1467,8 @@ export async function map_location(x, y, show = true) {
 }
 // C display.c:feel_newsym(). Known terrain changes update memory by touch
 // when the hero is blind.
-export async function feel_newsym(x, y) {
-    if (heroIsBlind())
+export async function feel_newsym(x, y, state = game) {
+    if (heroIsBlind(state))
         await feel_location(x, y);
     else
         await newsym(x, y);
@@ -1613,10 +1621,11 @@ function isRogueShowraceHeroGlyph(glyph, x, y) {
     const heroGlyphNumber = monnumToGlyph(game.urace.mnum, game.flags.female ? FEMALE : MALE);
     return glyph.glyph === heroGlyphNumber;
 }
-// Part of C display.c:reset_glyphmap(): the RogueEpyx color gate.
+// C display.c:reset_glyphmap(): the RogueEpyx color gate —
 // HAS_ROGUE_IBM_GRAPHICS with nocolor cleared (only RogueEpyx declares
-// `Color: Yes`) keeps color on the Rogue level through cmap_to_roguecolor()
-// and the object/monster branches of reset_glyphmap().
+// `Color: Yes`), as the glyphmap rows' per-level reset computes it.  The
+// cmap_to_roguecolor() rows are rogueLevelGlyphColor() below; the
+// object/monster colors resolve lazily through objectColor().
 export function rogueColorsActive() {
     const set = activeRogueSymset();
     return Is_rogue_level(game.u?.uz) && game.flags.color !== false

@@ -105,7 +105,7 @@ import { DEAF, MM_NOMSG } from './const.js';
 import { verbalize, set_msg_xy as set_msg_xy_mm } from './cmd.js';
 import { a_monnam } from './mhitm.js';
 import { is_youmonst } from './mhitm.js';
-import { attacktype as attacktype_real } from './mondata.js';
+import { attacktype, dmgtype } from './mondata.js';
 import { rndmonnam } from './do_name.js';
 import { paralyze_monst } from './dogmove.js';
 import { observe_object, discover_object } from './o_init.js';
@@ -139,7 +139,7 @@ import { an, the, makeplural, makesingular, vtense, singular, doname, distant_na
  * imports several exports FROM this file); resolves fine because both sides
  * bind a hoisted function declaration, the same pattern already used for the
  * teleport.js / wizcmds.js cycle above. */
-import { can_carry, mondied_dm, dog_nutrition, dmgtype as dmgtype_real } from './dogmove.js';
+import { can_carry, mondied_dm, dog_nutrition } from './dogmove.js';
 import { def_char_to_monclass } from './drawing.js';
 import { weight } from './weight.js';
 import { Monnam } from './mcastu.js';
@@ -3272,10 +3272,6 @@ function m_seenres(mtmp, mask) {
 export function monnear(mtmp, x, y) {
     return monnear_real(mtmp, x, y); /* C mon.c:2476, shared NODIAG test. */
 }
-/* dmgtype: check if monster has a given damage type in any attack */
-function dmgtype(ptr, dtyp) {
-    return dmgtype_real(ptr, dtyp);
-}
 /* C include/mondata.h:215
  *   #define hates_light(ptr) ((ptr) == &mons[PM_GREMLIN])
  * The gremlin, and nothing else -- there is no mlet test and no undead clause.
@@ -5527,9 +5523,6 @@ const LOADSTONE_OTYP = 471, LEASH_OTYP = 236;
 /* C mondata.c:53-57
  *   boolean attacktype(struct permonst *ptr, int atyp)
  *   { return attacktype_fordmg(ptr, atyp, AD_ANY) ? TRUE : FALSE; } */
-export function attacktype(ptr, atyp) {
-    return attacktype_real(ptr, atyp);
-}
 export function hero_behind_chokepoint(mtmp) {
     const N_DIRS_MM = 8; /* C hack.h:655 N_DIRS = N_DIRS_Z - 2 */
     const DIR_CLAMP_MM = (dir) => ((dir + N_DIRS_MM) % N_DIRS_MM);
