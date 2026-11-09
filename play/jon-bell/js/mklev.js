@@ -644,12 +644,9 @@ export function blessorcurse(otmp, chance) {
  * order: NONARTIFACT, EXCALIBUR, STORMBRINGER, MJOLLNIR, CLEAVER, GRIMTOOTH
  * => 5).  Same local copy js/potion.js carries; js/objnam.js has a third,
  * unexported one. */
-import { permapoisoned as permapoisoned_real } from './artifact.js';
-function permapoisoned_mka(o) {
-    return permapoisoned_real(o);
-}
+import { permapoisoned } from './artifact.js';
 function mka_poison_tail(o) {
-    if (o && permapoisoned_mka(o))
+    if (o && permapoisoned(o))
         o.opoisoned = 1;
     return o;
 }

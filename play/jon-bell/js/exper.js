@@ -31,11 +31,8 @@ import { rehumanize as rehumanize_real } from './polyself.js';
 import { done as done_real } from './end.js';
 
 /* C mondata.c:201 — share the form, lycanthropy, and equipment checks. */
-import { resists_drli as resists_drli_real } from './mondata.js';
+import { resists_drli } from './mondata.js';
 import { exp_percent_changing } from './botl.js'; // relocate-fns
-function resists_drli(mon) {
-    return resists_drli_real(mon);
-}
 const sa2_xpleveldown = 0; /* SoundAchievement constant */
 /* C ref: role.c:697 aligns[].value indexed by flags.initalign:
  *   aligns[0] = A_LAWFUL  ( 1)

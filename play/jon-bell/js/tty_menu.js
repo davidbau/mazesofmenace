@@ -359,12 +359,16 @@ export class TtyMenu {
                 const op = (morc === ',' || morc === '.') ? sel
                     : (morc === '\\' || morc === '-') ? uns : inv;
                 if (op !== uns && how !== PICK_ANY) continue;
+                /* C windows.c:1562-1589 menuitem_invert_test(mode, itemflags, is_selected) */
+                const imode = game.iflags?.menuinvertmode ?? 1;
+                const passes = (c) => !c.skipinvert || (imode === 2 ? false
+                    : imode === 1 ? (op === sel ? false : op === uns ? true : c.selected) : true);
                 const all = morc === '.' || morc === '-' || morc === '@';
                 for (let i = from; i < to; i++) {
                     const c = this.mlist[i];
                     if (!c.aInt) continue;
                     if (op === sel ? c.selected : (op === uns && !c.selected)) continue;
-                    if (op !== uns && c.skipinvert && !c.selected) continue; /* menuitem_invert_test, menuinvertmode 1 */
+                    if (!passes(c)) continue;
                     op(c);
                     this._setItemState(i - from, c);
                 }
@@ -374,7 +378,7 @@ export class TtyMenu {
                         if (i >= from && i < to) continue;
                         if (!c.aInt) continue;
                         if (op === sel ? c.selected : (op === uns && !c.selected)) continue;
-                        if (op !== uns && c.skipinvert && !c.selected) continue;
+                        if (!passes(c)) continue;
                         op(c);
                     }
             } else if (morc === ':') {

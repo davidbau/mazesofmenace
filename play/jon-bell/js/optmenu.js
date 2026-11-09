@@ -13,6 +13,7 @@
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
 import { load_primary_symset_from_file, assign_graphics } from './symbols.js';
 import { game } from './gstate.js';
+import { regcomp } from './posixregex.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
 import { ECMD_OK, gs, PARANOID_BONES, Is_rogue_level } from './const.js';
 import { nhgetch } from './input.js';
@@ -137,7 +138,7 @@ function basic_menu_colors() {
     for (const { name, color } of colornames) {
         if (!name) break;
         if (color === 0 || color === 15 || color === 8) continue;
-        cols.unshift({ match: new RegExp(name), color, attr: 0 });
+        cols.unshift({ match: regcomp(name), color, attr: 0 });
     }
     game.iflags.use_menu_color = true;
     game.menu_colorings = cols;

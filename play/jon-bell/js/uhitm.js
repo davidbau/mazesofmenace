@@ -170,7 +170,7 @@ import { FIRE_TRAP } from './const.js';
 import { check_caitiff, wakeup, wakeup_attack, seemimic } from './mhitm.js';
 import { ghod_hitsu } from './priest.js';
 import { Adjmonnam as Adjmonnam_uh } from './mhitm.js';
-import { defended } from './mondata.js';
+import { defended, resists_drli } from './mondata.js';
 import { passive as passive_uh } from './mhitm.js';
 import { attacktype } from './mondata.js';
 import { attacktype_fordmg as attacktype_fordmg_uh } from './makemon.js';
@@ -644,7 +644,7 @@ function spec_applies(arti, mtmp, mndx) {
              * completeness (Cardinal Rule 1: port the whole switch). */
             return !(yours ? _hero_resists(POISON_RES) : resists_poison_uh(mtmp));
         case AD_DRLI_UH:
-            return !(yours ? _hero_resists(DRAIN_RES) : resists_drli_deth(mtmp));
+            return !(yours ? _hero_resists(DRAIN_RES) : resists_drli(mtmp));
         case AD_STON_UH:
             return !(yours ? _hero_resists(STONE_RES) : sh_resists_ston(mtmp));
         default:
@@ -7007,15 +7007,6 @@ function is_vampshifter_deth(mon) {
     const c = mon?.cham;
     return c === PM_VAMPIRE || c === PM_VAMPIRE_LORD || c === PM_VLAD_THE_IMPALER;
 }
-/* C mondata.c:200-211 resists_drli(mon). */
-function resists_drli_deth(mon) {
-    const ptr = mon.data;
-    if (is_undead_deth(ptr) || is_demon(ptr) || is_were_deth(ptr)
-        || (mon === game.youmonst && ((game.u?.ulycn ?? -1) | 0) >= 0)
-        || ptr.pmidx === PM_DEATH || is_vampshifter_deth(mon))
-        return true;
-    return defended(mon, AD_DRLI);
-}
 /* C youprop.h:52 Drain_resistance = HDrain_resistance || EDrain_resistance. */
 function Drain_resistance_deth() {
     const p = game.u && game.u.uprops && game.u.uprops[DRAIN_RES_DETH];
@@ -7044,7 +7035,7 @@ function You_feel_uh(msg) {
 async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
         /* uhitm */
-        if (!rn2(3) && !(resists_drli_deth(mdef) || defended(mdef, AD_DRLI))
+        if (!rn2(3) && !(resists_drli(mdef) || defended(mdef, AD_DRLI))
             && !mhitm_mgc_atk_negated(magr, mdef, true)) {
             mhm.damage = d(2, 6); /* Stormbringer uses monhp_per_lvl */
             pline("%s becomes weaker!", Monnam(mdef));
@@ -7075,7 +7066,7 @@ async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
         const is_death = (mattk.adtyp === AD_DETH);
 
         if (is_death
-            || (!rn2(3) && !(resists_drli_deth(mdef) || defended(mdef, AD_DRLI))
+            || (!rn2(3) && !(resists_drli(mdef) || defended(mdef, AD_DRLI))
                 && !mhitm_mgc_atk_negated(magr, mdef, true))) {
             if (!is_death) /* Stormbringer uses monhp_per_lvl (1d8) */
                 mhm.damage = d(2, 6);
@@ -8963,7 +8954,7 @@ const LEATHER_MAT = 7;
 function thick_skinned(pd) {
     return (((pd && pd.mflags1) >>> 0) & M1_THICK_HIDE) !== 0;
 }
-import { permapoisoned as permapoisoned_real } from './artifact.js';
+import { permapoisoned } from './artifact.js';
 import { INVIS } from './const.js'; // relocate-fns
 import { DISP_ALWAYS, DISP_END, GLYPHCLS_MON, MON_MCOLOR, MON_MLET, _hallucinating_dsp, _uprop, _wizmgender_attr, map_location, monster_symbol, random_monster, tmp_at } from './display.js'; // relocate-fns
 import { exclam } from './zap.js'; // relocate-fns
@@ -8973,10 +8964,6 @@ export { poisoned } from './attrib.js'; // relocate-fns
 export { is_safemon } from './display.js'; // relocate-fns
 export { _xk_hallu }; // relocate-fns
 export { exclam } from './zap.js'; // relocate-fns
-function permapoisoned(otmp) {
-    /* C artifact.c:2837: Grimtooth is permanently poisoned. */
-    return permapoisoned_real(otmp);
-}
 /* artifact_hit's real body is next to spec_applies()/spec_abon()/spec_dbon(),
  * the artilist[] readers it shares ARTI_SPEC with (js/uhitm.js:~618).  The
  * constant-FALSE stub that used to sit here has been retired; its two callers

@@ -951,10 +951,10 @@ export function arti_cary_adtyp(artidx) { return ARTILIST_CARY_ADTYP[artidx] | 0
 export function arti_inv_prop(artidx) { return ARTILIST_INVPROP[artidx] | 0; }
 export { get_artifact, ART_NONARTIFACT };
 /* C artifact.h:34 */
-const SPFX_LUCK = 0x00080000;
+export const SPFX_LUCK = 0x00080000;
 /* C objects.h — LUCKSTONE; == 470, confirmed by the same C build that produced
  * the spfx column above. */
-const LUCKSTONE = 470;
+export const LUCKSTONE = 470;
 
 /* C ref: nethack-c/src/artifact.c:180-193 get_artifact(struct obj *obj)
  *   if (obj) { int artidx = (int) obj->oartifact;
@@ -986,17 +986,9 @@ export function spec_ability(otmp, abil) {
             && (ARTILIST_SPFX[arti] & abil) !== 0);
 }
 
-/* used so that callers don't need to known about SPFX_ codes */
-/* C ref: nethack-c/src/artifact.c:524-532 confers_luck(struct obj *obj)
- *   if (obj->otyp == LUCKSTONE) return TRUE;
- *   return (boolean) (obj->oartifact && spec_ability(obj, SPFX_LUCK)); */
-export function confers_luck(obj) {
-    /* might as well check for this too */
-    if (obj.otyp === LUCKSTONE)
-        return true;
-
-    return !!(obj.oartifact && spec_ability(obj, SPFX_LUCK));
-}
+/* confers_luck() lives in artifact.c; single port in js/artifact.js */
+import { confers_luck } from './artifact.js';
+export { confers_luck };
 /* C attrib.c:422 int stone_luck(boolean include_uncursed) — compute net luck bonus.
  * Loops through hero inventory chain (gi.invent), accumulates blessed-blessed/uncursed
  * items (if include_uncursed) as +quan, cursed items as -quan. Returns sgn of total. */

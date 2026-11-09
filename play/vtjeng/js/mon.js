@@ -184,6 +184,8 @@ import {
     glyph_is_invisible,
     mon_to_glyph,
     newsym,
+    newsymOffMapImpossible,
+    newsymReportsOffMap,
     see_monsters,
     shieldeff,
     swallowed,
@@ -572,6 +574,7 @@ import {
     can_hide_under_obj,
     monnear,
     monflee,
+    monfleeMessage,
     monhaskey,
     onscary,
     youHear,
@@ -1434,9 +1437,9 @@ export async function meatbox(mon, obj, rawEnv = {}) {
             distant_name(obj, xnameFresh, state),
             state,
         ));
-        await monsterMessage(
+        // C prints this with plain pline().
+        await plainMessage(
             `${contents} contents spill out onto the ${surface(x, y, state)}.`,
-            mon,
             state,
             rawEnv,
         );
@@ -1646,7 +1649,7 @@ export async function meatmetal(mtmp, rawEnv = {}) {
         } else if (state.flags?.verbose) {
             const heard = youHear('a crunching sound.', state);
             if (heard !== null)
-                await monsterMessage(heard, null, state, rawEnv);
+                await plainMessage(heard, state, rawEnv);
         }
         mtmp.meating = Math.trunc(obj.owt / 2) + 1;
         await m_consume_obj(mtmp, obj, { ...rawEnv, state, random });
@@ -1737,13 +1740,13 @@ export async function meatobj(mtmp, rawEnv = {}) {
                     );
                 if (obj.oclass === SCROLL_CLASS
                     && objdescr_is(obj, 'YUM YUM', state)) {
-                    await monsterMessage(`Yum${obj.blessed ? '!' : '.'}`, null, state, rawEnv);
+                    await plainMessage(`Yum${obj.blessed ? '!' : '.'}`, state, rawEnv);
                 }
             } else {
                 if (state.flags?.verbose) {
                     const heard = youHear('a slurping sound.', state);
                     if (heard !== null)
-                        await monsterMessage(heard, null, state, rawEnv);
+                        await plainMessage(heard, state, rawEnv);
                 }
             }
             await m_consume_obj(mtmp, obj, { ...rawEnv, state });
@@ -1755,14 +1758,14 @@ export async function meatobj(mtmp, rawEnv = {}) {
     if (engulfed && state.flags?.verbose) {
         // C prints the engulf line with pline1(), which has no location.
         if (cansee(mtmp.mx, mtmp.my, state) && messageText)
-            await monsterMessage(messageText, null, state, rawEnv);
+            await plainMessage(messageText, state, rawEnv);
         else {
             const heard = youHear(
                 `${engulfed === 1 ? 'a' : 'several'} slurping sound${engulfed === 1 ? '' : 's'}.`,
                 state,
             );
             if (heard !== null)
-                await monsterMessage(heard, null, state, rawEnv);
+                await plainMessage(heard, state, rawEnv);
         }
     }
     return count || engulfed ? 1 : 0;
@@ -1804,7 +1807,7 @@ export async function meatcorpse(mtmp, rawEnv = {}) {
             if (state.flags?.verbose) {
                 const heard = youHear('a masticating sound.', state);
                 if (heard !== null)
-                    await monsterMessage(heard, null, state, rawEnv);
+                    await plainMessage(heard, state, rawEnv);
             }
         }
         await m_consume_obj(mtmp, obj, { ...rawEnv, state });
@@ -1818,22 +1821,36 @@ export async function meatcorpse(mtmp, rawEnv = {}) {
 // C ref: mon.c mon_give_prop() (1726-1775).
 export async function mon_give_prop(mtmp, prop, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const messages = new Map([
-        [FIRE_RES, '%s shivers slightly.'],
-        [COLD_RES, '%s looks quite warm.'],
-        [SLEEP_RES, '%s looks wide awake.'],
-        [DISINT_RES, '%s looks very firm.'],
-        [SHOCK_RES, '%s crackles with static electricity.'],
-        [POISON_RES, '%s looks healthy.'],
-    ]);
-    if (!messages.has(prop)) return;
+    let msg;
+    switch (prop) {
+    case FIRE_RES:
+        msg = '%s shivers slightly.';
+        break;
+    case COLD_RES:
+        msg = '%s looks quite warm.';
+        break;
+    case SLEEP_RES:
+        msg = '%s looks wide awake.';
+        break;
+    case DISINT_RES:
+        msg = '%s looks very firm.';
+        break;
+    case SHOCK_RES:
+        msg = '%s crackles with static electricity.';
+        break;
+    case POISON_RES:
+        msg = '%s looks healthy.';
+        break;
+    default:
+        return; /* can't give it */
+    }
     const intrinsic = 1 << (prop - FIRE_RES);
     const oldResistance = (mtmp.data?.mresists ?? 0) | (mtmp.mintrinsics ?? 0);
-    const message = oldResistance & intrinsic ? null : messages.get(prop);
+    if (oldResistance & intrinsic) msg = null;
     mtmp.mintrinsics = (mtmp.mintrinsics ?? 0) | intrinsic;
-    if (canseemon(mtmp, state) && message) {
+    if (canseemon(mtmp, state) && msg) {
         await monsterMessage(
-            message.replace('%s', capitalizedMonsterName(mtmp, state, { displayRandom: rawEnv.displayRandom })),
+            msg.replace('%s', capitalizedMonsterName(mtmp, state, { displayRandom: rawEnv.displayRandom })),
             mtmp,
             state,
             rawEnv,
@@ -1896,10 +1913,15 @@ function isOrganic(obj, state) {
     return (state.objects?.[obj.otyp]?.oc_material ?? 0) <= WOOD;
 }
 
+// C pline_mon(): the line records the monster's square for accessiblemsg.
 async function monsterMessage(text, monster, state, env) {
     const message = env.message ?? ttyPline;
-    const output = monster ? messageAt(text, monster.mx, monster.my, state) : text;
-    await message(output, state, env);
+    await message(messageAt(text, monster.mx, monster.my, state), state, env);
+}
+
+// C pline() and You_hear(): no location.
+async function plainMessage(text, state, env) {
+    await (env.message ?? ttyPline)(text, state, env);
 }
 
 // C ref: mon.c check_gear_next_turn(). Setting misc_worn_check's I_SPECIAL bit
@@ -2166,16 +2188,19 @@ function liquidCanSeeMonster(monster, env) {
         : canseemon(monster, state);
 }
 
+// C pline_mon(): the line records the monster's square for accessiblemsg.
 async function liquidMessage(text, monster, env) {
+    const state = env.state ?? game;
+    await liquidPlainMessage(messageAt(text, monster.mx, monster.my, state), env);
+}
+
+// C pline() and You(): no location.
+async function liquidPlainMessage(text, env) {
     const state = env.state ?? game;
     const message = env.message ?? ttyPline;
     if (typeof message !== 'function')
         throw new TypeError('monster liquid effects require message');
-    await message(
-        messageAt(text, monster.mx, monster.my, state),
-        state,
-        env,
-    );
+    await message(text, state, env);
 }
 
 async function liquidTeleportRestricted(monster, env) {
@@ -2433,22 +2458,28 @@ export async function minliquid_core(monster, env = {}) {
             }
 
             if (liquidCanSee(monster, env)) {
-                await liquidMessage(
-                    state.context?.mon_moving
-                        ? capitalizedMonsterName(monster, state, namingEnv)
-                            + ' drowns.'
-                        : 'You drown '
+                if (state.context?.mon_moving) {
+                    await liquidMessage(
+                        capitalizedMonsterName(monster, state, namingEnv)
+                            + ' drowns.',
+                        monster,
+                        env,
+                    );
+                } else {
+                    // C prints this with You(), which records no location.
+                    await liquidPlainMessage(
+                        'You drown '
                             + monsterCommonName(monster, state, 0, namingEnv) + '.',
-                    monster,
-                    env,
-                );
+                        env,
+                    );
+                }
             }
             if (engulfing_u(monster, state)) {
-                await liquidMessage(
+                // C prints this with plain pline().
+                await liquidPlainMessage(
                     capitalizedMonsterName(monster, state, namingEnv)
                         + ' sinks as ' + hliquid('water', namingEnv)
                         + ' rushes in and flushes you out.',
-                    monster,
                     env,
                 );
             }
@@ -3102,7 +3133,7 @@ function* apply_newcham_steps(
                 state,
                 random,
                 canSeeMonster: normalized.canSeeMonster,
-                fleeMessage: normalized.fleeMessage ?? responseFleeMessage,
+                fleeMessage: normalized.fleeMessage ?? monfleeMessage,
             });
         }
     }
@@ -3648,7 +3679,7 @@ export async function new_were(monster, rawEnv = {}) {
             {
                 ...normalized,
                 canSeeMonster: normalized.canSeeMonster,
-                fleeMessage: normalized.fleeMessage ?? responseFleeMessage,
+                fleeMessage: normalized.fleeMessage ?? monfleeMessage,
             },
         );
     }
@@ -3757,31 +3788,6 @@ function responseMessage(text, monster, state, rawEnv) {
     return message(messageAt(text, monster.mx, monster.my, state), state, rawEnv);
 }
 
-function responseFleeMessage(monster, detail, rawEnv) {
-    const state = rawEnv.state ?? game;
-    const name = Monnam(monster, state);
-    let text;
-    switch (detail.kind) {
-    case 'immobile-flinch':
-        text = `${name} seems to flinch.`;
-        break;
-    case 'frightened':
-        text = `${name} is frightened.`;
-        break;
-    case 'painful-light':
-        text = `${name} flees from the painful light of `
-            + '[its imagination?].';
-        break;
-    case 'bright-light':
-        text = '"Bright light!"';
-        break;
-    default:
-        text = `${name} turns to flee.`;
-        break;
-    }
-    return responseMessage(text, monster, state, rawEnv);
-}
-
 // C ref: mon.c peacefuls_respond(). This is asynchronous because the port's
 // message and monster-noise owners are asynchronous; all source predicates,
 // draws, and state writes remain in C order.
@@ -3843,7 +3849,7 @@ export async function peacefuls_respond(attacked, rawEnv = {}) {
                             canSeeMonster: rawEnv.canSeeMonster
                                 ?? ((subject) => canseemon(subject, state)),
                             fleeMessage: rawEnv.fleeMessage
-                                ?? responseFleeMessage,
+                                ?? monfleeMessage,
                         });
                     if (exclaimed) {
                         if (state.flags?.verbose && !alreadyFleeing) {
@@ -3883,7 +3889,7 @@ export async function peacefuls_respond(attacked, rawEnv = {}) {
                         canSeeMonster: rawEnv.canSeeMonster
                             ?? ((subject) => canseemon(subject, state)),
                         fleeMessage: rawEnv.fleeMessage
-                            ?? responseFleeMessage,
+                            ?? monfleeMessage,
                     });
                 if (exclaimed && !alreadyFleeing)
                     await message('And then starts to flee.', state, rawEnv);
@@ -4368,6 +4374,18 @@ function requiredKillOperation(env, name) {
 function killRedraw(x, y, env) {
     if (typeof env.hooks?.newsym === 'function') env.hooks.newsym(x, y, env);
     else if ((env.state ?? game) === game) newsym(x, y);
+}
+
+// make_corpse()'s newsym(x, y) calls. A dead vault guard that vault.c
+// parkguard() moved to <0,0> leaves x and y at 0, and display.c newsym()
+// reports column 0 through impossible() instead of drawing.
+async function corpseRedraw(x, y, env) {
+    if (typeof env.hooks?.newsym !== 'function'
+        && (env.state ?? game) === game && newsymReportsOffMap(x, y)) {
+        await newsymOffMapImpossible(x, y, env.state ?? game, env);
+        return;
+    }
+    killRedraw(x, y, env);
 }
 
 // C ref: mon.c zombie_maker() (362-380). "return True if mon is capable of
@@ -5570,11 +5588,10 @@ async function make_corpse(mtmp, corpseflags, state, env) {
     case PM_BLACK_UNICORN:
         if (mtmp.mrevived && random.rn2(2)) {
             if (canseemon(mtmp, state)) {
-                await message(
+                await message(messageAt(
                     `${s_suffix(Monnam(mtmp, state))} recently regrown horn crumbles to dust.`,
-                    state,
-                    env,
-                );
+                    mtmp.mx, mtmp.my, state,
+                ), state, env);
             }
         } else {
             obj = mksobj_at(UNICORN_HORN, x, y, true, false, objectEnv);
@@ -5589,7 +5606,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
     case PM_VAMPIRE_LEADER:
         num = undead_to_corpse(mndx);
         corpstatflags |= CORPSTAT_INIT;
-        obj = mkcorpstat(CORPSE, mtmp, state.mons[num], x, y,
+        obj = await mkcorpstat(CORPSE, mtmp, state.mons[num], x, y,
                          corpstatflags, objectEnv);
         obj.age -= (TAINT_AGE + 1);
         defaultOne = false;
@@ -5612,7 +5629,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
     case PM_ETTIN_ZOMBIE:
         num = undead_to_corpse(mndx);
         corpstatflags |= CORPSTAT_INIT;
-        obj = mkcorpstat(CORPSE, mtmp, state.mons[num], x, y,
+        obj = await mkcorpstat(CORPSE, mtmp, state.mons[num], x, y,
                          corpstatflags, objectEnv);
         obj.age -= (TAINT_AGE + 1);
         defaultOne = false;
@@ -5642,7 +5659,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
         break;
     case PM_STONE_GOLEM:
         corpstatflags &= ~CORPSTAT_INIT;
-        obj = mkcorpstat(STATUE, null, mdat, x, y,
+        obj = await mkcorpstat(STATUE, null, mdat, x, y,
                          corpstatflags, objectEnv);
         defaultOne = false;
         break;
@@ -5712,7 +5729,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
             });
         }
         free_mgivenname(mtmp);
-        killRedraw(x, y, { ...env, state });
+        await corpseRedraw(x, y, { ...env, state });
         return obj;
     case NON_PM:
     case LEAVESTATUE:
@@ -5728,7 +5745,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
     if (defaultOne) {
         if (state.svm.mvitals[mndx].mvflags & G_NOCORPSE) return null;
         corpstatflags |= CORPSTAT_INIT;
-        obj = mkcorpstat(
+        obj = await mkcorpstat(
             CORPSE,
             KEEPTRAITS(mtmp, state) ? mtmp : null,
             mdat,
@@ -5739,7 +5756,7 @@ async function make_corpse(mtmp, corpseflags, state, env) {
         );
         if (burythem) {
             const { deallocated } = await bury_an_obj(obj, objectEnv);
-            killRedraw(x, y, { ...env, state });
+            await corpseRedraw(x, y, { ...env, state });
             return deallocated ? null : obj;
         }
     }
@@ -5753,9 +5770,9 @@ async function make_corpse(mtmp, corpseflags, state, env) {
     if (Blind(state.u) && !sensemon(mtmp, state)) clear_dknown(obj, state);
 
     stackobj(obj, objectGenerationEnv(objectEnv));
-    killRedraw(x, y, { ...env, state });
+    await corpseRedraw(x, y, { ...env, state });
     if (obj.ox !== x || obj.oy !== y)
-        killRedraw(obj.ox, obj.oy, { ...env, state });
+        await corpseRedraw(obj.ox, obj.oy, { ...env, state });
     return obj;
 }
 

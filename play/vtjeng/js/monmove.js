@@ -2005,17 +2005,15 @@ export async function monfleeMessage(monster, detail, env = {}) {
         break;
     }
     case 'bright-light':
+        // C's verbalize(), which records no location.
         if (!state.flags.acoustics) return;
-        text = '"Bright light!"';
-        break;
+        return message('"Bright light!"', state, env);
     default:
         text = `${Monnam(monster, state)} turns to flee.`;
         break;
     }
-    // This arm is C's verbalize(), which has no monster-location argument.
-    // The others are pline_mon() messages and retain accessibility location.
-    return message(detail.kind === 'bright-light'
-        ? text : messageAt(text, monster.mx, monster.my, state), state, env);
+    // C's pline_mon().
+    return message(messageAt(text, monster.mx, monster.my, state), state, env);
 }
 
 export async function monflee(
@@ -4261,8 +4259,9 @@ export function can_hide_under_obj(headObject, state = game) {
 export async function dissolve_bars(x, y, state = game, rawEnv = {}) {
     const redraw = rawEnv.newsym ?? newsym;
     const loc = state.level.at(x, y);
-    const edge = loc.edge;
-    loc.typ = edge === 1 ? DOOR
+    // rm.h keeps edge in a one-bit field; the port stores it as a Boolean
+    // (js/game.js), so C's `edge == 1` is its truth.
+    loc.typ = loc.edge ? DOOR
         : (Is_special(state.u?.uz, state) || in_rooms(x, y, 0, state)[0])
             ? ROOM
             : CORR;

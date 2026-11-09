@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import { reassign, update_inventory } from './inventory_refresh.js';
 import { impossible } from './pline.js';
 import { snuff_light_source, artifact_light, arti_light_radius } from './light.js';
-import { maybe_adjust_light, uncurse as uncurse_obj } from './mkobj.js';
+import { maybe_adjust_light, uncurse as _uncurse } from './mkobj.js';
 import { end_burn } from './timeout.js';
 import { putmsghistory, getobj_never_mind, obj_to_glyph, msgtype_suppressed } from './display.js';
 import { bot as bot_read } from './botl.js';
@@ -2030,9 +2030,6 @@ function _bless(otmp) {
     otmp.cursed = 0;
     otmp.blessed = 1;
     _bc_side_effects(otmp);
-}
-async function _uncurse(otmp) {
-    await uncurse_obj(otmp);                     /* C mkobj.c:1823 incl. lamplit light bracket */
 }
 async function _curse(otmp) {
     if ((otmp.oclass | 0) === COIN_CLASS_OC)

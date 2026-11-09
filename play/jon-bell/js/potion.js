@@ -2805,7 +2805,7 @@ async function potion_dip(obj, potion) {
             obj.opoisoned = true;
             await _poof(potion);
             return ECMD_TIME;
-        } else if (obj.opoisoned && !_permapoisoned(obj)
+        } else if (obj.opoisoned && !permapoisoned(obj)
                    && (potion.otyp === POT_HEALING
                        || potion.otyp === POT_EXTRA_HEALING
                        || potion.otyp === POT_FULL_HEALING)) {
@@ -3019,14 +3019,11 @@ function _is_weptool(o) {
     return (o.oclass | 0) === TOOL_CLASS_OC && _oc_skill_dip(o) !== P_NONE;
 }
 /* C artifact.c:2837 permapoisoned(obj) — currently only Grimtooth. */
-import { permapoisoned as permapoisoned_real } from './artifact.js';
+import { permapoisoned } from './artifact.js';
 import { dipfountain, dipsink, drinkfountain, drinksink, floating_above, wash_hands } from './fountain.js'; // relocate-fns
 import { cantvomit, monstseesu } from './mondata.js'; // relocate-fns
 export { dipfountain, dogushforth, drinkfountain, dryup, sink_backs_up } from './fountain.js'; // relocate-fns
 export { COIN_CLASS, POTION_CLASS, POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_POLYMORPH, POT_WATER, Poison_resistance, You_feel, _C_ATTR_TO_DISP, _getAbase, _getAexe, _getAmax, _gush_m_at, _hallucination, _mongrantswish, _potion_Blind, _potion_Deaf, _potion_Hallucination, _prop_active, _unchanging, _uprop, breathless, haseyes, makeplural, y_n }; // relocate-fns
-function _permapoisoned(obj) {
-    return permapoisoned_real(obj);
-}
 /* C obj.h:264 is_poisonable(otmp) —
  *   ((oclass == WEAPON_CLASS && oc_skill >= -P_SHURIKEN && oc_skill <= -P_BOW)
  *    || permapoisoned(otmp)) */
@@ -3034,7 +3031,7 @@ function _is_poisonable(otmp) {
     const sk = _oc_skill_dip(otmp);
     return ((otmp.oclass | 0) === WEAPON_CLASS_OC
             && sk >= -P_SHURIKEN && sk <= -P_BOW)
-        || _permapoisoned(otmp);
+        || permapoisoned(otmp);
 }
 /* C obj.h:238 is_ammo(otmp) —
  *   ((oclass == WEAPON_CLASS || oclass == GEM_CLASS)

@@ -19,6 +19,7 @@ import {
     COLNO,
     DEFUNCT_MONSTER,
     DELPHI,
+    DISMOUNT_BONES,
     EBONES,
     HOLE,
     LEAVESTATUE,
@@ -47,7 +48,7 @@ import { christen_monst, free_oname } from './do_name.js';
 import { mk_named_object } from './corpstat.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { newsym } from './display.js';
-import { m_dowear } from './worn.js';
+import { clear_bypasses, m_dowear } from './worn.js';
 import {
     In_hell,
     Is_botlevel,
@@ -118,6 +119,8 @@ import { decodeUtf8ByteString, encodeUtf8ByteString } from './hacklib.js';
 import {
     ghostfruit, reset_oattached_mids, rest_stairs, rest_traps, restdamage,
 } from './restore.js';
+import { savefruitchn, savemonchn } from './save.js';
+import { dismount_steed } from './steed.js';
 import {
     BOW,
     ELVEN_BOW,
@@ -577,7 +580,9 @@ function newebones(mtmp) {
 export async function savebones(how, when, corpse, state) {
     // caller has already checked can_make_bones()
 
-    // C: clear_bypasses() -- bypass flags have no gameplay effect in the port.
+    // C ref: bones.c:416. Clears every object's bypass bit, the bypass
+    // marker of a long worm made by polymorph, and context.bypasses.
+    clear_bypasses(state);
 
     // Check for existing bones file
     const existing = open_bonesfile(state.u.uz, state);
@@ -609,8 +614,10 @@ export async function savebones(how, when, corpse, state) {
     // C: if (Punished) unpunish(); Punished is uball != null.
     if (state.uball) unpunish(state);
 
-    // C: if (u.usteed) dismount_steed(DISMOUNT_BONES);
-    // The port has no mount state in the exercised path; skip.
+    // C ref: bones.c:441-444. Dismount before the dead monsters are
+    // discarded; DISMOUNT_BONES moves the steed off the hero's square to
+    // make room for the ghost.
+    if (state.u.usteed) await dismount_steed(DISMOUNT_BONES, state);
 
     await iter_mons_async((mtmp) => remove_mon_from_bones(mtmp, state), state);
     dmonsfree(state);
@@ -746,8 +753,9 @@ export async function savebones(how, when, corpse, state) {
                     loc.waslit = 0;
                     loc.glyph = GLYPH_UNEXPLORED_OFF;
                     loc.remembered_glyph = undefined;
-                    if (state.lastseentyp?.[x])
-                        state.lastseentyp[x][y] = 0;
+                    // C's svl.lastseentyp is the port's state.level.lastseentyp.
+                    if (state.level.lastseentyp)
+                        state.level.lastseentyp[x][y] = 0;
                 }
             }
         }
@@ -774,6 +782,10 @@ export async function savebones(how, when, corpse, state) {
     // Serialize the level to VFS storage as bones.
     // C writes binary data via store_version, Sfo_char, savefruitchn, savelev.
     // The port writes a JSON snapshot.
+    // C ref: save.c savelev_core() writes fmon through savemonchn(), which
+    // makes every priest forget the hero's temple entries (priest.c
+    // forget_temple_entry()) before savemon() writes it.
+    savemonchn(state.level.monlist, state);
     const bonesData = serializeBonesLevel(state);
     // Strip functions from the serialized output. The cloneObjChain and
     // cloneMon helpers above already break object-graph cycles (ocontainer,
@@ -923,12 +935,9 @@ function serializeBonesLevel(state) {
         return tc;
     });
 
-    // C ref: save.c savefruitchn() (951-971), which savebones() calls
-    // before savelev(): the fruits goodfruit() marked, in chain order.
-    const fruitChain = [];
-    for (let f = state.gf?.ffruit ?? null; f; f = f.nextf) {
-        if (f.fid >= 0) fruitChain.push({ fname: f.fname, fid: f.fid });
-    }
+    // C ref: save.c savefruitchn(), which savebones() calls before
+    // savelev(): the fruits goodfruit() marked, in chain order.
+    const fruitChain = savefruitchn(state);
 
     // C ref: engrave.c save_engravings() (1551-1580), which savelev_core()
     // calls after the object chains: every engraving with text, in chain
@@ -1032,8 +1041,9 @@ function age_is_relative(otmp) {
 // object read from a bones file, in chain order: a fresh identity from
 // next_ident() (254-259), then, unless the chain is frozen, the age moved
 // from the dead hero's clock to this one's (266-267), then the contents,
-// which are frozen inside an ice box (271-278). A slime mold also has its
-// fruit renumbered by ghostfruit() (260-261) before its age moves.
+// which are frozen inside an ice box (271-278), then the bypass bit cleared
+// (281-282). A slime mold also has its fruit renumbered by ghostfruit()
+// (260-261) before its age moves.
 // `ghost` carries getlev()'s state for the whole file: `omoves`, the turn the
 // bones level was saved on (svo.omoves); `idMap`, C's add_id_mapping() table,
 // which maps each saved id to the restored object; and `oldfruit`, the dead
@@ -1048,6 +1058,7 @@ function restobjchn_ghostly(ochain, frozen, ghost, state) {
             otmp.age = state.moves - ghost.omoves + otmp.age;
         if (otmp.cobj)
             restobjchn_ghostly(otmp.cobj, otmp.otyp === ICE_BOX, ghost, state);
+        if (otmp.bypass) otmp.bypass = false;
     }
 }
 

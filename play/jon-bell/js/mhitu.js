@@ -50,7 +50,7 @@ import { pline, urgent_pline as urgent_pline_disp } from './pline.js';
 import { m_at as uhitm_m_at, hitval, mon_wield_item, dmgval, select_rwep, spec_abon,
          resists_fire as resists_fire_um, resists_elec as resists_elec_um,
          golemeffects as golemeffects_um } from './uhitm.js';
-import { burnarmor as burnarmor_real, erode_obj, drain_en as drain_en_trap, goodpos } from './trap.js';
+import { burnarmor, erode_obj, drain_en as drain_en_trap, goodpos } from './trap.js';
 import { msummon as msummon_real, attrcurse as attrcurse_mu } from './sit.js';
 import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_MU, PM_CLERIC, PM_ERINYS } from './pm.generated.js';
 import { _mon_reflects_zap as mon_reflects_real } from './zap.js';
@@ -201,7 +201,7 @@ import { mon_explodes as mon_explodes_mu } from './explode.js';
 import { make_hallucinated as make_hallucinated_mu } from './potion.js';
 import { mondead as mondead_mu, wake_nearto as wake_nearto_mu } from './mon.js';
 import { ugolemeffects as ugolemeffects_mu } from './mhitm.js';
-import { resists_blnd as resists_blnd_real_mu, defended as defended_mu } from './mondata.js';
+import { resists_blnd, defended as defended_mu } from './mondata.js';
 import { PM_BLACK_LIGHT as PM_BLACK_LIGHT_MU, PM_VIOLET_FUNGUS as PM_VIOLET_FUNGUS_MU,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_GRID_BUG } from './pm.generated.js';
 import { isok as isok_mu, IS_OBSTRUCTED as IS_OBSTRUCTED_MU, IRONBARS as IRONBARS_MU,
@@ -356,7 +356,6 @@ function m_seenres(mon, mask) {
 function canseemon(mon) { return canseemon_mu(mon); }
 function couldsee(x, y) { return couldsee_mu(x, y); }
 function m_canseeu(mon) { return m_canseeu_dh(mon); }
-function resists_blnd(mon) { return resists_blnd_real_mu(mon); }
 // C ref: allmain.c:755 stop_occupation() — interrupt the current occupation:
 // pline "You stop <occtxt>." and clear go.occupation.  hitmu()/missmu()
 // (mhitu.c:1263 / :99) call this at the point a monster's attack lands, so the
@@ -446,7 +445,6 @@ export async function mdamageu(mtmp, n) {
     }
 }
 function ugolemeffects(typ, dmg) { return ugolemeffects_mh(typ, dmg); }
-async function burnarmor(mon) { return await burnarmor_real(mon); }
 // C zap.c:5964-6097 destroy_items — canonical port in js/zap.js
 export { destroy_items };
 export async function ignite_items(objchn) {
@@ -6158,7 +6156,7 @@ async function explmu(mtmp, mattk, ufound) {
         break;
     case AD_BLND:
         /* C:1624-1637 */
-        not_affected = resists_blnd_real_mu(gs.youmonst);
+        not_affected = resists_blnd(gs.youmonst);
         if (ufound && !not_affected) {
             /* C:1627 mutates tmp only while evaluating the RHS of ||.
              * A visible yellow light short-circuits, retaining the full

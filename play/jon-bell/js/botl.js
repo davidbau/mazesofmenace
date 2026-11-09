@@ -745,10 +745,12 @@ async function status_hilites_viewall(lines) {
  * rule exists; returns the behavior for a further status_hilite_menu_add (0 = none). */
 async function status_hilite_menu_fld_current(fld, name) {
     const current = new TtyMenu({ overlay: true }); // C botl.c:4369-4443
-    status_hilite_linestr_gather().filter(l => l.fld === fld).forEach((l, i) =>
-        current.add_menu(i + 1, 0, ATR_NONE, l.str, false, false));
+    const lines = status_hilite_linestr_gather().filter(l => l.fld === fld);
+    lines.forEach((l, i) => current.add_menu(i + 1, 0, ATR_NONE, l.str, false, false));
+    if (!lines.length) current.add_menu_str(`No current hilites for ${name}`); // botl.c:4393
     current.add_menu_str('');
-    current.add_menu(-1, 'X', ATR_NONE, 'Remove selected hilites', false, false);
+    if (lines.length)
+        current.add_menu(-1, 'X', ATR_NONE, 'Remove selected hilites', false, false);
     if (name !== 'score') // C botl.c:4407-4421: no SCORE_ON_BOTL.
         current.add_menu(-2, 'Z', ATR_NONE, 'Add new hilites', false, false);
     current.end_menu(`Current ${name} hilites:`);

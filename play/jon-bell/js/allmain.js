@@ -66,7 +66,7 @@ import { PLNMSG_ONE_ITEM_HERE } from './const.js';
 import { glibr } from './do_wear.js';
 import { float_down } from './trap.js';
 import { GLIB } from './const.js';
-import { make_glib, make_vomiting, make_deaf as make_deaf_prop } from './potion.js';
+import { make_glib, make_vomiting, make_deaf } from './potion.js';
 import { Armor_off, Shield_off, Helmet_off, Gloves_off, Boots_off, Cloak_off, Shirt_off, Armor_on, Shield_on, Helmet_on, Gloves_on, Boots_on, Cloak_on, Shirt_on, find_ac, set_wear } from './do_wear.js';
 import { picklock, forcelock } from './lock.js';
 import { dig } from './dig.js';
@@ -198,6 +198,7 @@ import { MONS, S_EEL_FF, _uasmon_mlet } from './fastforward.js';
 import { mcalcmove } from './mon.js'; // relocate-fns
 import { depth as dungeon_depth } from './dungeon.js'; // relocate-fns
 import { makemon } from './mklev.js'; // relocate-fns
+import { msgtype_type } from './options.js';
 export { friday_13th, getnow, hhmmss, midnight, night, phase_of_the_moon, yyyymmdd } from './calendar.js'; // relocate-fns
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
@@ -238,7 +239,7 @@ export async function report_config_errors() {
         /* The recorded tty cursor never leaves where the raw_print() report
          * parked it: every step of a game that opened with a config-error
          * report records that one position. */
-        g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, g.nhDisplay?.cursorRow ?? 0, 1];
+        g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, Math.max(g.nhDisplay?.cursorRow ?? 0, cfgerrs.length + 3), 1]; // raw rows scroll past the 24-row screen
         for (;;) {
             const c = await nhgetch();
             if (c === 10 || c === 13 || c === undefined || c < 0)
@@ -630,7 +631,16 @@ export async function newgame() {
          * monster the preamble plines follow the "You see ..." line. */
         const noticeBeforePreamble = FF_FAITHFUL && !chargenIncomplete && !tutorialWillRun
             && preambleMsgs.length > 0 && !(g._ff_preamble_rng_deferred && (g.a11y?.glyph_updates || g.flags?.mention_map || g.u?.uroleplay?.reroll));
-        const startupMsgs = noticeBeforePreamble ? [welcomeMsg] : [welcomeMsg, ...preambleMsgs];
+        /* mention_map: dolookaround (allmain.c:844-846) runs before moveloop_preamble's
+         * moon/Friday plines (allmain.c:57-68), so they follow it (emitted below). */
+        const preambleAfterLook = FF_FAITHFUL && !chargenIncomplete && !tutorialWillRun
+            && preambleMsgs.length > 0 && !noticeBeforePreamble && g._ff_preamble_rng_deferred
+            && (g.a11y?.glyph_updates || g.flags?.mention_map);
+        g._preambleAfterLook = preambleAfterLook ? preambleMsgs : null;
+        /* C pline.c:247-262 vpline: a MSGTYPE=hide message returns before
+         * flush_screen and putmesg, so it neither shows nor pages. */
+        const startupMsgs = ((noticeBeforePreamble || preambleAfterLook) ? [welcomeMsg] : [welcomeMsg, ...preambleMsgs])
+            .filter(m => msgtype_type(m) !== 'hide');
         // allmain.c:831 — flags.legacy guards exactly one thing, the
         // com_pager("legacy") entry story, which runs inside newgame() BEFORE
         // welcome(TRUE) (allmain.c:842).  The welcome pline and the
@@ -706,14 +716,16 @@ export async function newgame() {
                 /* A last message that wrapped (>= CO columns) already paged
                  * itself (topl.c:131-137), so nothing stands; pickup(1)'s
                  * message becomes the line the tutorial flush pages. */
-                deferredLastStartupMsg = startupPaged ? '' : startupMsgs[startupMsgs.length - 1];
+                deferredLastStartupMsg = startupPaged ? '' : (startupMsgs[startupMsgs.length - 1] ?? '');
             }
         }
         else {
             // flushes it, so the pline sets _pending_message;
             // extra key consumed.
-            pline_flush_point();                          /* C pline.c:274 */
-            g._pending_message = welcomeMsg;
+            if (msgtype_type(welcomeMsg) !== 'hide') { /* C pline.c:254-262 */
+                pline_flush_point();                      /* C pline.c:274 */
+                g._pending_message = welcomeMsg;
+            }
         }
         /* C ref: allmain.c:841-848 newgame() — welcome(TRUE); notice_mon_on();
          * notice_all_mons(TRUE) (no a11y.glyph_updates): with spot_monsters set,
@@ -734,6 +746,8 @@ export async function newgame() {
      * (allmain.c:72,79), which fastforward_post_mklev deferred for this case. */
     if (g._ff_preamble_rng_deferred) {
         if (g.a11y?.glyph_updates || g.flags?.mention_map) await dolookaround_cmd();
+        if (g._preambleAfterLook) for (const m of g._preambleAfterLook) await pline(m);
+        g._preambleAfterLook = null;
         g._ff_preamble_rng_deferred = false;
         rnd(9000);
         g.context.seer_turn = rnd(30);
@@ -2441,7 +2455,7 @@ async function nh_timeout_deaf() {
         const was = { value: dp.intrinsic | 0 };
         set_itimeout(was, 1);
         dp.intrinsic = was.value;
-        await make_deaf_prop(0, true);
+        await make_deaf(0, true);
         (g.disp ||= {}).botl = 1; /* timeout.c:756 */
         if (!Deaf_am())
             await stop_occupation();
@@ -2472,23 +2486,6 @@ function Deaf_am() {
     return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)
               || (u.HDeaf | 0)
               || (u.uroleplay?.deaf ? 1 : 0));
-}
-/* C ref: potion.c:443-457 make_deaf(xtime, talk).
- *     long old = HDeaf;
- *     if (Unaware) talk = FALSE;
- *     set_itimeout(&HDeaf, xtime);
- *     if ((xtime != 0L) ^ (old != 0L)) {
- *         disp.botl = TRUE;
- *         if (talk)
- *             You(old && !Deaf ? "can hear again."
- *                              : "are unable to hear anything.");
- *     }
- * Unaware is youprop.h:399 (gm.multi < 0 && (unconscious() || is_fainted())) —
- * the real ported bodies, not the `multi < 0` approximation this file carried.
- * Share potion.c's setter so both HDeaf representations and timeout flags
- * stay synchronized, including when the recovery message pages. */
-function make_deaf(xtime, talk) {
-    return make_deaf_prop(xtime, talk);
 }
 
 /* C mbodypart() part index (hack.h BP_* enum): FOOT.  js/cmd.js body_part()

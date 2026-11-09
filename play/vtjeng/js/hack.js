@@ -1499,6 +1499,13 @@ export function requireSimpleHeroDestination(
             // neither IS_OBSTRUCTED nor a DOOR. C test_move() admits the
             // ordinary step onto its lowered span.
             || location.typ === DRAWBRIDGE_DOWN
+            // A raised drawbridge's span over ice or floor is neither
+            // IS_OBSTRUCTED nor a DOOR either; test_move() has no drawbridge
+            // test beyond is_db_wall(), which reads the portcullis square.
+            // Moat or lava under the span is is_pool_or_lava() terrain,
+            // admitted above only where the source admits liquid.
+            || (location.typ === DRAWBRIDGE_UP
+                && !is_pool_or_lava(x, y, state))
             || IS_AIR(location.typ)
             || IS_FURNITURE(location.typ)
             || doorway);
@@ -1696,6 +1703,11 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
             || destination.typ === CORR
             || destination.typ === ICE
             || destination.typ === CLOUD
+            // A lowered drawbridge span is neither IS_OBSTRUCTED nor a DOOR,
+            // so test_move() admits it as it does for an ordinary step, and
+            // the arrival reaches the same owners requireSimpleHeroDestination()
+            // admits for it.
+            || destination.typ === DRAWBRIDGE_DOWN
             || destination.typ === POOL
             // A moat is a pool to is_pool(), test_move() and
             // swim_move_danger(); only waterbody_name() tells them apart.
@@ -3517,8 +3529,9 @@ export async function water_turbulence(x, y, state = game) {
 
 // C ref: hack.c slippery_ice_fumbling() (2396-2413).
 export function slippery_ice_fumbling(state = game) {
+    // is_ice() also reads ice under a raised drawbridge's span.
     let onIce = !Levitation(state.u)
-        && state.level?.at(state.u.ux, state.u.uy)?.typ === ICE;
+        && is_ice(state.u.ux, state.u.uy, state);
     const skater = state.u.usteed ?? state.youmonst;
     if (onIce) {
         if ((state.uarmf && objdescr_is(state.uarmf, 'snow boots', state))

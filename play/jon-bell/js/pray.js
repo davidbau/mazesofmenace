@@ -28,7 +28,7 @@ import { Monnam, monstseesu as monstseesu_gz, monstunseesu as monstunseesu_gz } 
 import { aggravate } from './wizard.js';
 import { Amonnam, hcolor, killed, s_suffix } from './mhitm.js';
 import { mkobj as _fl_mkobj, mksobj as _fl_mksobj, makemon as mklev_makemon, place_object, rnd_class, set_bknown } from './mklev.js';
-import { bless as bless_obj, get_mtraits, uncurse as uncurse_obj } from './mkobj.js';
+import { bless as bless_obj, get_mtraits, uncurse as _uncurse, uncurse as uncurse_obj } from './mkobj.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { Resists_Elem } from './mondata.js';
 import { observe_object } from './o_init.js';
@@ -947,20 +947,6 @@ function _worst_cursed_item() {
 function _unchanger() {
     const amulet = game.u.uamul;
     return amulet?.otyp === AMULET_OF_UNCHANGING_PRAY ? amulet : null;
-}
-
-/* C mkobj.c:1822-1840 — preserve the timer, weight and light side effects. */
-async function _uncurse(otmp) {
-    const oldLight = otmp.lamplit ? arti_light_radius(otmp) : 0;
-    otmp.cursed = 0;
-    if (otmp.where === 3 /* OBJ_INVENT */ && confers_luck(otmp))
-        set_moreluck();
-    else if (otmp.otyp === 219 /* BAG_OF_HOLDING */)
-        otmp.owt = weight(otmp);
-    else if (otmp.otyp === 241 /* FIGURINE */ && otmp.timed)
-        stop_timer(6 /* FIG_TRANSFORM */, obj_to_any(otmp));
-    if (otmp.lamplit)
-        await maybe_adjust_light(otmp, oldLight);
 }
 
 /* C ref: pray.c:343-366 fix_curse_trouble(otmp, what). */

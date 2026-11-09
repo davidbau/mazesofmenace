@@ -2275,13 +2275,9 @@ async function trapeffect_fire_trap(mtmp, trap, _trflags, env) {
     if (Resists_Elem(mtmp, FIRE_RES, state)) {
         if (inSight) {
             await shieldeff(mtmp.mx, mtmp.my, state);
+            // C prints this with plain pline().
             await message(
-                messageAt(
-                    `${capitalizedMonsterName(mtmp, state, env)} is uninjured.`,
-                    mtmp.mx,
-                    mtmp.my,
-                    state,
-                ),
+                `${capitalizedMonsterName(mtmp, state, env)} is uninjured.`,
                 state,
                 env,
             );
@@ -2887,7 +2883,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                         null, state, {
                             ...env,
                             hooks: objectHooks,
-                            newsym: env.newsym ?? redraw,
+                            scatterOps: { newsym: env.newsym ?? redraw },
                         });
                     if (cansee(x, y, state)) redraw(x, y);
                     used_up = true;
@@ -3518,13 +3514,9 @@ export async function trapeffect_rust_trap(mtmp, trap, _trflags, env) {
         break;
     }
     default: {
+        // C prints this arm with plain pline(), not pline_mon().
         if (inSight)
-            await message(messageAt(
-                `A gush of water hits ${mon_nam(mtmp, state)}!`,
-                mtmp.mx,
-                mtmp.my,
-                state,
-            ), state, env);
+            await message(`A gush of water hits ${mon_nam(mtmp, state)}!`, state, env);
         for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
             if (obj.lamplit
                 && (obj.owornmask & (W_WEP | W_SWAPWEP)) === 0) {
@@ -3594,10 +3586,12 @@ export async function blow_up_landmine(trap, rawEnv = {}) {
         {
             ...env,
             random,
-            // explode.c scatter() reads `newsym`; expose the caller's redraw
-            // operation under that seam.
-            newsym: env.newsym ?? env.redraw
-                ?? ((rx, ry) => newsym(rx, ry, state)),
+            // Give explode.c scatter() the caller's redraw operation as its
+            // newsym() replacement.
+            scatterOps: {
+                newsym: env.newsym ?? env.redraw
+                    ?? ((rx, ry) => newsym(rx, ry, state)),
+            },
         },
     );
     del_engr_at(x, y, state);

@@ -78,7 +78,7 @@ import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
  * file's own reader consulted — so eating a confusing corpse set a word the
  * status line, u_maybe_impaired() and every other reader ignored.  The C-side
  * arity is (xtime, talk); every call here is C's talk=FALSE. */
-import { make_confused as make_confused_shared, make_stunned, make_stoned as make_stoned_shared, make_deaf } from './potion.js';
+import { make_confused as make_confused_shared, make_stunned, make_stoned, make_deaf } from './potion.js';
 import { PM_VIOLET_FUNGUS, PM_WRAITH, PM_NURSE,
          PM_YELLOW_LIGHT, PM_GIANT_BAT, PM_BAT, PM_GIANT_MIMIC, PM_LARGE_MIMIC, PM_SMALL_MIMIC,
          PM_QUANTUM_MECHANIC, PM_LIZARD, PM_CHAMELEON, PM_DOPPELGANGER, PM_SANDESTIN,
@@ -650,7 +650,7 @@ export async function doeat() {
                 /* no need to check for leash in use; it's not metallic */
                 if (otmp.owornmask)
                     await remove_worn_item(otmp, false);
-                await _eat_freeinv(otmp);
+                await freeinv_real(otmp); /* C invent.c:1403 freeinv */
                 await dropy(otmp);
             }
             await stackobj(otmp);
@@ -1425,10 +1425,6 @@ export function Popeye(threat) {
         return false;
     }
 }
-async function make_stoned(xtime, msg, killedby, killername) {
-    /* Keep the canonical async effect in the attack's ordering. */
-    await make_stoned_shared(xtime, msg, killedby, killername);
-}
 let _ate_brains = 0;
 /* C eat.c CANNIBAL_ALLOWED(): Caveman role or Orc race. */
 function _cannibal_allowed() {
@@ -1837,9 +1833,6 @@ function _eat_carried(obj) {
 function _eat_inv_cnt(incl_gold) {
     return inv_cnt(incl_gold); /* js/cmd.js — the one port */
 }
-/* C ref: invent.c freeinv(obj) — extract_nobj(obj, &gi.invent); pickup_prev=0;
- * share freeinv_core() and update_inventory(), including non-food meals. */
-function _eat_freeinv(obj) { return freeinv_real(obj); }
 /* C ref: invent.c:694 assigninvlet(otmp).  Forwards to the one port in
  * js/invent.js (invent.c audit a2_invent_30).  The hand copy this replaced
  * was behaviorally identical — including the `if (i == otmp->invlet)
@@ -1853,14 +1846,6 @@ function _eat_assigninvlet(otmp) {
 /* C ref: invent.c reorder_invent() — forwards to the shared port in js/cmd.js. */
 function _eat_reorder_invent() {
     return reorder_invent();
-}
-/* C ref: invent.c:1169 addinv_nomerge(obj) → addinv_core0(obj, NULL, TRUE) with
- * obj->nomerge set, so the quiver/stack merge scans are skipped and the object
- * always lands in a slot of its own. C invent.c:1117-1125 prepends and sorts
- * under fixinv; otherwise it appends, preserving the remaining chain order
- * for the next reassign(). */
-function _eat_addinv_nomerge(obj) {
-    return addinv_nomerge_real(obj);
 }
 /* include/hack.h:584 `invlet_basic = 52` — a..z then A..Z. */
 const invlet_basic = 52;
@@ -1879,7 +1864,7 @@ async function touchfood(otmp) {
         otmp.oeaten = obj_nutrition(otmp); /* C eat.c:371 */
     }
     if (_eat_carried(otmp)) {
-        await _eat_freeinv(otmp);
+        await freeinv_real(otmp); /* C invent.c:1403 freeinv */
         if (inv_cnt(false) >= invlet_basic) { /* C eat.c:377 */
             /* C eat.c:377-382 — a full pack cannot assign the bitten piece a
              * distinct inventory letter. Drop it without offering it to a
@@ -1899,7 +1884,7 @@ async function touchfood(otmp) {
                 otmp = null;
             return otmp;
         }
-        otmp = await _eat_addinv_nomerge(otmp);
+        otmp = await addinv_nomerge_real(otmp); /* C eat.c:384 addinv_nomerge */
     }
     return otmp;
 }
@@ -2711,7 +2696,7 @@ async function _fpostfx(otmp) {
             game.svk.killer = game.svk.killer
                 || { id: 0, format: 0, name: '', next: null };
             game.svk.killer.name = killername;
-            await make_stoned_shared(5, null, KILLED_BY_AN, killername);
+            await make_stoned(5, null, KILLED_BY_AN, killername);
         }
         break;
     }

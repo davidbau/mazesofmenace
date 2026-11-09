@@ -5562,9 +5562,9 @@ function sortloot_invlet_chain(head) {
 async function yn_count_tail(qbuf) {
     const g = game;
     let text = qbuf + ' #';
-    let value = 0, n_len = 1;
+    let value = 0n, n_len = 1;
     if (g._yn_lead_digit !== undefined) { /* topl.c:486-489 */
-        value = g._yn_lead_digit;
+        value = BigInt(g._yn_lead_digit);
         text += String(value); n_len++;
         g._yn_lead_digit = undefined;
     }
@@ -5575,23 +5575,27 @@ async function yn_count_tail(qbuf) {
         const raw = await nhgetch();
         const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         if (key >= 48 && key <= 57) {
-            value = value * 10 + (key - 48);
+            /* C integer.h AppendLongDigit: past LONG_MAX -> -1, which
+             * topl.c:522 turns into "remove the number, ask again". */
+            const nv = value * 10n + BigInt(key - 48);
+            if (nv > 9223372036854775807n) { value = -1n; break; }
+            value = nv;
             text += String.fromCharCode(key); n_len++;
         } else if (key === 121 || key === 32 || key === 13 || key === 10) {
             break;
         } else if (key === 27) {
-            value = -1;
+            value = -1n;
             break;
         } else if (key === 8 || key === 127) {
-            if (n_len <= 1) { value = -1; break; }
-            value = Math.trunc(value / 10);
+            if (n_len <= 1) { value = -1n; break; }
+            value = value / 10n;
             text = text.slice(0, -1); n_len--;
         } else {
-            value = -1;
+            value = -1n;
             break;
         }
     }
-    return value;
+    return Number(value);
 }
 /* C invent.c:1412-1426: unpunish may delete the next object (the chain),
  * so obtain nexthere only after that call. */
@@ -30375,6 +30379,7 @@ async function _do_look_lookat(x, y) {
             classText: classes.classes.join(' or '),
             classCount: classes.matchCount, needsLook: classes.needsLook,
             firstmatch: `${alignment} ${(amsk & AM_SANCTUM) ? 'high ' : ''}altar`,
+            dbaseEntries: checkfile_entries(`${alignment} ${(amsk & AM_SANCTUM) ? 'high ' : ''}altar`),
             dbaseEntry: null,
         };
     }
@@ -37530,23 +37535,10 @@ async function doherecmdmenu() {
  * tty_add_menu assigns a, b, c ... in order.  RNG-free until the queued
  * command runs. */
 const _TRM_SADDLE_OTYP = 235;
-async function dotherecmdmenu() {
+async function there_cmd_menu(x, y, click) {
     const g = game;
     const u = g.u || {};
-    /* C cmd.c:4350,4363-4364: getdir_click = CLICK_1|CLICK_2 allows a 'far'
-     * simulated click; getdir leaves the click modality in it ('_' pick). */
-    g.iflags.getdir_click = CLICK_1 | CLICK_2;
-    const dir = await getdir(null);
-    const click = g.iflags.getdir_click | 0;
-    g.iflags.getdir_click = 0;
-    if (!dir || !isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0)))
-        return ECMD_CANCEL;
-    if (!(u.dx | 0) && !(u.dy | 0)) {
-        await doherecmdmenu();
-        return ECMD_OK;
-    }
-    const dx = u.dx | 0, dy = u.dy | 0;
-    const x = (u.ux | 0) + dx, y = (u.uy | 0) + dy;
+    const dx = x - (u.ux | 0), dy = y - (u.uy | 0);
     const loc = g.level?.at(x, y);
     const typ = loc ? (loc.typ | 0) : STONE;
     const items = [];
@@ -37572,6 +37564,8 @@ async function dotherecmdmenu() {
                              txt: key_or_pick ? 'Lock or unlock the door' : 'Unlock the door' });
             items.push({ act: 'UNTRAP_DOOR', txt: 'Search the door for a trap' });
             items.push({ act: 'KICK_DOOR', txt: 'Kick the door' });
+        } else if ((dm & D_ISOPEN) && (click === CLICK_2)) {
+            items.push({ act: 'CLOSE_DOOR', txt: 'Close the door' });
         }
     }
     if (!far && typ <= SCORR)
@@ -37617,7 +37611,7 @@ async function dotherecmdmenu() {
     if (!K) {
         /* C cmd.c:4864-4874: no menu options, queue movement or travel.
          * Keyboard getdir targets are adjacent by construction. */
-        if (test_move(u.ux, u.uy, dx, dy, TEST_MOVE)) {
+        if (!far && test_move(u.ux, u.uy, dx, dy, TEST_MOVE)) {
             cmdq_add_ec(CQ_CANNED, move_funcs[xytodir(dx, dy)][MV_WALK].name);
         } else if ((g.flags.travelcmd ?? true) /* optlist.h:787 initval On */) {
             g.iflags.travelcc = { x, y };
@@ -37735,6 +37729,10 @@ async function dotherecmdmenu() {
         cmdq_add_ec(CQ_CANNED, 'doopen');
         cmdq_add_dir(CQ_CANNED, sdx, sdy, 0);
         break;
+    case 'CLOSE_DOOR':
+        cmdq_add_ec(CQ_CANNED, 'doclose');
+        cmdq_add_dir(CQ_CANNED, sdx, sdy, 0);
+        break;
     case 'LOCK_DOOR': {
         const otmp = carrying(_IA_SKELETON_KEY_OTYP) || carrying(_IA_LOCK_PICK_OTYP)
             || carrying(_IA_CREDIT_CARD_OTYP);
@@ -37770,6 +37768,41 @@ async function dotherecmdmenu() {
     /* C cmd.c:4376-4377 — there_cmd_menu returns '\0' after a pick, so
      * dotherecmdmenu returns ECMD_OK; the queued command spends the turn. */
     return ECMD_OK;
+}
+
+async function dotherecmdmenu() {
+    const g = game;
+    const u = g.u || {};
+    const x0 = g.clicklook_cc ? (g.clicklook_cc.x | 0) : -1;
+    const y0 = g.clicklook_cc ? (g.clicklook_cc.y | 0) : -1;
+    /* C cmd.c:4350,4363-4364: getdir_click = CLICK_1|CLICK_2 allows a 'far'
+     * simulated click; getdir leaves the click modality in it ('_' pick). */
+    g.iflags.getdir_click = CLICK_1 | CLICK_2;
+    if (isok(x0, y0)) {
+        let res;
+        if (x0 === (u.ux | 0) && y0 === (u.uy | 0)) {
+            await doherecmdmenu();
+            res = ECMD_OK;
+        } else {
+            res = await there_cmd_menu(x0, y0, g.iflags.getdir_click);
+        }
+        if (g.clicklook_cc) {
+            g.clicklook_cc.x = -1;
+            g.clicklook_cc.y = -1;
+        }
+        g.iflags.getdir_click = 0;
+        return res;
+    }
+    const dir = await getdir(null);
+    const click = g.iflags.getdir_click | 0;
+    g.iflags.getdir_click = 0;
+    if (!dir || !isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0)))
+        return ECMD_CANCEL;
+    if (!(u.dx | 0) && !(u.dy | 0)) {
+        await doherecmdmenu();
+        return ECMD_OK;
+    }
+    return await there_cmd_menu((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0), click);
 }
 
 async function dotip() {
@@ -38908,7 +38941,7 @@ export { dead_species };
 
 // C artifact.c:526-532 confers_luck(obj) — LUCKSTONE always confers luck;
 // otherwise only an artifact with the SPFX_LUCK special-ability bit does.
-import { confers_luck as confers_luck_real } from './attrib.js';
+// confers_luck is imported from ./artifact.js below
 /* C hack.c:97-103 — obj_to_any(struct obj *obj): wrap an obj pointer in the
  * shared `anything` union.
  *     anything *

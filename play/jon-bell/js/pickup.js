@@ -16,6 +16,7 @@
 // exercise pickup.c's real body directly.  Unifying the two remains the
 // @ts-nocheck — js sibling imports.
 import { game } from './gstate.js';
+import { regcomp } from './posixregex.js';
 import { impossible } from './pline.js';
 import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
@@ -913,7 +914,7 @@ function _follow(curr, qflags) {
 async function check_autopickup_exceptions(obj) {
     if (game.apelist?.length) {
         const objdesc = makesingular(await doname(obj));
-        return game.apelist.find(ape => new RegExp(ape.pattern).test(objdesc)) || null;
+        return game.apelist.find(ape => regcomp(ape.pattern).test(objdesc)) || null;
     }
     return null;
 }
@@ -1864,9 +1865,9 @@ async function simple_look(otmp, here) {
 async function _yn_count_tail(qbuf) {
     const g = game;
     let text = qbuf + ' #';
-    let value = 0, n_len = 1;
+    let value = 0n, n_len = 1;
     if (g._yn_lead_digit !== undefined) { /* topl.c:486-489 */
-        value = g._yn_lead_digit;
+        value = BigInt(g._yn_lead_digit);
         text += String(value); n_len++;
         g._yn_lead_digit = undefined;
     }
@@ -1877,23 +1878,27 @@ async function _yn_count_tail(qbuf) {
         const raw = await nhgetch();
         const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         if (key >= 48 && key <= 57) {
-            value = value * 10 + (key - 48);
+            /* C integer.h AppendLongDigit: past LONG_MAX -> -1, which
+             * topl.c:522 turns into "remove the number, ask again". */
+            const nv = value * 10n + BigInt(key - 48);
+            if (nv > 9223372036854775807n) { value = -1n; break; }
+            value = nv;
             text += String.fromCharCode(key); n_len++;
         } else if (key === 121 || key === 32 || key === 13 || key === 10) {
             break;
         } else if (key === 27) {
-            value = -1;
+            value = -1n;
             break;
         } else if (key === 8 || key === 127) {
-            if (n_len <= 1) { value = -1; break; }
-            value = Math.trunc(value / 10);
+            if (n_len <= 1) { value = -1n; break; }
+            value = value / 10n;
             text = text.slice(0, -1); n_len--;
         } else {
-            value = -1;
+            value = -1n;
             break;
         }
     }
-    return value;
+    return Number(value);
 }
 
 /* C ref: pickup.c:141-262 query_classes().  Returns

@@ -23,7 +23,7 @@ import { m_at, mon_nam } from './uhitm.js';
 import { exclam } from './zap.js';
 import { Monnam } from './mcastu.js';
 import { find_mac } from './worn.js';
-import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit as zap_hit_message, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
+import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
 import { wakeup, mon_nam_too } from './mhitm.js';
 import { resists_blnd } from './mondata.js';
@@ -123,12 +123,6 @@ function DEADMONSTER(mon) { return !!(mon && (mon.mhp | 0) <= 0); }
 function is_youmonst(m) { return !m || (m.m_id | 0) === 1; }
 
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
-
-/* C ref: zap.c:3550-3563 hit(str, mtmp, force) — the "The wand hits <mon>!"
- * message.  No JS module carried this yet (js/zap.js has miss() only). */
-function hit(str, mtmp, force) {
-    return zap_hit_message(str, mtmp, force);
-}
 
 /* C ref: muse.c:58-160 precheck(mon, obj) — pre-use hazards.  ONE port,
  * js/makemon.js precheck (imported above): the POTION_CLASS occupant arms and

@@ -17,6 +17,7 @@ export const END_DISCLOSE_DEFAULT = 'nnnnnn';
 
 /* C ref: drawing.c:90 def_char_to_objclass, used by the pickup_types parse below. */
 import { def_char_to_objclass } from './drawing.js';
+import { regcomp, regex_error_desc } from './posixregex.js';
 import { DOSET_BOOLS } from './doset_data.js';
 import { optfn_menustyle_set } from './menustyle.js';
 import { option_state } from './options_runtime.js';
@@ -867,7 +868,7 @@ export function parseNethackrc(rc) {
             const rule = parse_msgtype(msgtypeMatch[1]);
             if (rule) {
                 try {
-                    (result.msgtypes ||= []).unshift({ type: rule.type, regex: new RegExp(rule.pattern) });
+                    (result.msgtypes ||= []).unshift({ type: rule.type, regex: regcomp(rule.pattern), pattern: rule.pattern });
                 } catch (e) { config_error_add('MSGTYPE regex error: %s', config_regex_error(e)); }
             }
             continue;
@@ -969,6 +970,31 @@ export function parseNethackrc(rc) {
             }
             if (menuname === 'align' || (menuname.length >= 6 && 'alignment'.startsWith(menuname))) {
                 optfn_role_facet(result, menuopts, menuval, menunegated, alignmentState);
+                continue;
+            }
+            if (menuname.length >= 3 && ('female'.startsWith(menuname) || 'male'.startsWith(menuname))) {
+                if (bool_dup_seen.has('female'))
+                    config_error_add(`boolean option specified multiple times: female${'male'.startsWith(menuname) ? ' (via alias: male)' : ''}`);
+                bool_dup_seen.add('female');
+                let isFemale = 'female'.startsWith(menuname) ? !menunegated : menunegated;
+                const op = menuval.toLowerCase();
+                if (op) {
+                    if (menunegated) {
+                        config_error_add("Negated boolean '%s' should not have a parameter", 'female');
+                        continue;
+                    }
+                    const numeric = /^\d/.test(op) ? parseInt(op, 10) : NaN;
+                    if ('true'.startsWith(op) || 'yes'.startsWith(op) || op === 'on' || numeric === 1)
+                        isFemale = 'female'.startsWith(menuname);
+                    else if ('false'.startsWith(op) || 'no'.startsWith(op) || op === 'off' || numeric === 0)
+                        isFemale = !'female'.startsWith(menuname);
+                    else {
+                        config_error_add("'%s' is not valid for a boolean", menuopts);
+                        continue;
+                    }
+                }
+                result.gender = isFemale ? 'female' : 'male';
+                result.flags.female = isFemale;
                 continue;
             }
             if (Object.hasOwn(facetStates, menuname)) {
@@ -1186,9 +1212,45 @@ export function parseNethackrc(rc) {
                     config_error_add("Unknown %s parameter '%s'", 'player_selection', psv);
                 continue;
             }
+            /* C options.c:620-628 dup check then bad_negation; align_*(:933-999),
+             * windowborders(:4807), scores(:3679-3733) do_set arms. */
+            const dupName = ['align_message', 'align_status', 'windowborders', 'scores'].find(n => menuname.length >= 6 && n.startsWith(menuname));
+            if (dupName) {
+                compoundDuplicate(dupName);
+                const dval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                if (menunegated && (dupName === 'scores' || dupName === 'align_status' || dupName === 'align_message' || (dupName === 'windowborders' && dval)))
+                    config_error_add('The %s option may not both have a value and be negated.', dupName);
+                else if (dupName === 'windowborders') {
+                    if (!dval && !menunegated) config_error_add("Missing parameter for '%s'", menuopts);
+                    else if (!menunegated && (parseInt(dval, 10) || 0) > 4 || (parseInt(dval, 10) || 0) < 0)
+                        config_error_add('Invalid %s (should be within 0 to 4): %s', dupName, menuopts);
+                } else if (!menunegated && dupName !== 'scores' && dval
+                           && !/^(left|top|right|bottom)/i.test(dval))
+                    config_error_add("Unknown %s parameter '%s'", dupName, dval);
+                else if (dupName === 'scores' && !menunegated) {
+                    if (!dval) config_error_add("Missing parameter for '%s'", menuopts);
+                    const fl = result.flags;
+                    if (dval) { fl.end_top = fl.end_around = 0; fl.end_own = false; }
+                    for (let op = dval; op;) {
+                        const sneg = op[0] === '!' || /^no/i.test(op);
+                        if (sneg) op = op.slice(op[0] === '!' ? 1 : (op[2] !== '-' ? 2 : 3));
+                        const sm = /^\d+/.exec(op), inum = sm ? parseInt(sm[0], 10) : 1;
+                        op = op.replace(/^\d+/, '').replace(/^ +/, '');
+                        const sk = (op[0] || '').toLowerCase();
+                        if (sk === 't') fl.end_top = sneg ? 0 : inum;
+                        else if (sk === 'a') fl.end_around = sneg ? 0 : inum;
+                        else if (sk === 'o') fl.end_own = !(sneg || !inum);
+                        else if (sk === 'n') fl.end_top = fl.end_around = 0;
+                        if (!/^[taon]/i.test(op[0] || '')) { config_error_add("Unknown %s parameter '%s'", dupName, op); break; }
+                        op = op.replace(/^[A-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
+                    }
+                }
+                continue;
+            }
             if (/^font_(map|menu|message|status|text|size_(map|menu|message|status|text))$/.test(menuname)) {
                 const fsize = menuname.startsWith('font_size_');
                 const fval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                if (fsize) compoundDuplicate(menuname); // C :5079 complain_about_duplicate
                 if (!fval && !(fsize && menunegated)) {
                     config_error_add("Missing parameter for '%s'", menuopts);
                     if (menunegated && !fsize)
@@ -1629,6 +1691,7 @@ export function parseNethackrc(rc) {
                     }
                 }
                 else if (key === 'paranoid_confirmation' || key === 'paranoid_confirm') {
+                    if (negated && val) config_error_add('!%s does not accept a value', 'paranoid_confirmation'); // C :2902
                     const existing = (result.flags.paranoia_bits != null)
                         ? result.flags.paranoia_bits
                         : PARANOID_CONFIRMATION_DEFAULT_BITS;
@@ -1642,7 +1705,12 @@ export function parseNethackrc(rc) {
                 // Boolean flag
                 const lname = stripped.toLowerCase();
                 const value = !negated;
-                if (lname === 'autopickup')
+                if (lname.length >= 3 && ('female'.startsWith(lname) || 'male'.startsWith(lname))) {
+                    const fem = 'female'.startsWith(lname) ? value : negated;
+                    result.flags.female = fem;
+                    result.gender = fem ? 'female' : 'male';
+                }
+                else if (lname === 'autopickup')
                     result.flags.pickup = value;
                 else if (lname === 'runmode') {
                     if (negated)
@@ -1711,18 +1779,13 @@ export function parseNethackrc(rc) {
  * The regexp backend is the same one used by pickup.js. */
 // C options.c:7889-7900 / sys/share/posixregex.c: regex_error_desc (regerror).
 function config_regex_error(e) {
-    const m = String(e.message);
-    return /Nothing to repeat|Invalid quantifier/.test(m) ? 'Invalid preceding regular expression'
-        : /Unterminated group|Unmatched \)/.test(m) ? 'Unmatched ( or \\('
-        : /Unterminated character class/.test(m) ? 'Unmatched [, [^, [:, [., or [='
-        : /Range out of order/.test(m) ? 'Invalid range end'
-        : /numbers out of order/.test(m) ? 'Invalid content of \\{\\}' : 'Invalid regular expression';
+    return regex_error_desc(e);
 }
 function add_autopickup_exception(mapping, state = game) {
     const m = parse_autopickup_exception(mapping);
     if (m) {
         try {
-            new RegExp(m.pattern);
+            regcomp(m.pattern);
             (state.apelist ||= []).unshift(m);
             return 1;
         } catch (e) { config_error_add('regex error in AUTOPICKUP_EXCEPTION: %s', config_regex_error(e)); }
@@ -3484,14 +3547,10 @@ export async function handler_msgtype(preserveStatus = false) {
             if (mtbuf[0] === '\x1b') return;
             let re = null;
             if (mtbuf) {
-                try { re = new RegExp(mtbuf); } catch (e) {
+                try { re = regcomp(mtbuf); } catch (e) {
                     /* C options.c:7871 test_regex_pattern -> config_erradd (cfgfiles.c:1557-1563):
-                       interactive 'O' reports the regcomp (glibc) error via pline + wait_synch. */
-                    const m = String(e.message);
-                    const desc = /Nothing to repeat/.test(m) ? 'repetition-operator operand invalid'
-                        : /Unterminated group|Unmatched \)|parenthes/i.test(m) ? 'Unmatched ( or \\('
-                        : /Unterminated character class/.test(m) ? 'Unmatched [, [^, [:, [., or [='
-                        : /Invalid regular expression/.test(m) ? 'Invalid regular expression' : m;
+                       interactive 'O' reports the regcomp error via pline + wait_synch. */
+                    const desc = regex_error_desc(e);
                     /* pline.c:273-274: vpline's flush_screen(1) runs bot() for the
                        botlx the Options menu's docrt() left pending (display.c:1769,
                        display.c:2236), so the --More-- shows the status rows. */
@@ -3558,7 +3617,7 @@ export async function handler_menu_colors(preserveStatus = false) {
         if (mcbuf[0] === '\x1b') break;
         if (!mcbuf) continue;
         let re;
-        try { re = new RegExp(mcbuf); } catch (e) { continue; }
+        try { re = regcomp(mcbuf); } catch (e) { continue; }
         const mcclr = await query_color(null, 8, true);
         if (mcclr === -1) continue;
         const mcattr = await query_attr_one(null, 0, true);

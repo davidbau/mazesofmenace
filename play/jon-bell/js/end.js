@@ -1748,7 +1748,7 @@ async function disclose(how, taken) {
         }
         c = ask ? await yn_function(qbuf, 'ynq', defquery, true) : defquery;
         if (c === 'y') {
-            g.iflags.force_invmenu = false; const _toplUnderMenu = g._topl_sticky; /* docorner leaves row 0 left of offx standing */
+            g.iflags.force_invmenu = false; const _toplUnderMenu = g._topl_sticky; /* tty_dismiss_nhwindow docorner(offx) clears from offx-1 (wintty.c:3684), so row 0 survives only left of offx-1 */
             g._menu_search_row0_erased = false;
             const pendingBefore = !!g._pending_message;
             await display_inventory(null, true);
@@ -1759,7 +1759,7 @@ async function disclose(how, taken) {
             if (_toplUnderMenu && pendingBefore)
                 g._topl_sticky = null;
             else if (_toplUnderMenu && !g._pending_message && !g._menu_search_row0_erased)
-                g._topl_sticky = _toplUnderMenu.slice(0, Math.max(0, (_discloseInv?.WIN_COL ?? 1) - 1)).replace(/\s+$/, "") || null;
+                g._topl_sticky = _toplUnderMenu.slice(0, Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2)).replace(/\s+$/, "") || null;
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
              * erase leaves only the prefix of each status row painted. */

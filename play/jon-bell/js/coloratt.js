@@ -2,6 +2,8 @@
 // C ref: coloratt.c free_menu_coloring() (line 652).
 // @ts-nocheck — js sibling imports.
 import { game } from './gstate.js';
+import { regcomp, regex_error_desc } from './posixregex.js';
+import { config_error_add } from './cfgfiles.js';
 import {
     ATR_NONE, ATR_INVERSE, ATR_BOLD,
     CLR_BLACK, CLR_RED, CLR_GREEN, CLR_BROWN, CLR_BLUE, CLR_MAGENTA, CLR_CYAN, CLR_GRAY,
@@ -347,7 +349,10 @@ export function add_menu_coloring(tmpstr) {
     const c = match_str2clr(m[2], true);
     if (c === 16) return false;
     let re;
-    try { re = new RegExp(m[1]); } catch (e) { return false; }
+    try { re = regcomp(m[1]); } catch (e) {
+        config_error_add('%s: %s', 'Menucolor regex error', regex_error_desc(e));
+        return false;
+    }
     /* coloratt.c:543-611 — the "&attr" half (ATR_* index); tty maps inverse to SGR 7 */
     const ATTRS = { none: 0, bold: 1, dim: 2, underline: 4, blink: 5, inverse: 7 };
     let attr = 0;

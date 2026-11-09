@@ -16,7 +16,7 @@ import { worms_save_snapshot } from './worm.js';
 import { object_runtime_save_snapshot } from './o_init.js';
 import { bubbles_save_snapshot, bubbles_clear_level, bubbles_copy_snapshot } from './mkmaze.js';
 import { save_timers_level, restore_timer_order } from './timeout.js';
-import { vfsWriteFile, vfsReadFile } from './storage.js';
+import { vfsWriteFile, vfsReadFile, vfsListFiles } from './storage.js';
 import { force_more_pages, _topl_more_pages, _topl_joins_snapshot } from './display.js';
 /* The save-file error path terminates through the shared end-game machinery;
  * keep this import aliased because save.js is also reached by bones.js. */
@@ -146,14 +146,12 @@ export async function tricked_fileremoved(nhfp, whynot) {
 }
 
 
-/* C ref: files.c set_savefile_name() — gs.SAVEF is "save/<uid><plname>" (plus
- * a ".gz" once nh_compress runs).  The uid has no meaning in the VFS, so the
- * key is the hero's name, which is what actually distinguishes one save from
- * another; restore_saved_game() rebuilds the same string from the rc-supplied
- * plname before the game state exists, exactly as C's plnamesuffix()/getlock()
- * pair does. */
 export function savefile_name(plname) {
-    return `save/${plname || ''}`;
+    const want = `save/${plname || ''}`;
+    const lc = want.toLowerCase();
+    for (const path of vfsListFiles('save/'))
+        if (path.toLowerCase() === lc) return path;
+    return want;
 }
 
 export const NOT_SAVED = [

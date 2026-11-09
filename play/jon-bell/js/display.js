@@ -5610,12 +5610,14 @@ function _hilite_rules() {
                 continue;
             }
             if (status_fieldname(parts[0]) === 'alignment') {
-                /* botl.c BL_ALIGN text-match rules: alignment/lawful/blue/neutral/white/... */
+                /* botl.c BL_ALIGN text-match rules: alignment/lawful/blue/neutral/white/...;
+                 * "always" is BL_TH_ALWAYS_HILITE (botl.c parse_status_hl2), not a text. */
                 for (let i = 1; i + 1 < parts.length; i += 2) {
                     const [an, ...aa] = parts[i + 1].split('&');
                     const ac = _HL_COLORS[an];
-                    if (ac !== undefined) rules.push({ fld: 'align', beh: 'text', text: parts[i], col: ac,
-                        bold: aa.includes('bold') });
+                    if (ac !== undefined) rules.push({ fld: 'align', beh: parts[i] === 'always' ? 'always' : 'text',
+                        text: parts[i], col: ac, bold: aa.includes('bold'),
+                        attr: aa.reduce((x, n) => x | (_HL_ATTR[n.trim()] ?? 0), 0) });
                 }
                 continue;
             }
@@ -5705,9 +5707,13 @@ export function _hilite_status_wrap(row) {
     return row
         .replace(/^(.*?)(\x1b\[\d+C| *)(?= St:|St:)/, (m, t, pad) => (t && !hpbar ? w('title', 0, t + pad, rk(t)) : m))
         .replace(/\b(Lawful|Neutral|Chaotic)\b/, (m) => {
-            /* botl.c:2516-2521 BL_TH_TEXTMATCH: the last matching rule wins */
-            const r = _hilite_rules().findLast((x) => x.beh === 'text' && x.text === m.toLowerCase());
-            return r ? `\x1b[${r.bold ? '1;' : ''}${r.col}m${m}\x1b[${r.bold ? '22;' : ''}39m` : m;
+            /* botl.c:2536-2552 get_hilite: the last matching TEXTMATCH or
+             * ALWAYS_HILITE rule wins (neither sets perc_or_abs). */
+            const r = _hilite_rules().findLast((x) => x.fld === 'align'
+                && (x.beh === 'always' || (x.beh === 'text' && x.text === m.toLowerCase())));
+            if (r?.attr) return `\x1b[${[[ATR_INVERSE, 7], [ATR_BOLD, 1], [ATR_UNDERLINE, 4]]
+                .filter(([bt]) => r.attr & bt).map(([, cd]) => cd).concat(r.col).join(';')}m${m}\x1b[0m`;
+            return r ? `\x1b[${r.col}m${m}\x1b[39m` : m;
         })
         /* a field may directly follow the title's closing SGR (\e[39mSt:9) */
         .replace(/(?<=^|[^A-Za-z0-9_]|\x1b\[\d*m)(St|Dx|Co|In|Wi|Ch):(\d+)(?:\/\d+)?/g, (m, f, n) => w(f, +n, m))
@@ -6147,10 +6153,13 @@ export function status_row_finish(base) {
     const _vlen = v ? v.length + 1 : 0;
     const _row = fit_status_line_width(`${base}${_statusExtras()}`, 79 - _vlen);
     /* wintty.c:5185-5210: BL_VERS last in its row is right-justified to the terminal width. */
+    /* An unfitted row (truncation_expected) keeps its version word in order and
+     * tty_putstatusfield stops at the last column: cut the whole row at 79. */
     if (v) {
-        return _row.length < 79 - v.length ? _row.padEnd(79 - v.length, ' ') + v : `${_row} ${v}`;
+        const out = _row.length < 79 - v.length ? _row.padEnd(79 - v.length, ' ') + v : `${_row} ${v}`;
+        return out.slice(0, 79);
     }
-    return _row;
+    return _row.slice(0, 79);
 }
 /* C botl.c status_hilite(): a hilite_status rule
  * condition/<name>/<colour>&<attr> colours the condition's own text in the
@@ -6821,9 +6830,14 @@ function _status_condition_hilites(row) {
         for (let k = 0; k < 16; k++) if (ch[k] & bit) { color = k; break; }
         for (const [slot, a] of _CA) if (ch[slot] & bit) attr |= a;
         if (color === NO_COLOR && !attr) return;
-        const at = new RegExp(` (${cname})(?= |$)`).exec(row);
+        /* the row carries the spelling cond_shrinklvl selected (wintty.c:4838 set_condition_length) */
+        let at = null, shown = cname.trim();
+        for (const sp of [cname.trim(), ...(_COND_SPELL.find((n) => n[0] === cname.trim()) || [])]) {
+            at = new RegExp(` (${sp})(?= |$)`).exec(row);
+            if (at) { shown = sp; break; }
+        }
         if (!at) return;
-        for (let c = at.index + 1; c < at.index + 1 + cname.trim().length; c++)
+        for (let c = at.index + 1; c < at.index + 1 + shown.length; c++)
             cells.set(c, { color, attr });
     });
     for (const [c, h] of fields) cells.set(c, h);
@@ -7407,6 +7421,11 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     }
     if (busyFrozen !== undefined ? busyFrozen : _busy_condition())
         s += ' Busy';
+    /* C botl.c:1195 condtests[bl_glowhands].test = (u.umconf) ? TRUE : FALSE; opt_in,
+     * rank 20, sorting after busy and before held (useroption order). */
+    if (_condEn('glowhands', false)
+        && (game._lastPaintedBotl?.glow != null ? game._lastPaintedBotl.glow : (u.umconf | 0) !== 0))
+        s += ' Glow';
     /* C botl.c:1204 test_if_enabled(bl_slippery) = Glib; opt_in, rank 20,
      * sorting after sleep and before submerged/tethered (useroption order). */
     /* `slipFrozen` is the value bot() painted at a frozen --More-- pline:
@@ -7459,6 +7478,23 @@ function _insertEncSpace(str) {
     const m = new RegExp(` (?:${names.join('|')})(?= |$)`).exec(str);
     return m ? `${str.slice(0, m.index)} ${str.slice(m.index)}` : str;
 }
+/* C botl.c:781-815 conditions[].text[0..2] spellings, long/medium/short (cond_shrinklvl). */
+const _COND_SPELL = [
+    ['Grab', 'Grb', 'Gr'], ['Stone', 'Ston', 'Sto'], ['Slime', 'Slim', 'Slm'],
+    ['Strngl', 'Stngl', 'Str'], ['FoodPois', 'Fpois', 'Poi'],
+    ['TermIll', 'Ill', 'Ill'], ['Blind', 'Blnd', 'Bl'],
+    ['Deaf', 'Def', 'Df'], ['Stun', 'Stun', 'St'],
+    ['Conf', 'Cnf', 'Cf'], ['Hallu', 'Hal', 'Hl'],
+    ['Lev', 'Lev', 'Lv'], ['Fly', 'Fly', 'Fl'],
+    ['Ride', 'Rid', 'Rd'],
+    /* the rest of botl.c:781-815 conditions[] txt1/txt2/txt3 */
+    ['Bare', 'Bar', 'Bh'], ['Busy', 'Bsy', 'By'], ['Iron', 'Irn', 'Fe'],
+    ['Glow', 'Glo', 'Gl'], ['Held', 'Hld', 'Hd'], ['Icy', 'Icy', 'Ic'],
+    ['InLava', 'Lav', 'La'], ['Parlyz', 'Para', 'Par'],
+    ['Zzz', 'Zzz', 'Zz'], ['Slip', 'Slp', 'Sl'], ['Submrg', 'Subm', 'Sm'],
+    ['Teth', 'Tth', 'Te'], ['Trap', 'Trp', 'Tr'], ['Out', 'Out', 'KO'],
+    ['WLegs', 'Leg', 'Lg'], ['UHold', 'UHld', 'UHd'],
+];
 let _fitMemo = null; /* repeated identical renders of one frame must not re-run the shrink state */
 export function fit_status_line_width(s, width = 79) {
     /* wintty.c:4591-4626,4995: fitting belongs to a status paint. A deferred
@@ -7503,22 +7539,7 @@ function _fit_status_line_width(s, width) {
      * spelling.  Per-condition shortening changes the selected text and can
      * disagree even when only one condition is present (for example Blind ->
      * Blnd at the medium level). */
-    const conditions = [
-        ['Grab', 'Grb', 'Gr'], ['Stone', 'Ston', 'Sto'], ['Slime', 'Slim', 'Slm'],
-        ['Strngl', 'Stngl', 'Str'], ['FoodPois', 'Fpois', 'Poi'],
-        ['TermIll', 'Ill', 'Ill'], ['Blind', 'Blnd', 'Bl'],
-        ['Deaf', 'Def', 'Df'], ['Stun', 'Stun', 'St'],
-        ['Conf', 'Cnf', 'Cf'], ['Hallu', 'Hal', 'Hl'],
-        ['Lev', 'Lev', 'Lv'], ['Fly', 'Fly', 'Fl'],
-        ['Ride', 'Rid', 'Rd'],
-        /* the rest of botl.c:781-815 conditions[] txt1/txt2/txt3 */
-        ['Bare', 'Bar', 'Bh'], ['Busy', 'Bsy', 'By'], ['Iron', 'Irn', 'Fe'],
-        ['Glow', 'Glo', 'Gl'], ['Held', 'Hld', 'Hd'], ['Icy', 'Icy', 'Ic'],
-        ['InLava', 'Lav', 'La'], ['Parlyz', 'Para', 'Par'],
-        ['Zzz', 'Zzz', 'Zz'], ['Slip', 'Slp', 'Sl'], ['Submrg', 'Subm', 'Sm'],
-        ['Teth', 'Tth', 'Te'], ['Trap', 'Trp', 'Tr'], ['Out', 'Out', 'KO'],
-        ['WLegs', 'Leg', 'Lg'], ['UHold', 'UHld', 'UHd'],
-    ];
+    const conditions = _COND_SPELL;
     const original = s;
     let last = s;
     for (let level = 1; level <= 2; level++) {
@@ -7575,7 +7596,7 @@ function _fit_status_line_width(s, width) {
             return candidate;
         last = candidate;
     }
-    return last.length > width ? last.slice(0, width) : last;
+    return last;
 }
 // C win/tty/wintty.c:1401-1433: corner menus clear from offx, then
 // paint their content one column to the right.  Preserve the base window
@@ -9214,6 +9235,7 @@ function _capture_botl(paint = false) {
          * newgame bot() (allmain.c:891) ran before ini_inv wielded the starting
          * weapon, so a Rogue's step-0 row keeps "Bare" until the next bot(). */
         bare: game.flags?.cond_barehanded ? (!u.uarmg && !u.uwep) : undefined,
+        glow: game.flags?.cond_glowhands ? (u.umconf | 0) !== 0 : undefined,
         weapon: game.flags?.weaponstatus ? weapon_status() : undefined,
         armor: game.flags?.armorstatus ? (hpPaint?.armor ?? armor_status()) : undefined,
     };
