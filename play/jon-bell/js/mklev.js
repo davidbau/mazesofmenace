@@ -69,7 +69,7 @@ import { big_to_little, little_to_big, mon_hates_silver, passes_bars, resist_con
 import { ansimpleoname, ARTILIST, ARTI_NOGEN, ARTI_GEN_SPE, oname, vtense, quest_info, makeplural, getObjDescr, objName, simpleonames } from './objnam.js';
 import { artifact_exists } from './artifact.js';
 /* C mkobj.c:1248 mksobj()'s SPE_NOVEL arm calls do_name.c's noveltitle(). */
-import { noveltitle, safe_oname as safe_oname_real, mon_pmname } from './do_name.js';
+import { noveltitle, safe_oname, mon_pmname } from './do_name.js';
 import { nartifact_exist } from './artifact.js'; /* artifact.c:461-471 */
 import { _ARTI_GIFT_INFO, _mk_artifact_by_align } from './cmd.js';
 import { _artifact_origin } from './objnam.js';
@@ -9228,9 +9228,6 @@ export { extract_from_minvent };
  * real body (C shk.c:1186-1272) for discard_minvent() above.  Imported at
  * :145 instead. */
 
-function safe_oname(otmp) {
-    return safe_oname_real(otmp);
-}
 
 
 

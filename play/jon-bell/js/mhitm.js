@@ -136,7 +136,7 @@ import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated
  * the synchronous body used by mhitu's lethal damage paths; this wrapper
  * avoids a second implementation. */
 import { done_in_by as done_in_by_real } from './end.js';
-import { polymon } from './polyself.js';
+import { polymon, ugolemeffects } from './polyself.js';
 
 /* C youprop.h resistance macros: both intrinsic and extrinsic property bits
  * contribute to the hero's resistance. */
@@ -252,31 +252,7 @@ export { monstunseesu };
  * js/mhitu.js:424 carries its own separate no-op stub).
  * C ref: polyself.c:2159-2185 void ugolemeffects(int damtype, int dam)
  * RNG-free. */
-export function ugolemeffects(damtype, dam) {
-    const g = game;
-    const u = g.u;
-    let heal = 0;
-    if ((u.umonnum | 0) !== PM_FLESH_GOLEM && (u.umonnum | 0) !== PM_IRON_GOLEM)
-        return;
-    switch (damtype) {
-    case AD_ELEC:
-        if ((u.umonnum | 0) === PM_FLESH_GOLEM)
-            heal = ((dam | 0) + 5) / 6 | 0; /* Approx 1 per die */
-        break;
-    case AD_FIRE:
-        if ((u.umonnum | 0) === PM_IRON_GOLEM)
-            heal = dam | 0;
-        break;
-    }
-    if (heal && (u.mh | 0) < (u.mhmax | 0)) {
-        u.mh = (u.mh | 0) + heal;
-        if (u.mh > u.mhmax)
-            u.mh = u.mhmax;
-        if (g.disp) g.disp.botl = 1;
-        void pline('Strangely, you feel better than before.');
-        exercise(A_STR, true);
-    }
-}
+export { ugolemeffects };
 /* make_stunned — MODULE-LOCAL STUB DELETED.  Imported and re-exported at the
  * top of this file; see that comment.  This file's one call site
  * (uhitm.c:6086: `if (!Stunned) make_stunned((long)tmp, TRUE)`, the
@@ -2612,36 +2588,9 @@ const PM_FLOATING_EYE_HM = PM_FLOATING_EYE;
 
 
 
-/* C do_name.c:1320-1360 obj_pmname(obj) — mons[].pmname for a corpse/statue/
- * figurine, keyed off obj->corpsenm + the CORPSTAT_GENDER bits in obj->spe.
- * The #if 0 saved-montraits branch is dead in the compiled C (never taken);
- * it is not ported here.
- * PM_ALIGNED_CLERIC = 275 (== the "priest"/"priestess"/"aligned cleric"
- * class-monster row; pm.generated.js dedups its name onto PM_PRIEST).
- * PM_CLERIC = 337 (the role monster "priest"/"priestess"/"cleric" row; no
- * exported const — same dedup collision). */
-const OBJ_PMNAME_CORPSE = 265;
-const OBJ_PMNAME_STATUE = 476;
-const OBJ_PMNAME_FIGURINE = 241;
-const PM_ALIGNED_CLERIC = 275;
-const PM_CLERIC = 337;
-export function obj_pmname(obj) {
-    if ((obj.otyp === OBJ_PMNAME_CORPSE || obj.otyp === OBJ_PMNAME_STATUE
-         || obj.otyp === OBJ_PMNAME_FIGURINE) && ismnum(obj.corpsenm)) {
-        const cgend = obj.spe & CORPSTAT_GENDER;
-        const mgend = (cgend === CORPSTAT_MALE) ? MALE
-                      : (cgend === CORPSTAT_FEMALE) ? FEMALE
-                        : NEUTRAL;
-        let mndx = obj.corpsenm;
-
-        if (mndx === PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM)
-            mndx = PM_CLERIC;
-
-        return monPmname(mndx, mgend);
-    }
-    impossible("obj_pmname otyp:%i,corpsenm:%i", obj.otyp, obj.corpsenm);
-    return "two-legged glorkum-seeker";
-}
+/* C do_name.c:1321 obj_pmname lives in js/do_name.js; re-exported for callers. */
+export { obj_pmname } from './do_name.js';
+const PM_ALIGNED_CLERIC = 275; // class-monster row, re-exported below (pm.generated.js dedup)
 
 
 

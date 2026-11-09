@@ -10,6 +10,8 @@ import { game } from './gstate.js';
 import { The } from './objnam.js';
 import { Upolyd } from './const.js';
 import { is_youmonst } from './mhitm.js';
+import { ismnum, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM } from './const.js';
+import { impossible } from './steed.js';
 import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, carrying, cmdq_clear, cmdq_pop, donamelevel, flooreffects_is_plural, getObjFromGetobj, getpos, look_at_object, set_cursor, type_is_pname, verbalize } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
 import { ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, OBJ_FREE, OBJ_INVENT, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, PL_PSIZ, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
@@ -892,4 +894,35 @@ function minimal_monnam_body(mon, ckloc) {
 
 export function y_monnam(mtmp) {
     return y_monnam_real(mtmp); // C do_name.c:1117-1129
+}
+
+/* C do_name.c:1320-1360 obj_pmname(obj) — mons[].pmname for a corpse/statue/
+ * figurine, keyed off obj->corpsenm + the CORPSTAT_GENDER bits in obj->spe.
+ * The #if 0 saved-montraits branch is dead in the compiled C (never taken);
+ * it is not ported here.
+ * PM_ALIGNED_CLERIC = 275 (== the "priest"/"priestess"/"aligned cleric"
+ * class-monster row; pm.generated.js dedups its name onto PM_PRIEST).
+ * PM_CLERIC = 337 (the role monster "priest"/"priestess"/"cleric" row; no
+ * exported const — same dedup collision). */
+const OBJ_PMNAME_CORPSE = 265;
+const OBJ_PMNAME_STATUE = 476;
+const OBJ_PMNAME_FIGURINE = 241;
+const PM_ALIGNED_CLERIC = 275;
+const PM_CLERIC = 337;
+export function obj_pmname(obj) {
+    if ((obj.otyp === OBJ_PMNAME_CORPSE || obj.otyp === OBJ_PMNAME_STATUE
+         || obj.otyp === OBJ_PMNAME_FIGURINE) && ismnum(obj.corpsenm)) {
+        const cgend = obj.spe & CORPSTAT_GENDER;
+        const mgend = (cgend === CORPSTAT_MALE) ? MALE
+                      : (cgend === CORPSTAT_FEMALE) ? FEMALE
+                        : NEUTRAL;
+        let mndx = obj.corpsenm;
+
+        if (mndx === PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM)
+            mndx = PM_CLERIC;
+
+        return monPmname(mndx, mgend);
+    }
+    impossible("obj_pmname otyp:%i,corpsenm:%i", obj.otyp, obj.corpsenm);
+    return "two-legged glorkum-seeker";
 }

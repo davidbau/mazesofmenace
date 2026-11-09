@@ -2664,10 +2664,7 @@ export async function stone_to_flesh_obj(obj, state = game,
         ...rawEnv,
         message,
         norepMessage,
-        hooks: {
-            updateInventory: () => update_inventory({ state }),
-            ...(rawEnv.hooks ?? {}),
-        },
+        hooks: { ...(rawEnv.hooks ?? {}) },
     });
     const type = objectType(obj, state);
     if (type.oc_material !== MINERAL && type.oc_material !== GEMSTONE)
@@ -3126,9 +3123,9 @@ export async function bhito(obj, wand, state = game,
     if (obj?.where !== OBJ_FLOOR && wand.otyp !== SPE_STONE_TO_FLESH)
         note_unported('zap.c bhito impossible object location');
 
-    if (obj === state.uball || obj === state.u?.uball) {
+    if (obj === state.uball) {
         res = 0;
-    } else if (obj === state.uchain || obj === state.u?.uchain) {
+    } else if (obj === state.uchain) {
         if (wand.otyp === WAN_OPENING || wand.otyp === SPE_KNOCK) {
             unpunish(state, { ...rawEnv, random });
             learn_it = true;

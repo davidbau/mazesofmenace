@@ -2464,6 +2464,17 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
             const qbuf = `Which ${humanoid ? 'ring-' : ''}${body_part(FINGER)}, Right or Left?`;
             /* tty_yn_function renders "<q> [rl]" with cursor one past the prompt. */
             const promptText = `${qbuf} [rl]`;
+            /* C cmd.c:5394 yn_menuable_resp(rightleftchars): query_menu answers via a menu. */
+            if (g.iflags?.query_menu) {
+                const { yn_function_menu } = await import('./cmd.js');
+                const ans = await yn_function_menu(qbuf, 'rl', '\0');
+                if (ans !== null) {
+                    if (ans === 'l' || ans === 'L') mask = LEFT_RING_VAL;
+                    else if (ans === 'r' || ans === 'R') mask = RIGHT_RING_VAL;
+                    else return ECMD_OK;
+                }
+            }
+            while (!mask) {
             g._pending_message = promptText;
             /* C topl.c:421 custompline() files the prompt in gp.prevmsg (pline.c:282). */
             g._prevmsg = promptText + ' ';
@@ -2506,6 +2517,7 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
                 if (c === 'l' || c === 'L') { fileAnswered(108); mask = LEFT_RING_VAL; break; }
                 if (c === 'r' || c === 'R') { fileAnswered(114); mask = RIGHT_RING_VAL; break; }
                 /* invalid key: loop and re-read (C do..while !mask). */
+            }
             }
         }
         /* do_wear.c:2290-2317 — Glib / cursed-gloves / welded-weapon guards. */

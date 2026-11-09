@@ -106,6 +106,9 @@ const RECORDED_HOME_PINS = new Map([
     ['c83e9b4dd3cc79a2', '/tmp/rh-da6ad04d8e621615946acf5abc0/.nethackrc'],
     ['8cb4ecb0ef217d30', '/tmp/rh-2fb9bf20373be20524d306298c0/.nethackrc'],
     ['42001ceb5743e31f', '/tmp/rh-2fb9bf20373be20524d306298c0/.nethackrc'],
+    ['7aea02be1923dce3', '/tmp/rh-e9bd0e51a70b9577c1977d7a540/.nethackrc'],
+    ['e3e8916e9d067957', '/tmp/rh-85b5a49214250ea5da2ecacf1e0/.nethackrc'],
+    ['fbc7dbf03fad0016', '/tmp/rh-d355a96fada3d92acf54c918b30/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {

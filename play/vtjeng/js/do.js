@@ -244,7 +244,6 @@ import {
     ggetobj,
     mergable,
     obfree,
-    preflight_update_inventory,
     stackobj,
     useup,
     useupf,
@@ -371,7 +370,7 @@ import {
 } from './stairs.js';
 import { Punished, dismount_steed, stucksteed } from './steed.js';
 import { enexto, rloc, safe_teleds } from './teleport.js';
-import { burn_away_slime, obj_has_timer, obj_stop_timers, preflight_end_burn, rider_revival_time, run_timers, start_timer } from './timeout.js';
+import { burn_away_slime, obj_has_timer, preflight_end_burn, rider_revival_time, run_timers, start_timer } from './timeout.js';
 import {
     climb_pit,
     deltrap,
@@ -1944,33 +1943,15 @@ export function preflight_dropx(obj, env = {}) {
     // shk.c:sellobj() owns its shop checks after floor placement, including
     // the costly-spot test this preflight used to reject.
     // The remaining square effects are reached from dropz()'s flooreffects().
-    // do.c:dropx ships only at a down gate; flooreffects has a boulder arm for
-    // pits/holes and a separate arm for the hero at a seen pit/shaft edge.
-    // Other traps have no floor-effects arm for an ordinary drop.
-    const trap = t_at(x, y, state);
-    // do.c:flooreffects handles a boulder on a pit or hole before its later
-    // hero pit-edge/shaft arm. That branch consumes the boulder and removes
-    // the trap; other boulder traps are inert and reach ordinary placement.
-    // A hero teetering at a seen pit reaches flooreffects()'s pit arm
-    // (do.c:289-297), which only reports the object tumbling into the pit
-    // before ordinary placement. The hole and escaped-shaft arms ship the
-    // object through ship_object() and stay behind this boundary.
-    const boulderFillsTrap = obj.otyp === BOULDER && trap
-        && (is_pit(trap.ttyp) || is_hole(trap.ttyp));
-    if (trap && !boulderFillsTrap
-        && (is_hole(trap.ttyp)
-            || uescaped_shaft(trap, state))) {
-        throw new UnsupportedDropError('shipping or floor effects at a trap');
-    }
-    // do.c:flooreffects routes ordinary objects through trap.c:lava_damage or
-    // water_damage before floor placement. Boulder/pool has its separate
-    // boulder_hits_pool branch; only the live submerged Water case above is
-    // admitted here, without opening its surface or private-state effects.
-    const pool = is_pool(x, y, state);
-    const lava = is_lava(x, y, state);
-    const ordinaryLiquid = lava || (pool && obj.otyp !== BOULDER);
-    if ((pool || lava) && !ordinaryLiquid && !submergedWaterBoulder)
-        throw new UnsupportedDropError('liquid terrain');
+    // do.c:dropx() asks dokick.c ship_object() first, which ships the object
+    // only at a seen hole or trap door (down_gate()); flooreffects() has a
+    // boulder arm for pits and holes and a separate arm for the hero at a
+    // seen pit or shaft edge, which ships through the same ship_object().
+    // Both are ported, so no trap refuses an ordinary drop here.
+    // do.c:flooreffects sends a boulder on a pool, moat, water wall or lava
+    // through boulder_hits_pool() and every other object through
+    // trap.c:lava_damage() or water_damage() before floor placement. All
+    // three are ported, so no liquid square refuses a drop here.
     // do.c:flooreffects leaves a boulder intact on dry terrain without a
     // pit or hole, and has no arm for the dry square type itself: room,
     // corridor, doorway, stairs, furniture, grave, ice, tree, iron bars,
@@ -2018,7 +1999,6 @@ export function preflight_dropx(obj, env = {}) {
         );
     }
 
-    preflight_update_inventory(normalized);
     requiredDropHook(normalized, 'newsym');
     requiredDropHook(normalized, 'encumberMessage');
     return {
@@ -2216,19 +2196,8 @@ export async function dropz(obj, with_impact, env = {}) {
                 );
             }
             // C do.c:dropz() reaches invent.c:delobj() after a swallower
-            // digests a corpse. Keep the timer owner with that call so timed
-            // corpses release their ROT/REVIVE/SHRINK timers before freeing.
-            const digestionEnv = {
-                ...normalized,
-                hooks: {
-                    ...normalized.hooks,
-                    stopObjectTimers: normalized.hooks.stopObjectTimers
-                        ?? ((item, hookEnv) => obj_stop_timers(
-                            item, hookEnv.state ?? state, hookEnv,
-                        )),
-                },
-            };
-            if (!await engulfer_digests_food(obj, state, digestionEnv)) {
+            // digests a corpse.
+            if (!await engulfer_digests_food(obj, state, normalized)) {
                 const { mpickobjRuntime } = await import('./steal.js');
                 await mpickobjRuntime(state.u.ustuck, obj, { state });
             }
@@ -2662,6 +2631,24 @@ async function final_level(state = game) {
     await gain_guardian_angel(state);
 }
 
+// A magic portal wished for in wizard mode (objnam.c, "to nowhere") keeps
+// trap.c maketrap()'s dst of {-1, -1}, and domagicportal() schedules it.
+// goto_level() then reads svd.dungeons[-1], the storage before the array,
+// in depth(), dunlevs_in_dungeon() and ledger_no(). The recorded C game
+// reaches done(ESCAPED), as it does when that slot reads as zeros, so these
+// three reads model it so: depth dlevel - 1, no levels, ledger dlevel.
+function goto_depth(level, state) {
+    return level.dnum < 0 ? level.dlevel - 1 : depth(level, state);
+}
+
+function goto_dunlevs(level, state) {
+    return level.dnum < 0 ? 0 : dunlevs_in_dungeon(level, state);
+}
+
+function goto_ledger(level, state) {
+    return level.dnum < 0 ? level.dlevel : ledger_no(level, state);
+}
+
 export async function goto_level(
     newlevel,
     at_stairs,
@@ -2670,11 +2657,11 @@ export async function goto_level(
     state = game,
 ) {
     const u = state.u;
-    let up = depth(newlevel, state) < depth(u.uz, state);
+    let up = goto_depth(newlevel, state) < depth(u.uz, state);
     const newdungeon = u.uz.dnum !== newlevel.dnum;
     // C computes this before clamping the destination or applying the
     // mysterious-force reassignment; the falling damage tail uses that value.
-    const dist = depth(newlevel, state) - depth(u.uz, state);
+    const dist = goto_depth(newlevel, state) - depth(u.uz, state);
     let leaving_tutorial = false;
     let do_fall_dmg = false;
     let new_ledger;
@@ -2682,8 +2669,8 @@ export async function goto_level(
     const prev_temperature = state.level.flags.temperature;
     const was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz, state);
 
-    if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel, state))
-        newlevel.dlevel = dunlevs_in_dungeon(newlevel, state);
+    if (dunlev(newlevel) > goto_dunlevs(newlevel, state))
+        newlevel.dlevel = goto_dunlevs(newlevel, state);
     if (newdungeon) {
         // do.c:1504-1515. Endgame entry requires the Amulet. Wizard mode may
         // bypass the Earth plane, while ordinary entry is redirected there.
@@ -2701,7 +2688,7 @@ export async function goto_level(
             leaving_tutorial = true;
         }
     }
-    new_ledger = ledger_no(newlevel, state);
+    new_ledger = goto_ledger(newlevel, state);
     if (new_ledger <= 0) {
         // do.c:1518-1519. done(ESCAPED) owns the terminal disclosure and
         // returns only in this JavaScript port after marking gameover.
@@ -2933,7 +2920,7 @@ export async function goto_level(
             }
         } else {
             seetrap(ttrap, { redraw: (x, y) => newsym(x, y, state) });
-            u_on_newpos(ttrap.tx, ttrap.ty, state);
+            await u_on_newpos(ttrap.tx, ttrap.ty, state);
         }
     // do.c:1802-1810 places the hero at a random spot after a fall or a
     // level teleport.
@@ -2943,7 +2930,7 @@ export async function goto_level(
         // back to the level she came from).
         const stway = stairway_find_from(u.uz0, state.ga?.at_ladder, state);
         if (stway) {
-            u_on_newpos(stway.sx, stway.sy, state);
+            await u_on_newpos(stway.sx, stway.sy, state);
             stway.u_traversed = true;
         } else if (newdungeon) {
             // u_on_sstairs(1) places the hero on a branch staircase whose
@@ -2971,7 +2958,7 @@ export async function goto_level(
         // do.c:1765-1800. Descending at stairs.
         const stway = stairway_find_from(u.uz0, state.ga?.at_ladder, state);
         if (stway) {
-            u_on_newpos(stway.sx, stway.sy, state);
+            await u_on_newpos(stway.sx, stway.sy, state);
             stway.u_traversed = true;
         } else if (newdungeon) {
             // u_on_sstairs(0) places the hero on a branch staircase. A
@@ -3306,7 +3293,7 @@ export async function u_collide_m(mtmp, state = game) {
         ? enexto(state.u.ux, state.u.uy, state.youmonst?.data, { state })
         : null;
     if (cc && next2u(cc.x, cc.y, state)) {
-        u_on_newpos(cc.x, cc.y, state);
+        await u_on_newpos(cc.x, cc.y, state);
     } else {
         await mnexto(mtmp, RLOC_NOMSG, { state });
     }

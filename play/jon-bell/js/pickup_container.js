@@ -86,7 +86,7 @@ import { losehp } from './hack.js';
 import { rn2, d } from './rng.js';
 import { MENU_TRADITIONAL } from './const.js';
 import { query_classes, add_valid_menu_class, allow_category } from './pickup.js';
-import { askchain } from './cmd.js';
+import { askchain, invletter_value } from './cmd.js';
 import { container_contents } from './end.js'; // relocate-fns
 export { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor }; // relocate-fns
 
@@ -641,12 +641,9 @@ function _loot_classify(obj) {
     const k = classorder.indexOf(obj.oclass | 0);
     return (k >= 0) ? (1 + k) : (1 + classorder.length + 1);
 }
-/* C invent.c invletter_value(), including overflow and gold letters. */
+/* C invent.c:391 invletter_value() — the one port is js/cmd.js. */
 function _invletter_value(letter) {
-    const c = letter | 0;
-    return c >= 97 && c <= 122 ? c - 97 + 2
-        : c >= 65 && c <= 90 ? c - 65 + 28
-        : c === 36 ? 1 : c === 35 ? 54 : 55;
+    return invletter_value(letter | 0);
 }
 /* C ref: invent.c:488-523 sortloot_cmp — greasing, erosion, erodeproofing and
  * enchantment tiers between BUCX and the stable tiebreak. */

@@ -41,13 +41,9 @@ export async function getlin(prompt) {
     /* C has one gt.toplines: an eat occupation's committed flavor line is still
      * on it when cpostfx's polyself asks for a form (eat.c:1244-1263). */
     restore_occupation_topline();
-    /* A byte with the high bit set is echoed and advances curx (getline.c:
-     * putsyms), but pgetchar() returns it as a signed (char) and the recorded
-     * screen never paints a negative char: the cleared topline cell stays blank. */
-    const shown = () => buf.replace(/[\x80-\xff]/g, ' ');
     const renderPrompt = () => {
-        g._pending_message = buf ? (prompt + ' ' + shown()) : prompt;
-        g._topl_prompt_written = prompt + ' ' + shown();
+        g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
+        g._topl_prompt_written = prompt + ' ' + buf;
     };
     const placeCursor = () => {
         const d = g.nhDisplay;
@@ -199,12 +195,10 @@ export async function getlin(prompt) {
         }
         if (keyCode === 8 /* BS */ || keyCode === 127 /* DEL */) {
             if (buf.length > 0) buf = buf.slice(0, -1);
-        } else if (keyCode !== -1 /* EOF */ && (keyCode & 0xff) >= 32 && keyCode !== 127 && buf.length < COLNO) {
-            /* getline.c:163 ' ' <= (unsigned char) c && c != '\177': pgetchar's
-             * signed (char) bytes 0x80-0xff are stored too.
-             * getline.c:165-167 — bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO;
+        } else if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO) {
+            /* getline.c:165-167 — bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO;
              * a longer line is refused (tty_nhbell) and the frame is unchanged. */
-            buf += String.fromCharCode(keyCode & 0xff);
+            buf += String.fromCharCode(keyCode);
         } else if (keyCode === 21 /* kill_char = VKILL = ^U */) {
             /* C getline.c:196-202 `else if (c == kill_char || c == '\177')`:
              * putsyms("\b \b") back to the start of the input, emptying the

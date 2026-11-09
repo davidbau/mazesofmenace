@@ -2037,6 +2037,8 @@ export const GLYPHCLS_INVIS = 'invis'; /* GLYPH_INVISIBLE "I" marker */
 export const GLYPHCLS_UNEXPLORED = 'unexplored'; /* not a live terrain/cmap glyph */
 const GLYPHCLS_NOTHING = 'nothing';
 export const GLYPHCLS_SWALLOW = 'swallow';
+var _mention_map_hook; /* var: cmd.js registers during the import cycle */
+export function set_mention_map_hook(fn) { _mention_map_hook = fn; }
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0,
                                 cls = GLYPHCLS_CMAP, isWarning = false,
@@ -2048,6 +2050,8 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     const loc = game.level?.at(x, y);
     if (!loc)
         return;
+    /* display.c:2011 show_glyph() reads oldglyph/gnew before overwriting gbuf. */
+    const _mmOldCls = loc.disp_cls, _mmOldGnew = loc.disp_gnew_epoch === _flush_epoch;
     invalidate_map_row(y);
     /* C display.c:3079-3084 resolves color in glyphmap, and show_glyph stores
      * that glyphinfo in gbuf. Changing the option cannot recolor cells already
@@ -2288,6 +2292,23 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_obj_pile = loc.disp_obj_otyp !== null && !!objpile;
     loc.disp_is_warning = !!isWarning;
     loc.gnew = 1;
+    /* display.c:2011-2027 mention_map: a newly shown non-wall/non-room glyph on an
+     * unexplored spot (or any furniture glyph) is announced (display.c:2060-2072). */
+    const _a11y = game.a11y;
+    if (_a11y?.glyph_updates && game._notice_mon_ready && !_a11y.mon_notices_blocked && _mention_map_hook
+        && !game.program_state?.in_docrt && !game.program_state?.gameover
+        && !game.program_state?.in_getlev && !game.program_state?.stopprint
+        && (_glyphChanged || _mmOldGnew)) {
+        const c = cls === GLYPHCLS_CMAP ? (cmap ?? _default_cmap_at(loc, ch, color)) : -1;
+        const oldNothing = !_mmOldCls || _mmOldCls === GLYPHCLS_UNEXPLORED
+            || _mmOldCls === GLYPHCLS_NOTHING;
+        if (cls !== GLYPHCLS_UNEXPLORED && cls !== GLYPHCLS_NOTHING
+            && (oldNothing || is_cmap_furniture(c))
+            && !is_cmap_wall(c) && !is_cmap_room(c)
+            && !((_a11y.mon_notices && cls === GLYPHCLS_MON)
+                 || _mmOldCls === GLYPHCLS_MON || u_at(x, y)))
+            _mention_map_hook(x, y);
+    }
     /* #wizloaddes: C's gbuf survives clear_level_structures() and every
      * newsym()/show_glyph() the loader's makemon/mksobj calls make updates it
      * (makemon.c:1473), so the frozen pre-load frame must absorb those cells
@@ -4197,6 +4218,10 @@ export async function docrt(pageTopl = false, physicalScreen = null) {
     // Unexplored cells have no remembered_glyph here, so they must be blanked
     // too; otherwise temporary terrain/detection glyphs survive the redraw.
     clear_glyph_buffer();
+    /* C display.c:1720 program_state.in_docrt = TRUE (cleared at :1772): show_glyph's
+     * mention_map announcement (display.c:2012) is off for the whole redraw. */
+    if (!game.program_state) game.program_state = {};
+    game.program_state.in_docrt = true;
     // Step 1: remembered terrain (mirrors C docrt_flags: show_glyph(x,y,lev->glyph))
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++) {
@@ -4236,6 +4261,7 @@ export async function docrt(pageTopl = false, physicalScreen = null) {
     // hero's newsym (display.c:1581-1583), each a display-RNG consumer under
     if (!game.defer_see_monsters) /* C display.c see_monsters(): deferred during dorecover */
         see_monsters();
+    game.program_state.in_docrt = false;
     // Step 3 (removed): C's docrt_flags() has no hero paint of its own; the
     // hero is newsym()ed by vision_recalc (vision.c:850) and see_monsters().
     /* C docrt_flags post_map: refresh inventory and request a full status
@@ -5043,7 +5069,11 @@ function _buffered_capture_cell(loc) {
     const ch = loc.disp_ch ?? ' ';
     const color = loc.disp_color ?? NO_COLOR;
     const dec = !!loc.disp_decgfx;
-    const attr = loc.disp_attr | 0;
+    let attr = loc.disp_attr | 0;
+    if (loc.disp_mon_kind === 'pet' && game.iflags?.wc_hilite_pet) {
+        const pa = (game.iflags?.wc2_petattr | 0) || 7;
+        attr = pa === 7 ? 1 : pa === 1 ? 2 : pa === 4 ? 4 : 0;
+    }
     const prev = loc[_CAPTURE_CELL_CACHE];
     if (prev && prev.ch === ch && prev.color === color
         && prev.dec === dec && prev.attr === attr) return prev;
@@ -5219,12 +5249,14 @@ function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
         && !!game.flags?.showrace && (u?.umonnum | 0) === (u?.umonster | 0);
     const heroX = heroColor ? u?.ux | 0 : -1;
     const heroY = heroColor ? u?.uy | 0 : -1;
+    const petAttrVal = (game.iflags?.wc_hilite_pet ? (game.iflags?.wc2_petattr ?? 7) : 0);
     const live = !(game._inMovemonMore && game._paintedSnapshot)
         && !game._levelgenPaintFreeze && !game._physBlankToDocrt && !game._epyxPhys;
     const version = game.level ? _map_paint_cache(game.level).versions[y] : -1;
     const sameMode = cache.rogueMap === rogueMap && cache.rogueColor === rogueColor
         && cache.decAllowed === decAllowed && cache.heroColor === heroColor
-        && cache.heroX === heroX && cache.heroY === heroY;
+        && cache.heroX === heroX && cache.heroY === heroY
+        && cache.petAttrVal === petAttrVal;
     if (live && cache.live && cache.level === game.level
         && cache.version === version && sameMode) return cache.output;
     const cells = cache.cells;
@@ -5249,7 +5281,7 @@ function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
     }
     if (firstCol < 0) {
         Object.assign(cache, { rogueMap, rogueColor, decAllowed, heroColor,
-            heroX, heroY, live, level: game.level, version, output: '' });
+            heroX, heroY, petAttrVal, live, level: game.level, version, output: '' });
         return '';
     }
     let output = '';
@@ -5258,11 +5290,11 @@ function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
      * and display.c:3077-3081 clears every glyph colour.  Both are properties
      * of the whole map, so they are applied once here for the row. */
     if (same && sameMode) {
-        Object.assign(cache, { live, level: game.level, version });
+        Object.assign(cache, { live, level: game.level, version, petAttrVal });
         return cache.output;
     }
     Object.assign(cache, { rogueMap, rogueColor, decAllowed, heroColor,
-        heroX, heroY, live, level: game.level, version });
+        heroX, heroY, petAttrVal, live, level: game.level, version });
     let activeColor = ANSI_DEFAULT; // default
     let activeDec = false;
     let activeInverse = false; // ATR_INVERSE (hilite_pet pet glyph) — C \e[7m..\e[0m
@@ -7230,6 +7262,18 @@ function _busy_condition() {
     const asleep = !!game.flags?.cond_sleep && !!game.u?.usleep;
     return !unconsc && !parlyz && !asleep;
 }
+/* C botl.c:1210-1234: the else-if chain's first three arms (unconscious,
+ * paralyzed/frozen, sleeping); returns which one fired, '' if none. */
+function _multi_cond() {
+    if ((game.multi | 0) >= 0) return '';
+    const reason = game.multi_reason || '';
+    if (game.flags?.cond_unconscious && game.nomovemsg
+        && !game.u?.usleep && unconscious()) return 'unconsc';
+    if (game.flags?.cond_paralyzed
+        && (reason.startsWith('paralyzed') || reason.startsWith('frozen'))) return 'parlyz';
+    if (game.flags?.cond_sleep && game.u?.usleep) return 'sleep';
+    return '';
+}
 function _live_lev(u) {
     const lp = u && u.uprops && u.uprops[LEVITATION];
     return !!lp && !!((lp.intrinsic | 0) || (lp.extrinsic | 0)) && !(lp.blocked | 0);
@@ -7431,6 +7475,11 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     /* `slipFrozen` is the value bot() painted at a frozen --More-- pline:
      * nh_timeout's make_glib(0) (timeout.c:935, GLIB 21) runs after an earlier
      * property's expiry pline (e.g. BLINDED 15) has already raised more(). */
+    {
+        const mc = _multi_cond();
+        if (mc === 'parlyz') s += ' Parlyz';
+        else if (mc === 'sleep') s += ' Zzz';
+    }
     if (_condEn('slip', false)
         && ((slipFrozen !== undefined) ? slipFrozen
             : ((u.uprops?.[GLIB]?.intrinsic | 0) !== 0)))
@@ -7445,6 +7494,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
         if (game.flags?.cond_trap && !teth && !((u.utraptype | 0) === TT_LAVA))
             s += ' Trap';
     }
+    if (_multi_cond() === 'unconsc') s += ' Out';
     /* C botl.c:1208 test_if_enabled(bl_woundedl) = (Wounded_legs) (youprop.h:138
      * HWounded_legs || EWounded_legs); opt_in, rank 20, after Trap/Out. */
     if (game.flags?.cond_woundedlegs) {

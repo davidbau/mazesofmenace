@@ -36,7 +36,7 @@ import { spoteffects } from './hack.js';
  */
 import { game } from './gstate.js';
 import { freehand } from './engrave.js';
-import { is_youmonst as is_youmonst_mu, ugolemeffects as ugolemeffects_mh, seemimic as seemimic_real, killed as killed_real } from './mhitm.js';
+import { is_youmonst as is_youmonst_mu, seemimic as seemimic_real, killed as killed_real } from './mhitm.js';
 import { get_atkdam_type } from './mondata.js';
 import { erode_armor as erode_armor_um } from './mhitm.js';
 import { mon_hates_blessings } from './mondata.js';
@@ -200,7 +200,7 @@ import { make_blinded, make_blinded as make_blinded_real_mu } from './potion.js'
 import { mon_explodes as mon_explodes_mu } from './explode.js';
 import { make_hallucinated as make_hallucinated_mu } from './potion.js';
 import { mondead as mondead_mu, wake_nearto as wake_nearto_mu } from './mon.js';
-import { ugolemeffects as ugolemeffects_mu } from './mhitm.js';
+import { ugolemeffects } from './polyself.js';
 import { resists_blnd, defended as defended_mu } from './mondata.js';
 import { PM_BLACK_LIGHT as PM_BLACK_LIGHT_MU, PM_VIOLET_FUNGUS as PM_VIOLET_FUNGUS_MU,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_GRID_BUG } from './pm.generated.js';
@@ -280,7 +280,8 @@ import { mhe as mhe_mu } from './makemon.js';
 /* C mhitu.c:1917 — mdamageu()'s Upolyd arm. */
 import { rehumanize } from './polyself.js';
 /* C mhitu.c:924 mattacku's AT_MAGC case. */
-import { castmu, buzzmu, cvt_adtyp_to_mseenres as cvt_adtyp_to_mseenres_real } from './mcastu.js';
+import { castmu, buzzmu } from './mcastu.js';
+import { cvt_adtyp_to_mseenres } from './mondata.js';
 import { burn_away_slime } from './timeout.js';
 /* C mcastu.c:322 touch_of_death — mhitm_ad_deth_u's Death-touch arm below. */
 import { touch_of_death as touch_of_death_mc } from './mcastu.js';
@@ -341,10 +342,6 @@ const M_SEEN_COLD = 0x0004;
 /* M_SEEN_SLEEP is imported from const.js */
 const M_SEEN_ELEC = 0x0020;
 const M_SEEN_ACID = 0x0080;
-/* AD_* → M_SEEN_* mapping — C ref: nethack-c/src/mondata.c:1522 */
-function cvt_adtyp_to_mseenres(adtyp) {
-    return cvt_adtyp_to_mseenres_real(adtyp);
-}
 /* m_seenres — C ref: nethack-c/include/monst.h:88 macro */
 function m_seenres(mon, mask) {
     return (mon.seen_resistance & mask) !== 0;
@@ -444,7 +441,6 @@ export async function mdamageu(mtmp, n) {
         if ((u.uhp | 0) < 1) done_in_by(mtmp, DIED);
     }
 }
-function ugolemeffects(typ, dmg) { return ugolemeffects_mh(typ, dmg); }
 // C zap.c:5964-6097 destroy_items — canonical port in js/zap.js
 export { destroy_items };
 export async function ignite_items(objchn) {
@@ -6196,7 +6192,7 @@ async function explmu(mtmp, mattk, ufound) {
     }
     if (not_affected) {                                   /* C:1656-1659 */
         await You('seem unaffected by it.');
-        ugolemeffects_mu(mattk.adtyp | 0, tmp);
+        ugolemeffects(mattk.adtyp | 0, tmp);
     }
     if (kill_agr && !DEADMONSTER(mtmp))                    /* C:1660-1661 */
         await mondead_mu(mtmp);

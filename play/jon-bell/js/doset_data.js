@@ -38,7 +38,7 @@ import { def_oc_syms_chars } from './drawing.js';
 import { oc_to_str } from './options.js';
 import { menutype } from './menustyle.js';
 import { feature_notice_version } from './feature_alert.js';
-import { BURDENTYPE } from './options.js';
+import { BURDENTYPE, cond_enabled_count } from './options.js';
 import { count_status_hilites } from './botl.js';
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { clr2colorname, attr2attrname } from './coloratt.js';
@@ -323,8 +323,8 @@ export const DOSET_OTHERS = [
     { name: "menu colors", sel: true, val: () => `(${(game.menu_colorings || []).length} currently set)` },
     /* C: options.c optfn_o_message_types get_val */
     { name: "message types", sel: true, val: () => `(${(game.msgtypes || []).length} currently set)` },
-    /* C: options.c optfn_o_status_cond get_val — 16 conditions */
-    { name: "status condition fields", sel: true, val: () => `(${game._condEnabled ? game._condEnabled.filter(Boolean).length : 16} currently set)` },
+    /* C: options.c:8430 optfn_o_status_cond get_val -> options.c:9179 count_cond() */
+    { name: "status condition fields", sel: true, val: () => `(${cond_enabled_count()} currently set)` },
     /* C: options.c optfn_o_status_hilites get_val */
     { name: "status highlight rules", sel: true, val: () => `(${count_status_hilites()} currently set)` },
 ];

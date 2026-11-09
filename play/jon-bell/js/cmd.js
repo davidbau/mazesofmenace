@@ -80,6 +80,7 @@ import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_backgr
 import { update_lastseentyp } from './dungeon.js';
 import { pline, livelog_printf, You_hear, You_see } from './pline.js';
 import { docorner_status_rows } from './display.js';
+import { set_mention_map_hook } from './display.js';
 import { GLYPHCLS_WARNING } from './display.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
@@ -8070,10 +8071,15 @@ export async function y_n_default(query, def) {
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
     g._topl_win_stop_buf = null;
+    let _ynDoprev = false;
+    let _ynKeep = false;
     while (true) {
-        g._pending_message = prompt;
-        await flush_screen(1);
-        set_cursor(prompt.length + 1, 0); /* one past prompt + trailing space */
+        if (!_ynKeep) {
+            g._pending_message = prompt;
+            await flush_screen(1);
+            set_cursor(prompt.length + 1, 0); /* one past prompt + trailing space */
+        }
+        _ynKeep = false;
         const key = await nhgetch();
         const c = String.fromCharCode(key);
         /* C topl.c tty_yn_function: the answered prompt is what reaches ^P history. */
@@ -8082,6 +8088,32 @@ export async function y_n_default(query, def) {
             if (h && h.length && h[h.length - 1] === prompt) h[h.length - 1] = `${prompt} ${a}`;
             return a;
         };
+        /* C topl.c:432-453 ctrl-P: a window mode shows the history and
+         * re-prompts; single mode needs two initial recalls, and the next
+         * non-^P key only re-prompts (BUG[?] comment at :449). */
+        if (c === '\x10') {
+            /* custompline(SUPPRESS_HISTORY): the prompt is not in the ring and
+             * gt.toplines is empty while it is up (wintty.c:2290-2299). */
+            const _h = g._msg_history;
+            const _popped = _h && _h.length && _h[_h.length - 1] === prompt ? _h.pop() : null;
+            const _wasEmpty = g._toplEmptyAfterSuppress;
+            g._toplEmptyAfterSuppress = true;
+            if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
+                await doprev_message();
+            } else {
+                if (!_ynDoprev) await doprev_message();
+                await doprev_message();
+                _ynDoprev = true;
+                _ynKeep = true; /* topl.c:447-450: single mode just re-reads */
+                set_cursor(String(g._pending_message ?? '').length, 0); /* putsyms leaves it after the recalled line */
+            }
+            if (_popped !== null) _h.push(_popped);
+            g._toplEmptyAfterSuppress = _wasEmpty;
+            continue;
+        } else if (_ynDoprev) {
+            _ynDoprev = false;
+            continue;
+        }
         if (c === '\x1b') return _answered(def);                 /* ESC → default */
         if (c === '\r' || c === '\n' || c === ' ') return _answered(def); /* activator → default */
         const lc = c.toLowerCase();
@@ -8931,6 +8963,12 @@ export async function doprev_message(liveTopline) {
              * SUPPRESS_HISTORY line such as the "# cmd" echo (getline.c:217-220),
              * so it blanks the topline; the ring is walked from the next ^P. */
             _blankFirst = !!g._toplEmptyAfterSuppress;
+            g._prevmsg_cycleEmpty = _blankFirst;
+        } else if (g._prevmsg_next === -1) {
+            /* topl.c:109-117: the walk wrapped to maxrow, so gt.toplines (blank
+             * after a SUPPRESS_HISTORY line) is recalled once per cycle. */
+            _blankFirst = true;
+            g._prevmsg_next = history.length - 1;
         }
         let morc;
         do {
@@ -8941,7 +8979,8 @@ export async function doprev_message(liveTopline) {
             g._topl_recall_hardwrap = text.length > 79 && !text.includes('\n') && !!g._getlin_hist?.has(text);
             if (_pmw === 's' && !_blankFirst) {
                 g._prevmsg_next--;
-                if (g._prevmsg_next < 0) g._prevmsg_next = history.length - 1;
+                if (g._prevmsg_next < 0)
+                    g._prevmsg_next = g._prevmsg_cycleEmpty ? -1 : history.length - 1;
             }
             g._pending_message = text;
             g._topl_history_recall = text;
@@ -26846,6 +26885,15 @@ async function pline_xy_a11y(x, y, text) {
         await pline('%s', text);
     }
 }
+
+/* C display.c:2060-2072 show_glyph() mention_map announcement: describe the spot
+ * just painted and announce it. pline_xy_a11y handles coordinate formatting
+ * directly; do not mutate global a11y.accessiblemsg across async boundary. */
+set_mention_map_hook((x, y) => {
+    _autodescribe_firstmatch(x, y).then(async (firstmatch) => {
+        await pline_xy_a11y(x, y, (firstmatch || '') + '.');
+    });
+});
 
 /* C cmd.c:1263 dolookaround_floodfill_findroom() */
 function dolookaround_floodfill_findroom(x, y) {

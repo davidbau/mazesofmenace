@@ -144,7 +144,7 @@ export function weapon_status() {
         case P_UNICORN_HORN: res = 'unihorn'; break;
         default:
             res = weapon_descr(uwep);
-            if (res.toLowerCase() === 'food' && otyp === 306 /* CREAM_PIE */)
+            if (res.toLowerCase() === 'food' && otyp === 287 /* CREAM_PIE */)
                 res = 'pie';
             break;
         }
@@ -921,7 +921,8 @@ export async function status_hilite_menu(preserveStatus = false) {
                 const added = await status_hilite_add_title_textmatch(fld, flushed || adding);
                 if (added) flushed = !game._statusBlankAfterDocrt;
                 /* C botl.c:4445-4447: once adding, each add re-offers the behavior menu */
-                beh = !added ? 0 : adding ? await status_hilite_menu_choose_behavior(fld, true)
+                beh = !added ? await status_hilite_menu_choose_behavior(fld, flushed || adding)
+                    : adding ? await status_hilite_menu_choose_behavior(fld, true)
                     : await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]);
                 if (added) { adding = true; flushed = true; }
             }
@@ -1065,17 +1066,7 @@ export function match_str2conditionbitmask(str) {
  * one line per field threshold rule; condition rules are gathered one line per
  * distinct color/attr (botl.c:3487 status_hilite_linestr_gather_conditions). */
 export function count_status_hilites() {
-    let count = 0;
-    for (const spec of game.status_field_hilites || []) {
-        const parts = spec.split('/');
-        count += Math.max(1, Math.trunc((parts.length - 1) / 2));
-    }
-    const seen = new Set();
-    for (const spec of game.status_condition_hilites || []) {
-        const parts = spec.toLowerCase().split('/');
-        seen.add(parts.slice(2).join('/').split(/[&+]/).map(s => s.trim()).sort().join('&'));
-    }
-    return count + seen.size;
+    return status_hilite_linestr_gather().length;
 }
 
 const strcmpi = (a, b) => { a = a.toLowerCase(); b = b.toLowerCase(); return a < b ? -1 : a > b ? 1 : 0; };

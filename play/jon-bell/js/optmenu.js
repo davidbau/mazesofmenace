@@ -313,6 +313,7 @@ async function handler_rebind_keys_add(keyfirst) {
             await pline('Bind which key? ');
             await flush_screen(1);
             flushed = true; /* painted AFTER the full-screen command menu */
+            set_cursor('Bind which key? '.length, 0); /* cursor left past the topline text */
             key = (await pgetchar()) & 0xff;
             if (!key || key === 27) return true;
         }

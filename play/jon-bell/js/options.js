@@ -1157,6 +1157,13 @@ export function parseNethackrc(rc) {
                 config_error_add("bad option suffix variation '%s'", menuopts.split(':')[0]);
                 continue;
             }
+            /* C options.c:688-695 parseoptions(): an unmatched S_ name falls to
+             * parsesymbols(opts, PRIMARYSET) and is accepted when it names a symbol. */
+            if (menuname.startsWith('s_') && parsesymbols_ok(menuopts)) {
+                const pm = menuopts.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
+                if (pm) (result.symbolPairs ||= []).push([pm[1], pm[2]]);
+                continue;
+            }
             if (menuname && !ALLOPT.some(r => r[0].toLowerCase().startsWith(menuname))) {
                 config_error_add("Unknown option '%s'", menuopts);
                 continue;
@@ -1451,7 +1458,7 @@ export function parseNethackrc(rc) {
                     }
                 }
             }
-            const colonIdx = stripped.indexOf(':');
+            const colonIdx = stripped.search(/[:=]/);
             if (colonIdx >= 0) {
                 const key = stripped.slice(0, colonIdx).trim().toLowerCase();
                 const val = stripped.slice(colonIdx + 1).trim();
@@ -1480,8 +1487,6 @@ export function parseNethackrc(rc) {
                         result[key] = val;
                     }
                 }
-                else if (key === 'fruit' && !negated && val)
-                    result.fruit = val; /* optfn_fruit -> svp.pl_fruit (options.c:1745) */
                 else if (key === 'playmode') {
                     // C options.c:3479-3504 optfn_playmode: aliases and
                     // case-insensitive prefixes select mutually exclusive modes.
@@ -1523,13 +1528,14 @@ export function parseNethackrc(rc) {
                 else if (key === 'roguesymset') {
                     /* options.c:3560 optfn_roguesymset: read_sym_file fails for a name
                      * dat/symbols does not define. */
-                    if (val && !SYMSET_LIST.some(e => e[0] === val)) {
+                    const entry = SYMSET_LIST.find(e => e[0].toLowerCase() === val.toLowerCase());
+                    if (val && !entry) {
                         config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
                         continue;
                     }
                     if (val && gs.symset && gs.symset[1]) {
                         gs.symset[1].name = val;
-                        gs.symset[1].handling = /^Rogue(Epyx|IBM|Windows)$/.test(val) ? 1 : 0;
+                        gs.symset[1].handling = entry ? entry[1] : 0;
                     }
                 }
                 /* C options.c:1815-1838 optfn_glyph do_set: mungspaces, then
@@ -3518,7 +3524,7 @@ function cond_enabled_arr() {
     return game._condEnabled;
 }
 
-function cond_enabled_count() { return cond_enabled_arr().filter(Boolean).length; }
+export function cond_enabled_count() { return cond_enabled_arr().filter(Boolean).length; }
 
 
 
@@ -3765,6 +3771,18 @@ export async function handler_petattr(preserveStatus = false) {
         /* go.opt_initial is never set when handlers run (rc parsing calls
          * optfn do_set, not do_handler), so the redraw is unconditional. */
         (game.go ||= {}).opt_need_redraw = true;
+        if (game.level) {
+            const attr = tmp === 7 ? 1 : tmp === 1 ? 2 : tmp === 4 ? 4 : 0;
+            for (let y = 0; y < 21; y++) {
+                for (let x = 1; x < 80; x++) {
+                    const loc = game.level.at(x, y);
+                    if (loc?.disp_mon_kind === 'pet') {
+                        loc.disp_attr = attr;
+                        if (loc.disp_flushed_cell) loc.disp_flushed_cell.attr = attr;
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -683,18 +683,6 @@ export async function done2(state = game) {
 // C keeps gd.done_seq alongside gh.hero_seq. done() refreshes it before the
 // debug-fuzzer branch and the HANGUPHANDLING query guard reads/increments it;
 // keep the same state owner so a hangup cannot accidentally ask for input.
-//
-// The optional caller hooks let a live window supply its own inventory
-// refresh; a no-op keeps this end-of-game mutation valid in the recorder TTY,
-// whose permanent inventory window is not active.
-function lifeSavingInventoryEnv(state, source = {}) {
-    const sourceHooks = source.hooks ?? {};
-    const hooks = {
-        ...sourceHooks,
-        updateInventory: sourceHooks.updateInventory ?? (() => {}),
-    };
-    return { ...source, state, hooks };
-}
 
 // When the player declines death in wizard or explore mode, done() calls
 // savelife() and returns normally. When the player accepts death or quits,
@@ -771,7 +759,7 @@ export async function done(how, state = game, source = {}) {
         // end.c:1082-1103. Keep discovery, the four messages, object
         // consumption, constitution adjustment, and savelife() in C order.
         await ttyPline('But wait...', state);
-        const lifeEnv = lifeSavingInventoryEnv(state, source);
+        const lifeEnv = { ...source, state };
         discover_object(
             AMULET_OF_LIFE_SAVING, true, true, true, state, lifeEnv,
         );
@@ -992,14 +980,9 @@ async function disclose(how, taken, state) {
 // done_object_cleanup(). Store the next link before useup() because consuming
 // the last item in a stack removes it from the inventory chain.
 function finishInUseInventory(state) {
-    // The recorder's TTY window hook is a no-op, but useup() still checks that
-    // an update hook exists while the permanent inventory option is enabled.
     // useup()'s obfree() stops the timers and light source of an item still
     // in use, such as a lit potion of oil whose quaff killed the hero.
-    const env = objectGenerationEnv({
-        state,
-        hooks: { updateInventory() {} },
-    });
+    const env = objectGenerationEnv({ state });
     for (let obj = state.invent; obj;) {
         const next = obj.nobj;
         if (obj.in_use)
@@ -1581,14 +1564,19 @@ async function really_done(how, state) {
     if (!disclosureStopprint(state))
         await displayTtyTextWindow(state, textLines);
 
-    // C ref: end.c:1579-1583 exit_nhwindows + topten. iflags.toptenwin
-    // defaults to false, so the windows close before topten() raw-prints.
-    // exit_nhwindows() clears the screen and, when an earlier raw print has
-    // already put the recorder in raw mode, ends that raw line; otherwise
-    // topten's first tty_raw_print() enters raw mode at the top left.
-    if (haveWindows && !state.iflags?.toptenwin)
+    // C ref: end.c:1579-1583 exit_nhwindows + topten. Without toptenwin
+    // the windows close before topten() raw-prints. exit_nhwindows() clears
+    // the screen and, when an earlier raw print has already put the recorder
+    // in raw mode, ends that raw line; otherwise topten's first
+    // tty_raw_print() enters raw mode at the top left. With toptenwin they
+    // close after topten() has shown its window.
+    let windowsUp = haveWindows;
+    if (windowsUp && !state.iflags?.toptenwin) {
         tty_exit_nhwindows(null, state);
-    toptenDisplay(how, endtime, state);
+        windowsUp = false;
+    }
+    await toptenDisplay(how, endtime, state);
+    if (windowsUp) tty_exit_nhwindows(null, state);
 
     // C ref: end.c:1589-1591.  raw_print() is deliberately after topten;
     // use the canonical TTY owner so these two newline records are visible

@@ -24,7 +24,6 @@ import { m_canseeu } from './dochug.js';
 import { PM_YELLOW_DRAGON } from './pm.generated.js';
 import { PM_HORSE, PM_PONY, PM_ROCK_MOLE, PM_WARHORSE, PM_WOODCHUCK } from './pm.generated.js'; // relocate-fns
 import { ALL_TRAPS, NO_TRAP } from './const.js'; // relocate-fns
-import { mon_knows_traps as mon_knows_traps_real } from './makemon.js'; // relocate-fns
 
 /* ---------------------------------------------------------------------------
  * MONSYM class ordinals (permonst.mlet) — C ref: nethack-c/include/defsym.h
@@ -454,6 +453,25 @@ export function get_atkdam_type(adtyp) {
         return rnd_breath_typ[rn2(rnd_breath_typ.length)];
     }
     return adtyp;
+}
+
+/* cvt_adtyp_to_mseenres — C ref: nethack-c-v5/upstream/src/mondata.c:1522-1536
+ * Convert attack damage type AD_foo to M_SEEN_bar. No RNG. */
+export function cvt_adtyp_to_mseenres(adtyp) {
+    const AD_MAGM = 1, AD_FIRE = 2, AD_COLD = 3, AD_SLEE = 4,
+        AD_DISN = 5, AD_ELEC = 6, AD_DRST = 7, AD_ACID = 8;
+    switch (adtyp) {
+    case AD_MAGM: return M_SEEN_MAGR;
+    case AD_FIRE: return M_SEEN_FIRE;
+    case AD_COLD: return M_SEEN_COLD;
+    case AD_SLEE: return M_SEEN_SLEEP;
+    case AD_DISN: return M_SEEN_DISINT;
+    case AD_ELEC: return M_SEEN_ELEC;
+    case AD_DRST: return M_SEEN_POISON;
+    case AD_ACID: return M_SEEN_ACID;
+    /* M_SEEN_REFL has no corresponding AD_foo type */
+    default: return M_SEEN_NOTHING;
+    }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1875,7 +1893,12 @@ export function monstunseesu(seenres) {
 
 /* C ref: mondata.c:1617 mon_knows_traps — has mtmp seen this trap type? */
 export function mon_knows_traps(mtmp, ttyp) {
-    return mon_knows_traps_real(mtmp, ttyp);
+    if (ttyp === ALL_TRAPS)
+        return !!(mtmp.mtrapseen);
+    else if (ttyp === NO_TRAP)
+        return !(mtmp.mtrapseen);
+    else
+        return (mtmp.mtrapseen & (1 << (ttyp - 1))) !== 0;
 }
 
 /* C ref: mondata.c:1628 mon_learns_traps */

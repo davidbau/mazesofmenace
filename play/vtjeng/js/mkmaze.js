@@ -68,7 +68,7 @@ import {
 } from './dungeon.js';
 import { migrate_to_level } from './dog.js';
 import { game } from './gstate.js';
-import { dist2, upstart } from './hacklib.js';
+import { dist2, push_front, upstart } from './hacklib.js';
 import { add_to_minv, stackobjRuntime } from './invent.js';
 import { set_malign } from './makemon.js';
 import { makemon } from './makemon_create.js';
@@ -126,6 +126,7 @@ import {
     t_at,
 } from './trap.js';
 import { ttyNorep, ttyPline } from './tty_message.js';
+import { impossible } from './pline.js';
 import {
     block_point,
     cansee,
@@ -391,7 +392,7 @@ export function mv_bubble(bubble, dx, dy, initial, state = game,
                 const occupying = m_at(contents.x, contents.y, state);
                 const oldx = state.u.ux;
                 const oldy = state.u.uy;
-                u_on_newpos(contents.x, contents.y, state);
+                await u_on_newpos(contents.x, contents.y, state);
                 newsym(oldx, oldy);
                 if (occupying)
                     await mnexto(occupying, RLOC_NOMSG, { state });
@@ -518,11 +519,11 @@ export async function movebubbles(state = game, random = rn2) {
                             list = object;
                             object = next;
                         }
-                        bubble.cons.unshift({ x, y, what: 'object', list });
+                        push_front(bubble.cons, { x, y, what: 'object', list });
                     }
                     const monster = m_at(x, y, state);
                     if (monster) {
-                        bubble.cons.unshift({ x, y, what: 'monster', list: monster });
+                        push_front(bubble.cons, { x, y, what: 'monster', list: monster });
                         if (monster.wormno) remove_worm(monster, { state });
                         else remove_monster(x, y, state);
                         newsym(x, y);
@@ -530,12 +531,12 @@ export async function movebubbles(state = game, random = rn2) {
                         monster.mstate = (monster.mstate ?? 0) | MON_BUBBLEMOVE;
                     }
                     if (!state.u.uswallow && state.u.ux === x && state.u.uy === y) {
-                        bubble.cons.unshift({ x, y, what: 'hero', list: null });
+                        push_front(bubble.cons, { x, y, what: 'hero', list: null });
                         state.hero_bubble = bubble;
                     }
                     const trap = t_at(x, y, state);
                     if (trap)
-                        bubble.cons.unshift({ x, y, what: 'trap', list: trap });
+                        push_front(bubble.cons, { x, y, what: 'trap', list: trap });
                     resetAirLocation(state.level.at(x, y), WATER);
                     block_point(x, y, state);
                 }
@@ -802,9 +803,11 @@ export async function place_lregion(
                 return;
 
     // C's impossible() prints "Couldn't place lregion type %d!" and returns,
-    // leaving the caller with whatever position it already had. Nothing in
-    // this port can continue sensibly from a hero who was never placed.
-    throw new Error(`Couldn't place lregion type ${rtype}!`);
+    // leaving the caller with whatever position it already had. A preflight
+    // pass has no effects, so it leaves that report to the live pass. A
+    // caller's message and urgentMessage options replace the tty output.
+    if (options.preflightOnly) return;
+    await impossible(`Couldn't place lregion type ${rtype}!`, state, options);
 }
 
 // C ref: mkmaze.c put_lregion_here(). Answers whether <x,y> took the placement;
@@ -882,7 +885,7 @@ async function put_lregion_here(
             }
             options.preflightPosition(x, y, placementState);
         } else {
-            u_on_newpos(x, y, state, options);
+            await u_on_newpos(x, y, state, options);
         }
         break;
     }

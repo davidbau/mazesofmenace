@@ -1,7 +1,7 @@
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency, obfree, delete_contents } from './shk.js';
 import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
 import { lookup_novel, mon_pmname } from './do_name.js';
-import { obj_pmname as obj_pmname_real } from './mhitm.js';
+import { obj_pmname } from './do_name.js';
 import { paniclog } from './files.js';
 import { panic } from './dog.js';
 import { impossible as naming_impossible } from './pline.js';
@@ -4111,10 +4111,6 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
     _xname_ptr = ptr;
     _xname_bpoff = PREFIX;
     return obufResult(ptr + PREFIX, nambuf);
-}
-
-function obj_pmname(otmp) {
-    return obj_pmname_real(otmp); // C do_name.c:1321-1360
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

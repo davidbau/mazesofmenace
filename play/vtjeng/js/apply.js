@@ -508,7 +508,6 @@ import {
     attach_egg_hatch_timeout,
     kill_egg,
     obj_has_timer,
-    obj_stop_timers,
     start_timer,
     stop_timer,
     spot_stop_timers,
@@ -1803,12 +1802,6 @@ async function use_tinning_kit(obj, state = game, env = {}) {
         state,
         hooks: {
             ...env.hooks,
-            stopObjectTimers: env.hooks?.stopObjectTimers
-                ?? ((target, hookEnv) => obj_stop_timers(
-                    target,
-                    hookEnv.state ?? state,
-                    hookEnv,
-                )),
             encumberMessage: env.hooks?.encumberMessage ?? encumber_msg,
         },
     };
@@ -3625,15 +3618,7 @@ export async function use_unicorn_horn(obj, state = game, env = {}) {
 // JavaScript slice. Keep them out of the generic default, which C reaches
 // only after every named case has failed to match.
 function figurineObjectEnv(state, env = {}) {
-    const hooks = { ...(env.hooks ?? {}) };
-    hooks.stopObjectTimers ??= (obj, hookEnv) => obj_stop_timers(
-        obj, hookEnv.state ?? state, hookEnv,
-    );
-    if (hooks.updateInventory === undefined
-        && typeof state.hooks?.updateInventory === 'function') {
-        hooks.updateInventory = state.hooks.updateInventory;
-    }
-    return { ...env, state, hooks };
+    return { ...env, state, hooks: { ...(env.hooks ?? {}) } };
 }
 
 // C ref: apply.c fig_transform() (2398-2508). This is timeout.c's object

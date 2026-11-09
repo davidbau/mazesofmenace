@@ -145,7 +145,8 @@ import { weight } from './weight.js';
 import { Monnam } from './mcastu.js';
 import { couldsee, cansee, recalc_block_point } from './vision.js';
 import { monkilled_trap, seetrap, mintrap, maketrap, fill_pit } from './trap.js';
-import { mon_learns_traps } from './mondata.js';
+import { mon_learns_traps, mon_knows_traps } from './mondata.js';
+export { mon_knows_traps };
 import { m_useup } from './mthrowu.js';
 import { extract_from_minvent } from './worn.js';
 import { place_monster, impossible } from './steed.js';
@@ -5780,14 +5781,6 @@ export function is_dprince(ptr) { return is_demon(ptr) && is_prince(ptr); }
 
 
 
-export function mon_knows_traps(mtmp, ttyp) {
-    if (ttyp === -1)        /* ALL_TRAPS */
-        return !!(mtmp.mtrapseen);
-    else if (ttyp === 0)    /* NO_TRAP */
-        return !(mtmp.mtrapseen);
-    else
-        return (mtmp.mtrapseen & (1 << (ttyp - 1))) !== 0;
-}
 /* C stairs.c:39-47
  *   stairway *
  *   stairway_at(coordxy x, coordxy y)

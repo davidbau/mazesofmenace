@@ -162,6 +162,7 @@ import {
     CORPSTAT_HISTORIC,
     CORPSTAT_MALE,
     CORPSTAT_NONE,
+    OBJ_FLOOR,
     ONAME,
     has_oname,
     u_at,
@@ -229,7 +230,7 @@ import {
     movobj,
 } from './hack.js';
 import { goodpos } from './teleport.js';
-import { ordin, sgn, upstart } from './hacklib.js';
+import { ordin, push_front, sgn, upstart } from './hacklib.js';
 import { livelog_printf, youFeel } from './pline.js';
 import { messageAt } from './startup_a11y.js';
 import {
@@ -996,7 +997,7 @@ export function maketrap(x, y, typ, rawEnv = {}) {
     resetTrap(trap, typ);
     const linkTrap = () => {
         if (!oldplace) {
-            state.level.traps.unshift(trap);
+            push_front(state.level.traps, trap);
         } else if (state.level?.flags?.sokoban_rules) {
             maybe_finish_sokoban(state);
         }
@@ -2526,7 +2527,7 @@ async function move_into_trap(ttmp, state = game) {
         /* move hero and update map */
         u.ux0 = u.ux;
         u.uy0 = u.uy;
-        u_on_newpos(x, y, state);
+        await u_on_newpos(x, y, state);
         u.umoved = true;
         newsym(u.ux0, u.uy0);
         vision_recalc(1, { state });
@@ -3661,14 +3662,11 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
             delete_contents(obj, { state });
 
             // Unpunish if ball or chain will be destroyed.
-            if (Punished(state)) {
-                const uchain = state.u.uchain;
-                const uball = state.u.uball;
-                if ((uchain && uchain.ox === ox && uchain.oy === oy)
-                    || (uball && uball.where === 1 /* OBJ_FLOOR */
-                        && uball.ox === ox && uball.oy === oy)) {
-                    unpunish(state);
-                }
+            if (Punished(state)
+                && ((state.uchain.ox === ox && state.uchain.oy === oy)
+                    || (state.uball.where === OBJ_FLOOR
+                        && state.uball.ox === ox && state.uball.oy === oy))) {
+                unpunish(state);
             }
 
             // Destroy everything at the spot.

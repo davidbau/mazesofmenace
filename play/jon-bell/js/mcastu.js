@@ -1,5 +1,6 @@
 import { pline_The, verbalize } from './pline.js';
-import { monstseesu, monstunseesu } from './mondata.js';
+import { monstseesu, monstunseesu, cvt_adtyp_to_mseenres } from './mondata.js';
+export { cvt_adtyp_to_mseenres };
 import { pline_mon } from './pline.js';
 import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
@@ -898,21 +899,6 @@ export function Monnam(mtmp) {
     return Monnam_real(mtmp);
 }
 
-// C ref: mondata.c cvt_adtyp_to_mseenres().
-export function cvt_adtyp_to_mseenres(adtyp) {
-    switch (adtyp) {
-    case AD_MAGM: return M_SEEN_MAGR;
-    case AD_FIRE: return M_SEEN_FIRE;
-    case AD_COLD: return M_SEEN_COLD;
-    case AD_SLEE: return M_SEEN_SLEEP;
-    case AD_DISN: return M_SEEN_DISINT;
-    case AD_ELEC: return M_SEEN_ELEC;
-    case AD_DRST: return M_SEEN_POISON;
-    case AD_ACID: return M_SEEN_ACID;
-    /* M_SEEN_REFL has no corresponding AD_foo type */
-    default: return M_SEEN_NOTHING;
-    }
-}
 // C ref: monst.h m_seenres() = (mon->seen_resistance & mask) != 0.
 function m_seenres(mtmp, mask) {
     // Algebraically 0 whenever mask is 0, regardless of seen_resistance —

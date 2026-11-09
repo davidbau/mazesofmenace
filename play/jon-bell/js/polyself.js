@@ -18,7 +18,7 @@ import { There, pline_The } from './pline.js';
 //   d(mlvl,8)            new-form maxHP    polyself.c:868
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { game } from './gstate.js';
-import { PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
+import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
 import { newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_result, _topl_joins_snapshot, canspotmon, canseemon, Unaware } from './display.js';
 import { pline, urgent_pline } from './pline.js';
@@ -2727,4 +2727,31 @@ export function skinback(val) {
     u.uarm = skin;
     u.uskin = null;
     skin.owornmask = (skin.owornmask | 0) & ~I_SPECIAL;
+}
+
+// C polyself.c:2159-2188 ugolemeffects(damtype, dam).  RNG-free.
+const AD_FIRE_UG = 2, AD_ELEC_UG = 6;
+export function ugolemeffects(damtype, dam) {
+    const u = game.u;
+    let heal = 0;
+    if ((u.umonnum | 0) !== PM_FLESH_GOLEM && (u.umonnum | 0) !== PM_IRON_GOLEM)
+        return;
+    switch (damtype) {
+    case AD_ELEC_UG:
+        if ((u.umonnum | 0) === PM_FLESH_GOLEM)
+            heal = Math.trunc(((dam | 0) + 5) / 6); /* Approx 1 per die */
+        break;
+    case AD_FIRE_UG:
+        if ((u.umonnum | 0) === PM_IRON_GOLEM)
+            heal = dam | 0;
+        break;
+    }
+    if (heal && (u.mh | 0) < (u.mhmax | 0)) {
+        u.mh = (u.mh | 0) + heal;
+        if (u.mh > u.mhmax)
+            u.mh = u.mhmax;
+        if (game.disp) game.disp.botl = 1;
+        pline('Strangely, you feel better than before.');
+        exercise(A_STR, true);
+    }
 }

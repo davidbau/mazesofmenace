@@ -914,7 +914,8 @@ export async function runSegment(input, prevGame = null) {
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty'); };
     nhGame._pendingDisplay = display;
-    for (const k of new TextEncoder().encode(input.moves || '')) {
+    for (const ch of (input.moves || '')) {
+        const k = ch.charCodeAt(0);
         display.pushKey(k === 0x0d ? 0x0a : k);
     }
     const quiet = (e) => {
