@@ -5697,15 +5697,11 @@ export function _hilite_status_wrap(row) {
         const gap = pad - 1 > 4 ? `\x1b[${pad - 1}C` : ' '.repeat(pad - 1);
         return `\x1b[${r.bold ? '1;' : ''}${r.col}m${t}${gap}\x1b[${r.bold ? 0 : 39}m `;
     });
-    for (const r of _hilite_rules()) {
-        if (r.beh !== 'cond') continue;
-        for (const n of r.names) {
-            const long = { hallu: 'Hallu', blind: 'Blind' }[n];
-            if (!long) continue;
-            row = row.replace(new RegExp(` ${long}(?= |$)`),
-                ` \x1b[${r.bold ? '1;' : ''}${r.col}m${long}\x1b[${r.bold ? '22;' : ''}39m`);
-        }
-    }
+    /* Conditions are not coloured here: wintty.c:5080-5083 condcolor()/
+     * condattr() combine every gc.cond_hilites[] slot (lowest colour index,
+     * union of attributes), which _status_condition_hilites() models on the
+     * plain row.  Pre-wrapping a condition with its first rule's colour hid
+     * it from that pass (Blind under blind/white&inverse + minor/yellow). */
     return row
         .replace(/^(.*?)(\x1b\[\d+C| *)(?= St:|St:)/, (m, t, pad) => (t && !hpbar ? w('title', 0, t + pad, rk(t)) : m))
         .replace(/\b(Lawful|Neutral|Chaotic)\b/, (m) => {
@@ -6794,7 +6790,9 @@ function _status_temp_hilites(row, cells) {
          * Fields first evaluated at a read boundary use the completed
          * paint's live count (the driver's eval can lag that read).
          * A stale row still carries its old highlight below. */
-        const hiliteMoves = botField ? (game.bl_hilite_moves | 0) : (game.moves | 0);
+        /* BL_XP is likewise evaluated at bot() (status_xp_bot_eval). */
+        const hiliteMoves = botField || fname === 'experience-level'
+            ? (game.bl_hilite_moves | 0) : (game.moves | 0);
         if (h.rule && h.time && !game.multi && h.time < hiliteMoves) {
             h.expired = { rule: h.rule, time: h.time };
             h.rule = null; h.time = 0; h.chg = true;
@@ -15401,6 +15399,25 @@ export function nomuxOverflowApply(state, screen) {
     const bytes = state || new Uint8Array(12);
     for (let k = NOMUX_OUT_SIZE; k <= raw.length && k < NOMUX_OUT_SIZE + 12; k++)
         bytes[k - NOMUX_OUT_SIZE] = k < raw.length ? raw.charCodeAt(k) & 0xff : 0;
+    return bytes;
+}
+
+export function nomuxRawEmitApply(state, str) {
+    if (!state) return state;
+    const view = new DataView(state.buffer, state.byteOffset, 12);
+    if (!view.getInt32(0, true)) return state;
+    let row = view.getInt32(4, true), col = view.getInt32(8, true);
+    const s = (str == null ? '' : String(str)) + '\n';
+    for (let i = 0; i < s.length; i++) {
+        const ch = s.charCodeAt(i) & 0xff;
+        if (ch === 10) { row++; col = 0; continue; }
+        if (ch < 32) continue;
+        col++;
+    }
+    const bytes = state.slice();
+    const out = new DataView(bytes.buffer);
+    out.setInt32(4, row, true);
+    out.setInt32(8, col, true);
     return bytes;
 }
 

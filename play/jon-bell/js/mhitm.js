@@ -38,7 +38,7 @@ import { bimanual as bimanual_mm } from './do_wear.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { attacktype_fordmg, permonstTemplate, hates_silver, dmgtype_fromattack, sliparm, monPmname, monflee, newmextra, ureflects, freemcorpsenm } from './makemon.js';
 import { which_armor } from './worn.js';
-import { monnear as monnear_real } from './makemon.js';
+import { monnear } from './mon.js';
 import { has_oname, ONAME, Upolyd, BOLT_LIM, ECMD_OK, ECMD_TIME, Is_astralevel, In_endgame, ismnum, MALE, FEMALE, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
 /* x_monnam article / suppression flags — C ref: nethack-c/include/hack.h:1015-1028 */
 ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
@@ -119,7 +119,8 @@ import { ROLE_PM_MNUM } from './roles.js';   /* C role.c roles[].mnum (the mons[
 /* x_monnam's priest/minion and hallucination branches — C ref: do_name.c:887-904,
  * 950-955.  priestname() is ported (js/priest.js:424); rndmonnam()/bogon_is_pname()
  * are not yet, and self-report if a hallucinating name is ever requested. */
-import { priestname, rndmonnam, bogon_is_pname, temple_occupied, has_shrine } from './priest.js';
+import { rndmonnam } from './do_name.js';
+import { priestname, bogon_is_pname, temple_occupied, has_shrine } from './priest.js';
 /* x_monnam's shopkeeper branch — C ref: do_name.c:919-936. */
 import { shkname, free_oname as free_oname_real, hot_pursuit } from './dokick.js';
 import { nomul } from './allmain.js';
@@ -367,9 +368,6 @@ export async function erode_armor(mdef, hurt) {
         }
         return;
     }
-}
-function monnear(mon, x, y) {
-    return monnear_real(mon, x, y); /* C mon.c:2476: NODIAG grid bugs. */
 }
 /* xname/cxname — C objnam.c:574 / :1920.  Both were private best-effort copies
  * here (xname returned "" outright; cxname returned the shuffled appearance

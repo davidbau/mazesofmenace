@@ -1749,15 +1749,6 @@ async function doname_mu(obj) {
     return await doname_body_mu(obj,
         (game.u?.uhandedness === RIGHT_HANDED_MU) ? 'right' : 'left');
 }
-/* C monmove.c monnear(mon, x, y) — adjacent or same square (mirrors the
- * identical body in js/mhitm.js:224, which is file-local there). */
-function monnear_mu(mon, x, y) {
-    const dx = Math.abs((mon.mx | 0) - (x | 0));
-    const dy = Math.abs((mon.my | 0) - (y | 0));
-    if (dx === 1 && dy === 1 && ((mon.mnum ?? mon.mndx ?? mon.data?.pmidx) | 0) === PM_GRID_BUG)
-        return false; /* NODIAG: PM_GRID_BUG */
-    return dx <= 1 && dy <= 1;
-}
 import { noit_Monnam as noit_Monnam_ds, noit_mon_nam as noit_mon_nam_ds } from './mhitm.js';
 import { resists_drli as resists_drli_ds } from './mondata.js';
 import { safe_qbuf as safe_qbuf_ds, money2mon as money2mon_ds } from './shk.js';
@@ -2082,7 +2073,7 @@ import { mon_reflects, ureflects } from './muse.js'; // relocate-fns
 import { Monnam, mon_nam } from './do_name.js'; // relocate-fns
 import { is_pit } from './const.js'; // relocate-fns
 import { t_at } from './trap.js'; // relocate-fns
-import { killed } from './mon.js'; // relocate-fns
+import { killed, monnear } from './mon.js'; // relocate-fns
 import { protects } from './artifact.js'; // relocate-fns
 export { je_Monnam }; // relocate-fns
 const AD_SITM_ = 21;      /* monattk.h:63 — steals item (nymphs) */
@@ -2200,7 +2191,7 @@ async function steal(mtmp, objnambuf) {
     if (objnambuf)
         objnambuf.s = '';
     /* C:352 — true if successful on the first of two attacks. */
-    if (!monnear_mu(mtmp, u.ux, u.uy))
+    if (!monnear(mtmp, u.ux, u.uy))
         return 0;
 
     /* C:361 — remember the name NOW: stealing a worn item can drop the hero

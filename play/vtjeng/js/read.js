@@ -64,7 +64,6 @@ import {
     NO_MM_FLAGS,
     ROWNO,
     ROOMOFFSET,
-    LS_OBJECT,
     thats_enough_tries,
     SPE_LIM,
     A_STR,
@@ -350,7 +349,7 @@ import {
     shieldeff, tmp_at,
 } from './display.js';
 import { dropCommandEnv, dropy, flooreffects, trycall } from './do.js';
-import { placebc, set_bc } from './ball.js';
+import { move_bc, placebc, set_bc } from './ball.js';
 import { y_n } from './cmd.js';
 import { sokoban_guilt } from './trap.js';
 import {
@@ -378,7 +377,7 @@ import {
     is_art,
 } from './artifacts.js';
 import {
-    arti_light_radius, del_light_source, obj_is_burning,
+    arti_light_radius, snuff_light_source,
 } from './light.js';
 import { digests, light_hits_gremlin } from './uhitm.js';
 import {
@@ -435,7 +434,8 @@ import {
 } from './read_text_data.js';
 import {
     Blind, Confusion, Deaf, ESee_invisible, Fire_resistance, HConfusion,
-    HSee_invisible, HStun, Hallucination, Invis, Maybe_Half_Phys, Unchanging,
+    HSee_invisible, HStun, Hallucination, Invis, Maybe_Half_Phys, Punished,
+    Unchanging,
 } from './youprop.js';
 
 // Retained for narrower effect-family branches that still fail closed. The
@@ -1984,8 +1984,7 @@ export async function seffect_identify(scroll, state = game) {
 
 // C ref: read.c set_lit() (2471-2488).  The callback keeps the permanent
 // terrain lighting in level.map and records gremlins for litroom()'s delayed
-// light damage.  Mobile object sources are removed by the same coordinate
-// check as light.c snuff_light_source().
+// light damage.
 function set_lit(x, y, lit, state, gremlins) {
     if (!isok(x, y)) return;
     const location = state.level?.at(x, y);
@@ -1998,22 +1997,7 @@ function set_lit(x, y, lit, state, gremlins) {
         return;
     }
     location.lit = false;
-    // C's snuff_light_source() only removes an object source and leaves
-    // artifact light alone.  Deleting through light.js preserves its list
-    // ownership and vision invalidation contract.
-    for (let source = state.gl?.light_base ?? null; source;) {
-        const next = source.next;
-        if (source.type === LS_OBJECT && source.x === x && source.y === y
-            && source.id && obj_is_burning(source.id)
-            && !artifact_light(source.id)) {
-            try {
-                del_light_source(source.type, source.id, state);
-            } catch {
-                // A stale source is already equivalent to C's absent source.
-            }
-        }
-        source = next;
-    }
+    snuff_light_source(x, y, state);
 }
 
 // C ref: read.c litroom() (2491-2634), for the light-scroll call.  The map
@@ -2086,6 +2070,12 @@ export async function litroom(on, object, state) {
     }
 
     if (noOp) return;
+    // Darkening while punished and able to see lifts the ball and chain so
+    // that the vision pass below forgets them if they are out of sight.
+    if (Punished(state) && !on && !Blind(state.u)) {
+        move_bc(1, 0, state.uball.ox, state.uball.oy,
+            state.uchain.ox, state.uchain.oy, state);
+    }
 
     if (Is_rogue_level(state.u?.uz, state)) {
         const roomNumber = (state.level.at(state.u.ux, state.u.uy)?.roomno ?? 0)
@@ -2117,6 +2107,11 @@ export async function litroom(on, object, state) {
             state,
             redraw: (x, y) => newsym(x, y),
         });
+        // Put the ball and chain back.
+        if (Punished(state) && !on) {
+            move_bc(0, 0, state.uball.ox, state.uball.oy,
+                state.uchain.ox, state.uchain.oy, state);
+        }
     }
     state.vision_full_recalc = 1;
 

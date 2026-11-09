@@ -3,6 +3,7 @@
 // C ref: rm.h struct rm, dungeon.h, you.h
 import { COLNO, ROWNO, STONE } from './const.js';
 import { NO_COLOR } from './terminal.js';
+import { registerStaticReset } from './statics.js';
 // C obj.h: scalar #define aliases in struct obj.  Store each value once,
 // while keeping the C field names at the call sites.  These accessors belong
 // to the prototype: struct copies and saves contain the real fields only.
@@ -25,9 +26,32 @@ for (const [alias, field] of Object.entries({
 // C newobj() followed by *obj = <initial value>.  This is a shallow struct
 // copy, not a copy of objects reached through its pointers (including oextra).
 // The caller supplies zero-initialization or an existing struct as C does.
-export const freed_obj_chunks = [];
+//
+// free()d struct obj chunks (112 bytes -> glibc's 0x80 bin) await reuse by the
+// at most 7 chunks (malloc.c TCACHE_FILL_COUNT, tcache_put/tcache_get, LIFO)
+// in front of a LIFO fastbin: _int_free sends a chunk to the fastbin once the
+// cache is full, and _int_malloc, taking a fastbin chunk, first stashes up to
+// 7 more fastbin chunks into the cache.  A freed chunk is therefore not always
+// the next one handed out.  Each segment is a new process with a fresh heap.
+const obj_tcache = [], obj_fastbin = [];
+registerStaticReset('game.js: freed struct obj chunks (fresh heap)', () => {
+    obj_tcache.length = obj_fastbin.length = 0;
+});
+export const freed_obj_chunks = {
+    push(chunk) {
+        (obj_tcache.length < 7 ? obj_tcache : obj_fastbin).push(chunk);
+    },
+    pop() {
+        if (obj_tcache.length || !obj_fastbin.length)
+            return obj_tcache.pop();
+        const chunk = obj_fastbin.pop();
+        while (obj_tcache.length < 7 && obj_fastbin.length)
+            obj_tcache.push(obj_fastbin.pop());
+        return chunk;
+    },
+};
 export function newobj(...fields) {
-    const chunk = freed_obj_chunks.pop(); /* malloc reuses the newest freed chunk */
+    const chunk = freed_obj_chunks.pop(); /* malloc reuses a freed chunk */
     const obj = Object.assign(Object.create(objProto), ...fields);
     if (chunk) chunk.occupant = obj;
     return obj;

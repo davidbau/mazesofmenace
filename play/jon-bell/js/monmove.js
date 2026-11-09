@@ -43,7 +43,7 @@ import { sobj_at } from './invent.js';
 import { u_on_newpos, Is_special } from './dungeon.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
 import { upstart } from './hacklib.js';
-import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear as monnear_real } from './mon.js';
+import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear } from './mon.js';
 import { is_pool as is_pool_mv2 } from './look.js';
 import { may_dig } from './hack.js';
 import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
@@ -249,11 +249,6 @@ const PM_GREMLIN = 40;
 /* C ref: pm.generated.js — for m_postmove_effect */
 const PM_HEZROU = 296;
 const PM_STEAM_VORTEX = 110;
-/* C ref: mon.c:2462-2469 monnear — is the (x,y) square adjacent to monster?
- * dist2(mon->mx, mon->my, x, y) < 3 (diagonal OK except PM_GRID_BUG). */
-function monnear(mon, x, y) {
-    return monnear_real(mon, x, y); /* C mon.c:2476, shared NODIAG test. */
-}
 /* C ref: monmove.c:451-457 flees_light macro — gremlin fleeing artifact light.
  * artifact_light() is the canonical light-property lookup; no RNG consumed. */
 function flees_light(mtmp) {

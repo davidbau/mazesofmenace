@@ -1,7 +1,16 @@
 // Bones-file creation and retrieval.
 // C ref: src/bones.c.
 
-import { rest_region_capacity } from './region.js';
+import { rest_ghostly_regions } from './region.js';
+// resetobjs()'s restoring arm.
+import { artifact_exists, exist_artifact } from './artifacts.js';
+import { ONAME, OBJ_CONTAINED, OBJ_FLOOR, ONAME_BONES, SHOPBASE } from './const.js';
+import { safe_oname } from './do_name.js';
+import { get_obj_location } from './light.js';
+import { FOOD_CLASS } from './objects.js';
+import { is_quest_artifact } from './questpgr.js';
+import { in_rooms } from './rooms.js';
+import { inside_shop, tended_shop } from './shk.js';
 import {
     BR_NO_END1,
     BR_NO_END2,
@@ -69,6 +78,7 @@ import {
     is_unicorn,
     is_undead,
     likes_gold, likes_gems, likes_objs, likes_magic, monsndx,
+    unique_corpstat,
 } from './mondata.js';
 import { m_at } from './monst.js';
 import {
@@ -94,6 +104,10 @@ import {
     place_object,
     weight,
     curse,
+    free_omonst,
+    is_mines_prize,
+    is_soko_prize,
+    set_corpsenm,
 } from './obj.js';
 import { end_burn, restore_timers, timer_is_local } from './timeout.js';
 import { block_point } from './vision.js';
@@ -101,7 +115,9 @@ import { place_wsegs } from './worm.js';
 import { deltrap } from './trap.js';
 import { rest_engravings, sanitize_engravings } from './engrave.js';
 import { decodeUtf8ByteString, encodeUtf8ByteString } from './hacklib.js';
-import { ghostfruit, reset_oattached_mids, rest_traps } from './restore.js';
+import {
+    ghostfruit, reset_oattached_mids, rest_stairs, rest_traps, restdamage,
+} from './restore.js';
 import {
     BOW,
     ELVEN_BOW,
@@ -112,7 +128,12 @@ import {
     EGG,
     MUMMY_WRAPPING,
     AMULET_OF_YENDOR,
+    BELL,
+    BELL_OF_OPENING,
     FAKE_AMULET_OF_YENDOR,
+    SCR_MAIL,
+    SPE_BLANK_PAPER,
+    SPE_BOOK_OF_THE_DEAD,
     SLIME_MOLD,
     SPE_NOVEL,
     STATUE,
@@ -128,6 +149,7 @@ import {
 import {
     MS_LEADER,
     MS_NEMESIS,
+    PM_DOPPELGANGER,
     PM_GHOST,
     PM_MEDUSA,
     PM_ORACLE,
@@ -136,9 +158,9 @@ import {
 } from './monsters.js';
 import { peace_minded, propagate, set_malign } from './makemon.js';
 import { coreRandom, rn2 } from './rng.js';
-import { unpunish } from './read.js';
+import { cant_revive, unpunish } from './read.js';
 import { fix_shop_damage } from './shk.js';
-import { vfsWriteFile, vfsReadFile, vfsDeleteFile } from './storage.js';
+import { delete_bonesfile, open_bonesfile, write_bonesfile } from './files_bones.js';
 import { roles, races, genders, aligns } from './roles.js';
 import { initrack } from './track.js';
 import { ttyPline } from './tty_message.js';
@@ -190,27 +212,9 @@ export function can_make_bones(state = game, rawEnv = {}) {
 
 // ── Bones file I/O ──
 //
-// C uses binary level files via open_bonesfile / create_bonesfile /
-// commit_bonesfile / delete_bonesfile / compress_bonesfile.
-// The JS port stores bones as a JSON snapshot in VFS storage, keyed by a
-// level identifier.
-
-function bonesFilePath(uz) {
-    // C ref: files.c set_bonesfile_name(). The bonesid encodes dungeon number
-    // and level: "D0.3" for main dungeon level 3, etc.
-    return `bones_D${uz.dnum}.${uz.dlevel}`;
-}
-
-function openBonesFile(uz) {
-    const path = bonesFilePath(uz);
-    const data = vfsReadFile(path);
-    return data != null ? { path, data } : null;
-}
-
-export function deleteBonesFile(uz) {
-    const path = bonesFilePath(uz);
-    return vfsDeleteFile(path);
-}
+// C reads and writes binary level files through files.c open_bonesfile(),
+// create_bonesfile(), commit_bonesfile() and delete_bonesfile(). The port
+// keeps a JSON snapshot under the name files.js set_bonesfile_name() gives.
 
 // ── Bones helper functions ──
 
@@ -294,18 +298,50 @@ function cloneBonesRooms(rooms) {
     } : room));
 }
 
-// C ref: bones.c resetobjs() (51-193), save path only (restore=false).
-// The restore=true path (bones.c:67-100) processes artifact migration,
-// gold-to-object conversion, and cancel-worn effects. Lines 702-706 call
-// resetobjs with restore=true, but those paths are no-ops here because the
-// restore logic is not ported.
-// Strips player knowledge and names from objects being saved as bones.
+// C ref: bones.c resetobjs() (51-193). Saving (restore=false) strips the
+// dead hero's knowledge and names from the objects. Restoring (bones.c
+// 65-100) does the artifact bookkeeping for the new game and marks partly
+// eaten food in a tended shop as not for sale.
 function resetobjs(ochain, restore, state) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
         if (otmp.cobj) resetobjs(otmp.cobj, restore, state);
         // in_use objects: C calls obj_extract_self and dealloc_obj. The port
         // skips extraction (no dealloc equivalent) and leaves them in place.
         // They should not appear in normal play at this point.
+
+        if (restore) {
+            // artifact bookkeeping needs to be done during restore; other
+            // fixups are done while saving
+            if (otmp.oartifact) {
+                if (exist_artifact(otmp.otyp, safe_oname(otmp), state)
+                    || is_quest_artifact(otmp, state)) {
+                    // prevent duplicate--revert to ordinary obj
+                    otmp.oartifact = 0;
+                    if (has_oname(otmp)) free_oname(otmp);
+                } else {
+                    artifact_exists(otmp, safe_oname(otmp), true,
+                        ONAME_BONES, state);
+                }
+            } else if (has_oname(otmp)) {
+                otmp.oextra.oname = sanitize_name(ONAME(otmp), state);
+            }
+            // 3.6.3: set no_charge for partly eaten food in shop; all other
+            // items become goods for sale if in a shop
+            if (otmp.oclass === FOOD_CLASS && otmp.oeaten) {
+                let top = otmp;
+                while (top.where === OBJ_CONTAINED) top = top.ocontainer;
+                const where = top.where === OBJ_FLOOR
+                    ? get_obj_location(top, 0, state) : null;
+                // in_rooms() gives C's string of room numbers as an array;
+                // its first element is C's *p. Can't use costly_spot()
+                // since its result depends upon the hero's location.
+                const rooms = where && inside_shop(where.x, where.y, state)
+                    ? in_rooms(where.x, where.y, SHOPBASE, state) : [];
+                otmp.no_charge = rooms[0]
+                    && tended_shop(mapseen_room(rooms[0] - ROOMOFFSET, state),
+                        state) ? 1 : 0;
+            }
+        }
 
         if (!restore) {
             // Saving path: strip player knowledge.
@@ -333,14 +369,62 @@ function resetobjs(ochain, restore, state) {
 
             if (otmp.otyp === SLIME_MOLD) {
                 goodfruit(otmp.spe, state);
+            } else if (otmp.otyp === SCR_MAIL) {
+                // bones.c:131-135 (MAIL_STRUCTURES). 0: delivered in-game
+                // by an external event; 1: from bones or wishing; 2:
+                // written with a marker.
+                if (otmp.spe === 0)
+                    otmp.spe = 1;
             } else if (otmp.otyp === EGG) {
                 otmp.spe = 0; // not "laid by you" in next game
             } else if (otmp.otyp === TIN) {
-                // make tins of unique monster's meat empty (simplified)
+                // Tins of a unique monster's meat become empty.
+                if (ismnum(otmp.corpsenm)
+                    && unique_corpstat(state.mons[otmp.corpsenm]))
+                    otmp.corpsenm = NON_PM;
+            } else if (otmp.otyp === CORPSE || otmp.otyp === STATUE) {
+                // bones.c:147-165. Discard the incarnation details of
+                // uniques, shopkeepers (revival false), temple priests and
+                // vault guards so that the corpse or statue cannot revive
+                // them; a unique's corpse turns into a doppelganger's now.
+                if (otmp.oextra?.omonst) {
+                    const revived = cant_revive(
+                        otmp.corpsenm, false, null, state,
+                    );
+                    if (revived.changed) {
+                        free_omonst(otmp);
+                        if (revived.mtype === PM_DOPPELGANGER
+                            && otmp.otyp === CORPSE)
+                            set_corpsenm(otmp, revived.mtype, { state });
+                    }
+                }
+            } else if (is_mines_prize(otmp, state)
+                       || is_soko_prize(otmp, state)) {
+                // Achievement tracking, in case the prize left its own
+                // (always no-bones) level.
+                otmp.nomerge = 0;
             } else if (otmp.otyp === AMULET_OF_YENDOR) {
                 // C ref: bones.c:170-174. A bones level never keeps the
                 // unique real Amulet; the replacement is cursed.
                 otmp.otyp = FAKE_AMULET_OF_YENDOR;
+                curse(otmp, { state });
+            } else if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
+                // bones.c:175-184. The Candelabrum becomes its candles,
+                // assumed used.
+                if (otmp.lamplit)
+                    end_burn(otmp, true, { state });
+                otmp.otyp = WAX_CANDLE;
+                otmp.age = 50;
+                if (otmp.spe > 0)
+                    otmp.quan = otmp.spe;
+                otmp.spe = 0;
+                otmp.owt = weight(otmp, { state });
+                curse(otmp, { state });
+            } else if (otmp.otyp === BELL_OF_OPENING) {
+                otmp.otyp = BELL;
+                curse(otmp, { state });
+            } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD) {
+                otmp.otyp = SPE_BLANK_PAPER;
                 curse(otmp, { state });
             }
         }
@@ -496,7 +580,7 @@ export async function savebones(how, when, corpse, state) {
     // C: clear_bypasses() -- bypass flags have no gameplay effect in the port.
 
     // Check for existing bones file
-    const existing = openBonesFile(state.u.uz);
+    const existing = open_bonesfile(state.u.uz, state);
     if (existing) {
         // C ref: bones.c:419-430. The prompt belongs to savebones(), after
         // it opens the current level's bones file. A declined replacement
@@ -505,7 +589,7 @@ export async function savebones(how, when, corpse, state) {
             if (await y_n(
                 'Bones file already exists.  Replace it?', state,
             ) === 'y') {
-                if (!deleteBonesFile(state.u.uz)) {
+                if (!delete_bonesfile(state.u.uz, state)) {
 
                     await ttyPline('Cannot unlink old bones.', state);
                     return;
@@ -691,7 +775,6 @@ export async function savebones(how, when, corpse, state) {
     // C writes binary data via store_version, Sfo_char, savefruitchn, savelev.
     // The port writes a JSON snapshot.
     const bonesData = serializeBonesLevel(state);
-    const path = bonesFilePath(state.u.uz);
     // Strip functions from the serialized output. The cloneObjChain and
     // cloneMon helpers above already break object-graph cycles (ocontainer,
     // ocarry, nmon); shared references (e.g. mons[] data entries) are
@@ -700,7 +783,17 @@ export async function savebones(how, when, corpse, state) {
         if (typeof val === 'function') return undefined;
         return val;
     };
-    vfsWriteFile(path, JSON.stringify(bonesData, safeReplacer));
+    write_bonesfile(state.u.uz, JSON.stringify(bonesData, safeReplacer), state);
+}
+
+// C ref: save.c save_stairs() and savetrapchn(): a destination level in the
+// hero's dungeon is saved as an offset from u.uz; restore.c rest_stairs()
+// and getlev() add the restoring game's u.uz.dlevel back. Other dungeons'
+// destinations, and an unset trap's dnum -1, stay absolute.
+function relative_dest(dest, state) {
+    return dest.dnum === state.u.uz.dnum
+        ? { ...dest, dlevel: dest.dlevel - state.u.uz.dlevel }
+        : { ...dest };
 }
 
 // Serialize the current level state into a JSON-safe object for bones
@@ -727,6 +820,10 @@ function serializeBonesLevel(state) {
     // C savelev() writes gs.stairs separately from the level terrain. Keep
     // the complete linked list because newgame() calls u_on_upstairs() after
     // getbones(), and that lookup reads gs.stairs rather than level.upstair.
+    // C ref: save.c save_stairs() (665-693): a destination in this dungeon
+    // is written relative to the level, so the stairs of a special level
+    // that another game places at a different depth still lead one level up
+    // or down.
     const stairs = [];
     for (let stair = state.stairs; stair; stair = stair.next) {
         stairs.push({
@@ -734,7 +831,7 @@ function serializeBonesLevel(state) {
             sy: stair.sy,
             up: stair.up,
             isladder: stair.isladder,
-            tolev: stair.tolev ? { ...stair.tolev } : null,
+            tolev: stair.tolev ? relative_dest(stair.tolev, state) : null,
             u_traversed: stair.u_traversed,
         });
     }
@@ -814,12 +911,15 @@ function serializeBonesLevel(state) {
         }
     }
 
-    // Strip functions from traps
+    // Strip functions from traps. C ref: save.c savetrapchn() (918-944)
+    // writes a hole's or trap door's destination in this dungeon relative to
+    // the level, as save_stairs() does.
     const traps = (level.traps ?? []).map((t) => {
         const tc = { ...t };
         for (const k of Object.keys(tc)) {
             if (typeof tc[k] === 'function') delete tc[k];
         }
+        if (tc.dst) tc.dst = relative_dest(tc.dst, state);
         return tc;
     });
 
@@ -1034,7 +1134,7 @@ export async function ghostly_getlev_monsters(state) {
 // handles the preliminary eligibility checks (discover, flags.bones, rn2(3),
 // no_bones_level) and the wizard-mode "Get bones?" prompt before calling.
 export async function getbones(state = game) {
-    const bonesFile = openBonesFile(state.u.uz);
+    const bonesFile = open_bonesfile(state.u.uz, state);
     if (!bonesFile) return false;
 
     // C: validate() check. The port does not version-check bones files; a
@@ -1105,8 +1205,9 @@ async function restoreBonesLevel(bonesData, state) {
         },
     };
     // C ref: restore.c getlev():1149-1163, reached through getbones(): the
-    // restored trap chain is the reverse of the one savebones() wrote.
-    rest_traps(level);
+    // restored trap chain is the reverse of the one savebones() wrote, and
+    // its destinations are relative to the level.
+    rest_traps(level, state.u.uz);
 
     // Rebuild object chains from flat arrays. Returns the head of a linked
     // list (via nobj). For each object, also links container contents (cobj)
@@ -1217,27 +1318,12 @@ async function restoreBonesLevel(bonesData, state) {
         }
     });
 
-    // C restore.c:rest_stairs() rebuilds gs.stairs before the caller places
-    // the hero. Rebuild the chain separately from level.upstair/dnstair;
-    // those coordinates describe terrain, while stairway_find_dir() needs
-    // the destination-bearing nodes.
-    let stairHead = null;
-    let stairTail = null;
-    for (const saved of bonesData.stairs ?? []) {
-        const stair = {
-            sx: saved.sx,
-            sy: saved.sy,
-            up: saved.up,
-            isladder: saved.isladder,
-            tolev: saved.tolev ? { ...saved.tolev } : null,
-            u_traversed: saved.u_traversed,
-            next: null,
-        };
-        if (stairTail) stairTail.next = stair;
-        else stairHead = stair;
-        stairTail = stair;
-    }
-    state.stairs = stairHead;
+    // C ref: restore.c getlev():1113 rest_stairs() rebuilds gs.stairs before
+    // the caller places the hero, separately from level.upstair/dnstair:
+    // those coordinates describe terrain, while stairway_find_dir() needs the
+    // destination-bearing nodes. Each saved stairway is pushed, so the list
+    // comes back reversed.
+    rest_stairs(bonesData.stairs ?? [], state, state.u.uz);
     // C ref: restore.c getlev():1114-1115 reads svu.updest and svd.dndest
     // right after the stairs. The Wizard's Tower levels keep their tower
     // boundary in dndest, which dungeon.c In_W_tower() requires.
@@ -1268,14 +1354,12 @@ async function restoreBonesLevel(bonesData, state) {
     // chains. save_engravings() writes head_engr in chain order and
     // rest_engravings() pushes each one it reads, so the restored chain is
     // reversed; it then strips leading spaces and stamps engr_time.
-    let engravings = null;
-    for (const saved of bonesData.engravings ?? [])
-        engravings = { ...saved, engr_txt: [...saved.engr_txt],
-            nxt_engr: engravings };
-    state.head_engr = engravings;
-    rest_engravings(state);
+    rest_engravings((bonesData.engravings ?? []).map((saved) =>
+        ({ ...saved, engr_txt: [...saved.engr_txt] })), state);
 
-    rest_region_capacity(level);
+    // C ref: restore.c getlev():1225 rest_regions() with `ghostly` set,
+    // once the monster chain has filled the id mapping table.
+    rest_ghostly_regions(level, idMap);
 
     // C restore.c getlev() (1177-1195), the placement half of its monster
     // loop: rest_rooms() cleared every room's resident pointer, so each
@@ -1316,17 +1400,8 @@ async function restoreBonesLevel(bonesData, state) {
     relink_light_sources(idMap, state);
 
     // C ref: restore.c restdamage() (153-179), which getlev() calls after
-    // its monster loop: each record read is pushed, so the list comes back
-    // reversed, and a bones file's times move to this game's clock.
-    level.damagelist = null;
-    for (const saved of bonesData.damage ?? []) {
-        level.damagelist = {
-            ...saved,
-            place: { ...saved.place },
-            when: saved.when + (state.moves - omoves),
-            next: level.damagelist,
-        };
-    }
+    // its monster loop.
+    restdamage(bonesData.damage ?? [], level, state.moves - omoves);
 
     // C restore.c rest_track() restores this after the level's other
     // level-local structures and before ghostly arrival.  initrack() first

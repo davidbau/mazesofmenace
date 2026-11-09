@@ -190,7 +190,7 @@ import { title_to_mon } from './botl.js';  /* C botl.c:366 — name_to_monplus's
 /* C mondata.c:1191 pronoun_gender() — mhe()'s body below. */
 import { pronoun_gender as pronoun_gender_mm } from './mondata.js';
 import { bcsign } from './mklev.js';
-import { mongone, healmon, newcham, get_iter_mons as get_iter_mons_real, monnear as monnear_real } from './mon.js';
+import { mongone, healmon, newcham, get_iter_mons as get_iter_mons_real, monnear } from './mon.js';
 import { mon_has_special } from './wizard.js';
 import { unblock_point } from './vision.js';
 import { dunlev } from './dungeon.js';
@@ -3268,10 +3268,7 @@ function haseyes(data) { return (data.mflags1 & M1_NOEYES) === 0; }
 function m_seenres(mtmp, mask) {
     return (mtmp.seen_resistance & mask) !== 0 ? 1 : 0;
 }
-/* monnear: monster near target coordinates (diagonal/orthogonal */ 
-export function monnear(mtmp, x, y) {
-    return monnear_real(mtmp, x, y); /* C mon.c:2476, shared NODIAG test. */
-}
+export { monnear }; /* single C-faithful body: mon.js (C mon.c:2476) */
 /* C include/mondata.h:215
  *   #define hates_light(ptr) ((ptr) == &mons[PM_GREMLIN])
  * The gremlin, and nothing else -- there is no mlet test and no undead clause.

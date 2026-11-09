@@ -27,6 +27,7 @@ import {
     ICE,
     LARGEST_INT,
     LOST_NONE,
+    LS_OBJECT,
     MAX_OIL_IN_FLASK,
     MIGR_TO_SPECIES,
     NOBJ_STATES,
@@ -129,6 +130,7 @@ import { book_cursed } from './spell.js';
 import { set_moreluck } from './attrib.js';
 import {
     arti_light_radius,
+    del_light_source,
     obj_adjust_light_radius,
     get_obj_location,
     obj_sheds_light,
@@ -465,6 +467,7 @@ export class UnsupportedObjectOperationError extends Error {
 //   isPermanentlyPoisoned(obj, env) -> boolean (default permapoisoned())
 //   stopObjectTimers(obj, env) -> must clear obj.timed and its timer queue
 //   deleteObjectLightSource(obj, env) -> removes the remaining light source
+//     (default light.c del_light_source())
 
 // Each alias reads and writes `this[source]`, so every object can share one
 // descriptor. A fresh getter and setter per object would give each object its
@@ -1140,14 +1143,13 @@ export function dealloc_obj(obj, env = {}) {
             throw new Error('stopObjectTimers must clear obj.timed');
     }
     // A burn timer can own and remove the light source, so recheck after all
-    // object timers have stopped, matching dealloc_obj()'s source order.
+    // object timers have stopped, matching dealloc_obj()'s source order. An
+    // untimed light (a magic lamp, or a lit artifact) reaches C's direct
+    // del_light_source() call here; the optional hook is a test seam.
     if (obj_sheds_light(obj)) {
-        const deleteLight = requiredHook(
-            normalized,
-            'deleteObjectLightSource',
-            obj,
-        );
-        deleteLight(obj, normalized);
+        if (typeof normalized.hooks.deleteObjectLightSource === 'function')
+            normalized.hooks.deleteObjectLightSource(obj, normalized);
+        else del_light_source(LS_OBJECT, obj, normalized.state);
         obj.lamplit = false;
     }
 
@@ -3590,18 +3592,26 @@ export function insane_obj_bits(obj, mon, state = game) {
     }
 }
 
+// C ref: obj.h is_mines_prize() and is_soko_prize(). The prize object's
+// o_id lives in svc.context.achieveo (this port's state.context.achieveo).
+// An unset id is zero. Every object mksobj() numbers has an o_id of at least
+// 1, so C never matches an unset id; the explicit test keeps an unnumbered
+// object (o_id 0) from matching here either.
+export function is_mines_prize(obj, state) {
+    const id = state.context?.achieveo?.mines_prize_oid ?? 0;
+    return id !== 0 && obj.o_id === id;
+}
+
+export function is_soko_prize(obj, state) {
+    const id = state.context?.achieveo?.soko_prize_oid ?? 0;
+    return id !== 0 && obj.o_id === id;
+}
+
 // C ref: mkobj.c nomerge_exception() (3280-3288). Returns true for objects
 // that use the nomerge flag persistently (special prize objects for
 // achievement tracking). Pure function.
 export function nomerge_exception(obj, state = game) {
-    // C: is_mines_prize(obj) || is_soko_prize(obj)
-    const tracking = state.context?.achieveo;
-    if (!tracking) return false;
-    if (tracking.mines_prize_oid && obj.o_id === tracking.mines_prize_oid)
-        return true;
-    if (tracking.soko_prize_oid && obj.o_id === tracking.soko_prize_oid)
-        return true;
-    return false;
+    return is_mines_prize(obj, state) || is_soko_prize(obj, state);
 }
 
 // C ref: mkobj.c insane_object() (3314-3346). Central diagnostic reporter

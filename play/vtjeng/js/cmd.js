@@ -226,7 +226,7 @@ import { initialExtcmdFlags, parseautocomplete } from './cmd_autocomplete.js';
 import {
     tty_get_ext_cmd,
 } from './getline.js';
-import { tty_yn_function } from './topl.js';
+import { tty_putmsghistory, tty_yn_function } from './topl.js';
 import { game } from './gstate.js';
 import { getnow } from './calendar.js';
 import { getpos, getpos_menu } from './getpos.js';
@@ -743,12 +743,18 @@ export function key2txt(c) {
     return visctrl(byte);
 }
 
-// C ref: cmd.c yn_menuable_resp(). JavaScript compares the five source
-// strings by value because it has no C pointer identity. An omitted
-// window_inited flag represents the initialized browser window; an explicit
-// false keeps the C pre-window behavior.
-function yn_menuable_resp(resp, state) {
-    return Boolean(state.iflags?.query_menu)
+// C ref: cmd.c yn_menuable_resp(). C compares `resp` with the five decl.c
+// arrays by pointer, so a caller that passes a string literal or a local copy
+// with the same characters is not menuable. JavaScript has no string
+// identity: it compares by value, and a caller whose C passes such a copy
+// says so with yn_function()'s `sharedResp: false`. In upstream C only
+// insight.c list_vanquished() (Strcpy(allow_yn, ynaqchars)) and
+// list_genocided() (the literal "ynaq") pass a copy equal to one of the five.
+// An omitted window_inited flag represents the initialized browser window; an
+// explicit false keeps the C pre-window behavior.
+function yn_menuable_resp(resp, state, sharedResp = true) {
+    return sharedResp
+        && Boolean(state.iflags?.query_menu)
         && state.iflags?.window_inited !== false
         && [ynchars, ynqchars, ynaqchars, rightleftchars, hidespinchars]
             .includes(resp);
@@ -773,8 +779,8 @@ function yn_func_menu_opt(win, key, text, def) {
 // C ref: cmd.c yn_function_menu(). Returns null when the response set cannot
 // use a menu, otherwise the selected response as a one-character string.
 // Escape and an empty selection return the C default response.
-async function yn_function_menu(query, resp, def, state = game) {
-    if (!yn_menuable_resp(resp, state)) return null;
+async function yn_function_menu(query, resp, def, state = game, sharedResp = true) {
+    if (!yn_menuable_resp(resp, state, sharedResp)) return null;
 
     const items = [];
     if (resp === rightleftchars) {
@@ -832,7 +838,11 @@ async function yn_function_menu(query, resp, def, state = game) {
 // include/flag.h enum debug_fuzzer_states: fuzzer_impossible_continue.
 const FUZZER_IMPOSSIBLE_CONTINUE = 2;
 
-export async function yn_function(query, resp, def, addcmdq, state = game) {
+// `sharedResp: false` marks a `resp` that C passes as a literal or local copy
+// rather than one of decl.c's shared arrays (see yn_menuable_resp()).
+export async function yn_function(
+    query, resp, def, addcmdq, state = game, { sharedResp = true } = {},
+) {
     state.iflags ??= {};
     // "most recent pline is clobbered". Nothing in the port reads last_msg
     // back yet; js/invent.js is its other writer.
@@ -870,7 +880,8 @@ export async function yn_function(query, resp, def, addcmdq, state = game) {
     if (!fromQueue && res === undefined) {
         // A queued CMDQ_USER_INPUT asks for a fresh answer through the same
         // menu-capable path as an ordinary prompt, after its marker is popped.
-        const menuResult = await yn_function_menu(query, resp, def, state);
+        const menuResult = await yn_function_menu(
+            query, resp, def, state, sharedResp);
         res = menuResult === null
             ? await tty_yn_function(query, resp, def, state)
             : menuResult;
@@ -1605,6 +1616,23 @@ export async function get_adjacent_loc(prompt, emsg, x, y, cc, state = game) {
     return 1;
 }
 
+// C ref: cmd.c reset_commands():3433-3436, which points gc.Cmd.dirchars at
+// sdir, sdir_swap_yz, ndir or ndir_phone_layout and gc.Cmd.alphadirchars at
+// sdir or its yz-swapped copy. The binding model holds the number_pad state
+// those choices read, so both strings are derived from it here rather than
+// stored beside it.
+export function cmd_dirchars(state = game) {
+    const model = commandBindings(state);
+    return !model.numPad
+        ? (model.swapYZ ? 'hzkulnjb><' : 'hykulnjb><')
+        : (model.phone ? '41236987><' : '47896321><');
+}
+
+export function cmd_alphadirchars(state = game) {
+    const model = commandBindings(state);
+    return model.numPad ? 'hykulnjb><' : cmd_dirchars(state);
+}
+
 // C ref: cmd.c getdir() (3958-4098). Returns 1 when u.dx/u.dy/u.dz name a
 // direction and 0 otherwise, exactly as C does.
 //
@@ -1624,8 +1652,7 @@ export async function getdir(s, state = game) {
         const index = queued.dz
             ? (queued.dz > 0 ? 8 : 9)
             : xytodir(queued.dx, queued.dy);
-        const directionChars = state.dirchars ?? 'hykulnjb><';
-        dirsym = directionChars.charCodeAt(index);
+        dirsym = cmd_dirchars(state).charCodeAt(index);
     } else if (queued?.typ === CMDQ_KEY) {
         dirsym = queued.key;
     } else if (queued) {
@@ -1832,9 +1859,8 @@ export async function get_count(
     const resultCount = countOut && typeof countOut === 'object'
         ? countOut.value ?? 0 : committedCount;
     if (historicmsg || (conditionalmsg && resultCount !== first)) {
-        const historyLine = `Count: ${resultCount} ${key2txt(key)}`;
-        state.messageHistory ??= [];
-        state.messageHistory.push(historyLine);
+        // C: putmsghistory(qbuf, FALSE), the tty port's message history.
+        tty_putmsghistory(`Count: ${resultCount} ${key2txt(key)}`, false, state);
     }
     return { key, count: resultCount };
 }
@@ -4338,11 +4364,6 @@ export function reset_commands(initial = false, state = game) {
         resetCommandBindingModel(model, numberPad, mode);
     }
     if (updated) state.serialno = (state.serialno ?? 0) + 1;
-    const direction = !model.numPad
-        ? (model.swapYZ ? 'hzkulnjb><' : 'hykulnjb><')
-        : (model.phone ? '41236987><' : '47896321><');
-    state.dirchars = direction;
-    state.alphadirchars = model.numPad ? 'hykulnjb><' : direction;
     update_rest_on_space(state);
     state.extcmd_char = cmd_from_func(doextcmd, state);
 }

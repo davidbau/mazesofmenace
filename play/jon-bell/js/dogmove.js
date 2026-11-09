@@ -17,7 +17,7 @@ import { quest_monster_died } from './quest.js';
 import { PM_MAIL_DAEMON } from './pm.generated.js';
 import { G_GENOD } from './const.js';
 import { touch_artifact_mon, kop_revival, record_death_achievement, add_to_minv as add_to_minv_real, obj_timer_checks } from './mklev.js';
-import { lifesaved_monster, m_consume_obj } from './mon.js';
+import { lifesaved_monster, m_consume_obj, monnear } from './mon.js';
 import { newobj } from './game.js';
 import { beg } from './sounds.js';
 import { is_pole as is_pole_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_dm } from './cmd.js';
@@ -2787,7 +2787,7 @@ export async function fightm(mtmp) {
             nmon = mtmp.nmon;
         /* C: ignore monsters that are already dead (DEADMONSTER). */
         if (mon !== mtmp && (mon.mhp | 0) > 0) {
-            if (monnear_fm(mtmp, mon.mx | 0, mon.my | 0)) {
+            if (monnear(mtmp, mon.mx | 0, mon.my | 0)) {
                 if (!(u && u.uswallow) && u && mtmp === u.ustuck) {
                     if (!rn2(4)) {
                         set_ustuck(null);
@@ -2823,15 +2823,6 @@ export async function fightm(mtmp) {
         }
     }
     return 0;
-}
-/* C monmove.c monnear(mon, x, y): dist2 < 3, with dist2 == 2 (a diagonal)
- * rejected for a NODIAG mover (grid bug).  Same predicate dog_move spells out
- * inline at its return-attack site. */
-function monnear_fm(mon, x, y) {
-    const distance = dist2(mon.mx | 0, mon.my | 0, x | 0, y | 0);
-    if (distance === 2 && ((mon.mnum ?? mon.mndx ?? -1) | 0) === PM_GRID_BUG_DG)
-        return false;
-    return distance < 3;
 }
 /* C monattk.h / permonst.h NORMAL_SPEED = 12. */
 const NORMAL_SPEED_FM = 12;
@@ -3071,7 +3062,7 @@ export async function mattackm(magr, mdef) {
 
         case AT_BREA:
         case AT_SPIT:
-            if (!monnear_dm(magr, mdef.mx, mdef.my)) {
+            if (!monnear(magr, mdef.mx, mdef.my)) {
                 let mmtmp = (mattk.aatyp === AT_BREA)
                     ? await breamm_mu(magr, mattk, mdef)
                     : await spitmm(magr, mattk, mdef);
@@ -3173,10 +3164,6 @@ function touch_petrifies_dm(data) {
 function hitval_dm(mwep, mdef) {
     const mndx = (mdef?.data?.pmidx ?? mdef?.mndx ?? mdef?.mnum ?? -1) | 0;
     return hitval(mwep, mdef, mndx);
-}
-
-function monnear_dm(magr, mx, my) {
-    return distmin(magr.mx, magr.my, mx, my) <= 1;
 }
 
 function engulfing_u_dm(magr) {
@@ -4250,7 +4237,7 @@ export async function dog_move(mtmp, after) {
                         && !onscary(mtmp.mx | 0, mtmp.my | 0, mtmp2)
                         /* C mon.c monnear(mon,x,y): dist2 < 3, with dist2 == 2
                          * (a diagonal) rejected for a grid bug (NODIAG). */
-                        && (monnear_dm(mtmp2, mtmp.mx | 0, mtmp.my | 0)
+                        && (monnear(mtmp2, mtmp.mx | 0, mtmp.my | 0)
                             && !(((mtmp2.mnum ?? mtmp2.mndx ?? -1) | 0) === PM_GRID_BUG_DG
                                  && dist2(mtmp2.mx | 0, mtmp2.my | 0,
                                           mtmp.mx | 0, mtmp.my | 0) === 2))) {

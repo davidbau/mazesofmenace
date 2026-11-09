@@ -51,7 +51,8 @@ function _hallucinating_dh() {
 function mon_offmap_dh(mtmp) {
     return !mtmp || (mtmp.mstate | 0) !== 0;
 }
-import { permonstTemplate, monnear } from './makemon.js';
+import { permonstTemplate } from './makemon.js';
+import { monnear } from './mon.js';
 import { resist_conflict } from './mondata.js';
 /* C monmove.c:744-750 flee-teleport + monmove.c:1153 leppie_stash. */
 import { findgold } from './makemon.js';

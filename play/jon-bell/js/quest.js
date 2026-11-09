@@ -5,7 +5,7 @@
 // WIRE_PENDING: port-gen-quest_stat_check-001
 
 import { game } from './gstate.js';
-import { monnear as monnear_real } from './makemon.js';
+import { monnear } from './mon.js';
 import { qt_pager, com_pager, quest_nemesis_death_text } from './questpgr.js';
 import { carrying, fully_identify_obj, verbalize } from './cmd.js';
 import { is_quest_artifact, the, xname } from './objnam.js';
@@ -95,9 +95,6 @@ export async function quest_monster_died(mon) {
         leaddead();
 }
 
-// C mon.c:2461 monnear — use the canonical predicate, including the
-// grid-bug diagonal exception.
-function monnear(mon, x, y) { return monnear_real(mon, x, y); }
 
 // C monst.h:249 helpless(mon) — msleeping || !mcanmove
 function _helpless(mtmp) {

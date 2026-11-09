@@ -196,7 +196,7 @@ import { bare_artifactname, ansimpleoname } from './objnam.js';
 import { Monnam, monstseesu, monstunseesu, cvt_adtyp_to_mseenres, death_inflicted_by } from './mcastu.js';
 import { burn_away_slime } from './timeout.js';
 import { s_suffix, ugolemeffects } from './mhitm.js';
-import { rndmonnam } from './priest.js';
+import { rndmonnam } from './do_name.js';
 import { end_burn, fall_asleep } from './timeout.js';
 import { monPmname, nonlivingMon } from './makemon.js';
 import { mon_set_minvis } from './worn.js';

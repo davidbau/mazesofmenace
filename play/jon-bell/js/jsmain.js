@@ -17,7 +17,7 @@ import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colo
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
-import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, nomuxOverflowApply, nomuxOverflowCursor } from './display.js';
+import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, nomuxOverflowApply, nomuxOverflowCursor, nomuxRawEmitApply } from './display.js';
 import { pline } from './pline.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rng.js';
@@ -430,6 +430,7 @@ export class NethackGame {
     }
     _installCaptureHook() {
         const nhGame = this;
+        game._nomuxRawEmitHook = (s) => { nhGame._nomuxSpill = nomuxRawEmitApply(nhGame._nomuxSpill, s); };
         game._preNhgetchHook = async () => {
             const keyIdx = nhGame._nhgetchCount++;
             // Keep diagnostics tied to the exact input boundary that produced

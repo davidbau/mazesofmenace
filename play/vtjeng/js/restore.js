@@ -67,6 +67,7 @@ import {
     time_from_yyyymmddhhmmss,
 } from './calendar.js';
 import { rest_engravings } from './engrave.js';
+import { restore_light_sources } from './light.js';
 import { add_worn_property } from './worn.js';
 import { coreRandom, rnd } from './rng.js';
 import {
@@ -142,32 +143,79 @@ export async function restore_menu(_bannerwin = null, state = game) {
     return choice < 0 ? -1 : 0;
 }
 
+// The readers getlev() calls for most of a level's lists link each record
+// they read onto the front of the live list: the trap loop (restore.c
+// 1149-1163), rest_stairs() through stairway_add(), restore_light_sources()
+// (light.c 478-495), rest_engravings() (engrave.c 1584-1619), restdamage()
+// (restore.c 153-179) and load_exclusions() (dungeon.c 2616-2634). Each
+// saver wrote its list head first, so every one of these lists comes back in
+// reverse, ahead of anything already on it. Every port of those readers
+// hands its saved records to this function, in the order the saver wrote
+// them, and links each one with `push`; scripts/restore-pushed-lists.test.mjs
+// fails when a restore path sets one of these lists without its reader.
+// `saved` is an array, or a chain linked through its `link` field; the chain
+// is listed before `push` relinks any record.
+export function rest_push_each(saved, push, link = 'next') {
+    const records = [];
+    if (Array.isArray(saved)) records.push(...saved);
+    else for (let record = saved; record; record = record[link]) records.push(record);
+    for (const record of records) push(record);
+}
+
 // C ref: restore.c rest_stairs(). Frees the current list, then adds each
 // saved stairway in the order save_stairs() wrote it, head first. Because
 // stairway_add() pushes onto the head, the restored list is in reverse order,
 // as in C. stairway_add() clears u_traversed, so the saved value is copied
-// back afterwards. The snapshot keeps tolev absolute, so C's conversion from
-// a relative dlevel has no counterpart.
-function rest_stairs(saved, state) {
+// back afterwards. C saves a same-dungeon tolev relative to the level
+// (save.c save_stairs()). The port's own level snapshots keep it absolute;
+// a bones snapshot keeps it relative, and its reader passes `relativeTo`,
+// the restoring game's u.uz, for C's conversion back to absolute.
+export function rest_stairs(saved, state, relativeTo = null) {
     stairway_free_all(state);
-    for (let stway = saved; stway; stway = stway.next) {
+    rest_push_each(saved, (stway) => {
         stairway_add(stway.sx, stway.sy, stway.up, stway.isladder,
-            stway.tolev);
+            absolute_dest(stway.tolev, relativeTo));
         const newst = stairway_at(stway.sx, stway.sy, state);
         if (newst) newst.u_traversed = stway.u_traversed;
-    }
+    });
 }
 
 // C ref: restore.c getlev() 1149-1163. getlev() reads each trap that
 // savetrapchn() wrote, head first, and pushes it onto the front of
 // gf.ftrap, so the restored chain is the reverse of the one savelev()
 // wrote. level.traps holds the gf.ftrap chain head first (trap.js
-// maketrap() unshifts), so a restore reverses it in place. #wizwhere's
-// portal report and every other gf.ftrap walk read this order. The
-// snapshot keeps trap->dst absolute, so C's relative-to-absolute
-// conversion has no counterpart.
-export function rest_traps(level) {
-    level?.traps?.reverse();
+// maketrap() unshifts). #wizwhere's portal report and every other gf.ftrap
+// walk read this order. C saves a same-dungeon trap->dst relative to the
+// level (save.c savetrapchn()); as for rest_stairs(), only a bones snapshot
+// keeps it relative and passes `relativeTo`.
+export function rest_traps(level, relativeTo = null) {
+    if (!level?.traps) return;
+    const saved = level.traps;
+    level.traps = [];
+    rest_push_each(saved, (trap) => {
+        if (trap.dst) trap.dst = absolute_dest(trap.dst, relativeTo);
+        level.traps.unshift(trap);
+    });
+}
+
+// C ref: restore.c rest_stairs() (972-976) and getlev() (1154-1158): a
+// destination in the restoring hero's dungeon is relative; add u.uz.dlevel.
+function absolute_dest(dest, relativeTo) {
+    if (!dest || !relativeTo || dest.dnum !== relativeTo.dnum) return dest;
+    return { ...dest, dlevel: dest.dlevel + relativeTo.dlevel };
+}
+
+// C ref: restore.c restdamage() (153-179). Each pending shop repair read is
+// pushed onto svl.level.damagelist, so the list comes back in the reverse of
+// the order savedamage() wrote it. A bones file's times move to this game's
+// clock: `adjust` is svm.moves - svo.omoves for a bones file and 0 otherwise.
+export function restdamage(saved, level, adjust = 0) {
+    level.damagelist = null;
+    rest_push_each(saved, (dam) => {
+        dam.when += adjust;
+        dam.next = level.damagelist;
+        level.damagelist = dam;
+    });
 }
 
 // The worn-slot table mirrors js/worn.js WORN_SLOTS so that restore can
@@ -280,14 +328,24 @@ export async function dorestore(state = game) {
     // C restore.c:restgamestate restores global timers and lights before the
     // inventory chains. parseSnapshot() has already reconnected their object
     // arguments to the same saved inventory objects.
-    if (Object.hasOwn(snapshot, 'timer_base')) {
-        state.gt ??= {};
-        state.gt.timer_base = snapshot.timer_base;
-    }
-    if (Object.hasOwn(snapshot, 'light_base')) {
-        state.gl ??= {};
-        state.gl.light_base = snapshot.light_base;
-    }
+    // C ref: restore.c restgamestate():654 restore_timers(RANGE_GLOBAL)
+    // inserts each global timer into the queue, then dorecover()'s last
+    // getlev():1144 inserts the hero's level's. insert_timer() puts a timer
+    // ahead of any with the same timeout, so timers that tie come back in
+    // reverse, and the hero level's ahead of global ones they tie with.
+    state.gt ??= {};
+    state.gt.timer_base = null;
+    restore_timers(snapshot.timers ?? [], state);
+    restore_timers(snapshot.level_timers ?? [], state);
+    // C ref: restore.c restgamestate():655 restore_light_sources() pushes
+    // the global sources, then dorecover()'s last getlev():1145 pushes the
+    // hero's level's in front of them, so each group comes back reversed.
+    // (The hero's level's sources that dorecover()'s first getlev() read
+    // were freed again by restlevelfile().)
+    state.gl ??= {};
+    state.gl.light_base = null;
+    restore_light_sources(snapshot.lights, state);
+    restore_light_sources(snapshot.level_lights, state);
 
     // Inventory and objects
     // C ref: restore.c restgamestate():657 gi.invent = restobjchn(nhfp, FALSE).
@@ -299,11 +357,9 @@ export async function dorestore(state = game) {
         state);
     state.gm.migrating_mons = restmonchn(snapshot.migrating_mons ?? null,
         state);
-    if (snapshot.head_engr != null) {
-        state.head_engr = snapshot.head_engr;
-        // restore.c getlev():1174 rest_engravings() for the hero's level.
-        rest_engravings(state);
-    }
+    // C ref: restore.c getlev():1174 rest_engravings(), which dorecover()
+    // reaches for the hero's level.
+    rest_engravings(snapshot.head_engr ?? null, state);
 
     // C has a static artifact catalog; JS rebuilds its per-game catalog
     // before restore.c's artifact tracking fixups and setuwep call.
@@ -501,6 +557,9 @@ export async function dorestore(state = game) {
         }
         await restore_cham(mtmp, state);
     }
+
+    // C ref: restore.c getlev():1224 restdamage(), after the monster loop.
+    restdamage(state.level.damagelist ?? null, state.level);
 
     // C ref: restore.c getlev():1226 rest_bubbles(), after the hero's
     // level's monsters and regions, rebuilds the Plane of Water's or Air's
@@ -854,9 +913,8 @@ export async function getlev(ledger, state = game) {
     // reverses the stairway list, which makemon_rnd_goodpos()'s stair
     // fallback walks in order.
     rest_stairs(snapshot.stairs, state);
-    state.head_engr = snapshot.head_engr;
-    // restore.c getlev():1174 rest_engravings().
-    rest_engravings(state);
+    // C ref: restore.c getlev():1174 rest_engravings().
+    rest_engravings(snapshot.head_engr, state);
     if (snapshot.smeq) state.smeq = snapshot.smeq;
     state.updest = snapshot.updest ?? {};
     state.dndest = snapshot.dndest ?? {};
@@ -884,18 +942,9 @@ export async function getlev(ledger, state = game) {
     // chains now.
     if (snapshot.timers?.length) restore_timers(snapshot.timers, state);
 
-    if (snapshot.lights?.length) {
-        // Prepend the saved level-local lights to the current light chain.
-        const lightHead = snapshot.lights[0];
-        let lightTail = lightHead;
-        for (let i = 1; i < snapshot.lights.length; i++) {
-            lightTail.next = snapshot.lights[i];
-            lightTail = snapshot.lights[i];
-        }
-        state.gl ??= {};
-        lightTail.next = state.gl.light_base ?? null;
-        state.gl.light_base = lightHead;
-    }
+    // C ref: restore.c getlev():1145 restore_light_sources() pushes each
+    // saved source in front of the global ones.
+    restore_light_sources(snapshot.lights, state);
 
     // ── Monster catch-up ──
     //
@@ -952,6 +1001,9 @@ export async function getlev(ledger, state = game) {
             hide_monst(mtmp, state);
         }
     }
+
+    // C ref: restore.c getlev():1224 restdamage(), after the monster loop.
+    restdamage(state.level.damagelist ?? null, state.level);
 
     // C ref: restore.c getlev():1225 rest_regions(), after restdamage() and
     // before rest_bubbles(). savelev() wrote the region timestamp from the

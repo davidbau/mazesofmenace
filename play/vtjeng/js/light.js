@@ -37,12 +37,14 @@ import { displayTtyMenuTextWindow } from './tty_menu.js';
 import {
     CANDELABRUM_OF_INVOCATION,
     GOLD_DRAGON_SCALE_MAIL,
+    MAGIC_LAMP,
     TALLOW_CANDLE,
     WAX_CANDLE,
 } from './objects.js';
 // js/timeout.js imports this file; both sides use the other's exports only
 // inside function bodies, so the cycle resolves.
 import { end_burn, obj_is_local } from './timeout.js';
+import { rest_push_each } from './restore.js';
 
 export class UnsupportedLightOperationError extends Error {
     constructor(operation) {
@@ -63,6 +65,24 @@ export function light_globals_init(state = game) {
 // C ref: light.c any_light_source().
 export function any_light_source(state = game) {
     return Boolean(state.gl?.light_base);
+}
+
+// C ref: light.c snuff_light_source() (728-760). Extinguishes the first
+// burning object source whose recorded position is (x,y), leaving artifact
+// light (Sunsword) alone. end_burn() unlinks that source, so C returns at
+// once rather than following the stale next pointer.
+export function snuff_light_source(x, y, state) {
+    for (let ls = lightGlobals(state).light_base; ls; ls = ls.next) {
+        if (ls.type === LS_OBJECT && ls.x === x && ls.y === y) {
+            const obj = ls.id;
+            if (obj_is_burning(obj)) {
+                if (artifact_light(obj))
+                    continue;
+                end_burn(obj, obj.otyp !== MAGIC_LAMP, { state });
+                return;
+            }
+        }
+    }
 }
 
 // C ref: light.c obj_is_burning(). Only lit, fuel-burning sources and artifact
@@ -313,7 +333,15 @@ const LSF_NEEDS_FIXUP = 0x2;
 // write_ls() would write for each source of the given range. Camera flashes,
 // which have no object, never exist in the port (see save_light_sources()).
 export function maybe_write_ls(range, state = game) {
-    const records = [];
+    return light_sources_in_range(range, state).map(write_ls);
+}
+
+// The sources maybe_write_ls() (570-601) writes for `range`, in chain order,
+// as live sources rather than records: a whole-game save keeps them in the
+// snapshot as they are, the hero's level's from savelev_core() and the rest
+// from savegamestate().
+export function light_sources_in_range(range, state = game) {
+    const sources = [];
     for (let ls = lightGlobals(state).light_base; ls; ls = ls.next) {
         let isGlobal;
         if (ls.type === LS_OBJECT)
@@ -322,9 +350,9 @@ export function maybe_write_ls(range, state = game) {
             isGlobal = !(ls.id.mx > 0);
         else
             throw new Error(`maybe_write_ls: bad type ${ls.type}`);
-        if (isGlobal !== (range === RANGE_LEVEL)) records.push(write_ls(ls));
+        if (isGlobal !== (range === RANGE_LEVEL)) sources.push(ls);
     }
-    return records;
+    return sources;
 }
 
 // C ref: light.c write_ls() (633-703). The object or monster pointer is
@@ -348,9 +376,10 @@ function write_ls(ls) {
 // order, ahead of the sources already in the chain.
 export function restore_light_sources(records, state = game) {
     const globals = lightGlobals(state);
-    for (const record of records ?? []) {
-        globals.light_base = { ...record, next: globals.light_base };
-    }
+    rest_push_each(records ?? [], (ls) => {
+        ls.next = globals.light_base;
+        globals.light_base = ls;
+    });
 }
 
 // C ref: light.c relink_light_sources() (516-567), its ghostly arm: each

@@ -2296,7 +2296,9 @@ function _stat_shk_your(obj) {
     return shk_your('', obj); /* shk.c:5862 */
 }
 async function _stat_delobj(obj) {
-    await delobj_core(obj);
+    /* C trap.c:890 animate_statue calls delobj(statue) (invent.c:1430), i.e.
+     * delobj_core(obj, FALSE): route through the single real port. */
+    await delobj(obj);
     if ((obj.where | 0) === OBJ_DELETED_T) {
         const store = game.__bridge__ || (game.__bridge__ = {});
         const key = 'objs_deleted.count';

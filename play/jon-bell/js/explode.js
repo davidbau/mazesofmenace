@@ -16,7 +16,7 @@ import { Resists_Elem, resists_magm } from './mondata.js';
 import { You_hear, impossible, pline, pline_The } from './pline.js';
 import { PM_HEALER, PM_KNIGHT, PM_MONK } from './pm.generated.js';
 import { rehumanize as rehumanize_real } from './polyself.js';
-import { rndmonnam } from './priest.js';
+import { rndmonnam } from './do_name.js';
 import { d } from './rng.js';
 import { pay_for_damage } from './shk.js';
 import { end_burn } from './timeout.js';

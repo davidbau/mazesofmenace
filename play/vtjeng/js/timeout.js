@@ -2134,6 +2134,19 @@ export function timer_is_local(timer, state) {
     }
 }
 
+// C ref: timeout.c maybe_write_timer() (2626-2651) with write_it TRUE. The
+// port writes no file, so the timers of `range` are returned in queue order
+// as they are: a whole-game save keeps the hero's level's from
+// savelev_core() and the rest from savegamestate() in its snapshot.
+export function maybe_write_timer(range, state = game) {
+    timerGlobals(state);
+    const timers = [];
+    for (let curr = state.gt.timer_base; curr; curr = curr.next)
+        if ((range === RANGE_LEVEL) === timer_is_local(curr, state))
+            timers.push(curr);
+    return timers;
+}
+
 // C ref: timeout.c save_timers(), its release_data() half alone. The port
 // writes no level file, so the surviving obligation is that a level's timers
 // leave the queue with the level; a rotting corpse left on D:1 must not still
@@ -2515,7 +2528,10 @@ export function begin_burn(obj, alreadyLit = false, env = {}) {
 
     const age = Math.trunc(obj.age ?? 0);
     if (age === 0 && !isMagicLamp && !isArtifactLight) return;
-    if (age < 0)
+    // Only fuel is checked. A magic lamp's age is its creation turn, which
+    // restore.c getlev() shifts by the bones clock difference and can leave
+    // negative; begin_burn() never reads it.
+    if (age < 0 && !isMagicLamp && !isArtifactLight)
         throw new RangeError(`begin_burn: invalid candle age ${obj.age}`);
 
     let turns = 0;

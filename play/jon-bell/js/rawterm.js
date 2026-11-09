@@ -70,6 +70,7 @@ export function raw_print(str) {
     if (st.row >= 0 && st.row < RAWTERM_ROWS)
         st.rows[st.row] = s;
     st.row++;
+    if (game._nomuxRawEmitHook) game._nomuxRawEmitHook(s);
     _publish();
 }
 

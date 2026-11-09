@@ -608,6 +608,8 @@ import {
     Dragon_scales_to_pm,
     Is_dragon_mail,
     Is_dragon_scales,
+    is_mines_prize,
+    is_soko_prize,
 } from './obj.js';
 import { objectGenerationEnv } from './object_generation.js';
 import {
@@ -1673,7 +1675,7 @@ export async function meatobj(mtmp, rawEnv = {}) {
     let obj = state.level?.objects?.[mtmp.mx]?.[mtmp.my] ?? null;
     while (obj) {
         const nextObj = obj.nexthere;
-        if (isMinesPrize(obj, state) || isSokoPrize(obj, state)) {
+        if (is_mines_prize(obj, state) || is_soko_prize(obj, state)) {
             obj = nextObj;
             continue;
         }
@@ -1751,8 +1753,9 @@ export async function meatobj(mtmp, rawEnv = {}) {
         obj = nextObj;
     }
     if (engulfed && state.flags?.verbose) {
+        // C prints the engulf line with pline1(), which has no location.
         if (cansee(mtmp.mx, mtmp.my, state) && messageText)
-            await monsterMessage(messageText, mtmp, state, rawEnv);
+            await monsterMessage(messageText, null, state, rawEnv);
         else {
             const heard = youHear(
                 `${engulfed === 1 ? 'a' : 'several'} slurping sound${engulfed === 1 ? '' : 's'}.`,
@@ -1891,14 +1894,6 @@ export function mpickgold(mtmp, rawEnv = {}) {
 
 function isOrganic(obj, state) {
     return (state.objects?.[obj.otyp]?.oc_material ?? 0) <= WOOD;
-}
-
-function isMinesPrize(obj, state) {
-    return obj.o_id === (state.svc?.context?.achieveo?.mines_prize_oid ?? -1);
-}
-
-function isSokoPrize(obj, state) {
-    return obj.o_id === (state.svc?.context?.achieveo?.soko_prize_oid ?? -1);
 }
 
 async function monsterMessage(text, monster, state, env) {
@@ -2550,21 +2545,6 @@ function distressRandom(env = {}) {
 
 
 
-
-function distressSpeciesName(monster) {
-    const names = monster.data?.pmnames ?? [];
-    return names[monster.female ? 1 : 0] ?? names[2] ?? 'monster';
-}
-
-function distressMonnam(monster) {
-    const assigned = monster.mextra?.mgivenname;
-    if (assigned) {
-        const text = String(assigned);
-        return text ? text[0].toUpperCase() + text.slice(1) : text;
-    }
-    const article = monster.mtame ? 'Your' : 'The';
-    return `${article} ${distressSpeciesName(monster)}`;
-}
 
 function normalizedDistressEnv(rawEnv = {}) {
     const state = rawEnv.state ?? game;
@@ -3622,7 +3602,7 @@ async function announceNewWere(monster, target, normalized) {
     if (normalized.canSeeMonster(monster, normalized)
         && !Hallucination(normalized.state.u)) {
         await normalized.message(
-            `${distressMonnam(monster)} changes into a ${newWereTargetName(target)}.`,
+            `${Monnam(monster, normalized.state, normalized)} changes into a ${newWereTargetName(target)}.`,
             normalized.state,
             normalized,
         );

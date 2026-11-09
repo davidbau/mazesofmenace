@@ -37,21 +37,22 @@
 // while the cycle remains.
 import { yn_function } from './cmd.js';
 import {
-    BUFSZ, ECMD_OK, FULL_MOON, LFILE_EXISTS, RANGE_LEVEL, VISITED,
+    BUFSZ, ECMD_OK, FULL_MOON, LFILE_EXISTS, RANGE_GLOBAL, RANGE_LEVEL, VISITED,
 } from './const.js';
 import { game } from './gstate.js';
 import { done_object_cleanup, nh_terminate } from './end.js';
 import { nomul } from './hack.js';
-import { save_light_sources } from './light.js';
+import { light_sources_in_range, save_light_sources } from './light.js';
 import { dmonsfree } from './makemon_create.js';
 import { change_luck } from './moveloop_preamble.js';
 import {
     free_exclusions, ledger_no, level_info, maxledgerno, save_exclusions,
 } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
-import { save_timers } from './timeout.js';
+import { maybe_write_timer, save_timers } from './timeout.js';
 import { initrack } from './track.js';
-import { vfsWriteFile } from './storage.js';
+import { vfsReadFile, vfsWriteFile } from './storage.js';
+import { docrt } from './display.js';
 import { clearTtyMessageWindow, displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
 import { tty_exit_nhwindows } from './wintty.js';
 import { save_waterlevel } from './mkmaze.js';
@@ -358,10 +359,11 @@ export async function dosave(state = game) {
             // C ref: save.c:65 nh_terminate(EXIT_SUCCESS), which captures
             // the farewell screen and does not return.
             await nh_terminate(state);
+        } else {
+            // C ref: save.c:66-67. dosave0() returns 0 when the player
+            // declines to overwrite an old save file; the game goes on.
+            await docrt();
         }
-        // C's else arm calls docrt() for a failed save. dosave0() below
-        // always succeeds in the JS port (VFS writes do not fail in the
-        // contest harness), so this arm is unreachable.
     }
     return ECMD_OK;
 }
@@ -388,6 +390,25 @@ export async function dosave0(state = game) {
     // engulfer, so the saved level holds them as floor objects.
     await done_object_cleanup(state);
 
+    // C ref: save.c:100-101. program_state.something_worth_saving is always
+    // set in the port, and gs.SAVEF is the fixed SAVE_FILE_PATH.
+
+    // C ref: save.c:111-124. An old save file exists when a debug or explore
+    // mode restore kept it (unixmain.c:266-273 restores its permissions);
+    // otherwise dorecover() or the keep-save question deleted it. Declining
+    // to overwrite leaves the old file in place and saves nothing.
+    // nh_uncompress(), nh_sfconvert() and nh_compress() have no VFS
+    // counterpart.
+    if (vfsReadFile(SAVE_FILE_PATH) != null) {
+        clearTtyMessageWindow(state);
+        // pline.c There() adds only the prefix "There ".
+        await ttyPline('There seems to be an old save file.', state);
+        if ((await yn_function('Overwrite the old file?', 'yn', 'n', true,
+            state)) === 'n') {
+            return 0;
+        }
+    }
+
     // C ref: save.c:142-145. Undo date-dependent luck adjustments made at
     // startup time in moveloop_preamble(). The session exercises the
     // Friday-13th path: change_luck(-1) was applied at startup, so
@@ -407,6 +428,17 @@ export async function dosave0(state = game) {
     // only the VISITED mark (savelev_core():493-494) reaches state that
     // savegamestate() then saves, through save_dungeon()'s level_info.
     level_info(ledger_no(state.u.uz, state), state).flags |= VISITED;
+
+    // C ref: save.c:168 savelev() writes fmon through savemonchn(), and
+    // savegamestate():307 writes gm.migrating_mons the same way. Both
+    // writes reset every priest's temple-entry counters
+    // (priest.c forget_temple_entry()), so a restored game gives a fresh
+    // intone and entry message on the next temple entry. The rest of those
+    // savemonchn() calls has no counterpart in the snapshot below.
+    for (const chain of [state.level?.monlist, state.gm?.migrating_mons]) {
+        for (let mtmp = chain; mtmp; mtmp = mtmp.nmon)
+            if (mtmp.ispriest) forget_temple_entry(mtmp);
+    }
 
     // C ref: save.c:168-169 savelev() + savegamestate(). The port serializes
     // the game state as a JSON snapshot to VFS storage. The binary format
@@ -580,8 +612,14 @@ function serializeGameState(state) {
         // C savegamestate() writes global timers and light sources before the
         // inventory chains. Keep timer/light object arguments aliased to those
         // saved objects so callbacks such as end_burn() find their source.
-        timer_base: state.gt?.timer_base,
-        light_base: state.gl?.light_base,
+        // C ref: save.c savelev_core():539-540 save_timers(RANGE_LEVEL) and
+        // save_light_sources(RANGE_LEVEL) write the hero's level's timers and
+        // light sources, in chain order, and savegamestate():296-297 write
+        // the rest with RANGE_GLOBAL.
+        level_timers: maybe_write_timer(RANGE_LEVEL, state),
+        timers: maybe_write_timer(RANGE_GLOBAL, state),
+        level_lights: light_sources_in_range(RANGE_LEVEL, state),
+        lights: light_sources_in_range(RANGE_GLOBAL, state),
         // C ref: save.c savegamestate():316 Sfo_q_score(&svq.quest_status).
         quest_status: state.svq.quest_status,
         // Hero identity and timing

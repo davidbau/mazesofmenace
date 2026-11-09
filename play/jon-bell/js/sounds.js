@@ -470,7 +470,7 @@ export async function dotalk() {
                 // rndmonnam(null) for hallucination, else "statue"
                 let name;
                 if (Hallucination) {
-                    try { name = (await import('./priest.js')).rndmonnam(null); }
+                    try { name = (await import('./do_name.js')).rndmonnam(null); }
                     catch(e) { name = "monster"; }
                 } else {
                     name = "statue";

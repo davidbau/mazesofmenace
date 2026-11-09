@@ -8892,6 +8892,9 @@ export async function doprev_message(liveTopline) {
      * second the one before, then the whole window (maxcol back at maxrow). */
     let _comboWindow = false;
     if (_pmw === 'c' && history.length) {
+        /* topl.c:189 remember_topl() resets cw->maxcol = cw->maxrow even for a
+         * SUPPRESS_HISTORY line (wintty.c:2294), which adds nothing to this
+         * port's history; input.js marks that reset by nulling _prevmsg_next. */
         if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {
             g._prevmsg_combo = 0;
             g._prevmsg_history_length = history.length;
