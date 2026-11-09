@@ -324,7 +324,7 @@ footer a { color: var(--color-text-muted); }
                 <th class="rank">#</th>
                 <th class="team">Team</th>
                 <th class="actions" colspan="2"></th>
-                <th class="pts">Points <span class="pts-max">/ <span id="lb-pts-total">22,670</span></span></th>
+                <th class="pts" title="Screens that do not yet match C (public + held-out). Lower is better; 0 means every screen matches.">Unmatched <span class="pts-max">/ <span id="lb-pts-total">22,670</span></span></th>
                 <th class="pct">PRNG</th>
                 <th class="pct">Screen</th>
                 <th class="pct">Sessions <span class="pts-max">/ <span id="lb-sess-total">100</span></span></th>
@@ -342,9 +342,10 @@ footer a { color: var(--color-text-muted); }
         codebases are mostly produced by generating code with an LLM
         and <strong>Transpiled</strong> codebases rely mostly on
         transpiling the C sources with tools.
-        <strong>Points</strong> shown as <em>public + held-out</em>:
-        matched 80&times;24 screens, one point per recorded step where
-        the fork&rsquo;s render matches C exactly. The 100 sessions
+        <strong>Unmatched</strong> shown as <em>public + held-out</em>:
+        the 80&times;24 screens, one per recorded step, where the
+        fork&rsquo;s render does not yet match C exactly. Lower is
+        better; a fork that matches everything shows 0. The 100 sessions
         split 44 public and 56 held-out; the held-out set is kept
         private until contest end. <strong>PRNG</strong> is shown as
         advisory progress &mdash; it&rsquo;s the structural prerequisite
@@ -544,9 +545,9 @@ footer a { color: var(--color-text-muted); }
                 <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                 <td class="action">${playCell}</td>
                 <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                <td class="pts" title="Total points: ${pctFloor(combinedPct, 2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
-                    <span class="pts-pub">${fmt(pubPoints)} +</span>
-                    <span class="${PCT_CLASS(heldMaxPoints > 0 ? heldPoints / heldMaxPoints * 100 : 0)}">${fmt(heldPoints)}</span>
+                <td class="pts" title="${fmt(totalMaxPoints - totalPoints)} of ${fmt(totalMaxPoints)} screens unmatched; ${pctFloor(combinedPct, 2)}% matched (public + held-out).">
+                    <span class="pts-pub">${fmt(pubMaxPoints - pubPoints)} +</span>
+                    <span class="${PCT_CLASS(heldMaxPoints > 0 ? heldPoints / heldMaxPoints * 100 : 0)}">${fmt(heldMaxPoints - heldPoints)}</span>
                 </td>
                 <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${PCT_CLASS(rngPct)}">${pctFloor(rngPct, 1)}%</span></td>
                 <td class="pct" title="Screen match across public + held-out sessions."><span class="${PCT_CLASS(scrPct)}">${pctFloor(scrPct, 1)}%</span></td>
