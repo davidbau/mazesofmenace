@@ -668,6 +668,15 @@ export function olfaction(mdat) {
         return false;
     return true;
 }
+export function sliparm(ptr) {
+    /* C mondata.h:57 is_whirly(ptr) = mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL]. */
+    const is_whirly = (ptr.mlet === S_VORTEX || ptr.pmidx === PM_AIR_ELEMENTAL);
+    /* noncorporeal() is this module's own helper (mondata.h:31 —
+     * ptr->mlet == S_GHOST, NOT an M1_UNSOLID test; that is C's separate
+     * unsolid(), mondata.h:63).  A local copy of it used to live here and
+     * shadow it. */
+    return is_whirly || ptr.msize <= MZ_SMALL || noncorporeal(ptr);
+}
 function is_were(ptr) { return (ptr.mflags2 & M2_WERE) !== 0; }
 export function is_demon(ptr) { return (ptr.mflags2 & M2_DEMON) !== 0; }
 function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
@@ -2818,9 +2827,8 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
                     weapon = rn2(2) ? _QUARTERSTAFF : _ATHAME;
                 /* if (rn2(2)) { armor = rn2(2)?BLACK_DSM:SILVER_DSM; cloak = CMR; } */
                 if (rn2(2)) {
-                    /* v5 objects.h: BLACK_DRAGON_SCALE_MAIL = 107 (shimmering is
-                     * #if 0, so 108 is BLUE), SILVER_DRAGON_SCALE_MAIL = 103 */
-                    armor = rn2(2) ? 107 : 103;
+                    /* BLACK_DRAGON_SCALE_MAIL = 108, SILVER_DRAGON_SCALE_MAIL = 103 */
+                    armor = rn2(2) ? 108 : 103;
                     cloak = _CLOAK_OF_MAGIC_RESISTANCE;
                 }
                 /* if (rn2(4)) helm = HELM_OF_BRILLIANCE */
@@ -5916,7 +5924,6 @@ export { CORPSE }; // relocate-fns
 export { create_mplayers } from './mplayer.js'; // relocate-fns
 export { _PM_ARCHEOLOGIST, _PM_WIZARD }; // relocate-fns
 export { pmname } from './do_name.js'; // relocate-fns
-export { sliparm } from './mondata.js'; // C mondata.c:632
 export { canSaddleMndx, monsndx }; // relocate-fns
 export { noteleport_level } from './teleport.js'; // relocate-fns
 export { M2_LORD }; // relocate-fns

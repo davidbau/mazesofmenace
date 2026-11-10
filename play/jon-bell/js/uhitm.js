@@ -159,7 +159,7 @@ import { getObjName } from './o_init.js';
 import { shade_miss, mon_nam_too, x_monnam, xm_has_mgivenname as has_mgivenname } from './mhitm.js';
 import { mon_hates_blessings, mon_hates_silver } from './mondata.js';
 import { some_mon_nam, l_monnam, a_monnam } from './mhitm.js';
-import { sleep_monst, slept_monst } from './mhitm.js';
+import { sleep_monst } from './mhitm.js';
 import { Resists_Elem, resists_blnd, can_blnd } from './mondata.js';
 import { y_monnam, helpless } from './mhitm.js';
 import { locomotion } from './mondata.js';
@@ -214,7 +214,7 @@ import { flooreffects, set_wounded_legs } from './do.js';
 /* C wield.c:543 yname(obj) -- "your <xname>" / "the <xname>"; the one body
  * lives in js/do_wear.js.  do_attack's gu.unweapon line needs it. */
 import { yname, You, is_shield, bimanual, is_flimsy, some_armor } from './do_wear.js';
-import { monstone, mon_to_stone, vamp_stone, obj_resists, dmgtype, engulf_target, mhitm_knockback } from './dogmove.js';
+import { monstone, mon_to_stone, vamp_stone, obj_resists, dmgtype, slept_monst, engulf_target, mhitm_knockback } from './dogmove.js';
 import { destroy_items as destroy_items_zap,
          destroy_items_mon as destroy_items_mon_zap } from './zap.js';
 import { poly_when_stoned } from './mondata.js';
@@ -713,7 +713,10 @@ function arti_attacks(adtyp, otmp) {
         return false;
     return (ARTI_SPEC[artidx].adtyp | 0) === (adtyp | 0);
 }
-import { spec_ability } from './artifact.js';
+import { spec_ability as spec_ability_real } from './attrib.js';
+function spec_ability(otmp, abil) {
+    return spec_ability_real(otmp, abil);
+}
 /* C artifact.h:22,24 */
 const SPFX_DRLI_UH   = 0x00000100;
 const SPFX_BEHEAD_UH = 0x00000400;

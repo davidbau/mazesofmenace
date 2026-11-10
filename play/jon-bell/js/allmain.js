@@ -186,7 +186,7 @@ import { which_armor } from './worn.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
-import { get_configfile, config_error_secure } from './cfgfiles.js';
+import { get_configfile } from './cfgfiles.js';
 import { dobjsfree, clear_splitobjs } from './mklev.js';
 import { see_nearby_monsters } from './mon.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
@@ -229,31 +229,14 @@ export async function report_config_errors() {
     const nerrs = cfgerrs ? cfgerrs.filter(m => typeof m === 'string').length : 0;
     if (nerrs) {
         const n = nerrs;
-        const secure = config_error_secure();
-        let shown_line = -1;
-        for (let i = 0; i < cfgerrs.length; i++) {
-            const msg = cfgerrs[i];
+        for (const msg of cfgerrs) {
             if (typeof msg !== 'string') { raw_print(msg.pline); continue; }
-            const punct = '.!?'.includes(msg.slice(-1)) ? '' : '.';
-            if (secure) {
-                raw_print(`Error: ${msg}${punct}`);
-                continue;
-            }
-            /* non-secure frame: the offending line once per line, then
-             * " * Line N: msg." (cfgfiles.c:1578-1588) */
-            const ctx = g._config_error_ctx?.[i] ?? { line_num: 0, origline: '' };
-            if (ctx.line_num !== shown_line) {
-                raw_print('');
-                raw_print(ctx.origline);
-                shown_line = ctx.line_num;
-            }
-            raw_print(` * ${ctx.line_num > 0 ? `Line ${ctx.line_num}: ` : ''}${msg}${punct}`);
+            raw_print(`Error: ${msg}${'.!?'.includes(msg.slice(-1)) ? '' : '.'}`);
         }
         raw_print('');
         raw_print(`${n} error${n === 1 ? '' : 's'} in ${get_configfile()}.`);
         raw_print('');
         g._config_errors = [];
-        g._config_error_ctx = [];
         /* The recorded tty cursor never leaves where the raw_print() report
          * parked it: every step of a game that opened with a config-error
          * report records that one position. */
@@ -3571,7 +3554,6 @@ async function moveloop_core_faithful() {
     // before the next invocation advances monsters or an occupation.
     if (g.vision_full_recalc)
         vision_recalc(0);
-    run_tport_botl(); // C allmain.c:547-555
     // ===================== go.occupation DRIVER — DIG (faithful) =====================
     // C allmain.c:558: end-turn callbacks follow command and vision effects,
     // before the next invocation's occupation/world block.

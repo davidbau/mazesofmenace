@@ -1,5 +1,5 @@
 import { forget_engravings, sanitize_engravings } from './engrave.js';
-import { obj_attach_mid, curse as curse_obj, free_omid } from './mkobj.js';
+import { obj_attach_mid, curse as curse_obj } from './mkobj.js';
 import { weight } from './weight.js';
 // bones.c — the bones subsystem: savebones() writes the level a hero died on,
 // getbones() reads it back into the NEXT game on the same level.
@@ -70,7 +70,6 @@ import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
 import { clear_bypasses } from './worn.js';
 import { hhmmss, yyyymmdd } from './calendar.js';
-import { age_is_relative } from './timeout.js';
 import { permonstTemplate } from './makemon.js';
 import { safe_oname } from './do_name.js';
 
@@ -684,38 +683,21 @@ async function getbones_load(f) {
          * getlev() must see the snapshot through the normal store, which is where
          * the bones file's copy is installed first. */
         const { propagate } = await import('./makemon.js');
-        const idmap = new Map(); /* C restore.c:1314 add_id_mapping */
         for (let m = f.snap.fmon; m; m = m.nmon) {
-            const nid = next_ident_bones();
-            idmap.set(m.m_id, nid);
-            m.m_id = nid;
+            m.m_id = next_ident_bones();
             // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
             if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
                 m.mhpmax = DEFUNCT_MONSTER;
-            renumber_objchn(m.minvent, f.snap.fruits, f.snap.omoves, idmap);
+            renumber_objchn(m.minvent, f.snap.fruits);
         }
-        renumber_objchn(f.snap.fobj, f.snap.fruits, f.snap.omoves, idmap);
-        renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits, f.snap.omoves, idmap);
-        renumber_objchn(f.snap.billobjs, f.snap.fruits, f.snap.omoves, idmap);
+        renumber_objchn(f.snap.fobj, f.snap.fruits);
+        renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits);
+        renumber_objchn(f.snap.billobjs, f.snap.fruits);
 
         const ledger = ledger_no(u.uz);
         (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
         const { getlev } = await import('./restore.js');
         await getlev(ledger);
-        /* C restore.c:1301,1510-1528 reset_oattached_mids(ghostly). */
-        for (let otmp = g.fobj; otmp; otmp = otmp.nobj) {
-            if (has_omonst(otmp)) {
-                const mtmp = otmp.oextra.omonst;
-                mtmp.m_id = 0;
-                mtmp.mpeaceful = mtmp.mtame = 0; /* pet's owner died! */
-            }
-            if (otmp.oextra?.omid) {
-                if (idmap.has(otmp.oextra.omid))
-                    otmp.oextra.omid = idmap.get(otmp.oextra.omid);
-                else
-                    free_omid(otmp);
-            }
-        }
 
         /* C bones.c:714-731 — sanitize names, purge defunct monsters, repair shops. */
         const { mongone } = await import('./mklev.js');
@@ -811,22 +793,16 @@ function next_ident_bones() {
 /* C restore.c:238-300 restobjchn()'s ghostly arm, applied to a chain this port
  * swapped in rather than read: one next_ident() per object, container contents
  * included (C recurses into otmp->cobj at :270 AFTER the parent's renumber). */
-function renumber_objchn(ochain, fruits, omoves, idmap, frozen = false) {
+function renumber_objchn(ochain, fruits) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
-        const nid = next_ident_bones();
-        idmap.set(otmp.o_id, nid);
-        otmp.o_id = nid;
+        otmp.o_id = next_ident_bones();
         if (otmp.otyp === 285 /* SLIME_MOLD; restore.c:260,500 ghostfruit */) {
             const fruit = fruits?.find(f => f.fid === otmp.spe);
             if (fruit) otmp.spe = fruitadd(fruit.fname, null, false);
             else impossible_sync('no old fruit?');
         }
-        /* C restore.c:266-267 — age shifted from the old hero's clock. */
-        if (!frozen && !age_is_relative(otmp))
-            otmp.age = (game.moves | 0) - (omoves | 0) + (otmp.age | 0);
         if (otmp.cobj)
-            renumber_objchn(otmp.cobj, fruits, omoves, idmap,
-                            otmp.otyp === 216 /* ICE_BOX; restore.c:273 Is_IceBox */);
+            renumber_objchn(otmp.cobj, fruits);
     }
 }
 

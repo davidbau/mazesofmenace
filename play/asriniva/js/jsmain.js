@@ -189,7 +189,7 @@ export class NethackGame {
 // getRngLog() / getCursors() / getAnimationFramesByStep() cover ONLY
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
-export async function runSegment(input) {
+export async function runJsSegment(input) {
     const { seed, nethackrc, storage } = input;
     const moves = input.moves || '';
 
@@ -219,3 +219,6 @@ export async function runSegment(input) {
     return nhGame;
 }
 
+
+// The scoring contract stays unchanged; the engine now runs in wasm64.
+export { runWasmSegment as runSegment } from "./wasm-adapter.js";

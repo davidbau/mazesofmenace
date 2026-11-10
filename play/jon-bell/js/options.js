@@ -28,7 +28,7 @@ import { config_error_add } from './cfgfiles.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { sym_val_real, apply_pending_s_utf8 } from './symbols.js';
-import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
+import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
 import { add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './windows.js';
@@ -471,16 +471,13 @@ function* rc_fgets_lines(rc) {
 function* rc_logical_lines(rc) {
     const errors = () => (game._config_errors || []).filter(m => typeof m === 'string').length;
     const initialErrors = errors();
-    const secure = config_error_secure();
-    let chosen = null, current = null, buf = null, line_num = 0;
-    try {
+    let chosen = null, current = null, buf = null;
     for (let line of rc_fgets_lines(rc)) {
-        if (secure && errors() > initialErrors) return; // config_error_nextline(), secure rc
+        if (errors() > initialErrors) return; // config_error_nextline(), secure rc
         const more = line.endsWith('\\');
         if (more) line = line.slice(0, -1);
         line = line.replace(/[ \t\r]+$/, '');
         if (game.config_error_data && !config_error_nextline(line)) return;
-        game._rc_errctx = { line_num: ++line_num, origline: line.slice(0, 1023) };
         const ep = line.replace(/^[ \t]+/, '');
         const ignore = !ep || ep[0] === '#';
         const old = buf !== null;
@@ -518,9 +515,6 @@ function* rc_logical_lines(rc) {
             continue;
         }
         yield b;
-    }
-    } finally {
-        game._rc_errctx = null;
     }
 }
 
@@ -771,8 +765,7 @@ export function parseNethackrc(rc) {
     const bool_dup_seen = new Set();
     const cfgerr_base = (game._config_errors || []).filter(m => typeof m === 'string').length;
     for (const rawLine of rc_logical_lines(rc)) {
-        if (config_error_secure()
-            && (game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
+        if ((game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
             break;
         const line = config_statement(rawLine, result);
         if (!line || line.startsWith('#'))
@@ -2331,30 +2324,13 @@ export function optfn_fruit_set(op) {
 
 
 function store_status_hilite(op) {
-    /* C botl.c:2605-2639 parse_status_hl1(): a space ends one rule and starts
-     * the next ("hitpoints/always/red&bold condition/blind/blue"), except in
-     * a title's second field; a token without a slash (fldnum 0) is
-     * dropped without calling parse_status_hl2(). */
-    let tok = '', fldnum = 0;
-    const flush = () => {
-        if (fldnum >= 1) {
-            if (status_fieldname(tok.split('/')[0]) === 'condition')
-                (game.status_condition_hilites ||= []).push(tok);
-            else
-                push_status_field_hilite(tok);
-        }
-        tok = ''; fldnum = 0;
-    };
-    for (const c of op) {
-        if (c === ' ') {
-            if (fldnum === 1 && tok.split('/')[0].toLowerCase() === 'title') { tok += c; continue; }
-            flush();
-        } else {
-            if (c === '/') fldnum++;
-            tok += c;
-        }
-    }
-    flush();
+    /* C botl.c:2610-2644: without a slash, fldnum stays zero and
+     * parse_status_hl1() succeeds without calling parse_status_hl2(). */
+    if (!op.includes('/')) return;
+    if (status_fieldname(op.split('/')[0]) === 'condition')
+        (game.status_condition_hilites ||= []).push(op);
+    else
+        push_status_field_hilite(op);
 }
 /* C botl.c:2846-2856 parse_status_hl2(): "characteristics" is parsed again
  * once per field from BL_STR through BL_CH, each with its own rule chain. */
@@ -2383,9 +2359,6 @@ export function optfn_hilite_status_set(op) {
         return null;
     }
     store_status_hilite(op);
-    /* botl.c:3099 status_hilite_add_threshold() runs no reset_status_hilites():
-     * the tty keeps each field's delivered colour until its value changes. */
-    game._statusRulesPending = true;
     if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
     return null;
 }
@@ -4524,11 +4497,12 @@ export async function doset() {
                         }
                         if (message) {
                             /* cfgfiles.c:1557-1563 config_erradd: pline + wait_synch
-                             * per error.  pline's flush_screen repaints the status
-                             * rows; tty_wait_synch (wintty.c:3624) only displays
-                             * WIN_MAP — no --More-- unless a later pline needs the
-                             * topline (the "Missing parameter" + "invalid" pair). */
+                             * per error; getline.c leaves bot() disabled, so the
+                             * status rows stay blank. */
+                            g._status_blanked = true;
                             for (const m of message) await pline('%s', m);
+                            g._status_blanked = false;
+                            statusRefreshed = false;
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'boulder') {
                         needVisuals = (await optfn_boulder_set(mungspaces(abuf))) || needVisuals;

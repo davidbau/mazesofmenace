@@ -91,10 +91,6 @@ export function regcomp(s) {
     const EATTWO = (a, b) => (SEETWO(a, b) ? (next += 2, true) : false);
     const GETNEXT = () => s.charCodeAt(next++);
     const REQUIRE = (cond, code) => { if (!cond) throw new RegexError(code); };
-    /* g->nsub and p->pend[]: subexpressions are numbered by their '(' and
-     * a back reference may only name one whose ')' has been seen */
-    let nsub = 0;
-    const closed = new Set();
 
     /* regcomp.c p_count */
     function p_count() {
@@ -198,16 +194,12 @@ export function regcomp(s) {
         let atom, wascaret = false;
         const c = GETNEXT();
         switch (String.fromCharCode(c)) {
-        case '(': {
+        case '(':
             REQUIRE(MORE(), REG_EPAREN);
-            const subno = ++nsub;
             atom = SEE(')') ? '' : p_ere(')');
             REQUIRE(EAT(')'), REG_EPAREN);
-            closed.add(subno);
-            /* capturing, so JS numbers groups by '(' exactly as nsub does */
-            atom = `(${atom})`;
+            atom = `(?:${atom})`;
             break;
-        }
         case '^': atom = '^'; wascaret = true; break;
         case '$': atom = '$'; break;
         case '|': throw new RegexError(REG_EMPTY);
@@ -216,12 +208,6 @@ export function regcomp(s) {
         case '[': atom = p_bracket(); break;
         case '\\':
             REQUIRE(MORE(), REG_EESCAPE);
-            if (PEEK() >= 49 && PEEK() <= 57) { /* \1..\9: back reference */
-                const i = GETNEXT() - 48;
-                REQUIRE(closed.has(i), REG_ESUBREG);
-                atom = `(?:\\${i})`;
-                break;
-            }
             atom = lit(GETNEXT());
             break;
         case '{': /* okay as ordinary except if digit follows */

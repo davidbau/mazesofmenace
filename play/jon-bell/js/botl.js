@@ -1,7 +1,7 @@
 // botl.js — C ref: botl.c.
 import { money_cnt } from './hack.js';
 import { CONFUSION, Is_rogue_level, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SICK, SLIMED, gs } from './const.js';
-import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, suppress_map_output } from './display.js';
+import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
@@ -11,7 +11,7 @@ import { weapon_descr, weapon_type } from './uhitm.js';
 import { near_capacity } from './hack.js';
 import { attrnames, clr2colorname, match_str2clr } from './coloratt.js'; // relocate-fns
 import { display_text_window } from './com_pager.js'; // relocate-fns
-import { status_held_rows, gather_condition_hilite_lines, _condbitmask2str, status_xp_percent_changing } from './display.js'; // relocate-fns
+import { gather_condition_hilite_lines, _condbitmask2str } from './display.js'; // relocate-fns
 import { mungspaces } from './hacklib.js'; // relocate-fns
 import { status_fieldname } from './options.js'; // relocate-fns
 import { HL_ATTRBITS, drainTopline, query_attr_one, query_color } from './optmenu.js'; // relocate-fns
@@ -213,7 +213,6 @@ export async function bot() {
     if (game._statusHilitesReset) { /* reset_status_hilites() */
         game._statusHilitesReset = false;
         game._statusHiliteHeld = false;
-        delete game._statusHeldUhs; delete game._statusHeldRow;
         delete game._blTemp;
         delete game._statusFieldColors;
     }
@@ -299,7 +298,6 @@ export async function bot() {
          * the live status, including the new level, and hold that new paint
          * for subsequent delayed flushes. */
         game._lastPaintedBotl = _capture_botl(true);
-        status_hpbar_attr_eval();
         /* column of the T: field as painted; a lone timebot() paint reuses it */
         { const l2 = _statusLine2().replace(/\x1b\[[0-9;]*m/g, '').lastIndexOf('T:');
           if (l2 >= 0) game._statusTimeCol = l2; }
@@ -355,10 +353,6 @@ export async function bot() {
          * every enabled field, so wintty's tty_status[NOW][].valid is now set
          * for all of them (wintty.c:4513-4518); see timebot(). */
         game._ttyStatusValid = true;
-        /* botl.c:965-969,1285-1294 bot() toggles now_or_before_idx and stores
-         * moves into that bank's BL_TIME; the tty is told only when it differs
-         * from the other bank's (see timebot()). */
-        _bl_time_bank_store(true);
         let _row3Rendered = false;
         /* wintty.c:1061-1068 clears the physical status before render_status(),
          * not after it.  Retain the new row and its finalx-dependent erasure. */
@@ -476,22 +470,6 @@ export function check_gold_symbol(level = game.u?.uz) {
     g.iflags.invis_goldsym = (goldch <= 32); // goldch <= ' ' (space, ASCII 32)
 }
 
-/* C botl.c:1285-1294 stat_update_time() writes svm.moves into the CURRENT
- * blstats bank without bot()'s 0/1 toggle; eval_notify_windowport_field()
- * tells the tty only if it differs from the other bank's BL_TIME, otherwise
- * the tty keeps the last delivered value (the tutorial-exit T:2 -> T:4 hold). */
-function _bl_time_bank_store(toggle) {
-    const g = game;
-    if (!g || !g.flags?.time) return;
-    const bk = g._blTimeBank ??= { idx: 0, val: [0, 0], shown: 0 };
-    if (toggle) bk.idx = 1 - bk.idx;
-    const m = g.moves | 0;
-    bk.val[bk.idx] = m;
-    if (bk.val[1 - bk.idx] !== m || !bk.shown)
-        bk.shown = m;
-    g._timeBotlFrozenMoves = bk.shown !== m ? bk.shown : null;
-}
-
 export function timebot() {
     // C botl.c:277-278: the menu's status suppression covers time updates too.
     if (game?._bot_disabled)
@@ -516,7 +494,6 @@ export function timebot() {
             g._statusTimeOnly = g.moves | 0; /* botl.c:259 guards bot() only, not timebot() */
         /* botl.c:1285-1294 stat_update_time(): BL_TIME alone goes through
          * eval_notify_windowport_field, so a changed clock marks it chg. */
-        _bl_time_bank_store(false);
         _status_note_pushed_time();
         /* stat_update_time() -> tty_status_update(BL_TIME) writes only the T:
          * field; over rows cls() blanked (and bot() declined, botl.c:259) it is
@@ -565,14 +542,6 @@ export function status_eval_next_unhilite() {
             h.chg = false;
             if (g.disp) g.disp.botl = 1;
         }
-        /* C botl.c:2305-2312 — a timed-out temporary rule forces a repaint */
-        if (!g.disp?.botl && !g.multi) {
-            /* only the hitpointbar title slot clears its rule on expiry
-             * (status_hpbar_attr_eval); other slots keep h.rule, which would
-             * re-force the repaint every turn */
-            const h = hist.title;
-            if (h && h.rule && h.time > 0 && h.time < g.bl_hilite_moves) g.disp.botl = 1;
-        }
     }
     if (g._blChg) {
         g._blChg = false;
@@ -591,12 +560,6 @@ const INITBLSTATS = [
     ['hitpoints-max', 'I'], ['dungeon-level', 'S'], ['experience', 'L', true],
     ['condition', 'M'], ['version', 'S'], ['weapon', 'S'], ['armor', 'S'], ['terrain', 'S'],
 ];
-/* C botl.h:52-59 enum statusfields: initblstats[] (above) puts BL_VERS before
- * BL_WEAPON..BL_TERRAIN, the enum puts it last.  C keys rules and the
- * status_hilite_menu identifiers by the enum, then indexes initblstats[] by
- * it (botl.c:3627,3729,4423): picking "weapon" offers "version". Port that. */
-const bl_enum = (i) => (i < 23 ? i : i === 23 ? 26 : i - 1);
-const bl_index = (fld) => (fld < 23 ? fld : fld === 26 ? 23 : fld + 1);
 
 /* C botl.c:3707 status_hilite_menu_choose_behavior; returns the BL_TH_* value,
  * 0 (BL_TH_NONE) for no pick, -1 (BL_TH_NONE - 1) for a cancelled menu. */
@@ -609,7 +572,7 @@ async function status_hilite_menu_choose_behavior(fld, preserveStatus) {
     const ent = (beh, ch, text) => { m.add_menu(beh, ch, ATR_NONE, text, false, false); onlybeh = beh; nopts++; };
     if (!isCond) ent(105, 'a', `Always highlight ${fldname}`);
     if (isCond) ent(103, 'b', 'Bitmask of conditions');
-    if (!isCond && fld !== 26 /* BL_VERS, botl.c:3743 */) ent(102, 'c', `${fldname} value changes`);
+    if (!isCond && fldname !== 'version') ent(102, 'c', `${fldname} value changes`);
     if (!isCap && !isHunger && (at === 'I' || at === 'L')) ent(101, 'n', 'Number threshold');
     if (hasMax) ent(100, 'p', 'Percentage threshold');
     if (fldname === 'hitpoints') ent(106, 'C', `Highlight critically low ${fldname}`);
@@ -651,9 +614,8 @@ function status_hilite2str_rules(spec) {
     for (const [oi, one] of spec.toLowerCase().split(' ').filter(Boolean).entries()) {
         const s = one.split('/'), os = origs[oi].split('/');
         const fldname = status_fieldname(s[0]);
-        const idx = INITBLSTATS.findIndex(([n]) => n === fldname);
-        if (idx < 0 || fldname === 'condition' || fldname === 'characteristics') continue;
-        const fld = bl_enum(idx); /* botl.c:3666 initblstats[hl->fld].fldname */
+        const fld = INITBLSTATS.findIndex(([n]) => n === fldname);
+        if (fld < 0 || fldname === 'condition' || fldname === 'characteristics') continue;
         const at = INITBLSTATS[fld][1];
         for (let i = 1; i < s.length && s[i]; i += 2) {
             const t = s[i];
@@ -836,9 +798,9 @@ export async function status_hilite_menu(preserveStatus = false) {
             m.add_menu_str('');
         }
         INITBLSTATS.forEach(([name], i) => {
-            const count = lines.filter(l => l.fld === bl_enum(i)).length;
+            const count = lines.filter(l => l.fld === i).length;
             if (name === 'score' && !count) return; /* no SCORE_ON_BOTL */
-            m.add_menu(bl_enum(i) + 1, 0, ATR_NONE,
+            m.add_menu(i + 1, 0, ATR_NONE,
                 name.padEnd(18) + (count ? ` (${count} defined)` : ''), false, false);
         });
         m.end_menu('Status hilites:');
@@ -847,8 +809,6 @@ export async function status_hilite_menu(preserveStatus = false) {
             if (lines.length && !game.iflags.hilite_delta) {
                 game.iflags.hilite_delta = 3;
                 game._statusHiliteHeld = true; /* no update_all yet: fields stay as delivered */
-                game._statusHeldUhs = game._botlPaintedUhs != null ? game._botlPaintedUhs | 0 : 1; /* hunger as delivered (NOT_HUNGRY=1) */
-                game._statusHeldRow = status_held_rows();
             }
             return;
         }
@@ -914,11 +874,8 @@ export async function status_hilite_menu(preserveStatus = false) {
                     continue;
                 }
                 const attrs = attr === 1 ? 'normal' : HL_ATTRBITS.filter(b => attr & b[1]).map(b => b[2]).join('+');
-                const how = `/${rel}/${clr2colorname(color).replace(/ /g, '-')}${attr ? '&' + attrs : ''}`;
-                const rule = `${name}${how}`;
-                /* botl.c:4296 status_hilite_add_threshold(fld): the rule joins
-                 * fld's own chain whatever initblstats[fld] is named */
-                (game.status_field_hilites ||= []).push(`${INITBLSTATS[bl_index(fld)][0]}${how}`);
+                const rule = `${name}/${rel}/${clr2colorname(color).replace(/ /g, '-')}${attr ? '&' + attrs : ''}`;
+                (game.status_field_hilites ||= []).push(rule);
                 game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                 await pline('Added hilite %s', rule);
                 /* botl.c:4300: reset after our drainTopline() flush (see above). */
@@ -1186,7 +1143,7 @@ export function describe_level(buf, dflgs, uz) {
 }
 
 export function exp_percent_changing() {
-    return status_xp_percent_changing();
+    return false;
 }
 
 export function title_to_mon(str, rank_indx, title_length) {

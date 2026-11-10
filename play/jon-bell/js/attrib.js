@@ -973,9 +973,18 @@ function get_artifact(obj) {
     return ART_NONARTIFACT;
 }
 
-/* spec_ability() lives in artifact.c; single port in js/artifact.js */
-import { spec_ability } from './artifact.js';
-export { spec_ability };
+/* C ref: nethack-c/src/artifact.c:515-522 spec_ability(struct obj *otmp,
+ *                                                      unsigned long abil)
+ *   const struct artifact *arti = get_artifact(otmp);
+ *   return (boolean) (arti != &artilist[ART_NONARTIFACT]
+ *                     && (arti->spfx & abil) != 0L);
+ * Every spfx value is < 2^31, so JS's signed 32-bit `&` is exact here. */
+export function spec_ability(otmp, abil) {
+    const arti = get_artifact(otmp);
+
+    return (arti !== ART_NONARTIFACT
+            && (ARTILIST_SPFX[arti] & abil) !== 0);
+}
 
 /* confers_luck() lives in artifact.c; single port in js/artifact.js */
 import { confers_luck } from './artifact.js';

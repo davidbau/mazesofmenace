@@ -1,0 +1,539 @@
+{
+  "nativeAbiSha256": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb",
+  "upstream": "16ff59115315917b93185d026aeefea06db9b0f4",
+  "emscripten": "4.0.10",
+  "clang": "clang version 21.0.0git (https:/github.com/llvm/llvm-project 8f7e57485ee73205e108d74abb5565d5c63beaca)\nTarget: x86_64-apple-darwin25.6.0\nThread model: posix\nInstalledDir: /Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/bin",
+  "memory64": 1,
+  "dependencyBackend": "javascript",
+  "terminalCapabilities": "javascript-terminfo-pinned-entry",
+  "ncursesSha256": "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6",
+  "ncursesRole": "headers-and-reference-only",
+  "terminfoEntrySha256": "e2525d133091a1ac38b2ad4eecd8df48eee31789c8fafac0ed99bcd6b746d8ce",
+  "compression": "javascript-ncompress-5.0-LZW-Z",
+  "compressionSourceSha256": "41f593dcc4e21a3d2686010a554687231a498291268791c8db412bf5b5e5087f",
+  "compressionSourceRole": "reference-only",
+  "regex": "javascript-native-macos-compatible-ERE-C-locale",
+  "regexTransport": "ported-posixregex-direct-js",
+  "javascriptDependencies": {
+    "sourceSha256": {
+      "js/services/unix-compress.js": "1da7e9a3f9765b873332d33ea691077d4bc9c9231fd679677ea68a082c021958",
+      "js/services/terminfo.js": "1ee8cccfc3911bbb5acb4b0b74353a3af2e2be9974ab896de98579ccc6aa637e",
+      "js/services/terminfo-data.js": "2daf95e4faa0d71484a1d774b1a00bc0454b35552bfacde2efcb98381d73b2d1",
+      "js/services/posix-regex.js": "a95c5c6bca5bf2fade60f06d888dc3be8c2e6cc2813dbeb1dc25dd090821abeb",
+      "js/services/wasm-dependency-runtime.js": "72dc3dc32e93a7c07b4232f98616bf17395b1e521045d1a6a1b125c6f2847805",
+      "js/services/native-c-compat.js": "1b87b4b198f09da9ca7dc5133926f3154ee4855929e4e5eb590340e749d9c2b8",
+      "js/services/native-regex-libc.js": "f0421d2e05e36e84420269f2708e80942b6185e56f3601c9293e5fb23cd5b56e",
+      "js/services/native-qsort.js": "c33be22f1de1bcdefd11bf1fe0304e75769b7c07993789140fa10cf9d82cab19",
+      "js/services/c-time.js": "0980974f4053a54dbc6221a12eb41b6d20feccd7ef12c359fb27b255718de61a",
+      "js/ported/wasm-runtime.js": "f8207441c1b1e88ab9c18589f6d5d3af3496fb3397b93efb14345001727c386b",
+      "js/ported/posixregex.js": "3389499c549a670141e87d8dcb42d1caf50419a24c7e8a7751a8bfdfcecfcf41",
+      "js/ported/posixregex-runtime.js": "567795a5ccac27c7109b250e1e88f8b050da006f163d916f72173901660ee1bf",
+      "js/wasm-adapter.js": "6f35145093c982196200e31eb4372c0f742ab7f3ea07268dcbf152b5f4c2f53f",
+      "nethack-c/wasm/tu-libraries/posixregex.js": "87aa34b88528241696e021091644a10707dfc364b52057e4dd443de80195d178",
+      "nethack-c/wasm/native-libc-library.js": "5fb9ef22a0d07d24eb89fe36fd92e7f28e50c3998e95dfe6c0ebd3c1047c7054",
+      "js/services/native-terminal.js": "357f528376047661a1c29032aca07d964d1e0257acc75c0235792ed1b27b53dc",
+      "js/services/native-terminal-abi.json": "660f6d0949661295d56077bd0c99ed53336f077c50eb7258dd09bae20476302e",
+      "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb",
+      "nethack-c/wasm/dependency-library.js": "6cc460ea2bee0b9ccaa7285ab684f12a1bdc0e7935bd0f104aeb8924a4da10c3",
+      "nethack-c/wasm/dependency-bridge.c": "7cba01a3b15fb13208e27bcac77d6da39edd2fec15bc27e5c448921a4e32803c"
+    },
+    "compressionReference": "public-domain ncompress 5.0, block-mode 16-bit .Z",
+    "terminfoReference": "ncurses 6.5 termcap API; unchanged pinned xterm-256color entry",
+    "regexReference": "Native macOS ERE behavior; REG_EXTENDED|REG_NOSUB; C locale",
+    "abiCompileFlags": [
+      "-std=gnu17",
+      "-sMEMORY64=1",
+      "-DTELEPORT_JS_REGEX=1"
+    ],
+    "linkEnvironment": {
+      "TELEPORT_JS_REGEX": "1"
+    },
+    "bridge": "numeric tparm intptr_t ABI; batched C tputs callbacks; opaque regex_t handles; MEMFS codec adapter"
+  },
+  "removedCompiledDependencies": [
+    "ncompress codec",
+    "ncurses libtinfo",
+    "musl TRE regex algorithms"
+  ],
+  "gamePlatform": "MacOS",
+  "replayDst": "inherit-native-parser-clock",
+  "defaultRecordingEpoch": "1777723200",
+  "recordingProfile": "public-recordings-with-environment-overrides",
+  "javascriptTranslationUnits": [
+    {
+      "name": "isaac64",
+      "source": "src/isaac64.c",
+      "javascript": "js/ported/isaac64.js",
+      "library": "nethack-c/wasm/tu-libraries/isaac64.js",
+      "sha256": "e6088a22923ec80dceef1128e37a859c879bce6a931b12cdfc39b78d47e783b3",
+      "preparedCSourceSha256": "fa4fdd1fd9df13d2e616a7d21b93152bc5ba1e782b439e1637194dbdabf7b6c5"
+    },
+    {
+      "name": "nhmd4",
+      "source": "src/nhmd4.c",
+      "javascript": "js/ported/nhmd4.js",
+      "library": "nethack-c/wasm/tu-libraries/nhmd4.js",
+      "sha256": "3e11542f81e16bcc786403dd10755df6eedd44888c56750e27d8bee418f8ef5a",
+      "preparedCSourceSha256": "5599e133563322d139abeb4e3ed9ab13f8fc87de22aae74120b8fe04d623e8df"
+    },
+    {
+      "name": "strutil",
+      "source": "src/strutil.c",
+      "javascript": "js/ported/strutil.js",
+      "library": "nethack-c/wasm/tu-libraries/strutil.js",
+      "sha256": "06ec150305c339f2bb3fe574eaa4878b9b3b4f049c66541a390ac17add33a57f",
+      "preparedCSourceSha256": "7a9d406919c3711b8ec3ee9fb8618b2af8f546b6d6d2a192a5962a2de313ce1e"
+    },
+    {
+      "name": "rect",
+      "source": "src/rect.c",
+      "javascript": "js/ported/rect.js",
+      "library": "nethack-c/wasm/tu-libraries/rect.js",
+      "sha256": "7466f81a7d0d6275a540cf01b3198d918cdc246dd1e846535fff3b46a81cc784",
+      "preparedCSourceSha256": "0ba24377934d74be6846e39885bc2f886801c3709c41afb702445261d8f73562"
+    },
+    {
+      "name": "track",
+      "source": "src/track.c",
+      "javascript": "js/ported/track.js",
+      "library": "nethack-c/wasm/tu-libraries/track.js",
+      "sha256": "5110625f835778647bc3b33f8f1caf8087709313d17b95ad5aab592ee060ba8e",
+      "preparedCSourceSha256": "c8361add9aed7c301404beef502f647ef85c61746e8423518807bb822ef66ece"
+    },
+    {
+      "name": "calendar",
+      "source": "src/calendar.c",
+      "javascript": "js/ported/calendar.js",
+      "reference": "prepared",
+      "library": "nethack-c/wasm/tu-libraries/calendar.js",
+      "sha256": "3dc51bb6b44f12255074944817ce5fee783e8ed9cc03c0f078efc027ce5cd743",
+      "preparedCSourceSha256": "5ef88878eedd42a7ab59fa374dc4e01798a448b72acace9c7a8d26c5ae883b17"
+    },
+    {
+      "name": "stairs",
+      "source": "src/stairs.c",
+      "javascript": "js/ported/stairs.js",
+      "library": "nethack-c/wasm/tu-libraries/stairs.js",
+      "sha256": "5f2af67095b8299d978cfb23cd6672ed777592a1bf0ebb519fcb0fbdf9c0f292",
+      "preparedCSourceSha256": "9a1b5465220cc0dde85d44221a8be8fcef20bcc3010c05e0795a3058a7ba8cf5"
+    },
+    {
+      "name": "sys",
+      "source": "src/sys.c",
+      "javascript": "js/ported/sys.js",
+      "library": "nethack-c/wasm/tu-libraries/sys.js",
+      "sha256": "4c1a8eb319db13c9bb0f5c1d258cf1c549c42202d6b32d2dbcba723e12bc2e53",
+      "preparedCSourceSha256": "b25c85a88371128521c1432c025abd89edb541e085de099e065d9d2ab03a40ef"
+    },
+    {
+      "name": "rip",
+      "source": "src/rip.c",
+      "javascript": "js/ported/rip.js",
+      "library": "nethack-c/wasm/tu-libraries/rip.js",
+      "sha256": "e3228a9aa4f7ca9e7f0e8532cc0695d1865cbe13b5f57bef397f59f4d4ccb2c7",
+      "preparedCSourceSha256": "aee35f5de94fd28dd8ab41519127004830751f2a4ac5f6f0c78bbfa4477b6ad0"
+    },
+    {
+      "name": "date",
+      "source": "src/date.c",
+      "javascript": "js/ported/date.js",
+      "reference": "prepared",
+      "library": "nethack-c/wasm/tu-libraries/date.js",
+      "startup": "$teleportDateInit",
+      "sha256": "7265c5e5810300349153ea973fe0c148c68acc8f818afc37c546606b09603055",
+      "preparedCSourceSha256": "22c96796a197e728ce0be275fc8f1956b2f6342208d74133295954e658b93090"
+    },
+    {
+      "name": "alloc",
+      "source": "src/alloc.c",
+      "javascript": "js/ported/alloc.js",
+      "configuredFunctions": true,
+      "library": "nethack-c/wasm/tu-libraries/alloc.js",
+      "sha256": "1fc650ad85ec794a90a9d39c6f308ac3c5278af29878e88e9bb37ffd41ba1f94",
+      "preparedCSourceSha256": "b5bae0ab6e2e506517bee0825582914644e968da6b09f7fa3d5d0b277ef16a31"
+    },
+    {
+      "name": "utf8map",
+      "source": "src/utf8map.c",
+      "javascript": "js/ported/utf8map.js",
+      "library": "nethack-c/wasm/tu-libraries/utf8map.js",
+      "sha256": "23f36c5324929dcdc6353a23921cdbc483998fe002b8d8edc74edd988ae256b3",
+      "preparedCSourceSha256": "40abea75d499870f8ec73de629bed94be7cf35105b88480c59221b7dfadb4edc"
+    },
+    {
+      "name": "drawing",
+      "source": "src/drawing.c",
+      "javascript": "js/ported/drawing.js",
+      "library": "nethack-c/wasm/tu-libraries/drawing.js",
+      "startup": "$teleportDrawingInit",
+      "sha256": "eb504c3446decf894883d1569f1d33e0d7e97a94d493de013181b527e225e019",
+      "preparedCSourceSha256": "959357d4c9652eeae51b19d826ec961163679b9961ef8df1df94d674b6ded4a4"
+    },
+    {
+      "name": "posixregex",
+      "source": "sys/share/posixregex.c",
+      "javascript": "js/ported/posixregex.js",
+      "library": "nethack-c/wasm/tu-libraries/posixregex.js",
+      "startup": "$teleportPosixregexInit",
+      "sha256": "3389499c549a670141e87d8dcb42d1caf50419a24c7e8a7751a8bfdfcecfcf41",
+      "preparedCSourceSha256": "81e556cb5cfd0f1307b97df5bf4132c6a58fa6938d3f5b5b98aef766fe95a4a5"
+    },
+    {
+      "name": "rnd",
+      "source": "src/rnd.c",
+      "javascript": "js/ported/rnd.js",
+      "library": "nethack-c/wasm/tu-libraries/rnd.js",
+      "reference": "prepared",
+      "configuredFunctions": true,
+      "sha256": "f5cd370dfb29fd9445e830897e8b527b4fd582ddea59e504d8ff6cc05f3e8d33",
+      "preparedCSourceSha256": "77adb14810de4e9580c0ced9bb6a48ef8bb15daf818fcfb9c78a0a8516121087"
+    },
+    {
+      "name": "ioctl",
+      "source": "sys/share/ioctl.c",
+      "javascript": "js/ported/ioctl.js",
+      "library": "nethack-c/wasm/tu-libraries/ioctl.js",
+      "configuredFunctions": true,
+      "sha256": "89d44c5c4d088128a608d2ccb37c3666c2f3acea1144242386f3dd1e5dbb4926",
+      "preparedCSourceSha256": "fdbffc60327dfcf3d1ed4c1673a9e85829b9d7996e3615413219cd76862a2142"
+    },
+    {
+      "name": "unixtty",
+      "source": "sys/share/unixtty.c",
+      "javascript": "js/ported/unixtty.js",
+      "library": "nethack-c/wasm/tu-libraries/unixtty.js",
+      "reference": "prepared",
+      "configuredFunctions": true,
+      "sha256": "7c561144d0a8beed7e5d389bfa1f89d20b583fa88b54b7fb5c0d9ed8eb344673",
+      "preparedCSourceSha256": "d2210fd899ffb522031ab19dcde37cc11727433066a786494e6ddaa3434c850e"
+    },
+    {
+      "name": "were",
+      "source": "src/were.c",
+      "javascript": "js/ported/were.js",
+      "library": "nethack-c/wasm/tu-libraries/were.js",
+      "sha256": "485ff7d02750020f4c5245bb617d4962c48e83be5c17be2f6a157d83b3f8a52e",
+      "preparedCSourceSha256": "9ca90d56d58fc1ebeaccc7d1d26b2deed95904a0da5fe49895c17d525fca6ad5"
+    },
+    {
+      "name": "extralev",
+      "source": "src/extralev.c",
+      "javascript": "js/ported/extralev.js",
+      "library": "nethack-c/wasm/tu-libraries/extralev.js",
+      "sha256": "6c2a08a8f72d76d5b63ac3b29dd1867a9e53f67a0c6909c777df3c4b13f863c1",
+      "preparedCSourceSha256": "5744238470ce6147098da24792d82cf295119193ad4d5ff7c1f3c980fd82c1e4"
+    },
+    {
+      "name": "mplayer",
+      "source": "src/mplayer.c",
+      "javascript": "js/ported/mplayer.js",
+      "library": "nethack-c/wasm/tu-libraries/mplayer.js",
+      "sha256": "cf80113e926cc26d5fa31a5df5c63601f573e95f3b25efec67135b04636faf0d",
+      "preparedCSourceSha256": "ddd09ef2c6c39e862554ee899307eb2f7e60a869dea364656f6b3e23681fb259"
+    },
+    {
+      "name": "exper",
+      "source": "src/exper.c",
+      "javascript": "js/ported/exper.js",
+      "library": "nethack-c/wasm/tu-libraries/exper.js",
+      "sha256": "1b9bf6ce1cf7ec4ceb924e0f4bc9ce91db95c7dbb6d6fc0a7f41eb8375ecdc8e",
+      "preparedCSourceSha256": "b2348ce804db130fb84d832c60d3c454eb8e52c5e6debe9e173ef3d3ec226a12"
+    },
+    {
+      "name": "mkmap",
+      "source": "src/mkmap.c",
+      "javascript": "js/ported/mkmap.js",
+      "library": "nethack-c/wasm/tu-libraries/mkmap.js",
+      "sha256": "6bc6989d007324dd052b67dc5465d38570259ec9b79b5f507e395c8ffb18fff8",
+      "preparedCSourceSha256": "25046834749be29ad3ec4b03f024189de5026b805da0129537dd5c75ca7e2f50"
+    },
+    {
+      "name": "getline",
+      "source": "win/tty/getline.c",
+      "javascript": "js/ported/getline.js",
+      "library": "nethack-c/wasm/tu-libraries/getline.js",
+      "configuredFunctions": true,
+      "sha256": "c747cd91b2a42e97af866dcd79e6f2299d0ecdb7ee9582c649d1c36319aad33d",
+      "preparedCSourceSha256": "43abddf287e558949bb7bd17d0d7fa42201eb6f86a84146e9ee5889bc7f66afc"
+    },
+    {
+      "name": "write",
+      "source": "src/write.c",
+      "javascript": "js/ported/write.js",
+      "library": "nethack-c/wasm/tu-libraries/write.js",
+      "sha256": "ebe44234195bcc28e0f22fd7534a406d5c5ed175e36966cdf1888a9474aa60dd",
+      "preparedCSourceSha256": "7942dc3bdf0fc2e4fefd0a904c78a598767c0204574f7a207bbced46c4e2bd35"
+    },
+    {
+      "name": "mdlib",
+      "source": "src/mdlib.c",
+      "javascript": "js/ported/mdlib.js",
+      "library": "nethack-c/wasm/tu-libraries/mdlib.js",
+      "configuredFunctions": true,
+      "sha256": "f9828e77360d0010bd72c706f9498771a7d4e34893ff48d0c7362796dfa7271e",
+      "preparedCSourceSha256": "9c9a6197c31db73a0947da889020ab354b269be7bb3701d5aa733ecd932d6686"
+    },
+    {
+      "name": "quest",
+      "source": "src/quest.c",
+      "javascript": "js/ported/quest.js",
+      "library": "nethack-c/wasm/tu-libraries/quest.js",
+      "sha256": "9e31ce6a9cfb717036fb63160feca6553a8e60a911272da39f5812f6f5c0c796",
+      "preparedCSourceSha256": "4c4257e20c62c27800381157d15e9e8e7205f075039f3ee3c39d99660f3ae50a"
+    },
+    {
+      "name": "minion",
+      "source": "src/minion.c",
+      "javascript": "js/ported/minion.js",
+      "library": "nethack-c/wasm/tu-libraries/minion.js",
+      "sha256": "2def6f5219ccf6a73b86977cf0f81594760ab1d64519bd0757e8858577415cf8",
+      "preparedCSourceSha256": "41158eef7038868b75e684d36a7e492340e6809002f06c84a426c855fea2310d"
+    },
+    {
+      "name": "iactions",
+      "source": "src/iactions.c",
+      "javascript": "js/ported/iactions.js",
+      "library": "nethack-c/wasm/tu-libraries/iactions.js",
+      "sha256": "c20ad579ddb48271bd212ec668f09108f649604fb587efaa52857e951697ace5",
+      "preparedCSourceSha256": "a8b65fd2326977b85a2e93f6c939017fd7ab2ab6848b19f375d8852aa98f29f6"
+    },
+    {
+      "name": "selvar",
+      "source": "src/selvar.c",
+      "javascript": "js/ported/selvar.js",
+      "library": "nethack-c/wasm/tu-libraries/selvar.js",
+      "sha256": "a1e210748a139b2917a2100fdeedc574ed0c84fa97715ebcec9841299e24a529",
+      "preparedCSourceSha256": "af33824e7004e7799ca1e88d0b00813bb5b9a1087015b9fb5a250473b2318b58"
+    },
+    {
+      "name": "steal",
+      "source": "src/steal.c",
+      "javascript": "js/ported/steal.js",
+      "library": "nethack-c/wasm/tu-libraries/steal.js",
+      "sha256": "50dd81376bbd959730256a557cc2c51fd4849b069151cce14702abeb6ae0f00f",
+      "preparedCSourceSha256": "0aa14e4a989d4869de9b9bd223231ac559f2d6641d9bfb949d0aaff29ca8a447"
+    },
+    {
+      "name": "sit",
+      "source": "src/sit.c",
+      "javascript": "js/ported/sit.js",
+      "library": "nethack-c/wasm/tu-libraries/sit.js",
+      "sha256": "e1526838f41f7d214e3aa27879c2666000aa1cc19ecb84e3c8e9a2de354d42e5",
+      "preparedCSourceSha256": "b9c9d7d0eb82b003c984eb1e2868c97edf71c44570b0490ae21e8bd33cfb72e1"
+    },
+    {
+      "name": "fountain",
+      "source": "src/fountain.c",
+      "javascript": "js/ported/fountain.js",
+      "library": "nethack-c/wasm/tu-libraries/fountain.js",
+      "sha256": "3a4ce1125e3d5ac301b9ac6853c5bb870103355f59de94ad3800b16eeef5fd4c",
+      "preparedCSourceSha256": "b2ddb9e0b591fa3ed7626856fb6d9d555f0ede1d5ac08e29cb2a1de0cf82815e"
+    },
+    {
+      "name": "objects",
+      "source": "src/objects.c",
+      "javascript": "js/ported/objects.js",
+      "library": "nethack-c/wasm/tu-libraries/objects.js",
+      "data": [
+        "js/ported/objects-data.js"
+      ],
+      "javascriptDataSha256": {
+        "js/ported/objects-data.js": "77b0fb752b7cf40547e034f77189b82f913f13da719d7e547a65eb1465dfb6f0"
+      },
+      "sha256": "6b32e63221597a73ee98ffc10c237a97341c3ad2e11b568b53c0db5f89770c7b",
+      "preparedCSourceSha256": "1f1cc8de922d1f41f688da28b8d88d80eca2884619283b60f38418e7b965b340"
+    },
+    {
+      "name": "monst",
+      "source": "src/monst.c",
+      "javascript": "js/ported/monst.js",
+      "library": "nethack-c/wasm/tu-libraries/monst.js",
+      "startup": "$teleportMonstInit",
+      "data": [
+        "js/ported/monst-data.js"
+      ],
+      "javascriptDataSha256": {
+        "js/ported/monst-data.js": "ebc870fe73ae7bf7428b5a1b7fa44b68d41010fafbc97f82fc2d8a07bb072666"
+      },
+      "sha256": "d657850295f3b3fa08e9374d42ba8333b68d5d4a9a90dcd070f9a93eec8c25cc",
+      "preparedCSourceSha256": "87d36f109b24f83d4e9c9c10193b977afe3aa8f2938d4fa92e4fbc28b353547d"
+    },
+    {
+      "name": "shknam",
+      "source": "src/shknam.c",
+      "javascript": "js/ported/shknam.js",
+      "library": "nethack-c/wasm/tu-libraries/shknam.js",
+      "configuredFunctions": true,
+      "startup": "$teleportShknamInit",
+      "sha256": "02b484a7e9161f9bb9ae38aac2f4c04e62c3be3ce5351fe8b03b441b2863a638",
+      "preparedCSourceSha256": "1c49ed68820d82671d74e3dc70c45cc7d312c7f449985a715ce74c86dd4c2717"
+    },
+    {
+      "name": "rumors",
+      "source": "src/rumors.c",
+      "javascript": "js/ported/rumors.js",
+      "library": "nethack-c/wasm/tu-libraries/rumors.js",
+      "configuredFunctions": true,
+      "sha256": "f6520a536c393b69bc8bed2eb80b6ba7d7e36ff7b08e48688a5acc01367e4128",
+      "preparedCSourceSha256": "0bc8665c1bcff5b2d9d9063ff02dfd081ddcb01ba0ba5c817f0dbf857d73c255"
+    },
+    {
+      "name": "music",
+      "source": "src/music.c",
+      "javascript": "js/ported/music.js",
+      "library": "nethack-c/wasm/tu-libraries/music.js",
+      "configuredFunctions": true,
+      "sha256": "7a0fd6690db6169b7ed818cf152186ce6d2968ec6b2de61f2f7832c422cc3145",
+      "preparedCSourceSha256": "ee4033351639a8d48816dec76188948d29b060f650254eafb828c56619a0a911"
+    },
+    {
+      "name": "version",
+      "source": "src/version.c",
+      "javascript": "js/ported/version.js",
+      "library": "nethack-c/wasm/tu-libraries/version.js",
+      "configuredFunctions": true,
+      "startup": "$teleportVersionInit",
+      "sha256": "0ea0c2dc1c30584f7840acb380f30f506c2dac885f5fd503aa1ff2357be13061",
+      "preparedCSourceSha256": "ef8652e1be7d6d6dfbee7d7e849086bb8e040799a5fd0e18a4c18a9c540e9a16"
+    },
+    {
+      "name": "coloratt",
+      "source": "src/coloratt.c",
+      "javascript": "js/ported/coloratt.js",
+      "library": "nethack-c/wasm/tu-libraries/coloratt.js",
+      "configuredFunctions": true,
+      "startup": "$teleportColorattInit",
+      "sha256": "69015b3c4ec0ed11d4e60f04eea21f7559fafb72073c10e0028c2e285a45a7e7",
+      "preparedCSourceSha256": "07801e3bc98de30768fcb31ff0a2cd593c1d1e9e3159dba7cbbf97d5fc383a9b"
+    },
+    {
+      "name": "priest",
+      "source": "src/priest.c",
+      "javascript": "js/ported/priest.js",
+      "library": "nethack-c/wasm/tu-libraries/priest.js",
+      "configuredFunctions": true,
+      "sha256": "0f2e0960eb7a445f5b4dd95c6099315179e9890df4cd3a95fe3d2d7312f4d97f",
+      "preparedCSourceSha256": "6d411a4285ba0d6d9b92de3e73f61fe4967c827642c5500de5ffbf2b7e7a8945"
+    },
+    {
+      "name": "light",
+      "source": "src/light.c",
+      "javascript": "js/ported/light.js",
+      "library": "nethack-c/wasm/tu-libraries/light.js",
+      "configuredFunctions": true,
+      "sha256": "15c865998d790ffcd3558aabee5df472f28823f55adf214171dba9b54e72a6f4",
+      "preparedCSourceSha256": "d1d81c386a3ad2005f09c64425f584ba444fdb4c13df23ef81db35c4aa3328d1"
+    },
+    {
+      "name": "lock",
+      "source": "src/lock.c",
+      "javascript": "js/ported/lock.js",
+      "library": "nethack-c/wasm/tu-libraries/lock.js",
+      "configuredFunctions": true,
+      "sha256": "4b63ec49125adf6790c857c5ab762d561e7ea02f25089c99dea71cc82e8875ac",
+      "preparedCSourceSha256": "e92d90b5a2e801c9a7205f098b2602ff2a5e6d747c300b8853a474c665992497"
+    },
+    {
+      "name": "steed",
+      "source": "src/steed.c",
+      "javascript": "js/ported/steed.js",
+      "library": "nethack-c/wasm/tu-libraries/steed.js",
+      "configuredFunctions": true,
+      "sha256": "3bf7d01b71fdd8636c3b967a50ac53961be8dad66664e3d63ea9ffe5b3324bc2",
+      "preparedCSourceSha256": "cff685476b7cb4654935b231654015336286ad0ad7020294cdb60ca066075fd2"
+    },
+    {
+      "name": "wizard",
+      "source": "src/wizard.c",
+      "javascript": "js/ported/wizard.js",
+      "library": "nethack-c/wasm/tu-libraries/wizard.js",
+      "configuredFunctions": true,
+      "sha256": "02705e3b65638b343342166d854c94e8657320b239baeb9cb7b3189440355d2a",
+      "preparedCSourceSha256": "65f20a287adad40f033be2b93bad8fa98abd56fb6330225547864988db993845"
+    },
+    {
+      "name": "worm",
+      "source": "src/worm.c",
+      "javascript": "js/ported/worm.js",
+      "library": "nethack-c/wasm/tu-libraries/worm.js",
+      "configuredFunctions": true,
+      "sha256": "7c976f7e7cc535607ee232b452232dfeb72918c8faa3d3d6b8c58780367cead8",
+      "preparedCSourceSha256": "eddba29f0ee121680cfbfda102b371fec2ef5bf8c27dff45a741e5b634335bcd"
+    },
+    {
+      "name": "o_init",
+      "source": "src/o_init.c",
+      "javascript": "js/ported/o_init.js",
+      "library": "nethack-c/wasm/tu-libraries/o_init.js",
+      "configuredFunctions": true,
+      "sha256": "7861819195bbf8f1d4655702c53955beab8c3ef7f23ee986b2b304badb5cf404",
+      "preparedCSourceSha256": "2a38c0add217b5d7f8fcf336d12f1aee5ccee50738d427697ef9aa6e1f79ec85"
+    },
+    {
+      "name": "ball",
+      "source": "src/ball.c",
+      "javascript": "js/ported/ball.js",
+      "library": "nethack-c/wasm/tu-libraries/ball.js",
+      "configuredFunctions": true,
+      "sha256": "22ea211af35ee180a290faec481a18158821fb477d7266d882394ebd7d9630bd",
+      "preparedCSourceSha256": "ae5970b468e1a4ca8a9939222582a345f39a1925df3957ed8817dc6251a69806"
+    },
+    {
+      "name": "mcastu",
+      "source": "src/mcastu.c",
+      "javascript": "js/ported/mcastu.js",
+      "library": "nethack-c/wasm/tu-libraries/mcastu.js",
+      "configuredFunctions": true,
+      "sha256": "14da9c1a0ed399a9b679239c48c0c57f41ba51a5f31efba41f8751550f99700b",
+      "preparedCSourceSha256": "6ef69cb8689415d14488be1f78b93e593d2c2b128eda62733613533c5edeb285"
+    },
+    {
+      "name": "dbridge",
+      "source": "src/dbridge.c",
+      "javascript": "js/ported/dbridge.js",
+      "library": "nethack-c/wasm/tu-libraries/dbridge.js",
+      "configuredFunctions": true,
+      "sha256": "91844831154f6d128e50d762d0763ecf2b3b845111e91ae5d0e537d10d25bd27",
+      "preparedCSourceSha256": "b1dbdca4e2fc9e5a2a17ed5d0c80d79f900ea5997dd0b2c4a3171977bee0260f"
+    },
+    {
+      "name": "mondata",
+      "source": "src/mondata.c",
+      "javascript": "js/ported/mondata.js",
+      "library": "nethack-c/wasm/tu-libraries/mondata.js",
+      "configuredFunctions": true,
+      "sha256": "8c4392e371881e3d57d8db03e42e4e4831b665bab808604eef8a7e0a0cc5ac20",
+      "preparedCSourceSha256": "c7a19d003c169fed7dde555ecad9069627f059309142b7d8104314572f90a685"
+    },
+    {
+      "name": "hacklib",
+      "source": "src/hacklib.c",
+      "javascript": "js/ported/hacklib.js",
+      "library": "nethack-c/wasm/tu-libraries/hacklib.js",
+      "reference": "prepared",
+      "configuredFunctions": true,
+      "sha256": "308c32f2c959a8aadcb816d333ea5faf2aad90c9325523ae6a5551bd9d4963e3",
+      "preparedCSourceSha256": "78e81aedddb93a6bc8d966f3f586e689ae05c335d34dba36af6abb95700d5ec4"
+    },
+    {
+      "name": "worn",
+      "source": "src/worn.c",
+      "javascript": "js/ported/worn.js",
+      "library": "nethack-c/wasm/tu-libraries/worn.js",
+      "configuredFunctions": true,
+      "sha256": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
+      "preparedCSourceSha256": "0414baea25644ea52cc7b628dff4ab1a533eada1523405eaabe7d7555bc3d4cf"
+    },
+    {
+      "name": "wield",
+      "source": "src/wield.c",
+      "javascript": "js/ported/wield.js",
+      "library": "nethack-c/wasm/tu-libraries/wield.js",
+      "configuredFunctions": true,
+      "sha256": "7c4052a40ad20eec5b6a5918597dc800165cb77694472e7aa0b8aed112f54583",
+      "preparedCSourceSha256": "dccf8af84cf299ac659ab07ee6c106d9c8f9726d1fca1360a4df81d576adbd4c"
+    }
+  ],
+  "sourceDateEpoch": "1777723200",
+  "wasmSha256": "caa9037891a506d73717bba31f1309c7758d83a17dd3a3080b83d25c9bc9edd7"
+}

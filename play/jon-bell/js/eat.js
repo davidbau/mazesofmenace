@@ -129,7 +129,7 @@ import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_s
  * tail rather than at module scope). */
 import { set_occupation, instapetrify as instapetrify_eat, useup as useup_eat, verbalize, pooleffects_breathless, surface } from './cmd.js';
 import { welded } from './wield.js';
-import { dropx, dropy, heal_legs, donull } from './do.js';
+import { dropx, dropy, heal_legs } from './do.js';
 import { weight, encumber_msg as encumber_msg_real } from './weight.js';
 import { near_capacity } from './hack.js';
 import { obj_here } from './cmd.js';
@@ -3923,10 +3923,9 @@ export async function cant_finish_meal(corpse) {
         }
 
         /* C eat.c:3909: go.occupation = donull; (any non-Null other than eatfood()) */
-        g.occupation = donull;
-        /* Stop before makemon: its pline flushes the map without the revived
-         * monster, and must not finish or consume the corpse being revived. */
-        await stop_occupation();
+        g.occupation = null;
+
+        /* C eat.c:3910: stop_occupation(); (clears occupation and calls maybe_finished_meal) */
 
         /* C eat.c:3911: newuhs(FALSE); */
         await newuhs(false);

@@ -175,7 +175,7 @@ import { pline, You_hear, You_see } from './pline.js';
 import { invalidateTerrainStatus } from './terrain-status.js';
 /* rumors.c outrumor()'s is_fainted() guard.  CYCLIC (js/eat.js imports getrumor
  * from this file); is_fainted is a hoisted `export function`, so it resolves. */
-import { set_tin_variety, is_fainted, mon_givit, food_disappears, eaten_stat, cant_finish_meal } from './eat.js';
+import { set_tin_variety, is_fainted, mon_givit, food_disappears, eaten_stat } from './eat.js';
 import { book_disappears } from './spell.js';
 import { impossible as lifecycle_impossible } from './pline.js';
 import { LS_OBJECT } from './const.js';
@@ -9311,6 +9311,9 @@ export async function revive_corpse(otmp, do_msgs = true) {
         || (wasBuried && (mdat.mlet === S_TROLL || is_rider_pm(mnum)));
     /* C do.c:2121-2133: name, location and wield state are read BEFORE
      * revive() consumes the corpse. */
+    if (is_zomb && wasBuried
+        && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
+        return false;
     const where0 = otmp.where | 0;
     const chewed = (otmp.oeaten | 0) !== 0;
     const is_uwep = otmp === game.u?.uwep;
@@ -9327,12 +9330,6 @@ export async function revive_corpse(otmp, do_msgs = true) {
         const carrier = get_container_location(container, containerWhere, containerNesting);
         if (containerWhere.value === OBJ_MINVENT) mcarry = carrier;
     }
-    /* C zap.c:909: stop eating before checking location or creating a monster. */
-    await cant_finish_meal(otmp);
-    /* C zap.c:953-957: a buried zombie needs terrain it can dig through. */
-    if (is_zomb && wasBuried
-        && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
-        return false;
     let x = otmp.ox | 0, y = otmp.oy | 0;
     if (where0 === OBJ_CONTAINED) {
         // C zap.c:914-945: use the outer container's current location,

@@ -80,7 +80,7 @@ import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_backgr
 import { update_lastseentyp } from './dungeon.js';
 import { pline, livelog_printf, You_hear, You_see } from './pline.js';
 import { docorner_status_rows } from './display.js';
-import { set_mention_map_hook, mention_map_pline_cells } from './display.js';
+import { set_mention_map_hook } from './display.js';
 import { GLYPHCLS_WARNING } from './display.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
@@ -575,10 +575,6 @@ function config_error_add(fmt, ...args) {
     if (config_error_add_lua(msg)) return;
     if (!game._config_errors) game._config_errors = [];
     game._config_errors.push(msg);
-    /* config_error_data->line_num / origline at the time of the error
-     * (cfgfiles.c:1578-1585), for the non-secure report. */
-    if (game._rc_errctx)
-        (game._config_error_ctx ||= [])[game._config_errors.length - 1] = { ...game._rc_errctx };
 }
 
 // Direction deltas: y u k
@@ -4444,10 +4440,7 @@ export async function useupf(obj, numused) {
         /* C invent.c:4775 — strchr(u.urooms, *in_rooms(otmp->ox, otmp->oy, 0)) */
         const rooms = in_rooms(otmp.ox | 0, otmp.oy | 0, 0);
         const firstRoom = rooms && rooms.length ? rooms[0] : 0;
-        /* strchr(s, '\0') finds the terminator: an empty in_rooms() list
-         * (first char NUL) is a hit in C, never a miss. */
-        if ((firstRoom | 0) === 0
-            || (u.urooms && u.urooms.indexOf(String.fromCharCode(firstRoom | 0)) !== -1))
+        if (u.urooms && u.urooms.indexOf(String.fromCharCode(firstRoom | 0)) !== -1)
             await addtobill(otmp, false, false, false);
         else
             await stolen_value(otmp, otmp.ox | 0, otmp.oy | 0, false, false);
@@ -26897,22 +26890,11 @@ async function pline_xy_a11y(x, y, text) {
 }
 
 /* C display.c:2060-2072 show_glyph() mention_map announcement: describe the spot
- * just painted and announce it (pline_xy_a11y's coordinate formatting);
- * do not mutate global a11y.accessiblemsg across async boundary. */
-set_mention_map_hook((x, y, cells) => {
+ * just painted and announce it. pline_xy_a11y handles coordinate formatting
+ * directly; do not mutate global a11y.accessiblemsg across async boundary. */
+set_mention_map_hook((x, y) => {
     _autodescribe_firstmatch(x, y).then(async (firstmatch) => {
-        const text = (firstmatch || '') + '.';
-        const gp = game.iflags?.getpos_coords;
-        const msg = isok(x, y)
-            ? coord_desc(x, y, (!gp || gp === GPCOORDS_NONE) ? GPCOORDS_COMFULL : gp) + ': ' + text
-            : text;
-        /* The frame this pline freezes is the one show_glyph flushed at. */
-        const release = cells && mention_map_pline_cells(msg, cells);
-        try {
-            await pline('%s', msg);
-        } finally {
-            if (release) release();
-        }
+        await pline_xy_a11y(x, y, (firstmatch || '') + '.');
     });
 });
 
@@ -28003,9 +27985,6 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "wiz_show_nhuuid":
         g.context.move = 0;
         await pline("The NHUUID for this game is { %s }.", "");
-        /* wizcmds.c:1785 returns ECMD_OK, so rhack's reset_cmd_vars()
-         * (cmd.c:3814-3815) clears a count prefix: "7V" shows it once. */
-        outcome.value = ECMD_OK;
         return true;
     case "wiz_mon_diff":
         /* C wizcmds.c:1790 — text window, ECMD_OK: no turn, no RNG. */
@@ -30150,14 +30129,6 @@ async function _do_look_lookat(x, y) {
             supplemental_pm: looks && !_cmd_Hallucination() ? u.ustuck.data : null,
             dbaseEntry: null,
         };
-    }
-    // C pager.c:794-795,1595-1609: temporary cmap symbols describe the
-    if (dglyph?.cls === GLYPHCLS_CMAP && dglyph.cmap >= 74
-        && DEFSYM_EXPLANATION[dglyph.cmap]) {
-        const classes = pager_cmap_description(dglyph);
-        return { kind: 'cmap-effect', glyphChar: dglyph.ch, glyphDec: !!dglyph.dec,
-            ...classes, firstmatch: DEFSYM_EXPLANATION[dglyph.cmap],
-            dbaseEntry: null };
     }
     /* C pager.c:1512-1528: warning symbols participate in all class scans.
      * Resolve the warning before the monster arm: its m_at() record does
@@ -37545,10 +37516,6 @@ async function doherecmdmenu() {
         g._screen_output = _rows().join('\n');
         set_cursor(WIN_COL + '(end)'.length + 1, endRow);
     };
-    /* wintty.c:1938-1939: an overlaid menu runs tty_clear_nhwindow(WIN_MESSAGE),
-     * erasing getpos's "(For instructions ...)" left on the topline. */
-    g._pending_message = '';
-    g._topl_sticky = '';
     await _show();
     let pick = -1;
     for (;;) {

@@ -1,0 +1,923 @@
+/* NetHack 5.0	steed.c	$NHDT-Date: 1720128167 2024/07/04 21:22:47 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.121 $ */
+/* Copyright (c) Kevin Hugo, 1998-1999. */
+/* NetHack may be freely redistributed.  See license for details. */
+
+import { C } from './c-runtime.js';
+
+
+/* Monsters that might be ridden */
+export const steeds = [ 'S_QUADRUPED', 'S_UNICORN', 'S_ANGEL',
+                                        'S_CENTAUR',   'S_DRAGON',  'S_JABBERWOCK',
+                                        0 ];
+
+
+
+
+/* caller has decided that hero can't reach something while mounted */
+export function rider_cant_reach()
+{
+    C.You("aren't skilled enough to reach from %s.", C.y_monnam(C.u.usteed));
+}
+
+/*** Putting the saddle on ***/
+
+/* Can this monster wear a saddle? */
+export function can_saddle(mtmp)
+{
+    let ptr = mtmp.data;
+
+    return (C.strchr(C.steeds, ptr.mlet) && (ptr.msize >= C.MZ_MEDIUM)
+            && (!C.humanoid(ptr) || ptr.mlet == C.S_CENTAUR) && !C.amorphous(ptr)
+            && !C.noncorporeal(ptr) && !C.is_whirly(ptr) && !C.unsolid(ptr));
+}
+
+export function use_saddle(otmp)
+{
+    let mtmp;
+    let ptr;
+    let chance;
+
+    if (!C.u_handsy())
+        return C.ECMD_OK;
+
+    /* Select an animal */
+    if (C.u.uswallow || C.Underwater || !C.getdir(0)) {
+        C.pline1(C.Never_mind);
+        return C.ECMD_CANCEL;
+    }
+    if (!C.u.dx && !C.u.dy) {
+        C.pline("Saddle yourself?  Very funny...");
+        return C.ECMD_OK;
+    }
+    if (!C.isok(C.u.ux + C.u.dx, C.u.uy + C.u.dy)
+        || !(mtmp = C.m_at(C.u.ux + C.u.dx, C.u.uy + C.u.dy)) || !C.canspotmon(mtmp)) {
+        C.pline("I see nobody there.");
+        return C.ECMD_TIME;
+    }
+
+    /* Is this a valid monster? */
+    if ((mtmp.misc_worn_check & C.W_SADDLE) != 0n
+        || C.which_armor(mtmp, C.W_SADDLE)) {
+        C.pline("%s doesn't need another one.", C.Monnam(mtmp));
+        return C.ECMD_TIME;
+    }
+    ptr = mtmp.data;
+    if (C.touch_petrifies(ptr) && !C.uarmg && !C.Stone_resistance) {
+        let kbuf = C.stackAlloc(C.BUFSZ);
+
+        C.You("touch %s.", C.mon_nam(mtmp));
+        if (!(C.poly_when_stoned(C.gy.youmonst.data) && C.polymon(C.PM_STONE_GOLEM))) {
+            C.Sprintf(kbuf, "attempting to saddle %s",
+                    C.an(C.pmname(mtmp.data, C.Mgender(mtmp))));
+            C.instapetrify(kbuf);
+        }
+    }
+    if (C.samePtr(ptr, C.mons[C.PM_AMOROUS_DEMON])) {
+        C.pline("Shame on you!");
+        C.exercise(C.A_WIS, 0);
+        return C.ECMD_TIME;
+    }
+    if (mtmp.isminion || mtmp.isshk || mtmp.ispriest || mtmp.isgd
+        || mtmp.iswiz) {
+        C.pline("I think %s would mind.", C.mon_nam(mtmp));
+        return C.ECMD_TIME;
+    }
+    if (!can_saddle(mtmp)) {
+        C.You_cant("saddle such a creature.");
+        return C.ECMD_TIME;
+    }
+
+    /* Calculate your chance */
+    chance = C.int(C.ACURR(C.A_DEX) + Math.trunc(C.ACURR(C.A_CHA) / 2) + 2 * mtmp.mtame);
+    chance = C.int(chance + (C.u.ulevel * (mtmp.mtame ? 20 : 5)));
+    if (!mtmp.mtame)
+        chance = C.int(chance - (10 * mtmp.m_lev));
+    if (C.Role_if(C.PM_KNIGHT))
+        chance = C.int(chance + (20));
+    switch (C.P_SKILL(C.P_RIDING)) {
+    case C.P_ISRESTRICTED:
+    case C.P_UNSKILLED:
+    default:
+        chance = C.int(chance - (20));
+        break;
+    case C.P_BASIC:
+        break;
+    case C.P_SKILLED:
+        chance = C.int(chance + (15));
+        break;
+    case C.P_EXPERT:
+        chance = C.int(chance + (30));
+        break;
+    }
+    if (C.Confusion || C.Fumbling || C.Glib)
+        chance = C.int(chance - (20));
+    else if (C.uarmg && C.objdescr_is(C.uarmg, "riding gloves"))
+        /* Bonus for wearing "riding" (but not fumbling) gloves */
+        chance = C.int(chance + (10));
+    else if (C.uarmf && C.objdescr_is(C.uarmf, "riding boots"))
+        /* ... or for "riding boots" */
+        chance = C.int(chance + (10));
+    if (otmp.cursed)
+        chance = C.int(chance - (50));
+
+    /* [intended] steed becomes alert if possible */
+    maybewakesteed(mtmp);
+
+    /* Make the attempt */
+    if (C.rn2(100, 129, "use_saddle") < chance) {
+        C.You("put the saddle on %s.", C.mon_nam(mtmp));
+        if (otmp.owornmask)
+            C.remove_worn_item(otmp, 0);
+        C.freeinv(otmp);
+        /* !can_saddle(mtmp) already eliminated above */
+        put_saddle_on_mon(otmp, mtmp);
+    } else
+        C.pline("%s resists!", C.Monnam(mtmp));
+    return C.ECMD_TIME;
+}
+
+export function put_saddle_on_mon(saddle, mtmp)
+{
+    if (!can_saddle(mtmp) || C.which_armor(mtmp, C.W_SADDLE)) {
+        if (saddle)
+            C.impossible("put_saddle_on_mon: saddle obj could get orphaned");
+        return;
+    }
+    if (!saddle) {
+        if ((saddle = C.mksobj(C.SADDLE, 1, 0)) != 0) {
+            C.fully_identify_obj(saddle);
+            /* mpickobj can later override identification if out-of-view */
+        } else {
+            return;
+        }
+    }
+    if (C.mpickobj(mtmp, saddle))
+        C.panic("merged saddle?");
+    mtmp.misc_worn_check |= C.W_SADDLE;
+    saddle.owornmask = C.W_SADDLE;
+    saddle.leashmon = mtmp.m_id;
+    C.update_mon_extrinsics(mtmp, saddle, 1, 0);
+}
+
+/*** Riding the monster ***/
+
+/* Can we ride this monster?  Caller should also check can_saddle() */
+export function can_ride(mtmp)
+{
+    return (mtmp.mtame && C.humanoid(C.gy.youmonst.data)
+            && !C.verysmall(C.gy.youmonst.data) && !C.bigmonst(C.gy.youmonst.data)
+            && (!C.Underwater || C.is_swimmer(mtmp.data)));
+}
+
+/* the #ride command */
+export function doride()
+{
+    let forcemount = 0;
+
+    if (C.u.usteed) {
+        C.callLocal(dismount_steed, C.DISMOUNT_BYCHOICE);
+    } else if (C.getdir(0) && C.isok(C.u.ux + C.u.dx, C.u.uy + C.u.dy)) {
+        if (C.wizard && C.y_n("Force the mount to succeed?") == 'y'.charCodeAt(0))
+            forcemount = 1;
+        return (C.callLocal(mount_steed, C.m_at(C.u.ux + C.u.dx, C.u.uy + C.u.dy), forcemount)
+                ? C.ECMD_TIME : C.ECMD_OK);
+    } else {
+        return C.ECMD_CANCEL;
+    }
+    return C.ECMD_TIME;
+}
+
+/* Start riding, with the given monster */
+export function mount_steed(mtmp, force)
+/* The animal */
+/* Quietly force this animal */
+{
+    force = C.boolean(force);
+    let otmp;
+    let buf = C.stackAlloc(C.BUFSZ);
+    let ptr;
+
+    /* Sanity checks */
+    if (C.u.usteed) {
+        C.You("are already riding %s.", C.mon_nam(C.u.usteed));
+        return (0);
+    }
+
+    /* Is the player in the right form? */
+    if (C.Hallucination && !force) {
+        C.pline("Maybe you should find a designated driver.");
+        return (0);
+    }
+    /* While riding, Wounded_legs refers to the steed's
+     * legs, not the hero's legs.
+     * That opens up a potential abuse where the player
+     * can mount a steed, then dismount immediately to
+     * heal leg damage, because leg damage is always
+     * healed upon dismount (Wounded_legs context switch).
+     * By preventing a hero with Wounded_legs from
+     * mounting a steed, the potential for abuse is
+     * reduced.  However, dismounting still immediately
+     * heals the steed's wounded legs.  [In 3.4.3 and
+     * earlier, that unintentionally made the hero's
+     * temporary 1 point Dex loss become permanent.]
+     */
+    if (C.Wounded_legs) {
+        let qbuf = C.stackAlloc(C.QBUFSZ);
+
+        C.legs_in_no_shape("riding", 0);
+        C.Sprintf(qbuf, "Heal your leg%s?",
+                ((C.HWounded_legs & C.BOTH_SIDES) == C.BOTH_SIDES) ? "s" : "");
+        if (force && C.wizard && C.y_n(qbuf) == 'y'.charCodeAt(0))
+            C.heal_legs(0);
+        else
+            return (0);
+    }
+
+    if (C.Upolyd && (!C.humanoid(C.gy.youmonst.data)
+                   || C.verysmall(C.gy.youmonst.data)
+                   || C.bigmonst(C.gy.youmonst.data)
+                   || C.slithy(C.gy.youmonst.data))) {
+        C.You("won't fit on a saddle.");
+        return (0);
+    }
+    if (!force && (C.near_capacity() > C.SLT_ENCUMBER)) {
+        C.You_cant("do that while carrying so much stuff.");
+        return (0);
+    }
+
+    /* Can the player reach and see the monster? */
+    if (!mtmp || (!force && ((C.Blind && !C.Blind_telepat) || mtmp.mundetected
+                             || C.M_AP_TYPE(mtmp) == C.M_AP_FURNITURE
+                             || C.M_AP_TYPE(mtmp) == C.M_AP_OBJECT))) {
+        C.pline("I see nobody there.");
+        return (0);
+    }
+    if (C.samePtr(mtmp.data, C.mons[C.PM_LONG_WORM])
+        && (C.u.ux + C.u.dx != mtmp.mx || C.u.uy + C.u.dy != mtmp.my)) {
+        /* As of 3.6.2:  test_move(below) is used to check for trying to mount
+           diagonally into or out of a doorway or through a tight squeeze;
+           attempting to mount a tail segment when hero was not adjacent
+           to worm's head could trigger an impossible() in worm_cross()
+           called from test_move(), so handle not-on-head before that */
+        C.You("couldn't ride %s, let alone its tail.", C.a_monnam(mtmp));
+        return 0;
+    }
+    if (C.u.uswallow || C.u.ustuck || C.u.utrap || C.Punished
+        || !C.test_move(C.u.ux, C.u.uy, mtmp.mx - C.u.ux, mtmp.my - C.u.uy,
+                      C.TEST_MOVE)) {
+        if (C.Punished || !(C.u.uswallow || C.u.ustuck || C.u.utrap))
+            C.You("are unable to swing your %s over.", C.body_part(C.LEG));
+        else
+            C.You("are stuck here for now.");
+        return (0);
+    }
+
+    /* Is this a valid monster? */
+    otmp = C.which_armor(mtmp, C.W_SADDLE);
+    if (!otmp) {
+        C.pline("%s is not saddled.", C.Monnam(mtmp));
+        return (0);
+    }
+
+    ptr = mtmp.data;
+    if (C.touch_petrifies(ptr) && !C.Stone_resistance) {
+        let kbuf = C.stackAlloc(C.BUFSZ);
+
+        C.You("touch %s.", C.mon_nam(mtmp));
+        C.Sprintf(kbuf, "attempting to ride %s",
+                C.an(C.pmname(mtmp.data, C.Mgender(mtmp))));
+        C.instapetrify(kbuf);
+    }
+    if (!mtmp.mtame || mtmp.isminion) {
+        C.pline("I think %s would mind.", C.mon_nam(mtmp));
+        return (0);
+    }
+    if (mtmp.mtrapped) {
+        let t = C.t_at(mtmp.mx, mtmp.my);
+
+        C.You_cant("mount %s while %s's trapped in %s.", C.mon_nam(mtmp),
+                 C.mhe(mtmp), C.an(C.trapname(t.ttyp, 0)));
+        return (0);
+    }
+
+    if (!force && !C.Role_if(C.PM_KNIGHT) && !(--mtmp.mtame)) {
+        /* no longer tame */
+        C.newsym(mtmp.mx, mtmp.my);
+        C.pline("%s resists%s!", C.Monnam(mtmp),
+              mtmp.mleashed ? " and its leash comes off" : "");
+        if (mtmp.mleashed)
+            C.m_unleash(mtmp, 0);
+        return (0);
+    }
+    if (!force && C.Underwater && !C.is_swimmer(ptr)) {
+        C.You_cant("ride that creature while under %s.",
+                 C.hliquid("water"));
+        return (0);
+    }
+    if (!can_saddle(mtmp) || !can_ride(mtmp)) {
+        C.You_cant("ride such a creature.");
+        return 0;
+    }
+
+    /* Is the player impaired? */
+    if (!force && !C.is_floater(ptr) && !C.is_flyer(ptr) && C.Levitation
+        && !C.Lev_at_will) {
+        C.You("cannot reach %s.", C.mon_nam(mtmp));
+        return (0);
+    }
+    if (!force && C.uarm && C.is_metallic(C.uarm) && C.greatest_erosion(C.uarm)) {
+        C.Your("%s armor is too stiff to be able to mount %s.",
+             C.uarm.oeroded ? "rusty" : "corroded", C.mon_nam(mtmp));
+        return (0);
+    }
+    if (!force
+        && (C.Confusion || C.Fumbling || C.Glib || C.Wounded_legs || otmp.cursed
+            || otmp.greased
+            || (C.u.ulevel + mtmp.mtame < C.rnd(Math.trunc(C.MAXULEV / 2) + 5, 341, "mount_steed")))) {
+        if (C.Levitation) {
+            C.pline("%s slips away from you.", C.Monnam(mtmp));
+            return 0;
+        }
+        C.You("slip while trying to get on %s.", C.mon_nam(mtmp));
+
+        C.Sprintf(buf, "slipped while mounting %s",
+                /* "a saddled mumak" or "a saddled pony called Dobbin" */
+                C.x_monnam(mtmp, C.ARTICLE_A, 0,
+                         C.SUPPRESS_IT | C.SUPPRESS_INVISIBLE
+                             | C.SUPPRESS_HALLUCINATION,
+                         1));
+        C.losehp(C.Maybe_Half_Phys(C.rn1(5, 10, 354, "mount_steed")), buf, C.NO_KILLER_PREFIX);
+        return (0);
+    }
+
+    /* Success */
+    maybewakesteed(mtmp);
+    if (!force) {
+        if (C.Levitation && !C.is_floater(ptr) && !C.is_flyer(ptr))
+            /* Must have Lev_at_will at this point */
+            C.pline("%s magically floats up!", C.Monnam(mtmp));
+        C.You("mount %s.", C.mon_nam(mtmp));
+        if (C.Flying)
+            C.You("and %s take flight together.", C.mon_nam(mtmp));
+    }
+    /* setuwep handles polearms differently when you're mounted */
+    if (C.uwep && C.is_pole(C.uwep))
+        C.gu.unweapon = 0;
+    C.u.usteed = mtmp;
+    {
+        let was_stealthy = C.Stealth != 0;
+
+        C.steed_vs_stealth();
+        if (was_stealthy && !C.Stealth)
+            C.You("aren't stealthy anymore.");
+    }
+    C.remove_monster(mtmp.mx, mtmp.my);
+    C.teleds(mtmp.mx, mtmp.my, C.TELEDS_ALLOW_DRAG);
+    C.disp.botl = 1;
+    return 1;
+}
+
+/* You and your steed have moved */
+export function exercise_steed()
+{
+    if (!C.u.usteed)
+        return;
+
+    /* It takes many turns of riding to exercise skill */
+    if ((C.u.urideturns = C.int(C.u.urideturns + 1)) >= 100) {
+        C.u.urideturns = 0;
+        C.use_skill(C.P_RIDING, 1);
+    }
+    return;
+}
+
+/* The player kicks or whips the steed */
+export function kick_steed()
+{
+    let He = C.stackAlloc(C.BUFSZ); /* monverbself() appends to the "He"/"She"/"It" value */
+    if (!C.u.usteed)
+        return;
+
+    /* [ALI] Various effects of kicking sleeping/paralyzed steeds */
+    if (C.helpless(C.u.usteed)) {
+        /* We assume a message has just been output of the form
+         * "You kick <steed>."
+         */
+        C.Strcpy(He, C.mhe(C.u.usteed));
+        C.storeChar(He, C.highc(C.loadChar(He)));
+        if ((C.u.usteed.mcanmove || C.u.usteed.mfrozen) && !C.rn2(2, 415, "kick_steed")) {
+            if (C.u.usteed.mcanmove)
+                C.u.usteed.msleeping = 0;
+            else if (C.u.usteed.mfrozen > 2)
+                C.u.usteed.mfrozen -= 2;
+            else {
+                C.u.usteed.mfrozen = 0;
+                C.u.usteed.mcanmove = 1;
+            }
+            if (C.helpless(C.u.usteed))
+                C.pline("%s stirs.", He);
+            else
+                /* if hallucinating, might yield "He rouses herself" or
+                   "She rouses himself" */
+                C.pline("%s!", C.monverbself(C.u.usteed, He, "rouse", 0));
+        } else
+            C.pline("%s does not respond.", He);
+        return;
+    }
+
+    /* Make the steed less tame and check if it resists */
+    if (C.u.usteed.mtame)
+        C.u.usteed.mtame--;
+    if (!C.u.usteed.mtame && C.u.usteed.mleashed)
+        C.m_unleash(C.u.usteed, 1);
+    if (!C.u.usteed.mtame
+        || (C.u.ulevel + C.u.usteed.mtame < C.rnd(Math.trunc(C.MAXULEV / 2) + 5, 441, "kick_steed"))) {
+        C.newsym(C.u.usteed.mx, C.u.usteed.my);
+        C.callLocal(dismount_steed, C.DISMOUNT_THROWN);
+        return;
+    }
+
+    C.pline("%s gallops!", C.Monnam(C.u.usteed));
+    C.u.ugallop = C.long(C.u.ugallop + C.long(C.rn1(20, 30, 448, "kick_steed")));
+    return;
+}
+
+/*
+ * Try to find a dismount point adjacent to the steed's location.
+ * If all else fails, try enexto().  Use enexto() as a last resort because
+ * enexto() chooses its point randomly, possibly even outside the
+ * room's walls, which is not what we want.
+ * Adapted from mail daemon code.
+ */
+export function landing_spot(spot, reason, forceit)
+/* landing position (we fill it in) */
+{
+    forceit = C.int(forceit);
+    reason = C.int(reason);
+    let cc = C.coordLocal(), try_ = C.coordArrayLocal(8); /* 8: the 8 spots adjacent to the hero's spot */
+    let i, j, best_j, clockwise_j, counterclk_j,
+        n, viable, distance, min_distance = -1;
+    let x, y;
+    let found, impaird, kn_trap, boulder;
+    let t;
+
+    C.memset(try_, 0, 8 * C.coordSize);
+    n = 0;
+    j = C.xytodir(C.u.dx, C.u.dy);
+    if (reason == C.DISMOUNT_KNOCKED && j != C.DIR_ERR) {
+        /* we'll check preferred location first; if viable it'll be picked */
+        best_j = j;
+        try_[0].x = C.u.dx, try_[0].y = C.u.dy;
+        /* the two next best locations are checked second and third */
+        i = C.rn2(2, 480, "landing_spot");
+        clockwise_j = C.DIR_RIGHT(j); /* (j + 1) % 8 */
+        C.dirtocoord(cc, clockwise_j);
+        try_[1 + i].x = cc.x, try_[1 + i].y = cc.y; /* [1] or [2] */
+        counterclk_j = C.DIR_LEFT(j); /* (j + 8 - 1) % 8 */
+        C.dirtocoord(cc, counterclk_j);
+        try_[2 - i].x = cc.x, try_[2 - i].y = cc.y; /* [2] or [1] */
+        n = 3;
+        if (C.debugcore("steed.c", 1)) {
+            let save_plnmsg = C.iflags.last_msg;
+        C.pline("knock from saddle: best %s, next %s or %s",
+                    C.directionname(best_j),
+                    C.directionname(clockwise_j), C.directionname(counterclk_j));
+            C.iflags.last_msg = save_plnmsg;
+        }
+    } else {
+        best_j = clockwise_j = counterclk_j = -1;
+    }
+    for (j = 0; j < C.N_DIRS; ++j) {
+        /* fortunately NODIAG() handling isn't needed for DISMOUNT_KNOCKED
+           because hero can only ride when humanoid */
+        if (j == best_j || j == clockwise_j || j == counterclk_j)
+            continue;
+        /* j==0 is W, j==1 NW, j==2 N, j==3 NE, ..., around to j==7 SW;
+           so odd j values are diagonal directions here */
+        if (reason == C.DISMOUNT_POLY && C.NODIAG(C.u.umonnum) && (j % 1) != 0)
+            continue;
+        C.dirtocoord(cc, j);
+        C.copyCoord(try_[n++], cc);
+    }
+
+    /*
+     * Up to three passes;
+     * i==0: voluntary dismount without impairment avoids known traps and
+     *       boulders;
+     * i==1: voluntary dismount with impairment or knocked out of saddle
+     *       avoids boulders but allows known traps;
+     * i==2: other, allow traps and boulders.
+     *
+     * Fallback to i==1 if nothing appropriate was found for i==0 and
+     * to i==2 as last resort.
+     */
+    impaird = (C.Stunned || C.Confusion || C.Fumbling);
+    viable = 0;
+    found = 0;
+    for (i = (reason == C.DISMOUNT_BYCHOICE && !impaird) ? 0
+             : ((reason == C.DISMOUNT_BYCHOICE && impaird)
+                || reason == C.DISMOUNT_KNOCKED) ? 1
+               : 2;
+         i <= 2 && !found; ++i) {
+        for (j = 0; j < n; ++j) {
+            x = C.coordxy(C.u.ux + try_[j].x);
+            y = C.coordxy(C.u.uy + try_[j].y);
+            if (!C.isok(x, y) || C.u_at(x, y)) /* [note: u_at() can't happen] */
+                continue;
+
+            if (C.accessible(x, y) && !C.MON_AT(x, y)
+                && C.test_move(C.u.ux, C.u.uy, x - C.u.ux, y - C.u.uy, C.TEST_MOVE)) {
+                ++viable;
+                distance = C.distu(x, y);
+                if (min_distance < 0 /* no viable candidate yet */
+                    /* or better than pending candidate (note: orthogonal
+                       spots are distance 1 and diagonal ones distance 2;
+                       treating one as better than the other is arbitrary
+                       and not wanted for DISMOUNT_KNOCKED) */
+                    || ((best_j == -1) ? (distance < min_distance) : (j < 3))
+                    /* or equally good, maybe substitute this one */
+                    || (distance == min_distance && !C.rn2(viable, 543, "landing_spot"))) {
+                    /* traps avoided on pass 0; boulders avoided on 0 and 1 */
+                    kn_trap = i == 0 && ((t = C.t_at(x, y)) != 0 && t.tseen
+                                         && t.ttyp != C.VIBRATING_SQUARE);
+                    boulder = i <= 1 && (C.sobj_at(C.BOULDER, x, y)
+                                         && !C.throws_rocks(C.gy.youmonst.data));
+                    if (!kn_trap && !boulder) {
+                        spot.x = x;
+                        spot.y = y;
+                        min_distance = distance;
+                        found = 1;
+                        if (best_j != -1 && j < 3)
+                            /* since best_j is first candidate (j==0), j==1
+                               and j==2 can only get here when best_j was
+                               not viable; 50:50 chance for clockwise_j to
+                               come before counterclk_j so each has same
+                               chance to be next after best_j */
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    /* If we didn't find a good spot and forceit is on, try enexto(). */
+    if (forceit && !found)
+        found = C.enexto(spot, C.u.ux, C.u.uy, C.gy.youmonst.data);
+
+    return found;
+}
+
+/* Stop riding the current steed */
+export function dismount_steed(reason)
+/* Player was thrown off etc. */
+{
+    reason = C.int(reason);
+    let mtmp;
+    let otmp;
+    let verb;
+    let cc = C.coordLocal(), steedcc = C.coordLocal();
+    let save_utrap = C.u.utrap;
+    let ulev, ufly,
+            repair_leg_damage = (C.Wounded_legs != 0n),
+            have_spot = C.callLocal(landing_spot, cc, reason, 0);
+
+    mtmp = C.u.usteed; /* make a copy of steed pointer */
+    /* Sanity check */
+    if (!mtmp) /* Just return silently */
+        return;
+    C.u.usteed = 0; /* affects Fly test; could hypothetically affect Lev;
+                   * also affects u_locomotion() */
+    ufly = C.Flying ? 1 : 0;
+    ulev = C.Levitation ? 1 : 0;
+    verb = C.u_locomotion("fall"); /* only used for _FELL and _KNOCKED */
+    C.u.usteed = mtmp;
+
+    /* Check the reason for dismounting */
+    otmp = C.which_armor(mtmp, C.W_SADDLE);
+    switch (reason) {
+    case C.DISMOUNT_THROWN:
+        verb = "are thrown";
+        // C.FALLTHROUGH;
+        /*FALLTHRU*/
+    case C.DISMOUNT_KNOCKED:
+    case C.DISMOUNT_FELL:
+        C.You("%s off of %s!", verb, C.mon_nam(mtmp));
+        if (!have_spot)
+            have_spot = C.callLocal(landing_spot, cc, reason, 1);
+        if (!ulev && !ufly) {
+            C.losehp(C.Maybe_Half_Phys(C.rn1(10, 10, 612, "dismount_steed")), "riding accident",
+                   C.KILLED_BY_AN);
+            C.set_wounded_legs(C.BOTH_SIDES, C.int(C.int(C.HWounded_legs) + C.rn1(5, 5, 614, "dismount_steed")));
+            repair_leg_damage = 0;
+        }
+        break;
+    case C.DISMOUNT_POLY:
+        C.You("can no longer ride %s.", C.mon_nam(C.u.usteed));
+        if (!have_spot)
+            have_spot = C.callLocal(landing_spot, cc, reason, 1);
+        break;
+    case C.DISMOUNT_ENGULFED:
+        /* caller displays message */
+        break;
+    case C.DISMOUNT_BONES:
+        /* hero has just died... */
+        break;
+    case C.DISMOUNT_GENERIC:
+        /* no messages, just make it so */
+        break;
+    case C.DISMOUNT_BYCHOICE:
+    default:
+        if (otmp && otmp.cursed) {
+            C.You("can't.  The saddle %s cursed.",
+                otmp.bknown ? "is" : "seems to be");
+            otmp.bknown = 1; /* ok to skip set_bknown() here */
+            return;
+        }
+        if (!have_spot) {
+            C.You("can't.  There isn't anywhere for you to stand.");
+            return;
+        }
+        if (!C.has_mgivenname(mtmp)) {
+            C.pline("You've been through the dungeon on %s with no name.",
+                  C.an(C.pmname(mtmp.data, C.Mgender(mtmp))));
+            if (C.Hallucination)
+                C.pline("It felt good to get out of the rain.");
+        } else
+            C.You("dismount %s.", C.mon_nam(mtmp));
+    }
+    /* While riding, Wounded_legs refers to the steed's legs;
+       after dismounting, it reverts to the hero's legs. */
+    if (repair_leg_damage)
+        C.heal_legs(1);
+
+    /* Release the steed */
+    C.u.usteed = 0;
+    C.u.ugallop = 0n;
+    {
+        let was_stealthy = C.Stealth != 0;
+
+        C.steed_vs_stealth();
+        if (C.Stealth && !was_stealthy)
+            C.You("seem less noisy now.");
+    }
+
+    if (C.u.utraptype == C.TT_BEARTRAP
+        || C.u.utraptype == C.TT_PIT
+        || C.u.utraptype == C.TT_WEB) {
+        mtmp.mtrapped = 1;
+    }
+
+    /*
+     * rloc(), rloc_to(), and monkilled()->mondead()->m_detach() all
+     * expect mtmp to be on the map or else have mtmp->mx be 0, but
+     * setting the latter to 0 here would interfere with dropping
+     * the saddle.  Prior to 3.6.2, being off the map didn't matter.
+     *
+     * place_monster() expects mtmp to be alive and not be u.usteed.
+     *
+     * Unfortunately, <u.ux,u.uy> (former steed's implicit location)
+     * might now be occupied by an engulfer, so we can't just put mtmp
+     * at that spot.  An engulfer's previous spot will be unoccupied
+     * but we don't know where that was and even if we did, it might
+     * be hostile terrain.
+     */
+    steedcc.x = C.u.ux, steedcc.y = C.u.uy;
+    if (C.m_at(C.u.ux, C.u.uy)) {
+        /* hero's spot has a monster in it; hero must have been plucked
+           from saddle as engulfer moved into his spot--other dismounts
+           shouldn't run into this situation; find nearest viable spot */
+        if (!C.enexto(steedcc, C.u.ux, C.u.uy, mtmp.data)
+            /* no spot? must have been engulfed by a lurker-above over
+               water or lava; try requesting a location for a flyer */
+            && !C.enexto(steedcc, C.u.ux, C.u.uy, C.mons[C.PM_BAT]))
+            /* still no spot; last resort is any spot within bounds */
+            C.enexto(steedcc, C.u.ux, C.u.uy, C.mons[C.PM_GHOST]);
+    }
+
+    if (!C.DEADMONSTER(mtmp)) {
+        C.gi.in_steed_dismounting++;
+        place_monster(mtmp, steedcc.x, steedcc.y);
+        C.gi.in_steed_dismounting--;
+
+        /* if for bones, there's no reason to place the hero;
+           we want to make room for potential ghost, so move steed */
+        if (reason == C.DISMOUNT_BONES) {
+            /* move the steed to an adjacent square */
+            if (C.enexto(cc, C.u.ux, C.u.uy, mtmp.data))
+                C.rloc_to(mtmp, cc.x, cc.y);
+            else /* evidently no room nearby; move steed elsewhere */
+                C.rloc(mtmp, C.RLOC_ERR | C.RLOC_NOMSG);
+            return;
+        }
+
+        /* Set hero's and/or steed's positions.  Usually try moving the
+           hero first.  Note: for DISMOUNT_ENGULFED, caller hasn't set
+           u.uswallow yet but has set u.ustuck. */
+        if (!C.u.uswallow && !C.u.ustuck && have_spot) {
+            let mdat = mtmp.data;
+
+            /* The steed may drop into water/lava */
+            if (C.grounded(mdat)) {
+                if (C.is_pool(C.u.ux, C.u.uy)) {
+                    if (!C.Underwater)
+                        C.pline("%s falls into the %s!", C.Monnam(mtmp),
+                              C.surface(C.u.ux, C.u.uy));
+                    if (!C.cant_drown(mdat)) {
+                        C.killed(mtmp);
+                        C.adjalign(-1);
+                    }
+                } else if (C.is_lava(C.u.ux, C.u.uy)) {
+                    C.pline("%s is pulled into the %s!", C.Monnam(mtmp),
+                          C.hliquid("lava"));
+                    if (!C.likes_lava(mdat)) {
+                        C.killed(mtmp);
+                        C.adjalign(-1);
+                    }
+                }
+            }
+            /* Steed dismounting consists of two steps: being moved to another
+             * square, and descending to the floor.  We have functions to do
+             * each of these activities, but they're normally called
+             * individually and include an attempt to look at or pick up the
+             * objects on the floor:
+             * teleds() --> spoteffects() --> pickup()
+             * float_down() --> pickup()
+             * We use this kludge to make sure there is only one such attempt.
+             *
+             * Clearly this is not the best way to do it.  A full fix would
+             * involve having these functions not call pickup() at all,
+             * instead calling them first and calling pickup() afterwards.
+             * But it would take a lot of work to keep this change from
+             * having any unforeseen side effects (for instance, you would
+             * no longer be able to walk onto a square with a hole, and
+             * autopickup before falling into the hole).
+             */
+            /* [ALI] No need to move the player if the steed died. */
+            if (!C.DEADMONSTER(mtmp)) {
+                /* Keep steed here, move the player to cc;
+                 * teleds() clears u.utrap
+                 */
+                C.gi.in_steed_dismounting = 1;
+                C.teleds(cc.x, cc.y, C.TELEDS_ALLOW_DRAG);
+                if (C.sobj_at(C.BOULDER, cc.x, cc.y))
+                    C.sokoban_guilt();
+                C.gi.in_steed_dismounting = 0;
+
+                /* Put your steed in your trap */
+                if (save_utrap)
+                    C.mintrap(mtmp, C.NO_TRAP_FLAGS);
+            }
+
+        /* Couldn't move hero... try moving the steed. */
+        } else if (C.enexto(cc, C.u.ux, C.u.uy, mtmp.data)) {
+            /* Keep player here, move the steed to cc */
+            C.rloc_to(mtmp, cc.x, cc.y);
+            /* Player stays put */
+
+        /* Otherwise, steed goes bye-bye. */
+        } else {
+/* original there's-no-room handling */
+            if (reason == C.DISMOUNT_BYCHOICE) {
+                /* [un]#ride: hero gets credit/blame for killing steed */
+                C.killed(mtmp);
+                C.adjalign(-1);
+            } else {
+                /* other dismount: kill former steed with no penalty;
+                   damage type is just "neither AD_DGST nor -AD_RBRE" */
+                C.monkilled(mtmp, "", -C.AD_PHYS);
+            }
+/* Can't use this [yet?] because it violates monmove()'s
+             * assumption that a moving monster (engulfer) can't cause
+             * another monster (steed) to be removed from the fmon list.
+             * That other monster (steed) might be cached as the next one
+             * to move.
+             */
+/* migrate back to this level if hero leaves and returns
+               or to next level if it is happening in the endgame */
+        }
+    } /* !DEADMONST(mtmp) */
+
+    /* usually return the hero to the surface */
+    if (reason != C.DISMOUNT_ENGULFED && reason != C.DISMOUNT_BONES) {
+        C.gi.in_steed_dismounting = 1;
+        C.float_down(0n, C.W_SADDLE);
+        C.gi.in_steed_dismounting = 0;
+        C.disp.botl = 1;
+        C.encumber_msg();
+        C.gv.vision_full_recalc = 1;
+    } else
+        C.disp.botl = 1;
+    /* polearms behave differently when not mounted */
+    if (C.uwep && C.is_pole(C.uwep))
+        C.gu.unweapon = 1;
+    return;
+}
+
+/* when attempting to saddle or mount a sleeping steed, try to wake it up
+   (for the saddling case, it won't be u.usteed yet) */
+export function maybewakesteed(steed)
+{
+    let frozen = C.int(steed.mfrozen);
+    let wasimmobile = C.helpless(steed);
+
+    steed.msleeping = 0;
+    if (frozen) {
+        frozen = Math.trunc(C.int(frozen + 1) / 2); /* half */
+        /* might break out of timed sleep or paralysis */
+        if (!C.rn2(frozen, 836, "maybewakesteed")) {
+            steed.mfrozen = 0;
+            steed.mcanmove = 1;
+        } else {
+            /* didn't awake, but remaining duration is halved */
+            steed.mfrozen = frozen;
+        }
+    }
+    if (wasimmobile && !C.helpless(steed))
+        C.pline("%s wakes up.", C.Monnam(steed));
+    /* regardless of waking, terminate any meal in progress */
+    C.finish_meating(steed);
+}
+
+/* steed has taken on a new shape */
+export function poly_steed(steed, oldshape)
+{
+    if (!can_saddle(steed) || !can_ride(steed)) {
+        /* can't get here; newcham() -> mon_break_armor() -> m_lose_armor()
+           removes saddle and/or forces hero to dismount, if applicable,
+           before newcham() calls us */
+        C.callLocal(dismount_steed, C.DISMOUNT_FELL);
+    } else {
+        let buf = C.stackAlloc(C.BUFSZ);
+
+        C.Strcpy(buf, C.x_monnam(steed, C.ARTICLE_YOUR, 0,
+                             C.SUPPRESS_SADDLE, 0));
+        if (!C.samePtr(oldshape, steed.data))
+            C.strsubst(buf, "your ", "your new ");
+        C.You("adjust yourself in the saddle on %s.", buf);
+
+        /* riding blocks stealth unless hero+steed fly */
+        C.steed_vs_stealth();
+    }
+}
+
+/* decide whether hero's steed is able to move;
+   doesn't check for holding traps--those affect the hero directly */
+export function stucksteed(checkfeeding)
+{
+    checkfeeding = C.boolean(checkfeeding);
+    let steed = C.u.usteed;
+
+    if (steed) {
+        /* check whether steed can move */
+        if (C.helpless(steed)) {
+            C.pline("%s won't move!", C.YMonnam(steed));
+            return 1;
+        }
+        /* optionally check whether steed is in the midst of a meal */
+        if (checkfeeding && steed.meating) {
+            C.pline("%s is still eating.", C.YMonnam(steed));
+            return 1;
+        }
+    }
+    return 0;
+}
+
+export function place_monster(mon, x, y)
+{
+    y = C.coordxy(y);
+    x = C.coordxy(x);
+    let othermon;
+    let monnm, othnm;
+    let buf = C.stackAlloc(C.QBUFSZ);
+
+    C.storeChar(buf, 0);
+    /* normal map bounds are <1..COLNO-1,0..ROWNO-1> but sometimes
+       vault guards (either living or dead) are parked at <0,0> */
+    if (!C.isok(x, y) && (x != 0 || y != 0 || !mon.isgd)) {
+        C.describe_level(buf, 0);
+        C.impossible("trying to place %s at <%d,%d> mstate:%lx on %s",
+                   C.minimal_monnam(mon, 1), x, y, mon.mstate, buf);
+        x = y = 0;
+    }
+    if ((C.samePtr(mon, C.u.usteed) && !C.gi.in_steed_dismounting)
+        /* special case is for convoluted vault guard handling */
+        || (C.DEADMONSTER(mon) && !(mon.isgd && x == 0 && y == 0))) {
+        C.describe_level(buf, 0);
+        C.impossible("placing %s onto map, mstate:%lx, on %s?",
+                   (C.samePtr(mon, C.u.usteed)) ? "steed" : "defunct monster",
+                   mon.mstate, buf);
+        return;
+    }
+    if ((othermon = C.svl.level.monsters[x][y]) != 0) {
+        C.describe_level(buf, 0);
+        monnm = C.minimal_monnam(mon, 0);
+        othnm = (!C.samePtr(mon, othermon)) ? C.minimal_monnam(othermon, 1) : "itself";
+        C.impossible("placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?",
+                   monnm, othnm, x, y, othermon.mstate, mon.mstate, buf);
+    }
+    mon.mx = x, mon.my = y;
+    C.svl.level.monsters[x][y] = mon;
+    mon.mstate = C.MON_FLOOR;
+}
+
+/*steed.c*/

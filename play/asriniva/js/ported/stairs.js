@@ -1,0 +1,230 @@
+/* NetHack 5.0	stairs.c	$NHDT-Date: 1704043695 2023/12/31 17:28:15 $  $NHDT-Branch: keni-luabits2 $:$NHDT-Revision: 1.207 $ */
+/* Copyright (c) 2024 by Pasi Kallinen */
+/* NetHack may be freely redistributed.  See license for details. */
+
+import { C } from './c-runtime.js';
+
+/* JavaScript translation of stairs.c: pointer-backed views preserve the
+ * linked list, C struct fields and per-game globals. C supplies allocation,
+ * level helpers, positioning and formatting. The local d_level assignment
+ * copies every struct byte into scoped C storage. String literals are JS
+ * strings; the formatting binding supplies their C representations. C logical
+ * expressions return 0/1, so boolean results normalize the JS expression;
+ * C.boolean preserves the distinct integer-to-boolean-storage conversion.
+ * All seventeen original function boundaries remain unchanged.
+ */
+
+export function stairway_add(
+    x, y,
+    up, isladder,
+    dest)
+{
+    let tmp = C.stairway(C.alloc(C.StairwaySize));
+
+    C.HEAPU8.fill(0, tmp.address, tmp.address + C.StairwaySize);
+    tmp.sx = x;
+    tmp.sy = y;
+    tmp.up = up;
+    tmp.isladder = isladder;
+    tmp.u_traversed = 0;
+    C.assign_level(tmp.tolev, dest);
+    tmp.next = C.gs.stairs;
+    C.gs.stairs = tmp;
+}
+
+export function stairway_free_all()
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp) {
+        let tmp2 = tmp.next;
+        C.free(tmp.address);
+        tmp = tmp2;
+    }
+    C.gs.stairs = 0;
+}
+
+export function stairway_at(x, y)
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp && !(tmp.sx == x && tmp.sy == y))
+        tmp = tmp.next;
+    return tmp;
+}
+
+export function stairway_find(fromdlev)
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp) {
+        if (tmp.tolev.dnum == fromdlev.dnum
+            && tmp.tolev.dlevel == fromdlev.dlevel)
+            break; /* return */
+        tmp = tmp.next;
+    }
+    return tmp;
+}
+
+export function stairway_find_from(fromdlev, isladder)
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp) {
+        if (tmp.tolev.dnum == fromdlev.dnum
+            && tmp.tolev.dlevel == fromdlev.dlevel
+            && tmp.isladder == isladder)
+            break; /* return */
+        tmp = tmp.next;
+    }
+    return tmp;
+}
+
+export function stairway_find_dir(up)
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp && !(tmp.up == up))
+        tmp = tmp.next;
+    return tmp;
+}
+
+export function stairway_find_type_dir(isladder, up)
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp && !(tmp.isladder == isladder && tmp.up == up))
+        tmp = tmp.next;
+    return tmp;
+}
+
+export function stairway_find_special_dir(up)
+{
+    let tmp = C.gs.stairs;
+
+    while (tmp) {
+        if (tmp.tolev.dnum != C.u.uz.dnum && tmp.up != up)
+            return tmp;
+        tmp = tmp.next;
+    }
+    return tmp;
+}
+
+/* place you on the special staircase */
+export function u_on_sstairs(upflag)
+{
+    let stway = stairway_find_special_dir(C.boolean(upflag));
+
+    if (stway)
+        C.u_on_newpos(stway.sx, stway.sy);
+    else
+        C.u_on_rndspot(upflag);
+}
+
+/* place you on upstairs (or special equivalent) */
+export function u_on_upstairs()
+{
+    let stway = stairway_find_dir(1);
+
+    if (stway)
+        C.u_on_newpos(stway.sx, stway.sy);
+    else
+        u_on_sstairs(0); /* destination upstairs implies moving down */
+}
+
+/* place you on dnstairs (or special equivalent) */
+export function u_on_dnstairs()
+{
+    let stway = stairway_find_dir(0);
+
+    if (stway)
+        C.u_on_newpos(stway.sx, stway.sy);
+    else
+        u_on_sstairs(1); /* destination dnstairs implies moving up */
+}
+
+export function On_stairs(x, y)
+{
+    return Number(stairway_at(x, y) != 0);
+}
+
+export function On_ladder(x, y)
+{
+    let stway = stairway_at(x, y);
+
+    return Number(Boolean(stway && stway.isladder));
+}
+
+export function On_stairs_up(x, y)
+{
+    let stway = stairway_at(x, y);
+
+    return Number(Boolean(stway && stway.up));
+}
+
+export function On_stairs_dn(x, y)
+{
+    let stway = stairway_at(x, y);
+
+    return Number(Boolean(stway && !stway.up));
+}
+
+/* return True if 'sway' is a branch staircase and hero has used these stairs
+   to visit the branch */
+export function known_branch_stairs(sway)
+{
+    return Number(Boolean(sway && sway.tolev.dnum != C.u.uz.dnum && sway.u_traversed));
+}
+
+/* describe staircase 'sway' based on whether hero knows the destination */
+export function stairs_description(
+    sway, /* stairs/ladder to describe */
+    outbuf,   /* result buffer */
+    stcase) /* True: "staircase" or "ladder", always singular;
+                     * False: "stairs" or "ladder"; caller needs to deal
+                     * with singular vs plural when forming a sentence */
+{
+    let tolev;
+    let stairs, updown;
+
+    tolev = C.levelCopy(sway.tolev);
+    stairs = sway.isladder ? "ladder" : stcase ? "staircase" : "stairs";
+    updown = sway.up ? "up" : "down";
+
+    if (!known_branch_stairs(sway)) {
+        /* ordinary stairs or branch stairs to not-yet-visited branch */
+        C.Sprintf(outbuf, "%s %s", stairs, updown);
+        if (sway.u_traversed) {
+            let specialdepth = Number(Boolean(tolev.dnum == C.quest_dnum
+                                    || C.single_level_branch(tolev))); /* knox */
+            let to_dlev = specialdepth ? C.dunlev(tolev) : C.depth(tolev);
+
+            C.Sprintf(C.eos(outbuf), " to level %d", to_dlev);
+        }
+    } else if (C.u.uz.dnum == 0 && C.u.uz.dlevel == 1 && sway.up) {
+        /* stairs up from level one are a special case; they are marked
+           as having been traversed because the hero obviously started
+           the game by coming down them, but the remote side varies
+           depending on whether the Amulet is being carried */
+        C.Sprintf(outbuf, "%s%s %s %s",
+                !C.u.uhave.amulet ? "" : "branch ",
+                stairs, updown,
+                !C.u.uhave.amulet ? "out of the dungeon"
+                /* minimize our expectations about what comes next */
+                : (C.on_level(tolev, C.earth_level)
+                   || C.on_level(tolev, C.air_level)
+                   || C.on_level(tolev, C.fire_level)
+                   || C.on_level(tolev, C.water_level))
+                  ? "to the Elemental Planes"
+                  : "to the end game");
+    } else {
+        /* known branch stairs; tacking on destination level is too verbose */
+        C.Sprintf(outbuf, "branch %s %s to %s",
+                stairs, updown, C.svd.dungeons[tolev.dnum].dname);
+        /* dungeons[].dname is capitalized; undo that for "The <Branch>" */
+        C.strsubst(outbuf, "The ", "the ");
+    }
+    return outbuf;
+}
+
+/*stairs.c*/

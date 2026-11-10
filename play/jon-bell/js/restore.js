@@ -1,6 +1,6 @@
 import { encumber_msg } from './weight.js';
 import { object_runtime_rest_snapshot } from './o_init.js';
-import { bubbles_rest_snapshot, bubbles_copy_snapshot, mazexy } from './mkmaze.js';
+import { bubbles_rest_snapshot, bubbles_copy_snapshot } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { worms_rest_snapshot } from './worm.js';
 import { role_init } from './roles.js';
@@ -22,9 +22,7 @@ import { setuwep } from './wield.js';
 import { rnd } from './rng.js';
 import { obj_no_longer_held } from './do.js';
 import { rest_engravings, _gm_migrating } from './mklev.js';
-import { In_hell, Is_branchlev, on_level, assign_level, ledger_no } from './dungeon.js';
-import { stairway_add } from './stairs.js';
-import { deltrap } from './trap.js';
+import { In_hell } from './dungeon.js';
 import { restore_cham, hide_monst, hideunder } from './mon.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
@@ -39,7 +37,7 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, STAIRS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
+import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS } from './const.js';
 import { set_residency } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
@@ -87,12 +85,9 @@ function rest_trapchn_reverse(head) {
     return prev;
 }
 
-function restdamage_reverse(level, shift = 0) {
+function restdamage_reverse(level) {
     let prev = null, cur = level?.damagelist || null;
     while (cur) {
-        /* C restore.c:172-173 — ghostly: when += (moves - omoves). */
-        if (shift)
-            cur.when = (cur.when | 0) + shift;
         const nxt = cur.next;
         cur.next = prev;
         prev = cur;
@@ -164,8 +159,7 @@ export async function getlev(lev) {
         subrooms[i].roomnoidx = MAXNROFROOMS + 1 + i;
         g.level.rooms[MAXNROFROOMS + 1 + i] = subrooms[i];
     }
-    restdamage_reverse(g.level, g.program_state?.reading_bonesfile
-        ? (g.moves | 0) - (snap.omoves | 0) : 0);
+    restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
     {
         let prev = null, cur = snap.stairs;
@@ -286,66 +280,6 @@ export async function getlev(lev) {
     // C restores bubbles after level contents and prepends exclusions.
     await bubbles_rest_snapshot(snap.bubbles);
     g.exclusion_zones = (snap.exclusion_zones ?? []).slice().reverse();
-
-    /* C restore.c:1230-1291 — a bones level's stairs and portals are the dead
-     * hero's; re-aim them at this game's dungeon. */
-    if (ghostly) {
-        let stway = g.stairs;
-        while (stway) {
-            if (!stway.isladder && !stway.up
-                && stway.tolev.dnum === u.uz.dnum)
-                break;
-            stway = stway.next;
-        }
-
-        const medusa = g.medusa_level, stronghold = g.stronghold_level;
-        if (medusa && stronghold && lev > ledger_no(medusa)
-            && lev < ledger_no(stronghold) && !stway) {
-            const cc = {};
-            const dest = { dnum: u.uz.dnum, dlevel: u.uz.dlevel + 1 };
-            mazexy(cc);
-            stairway_add(cc.x, cc.y, false, false, dest);
-            g.level.at(cc.x, cc.y).typ = STAIRS;
-        }
-
-        const br = Is_branchlev(u.uz);
-        if (br && u.uz.dlevel === 1) {
-            const ltmp = on_level(u.uz, br.end1) ? { ...br.end2 } : { ...br.end1 };
-            switch (br.type) {
-            case BR_STAIR:
-            case BR_NO_END1:
-            case BR_NO_END2:
-                stway = g.stairs;
-                while (stway) {
-                    if (stway.tolev.dnum !== u.uz.dnum)
-                        break;
-                    stway = stway.next;
-                }
-                if (stway)
-                    assign_level(stway.tolev, ltmp);
-                break;
-            case BR_PORTAL: { /* max of 1 portal per level */
-                let trap;
-                for (trap = g.ftrap; trap; trap = trap.ntrap)
-                    if (trap.ttyp === MAGIC_PORTAL)
-                        break;
-                if (!trap)
-                    throw new Error('getlev: need portal but none found');
-                trap.dst = trap.dst || {};
-                assign_level(trap.dst, ltmp);
-                break;
-            }
-            }
-        } else if (!br) {
-            /* Remove any dangling portals. */
-            let ttmp;
-            for (let trap = g.ftrap; trap; trap = ttmp) {
-                ttmp = trap.ntrap;
-                if (trap.ttyp === MAGIC_PORTAL)
-                    deltrap(trap);
-            }
-        }
-    }
 }
 
 /* const.js FULL_MOON / NEW_MOON — same spelling as js/allmain.js:51-52, which
