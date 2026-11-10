@@ -57,7 +57,6 @@ import { cansee, block_point, does_block, unblock_point } from './vision.js';
 import { newsym } from './display.js';
 import { S_cloud, S_poisoncloud } from './symbols.js';
 import { TOWEL } from './objects.js';
-import { note_unported } from './unported.js';
 import {
     Blind, EMagical_breathing, HBlinded, HMagical_breathing, Maybe_Half_Phys,
     Poison_resistance,
@@ -66,22 +65,6 @@ import {
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 'inside_gas_cloud';
 const EXPIRE_GAS_CLOUD = 'expire_gas_cloud';
-
-export class UnsupportedRegionOperationError extends Error {
-    constructor(operation) {
-        super(`region upkeep requires a ${operation} operation`);
-        this.name = 'UnsupportedRegionOperationError';
-        this.operation = operation;
-    }
-}
-
-export class UnsupportedRegionCallbackError extends Error {
-    constructor(callback, reason = '') {
-        super(`unsupported region callback ${String(callback)}${reason}`);
-        this.name = 'UnsupportedRegionCallbackError';
-        this.callback = callback;
-    }
-}
 
 // The vision, display, message and teleport functions region.c calls
 // directly. A caller (normally a test) may supply its own;
@@ -112,7 +95,6 @@ function normalizedRegionEnv(rawEnv = {}) {
     return {
         ...regionOperationEnv(rawEnv, rawEnv.state ?? game),
         random: rawEnv.random ?? coreRandom,
-        callbacks: rawEnv.callbacks ?? {},
     };
 }
 
@@ -142,19 +124,21 @@ function findMonsterById(id, state) {
     return null;
 }
 
-function regionCallback(callback, env) {
+// C ref: region.c callbacks[] (45-48). C indexes this two-entry table with a
+// region's callback field. create_region() leaves all six fields NO_CALLBACK,
+// and only make_gas_cloud() sets any, inside_f and expire_f, to these two, so
+// no other value occurs in play. A test may store a function in a field.
+function regionCallback(callback) {
     if (!callbackIsSet(callback)) return null;
+    if (typeof callback === 'function') return callback;
     const name = callbackName(callback);
     if (name === INSIDE_GAS_CLOUD) return inside_gas_cloud;
     if (name === EXPIRE_GAS_CLOUD) return expire_gas_cloud;
-    if (typeof callback === 'function') return callback;
-    const injected = env.callbacks?.[name];
-    if (typeof injected === 'function') return injected;
-    throw new UnsupportedRegionCallbackError(name);
+    return null;
 }
 
 function preflightCallback(callback, region, subject, env) {
-    const implementation = regionCallback(callback, env);
+    const implementation = regionCallback(callback);
     if (implementation === expire_gas_cloud
         && Math.trunc(region.arg ?? 0) < 5) {
         preflightGasDissipation(region, env);
@@ -468,19 +452,10 @@ export async function inside_gas_cloud(region, monster = null, rawEnv = {}) {
             return false;
         monster.mhp -= env.random.rnd(damage) + 5;
         if (monster.mhp < 1) {
-            const recordUnportedKillBranch = (reason) => {
-                note_unported(`mon.c ${reason}`);
-                if (typeof env.unsupported === 'function')
-                    return env.unsupported(reason);
-            };
-            const killEnv = {
-                ...env,
-                unsupported: recordUnportedKillBranch,
-            };
             if (region.heros_fault)
-                await killed(monster, state, killEnv);
+                await killed(monster, state, { ...env });
             else
-                await monkilled(monster, 'gas cloud', AD_DRST, state, killEnv);
+                await monkilled(monster, 'gas cloud', AD_DRST, state, { ...env });
             if (monster.mhp < 1) return true;
         }
     }
@@ -545,7 +520,7 @@ function preflightRunRegions(env) {
             if (!thickGasProlongs)
                 plan.removal = preflightVisibleRemoval(region, env);
         }
-        plan.inside = regionCallback(region.inside_f, env);
+        plan.inside = regionCallback(region.inside_f);
         if (plan.inside) {
             if (region.hero_inside) {
                 preflightCallback(region.inside_f, region, null, env);
@@ -592,7 +567,7 @@ export async function run_regions(rawEnv = {}) {
         const region = regions[index];
         if (region.ttl > 0) --region.ttl;
         const inside = plans.get(region)?.inside
-            ?? regionCallback(region.inside_f, env);
+            ?? regionCallback(region.inside_f);
         if (!inside) continue;
         if (region.hero_inside) {
             await inside(region, null, env);
@@ -1081,6 +1056,11 @@ export async function create_gas_cloud(
     return makeGasCloud(cloud, damage, insideCloud, env);
 }
 
+// C ref: region.c create_gas_cloud_selection() (1312-1335) with
+// make_gas_cloud()'s gi.in_mklev arms. Its one caller, sp_lev.c
+// lspo_gas_cloud() (des.gas_cloud with a selection, which only
+// themerms.lua's cloud room uses), runs during level creation: under
+// mklev(), or after #wizloaddes's lspo_reset_level() has set in_mklev.
 export function create_gas_cloud_selection(selection, damage = 0, rawEnv = {}) {
     if (!selection || typeof selection.bounds !== 'function'
         || typeof selection.get !== 'function') {
@@ -1090,11 +1070,6 @@ export function create_gas_cloud_selection(selection, damage = 0, rawEnv = {}) {
     if (damage < 0)
         throw new RangeError(`invalid gas-cloud damage ${damage}`);
     const state = rawEnv.state ?? game;
-    if (!state.in_mklev) {
-        throw new UnsupportedRegionOperationError(
-            'runtime create_gas_cloud_selection',
-        );
-    }
     const cloud = create_region();
     const bounds = selection.bounds();
     for (let x = bounds.lx; x <= bounds.hx; ++x) {

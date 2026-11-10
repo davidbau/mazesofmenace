@@ -3,6 +3,7 @@
 // hack.c:notice_all_mons(); getpos.c:coord_desc(); display.c:show_glyph();
 // pager.c:do_screen_description(), look_at_monster(), object_from_map().
 
+import { game } from './gstate.js';
 import {
     ALTAR,
     AIR,
@@ -74,7 +75,9 @@ import {
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { cansee } from './vision.js';
-import { canseemon, canspotmon, glyph_is_monster } from './display.js';
+import {
+    canseemon, canspotmon, flush_screen, glyph_is_monster, suppress_map_output,
+} from './display.js';
 import { GLYPH_NOTHING_OFF, GLYPH_UNEXPLORED_OFF } from './glyph_offsets.js';
 import {
     do_screen_description,
@@ -550,6 +553,9 @@ function glyphNumberKind(glyph) {
     return null;
 }
 
+// display.c nul_gbuf's glyph, which cls() and level changes leave in gbuf.
+const NUL_GBUF_GLYPH = Object.freeze({ glyph: GLYPH_UNEXPLORED_OFF });
+
 // C ref: display.c show_glyph(). The caller invokes this after installing the
 // presentation, matching show_glyph()'s gbuf update before
 // do_screen_description() and pline_xy(). The first notice saves one complete
@@ -570,7 +576,12 @@ export function queueGlyphUpdateNotice(
         || program.gameover
         || program.in_getlev
         || program.stopprint
-        || (sameGlyphIdentity(previous, current) && !previousGnew)) {
+        || suppress_map_output(state)
+        // A cell with no presentation since cls() holds C's nul_gbuf: the
+        // unexplored glyph with gnew clear, so redrawing it unexplored (as
+        // under_water()'s limited update does) is no change.
+        || (sameGlyphIdentity(previous ?? NUL_GBUF_GLYPH, current)
+            && !previousGnew)) {
         return false;
     }
 
@@ -608,6 +619,7 @@ export function queueGlyphUpdateNotice(
         glyphFrame,
     };
     (state._glyphUpdateNotices ??= []).push(notice);
+    state._flushAfterQueuedNotice = null;
     return true;
 }
 
@@ -631,9 +643,18 @@ export function queueVisionMonsterNotices(state) {
     if (!state.a11y?.mon_notices || state.a11y.mon_notices_blocked) return;
     for (const message of collectMonsterNoticeMessages(state)) {
         const glyphFrame = takeNoticeGlyphFrame(state);
-        (state._glyphUpdateNotices ??= []).push({ message, glyphFrame });
+        (state._glyphUpdateNotices ??= []).push({
+            message,
+            glyphFrame,
+            youBuf: NOTICE_MON_YOU_BUF,
+        });
+        state._flushAfterQueuedNotice = null;
     }
 }
+
+// hack.c notice_mon() prints through You("%s %s.", ...), which leaves this
+// text in pline.c's gy.you_buf (js/tty_message.js reads it back).
+const NOTICE_MON_YOU_BUF = 'You %s %s.';
 
 export async function emitGlyphUpdateNotices(state, env = {}) {
     const pline = env.pline;
@@ -657,6 +678,7 @@ export async function emitGlyphUpdateNotices(state, env = {}) {
             const notice = pending[index];
             if (index)
                 applyGlyphFrameChanges(state, notice.glyphFrame.changes, dirty);
+            if (notice.youBuf) (state.gy ??= {}).you_buf = notice.youBuf;
             await pline(notice.message, state);
             lastFlushedIndex = index;
             // ttyPline() normally performed this flush itself. Keep injected
@@ -674,6 +696,12 @@ export async function emitGlyphUpdateNotices(state, env = {}) {
         }
         state._emittingGlyphUpdateNotices = false;
     }
+    // The notices' own lines flushed the map as it stood when each arose.
+    // C then flushed the later map again before this point; do the same.
+    const flushMode = state._flushAfterQueuedNotice;
+    state._flushAfterQueuedNotice = null;
+    // flush_screen() draws the live game only.
+    if (flushMode != null && state === game) await flush_screen(flushMode);
     return pending.map((notice) => notice.message);
 }
 
@@ -1552,22 +1580,6 @@ export function collectMonsterNoticeMessages(state, compare = null) {
         const message = updateMonsterNotice(monster, state);
         if (message) messages.push(message);
     }
-    return messages;
-}
-
-export async function emitStartupA11yNotices(state, env = {}) {
-    const pline = env.pline;
-    if (typeof pline !== 'function') {
-        throw new TypeError(
-            'emitStartupA11yNotices requires a pline callback',
-        );
-    }
-    let messages = [];
-    if (state.a11y?.glyph_updates) messages = collectLookaroundMessages(state);
-    else if (state.a11y?.mon_notices
-             && !state.a11y?.mon_notices_blocked)
-        messages = collectMonsterNoticeMessages(state);
-    for (const message of messages) await pline(message, state);
     return messages;
 }
 

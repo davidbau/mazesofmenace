@@ -95,7 +95,8 @@ import { canspotmon, docrt, glyph_at, glyph_is_invisible, glyph_is_monster,
 import { do_mapping, findit } from './detect.js';
 import { overview_stats, In_W_tower, on_level, print_dungeon,
     depth, get_level, Is_botlevel, ledger_no,
-    Is_special, Invocation_lev, On_W_tower_level } from './dungeon.js';
+    Is_special, Invocation_lev, On_W_tower_level,
+} from './dungeon.js';
 import { DEFAULT_PRIMARY_SYMBOLS } from './symbol_data.js';
 import { S_fountain, S_sink } from './symbols.js';
 import { mklev, load_special, lspo_reset_level, lspo_finalize_level } from './mklev.js';
@@ -111,6 +112,7 @@ import { m_at } from './monst.js';
 import { monsndx, nonliving, olfaction } from './mondata.js';
 import { setpaid } from './shk.js';
 import { HConfusion, HHallucination } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 // C refs: wizcmds.c makemap_unmakemon() and makemap_remove_mons().
 async function makemap_unmakemon(monster, migratory, state) {
@@ -275,7 +277,7 @@ export async function wiz_map_levltyp(state = game, env = {}) {
     else if (level.dnum === state.tower_dnum) dsc += ' vlad';
     else if (level.dnum === state.astral_level.dnum) dsc += ' endgame';
     else {
-        let brname = state.dungeons[level.dnum].dname;
+        let brname = dungeon_at(level.dnum, state).dname;
         if (!brname) brname = 'unknown';
         if (!strncmpi(brname, 'the ', 4)) brname = brname.slice(4);
         dsc += ` ${brname}`;
@@ -943,9 +945,6 @@ export async function wiz_kill(state = game, env = {}) {
     // In particular, rnz must retain its own recorder-visible wrapper entry.
     const killEnv = { ...env, state, message,
         random: env.random ?? coreRandom,
-        unsupported: env.unsupported
-            ?? (reason => note_unported(reason === "the death of the hero's steed"
-                ? 'steed.c dismount_steed' : `mon.c ${reason}`)),
     };
     const save_verbose = state.flags.verbose;
     const save_autodescribe = state.iflags.autodescribe;
@@ -1096,7 +1095,8 @@ export function size_monst(monster, incl_wsegs, state = game) {
     if (monster.mextra) {
         const extra = monster.mextra;
         size += memoryLayout.mextra;
-        if (extra.mgivenname != null) size += stringAllocation(extra.mgivenname);
+        if (monster.mextra.mgivenname != null)
+            size += stringAllocation(monster.mextra.mgivenname);
         for (const field of ['egd', 'epri', 'eshk', 'emin', 'edog', 'ebones'])
             if (extra[field]) size += memoryLayout[field];
     }

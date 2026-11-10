@@ -3027,16 +3027,6 @@ function drinkEnvironment(state, rawEnv = {}) {
         hooks: {
             ...(rawEnv.hooks ?? {}),
             message: rawEnv.hooks?.message ?? message,
-            encumberMessage: rawEnv.hooks?.encumberMessage
-                ?? ((subject) => encumber_msg(subject, { message })),
-            // invent.c:941, reached when hold_potion()'s addinv() merges a
-            // mixture into a stack whose known flags it settles.
-            inventoryComparisonDiscovered:
-                rawEnv.hooks?.inventoryComparisonDiscovered
-                ?? (() => message(
-                    'You learn more about your items by comparing them.',
-                    state,
-                )),
         },
     };
 }
@@ -3252,7 +3242,8 @@ export async function dip_potion_explosion(obj, dmg, state = game,
             state.u.ux, state.u.uy, (boltLimit + 1) * (boltLimit + 1), env,
         );
         await exercise(A_STR, false, state, random, {
-            encumberMessage: env.hooks.encumberMessage,
+            encumberMessage: env.encumberMessage
+                ?? ((subject) => encumber_msg(subject, { message: env.message })),
         });
         if (!breathless(state.youmonst.data) || haseyes(state.youmonst.data))
             await potionbreathe(obj, state, env);

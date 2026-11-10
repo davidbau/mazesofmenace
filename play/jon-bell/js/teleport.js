@@ -99,7 +99,7 @@ import { find_objowner, costly_spot, inhishop, onshopbill, make_angry_shk, stole
 import { dist2, distmin } from './hacklib.js';
 import { depth } from './dungeon.js';
 import { within_bounded_area } from './rect.js';
-import { in_out_region, update_player_regions, update_monster_region as update_monster_region_real } from './region.js';
+import { in_out_region, update_player_regions, update_monster_region } from './region.js';
 import { PM_ANGEL, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_MINOTAUR, PM_WIZARD_OF_YENDOR } from './pm.generated.js';
 import { TELEPORT_CONTROL, STUNNED, TT_BURIEDBALL, TIMEOUT } from './const.js';
 /* C ref: teleport.c:424-434 teleok's trap exceptions (rm.h/trap.h predicates). */
@@ -1243,7 +1243,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     mon_track_clear(mtmp);
     place_monster_local(mtmp, x, y); /* put monster down */
-    update_monster_region_local(mtmp);
+    update_monster_region(mtmp);
 
     if (mtmp.wormno) /* now put down tail */
         place_worm_tail_randomly_local(mtmp, x, y);
@@ -1369,13 +1369,6 @@ function remove_monster_local(x, y) {
     mtmp._mapRemoved = true;
 }
 
-/* C ref: region.c:597-610 update_monster_region — adds/removes the monster
- * from every region it now does/doesn't occupy.  The complete implementation
- * already lives in region.js; this caller used to discard it behind a local
- * no-op, which made the teleport path wrong as soon as a region is active. */
-function update_monster_region_local(mtmp) {
-    return update_monster_region_real(mtmp);
-}
 
 function place_worm_tail_randomly_local(mdef, fx, fy) { return place_worm_tail_randomly_real(mdef, fx, fy); }
 

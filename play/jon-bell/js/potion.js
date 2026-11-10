@@ -77,7 +77,7 @@ import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE, FOOT } from './const.js';
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
-import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, killed, is_youmonst } from './mhitm.js';
+import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, slept_monst, killed, is_youmonst } from './mhitm.js';
 import { stagger, Resists_Elem, mon_hates_blessings, defended } from './mondata.js';
 import { float_vs_flight } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
@@ -121,7 +121,7 @@ import { NOTELL, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, has_mgivenname,
 import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
          PM_GREMLIN, PM_IRON_GOLEM, PM_PESTILENCE,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { paralyze_monst, slept_monst } from './dogmove.js';
+import { paralyze_monst } from './dogmove.js';
 import { polyself } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
 import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,

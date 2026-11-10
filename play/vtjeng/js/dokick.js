@@ -111,7 +111,8 @@ import {
     In_mines,
 } from './const.js';
 import { feel_location, feel_newsym, glyph_at, glyph_is_invisible,
-    map_invisible, newsym, unmap_invisible } from './display.js';
+    map_glyphinfo, map_invisible, newsym, show_glyph_cell, unmap_invisible,
+} from './display.js';
 import {
     flooreffects, legs_in_no_shape,
     set_wounded_legs,
@@ -246,16 +247,6 @@ export function clear_kickedloc(state = game) {
     state.gk.kickedloc = { x: 0, y: 0 };
 }
 
-// A branch of dokick.c this port has not translated. js/cmd.js
-// failClosedCommandRefusals() lists it, so the segment keeps every frame the
-// command already matched instead of failing hard.
-export class UnsupportedKickError extends Error {
-    constructor(what) {
-        super(`kicking reached an unported branch: ${what}`);
-        this.name = 'UnsupportedKickError';
-    }
-}
-
 
 // C ref: dokick.c:8-10, the martial() macro over is_bigfoot() at :7. A Samurai
 // or a Monk answers TRUE from martial_bonus() without either later term being
@@ -275,9 +266,6 @@ function kickEnvironment(state) {
         random,
         message: ttyPline,
         pline: ttyPline,
-        unsupported: (what) => {
-            throw new UnsupportedKickError(what);
-        },
         nearCapacity: near_capacity,
         encumberMessage: encumber_msg,
         redraw: (x, y) => newsym(x, y),
@@ -1152,10 +1140,6 @@ export async function kick_nondoor(x, y, avrg_attrib, state = game) {
             const nfall = await scatter(x, y, 2, SCATTER_MAY_HIT, treefruit, state, {
                 scatterOps: {
                     stopOccupation: subject => stop_occupation(subject, { message: ttyPline }),
-                    exercise: (attribute, increase, subject) => exercise(
-                        attribute, increase, subject, random,
-                        { encumberMessage: encumber_msg },
-                    ),
                 },
             });
             if (nfall !== nfruit) {
@@ -1391,11 +1375,13 @@ export async function dokick(state = game) {
         await kick_monster(mtmp, x, y, state);
         const glyph = glyph_at(x, y, state);
         if (mtmp.mhp < 1) { // DEADMONSTER(mtmp)
-            if (glyph !== oldGlyph && glyph_is_invisible(glyph)) {
-                // display.c:show_glyph is void and has no corresponding
-                // source-owned JS screen operation; preserve the exact gap.
-                note_unported('display.c show_glyph');
-            }
+            // dokick.c:1411-1418. A hidden monster that kick_monster()
+            // marked with 'I' and that died away from <x,y> (knocked into a
+            // trap by a martial-arts kick) leaves the marker, which mondead()
+            // only clears at the death square. show_glyph(x, y, oldglyph)
+            // redraws what was shown before; levl[x][y].glyph keeps the 'I'.
+            if (glyph !== oldGlyph && glyph_is_invisible(glyph))
+                show_glyph_cell(x, y, map_glyphinfo(oldGlyph, state));
         } else if (!canspotmon(mtmp, state)
                    && mtmp.mx === x && mtmp.my === y
                    && !glyph_is_invisible(glyph)
@@ -1495,7 +1481,7 @@ export async function container_impact_dmg(obj, x, y, rawEnv = {}) {
     const insider = Boolean(heroShop)
         && Boolean(inside_shop(state.u.ux, state.u.uy, state))
         && roomno === heroShop;
-    const fromInventory = obj !== (state.gk?.kickedobj ?? state.kickedobj);
+    const fromInventory = obj !== state.gk?.kickedobj;
     let loss = 0;
     let weightChanged = false;
 

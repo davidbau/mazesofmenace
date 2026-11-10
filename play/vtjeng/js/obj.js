@@ -229,7 +229,10 @@ import { encumber_msg } from './pickup.js';
 // inventory. steal.js imports from this file; both sides use the other's
 // exports only inside function bodies.
 import { remove_worn_item } from './steal.js';
-import { cansee } from './vision.js';
+import { block_point, cansee } from './vision.js';
+// monster_object.js imports this file; both sides use the other's exports
+// only inside function bodies.
+import { monsterObject } from './monster_object.js';
 // shrinking_glob_gone() needs setmnotwielded() for the OBJ_MINVENT path.
 // weapon.js imports from this file; both sides use the other's exports only
 // inside function bodies.
@@ -390,6 +393,7 @@ import {
     Blind,
     Hallucination,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 export const SPBOOK_NO_NOVEL = -SPBOOK_CLASS;
 
@@ -457,13 +461,12 @@ export class UnsupportedObjectOperationError extends Error {
 // fatal integration errors, not recoverable generation outcomes (earlier
 // source-ordered RNG and id changes are intentionally retained).
 //
-//   monster(index, env) -> monster record
 //   eatenStat(weight, obj, env) -> adjusted weight (default eat.c eaten_stat)
 //   artifactCount(env) -> existing artifact count (default nartifact_exist)
 //   makeArtifact(obj, { alignment, maxGiftValue, adjustSpe, env }) -> obj
 //     (default artifact.c mk_artifact())
 //   monsterObject(obj, 'initialize' | 'finalize', env) for the residual
-//     STATUE and FIGURINE branches
+//     STATUE and FIGURINE branches (default monster_object.js monsterObject())
 //   isPermanentlyPoisoned(obj, env) -> boolean (default permapoisoned())
 //   stopObjectTimers(obj, env) -> must clear obj.timed and its timer queue
 //     (default timeout.c obj_stop_timers())
@@ -1154,8 +1157,6 @@ export function dealloc_obj(obj, env = {}) {
         obj.lamplit = false;
     }
 
-    if (normalized.state.thrownobj === obj) normalized.state.thrownobj = null;
-    if (normalized.state.kickedobj === obj) normalized.state.kickedobj = null;
     if (normalized.state.gt?.thrownobj === obj)
         normalized.state.gt.thrownobj = null;
     if (normalized.state.gk?.kickedobj === obj)
@@ -1629,32 +1630,6 @@ export function curse(obj, env = {}) {
     return completeCurse();
 }
 
-// C ref: mkobj.c curse() (1783-1820), narrowed to free objects. This covers
-// startup loadstones, objects generated for level features before they acquire
-// an owner, and the object readobjnam() builds for a wish. Carried, worn, lit,
-// or otherwise owned objects still need curse()'s full luck, equipment, timer,
-// light, occupation, and display side effects.
-//
-// Four of curse()'s arms cannot fire on a free object and are omitted rather
-// than guarded: the uwep and uswapwep tests at 1795-1801; confers_luck()'s
-// set_moreluck() at 1803, which carried() gates; attach_fig_transform_timeout()
-// at 1808-1810, which carried() or mcarried() gates; and spell.c:343
-// book_cursed(), which acts only on the book svc.context.spbook.book points at.
-export function curseFreeObject(obj, env = {}) {
-    if (obj.oclass === COIN_CLASS) return obj;
-    if (obj.where !== OBJ_FREE || obj.lamplit) {
-        throw new UnsupportedObjectOperationError(
-            'curse outside free-object generation',
-            obj,
-        );
-    }
-    obj.blessed = false;
-    obj.cursed = true;
-    if (obj.otyp === BAG_OF_HOLDING)
-        obj.owt = weight(obj, env);
-    return obj;
-}
-
 // C ref: mkobj.c uncurse() (1822-1840).
 export async function uncurse(obj, env = {}) {
     const state = env.state ?? game;
@@ -1703,24 +1678,13 @@ export function set_bknown(obj, onoff, env = {}) {
     }
 }
 
-function monsterRecord(obj, env) {
-    const lookup = env.hooks?.monster
-        ?? ((index) => env.state.mons?.[index]);
-    const monster = lookup(obj.corpsenm, env);
-    if (!monster)
-        throw new UnsupportedObjectOperationError('monster weight lookup', obj);
-    return monster;
-}
-
 // C ref: mkobj.c weight() calls eat.c eaten_stat() directly for partly
 // eaten food; a caller's eatenStat hook remains a test seam.
 function eatenStat(env) {
     return env.hooks.eatenStat ?? eaten_stat;
 }
 
-// C ref: mkobj.c weight(). Monster-dependent food/statue calculations use a
-// narrow lookup seam until the monster catalog is ported; ordinary startup
-// objects, coins, and nested containers are complete here.
+// C ref: mkobj.c weight().
 export function weight(obj, env = {}) {
     const normalized = objectEnv(env);
     const { state } = normalized;
@@ -1733,7 +1697,7 @@ export function weight(obj, env = {}) {
 
     if (isContainer(obj) || obj.otyp === STATUE) {
         if (obj.otyp === STATUE && obj.corpsenm !== NON_PM) {
-            const monster = monsterRecord(obj, normalized);
+            const monster = state.mons[obj.corpsenm];
             const size = Math.trunc(monster.msize);
             const minimum = (size + size + 1) * 100;
             wt = Math.trunc(3 * Math.trunc(monster.cwt) / 2);
@@ -1755,7 +1719,7 @@ export function weight(obj, env = {}) {
     }
 
     if (obj.otyp === CORPSE && obj.corpsenm !== NON_PM) {
-        const monster = monsterRecord(obj, normalized);
+        const monster = state.mons[obj.corpsenm];
         wt = Math.min(obj.quan * Math.trunc(monster.cwt), LARGEST_INT);
         if (obj.oeaten) wt = eatenStat(normalized)(wt, obj, normalized);
         return Math.trunc(wt);
@@ -1771,9 +1735,9 @@ export function weight(obj, env = {}) {
     return wt ? wt * Math.trunc(obj.quan) : Math.trunc((obj.quan + 1) / 2);
 }
 
-// Validate integration dependencies which weight() would reach, without
-// applying an eaten-stat calculation. Callers use this before mutations that
-// would be difficult to roll back if a monster or food seam is unavailable.
+// Check the object type and quantity weight() would read, without applying
+// an eaten-stat calculation. Callers use this before mutations that would be
+// difficult to roll back if weight() then threw.
 export function preflightWeight(obj, env = {}) {
     const normalized = objectEnv(env);
     objectType(obj, normalized.state);
@@ -1782,14 +1746,9 @@ export function preflightWeight(obj, env = {}) {
     if (obj.globby) return;
 
     if (isContainer(obj) || obj.otyp === STATUE) {
-        if (obj.otyp === STATUE && obj.corpsenm !== NON_PM)
-            monsterRecord(obj, normalized);
         for (let contents = obj.cobj; contents; contents = contents.nobj)
             preflightWeight(contents, normalized);
-        return;
     }
-    if (obj.otyp === CORPSE && obj.corpsenm !== NON_PM)
-        monsterRecord(obj, normalized);
 }
 
 // C ref: mkobj.c treefruits[] (1978-1980).
@@ -1831,21 +1790,20 @@ function isRogueLevel(state) {
 function inHell(state) {
     const dnum = state.u?.uz?.dnum;
     return Number.isInteger(dnum)
-        && Boolean(state.dungeons?.[dnum]?.flags?.hellish);
+        && Boolean(dungeon_at(dnum, state)?.flags?.hellish);
 }
 
 function makeArtifact(obj, env, adjustSpe) {
     // C ref: mkobj.c mksobj_init() calls artifact.c mk_artifact() directly;
     // a caller's makeArtifact hook remains a test seam.
-    const result = (env.hooks.makeArtifact ?? mkArtifactAdapter)(obj, {
+    // mkobj.c:890, :1099: "mk_artifact() with otmp and A_NONE will never
+    // return NULL".
+    return (env.hooks.makeArtifact ?? mkArtifactAdapter)(obj, {
         adjustSpe,
         alignment: A_NONE,
         maxGiftValue: 99,
         env,
     });
-    if (!result)
-        throw new UnsupportedObjectOperationError('makeArtifact returned no object', obj);
-    return result;
 }
 
 function maybeGenerateArtifact(obj, artif, divisorBase, env) {
@@ -1925,24 +1883,17 @@ function mkbox_cnts(box, env) {
         return;
     }
 
-    // Ensure add_to_container's hook requirements are met. These default
-    // to the direct implementations when the caller does not inject them.
-    const hooks = { ...env.hooks };
-    hooks.objectNoLongerHeld ??= (obj, hookEnv) =>
-        obj_no_longer_held(obj, hookEnv);
-    const enrichedEnv = { ...env, hooks };
-
     for (let i = count; i > 0; i--) {
         let otmp;
         if (box.otyp === ICE_BOX) {
-            otmp = mksobj(CORPSE, true, false, enrichedEnv);
+            otmp = mksobj(CORPSE, true, false, env);
             // Note: setting age to 0 is correct. Age has a different
             // from usual meaning for objects stored in ice boxes. -KAA
             otmp.age = 0;
             if (otmp.timed) {
-                stop_timer(ROT_CORPSE, otmp, state, enrichedEnv);
-                stop_timer(REVIVE_MON, otmp, state, enrichedEnv);
-                stop_timer(SHRINK_GLOB, otmp, state, enrichedEnv);
+                stop_timer(ROT_CORPSE, otmp, state, env);
+                stop_timer(REVIVE_MON, otmp, state, env);
+                stop_timer(SHRINK_GLOB, otmp, state, env);
             }
         } else {
             let tprob = random.rnd(100);
@@ -1954,20 +1905,20 @@ function mkbox_cnts(box, env) {
                     break;
                 }
             }
-            otmp = mkobj(selectedClass, false, enrichedEnv);
+            otmp = mkobj(selectedClass, false, env);
 
             // handle a couple of special cases
             if (otmp.oclass === COIN_CLASS) {
                 // 2.5 x level's usual amount; weight adjusted below
                 otmp.quan = random.rnd(level_difficulty(state) + 2)
                     * random.rnd(75);
-                otmp.owt = weight(otmp, enrichedEnv);
+                otmp.owt = weight(otmp, env);
             } else {
                 while (otmp.otyp === ROCK) {
                     otmp.otyp = rnd_class(
-                        DILITHIUM_CRYSTAL, LOADSTONE, enrichedEnv);
+                        DILITHIUM_CRYSTAL, LOADSTONE, env);
                     if (otmp.quan > 2) otmp.quan = 1;
-                    otmp.owt = weight(otmp, enrichedEnv);
+                    otmp.owt = weight(otmp, env);
                 }
             }
             if (box.otyp === BAG_OF_HOLDING) {
@@ -1976,21 +1927,25 @@ function mkbox_cnts(box, env) {
                     || otmp.otyp === BAG_OF_TRICKS) {
                     otmp.otyp = SACK;
                     otmp.spe = 0;
-                    otmp.owt = weight(otmp, enrichedEnv);
+                    otmp.owt = weight(otmp, env);
                 } else {
                     while (otmp.otyp === WAN_CANCELLATION)
                         otmp.otyp = rnd_class(
-                            WAN_LIGHT, WAN_LIGHTNING, enrichedEnv);
+                            WAN_LIGHT, WAN_LIGHTNING, env);
                 }
             }
         }
-        add_to_container(box, otmp, enrichedEnv);
+        add_to_container(box, otmp, env);
     }
     // caller will update box->owt
 }
 
+// C ref: mkobj.c mksobj_init() statue and figurine branches and mksobj()'s
+// corpse/statue/figurine finalization; a caller's monsterObject hook remains
+// a test seam, and scripts/lifecycle-hook-defaults.test.mjs keeps js/ from
+// supplying it.
 function initializeResidualMonsterObject(obj, phase, env) {
-    return requiredHook(env, 'monsterObject')(obj, phase, env);
+    return (env.hooks.monsterObject ?? monsterObject)(obj, phase, env);
 }
 
 function monsterVital(state, mnum) {
@@ -2051,8 +2006,6 @@ function initializeMonsterFood(obj, env) {
     case TIN:
         initializeTin(obj, env);
         break;
-    default:
-        throw new RangeError(`unsupported monster food ${obj.otyp}`);
     }
 }
 
@@ -2311,17 +2264,6 @@ export async function shrink_glob(obj, expire_time, env = {}) {
     }
 }
 
-// C ref: mkobj.c shrink_glob(). The reason a SHRINK_GLOB timer cannot fire
-// over this object, or null when it can. run_timers() asks this for every
-// element of the due prefix before it unlinks any of them.
-export function unportedShrinkGlobReason(obj, env) {
-    if (!obj.globby) return 'shrink_glob for non-glob';
-    // Unpaid globs need the obfreeShopBill hook, which the timer env does not
-    // carry.
-    if (obj.unpaid) return 'shrink_glob for an unpaid glob';
-    return null;
-}
-
 // C ref: mkobj.c shrinking_glob_gone() (1672-1701). A glob has shrunk to
 // nothing; handle owornmask, then delete the glob.
 async function shrinking_glob_gone(obj, env = {}) {
@@ -2387,13 +2329,6 @@ export async function maybe_adjust_light(obj, old_range, env = {}) {
     }
 }
 
-function currentFruit(state, obj) {
-    const fruit = state.context?.current_fruit;
-    if (!Number.isInteger(fruit))
-        throw new UnsupportedObjectOperationError('current fruit initialization', obj);
-    return fruit;
-}
-
 // C ref: mkobj.c mksobj_init(). Implemented branches stay local; artifacts,
 // nonempty containers, statues, and figurines enter explicit subsystem seams
 // rather than consuming guessed RNG.
@@ -2428,7 +2363,7 @@ function mksobj_init(obj, artif = false, env = {}) {
             initializeMonsterFood(obj, normalized);
             break;
         case SLIME_MOLD:
-            obj.spe = currentFruit(state, obj);
+            obj.spe = state.context.current_fruit;
             state.flags ??= {};
             state.flags.made_fruit = true;
             break;
@@ -2919,12 +2854,14 @@ export function place_object(obj, x, y, env = {}) {
     if (obj.where !== OBJ_FREE)
         throw new Error(`place_object: object where=${obj.where}, expected free`);
     // C ref: mkobj.c place_object():2331-2334, `block_point(x, y)` for a
-    // boulder. Resolved before the writes below, as remove_object() resolves
-    // its mirror image, so a caller that cannot supply the vision owner leaves
-    // the object where it was rather than half-placed.
+    // boulder; a caller's blockPoint hook remains a test seam, and
+    // scripts/lifecycle-hook-defaults.test.mjs keeps js/ from supplying it.
+    // block_point() takes the state, not this lifecycle env: passed the env,
+    // vision_reset() would find no level on it and return in silence.
     const oldHead = floorObjectGrid(state)[x][y];
     const blockPoint = obj.otyp === BOULDER && oldHead?.otyp !== BOULDER
-        ? requiredHook(normalized, 'blockPoint', obj)
+        ? (normalized.hooks.blockPoint
+            ?? ((bx, by, placeEnv) => block_point(bx, by, placeEnv.state)))
         : null;
 
     const insert = () => {
@@ -3397,16 +3334,16 @@ export function obj_sanity_check(state = game) {
     }
 
     // C: objects temporarily freed from invent/floor lists (3008-3028)
-    const thrownobj = state.gt?.thrownobj ?? state.thrownobj ?? null;
+    const thrownobj = state.gt?.thrownobj ?? null;
     if (thrownobj)
         insane_object(thrownobj, ofmt3, 'thrownobj sanity', null, state);
-    const kickedobj = state.gk?.kickedobj ?? state.kickedobj ?? null;
+    const kickedobj = state.gk?.kickedobj ?? null;
     if (kickedobj)
         insane_object(kickedobj, ofmt3, 'kickedobj sanity', null, state);
     if (state.iflags?.returning_missile)
         insane_object(kickedobj, ofmt3, 'returning_missile sanity',
                       null, state);
-    const current_wand = state.gc?.current_wand ?? state.current_wand ?? null;
+    const current_wand = state.current_wand ?? null;
     if (current_wand)
         insane_object(current_wand, ofmt3, 'current_wand sanity',
                       null, state);

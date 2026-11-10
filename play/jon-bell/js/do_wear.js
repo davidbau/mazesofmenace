@@ -66,11 +66,11 @@ import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js
 import { which_armor } from './worn.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
-import { cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok } from './cmd.js';
+import { cmdq_add_key, cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok } from './cmd.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed } from './wield.js';
 import { dropx } from './do.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
-import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
+import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CQ_REPEAT, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
 import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_RING, W_TOOL,
          WORN_ARMOR, WORN_CLOAK, WORN_HELMET, WORN_SHIELD, WORN_GLOVES, WORN_BOOTS,
          WORN_SHIRT, WORN_AMUL, WORN_BLINDF, LEFT_RING, RIGHT_RING,
@@ -716,8 +716,8 @@ export async function Helmet_off() {
         // C do_wear.c:536-540: undo only a completed donning bonus.
         u.abon ||= {};
         u.abon.a ||= [0, 0, 0, 0, 0, 0];
-        u.abon.a[A_CHA] = (u.abon.a[A_CHA] | 0)
-            + (game.flags?.initrole === 12 ? -1 : 1);
+        u.abon.a[A_CHA] = ((u.abon.a[A_CHA] | 0)
+            + (game.flags?.initrole === 12 ? -1 : 1)) << 24 >> 24; /* schar */
         if (game.disp) game.disp.botl = 1;
     }
     if (otmp && (otmp.otyp | 0) === HELM_OF_BRILLIANCE
@@ -1208,8 +1208,8 @@ export async function Helmet_on() {
         // C do_wear.c:454-460: role bonus is independent of enchantment.
         u.abon ||= {};
         u.abon.a ||= [0, 0, 0, 0, 0, 0];
-        u.abon.a[A_CHA] = (u.abon.a[A_CHA] | 0)
-            + (game.flags?.initrole === 12 ? 1 : -1);
+        u.abon.a[A_CHA] = ((u.abon.a[A_CHA] | 0)
+            + (game.flags?.initrole === 12 ? 1 : -1)) << 24 >> 24; /* schar */
         if (game.disp) game.disp.botl = 1;
         makeknown_otyp(u.uarmh.otyp);
     }
@@ -2475,6 +2475,23 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
                 }
             }
             while (!mask) {
+            /* C cmd.c:5497 yn_function(..., addcmdq=TRUE): a queued CMDQ_KEY
+             * (^A repeat, CQ_REPEAT) answers without prompting; any other
+             * queued entry clears CQ_CANNED and the answer is ESC. */
+            {
+                const cq = cmdq_pop();
+                if (cq) {
+                    if (cq.typ === CMDQ_KEY) {
+                        const qc = String.fromCharCode(cq.key & 255);
+                        if (qc === 'l' || qc === 'L') { mask = LEFT_RING_VAL; break; }
+                        if (qc === 'r' || qc === 'R') { mask = RIGHT_RING_VAL; break; }
+                        if (qc === '\0' || qc === '\x1b') return ECMD_OK;
+                        continue;
+                    }
+                    cmdq_clear(CQ_CANNED);
+                    return ECMD_OK;
+                }
+            }
             g._pending_message = promptText;
             /* C topl.c:421 custompline() files the prompt in gp.prevmsg (pline.c:282). */
             g._prevmsg = promptText + ' ';
@@ -2514,8 +2531,8 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
                 const c = String.fromCharCode(key);
                 /* rightleftchars "rl" is all-lowercase, so tty_yn_function
                  * folds the answer with lowc() before clean_up (topl.c:436). */
-                if (c === 'l' || c === 'L') { fileAnswered(108); mask = LEFT_RING_VAL; break; }
-                if (c === 'r' || c === 'R') { fileAnswered(114); mask = RIGHT_RING_VAL; break; }
+                if (c === 'l' || c === 'L') { fileAnswered(108); cmdq_add_key(CQ_REPEAT, 108); mask = LEFT_RING_VAL; break; }
+                if (c === 'r' || c === 'R') { fileAnswered(114); cmdq_add_key(CQ_REPEAT, 114); mask = RIGHT_RING_VAL; break; }
                 /* invalid key: loop and re-read (C do..while !mask). */
             }
             }
@@ -3126,7 +3143,7 @@ export function adj_abon(otmp, delta) {
             u.abon = u.abon || {};
             u.abon.a = u.abon.a || [0, 0, 0, 0, 0, 0];
             const di = C_ATTR_TO_DISP[A_DEX] ?? A_DEX;
-            u.abon.a[di] = ((u.abon.a[di] | 0) + (delta | 0)) | 0;
+            u.abon.a[di] = ((u.abon.a[di] | 0) + (delta | 0)) << 24 >> 24; /* schar */
         }
         /* C ref: do_wear.c:2511 — SET_BOTL() fires whenever uac changes. */
         if (g.disp)
@@ -3141,8 +3158,8 @@ export function adj_abon(otmp, delta) {
             u.abon.a = u.abon.a || [0, 0, 0, 0, 0, 0];
             const intDi = C_ATTR_TO_DISP[A_INT] ?? A_INT;
             const wisDi = C_ATTR_TO_DISP[A_WIS] ?? A_WIS;
-            u.abon.a[intDi] = ((u.abon.a[intDi] | 0) + (delta | 0)) | 0;
-            u.abon.a[wisDi] = ((u.abon.a[wisDi] | 0) + (delta | 0)) | 0;
+            u.abon.a[intDi] = ((u.abon.a[intDi] | 0) + (delta | 0)) << 24 >> 24;
+            u.abon.a[wisDi] = ((u.abon.a[wisDi] | 0) + (delta | 0)) << 24 >> 24;
         }
         /* C ref: do_wear.c:2511 — SET_BOTL() fires whenever uac changes. */
         if (g.disp)
@@ -3513,7 +3530,7 @@ function adjust_attrib_dw(obj, which, val) {
     const di = C_ATTR_TO_DISP[which] ?? which;
     if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
     if (!u.abon.a) u.abon.a = [0, 0, 0, 0, 0, 0];
-    u.abon.a[di] = (u.abon.a[di] | 0) + (val | 0);
+    u.abon.a[di] = ((u.abon.a[di] | 0) + (val | 0)) << 24 >> 24; /* u.abon.a is schar */
     const observable = oldAttrib !== acurr(u, which);
     if (observable || !extremeattr_dw(which))
         learnring(obj, observable);

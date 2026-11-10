@@ -27,6 +27,8 @@ import {
 } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { emitGlyphUpdateNotices } from './startup_a11y.js';
+import { YOU_BUF_FORMATS } from './you_buf_messages_data.js';
+import { youFeel, youHear, youSee } from './pline.js';
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { vision_recalc } from './vision.js';
 import { msgtype_type } from './options.js';
@@ -340,6 +342,41 @@ export async function displayPendingTtyMessageWindow(state) {
     }
 }
 
+// pline.c You(), Your(), You_cant(), pline_The() and There() prefixes; the
+// You_feel(), You_hear() and You_see() ones depend on the hero, and
+// js/pline.js owns them.
+const YOU_BUF_PLAIN_PREFIXES = Object.freeze([
+    ['You', 'You '], ['Your', 'Your '], ['You_cant', "You can't "],
+    ['pline_The', 'The '], ['There', 'There '],
+]);
+
+// Whether `message` is the text of a You()-family call whose format has no
+// '%', which vpline() prints from gy.you_buf rather than from a copy.
+function printedFromYouBuf(message, state) {
+    const prefixes = [
+        ...YOU_BUF_PLAIN_PREFIXES,
+        ['You_feel', youFeel('', state)],
+        ['You_hear', youHear('', state)],
+        ['You_see', youSee('', state)],
+    ];
+    return prefixes.some(([fn, prefix]) => prefix
+        && message.startsWith(prefix)
+        && YOU_BUF_FORMATS[fn].has(message.slice(prefix.length)));
+}
+
+// display.c show_glyph() calls pline_xy(), and vision.c vision_recalc()'s
+// notice_all_mons() calls You(), synchronously. JS defers the awaitable TTY
+// work by queueing those lines (js/startup_a11y.js), so anything that later
+// reaches the screen -- a message, a menu or text window, or a prompt --
+// must first print every source-earlier queued line. Each such window-port
+// entry point calls this first; scripts/queued-notice-drain.test.mjs checks
+// that they do. emitGlyphUpdateNotices() marks its own recursive ttyPline()
+// calls so they do not re-enter.
+export async function emitQueuedNotices(state = game) {
+    if (!state._emittingGlyphUpdateNotices)
+        await emitGlyphUpdateNotices(state, { pline: ttyPline });
+}
+
 // C refs: pline.c vpline(), Norep(); win/tty/topl.c update_topl(). Messages
 // share the top line only when both fit with two separating spaces and room
 // for a future --More--. PLINE_NOREPEAT compares the new individual message
@@ -348,20 +385,24 @@ export async function displayPendingTtyMessageWindow(state) {
 // `viaVpline` is false for tty_putmixed(), which reaches tty_putstr() and
 // update_topl() without vpline(): no MSGTYPE lookup, no vision or map flush,
 // no gp.prevmsg or iflags.last_msg update.
+//
+// Answers whether the message reached the window port: false when vpline()
+// returned before putmesg() (an empty format, or MSGTYPE hide or norep).
 async function ttyPlineCore(
     message, state, pflags, mixedFirstCell = null, viaVpline = true,
 ) {
     // pline.c:vpline returns before putmesg for an empty format.
-    if (!message) return;
-    // display.c show_glyph() calls pline_xy() synchronously. JS defers the
-    // awaitable TTY work, so a later ordinary message must first drain every
-    // source-earlier glyph notice. emitGlyphUpdateNotices marks its recursive
-    // ttyPline() calls to avoid re-entering this boundary.
-    if (!state._emittingGlyphUpdateNotices) {
-        await emitGlyphUpdateNotices(state, { pline: ttyPline });
-    }
-    const normalizedMessage = normalizeVplineMessage(message);
-    const next = ttyByteText(normalizedMessage);
+    if (!message) return false;
+    await emitQueuedNotices(state);
+    // pline.c You() and its siblings write "prefix + format" into
+    // gy.you_buf; vpline() prints a format without '%' from that buffer.
+    // state.gy.you_buf is that buffer's text, written only here and by
+    // startup_a11y.js emitGlyphUpdateNotices() for notice_mon(); C keeps it
+    // for the whole process, but no reader looks past the current message.
+    const fromYouBuf = printedFromYouBuf(message, state);
+    if (fromYouBuf) (state.gy ??= {}).you_buf = message;
+    let normalizedMessage = normalizeVplineMessage(message);
+    let next = ttyByteText(normalizedMessage);
     const noRepeat = Boolean(pflags & PLINE_NOREPEAT);
     const urgentMessage = Boolean(pflags & URGENT_MESSAGE);
     let msgtype = MSGTYP_NORMAL;
@@ -371,7 +412,7 @@ async function ttyPlineCore(
             && (msgtype === MSGTYP_NOSHOW
                 || (msgtype === MSGTYP_NOREP
                     && normalizedMessage === state._ttyPreviousMessage))) {
-            return;
+            return false;
         }
     }
     // C ref: pline.c vpline() (266-271). A recalculation another routine
@@ -389,6 +430,13 @@ async function ttyPlineCore(
         vision_recalc(0, { state });
         if (!state._emittingGlyphUpdateNotices)
             await emitGlyphUpdateNotices(state, { pline: ttyPline });
+        // A notice_mon() line among them was You("%s %s.", ...), which
+        // rewrote gy.you_buf under a line that still points at it; C then
+        // prints that format unexpanded.
+        if (fromYouBuf && state.gy.you_buf !== message) {
+            normalizedMessage = normalizeVplineMessage(state.gy.you_buf);
+            next = ttyByteText(normalizedMessage);
+        }
     }
     // A shown message replaces any show_topl() layout; the SUPPRESS_HISTORY
     // arm below records a fresh one.
@@ -466,7 +514,7 @@ async function ttyPlineCore(
         }
         if (urgentMessage && messageWin)
             messageWin.flags &= ~WIN_NOSTOP;
-        return;
+        return true;
     }
     if (pflags & (PLINE_VERBALIZE | PLINE_SPEECH))
         sound_speak(normalizedMessage, state);
@@ -498,6 +546,7 @@ async function ttyPlineCore(
     // wintty.c clears the one-shot after the source-selected write path.
     if (urgentMessage && messageWin)
         messageWin.flags &= ~WIN_NOSTOP;
+    return true;
 }
 
 export async function ttyPline(message, state = game) {

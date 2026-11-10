@@ -348,6 +348,7 @@ import {
     Sleep_resistance, Slimed, Stone_resistance, Stunned, Swimming,
     Teleport_control, Teleportation, Wwalking,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 // C ref: trap.c sokoban_guilt() (7036-7055). Sokoban is the current-level
 // flag. Conduct and luck remain the separate player values initialized by
@@ -420,17 +421,6 @@ export async function selftouch(arg, state = game, env = {}) {
     // C labels this branch hypothetical but retains the same state transition.
     if (u?.twoweap)
         await touchCorpse(state.uswapwep, uswapwepgone);
-}
-
-// Env object for poisoned() calls inside chest_trap and other trap functions.
-function poisonedEnv(state) {
-    return {
-        random: coreRandom,
-        message: (text) => ttyPline(text, state),
-        losehp: (n, knam, k_format) => losehp(n, knam, k_format, state),
-        done: (how) => done(how, state),
-        encumberMessage: (s) => encumber_msg(s),
-    };
 }
 
 function trapEnv(env = {}) {
@@ -629,7 +619,7 @@ export function dng_bottom(level, state = game) {
 function hole_destination(destination, env) {
     const { state, random } = env;
     const current = state.u?.uz;
-    if (!current || !state.dungeons?.[current.dnum])
+    if (!current || !dungeon_at(current.dnum, state))
         throw new Error('hole_destination requires initialized dungeon state');
 
     const bottom = dng_bottom(current, state);
@@ -799,7 +789,7 @@ function preflightPitTerrain(x, y, env) {
 
 function preflightHoleDestination(env) {
     const current = env.state.u?.uz;
-    if (!current || !env.state.dungeons?.[current.dnum]) {
+    if (!current || !dungeon_at(current.dnum, env.state)) {
         throw new Error(
             'hole_destination requires initialized dungeon state',
         );
@@ -915,7 +905,7 @@ function mk_trap_statue(x, y, env) {
         env,
     );
     const mmflags = MM_NOCOUNTBIRTH | MM_NOMSG;
-    const donorEnv = { ...env, _statueInventoryCreation: true };
+    const donorEnv = env;
     const finishDonor = (monster) => {
         if (!monster) return;
         const transfer = () => {
@@ -1088,7 +1078,7 @@ function maybe_finish_sokoban(state) {
         }
 
         const u = state.u;
-        const sokonum = state.dungeons[u.uz.dnum].entry_lev - u.uz.dlevel + 1;
+        const sokonum = dungeon_at(u.uz.dnum, state).entry_lev - u.uz.dlevel + 1;
         state.level.flags.sokoban_rules = false;
         livelog_printf(
             LL_MINORAC | LL_DUMP,
@@ -3335,7 +3325,6 @@ export async function animate_statue(
     const norepMessage = rawEnv.norepMessage ?? message;
     const objectEnv = objectGenerationEnv({
         ...rawEnv,
-        _animateStatue: true,
         state,
         random,
         message,
@@ -3715,7 +3704,10 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
             );
             if (rn2(3))
                 await poisoned('gas cloud', A_STR, 'cloud of poison gas', 15,
-                    false, state, poisonedEnv(state));
+                    false, state, {
+                        random: coreRandom,
+                        message: (text) => ttyPline(text, state),
+                    });
             else
                 await create_gas_cloud(obj.ox, obj.oy, 1, 8, { state });
             await exercise(A_CON, false, state, coreRandom, exerciseEnv);
@@ -3727,7 +3719,10 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
                 state,
             );
             await poisoned('needle', A_CON, 'poisoned needle', 10, false,
-                state, poisonedEnv(state));
+                state, {
+                    random: coreRandom,
+                    message: (text) => ttyPline(text, state),
+                });
             await exercise(A_CON, false, state, coreRandom, exerciseEnv);
             break;
         case 12: case 11: case 10: case 9:

@@ -119,10 +119,11 @@ import { ROLE_PM_MNUM } from './roles.js';   /* C role.c roles[].mnum (the mons[
 /* x_monnam's priest/minion and hallucination branches — C ref: do_name.c:887-904,
  * 950-955.  priestname() is ported (js/priest.js:424); rndmonnam()/bogon_is_pname()
  * are not yet, and self-report if a hallucinating name is ever requested. */
-import { rndmonnam } from './do_name.js';
-import { priestname, bogon_is_pname, temple_occupied, has_shrine } from './priest.js';
+import { rndmonnam, bogon_is_pname } from './do_name.js';
+import { priestname, temple_occupied, has_shrine } from './priest.js';
 /* x_monnam's shopkeeper branch — C ref: do_name.c:919-936. */
-import { shkname, free_oname as free_oname_real, hot_pursuit } from './dokick.js';
+import { shkname, hot_pursuit } from './dokick.js';
+import { free_oname } from './do_name.js';
 import { nomul } from './allmain.js';
 import { monstseesu, monstunseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
@@ -1399,10 +1400,6 @@ function alloc(size) {
  * ---------------------------------------------------------------------------
  */
 
-function free(ptr) {} /* no-op in JS; C: free((genericptr_t) ONAME(obj)) */
-
-/* free_oname: shared body handles nested and flattened object names. */
-export function free_oname(obj) { return free_oname_real(obj); }
 
 
 export function shade_miss(magr, mdef, obj, thrown, verbose) {

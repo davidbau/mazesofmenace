@@ -124,13 +124,9 @@ import {
     RIGHT_SIDE,
     WOUNDED_LEGS,
     W_ACCESSORY,
-    W_BALL,
     W_ARMOR,
     W_SADDLE,
-    W_QUIVER,
-    W_SWAPWEP,
     WT_SPLASH_THRESHOLD,
-    W_WEP,
     W_ART,
     W_ARTI,
     I_SPECIAL,
@@ -179,8 +175,7 @@ import {
 } from './do_name.js';
 import { setwornEnv } from './do_wear.js';
 import {
-    discard_migrations, keepdogs, losedogs, mon_arrive,
-    mon_catchup_elapsed_time, update_mlstmv,
+    discard_migrations, keepdogs, losedogs, update_mlstmv,
 } from './dog.js';
 import { can_reach_floor, engr_at, save_engravings } from './engrave.js';
 import { make_grave } from './grave.js';
@@ -220,7 +215,7 @@ import { floating_above } from './fountain.js';
 import { artifact_has_invprop } from './artifacts.js';
 import { record_achievement } from './insight.js';
 import { game } from './gstate.js';
-import { livelog_printf, youFeel, youSee } from './pline.js';
+import { impossible, livelog_printf, youFeel, youSee } from './pline.js';
 import { dist2, s_suffix, upstart } from './hacklib.js';
 import { get_obj_location } from './light.js';
 import {
@@ -244,7 +239,7 @@ import {
     ggetobj,
     mergable,
     obfree,
-    stackobj,
+    stackobjRuntime,
     useup,
     useupf,
 } from './invent.js';
@@ -355,7 +350,7 @@ import { delete_levelfile } from './files.js';
 import { coreRandom, cloneIsaacContext, createCoreRandom, d, rn1, rn2, rnd, rnz } from './rng.js';
 import { check_special_room, move_update } from './rooms.js';
 import { save_msghistory, savelev } from './save.js';
-import { costly_spot, fix_shop_damage, sellobj, sellobj_state } from './shk.js';
+import { fix_shop_damage, sellobj, sellobj_state } from './shk.js';
 import {
     container_impact_dmg, impact_drop, obj_delivery, ship_object,
 } from './dokick.js';
@@ -390,7 +385,7 @@ import { glyph_to_cmap } from './glyphs.js';
 import { ttyNorep, ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { create_mplayers } from './mplayer.js';
-import { block_point, cansee, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
+import { cansee, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
 import { setuwep, welded, weldmsg } from './wield.js';
 import { bimanual, bypass_objlist, nxt_unbypassed_obj, setuqwep, setuswapwep } from './worn.js';
 import { resurrect } from './wizard.js';
@@ -1542,16 +1537,9 @@ function dropEnv(env = {}) {
     };
 }
 
-function requiredDropHook(env, name) {
-    const hook = env.hooks[name];
-    if (typeof hook !== 'function')
-        throw new UnsupportedDropError(`missing ${name} operation`);
-    return hook;
-}
-
-// The two operations the dropz() tail needs. C calls newsym() and
-// encumber_msg() from inside dropz() itself, at do.c:840 and :842. Both are
-// injected because display.c and pickup.c own them.
+// The environment of a drop command. dropz() calls newsym() and
+// encumber_msg() itself (do.c:840-842); the newsym hook stays for callees
+// that still take one.
 export function dropCommandEnv(state, env = {}) {
     const dropState = env.state ?? state;
     return {
@@ -1559,7 +1547,6 @@ export function dropCommandEnv(state, env = {}) {
         state: dropState,
         hooks: {
             ...setwornEnv(dropState).hooks,
-            encumberMessage: encumber_msg,
             newsym,
             ...env.hooks,
         },
@@ -1879,24 +1866,21 @@ export function preflight_dropx(obj, env = {}) {
     const u = state.u;
     if (!obj || typeof obj !== 'object')
         throw new TypeError('preflight_dropx requires an object');
-    if (obj.where !== OBJ_FREE && obj.where !== OBJ_INVENT)
-        throw new UnsupportedDropError(`object ownership ${obj.where}`);
     // stackobj() preserves the newly dropped object and absorbs an older pile
     // member into it. The survivor keeps its light and timers across an
     // ordinary drop; light.c finds their new location through that same object.
     // Compatible lit candles use merged()'s canonical light/timer owners.
-    // Globs coalesce in flooreffects before ordinary stacking. A timed corpse
+    // Globs coalesce in flooreffects() off liquid; on a pool or moat they
+    // reach stackobj(), whose merged() absorbs them. A timed corpse
     // can merge when invent.c:mergable() admits its species; invent.c:merged()
     // then stops the absorbed floor object's timer through timeout.c.
     // obfree()'s remaining operations are reached by an object the drop chain
     // already stops: canletgo() refuses a leash tied to a pet, the unpaid test
     // below admits only a plain item returned to its shop's costly square,
-    // and the shop-level test refuses an unpaid merge target. Only the box
-    // whose lock the hero is picking is left.
-    if (state.xlock?.box === obj)
-        throw new UnsupportedDropError('the box whose lock is being picked');
-    if (!u || u.uswallow)
-        throw new UnsupportedDropError('a swallowed hero');
+    // and the shop-level test refuses an unpaid merge target. A box whose
+    // lock picking was interrupted drops like any other: lock.c keeps
+    // xlock.box until obfree() or a level change resets it (lock.c 269-285),
+    // and a dropped box does not merge.
     // Direct dropx()/dropz() callers, including confused reverse_loot(), do
     // not test can_reach_floor(). Underwater drops still reach flooreffects;
     // its pool arm suppresses splash messages while Underwater is true.
@@ -1913,31 +1897,18 @@ export function preflight_dropx(obj, env = {}) {
         && (is_pool(u.ux, u.uy, state) || is_lava(u.ux, u.uy, state))
         && !submergedWaterBoulder)
         throw new UnsupportedDropError('special-level display');
-    // dig.c:341 drops uwep directly; do.c:810 clears it in dropz after
-    // extraction, shipping and altar handling. Admit only that primary mask.
-    // The carried iron ball keeps its W_BALL mask through freeinv(); dropz()
-    // places it and calls ball.c drop_ball() (do.c:833-834).
-    const ballMask = state.uball === obj ? W_BALL : 0;
-    const primaryWeapon = state.uwep === obj
-        && (obj.owornmask & ~ballMask) === W_WEP;
-    const secondaryWeapon = state.uswapwep === obj
-        && Boolean(obj.owornmask & W_SWAPWEP);
-    // worn.c:91-94 allows W_SWAPWEP and W_QUIVER on one object; do.c:814-818
-    // clears both equipment pointers when that object is dropped.
-    const allowedWornMask = (primaryWeapon ? W_WEP
-        : secondaryWeapon ? W_SWAPWEP | W_QUIVER : 0) | ballMask;
-    if ((obj.owornmask & ~allowedWornMask) || (state.uwep === obj && !primaryWeapon)
-        || (state.uquiver === obj && !secondaryWeapon)
-        || (state.uswapwep === obj && !secondaryWeapon)) {
-        throw new UnsupportedDropError('a worn or attached object');
-    }
-    // do.c:dropz() places a returned shop item before shk.c:sellobj()
-    // removes it from the bill. Admit that source path for an unpaid item,
-    // plain or a container (sellobj()'s dropped_container() and subfrombill()
-    // arms), on the resident keeper's costly square; retain the boundary for
-    // drops outside the shop.
-    if (obj.unpaid && !costly_spot(u.ux, u.uy, state))
-        throw new UnsupportedDropError('an unpaid object');
+    // do.c dropz() clears uwep, uquiver and uswapwep (do.c:810-818) and
+    // drop_ball() takes the carried iron ball (do.c:833-834). Every other
+    // worn object leaves its slot before a drop: drop() asks canletgo(),
+    // which refuses worn armor and accessories, and every other C caller
+    // takes the object off first (Ring_off() in do_wear.c glibr(),
+    // Blindf_off() in apply.c, remove_worn_item() in artifact.c
+    // retouch_object() and trap.c emergency_disrobe(), the Armor_gone() and
+    // Cloak_off() family in polyself.c break_armor()).
+    // do.c:dropz() places an unpaid item before shk.c:sellobj(), which takes
+    // it off the bill only on a costly square; elsewhere (the shop door, the
+    // keeper's own spot, a shop its keeper has left) it stays unpaid on the
+    // floor.
 
     const { ux: x, uy: y } = u;
     // shk.c:sellobj() owns its shop checks after floor placement, including
@@ -1962,45 +1933,22 @@ export function preflight_dropx(obj, env = {}) {
     // do.c:dropx/dropz/flooreffects adds no effect for an engraving on dry
     // floor. Keep its text intact and let the ordinary placement/redraw run.
     // A visible region affects the canonical redraw, not floor placement.
-    if (!Array.isArray(state.level.objects?.[x]))
-        throw new UnsupportedDropError('a missing floor-object grid');
     // invent.c stackobj() (4366-4375) hands this object to merged() (814-948)
-    // as the survivor and each pile member in turn as the object absorbed, and
-    // merged() reads lamplit and timed on that member at 851-854 and globby at
-    // 928. mergable() forces lamplit to match and returns early for a glob, but
-    // rejects a timer mismatch only for EGG and a revivable CORPSE. mergable()
-    // decides which members merged() can reach, so it is the gate here too.
+    // as the survivor and each pile member in turn as the object absorbed;
+    // merged() stops an absorbed member's light and timers (851-854). Of the
+    // lit or timed objects, mergable() admits only lit candles of a close
+    // age, corpses of a species that does not revive, and globs (which
+    // flooreffects() coalesces first except on liquid). It refuses lit potions of oil, eggs
+    // with a hatch timer and revivable corpses, and lamps, figurines and
+    // other timed tools have no oc_merge. Only a lit candle's end_burn()
+    // has an admission of its own.
     for (let member = state.level.objects[x][y] ?? null; member;
         member = member.nexthere) {
-        if (!member.lamplit && !member.timed && !member.globby) continue;
-        if (!mergable(obj, member, normalized)) continue;
-        // A compatible floor glob consumes the incoming free glob in
-        // flooreffects; invent.c:stackobj never reaches that timed member.
-        if (obj.globby && member.globby) continue;
-        if (isCandle(member) && member.lamplit && !member.globby) {
-            // merged() extracts this older candle and end_burn() stops its
-            // burn before obj_stop_timers is considered. Validate that owner
-            // while the drop is still atomic; generic timed/glob paths below
-            // retain their separate lifecycle boundary.
+        if (isCandle(member) && member.lamplit && !member.globby
+            && mergable(obj, member, normalized))
             preflight_end_burn(member, true, normalized);
-            continue;
-        }
-        if (member.timed && obj.otyp === CORPSE
-            && member.otyp === CORPSE && !member.lamplit
-            && !member.globby) {
-            // invent.c:mergable() rejects timer mismatches for eggs and
-            // revivable corpses, but admits matching non-reviver corpses.
-            // stackobj() keeps the new drop and merged() stops the absorbed
-            // pile corpse's timer after extracting it.
-            continue;
-        }
-        throw new UnsupportedDropError(
-            'a lit, timed, or globby object in the floor pile',
-        );
     }
 
-    requiredDropHook(normalized, 'newsym');
-    requiredDropHook(normalized, 'encumberMessage');
     return {
         consumed: false,
         initialWhere: obj.where,
@@ -2117,12 +2065,7 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
         normalized.state.u.ux,
         normalized.state.u.uy,
         'drop',
-        {
-            ...normalized,
-            unsupported: (reason) => {
-                throw new UnsupportedDropError(reason);
-            },
-        },
+        { ...normalized },
     )) {
         return;
     }
@@ -2130,15 +2073,7 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
         obj,
         normalized.state.u.ux,
         normalized.state.u.uy,
-        {
-            ...normalized,
-            hooks: {
-                // mkobj.c:place_object blocks vision for the landed boulder.
-                // Supply the source operation for every dropz caller.
-                blockPoint: (x, y, env) => block_point(x, y, env.state),
-                ...normalized.hooks,
-            },
-        },
+        normalized,
     );
     if (placement && typeof placement.then === 'function') await placement;
     if (withImpact) {
@@ -2164,19 +2099,18 @@ async function dropzAdmitted(obj, normalized, withImpact = false) {
         await sellobj(obj, normalized.state.u.ux, normalized.state.u.uy,
             normalized.state, normalized);
     }
-    stackobj(obj, normalized);
+    // invent.c stackobj() can merge the dropped glob with one already on the
+    // square (flooreffects() melds globs only off liquid), and merged() then
+    // prints pudding_merge_message(); the runtime variant waits for it.
+    await stackobjRuntime(obj, normalized);
     if (Blind(normalized.state.u) && Levitation(normalized.state.u)) {
         // display.c map_object() refuses any state but the module-global
         // game, because its draw half paints that game whatever state it is
         // handed.
         map_object(obj, 0, normalized.state);
     }
-    requiredDropHook(normalized, 'newsym')(
-        normalized.state.u.ux,
-        normalized.state.u.uy,
-        normalized.state,
-    );
-    await requiredDropHook(normalized, 'encumberMessage')(normalized.state);
+    newsym(normalized.state.u.ux, normalized.state.u.uy);
+    await encumber_msg(normalized.state);
 }
 
 // C ref: do.c dropz() (806-842). Ordinary drops retain the admitted source
@@ -2484,9 +2418,12 @@ export async function dodown(state = game, env = {}) {
         );
     }
 
-    // do.c:1281-1291. The Stronghold gap is recorded because C discards
-    // goto_hell()'s result; other traps either use their assigned destination
-    // or descend through next_level() as a hole/trap door would.
+    // do.c:1281-1291. `trap` is non-null here only for a seen hole or trap
+    // door under the hero, and uescaped_shaft() above has already sent that
+    // case through dotrap(TOOKPLUNGE) and returned, so C never reaches the
+    // trap arms below. The Stronghold arm's goto_hell() is therefore left as
+    // a recorded gap; recordings/do.c/fly-through-castle-trap-door-valley
+    // shows C taking the dotrap() path instead.
     if (trap && state.stronghold_level
         && on_level(state.stronghold_level, u.uz)) {
         note_unported('dungeon.c goto_hell');
@@ -2565,8 +2502,8 @@ export async function doup(state = game) {
 // the do.c owner so dungeon.c show_overview()/print_mapseen() sees one
 // source-ordered reached-depth value regardless of which caller performed the
 // assignment.
-export function updateDunlevReached(level, state = game) {
-    if (!builds_up(level, state)) {
+export function updateDunlevReached(level, state = game, env = {}) {
+    if (!builds_up(level, state, env)) {
         if (dunlev(level) > dunlev_reached(level, state))
             set_dunlev_reached(level, dunlev(level), state);
     } else if (dunlev_reached(level, state) === 0
@@ -2631,24 +2568,6 @@ async function final_level(state = game) {
     await gain_guardian_angel(state);
 }
 
-// A magic portal wished for in wizard mode (objnam.c, "to nowhere") keeps
-// trap.c maketrap()'s dst of {-1, -1}, and domagicportal() schedules it.
-// goto_level() then reads svd.dungeons[-1], the storage before the array,
-// in depth(), dunlevs_in_dungeon() and ledger_no(). The recorded C game
-// reaches done(ESCAPED), as it does when that slot reads as zeros, so these
-// three reads model it so: depth dlevel - 1, no levels, ledger dlevel.
-function goto_depth(level, state) {
-    return level.dnum < 0 ? level.dlevel - 1 : depth(level, state);
-}
-
-function goto_dunlevs(level, state) {
-    return level.dnum < 0 ? 0 : dunlevs_in_dungeon(level, state);
-}
-
-function goto_ledger(level, state) {
-    return level.dnum < 0 ? level.dlevel : ledger_no(level, state);
-}
-
 export async function goto_level(
     newlevel,
     at_stairs,
@@ -2657,11 +2576,11 @@ export async function goto_level(
     state = game,
 ) {
     const u = state.u;
-    let up = goto_depth(newlevel, state) < depth(u.uz, state);
+    let up = depth(newlevel, state) < depth(u.uz, state);
     const newdungeon = u.uz.dnum !== newlevel.dnum;
     // C computes this before clamping the destination or applying the
     // mysterious-force reassignment; the falling damage tail uses that value.
-    const dist = goto_depth(newlevel, state) - depth(u.uz, state);
+    const dist = depth(newlevel, state) - depth(u.uz, state);
     let leaving_tutorial = false;
     let do_fall_dmg = false;
     let new_ledger;
@@ -2669,8 +2588,8 @@ export async function goto_level(
     const prev_temperature = state.level.flags.temperature;
     const was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz, state);
 
-    if (dunlev(newlevel) > goto_dunlevs(newlevel, state))
-        newlevel.dlevel = goto_dunlevs(newlevel, state);
+    if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel, state))
+        newlevel.dlevel = dunlevs_in_dungeon(newlevel, state);
     if (newdungeon) {
         // do.c:1504-1515. Endgame entry requires the Amulet. Wizard mode may
         // bypass the Earth plane, while ordinary entry is redirected there.
@@ -2688,7 +2607,7 @@ export async function goto_level(
             leaving_tutorial = true;
         }
     }
-    new_ledger = goto_ledger(newlevel, state);
+    new_ledger = ledger_no(newlevel, state);
     if (new_ledger <= 0) {
         // do.c:1518-1519. done(ESCAPED) owns the terminal disclosure and
         // returns only in this JavaScript port after marking gameover.
@@ -2853,7 +2772,12 @@ export async function goto_level(
     assign_level(u.uz, newlevel);
     assign_level(u.utolev, newlevel);
     u.utotype = UTOTYPE_NONE;
-    updateDunlevReached(u.uz, state);
+    // builds_up()'s impossible() for dungeon -1 prints here; nothing between
+    // it and the end of the reached-depth update draws or uses the RNG.
+    const impossibles = [];
+    updateDunlevReached(u.uz, state,
+        { impossible: (text) => impossibles.push(text) });
+    for (const text of impossibles) await impossible(text, state);
 
     stairway_free_all(state);
     // do.c:1688-1690 clears the default arrival areas a special level may
@@ -2867,9 +2791,8 @@ export async function goto_level(
     let familiar = false;
     if (!(level_info(new_ledger, state).flags & LFILE_EXISTS)) {
         if (level_info(new_ledger, state).flags & VISITED) {
-            // C's impossible() clears the flag and carries on; a level marked
-            // visited with no file behind it means the port lost a level.
-            note_unported('pline.c impossible');
+            await impossible('goto_level: returning to discarded level?',
+                state);
             level_info(new_ledger, state).flags &= ~VISITED;
         }
         await mklev();
@@ -2908,14 +2831,13 @@ export async function goto_level(
             (trap) => trap.ttyp === MAGIC_PORTAL,
         );
         if (!ttrap) {
-            // C's two no-portal arms differ only in the impossible() warning;
-            // both then place the hero at random.
             if (u.uevent?.qexpelled
                 && (on_level(u.uz0, state.qstart_level)
                     || on_level(u.uz, state.qstart_level))) {
                 await u_on_rndspot(0, state);
             } else {
-                note_unported('pline.c impossible');
+                // iflags.debug_fuzzer is never set in this port.
+                await impossible('goto_level: no corresponding portal!', state);
                 await u_on_rndspot(0, state);
             }
         } else {
@@ -3132,11 +3054,6 @@ export async function goto_level(
             await resurrect(state, {
                 makemon: makemon_runtime,
                 redraw: newsym,
-                monArrive: (monster) => mon_arrive(monster, 'Wiz_arrive', {
-                    state,
-                }),
-                monCatchupElapsedTime: (monster, elapsed) =>
-                    mon_catchup_elapsed_time(monster, elapsed, { state }),
             });
         }
     } else if (In_quest(u.uz, state)) {

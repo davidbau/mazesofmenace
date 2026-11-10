@@ -142,7 +142,6 @@ import {
     useup,
 } from './invent.js';
 import { bless, isContainer, mksobj, place_object } from './obj.js';
-import { block_point } from './vision.js';
 import { discover_object } from './o_init.js';
 import {
     AMULET_OF_LIFE_SAVING,
@@ -223,6 +222,7 @@ import { tty_exit_nhwindows } from './wintty.js';
 import {
     Blind, Hallucination, Lifesaved, Sick,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 export class UnsupportedEndOfGameError extends Error {
     constructor(message) {
@@ -846,13 +846,10 @@ const DISCLOSURE_OPTIONS = 'iavgco';
 // C ref: end.c should_query_disclose_option() (475-515). The returned
 // `defquery` is the answer used when the option suppresses the prompt and the
 // default passed to yn_function() when it does not.
+// Every caller passes a literal from DISCLOSURE_OPTIONS, so C's bad-category
+// impossible() cannot run.
 function should_query_disclose_option(category, state) {
     const index = DISCLOSURE_OPTIONS.indexOf(category);
-    if (index < 0) {
-        throw new UnsupportedEndOfGameError(
-            `should_query_disclose_option() category ${category}`,
-        );
-    }
     const disclose = state.flags.end_disclose[index];
     switch (disclose) {
     case DISCLOSE_YES_WITHOUT_PROMPT:
@@ -992,8 +989,7 @@ function finishInUseInventory(state) {
 }
 
 // C ref: end.c done_object_cleanup() (851-906). The C globals gt.thrownobj
-// and gk.kickedobj are represented by both the grouped state fields used by
-// monster throws and the legacy root fields used by hero throws in this port.
+// and gk.kickedobj live at state.gt.thrownobj and state.gk.kickedobj.
 export async function done_object_cleanup(state) {
     finishInUseInventory(state);
 
@@ -1002,30 +998,17 @@ export async function done_object_cleanup(state) {
     const [ox, oy] = (!isok(ox0, oy0) || !accessible(ox0, oy0, state))
         ? [state.u.ux, state.u.uy]
         : [ox0, oy0];
-    const placeFreeTransitObject = (obj, groups) => {
+    const placeFreeTransitObject = (obj, container, field) => {
         if (!obj || obj.where !== OBJ_FREE) return;
         // mkobj.c place_object() block_point()s a landed boulder, such as
         // one a giant threw at the hero.
-        place_object(obj, ox, oy, {
-            state,
-            hooks: {
-                blockPoint: (x, y, env) => block_point(x, y, env.state),
-            },
-        });
+        place_object(obj, ox, oy, { state });
         stackobj(obj, { state });
-        for (const [container, field] of groups) {
-            if (container?.[field] === obj) container[field] = null;
-        }
+        if (container?.[field] === obj) container[field] = null;
     };
 
-    placeFreeTransitObject(
-        state.gt?.thrownobj ?? state.thrownobj,
-        [[state.gt, 'thrownobj'], [state, 'thrownobj']],
-    );
-    placeFreeTransitObject(
-        state.gk?.kickedobj ?? state.kickedobj,
-        [[state.gk, 'kickedobj'], [state, 'kickedobj']],
-    );
+    placeFreeTransitObject(state.gt?.thrownobj, state.gt, 'thrownobj');
+    placeFreeTransitObject(state.gk?.kickedobj, state.gk, 'kickedobj');
 
     const uchain = state.uchain;
     if (uchain && uchain.where === OBJ_FREE) {
@@ -1532,7 +1515,7 @@ async function really_done(how, state) {
             pbuf = `You ${uz.dlevel < 0 ? 'passed away' : ends[how]}`
                 + ' beyond the confines of the dungeon';
         } else {
-            let where = state.dungeons?.[uz.dnum]?.dname
+            let where = dungeon_at(uz.dnum, state)?.dname
                 ?? 'The Dungeons of Doom';
             if (Is_astralevel(uz, state)) where = 'The Astral Plane';
             pbuf = `You ${ends[how]} in ${where}`;

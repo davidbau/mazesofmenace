@@ -183,7 +183,7 @@ import { an, ansimpleoname, distant_name, donameFresh, is_plural,
 import { discover_object, objdescr_is, observe_object } from './o_init.js';
 import { accessible, closed_door, monflee, mon_would_take_item, monnear, onscary, youHear } from './monmove.js';
 import { lined_up, linedup_callback, m_useup } from './mthrowu.js';
-import { encumber_msg, removed_from_icebox } from './pickup.js';
+import { removed_from_icebox } from './pickup.js';
 import { in_your_sanctuary } from './priest.js';
 import { coreRandom, d, rn1, rn2, rn2_on_display_rng, rnd } from './rng.js';
 import { in_rooms } from './rooms.js';
@@ -1734,16 +1734,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} to the ${surface(state.u.ux, state.u.uy, state)}!`,
                 state, env);
-            // do.c dropz() always redraws the landing square and updates
-            // burden. These are the same caller-owned hooks as pickup.c
-            // tipcontainer().
-            await dropy(obj, {
-                state,
-                hooks: {
-                    encumberMessage: encumber_msg,
-                    newsym,
-                },
-            });
+            await dropy(obj, { state });
             break;
         case 3: /* into mon's inventory */
             await pline_mon(mtmp,
@@ -2674,8 +2665,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
         if (oseen)
             discover_object(otmp.otyp, true, true, true, state, env);
         state.m_using = true;
-        state.gc ??= {};
-        state.gc.current_wand = otmp;
+        state.current_wand = otmp;
         state.gb ??= {};
         state.gb.buzzer = mtmp;
         const buzzFunction = mtmp.mwandexp ? buzz : buzz_force_miss;
@@ -2691,7 +2681,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
             env,
         );
         state.gb.buzzer = 0;
-        state.gc.current_wand = 0;
+        state.current_wand = null;
         state.m_using = false;
         mtmp.mwandexp = true;
         return mtmp.mhp < 1 ? 1 : 2;
@@ -2702,8 +2692,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
         state.m_using = true;
         state.gb ??= {};
         state.gb.buzzer = mtmp;
-        state.gc ??= {};
-        state.gc.current_wand = otmp;
+        state.current_wand = otmp;
         const buzzFunction = mtmp.mwandexp ? buzz : buzz_force_miss;
         await buzzFunction(
             BZ_M_WAND(BZ_OFS_AD(
@@ -2720,7 +2709,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
             env,
         );
         state.gb.buzzer = 0;
-        state.gc.current_wand = 0;
+        state.current_wand = null;
         state.m_using = false;
         mtmp.mwandexp = true;
         return mtmp.mhp < 1 ? 1 : 2;
@@ -3352,9 +3341,6 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
         mInAir: env.mInAir ?? m_in_air,
         heroDeaf: env.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: env.youHear ?? youHear,
-        unsupported: env.unsupported ?? ((reason) => {
-            throw new TypeError(`unslime trap requires ${reason}`);
-        }),
         displayRandom: env.displayRandom
             ?? ((bound) => rn2_on_display_rng(bound, state)),
     };

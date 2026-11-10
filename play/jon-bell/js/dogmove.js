@@ -3,7 +3,7 @@ import { shkgone, unpaid_cost, currency, obfree, costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { is_mines_prize, is_soko_prize } from './cmd.js';
 import { mpickobj } from './steal.js';
-import { a_monnam, noname_monnam, mon_nam_too, slept_monst as slept_monst_real } from './mhitm.js';
+import { a_monnam, noname_monnam, mon_nam_too } from './mhitm.js';
 import { obj_pmname as obj_pmname_real } from './do_name.js';
 import { noit_mon_nam } from './mhitm.js';
 import { PM_PAPER_GOLEM, PM_STRAW_GOLEM, PM_KILLER_BEE, PM_LONG_WORM } from './pm.generated.js';
@@ -110,7 +110,8 @@ import { remove_worm, wormgone as wormgone_real,
 
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
-import { oc_delay, oc_nutrition, mons_cnutrit, eaten_stat } from './food_props.js';
+import { oc_delay, oc_nutrition, mons_cnutrit } from './food_props.js';
+import { eaten_stat } from './eat.js';
 import monMsoundPack_dm from './makemon_msound.json' with { type: 'json' };
 import { resists_cold as resists_cold_pm, resists_fire as resists_fire_pm, resists_elec as resists_elec_pm, golemeffects as golemeffects_pm } from './uhitm.js';
 import { corpse_chance as corpse_chance_uh, m_at, mhitm_adtyping, mon_wield_item, mon_nam, setmnotwielded, hitval } from './uhitm.js';
@@ -4670,11 +4671,6 @@ export function paralyze_monst(mon, amt) {
     mon.mstrategy = (mon.mstrategy & ~STRAT_WAITFORU) >>> 0;
 }
 
-/* C ref: mhitm.c:1249 slept_monst(mon) — forwards to the one port in js/mhitm.js. */
-export async function slept_monst(mon) {
-    return slept_monst_real(mon);
-}
-
 /* C mon.c:3747-3764 mon_to_stone(): a non-stone golem becomes a stone golem. */
 export async function mon_to_stone(mtmp) {
     if (!mtmp) return;
@@ -4798,7 +4794,7 @@ export async function monstone(mtmp) {
  * redrawn.  RNG-free on both sides.  Imported from './mhitm.js' at the header;
  * that module already imports finish_meating from THIS file, so the cycle
  * already exists and is function-call-only (no module-evaluation-time use). */
-import { update_monster_region as update_monster_region_real } from './region.js';
+import { update_monster_region } from './region.js';
 import { ENV } from './hostenv.js';
 import { lose_guardian_angel } from './minion.js';
 import { m_harmless_trap } from './trap.js'; // relocate-fns
@@ -4812,9 +4808,6 @@ function remove_monster(x, y) {
     const mtmp = m_at(x, y);
     if (mtmp)
         mtmp._mapRemoved = true;
-}
-function update_monster_region(mtmp) {
-    return update_monster_region_real(mtmp);
 }
 
 /* Local helpers that exist in other modules but not exported */

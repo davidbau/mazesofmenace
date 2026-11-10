@@ -293,8 +293,8 @@ export class TtyMenu {
             if (fresh) { this._renderPage(curr_page); fresh = false; }
             else this._publish();
 
-            const key = await nhgetch();
-            const morc = String.fromCharCode(key);
+            let key = await nhgetch();
+            let morc = String.fromCharCode(key);
             const from = this.plist[curr_page], to = this.plist[curr_page + 1];
             const group = how === PICK_ONE && !this.mlist.slice(from, to).some(c => c.aInt && c.selector === morc) && this.mlist.find(c => c.groupSelector === morc);
             if (group) {
@@ -311,9 +311,20 @@ export class TtyMenu {
             if (key !== 10 && key !== 13 && key !== 27 && key !== 0
                 && morc !== ' ' && !(morc >= '0' && morc <= '9')
                 && '<>^|,\\~.-@:'.indexOf(morc) < 0
+                && (game.mapped_menu_cmds || '').indexOf(morc) < 0
                 && !this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
                 reset_count = false;
                 continue;
+            }
+            /* C wintty.c:1555-1561: a key that is not an explicit selection on
+             * this page goes through map_menu_cmd() (options.c), so an rc
+             * menu_next_page:} makes '}' page forward. */
+            if (!this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
+                const mi = (game.mapped_menu_cmds || '').indexOf(morc);
+                if (mi >= 0) {
+                    morc = game.mapped_menu_op[mi];
+                    key = morc.charCodeAt(0);
+                }
             }
 
             /* C wintty.c:1556-1562: a current-page item selector is an EXPLICIT

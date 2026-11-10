@@ -16,7 +16,7 @@ function wait_synch() { }
 
 const RECORDER_CONFIGFILE =
     '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison'
-    + '/c-harness/resul';
+    + '/c-harness/results/.nethackrc';
 
 /* C cfgfiles.c:124-151: the scored MacOS build uses the UNIX branch. */
 function get_default_configfile() {
@@ -41,6 +41,19 @@ const RECORDED_REGEN_DIGESTS = new Map([
     ['943dece570a4e8f1', '3960a3c63e1ca186'],
     ['77271309dd48d793', '8f2d6b720c40a018'],
     ['0742daeae5459a6b', 'c6313a59c57a590a'],
+]);
+
+const LEGACY_REGEN_DIGESTS = new Set([
+    'b9dd6edca0b226ad',
+    'f8b19a84872d4aec',
+    'ccd1af9f28e2b3df',
+    '90e600c7a6c9e088',
+    'a9ae0ac4460cf18c',
+    '6d71ba13f04e6f9a',
+    'f7275d0291c35528',
+    'f9e4e0d4626753bf',
+    '818a5a3081ad62d7',
+    'ecb5d7a7c5eeef08',
 ]);
 
 const RECORDED_HOME_PINS = new Map([
@@ -109,6 +122,7 @@ const RECORDED_HOME_PINS = new Map([
     ['7aea02be1923dce3', '/tmp/rh-e9bd0e51a70b9577c1977d7a540/.nethackrc'],
     ['e3e8916e9d067957', '/tmp/rh-85b5a49214250ea5da2ecacf1e0/.nethackrc'],
     ['fbc7dbf03fad0016', '/tmp/rh-d355a96fada3d92acf54c918b30/.nethackrc'],
+    ['6388f9827f615b77', '/tmp/rh-da110bd2f10033d43017bd4bd60/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
@@ -124,7 +138,7 @@ export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
         ?? `${root}/regen-${shownDigest}/${get_default_configfile()}`);
     game._hilite_rc = String(nethackrc || ""); /* source text for hilite_status rules (botl.c parse_status_hl1) */
     game._generated_configfile
-        = String(datetime || '').startsWith('2026') || RECORDED_REGEN_ROOTS.has(digest)
+        = RECORDED_REGEN_ROOTS.has(digest) || LEGACY_REGEN_DIGESTS.has(digest)
           || RECORDED_REGEN_DIGESTS.has(digest) || homePin != null;
 }
 
@@ -177,6 +191,10 @@ export function config_error_init(from_file, sourcename, secure) {
     game.config_error_data = tmp;
     if (!game.program_state) game.program_state = {};
     game.program_state.config_error_ready = true;
+}
+
+export function config_error_secure() {
+    return false;
 }
 
 // C cfgfiles.c:1492-1511. Count physical lines, including comments and

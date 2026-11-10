@@ -30,7 +30,7 @@ import { wallification, get_level_extends, fix_wall_spines } from './mkmaze.js';
 import { In_hell, Can_fall_thru, level_difficulty } from './dungeon.js';
 import { stairway_add } from './stairs.js';
 import { somexy, somex, somey } from './mkroom.js';
-import { set_levltyp, set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom as maze_walkfrom } from './mkmaze.js';
+import { set_levltyp, set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom } from './mkmaze.js';
 import { vision_reset, block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
@@ -46,7 +46,7 @@ import { OC_NAME } from './oc_name_data.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
 import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { weight } from './weight.js';
-import { bless, unbless as unbless_obj, curse, uncurse as uncurse_obj, bless as bless_obj, uncurse } from './mkobj.js';
+import { bless, unbless, curse, uncurse as uncurse_obj, bless as bless_obj, uncurse } from './mkobj.js';
 import { name_to_mon, set_mon_data, set_malign, rndmonnum, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, check_gear_next_turn, emits_light } from './makemon.js';
 import { can_saddle } from './steed.js';
 import { del_light_source } from './light.js';
@@ -2483,11 +2483,6 @@ export function get_table_objtype(args) {
  * do/while). */
 function oc_merge(otyp) {
     return !!OC_MERGE[otyp];
-}
-
-/* C mkobj.c:1745-1837: share the inventory, timer, and light side effects. */
-function unbless(otmp) {
-    return unbless_obj(otmp);
 }
 
 /* mpickobj — C ref: nethack-c/src/steal.c:616.  The real, whole-function port
@@ -6662,19 +6657,6 @@ function mz_move(coord, dir) {
     default:
         throw new Error('mz_move: bad direction ' + dir);
     }
-}
-
-/** C ref: mkmaze.c:1279-1309 walkfrom(x, y, typ) — recursive backtracking
- *  maze-carver. Ported as a genuinely recursive function per Cardinal Rule 1
- *  (a MICRO iterative variant exists in C but is NOT what this non-MICRO
- *  build uses) — do NOT flatten the `while(1) { ...; walkfrom(...); }` loop
- *  into pure iteration; C's own loop re-scans directions from the SAME cell
- *  after each recursive excursion returns, which only works because the
- *  recursive call already fully explored (and can no longer re-explore) the
- *  cells it touched. */
-function walkfrom(x, y, typ) {
-    // Share C's maze walk with create_maze(), including its RNG order.
-    return maze_walkfrom(x, y, typ);
 }
 
 /* objclass.h RANDOM_CLASS / GEM_CLASS — module-local per this file's existing

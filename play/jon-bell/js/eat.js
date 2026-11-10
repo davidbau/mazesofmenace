@@ -24,7 +24,8 @@ import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from '.
 const BEARTRAP = 244;
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
-import { FOOD_PROPS, eaten_stat as food_eaten_stat, obj_nutrition } from './food_props.js';
+import { FOOD_PROPS, obj_nutrition } from './food_props.js';
+import { impossible_sync } from './display.js';
 import { is_rottable } from './mklev.js';
 import { inv_cnt, reorder_invent, rounddiv } from './cmd.js';
 import { set_itimeout } from './potion.js';
@@ -47,7 +48,7 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER,
  * circular import (js/potion.js<->js/cmd.js is the same shape) — safe because
  * nothing here calls it at module-evaluation time. */
 import { getObjFromGetobj, costly_alteration, costly_spot, obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
-import { wield_tool as wield_tool_real } from './wield.js';
+import { wield_tool } from './wield.js';
 import { sellobj_state, safe_qbuf, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
 import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
@@ -128,7 +129,7 @@ import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_s
  * tail rather than at module scope). */
 import { set_occupation, instapetrify as instapetrify_eat, useup as useup_eat, verbalize, pooleffects_breathless, surface } from './cmd.js';
 import { welded } from './wield.js';
-import { dropx, dropy, heal_legs } from './do.js';
+import { dropx, dropy, heal_legs, donull } from './do.js';
 import { weight, encumber_msg as encumber_msg_real } from './weight.js';
 import { near_capacity } from './hack.js';
 import { obj_here } from './cmd.js';
@@ -3770,7 +3771,20 @@ export async function use_tin_opener(obj) {
  * If uneaten > full_amount (impossible), cap uneaten to full_amount.
  */
 export function eaten_stat(base, obj) {
-    return food_eaten_stat(base, obj);
+    /* get full_amount first; obj_nutrition() might modify obj->oeaten */
+    const full_amount = obj_nutrition(obj) | 0;
+    let uneaten_amt = (obj.oeaten | 0);
+
+    if (uneaten_amt > full_amount) {
+        impossible_sync('partly eaten food (%ld) more nutritious than untouched food (%ld)',
+                   uneaten_amt, full_amount);
+        uneaten_amt = full_amount;
+    }
+
+    base = full_amount
+        ? Math.trunc(((base | 0) * uneaten_amt) / full_amount)
+        : 0;
+    return base < 1 ? 1 : base;
 }
 
 export function is_edible(obj) {
@@ -3909,9 +3923,10 @@ export async function cant_finish_meal(corpse) {
         }
 
         /* C eat.c:3909: go.occupation = donull; (any non-Null other than eatfood()) */
-        g.occupation = null;
-
-        /* C eat.c:3910: stop_occupation(); (clears occupation and calls maybe_finished_meal) */
+        g.occupation = donull;
+        /* Stop before makemon: its pline flushes the map without the revived
+         * monster, and must not finish or consume the corpse being revived. */
+        await stop_occupation();
 
         /* C eat.c:3911: newuhs(FALSE); */
         await newuhs(false);
@@ -4568,10 +4583,6 @@ export function eatmupdate() {
  * flavor messages still use _emit_eat_pline at their own call sites. */
 export { You };
 export { safe_qbuf };
-export async function wield_tool(obj, verb) {
-    /* C ref: wield.c:680 — share the canonical wield path. */
-    return await wield_tool_real(obj, verb);
-}
 export async function ynq(prompt) {
     /* C hack.h: #define ynq(query) yn_function(query, ynqchars, 'q', TRUE) */
     return await yn_function(prompt, "ynq", 'q', true);

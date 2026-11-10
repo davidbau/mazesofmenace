@@ -460,7 +460,7 @@ export function apply_customizations(which_set, docustomize) {
     let at_least_one = false;
     const do_colors = ((docustomize & do_custom_colors) !== 0);
     const do_symbols = ((docustomize & do_custom_symbols) !== 0);
-    if (do_symbols && game.iflags.customsymbols) apply_pending_s_utf8();
+    if (do_symbols && game.iflags.customsymbols !== false) apply_pending_s_utf8();
 
     for (let custs = 0; custs < custom_count; ++custs) {
         const sc = gs.sym_customizations[which_set | 0][custs];
@@ -470,7 +470,7 @@ export function apply_customizations(which_set, docustomize) {
                not to symset entries */
             let details = sc.details;
             while (details) {
-                if (game.iflags.customsymbols && do_symbols) {
+                if (game.iflags.customsymbols !== false && do_symbols) {
                     if (sc.custtype === custom_ureps) {
                         const gmap = glyphmap[details.content.urep.glyphidx];
                         if (gs.symset[which_set | 0].handling === H_UTF8)
@@ -478,7 +478,7 @@ export function apply_customizations(which_set, docustomize) {
                                       details.content.urep.u.utf8str);
                     }
                 }
-                if (game.iflags.customcolors && do_colors) {
+                if (game.iflags.customcolors !== false && do_colors) {
                     if (sc.custtype === custom_nhcolor) {
                         const gmap = glyphmap[details.content.ccolor.glyphidx];
                         set_map_customcolor(gmap, details.content.ccolor.nhcolor);

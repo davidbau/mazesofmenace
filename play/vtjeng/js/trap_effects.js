@@ -185,7 +185,6 @@ import {
     spot_checks,
     u_locomotion,
 } from './hack.js';
-import { done } from './end.js';
 import {
     SCATTER_MAY_DESTROY,
     SCATTER_MAY_FRACTURE,
@@ -383,7 +382,6 @@ import {
 import { note_unported } from './unported.js';
 import { dmgval, mwepgone } from './weapon.js';
 import {
-    block_point,
     cansee,
     clear_path,
     couldsee,
@@ -428,8 +426,7 @@ const a_your = Object.freeze(['a', 'your']);
 const A_Your = Object.freeze(['A', 'Your']);
 
 // Live dotrap() uses its ordinary owners. A caller can pass its own RNG,
-// message and redraw operations without changing other trap callers;
-// `unsupported` keeps the same movement-catch boundary.
+// message and redraw operations without changing other trap callers.
 function heroTrapEnv(state, rawEnv = {}) {
     return {
         ...rawEnv,
@@ -438,10 +435,6 @@ function heroTrapEnv(state, rawEnv = {}) {
         message: rawEnv.message
             ?? ((line, target) => ttyPline(line, target ?? state)),
         redraw: rawEnv.redraw ?? ((x, y) => newsym(x, y)),
-        unsupported: rawEnv.unsupported
-            ?? ((reason) => {
-                throw new UnsupportedHeroMoveBoundaryError(reason);
-            }),
     };
 }
 
@@ -737,16 +730,6 @@ async function trapeffect_arrow_trap(mtmp, trap, _trflags, env) {
             {
                 random,
                 message: (text, target) => message(text, target ?? state),
-                losehp: (amount, killer, format) =>
-                    losehp(amount, killer, format, state),
-                exercise: (index, increase) => exercise(
-                    index,
-                    increase,
-                    state,
-                    random,
-                    { encumberMessage: (subject) =>
-                        encumber_msg(subject, { message }) },
-                ),
             },
         )) {
             if (otmp) obfree(otmp, null, { state });
@@ -951,11 +934,6 @@ async function trapeffect_dart_trap(mtmp, trap, _trflags, env) {
             {
                 random,
                 message: (text, target) => message(text, target ?? state),
-                losehp: (n, knam, k_format) => losehp(n, knam, k_format, state),
-                exercise: (index, increase) => exercise(
-                    index, increase, state, random,
-                    { encumberMessage: (subject) => encumber_msg(subject) },
-                ),
             },
         )) {
             if (otmp) {
@@ -970,10 +948,6 @@ async function trapeffect_dart_trap(mtmp, trap, _trflags, env) {
                         {
                             random,
                             message: (text) => message(text, state),
-                            losehp: (n, knam, k_format) =>
-                                losehp(n, knam, k_format, state),
-                            done: (how) => done(how, state),
-                            encumberMessage: (s) => encumber_msg(s),
                         },
                     );
                 }
@@ -1502,7 +1476,6 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
     const { state } = env;
     const random = env.random;
     const message = requireTrapOperation(env, 'message');
-    const unsupported = requireTrapOperation(env, 'unsupported');
 
     if (mtmp === state.youmonst) {
         const plunged = (trflags & TOOKPLUNGE) !== 0;
@@ -1634,10 +1607,6 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
                         poisonDamage, false, state, {
                             ...env,
                             message: (text) => message(text, state),
-                            losehp: (amount, killer, format) =>
-                                losehp(amount, killer, format, state),
-                            done: (how) => done(how, state),
-                            encumberMessage: (subject) => encumber_msg(subject),
                         });
                     if (state.program_state?.gameover)
                         return Trap_Effect_Finished;
@@ -1949,7 +1918,6 @@ async function domagictrap(env) {
 // helper below.
 async function trapeffect_hole(mtmp, trap, trflags, env) {
     const { state } = env;
-    const unsupported = requireTrapOperation(env, 'unsupported');
 
     if (mtmp === state.youmonst) {
         if (!Can_fall_thru(state.u?.uz, state)) {
@@ -2596,12 +2564,6 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
     // vision_full_recalc before the next C message flushes the map.
     const objectHooks = {
         ...(env.hooks ?? {}),
-        blockPoint: env.hooks?.blockPoint
-            ?? ((ox, oy, actionEnv) => block_point(
-                ox,
-                oy,
-                actionEnv?.state ?? state,
-            )),
         recalcBlockPoint: env.hooks?.recalcBlockPoint
             ?? ((ox, oy, actionEnv) => recalc_block_point(
                 ox,
@@ -2759,7 +2721,6 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                             ?? ((subject) => canseemon(subject, state)),
                         hooks: {
                             ...(env.hooks ?? {}),
-                            blockPoint: objectHooks.blockPoint,
                             recalcBlockPoint: objectHooks.recalcBlockPoint,
                         },
                     };
@@ -2791,13 +2752,11 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                         ...actionEnv,
                         hooks: {
                             ...(actionEnv.hooks ?? {}),
-                            blockPoint: objectHooks.blockPoint,
                             recalcBlockPoint: objectHooks.recalcBlockPoint,
                         },
                     })),
                 hooks: {
                     ...(env.hooks ?? {}),
-                    blockPoint: objectHooks.blockPoint,
                     recalcBlockPoint: objectHooks.recalcBlockPoint,
                 },
             };
@@ -2821,11 +2780,6 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                     Maybe_Half_Phys(dam, state.u),
                     singleobj, null, state, {
                         message,
-                        losehp: (d, r, k, s, hpEnv) => losehp(d, r, k, s, hpEnv),
-                        exercise: (a, b) => exercise(a, b, state, env.random, {
-                            encumberMessage: (subject) =>
-                                encumber_msg(subject, { message }),
-                        }),
                         random: env.random,
                     });
             // C's done() does not return: a fatal boulder ends the game
@@ -3982,22 +3936,10 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
 // the move, and dotrap() calls it again as its first statement for any caller
 // that arrives another way.
 //
-// The stops, and what each of them needs:
-//   every type but ARROW_TRAP, BEAR_TRAP, DART_TRAP, ROCKTRAP, MAGIC_TRAP, POLY_TRAP,
-//     ANTI_MAGIC, MAGIC_PORTAL,
-//     FIRE_TRAP, SLP_GAS_TRAP, RUST_TRAP, LANDMINE, PIT, SPIKED_PIT,
-//     TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, ROLLING_BOULDER_TRAP and
-//     VIBRATING_SQUARE -- its own trapeffect_*() arm;
-//   a fixed-destination teleport trap with a monster standing on the
-//     destination -- teleport.c:1516's rloc_to(), whose port covers only a
-//     monster that is not yet on the map;
-//   a mounted hero where the effect has no corresponding source arm --
-//     steedintrap() handles the arrow, dart, gas, magic, polymorph,
-//     landmine and pit arms; TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, HOLE and
-//     TRAPDOOR target the hero directly in their source effects too;
-//     ROCKTRAP, FIRE_TRAP, RUST_TRAP, ROLLING_BOULDER_TRAP and STATUE_TRAP
-//     still target the hero, ANTI_MAGIC acts directly on them, and
-//     VIBRATING_SQUARE calls feeltrap() for the hero;
+// Every trap type from ARROW_TRAP to VIBRATING_SQUARE has its trapeffect_*()
+// arm, mounted or not, so the one stop left is a trap of no known type, which
+// no game creates (C's trapeffect_selector() would print impossible() for
+// it). Some tests use it as a fixed refusal boundary.
 export function preflight_dotrap(trap, state = game, trflags = 0) {
     const pitTrap = is_pit(trap.ttyp);
     if (trap.ttyp !== ARROW_TRAP && trap.ttyp !== BEAR_TRAP
@@ -4017,28 +3959,6 @@ export function preflight_dotrap(trap, state = game, trflags = 0) {
         && trap.ttyp !== ROLLING_BOULDER_TRAP
         && trap.ttyp !== VIBRATING_SQUARE && !is_hole(trap.ttyp))
         throw new UnsupportedHeroMoveBoundaryError('trap activation');
-    if (state.u.usteed && trap.ttyp !== ARROW_TRAP
-        && trap.ttyp !== WEB
-        && trap.ttyp !== BEAR_TRAP
-        && trap.ttyp !== LANDMINE && trap.ttyp !== DART_TRAP
-        && trap.ttyp !== FIRE_TRAP
-        && trap.ttyp !== ROCKTRAP
-        && trap.ttyp !== RUST_TRAP
-        && trap.ttyp !== SLP_GAS_TRAP && trap.ttyp !== MAGIC_TRAP
-        && trap.ttyp !== ANTI_MAGIC && trap.ttyp !== POLY_TRAP
-        && trap.ttyp !== SQKY_BOARD
-        && trap.ttyp !== VIBRATING_SQUARE
-        && trap.ttyp !== ROLLING_BOULDER_TRAP
-        && trap.ttyp !== STATUE_TRAP
-        && trap.ttyp !== TELEP_TRAP
-        && trap.ttyp !== LEVEL_TELEP
-        && trap.ttyp !== MAGIC_PORTAL
-        && !pitTrap && !is_hole(trap.ttyp)) {
-        // These mounted effects still need their source-specific steed arm.
-        throw new UnsupportedHeroMoveBoundaryError(
-            'a steed in a trap',
-        );
-    }
 }
 
 // C ref: trap.c dotrap() (2995-3060). The hero's counterpart to mintrap():
@@ -4160,7 +4080,6 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
         ...rawEnv,
         state,
     };
-    requireTrapOperation(env, 'unsupported');
     // Checked here rather than on entry because C makes no draw for a monster
     // standing on no trap, and postmov() calls this on every completed move.
     // Everything the admitted path can need is proven present here, before the

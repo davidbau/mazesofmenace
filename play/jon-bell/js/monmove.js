@@ -78,7 +78,7 @@ import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 /* C objects[otyp].oc_weight — m_consume_obj (mon.c:1399) heals a non-pet by the
  * RAW column, not by weight(obj) (which multiplies by quan).  Pure data module,
  * no imports of its own. */
-import { eaten_stat } from './food_props.js';
+import { eaten_stat } from './eat.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 /* C monmove.c:1831 — m_move dispatches a shopkeeper to shk_move (shk.js →
  * move_special in priest.js).  This forms a call-time cycle monmove→shk→

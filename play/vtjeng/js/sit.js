@@ -126,6 +126,7 @@ import {
     Half_spell_damage, Hallucination, Levitation, See_invisible,
     Shock_resistance, Slimed,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 
 function Underwater(state) {
@@ -250,7 +251,7 @@ async function special_throne_effect(effect, state, rawEnv = {}) {
         const { find_hell } = await import('./dungeon.js');
         const destination = {};
         find_hell(destination, state);
-        destination.dlevel = state.dungeons[destination.dnum].num_dunlevs - 1;
+        destination.dlevel = dungeon_at(destination.dnum, state).num_dunlevs - 1;
         if (u.uhave.amulet) {
             await message(youFeel('extremely disoriented for a moment.', state), state, env);
         } else {
@@ -702,18 +703,14 @@ export async function lay_an_egg(state = game, rawEnv = {}) {
         `You ${eggs_in_water(species) ? 'spawn' : 'lay'} an egg.`, state,
     );
 
-    // do.c dropy() needs the same display, object extraction, and
-    // encumbrance operations its production command supplies.
+    // do.c dropy() needs the same display operation its production command
+    // supplies.
     const { dropy } = await import('./do.js');
-    const [{ encumber_msg }, { newsym }] = await Promise.all([
-        import('./pickup.js'),
-        import('./display.js'),
-    ]);
+    const { newsym } = await import('./display.js');
     const dropEnv = {
         ...rawEnv,
         state,
         hooks: {
-            encumberMessage: encumber_msg,
             newsym,
         },
     };

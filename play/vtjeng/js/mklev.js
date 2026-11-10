@@ -27,7 +27,6 @@ import {
     level_difficulty,
     on_level,
 } from './dungeon.js';
-import { UnsupportedLevelChangeError } from './do.js';
 import {
     antholemon,
     do_mkroom,
@@ -54,7 +53,7 @@ import {
 import { def_char_to_monclass, def_char_to_objclass } from './drawing.js';
 import { MAXMCLASSES } from './symbols.js';
 import { add_to_container, obj_extract_self, obfree, sobj_at } from './invent.js';
-import { UnsupportedMonsterCreationError, makemon, dmonsfree, set_mimic_sym } from './makemon_create.js';
+import { makemon, dmonsfree, set_mimic_sym } from './makemon_create.js';
 import { mkclass, rndmonnum } from './makemon.js';
 import { mineralize } from './mineralize.js';
 import { make_grave } from './grave.js';
@@ -78,6 +77,7 @@ import {
     luaL_checkoption,
     luaL_checkstring,
     luaL_typename,
+    nhl_loadlua,
 } from './nhlua.js';
 import {
     create_maze,
@@ -354,7 +354,7 @@ import { priestini } from './priest.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { note_unported } from './unported.js';
 import { impossible } from './pline.js';
-import { DAT_LUA_FILES } from './dat_files.js';
+import { dungeon_at } from './dungeon_table.js';
 
 const XLIM = 4;
 const YLIM = 3;
@@ -368,10 +368,6 @@ const SPLEV_H_RIGHT = 4;
 const SPLEV_RIGHT = 5;
 const SPLEV_TOP = 1;
 const SPLEV_BOTTOM = 5;
-
-const THEMEROOM_RANDOM_METHODS = Object.freeze([
-    'd', 'rn1', 'rn2', 'rnd', 'rne', 'rnz',
-]);
 
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
@@ -670,6 +666,24 @@ function roomIsFillable(croom) {
         && croom.needfill === FILL_NORMAL);
 }
 
+// gl.luathemes[dnum], the Lua state holding a dungeon's themed rooms, which
+// mklev.c makerooms() loads from svd.dungeons[dnum].themerms and
+// themerooms_post_level_generate() reads; state._luathemes_loaded[dnum]
+// stands for a non-null one. At dnum -1 (a wished magic portal's destination,
+// js/dungeon_table.js) C reads the 8 bytes before gl.luathemes, which in the
+// recorder's build are gl.light_base: offsetof(gl, light_base) is 72 and
+// offsetof(gl, luathemes) 80 (.cache/lead/wt-dneg1-notes/layout/gl.c). An
+// empty light source list reads as no Lua state. A non-empty one would be
+// used as a lua_State, which this does not model.
+function luathemes_at(dnum, state) {
+    if (dnum === -1) {
+        if (state.gl?.light_base)
+            throw new Error('gl.luathemes[-1] reads gl.light_base as a Lua state');
+        return false;
+    }
+    return Boolean(state._luathemes_loaded?.[dnum]);
+}
+
 // C refs: nhlua.c nhl_init(); dat/nhlib.lua. Each dungeon branch retains its
 // own themed-room Lua state, including nhlib's shuffled alignment array.
 export function initialize_themeroom_branch(state = game, random = rn2) {
@@ -692,7 +706,7 @@ export function initialize_themeroom_branch(state = game, random = rn2) {
 // not wallify its freshly loaded map a second time.
 function themerooms_post_level_generate(state = game) {
     const dnum = state.u?.uz?.dnum ?? 0;
-    if (!state._luathemes_loaded?.[dnum]) return;
+    if (!luathemes_at(dnum, state)) return;
     run_themeroom_postprocess({ state });
     wallification(1, 0, COLNO - 1, ROWNO - 1, state);
 }
@@ -715,34 +729,15 @@ async function makelevel(specialLevelLoader = null) {
     oinit();
     clear_level_structures();
 
-    // C ref: mklev.c:1267-1270. Check for a special level and dispatch
-    // through makemaz() when one exists. This takes priority over both the
-    // explicit specialLevelLoader (tests) and the regular room path.
-    // Only dispatch when the port has a loader for this level's proto;
-    // unported special levels fall through to regular generation, which
-    // is wrong but preserves the session's later matched screens.
+    // C ref: mklev.c:1267-1270. A special level dispatches through
+    // makemaz(). This takes priority over both the explicit
+    // specialLevelLoader (tests) and the regular room path.
     if (!specialLevelLoader) {
         const slev = Is_special(g.u.uz, g);
         if (slev && slev.proto && !Is_rogue_level(g.u.uz, g)) {
-            await ensureSpecialLevelLoaders();
-            // Determine the resolved protofile the same way makemaz() will.
-            // For bigrm, slev.rndlevs is 13, so the proto is
-            // "bigrm-<rnd(13)>". We cannot call rnd() here because it
-            // would consume a random number before makemaz() does. Instead,
-            // check the base proto: if ANY variant exists, dispatch.
-            const hasLoader = slev.rndlevs
-                ? Object.keys(SPECIAL_LEVEL_LOADERS).some(
-                    (k) => k.startsWith(`${slev.proto}-`),
-                )
-                : Boolean(SPECIAL_LEVEL_LOADERS[slev.proto]);
-            if (hasLoader) {
-                await makemaz(slev.proto, slev, g);
-                await finishLevelGeneration();
-                return;
-            }
-            throw new UnsupportedLevelChangeError(
-                `makelevel: load_special() has no loader for special level "${slev.proto}"`,
-            );
+            await makemaz(slev.proto, slev, g);
+            await finishLevelGeneration();
+            return;
         }
     }
 
@@ -762,7 +757,7 @@ async function makelevel(specialLevelLoader = null) {
     }
 
     // C ref: mklev.c:1271-1274. Dungeon-wide prototype or fill level.
-    const dungeonRecord = g.dungeons[g.u.uz.dnum];
+    const dungeonRecord = dungeon_at(g.u.uz.dnum, g);
     if (dungeonRecord.proto) {
         await makemaz('', null, g);
         await finishLevelGeneration();
@@ -784,12 +779,9 @@ async function makelevel(specialLevelLoader = null) {
         const loc_lev = find_level(locaName, g);
         const fillName = `${filecode}-fil`
             + (g.u.uz.dlevel < loc_lev.dlevel.dlevel ? 'a' : 'b');
-        await ensureSpecialLevelLoaders();
-        if (SPECIAL_LEVEL_LOADERS[fillName]) {
-            await makemaz(fillName, null, g);
-            await finishLevelGeneration();
-            return;
-        }
+        await makemaz(fillName, null, g);
+        await finishLevelGeneration();
+        return;
     }
 
     // C ref: mklev.c:1295 — check for below-Medusa maze level
@@ -805,8 +797,12 @@ async function makelevel(specialLevelLoader = null) {
     // Regular level generation
     // C ref: mklev.c:382-388 — load themerms.lua for themed rooms
     // nhlib.lua shuffle when loading themerms.lua (first level of branch)
+    // makerooms() loads the dungeon's themerms file into gl.luathemes the
+    // first time; only the Dungeons of Doom names one.
     const rogue = Is_rogue_level(g.u.uz, g);
-    if (!rogue) initialize_themeroom_branch(g, rn2);
+    if (!rogue && (luathemes_at(g.u.uz.dnum, g)
+                   || dungeon_at(g.u.uz.dnum, g).themerms))
+        initialize_themeroom_branch(g, rn2);
 
     if (rogue) {
         makeroguerooms(g);
@@ -979,7 +975,8 @@ function mk_knox_portal(x, y) {
 async function makerooms() {
     const g = game;
     let tried_vault = false;
-    const difficulty = level_difficulty(g);
+    const themes = luathemes_at(g.u.uz.dnum, g);
+    const difficulty = themes ? level_difficulty(g) : 0;
     let themeroom_tries = 0;
 
     while (g.level.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
@@ -990,6 +987,8 @@ async function makerooms() {
                 g.vault_y = g.level.rooms[g.level.nroom]?.ly ?? -1;
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
             }
+        } else if (!themes) {
+            if (!create_room(-1, -1, -1, -1, -1, -1, OROOM, -1)) break;
         } else {
             // Themed room selection (reservoir sampling)
             g.in_mk_themerooms = true;
@@ -2026,45 +2025,40 @@ async function ensureSpecialLevelLoaders() {
         valStrtLoader(des, state, des[SPECIAL_LEVEL_LUA_GLOBALS]);
 }
 
-// C ref: sp_lev.c load_special(). Initializes the level coder, runs the
-// level definition loader (the JS equivalent of load_lua), and applies
-// post-processing. Returns true when the level loaded, false when no
-// loader exists for the given name.
+// The names of every level program the port can load, for the check that
+// they cover every level file in C's dat/ (scripts/special-level-loaders
+// .test.mjs): makemaz() relies on it, as C's makemaz() relies on the
+// install shipping every file dungeon.lua names.
+export async function specialLevelLoaderNames() {
+    await ensureSpecialLevelLoaders();
+    return Object.keys(SPECIAL_LEVEL_LOADERS);
+}
+
+// C ref: sp_lev.c load_special(). Initializes the level coder, loads the
+// named dat/ file through load_lua() (a level program runs through its
+// loader, the JS form of its Lua), and applies post-processing. Returns false
+// when the file cannot be loaded.
 export async function load_special(name, state, callerEnv = null) {
     await ensureSpecialLevelLoaders();
-    // C's DLB filenames have .lua; the existing port registry uses the
-    // same program names without the extension. Preserve case and whitespace.
-    const loader = SPECIAL_LEVEL_LOADERS[name.endsWith('.lua') ? name.slice(0, -4) : name];
     // C creates gc.coder, including the file-scope SpLev_Map state, before
     // attempting load_lua(). Keep that state available to the caller's
-    // NULL-state finalizer even when the Lua program is not implemented.
+    // NULL-state finalizer even when the load fails.
     const specialLevelApi = createSpecialLevelApi(state);
     if (callerEnv) callerEnv.frame = specialLevelApi.frame;
-    // C ref: nhlua.c nhl_init(); dat/nhlib.lua. The Lua state shuffles
-    // its private alignment table before nhl_loadlua() opens the file.
-    const nhlInit = () => {
-        const align = ['law', 'neutral', 'chaos'];
-        shuffle_core_values(align, rn2);
-        state.specialLevelAlign = align;
-    };
-    if (!loader) {
-        // nhlua.c nhl_loadlua() (2198-2203): dlb_fopen() finds no file by a
-        // name outside dat/, and the load fails after impossible(). A path
-        // with a directory part could reach another file, and running a
-        // dat/ file that has no port here is not supported.
-        if (!name.includes('/') && !DAT_LUA_FILES.has(name)) {
-            nhlInit();
-            await impossible(`nhl_loadlua: Error opening (${name})`, state);
-            return false;
-        }
-        // wiz_load_splua discards this load result and continues.
-        note_unported('nhlua.c nhl_loadlua');
-        return false;
-    }
-
-    nhlInit();
-
-    await loader(specialLevelApi, state);
+    // C ref: nhlua.c load_lua(). nhl_init() loads nhlib.lua, which shuffles
+    // the Lua state's private alignment table, before nhl_loadlua() opens
+    // the file.
+    const align = ['law', 'neutral', 'chaos'];
+    shuffle_core_values(align, rn2);
+    const lua = { align };
+    const loaded = await nhl_loadlua(lua, name, state);
+    state.specialLevelAlign = lua.align;
+    if (!loaded) return false;
+    // A library file's top level leaves the coder as create_des_coder()
+    // made it, and load_special() post-processes the current level as it is.
+    // The port registers each level program under its name without ".lua".
+    if (loaded === 'level')
+        await SPECIAL_LEVEL_LOADERS[name.slice(0, -'.lua'.length)](specialLevelApi, state);
 
     // Post-processing: finish() covers link_doors_rooms,
     // remove_boundary_syms, map_cleanup, wallification, flip_level_rnd,
@@ -2094,17 +2088,15 @@ async function makemaz(proto, slev, state) {
     if (protofile) {
         check_ransacked(protofile, state);
         // C ref: mkmaze.c:1184-1193. load_special() runs the Lua level
-        // definition and applies post-processing.
-        if (await load_special(protofile, state)) {
+        // definition and applies post-processing. C appends LEV_EXT first.
+        if (await load_special(`${protofile}.lua`, state)) {
             // C ref: mkmaze.c:1191. Dead monsters created during level
             // loading are freed here.
             dmonsfree(state);
             return;
         }
-        // C: impossible("Couldn't load \"%s\" - making a maze.", protofile);
-        throw new UnsupportedLevelChangeError(
-            `makemaz: no loader for "${protofile}"`,
-        );
+        await impossible(
+            `Couldn't load "${protofile}.lua" - making a maze.`, state);
     }
 
     // C ref: mkmaze.c:1197-1223. Procedural generation for unnamed mazes.
@@ -4686,13 +4678,7 @@ function createSpecialLevelApi(state) {
         hooks: {
             ...objectGenerationHooks(),
             makeMonster(species, x, y, mmflags, monEnv) {
-                try {
-                    return makemon(species, x, y, mmflags, monEnv);
-                } catch (e) {
-                    if (e instanceof UnsupportedMonsterCreationError)
-                        return null;
-                    throw e;
-                }
+                return makemon(species, x, y, mmflags, monEnv);
             },
         },
         frame,
@@ -4933,12 +4919,7 @@ function createSpecialLevelApi(state) {
         gold(...args) { return lspo_gold(args, env); },
 
         monster(...args) {
-            try {
-                return lspo_monster(args, coder.croom, env);
-            } catch (e) {
-                if (e instanceof UnsupportedMonsterCreationError) return null;
-                throw e;
-            }
+            return lspo_monster(args, coder.croom, env);
         },
 
         stair(...args) { return lspo_stair(args, env); },
@@ -5750,26 +5731,6 @@ export class UnsupportedThemeroomActionError extends Error {
     }
 }
 
-function themeroom_random_facade(context, operation, streams) {
-    const facade = context.randomFacade;
-    for (const method of THEMEROOM_RANDOM_METHODS) {
-        if (typeof facade?.[method] !== 'function') {
-            throw new UnsupportedThemeroomActionError(
-                context.definition,
-                `requires randomFacade.${method} for ${operation}`,
-            );
-        }
-    }
-    if (facade.rn2 !== context.random
-        || facade.rnd !== context.randomOneBased) {
-        throw new UnsupportedThemeroomActionError(
-            context.definition,
-            `requires randomFacade.rn2/rnd to match the ${streams} RNG streams`,
-        );
-    }
-    return facade;
-}
-
 function preflight_themeroom_fill(definition, context) {
     if (typeof context.themeroomFill !== 'function') {
         throw new UnsupportedThemeroomActionError(
@@ -5783,11 +5744,6 @@ function preflight_themeroom_fill(definition, context) {
             'requires an integer difficulty for its themeroom-fill callback',
         );
     }
-    themeroom_random_facade(
-        context,
-        'its themeroom-fill callback',
-        'map',
-    );
     return true;
 }
 
@@ -6153,14 +6109,9 @@ function pillars(context) {
 }
 
 function direct_creation_environment(context) {
-    const facade = themeroom_random_facade(
-        context,
-        'special-level creation',
-        'room',
-    );
     return {
         state: game,
-        random: facade,
+        random: context.randomFacade,
         spObjectContext: new_sp_lev_object_context(),
     };
 }
@@ -6557,12 +6508,7 @@ function dispatch_map_action(definition, context) {
 // Runtime counterpart to a selected themerms.lua contents function. Keep this
 // export narrow so focused tests and future direct-name diagnostics can execute
 // a source-derived descriptor without recreating reservoir selection.
-export function dispatch_themeroom(
-    definition,
-    random = rn2,
-    randomOneBased = rnd,
-    env = {},
-) {
+export function dispatch_themeroom(definition, env = {}) {
     // The strict dispatcher currently owns the process-global level just like
     // the live generator. Reject an apparent alternate-state injection before
     // any source draw or level mutation instead of silently writing `game`.
@@ -6571,15 +6517,17 @@ export function dispatch_themeroom(
             'dispatch_themeroom only supports the global game state',
         );
     }
-    const sourceRandomFacade = random === rn2 && randomOneBased === rnd
-        ? coreRandom
-        : null;
+    // themerms.lua draws every number through nh.rn2(), nh.random() and
+    // d(), all of which use C's core RNG. One random object stands for it,
+    // so the room code and the fill callbacks cannot draw from different
+    // streams.
+    const random = env.random ?? coreRandom;
     const context = {
         definition,
         difficulty: env.difficulty ?? level_difficulty(game),
-        random,
-        randomOneBased,
-        randomFacade: env.randomFacade ?? sourceRandomFacade,
+        random: random.rn2,
+        randomOneBased: random.rnd,
+        randomFacade: random,
         themeroomFill: env.themeroomFill,
     };
     switch (definition?.action?.kind) {
@@ -6601,27 +6549,17 @@ export function dispatch_themeroom(
 // strict synchronous dispatcher and the complete source-order fill reservoir.
 // Every initial-generation definition now uses its registered source handler;
 // dispatch_themeroom() remains the strict completion seam.
-export async function themerooms_generate(
-    difficulty,
-    random = rn2,
-    randomOneBased = rnd,
-    rawEnv = {},
-) {
-    const pick = select_themeroom(difficulty, random);
+export async function themerooms_generate(difficulty, rawEnv = {}) {
+    const random = rawEnv.random ?? coreRandom;
+    const pick = select_themeroom(difficulty, random.rn2);
     if (!pick) return false;
     // Local closure diagnostics observe the already-selected definition;
     // absent diagnostics, this optional chain has no runtime effect.
     game._themeroomSelectionCollector?.record('room', pick.id);
-    const sourceRandomFacade = random === rn2 && randomOneBased === rnd
-        ? coreRandom
-        : null;
-    const useDefaultFill = rawEnv.themeroomFill == null;
-    return dispatch_themeroom(pick, random, randomOneBased, {
+    return dispatch_themeroom(pick, {
         difficulty,
-        randomFacade: rawEnv.randomFacade ?? sourceRandomFacade,
-        themeroomFill: useDefaultFill
-            ? themeroom_fill
-            : rawEnv.themeroomFill,
+        random,
+        themeroomFill: rawEnv.themeroomFill ?? themeroom_fill,
     });
 }
 
@@ -7424,14 +7362,11 @@ export function create_door(dd, broom, random = rn2) {
 // C ref: sp_lev.c lspo_door(), restricted to its room-wall form. Lua's
 // random state resolution consumes and discards rnddoor() before create_door()
 // rolls the actual state; rnddoor() never yields the parser-only secret state.
+// Every caller passes a state and wall that the two tables name, as
+// themerms.lua's literals do.
 export function create_room_door(spec, broom, random = rn2) {
     const stateName = spec.state ?? 'random';
     const wallName = spec.wall ?? 'all';
-    if (!Object.hasOwn(ROOM_DOOR_STATE_MASKS, stateName))
-        throw new RangeError(`unsupported room door state ${JSON.stringify(stateName)}`);
-    if (!Object.hasOwn(ROOM_DOOR_WALL_MASKS, wallName))
-        throw new RangeError(`unsupported room door wall ${JSON.stringify(wallName)}`);
-
     const mask = ROOM_DOOR_STATE_MASKS[stateName];
     if (mask === -1) rnddoor(random);
     return create_door({

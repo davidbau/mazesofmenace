@@ -54,7 +54,6 @@ import { isok } from './cmd_isok.js';
 import { exercise } from './attrib.js';
 import {
     curs_on_u,
-    losehp,
     nomul,
     nh_delay_output,
 } from './hack.js';
@@ -835,10 +834,10 @@ export async function mon_explodes(mon, mattk, state = game, rawEnv = {}) {
 // when scatter() reads any other key.
 export const SCATTER_OPERATIONS = Object.freeze([
     'addToBill', 'breakObject', 'breakStatue', 'canSee', 'closedDoor',
-    'costlySpot', 'creditReport', 'damageValue', 'encumberMessage',
-    'exercise', 'extractObject', 'floorEffects', 'fractureRock', 'heroAt',
-    'heroInShop', 'hideUnder', 'hitHero', 'hitMonster', 'inRooms', 'isSink',
-    'losehp', 'maybeUnhideAt', 'monsterAt', 'newsym', 'nomul', 'objectAt',
+    'costlySpot', 'creditReport', 'damageValue', 'extractObject',
+    'floorEffects', 'fractureRock', 'heroAt', 'heroInShop', 'hideUnder',
+    'hitHero', 'hitMonster', 'inRooms', 'isSink', 'maybeUnhideAt',
+    'monsterAt', 'newsym', 'nomul', 'objectAt',
     'objectMaterial', 'placeObject', 'shopKeeper', 'shopOrigin', 'shopkeeper',
     'soundEffect', 'splitObject', 'stackObject', 'stopOccupation',
     'terrainAt', 'unpunish',
@@ -927,10 +926,9 @@ export async function scatter(
         random,
         hooks: {
             ...env.hooks,
-            // remove_object() and place_object() require the corresponding
-            // boulder vision hooks. Ordinary scatter callers never need this
-            // hook, but keeping it in the composed environment prevents a
-            // partial object mutation when a boulder path does.
+            // remove_object() requires the boulder vision hook. This no-op,
+            // used when the caller's hooks lack the hook, differs from C,
+            // whose remove_object() always calls recalc_block_point().
             recalcBlockPoint: env.hooks?.recalcBlockPoint
                 ?? (() => {}),
         },
@@ -951,13 +949,7 @@ export async function scatter(
             x,
             y,
             verb,
-            {
-                ...lifecycle,
-                unsupported: (reason) => {
-                    note_unported(`do.c flooreffects: ${reason}`);
-                    throw new Error(`scatter floor effect is unported: ${reason}`);
-                },
-            },
+            { ...lifecycle },
         ));
     const isVisible = ops.canSee
         ?? ((x, y) => cansee(x, y, state));
@@ -992,20 +984,7 @@ export async function scatter(
             object,
             null,
             state,
-            {
-                ...env,
-                state,
-                random,
-                message,
-                losehp: ops.losehp ?? losehp,
-                exercise: ops.exercise ?? ((index, increase, subject) =>
-                    exercise(index, increase, subject, random, {
-                        encumberMessage: ops.encumberMessage
-                            ?? ((hero) => encumber_msg(hero, {
-                                message,
-                            })),
-                    })),
-            },
+            { ...env, state, random, message },
         ));
     const stopOccupation = ops.stopOccupation
         ?? (async (subject, operationEnv) => {
@@ -1183,7 +1162,7 @@ export async function scatter(
                     }
                 } else if (getHero(x, y)) {
                     if (scflags & SCATTER_MAY_HITYOU) {
-                        if ((state.multi ?? state.gm?.multi ?? 0)
+                        if (state.multi
                             && !ops.nomul) nomul(0, state);
                         else if (ops.nomul) await ops.nomul(0, state);
                         const damage = await damageValue(chain.obj, state.youmonst);

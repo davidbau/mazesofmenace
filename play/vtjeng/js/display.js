@@ -327,6 +327,7 @@ import {
     Invis, Levitation, Protection_from_shape_changers, See_invisible, Sick,
     Slimed, Stoned, Strangled, Stunned, Warn_of_mon, Warning, Wounded_legs,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 // C ref: display.c tp_sensemon() (166-168), through display.h's
 // _tp_sensemon() macro. This is only the telepathy predicate; underwater,
@@ -3139,6 +3140,11 @@ export async function swallowed(first, state = game) {
     }
 
     state._swallowedLast = { x: state.u.ux, y: state.u.uy };
+    // C prints each show_glyph() notice above as it draws the stomach, so
+    // they precede whatever gulpmu() does next (a drain_en() that changes
+    // the status line, for one).
+    if (!state._emittingGlyphUpdateNotices)
+        await emitGlyphUpdateNotices(state, { pline: ttyPline });
 }
 
 // C ref: display.c glyph_at() (2478-2482). Read the logical number from the
@@ -3237,7 +3243,7 @@ export function feel_location(x, y, state = game) {
     }
     // display.c:703-717. Level construction, save and restore suppress map
     // output before any other tactile state is inspected.
-    if (suppressMapOutput(state)) return;
+    if (suppress_map_output(state)) return;
     if (!isok(x, y)) return;
     const location = state.level?.at(x, y);
     if (!location) return;
@@ -3830,7 +3836,7 @@ function observeNearbyObject(object, x, y, state) {
 export function newsym(x, y) {
     // C display.c:926-928 suppresses both map memory and output while the
     // level is in flux, before even accessing the requested location.
-    if (suppressMapOutput()) return;
+    if (suppress_map_output()) return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
@@ -4323,7 +4329,7 @@ export async function doredraw() {
 // transient glyph buffer without reconstructing the remembered map or
 // consuming display RNG to regenerate monster glyphs.
 export async function redraw_map(cursorOnHero = false) {
-    if (!game.u?.ux || suppressMapOutput()
+    if (!game.u?.ux || suppress_map_output()
         || !on_level(game.u.uz0, game.u.uz)) return;
     await flush_screen(cursorOnHero ? 1 : 0);
 }
@@ -5257,7 +5263,7 @@ function _statusConditions(u, shrinkLevel = 0) {
 // Knox, and endgame descriptions have no colon and are never shrunk.
 function _statusLevelDescription(u, short = false) {
     if (Is_knox_level(u.uz))
-        return game.dungeons[u.uz.dnum].dname;
+        return dungeon_at(u.uz.dnum, game).dname;
     if (In_quest(u.uz))
         return `Home ${dunlev(u.uz)}`;
     if (In_endgame(u.uz)) {
@@ -5281,7 +5287,7 @@ export function describe_level(dflgs = 0, state = game) {
     const addSpace = Boolean(dflgs & 1);
     let addBranch = Boolean(dflgs & 2);
     let result;
-    const dungeon = state.dungeons?.[level?.dnum];
+    const dungeon = dungeon_at(level?.dnum, state);
     const isKnox = Boolean(state.knox_level
         && level?.dnum === state.knox_level.dnum
         && level?.dlevel === state.knox_level.dlevel);
@@ -7339,7 +7345,9 @@ function _buildScreenOutput(cursorOnHero = true) {
 // again at do.c:1839 to release it. The second call falls past the guard below
 // and flushes.
 //
-function suppressMapOutput(state = game) {
+// C ref: display.c suppress_map_output() (715-718) and its macro
+// _suppress_map_output() (702-709).
+export function suppress_map_output(state = game) {
     // display.c _suppress_map_output() covers level construction, save,
     // restore, and hangup. Those phases must leave the buffered cells and the
     // terminal cursor untouched until their owning operation redraws them.
@@ -7352,7 +7360,7 @@ function suppressMapOutput(state = game) {
 }
 
 export async function flush_screen(mode) {
-    if (suppressMapOutput()) return;
+    if (suppress_map_output()) return;
     if (mode === -1) game.delay_flushing = !game.delay_flushing;
     if (game.delay_flushing) return;
     if (game.flushing) return;
@@ -7360,6 +7368,10 @@ export async function flush_screen(mode) {
     // resetGame(), which also prevents a completed segment's reentrant flush
     // state from affecting the next runSegment().
     game.flushing = true;
+    // A flush while notices wait in the queue came after them in C; their
+    // late printing must repeat it (startup_a11y.js emitGlyphUpdateNotices).
+    if (game._glyphUpdateNotices?.length && !game._emittingGlyphUpdateNotices)
+        game._flushAfterQueuedNotice = mode;
     if (game.program_state?.done_hup) return;
     try {
         // C ref: display.c flush_screen() (2235-2239). The turn counter has
@@ -7500,7 +7512,7 @@ export async function bot({ initialTtyRefresh = false } = {}) {
     // when status updates are disabled, or while map output is suppressed,
     // but still clears its pending flags (unless bot_disabled returned above).
     if (!game.u || game.iflags?.status_updates === false
-        || suppressMapOutput()) {
+        || suppress_map_output()) {
         if (game.disp) {
             game.disp.botl = false;
             game.disp.botlx = false;

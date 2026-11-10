@@ -104,6 +104,7 @@ import {
     ydir,
     zdir,
     W_SADDLE,
+    has_mgivenname,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import {
@@ -112,7 +113,6 @@ import {
     dorub,
     reset_trapset,
     use_unicorn_horn,
-    UnsupportedApplyError,
 } from './apply.js';
 import { doinvoke } from './artifacts.js';
 import { ballrelease, placebc, unplacebc } from './ball.js';
@@ -147,7 +147,6 @@ import {
 import {
     doremring, doputon, dotakeoff, dowear, ia_dotakeoff, remarm_swapwep,
     reset_remarm, doddoremarm,
-    UnsupportedTakeOffError, UnsupportedWearError,
 } from './do_wear.js';
 import { doclose, doforce, doopen, reset_pick, UnsupportedLockError } from './lock.js';
 import {
@@ -169,15 +168,14 @@ import {
     PM_GREMLIN,
     S_NYMPH,
 } from './monsters.js';
-import { dmonsfree, UnsupportedMonsterCreationError } from './makemon_create.js';
-import { UnsupportedRegionPlacementError } from './mkmaze.js';
+import { dmonsfree } from './makemon_create.js';
 import {
     docallcmd,
     mon_nam,
     x_monnam,
 } from './do_name.js';
 import { dobjsfree, isContainer, UnsupportedObjectOperationError } from './obj.js';
-import { doloot, dotip, encumber_msg, UnsupportedPickupError } from './pickup.js';
+import { doloot, dotip } from './pickup.js';
 import {
     dodrink,
     dodip,
@@ -195,10 +193,10 @@ import {
     SADDLE,
     SKELETON_KEY,
 } from './objects.js';
-import { dotelecmd, UnsupportedPositionCheckError } from './teleport.js';
+import { dotelecmd } from './teleport.js';
 import { reset_utrap, t_at, dountrap } from './trap.js';
+import { dobugreport } from './report.js';
 import { stairway_at } from './stairs.js';
-import { UnsupportedHeroTimeoutBoundaryError } from './timeout.js';
 import { doeat } from './eat.js';
 import {
     can_reach_floor,
@@ -248,6 +246,7 @@ import {
     strstri,
     strsubst,
     truncateByteString,
+    encodeUtf8ByteString,
     appendLongDigit,
     upstart,
     visctrl,
@@ -291,13 +290,11 @@ import {
     dotogglepickup,
     toggle_bool_option,
     show_menu_controls,
-    UnsupportedOptionMenuError,
 } from './options.js';
 import {
     dosacrifice,
     dopray,
     doturn,
-    UnsupportedPrayerError,
 } from './pray.js';
 import { doversion, doextversion } from './version.js';
 import { kill_genocided_monsters } from './mon.js';
@@ -311,23 +308,17 @@ import {
     doquickwhatis,
     do_screen_description,
     dowhatis,
-    UnsupportedHelpError,
     UnsupportedWhatisError,
 } from './pager.js';
 import { dopay, UnsupportedShopError } from './shk.js';
 import { UnsupportedVaultGuardError } from './vault.js';
-import { dofire, dothrow, UnsupportedThrowError } from './dothrow.js';
+import { dofire, dothrow } from './dothrow.js';
 import { dosit } from './sit.js';
-import {
-    clear_kickedloc,
-    dokick,
-    UnsupportedKickError,
-} from './dokick.js';
+import { clear_kickedloc, dokick } from './dokick.js';
 import {
     docast,
     dowizcast,
     dovspell,
-    UnsupportedSpellCastError,
 } from './spell.js';
 import { enhance_weapon_skill } from './weapon.js';
 import {
@@ -354,10 +345,7 @@ import { doride, Punished } from './steed.js';
 import { done2, nh_terminate, UnsupportedEndOfGameError } from './end.js';
 import { UnsupportedAbilityChangeError } from './attrib.js';
 import { UnsupportedExperienceChangeError } from './exper.js';
-import {
-    doread,
-    UnsupportedReadError,
-} from './read.js';
+import { doread } from './read.js';
 import {
     UnsupportedPolyselfError, dobreathe, dogaze, dohide, domindblast,
     dopoly, doremove, dospinweb, dospit, dosummon,
@@ -370,8 +358,6 @@ import {
 } from './wizcmds.js';
 import {
     dozap,
-    UnsupportedBhitError,
-    UnsupportedZapError,
 } from './zap.js';
 import {
     doswapweapon,
@@ -390,7 +376,6 @@ import {
     ttyNorep,
     ttyPline,
 } from './tty_message.js';
-import { tty_wait_synch } from './tty_rawprint.js';
 import { do_write_config_file } from './cfgfiles.js';
 import { note_unported } from './unported.js';
 import { impossible } from './pline.js';
@@ -459,18 +444,6 @@ export class UnsupportedHeroCommandBoundaryError extends Error {
 // differs, and the message states it.
 export class UnsupportedHeroCommandBranchBoundaryError
     extends UnsupportedHeroCommandBoundaryError {}
-
-// A cmd.c getdir() or yn_function() path this port has not reached yet. Most
-// of these are raised after the prompt has painted and the answering key has
-// been read, so the segment keeps its matching prefix rather than the
-// keystroke; yn_function()'s two guards fire before anything paints.
-export class UnsupportedDirectionBoundaryError extends Error {
-    constructor(reason) {
-        super(`unsupported direction prompt: ${reason}`);
-        this.name = 'UnsupportedDirectionBoundaryError';
-        this.reason = reason;
-    }
-}
 
 // Each value is [u.dx, u.dy, context.run]: 0 walks, 1 runs, and 3 rushes.
 // Preserve these source numeric modes; downstream code groups them by
@@ -849,14 +822,11 @@ export async function yn_function(
     // back yet; js/invent.js is its other writer.
     state.iflags.last_msg = PLNMSG_UNKNOWN;
 
-    if (query.length >= QBUFSZ) {
-        // cmd.c:5486-5491 calls paniclog() and then truncates the query to
-        // QBUFSZ-4 characters plus "...". paniclog() writes a file, which game
-        // code may not do, and no ported caller passes a query anywhere near
-        // this long, so the port stops instead of guessing at the log.
-        throw new UnsupportedDirectionBoundaryError(
-            `a query of ${query.length} characters needs paniclog()`,
-        );
+    // cmd.c:5486-5491: the maximum acceptable length is QBUFSZ-1 bytes.
+    // paniclog() appends the query to a log file, which a game cannot see.
+    if (encodeUtf8ByteString(query).length >= QBUFSZ) {
+        note_unported('files.c paniclog');
+        query = `${truncateByteString(query, QBUFSZ - 1 - 3)}...`;
     }
     const queue = state.in_doagain ? CQ_REPEAT : CQ_CANNED;
     const queued = addcmdq ? cmdq_peek(queue, state) : null;
@@ -1849,9 +1819,13 @@ export async function get_count(
                 countMessage = `Count: ${count}`;
                 backspaced = false;
             }
-            await ttyCustomPline(countMessage, SUPPRESS_HISTORY, state);
-            await flush_screen(1);
-            state.nhDisplay?.setCursor(countMessage.length, 0);
+            // A MSGTYPE=hide or norep rule can swallow the line; vpline()
+            // then returns before its flush_screen() and putmesg(), and the
+            // cursor stays where it was.
+            if (await ttyCustomPline(countMessage, SUPPRESS_HISTORY, state)) {
+                await flush_screen(1);
+                state.nhDisplay?.setCursor(countMessage.length, 0);
+            }
         }
     }
 
@@ -2340,8 +2314,14 @@ export async function do_repeat(state = game) {
 // C ref: cmd.c extcmd_via_menu() (752-889). Group names by accelerator
 // for long choice lists, preserve descriptions for short lists, and wrap
 // long groups. Selecting a character narrows the same command list.
+//
+// `cbuf` is C's cbuf[QBUFSZ] and `matchLevel` its matchlevel. C filters on
+// the first matchlevel characters of cbuf but titles the menu with the whole
+// string, and a dismissed submenu resets only matchlevel; so the root menu it
+// returns to still reads "Extended Command: w" after 'w' and Escape, until the
+// next pick overwrites cbuf[0] and terminates the string after it.
 export async function extcmd_via_menu(state = game) {
-    let prefix = '';
+    let cbuf = '';
     let matchLevel = 0;
     // C keeps the largest description width across successive prefix menus.
     let biggest = 0;
@@ -2350,7 +2330,7 @@ export async function extcmd_via_menu(state = game) {
             if (entry.flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) return false;
             if (!(entry.flags & AUTOCOMPLETE)) return false;
             if (!state.wizard && (entry.flags & WIZMODECMD)) return false;
-            if (!entry.ef_txt.startsWith(prefix)) return false;
+            if (matchLevel && !entry.ef_txt.startsWith(cbuf.slice(0, matchLevel))) return false;
             biggest = Math.max(biggest, entry.ef_desc.length);
             return true;
         });
@@ -2364,22 +2344,27 @@ export async function extcmd_via_menu(state = game) {
 
         const onePerLine = choices.length < ROWNO - 3;
         const items = [];
-        let previousAccelerator = null;
+        // C's prevaccelerator starts at 0, the '\0' of an exhausted name.
+        let previousAccelerator = '';
         let previousName = '';
         let prompt = '';
         let count = 0;
         let wasTooLong = false;
+        // C's accelerator is ef_txt[matchlevel], which is '\0' for a command
+        // whose whole name is the prefix while a longer name shares it
+        // ("known" beside "knownclass"). Its menu line then has a zero
+        // identifier: it is shown without a selector and cannot be picked.
+        const flushLine = (text, accelerator) => (accelerator
+            ? { selector: accelerator, value: accelerator, label: text }
+            : { text });
         const flush = () => {
-            if (count) items.push({
-                selector: previousAccelerator,
-                value: previousAccelerator,
-                label: prompt.padEnd(biggest + 15),
-            });
+            if (count) items.push(flushLine(
+                prompt.padEnd(biggest + 15), previousAccelerator,
+            ));
             count = 0;
         };
         for (const entry of choices) {
-            const accelerator = entry.ef_txt[matchLevel];
-            if (!accelerator) continue;
+            const accelerator = entry.ef_txt[matchLevel] ?? '';
             const newAccelerator = accelerator !== previousAccelerator;
             if (newAccelerator || onePerLine) wasTooLong = false;
             const wrapped = count >= 2
@@ -2405,7 +2390,7 @@ export async function extcmd_via_menu(state = game) {
         const selected = await select_menu(state, {
             items,
             how: PICK_ONE,
-            title: `Extended Command: ${prefix}`,
+            title: `Extended Command: ${cbuf}`,
             ...menuTitleStyle(state),
             cancelValue: null,
         });
@@ -2413,17 +2398,16 @@ export async function extcmd_via_menu(state = game) {
             if (matchLevel) {
                 // C lets Escape back out one complete menu prompt by
                 // restarting the root menu; only Escape at the root cancels.
-                prefix = '';
+                // cbuf keeps its text for the root menu's title.
                 matchLevel = 0;
                 continue;
             }
             return -1;
         }
-        prefix += typeof selected === 'string'
-            ? selected : String.fromCharCode(selected);
+        // cbuf[matchlevel++] = pick; cbuf[matchlevel] = '\0';
+        cbuf = cbuf.slice(0, matchLevel) + (typeof selected === 'string'
+            ? selected : String.fromCharCode(selected));
         matchLevel++;
-        const exact = choices.filter((entry) => entry.ef_txt === prefix);
-        if (exact.length === 1) return extcmdlist.indexOf(exact[0]);
     }
 }
 
@@ -2951,10 +2935,6 @@ function restoreParsedCommand(pending, state) {
 export function failClosedCommandRefusals() {
     return [
         UnsupportedFeatureDescriptionError,
-        // spell.c spelleffects_check() and spelleffects() raise this from
-        // the forgotten-spell, amulet-drain, and non-healing spell paths
-        // that this port has not reached.
-        UnsupportedSpellCastError,
         UnsupportedShopError,
         // end.c really_done() calls paybill() and paygd() on every death, so
         // a shopkeeper inherits() cannot settle with or a vault guard owed the
@@ -2963,38 +2943,14 @@ export function failClosedCommandRefusals() {
         // same two classes where a monster's attack reaches it.
         UnsupportedVaultGuardError,
         UnsupportedSearchError,
-        UnsupportedDirectionBoundaryError,
-        UnsupportedApplyError,
-        UnsupportedHelpError,
         UnsupportedWhatisError,
-        // lock.c pick_lock() stops inside doapply()'s lock-pick arm, one
-        // frame below UnsupportedApplyError rather than beside it.
+        // lock.c pick_lock() stops inside doapply()'s lock-pick arm.
         UnsupportedLockError,
-        // do_wear.c dotakeoff() raises this for a piece of armor whose
-        // objects[].oc_delay is non-zero and for the slots whose <X>_off()
-        // is unported, in both cases before anything is drawn or removed.
-        UnsupportedTakeOffError,
-        // do_wear.c accessory_or_armor_on() raises this above setworn() for
-        // the quest helm, an artifact, armor held in a weapon slot, and the
-        // suit, helmet, glove and boot otyps whose <X>_on() reaches outside
-        // do_wear.c. Cloak_on() handles every valid cloak type. Also raised
-        // for the headless-polymorph eyewear arm, which needs ansimpleoname().
-        // No armor slot refuses wholesale: all seven reach a callback.
-        // set_wear() raises it too, from moveloop_preamble() rather than from
-        // a command, which is the raiser the startup reader above converts.
-        UnsupportedWearError,
-        // read.c doread() raises this after getobj() returns an object and
-        // before pickup_prev or any reading effect changes state. Cancellation
-        // completes normally, so only selected objects reach this refusal.
-        UnsupportedReadError,
-        // The `f` command's three files. dothrow.c collects every branch of
-        // the throw itself, wield.c the ones ready_weapon() reaches when the
-        // swap-and-retry arm puts a launcher in the hero's hand, zap.c the
-        // ones bhit() meets along the missile's flight, and display.c the one
-        // transient-glyph style bhit() never opens.
-        UnsupportedThrowError,
+        // The `f` command's files: wield.c the branches ready_weapon()
+        // reaches when the swap-and-retry arm puts a launcher in the hero's
+        // hand, and display.c the one transient-glyph style bhit() never
+        // opens.
         UnsupportedWieldError,
-        UnsupportedBhitError,
         UnsupportedTransientDisplayError,
         // A killing blow reaches the next two classes.
         // UnsupportedEndOfGameError now has
@@ -3010,33 +2966,6 @@ export function failClosedCommandRefusals() {
         // branches, and ordinary level loss is implemented.
         UnsupportedExperienceChangeError,
         UnsupportedAbilityChangeError,
-        // do.c goto_level()'s tail reaches all four from inside the `>`
-        // handler, so each one ends the segment where it would otherwise
-        // discard the prefix: pickup(1) is goto_level()'s last statement,
-        // run_timers() fires timers that expired while away, mon_arrive()
-        // reaches rloc_to() placing a follower, and mklev() reaches makemon()
-        // when the shop it generates holds a mimic.
-        // The `,` command raises UnsupportedPickupError on a second path, and
-        // now the more frequent one: runPickupCommand() -> dopickup() reaches
-        // every refusal in pickup_checks() and pickup(). Retiring the
-        // goto_level() grouping above would leave that path escaping instead
-        // of ending the segment.
-        UnsupportedPickupError,
-        // options.c doset() builds its whole menu before select_menu() draws
-        // anything, so an unported option value stops with no output; its
-        // pick loop stops after the player has committed a selection.
-        UnsupportedOptionMenuError,
-        UnsupportedHeroTimeoutBoundaryError,
-        UnsupportedPositionCheckError,
-        UnsupportedMonsterCreationError,
-        UnsupportedRegionPlacementError,
-        // zap.c raises this from dozap()'s effect arms and from every arm of
-        // the ray below weffects() that this port has not reached. Each one
-        // stops after the command has already spent a charge and painted its
-        // prompts -- and, for the ray, after the bolt has already been drawn
-        // across the map -- so the segment has to end on them rather than
-        // lose the screens they matched.
-        UnsupportedZapError,
         // potion.c dodrink()/dopotion()/peffects() still raises this for
         // unported potion-effect arms. dodrink()'s unported void helpers use
         // named note_unported gaps and continue in source order instead.
@@ -3057,20 +2986,6 @@ export function failClosedCommandRefusals() {
         // steed, and for a monster on the target square, all three of which
         // continue into a function this goal leaves unported.
         UnsupportedChatError,
-        // pray.c raises this from three functions. dopray() reaches
-        // failClosedCommand() through the '#pray' keystroke, at the wizard
-        // force-success prompt and at the pre-prayer invulnerability arm.
-        // prayer_done()'s unported arms and angrygods()'s cases 2 through 8
-        // and default run three turns later, from the ga.afternmv callback
-        // unmul() invokes, with rhack() off the stack; js/allmain.js
-        // runUnmulAtTurnBoundary() reads this same list to convert those at
-        // the turn boundary. Prune this entry only once all three functions
-        // have stopped raising the class, because dropping it early costs the
-        // turn-boundary conversion too.
-        UnsupportedPrayerError,
-        // dokick.c retains this for inherited kick_monster callbacks
-        // whose supporting owners still refuse their source branches.
-        UnsupportedKickError,
         // polyself.c polymon(), break_armor(), drop_weapon(), and polyself()
         // raise this for every form whose species-specific branches are not
         // ported: dragon HP, golem HP, breakarm armor paths, horned/headless
@@ -3336,15 +3251,6 @@ async function runEngraveCommand(key, state) {
             random_engraving({ state: engravingState, random }),
         yesNo: yn_function,
         monName: mon_nam,
-        // engrave.c engrave() hands the dulled dagger split off a stack to
-        // hold_another_object(), whose addinv() reaches pickup.c
-        // encumber_msg() and invent.c:941's comparison discovery message.
-        inventoryHooks: {
-            encumberMessage: encumber_msg,
-            inventoryComparisonDiscovered: () => ttyPline(
-                'You learn more about your items by comparing them.', state,
-            ),
-        },
         ECMD_CANCEL,
         ECMD_OK,
         ECMD_FAIL,
@@ -3769,9 +3675,7 @@ async function runEnhanceCommand(key, state) {
 }
 
 // C ref: options.c doset_simple() ('O') and doset() ('#optionsfull'). Both
-// preserve their own menu_requested inversion and format the menu before
-// select_menu() draws anything, so an unported option value stops before any
-// output.
+// preserve their own menu_requested inversion.
 async function runOptionsCommand(key, state, handler = doset_simple) {
     return failClosedCommand(key, state, () => handler(state,
         optionCommandHelpers(state)));
@@ -3813,7 +3717,6 @@ function optionCommandHelpers(state) {
             o_autocomplete: () => handler_change_autocompletions(state),
         },
         resetCommands: () => reset_commands(false, state),
-        updateRestOnSpace: () => update_rest_on_space(state),
     };
 }
 
@@ -4437,31 +4340,16 @@ export function directionname(dir) {
         'south', 'southwest', 'down', 'up'][dir] ?? 'invalid';
 }
 
-function commandMenuResult(state, name, ...args) {
-    const callback = state[name];
-    if (typeof callback === 'function') return callback(...args);
-    if (!state?.u) {
-        throw new UnsupportedHeroCommandBoundaryError(`cmd.c ${name}()`);
-    }
-    if (name === 'hereCmdMenu') return here_cmd_menu(state);
-    if (name === 'thereCmdMenu') return there_cmd_menu(...args, state);
-    throw new UnsupportedHeroCommandBoundaryError(`cmd.c ${name}()`);
-}
-
-// C ref: cmd.c doherecmdmenu()/dotherecmdmenu() (4332-4374).  The menu
-// helpers model C's char result as either a JavaScript character string or a
-// numeric byte when a test/platform callback supplies the C-shaped value.
-// NUL means the menu was cancelled without spending a turn; ESC has the same
-// result, while every other nonzero byte is an action that takes time.
+// C ref: cmd.c doherecmdmenu()/dotherecmdmenu() (4332-4374), which take
+// time unless the menu's char result is NUL or ESC. there_cmd_menu() returns
+// '\0' or the ESC key code, and here_cmd_menu() always '\0', as in C.
 function commandMenuTakesTime(ch) {
-    if (!ch || ch === 0 || ch === '\0' || ch === ESC
-        || ch === String.fromCharCode(ESC)) return false;
-    return true;
+    return ch !== '\0' && ch !== ESC;
 }
 
 // C ref: cmd.c doherecmdmenu() (4328-4340).
 export async function doherecmdmenu(state = game) {
-    const ch = await commandMenuResult(state, 'hereCmdMenu');
+    const ch = await here_cmd_menu(state);
     return commandMenuTakesTime(ch) ? ECMD_TIME : ECMD_OK;
 }
 
@@ -4476,8 +4364,8 @@ export async function dotherecmdmenu(state = game) {
     const uy = state.u?.uy ?? 0;
     if (isok(x, y)) {
         const ch = x === ux && y === uy
-            ? await commandMenuResult(state, 'hereCmdMenu')
-            : await commandMenuResult(state, 'thereCmdMenu', x, y, state.iflags.getdir_click);
+            ? await here_cmd_menu(state)
+            : await there_cmd_menu(x, y, state.iflags.getdir_click, state);
         state.clicklook_cc.x = -1;
         state.clicklook_cc.y = -1;
         state.iflags.getdir_click = 0;
@@ -4488,10 +4376,8 @@ export async function dotherecmdmenu(state = game) {
     state.iflags.getdir_click = 0;
     if (!dir || !isok(ux + state.u.dx, uy + state.u.dy)) return ECMD_CANCEL;
     const ch = state.u.dx || state.u.dy
-        ? await commandMenuResult(
-            state, 'thereCmdMenu', ux + state.u.dx, uy + state.u.dy, click,
-        )
-        : await commandMenuResult(state, 'hereCmdMenu');
+        ? await there_cmd_menu(ux + state.u.dx, uy + state.u.dy, click, state)
+        : await here_cmd_menu(state);
     return commandMenuTakesTime(ch) ? ECMD_TIME : ECMD_OK;
 }
 
@@ -4571,19 +4457,17 @@ function next2u(x, y, state) {
         && dist2(x, y, state.u.ux, state.u.uy) <= 2;
 }
 
-function commandEntryForHandler(handler) {
+// C queues a command function pointer; the port queues its extcmdlist row.
+// Every handler name queueHandler() is given names a row:
+// scripts/command-queue-handlers.test.mjs checks each literal and
+// MOVE_FUNCS name.
+export function commandEntryForHandler(handler) {
     if (handler === 'dotravel_target') return EXTCMD_BY_NAME.get('retravel');
-    return extcmdlist.find((entry) => entry.ef_funct === handler) ?? null;
+    return extcmdlist.find((entry) => entry.ef_funct === handler);
 }
 
 function queueHandler(handler, state) {
-    const entry = commandEntryForHandler(handler);
-    if (!entry) {
-        note_unported(`cmd.c command queue handler ${handler}`);
-        return false;
-    }
-    cmdq_add_ec(CQ_CANNED, entry, state);
-    return true;
+    cmdq_add_ec(CQ_CANNED, commandEntryForHandler(handler), state);
 }
 
 // C ref: cmd.c there_cmd_menu_self() (4435-4521).
@@ -4701,7 +4585,7 @@ export function there_cmd_menu_next2u(win, x, y, mod, act, state = game) {
         add(MCMD.MOVE_DIR, `Swap places with ${mon_nam(mtmp, state)}`);
         add(
             MCMD.NAME,
-            `${mtmp.mgivenname ? 'Rename' : 'Name'} ${mon_nam(mtmp, state)}`,
+            `${!has_mgivenname(mtmp) ? 'Name' : 'Rename'} ${mon_nam(mtmp, state)}`,
         );
     }
     if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame))
@@ -4758,7 +4642,7 @@ export function act_on_act(act, dx, dy, state = game) {
         dy = sgn(dy);
     }
     const dir = xytodir(dx, dy);
-    const queueMove = () => queueHandler(MOVE_FUNCS[dir]?.[MV_WALK], state);
+    const queueMove = () => queueHandler(MOVE_FUNCS[dir][MV_WALK], state);
     switch (action) {
     case MCMD.TRAVEL:
         state.iflags ??= {};
@@ -4860,7 +4744,7 @@ export async function there_cmd_menu(x, y, mod, state = game) {
     if (!K) {
         if (next2u(x, y, state)
             && await test_move(state.u.ux, state.u.uy, dx, dy, 1, state)) {
-            queueHandler(MOVE_FUNCS[xytodir(dx, dy)]?.[MV_WALK], state);
+            queueHandler(MOVE_FUNCS[xytodir(dx, dy)][MV_WALK], state);
         } else if (state.flags?.travelcmd) {
             state.iflags ??= {};
             state.iflags.travelcc = { x, y };
@@ -4946,9 +4830,9 @@ export async function domouseaction(state = game) {
                 if (dm & D_LOCKED) queueHandler('dokick', state);
                 else if (dm & D_CLOSED) queueHandler('doopen', state);
                 else if (typ <= SCORR) queueHandler('dosearch', state);
-                else queueHandler(MOVE_FUNCS[dir]?.[MV_WALK], state);
+                else queueHandler(MOVE_FUNCS[dir][MV_WALK], state);
             } else if (typ <= SCORR) queueHandler('dosearch', state);
-            else queueHandler(MOVE_FUNCS[dir]?.[MV_WALK], state);
+            else queueHandler(MOVE_FUNCS[dir][MV_WALK], state);
             return ECMD_OK;
         }
     } else {
@@ -4962,7 +4846,7 @@ export async function domouseaction(state = game) {
             return ECMD_OK;
         }
     }
-    queueHandler(MOVE_FUNCS[xytodir(x, y)]?.[MV_WALK], state);
+    queueHandler(MOVE_FUNCS[xytodir(x, y)][MV_WALK], state);
     return ECMD_OK;
 }
 
@@ -5128,6 +5012,7 @@ async function prefixRefusedCommand(prefixCommand, entry, wasMPrefix, state) {
 // report, and the game state; both are ignored by functions that need neither.
 const EXTCMD_FUNCTIONS = new Map(Object.entries({
     do_fight: (key, state) => do_fight(state),
+    dobugreport: (key, state) => dobugreport(state),
     do_reqmenu: (key, state) => do_reqmenu(state),
     doclose: (key, state) => doclose(state),
     dofire: (key, state) => dofire(state),
@@ -5357,11 +5242,7 @@ const EXTCMD_FUNCTIONS = new Map(Object.entries({
     dosave: (key, state) => dosave(state),
     // C ref: cfgfiles.c do_write_config_file(), which returns ECMD_OK
     // after the overwrite query and its file-write attempt.
-    do_write_config_file: (key, state) => do_write_config_file(state, {
-        message: ttyPline,
-        wait: tty_wait_synch,
-        query: paranoid_query,
-    }),
+    do_write_config_file: (key, state) => do_write_config_file(state),
     // C ref: lock.c doforce(), which returns ECMD_OK or ECMD_TIME.
     doforce: (key, state) => doforce(state),
     // C ref: wield.c doswapweapon(), the #swap command.
@@ -5451,22 +5332,9 @@ async function doextcmd(key, state, onSelectedEntry = null) {
 //
 // Only a row carrying occupation text arrives here, and extcmdlist[] gives
 // exactly two rows one: 's'/dosearch at cmd.c:1846-1847 and '.'/donull at
-// :1930-1931. Both handlers are ported, so the refusal below is unreachable
-// until upstream adds a third row and scripts/generate-extcmds.mjs copies it in.
-function timedOccupationFunction(row, key, state) {
-    switch (row.ef_funct) {
-    case 'dosearch':
-        return dosearch;
-    case 'donull':
-        return donull;
-    default:
-        resetCommandVars(state);
-        throw new UnsupportedHeroCommandBoundaryError(
-            `the counted command '${row.ef_txt}' has no ported occupation`,
-            key,
-        );
-    }
-}
+// :1930-1931. scripts/command-dispatch-tables.test.mjs fails if a third
+// appears.
+const TIMED_OCCUPATION_FUNCTIONS = Object.freeze({ dosearch, donull });
 
 // C ref: cmd.c rhack(). Every bound row is dispatched here, through the arm
 // that names it or through EXTCMD_FUNCTIONS; a row whose function the port
@@ -5667,7 +5535,7 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
         const row = command !== null ? EXTCMD_BY_NAME.get(command) : null;
         if (row?.f_text && !state.go?.occupation && state.multi) {
             set_occupation(
-                timedOccupationFunction(row, key, state),
+                TIMED_OCCUPATION_FUNCTIONS[row.ef_funct],
                 row.f_text,
                 state.multi,
                 state,
@@ -6701,18 +6569,6 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
             }
             return;
         }
-        if (command !== null) {
-            // A key an OPTIONS `bind` tied to a name extcmdlist[] lacks. C's
-            // bind_key() rejects that line and the key keeps its earlier
-            // binding; this port stores the name and cannot recover what C
-            // kept, so the byte is refused rather than guessed at.
-            resetCommandVars(state);
-            throw new UnsupportedHeroCommandBoundaryError(
-                `'${command}' names no extcmdlist[] row`,
-                key,
-            );
-        }
-
         // C ref: cmd.c rhack()'s bad-command path. SUPPRESS_HISTORY keeps
         // this feedback visible without adding it to Ctrl-P message history.
         cmdq_clear(CQ_CANNED, state);

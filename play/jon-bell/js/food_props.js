@@ -89,22 +89,3 @@ export function obj_nutrition(otmp) {
     return oc_nutrition(otmp.otyp | 0);
 }
 
-/* C eat.c:3788 eaten_stat(int base, struct obj *obj) — scale `base` by the
- * object's partially-eaten fraction.  obj_nutrition() is read FIRST because C
- * comments that it may modify obj->oeaten. Report inconsistent nutrition
- * before clamping, as C does. */
-export function eaten_stat(base, obj) {
-    const full_amount = obj_nutrition(obj) | 0;
-    let uneaten_amt = (obj.oeaten | 0);
-
-    if (uneaten_amt > full_amount) {
-        impossible('partly eaten food (%ld) more nutritious than untouched food (%ld)',
-                   uneaten_amt, full_amount);
-        uneaten_amt = full_amount;
-    }
-
-    base = full_amount
-        ? Math.trunc(((base | 0) * uneaten_amt) / full_amount)
-        : 0;
-    return base < 1 ? 1 : base;
-}

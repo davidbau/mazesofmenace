@@ -14,7 +14,6 @@ import {
     ARTICLE_THE,
     ARTICLE_YOUR,
     COLD_RES,
-    CLOUD,
     COLNO,
     CORR,
     DB_ICE,
@@ -27,7 +26,6 @@ import {
     DO_MOVE,
     DOMOVE_RUSH,
     DOMOVE_WALK,
-    DRAWBRIDGE_DOWN,
     DRAWBRIDGE_UP,
     D_BROKEN,
     D_ISOPEN,
@@ -106,7 +104,6 @@ import {
     PICK_NONE,
     PLNMSG_BACK_ON_GROUND,
     POISON_RES,
-    MOAT,
     POOL,
     RIGHT_SIDE,
     ROWNO,
@@ -152,6 +149,7 @@ import {
     TT_BURIEDBALL,
     TT_INFLOOR,
     TT_LAVA,
+    TT_NONE,
     TT_PIT,
     TT_WEB,
     Upolyd,
@@ -184,6 +182,7 @@ import {
     ydir,
     dirs_ord,
     Ugender,
+    has_mgivenname,
 } from './const.js';
 import { ART_STING, ART_STORMBRINGER, attacks } from './artifacts.js';
 import { isok } from './cmd_isok.js';
@@ -410,9 +409,7 @@ import {
     autopick_testobj,
     pickup,
     loot_mon,
-    preflight_describe_decor_at,
     preflight_projected_random_arrival_pickup,
-    UnsupportedPickupError,
 } from './pickup.js';
 import {
     in_out_region,
@@ -520,7 +517,7 @@ import {
 import { tty_raw_print } from './tty_rawprint.js';
 import { init_objects, objdescr_is } from './o_init.js';
 import { note_unported } from './unported.js';
-import { livelog_printf, youFeel } from './pline.js';
+import { impossible, livelog_printf, youFeel } from './pline.js';
 import { makeplural } from './fruit.js';
 import { On_stairs } from './stairs.js';
 import { select_menu } from './windows.js';
@@ -1401,17 +1398,11 @@ function refusedDiagonalDoorway(x, y, state) {
     return blocksDiagonalDoorwayExit(ux, uy, x, y, state);
 }
 
-// This repeated-command boundary owns entry into a ROOM, CORR, IS_AIR, or
-// IS_FURNITURE square, or a doorway whose mask is exactly D_NODOOR,
-// D_BROKEN, or D_ISOPEN. A walking DO_MOVE also admits a pool or lava square;
-// hack.c test_move() owns that terrain's legality and swim_move_danger() owns
-// the warning or m-prefix continuation before the hero moves. With autopickup
-// disabled, it also admits the sighted object descriptions and, now that
-// js/dungeon.js surface() names every terrain look_here() can feel underfoot,
-// including blind object piles now owned by invent.c:look_here().
-// These checks are a temporary admission seam in front
-// of hack.c:domove_core(); each rejected branch will move to its upstream owner
-// when that behavior is ported.
+// The arrival checks that must run before the hero moves, because the arrival
+// itself (pickup() and dotrap()) runs after domove_core() or teleds() has
+// committed the move. Every terrain is admitted: hack.c test_move() owns the
+// legality of a step, teleok() owns that of a teleport, and switch_terrain(),
+// spoteffects() and describe_decor() handle every terrain the hero can reach.
 //
 // It says nothing about a monster standing on the square. Both callers in this
 // file reach it only when m_at() answered null -- preflightDomoveDestination()
@@ -1423,96 +1414,21 @@ function refusedDiagonalDoorway(x, y, state) {
 //
 // `pushesBoulder` says whether the step arrives through hack.c test_move(),
 // which runs moverock() and pushes a boulder off the square before the hero
-// lands on it. The two walking callers pass true. teleport.c teleds() does not
-// and keeps the default: a teleport lands on the boulder's square with the
-// boulder still on it, which is a separate boundary from a push.
+// lands on it, and asks swim_move_danger() before moving. The two walking
+// callers pass true. teleport.c teleds() does neither and keeps the default.
 export function requireSimpleHeroDestination(
     x,
     y,
     state,
     pushesBoulder = false,
 ) {
-    const location = state.level?.at(x, y);
-    const walkingLiquid = pushesBoulder
-        && is_pool_or_lava(x, y, state);
-    // C teleport.c teleds() does not call test_move() or the walking danger
-    // warning; its callers chose the square through teleok() or a wizard-mode
-    // request. A pool or moat arrival reaches spoteffects()'s ordinary
-    // pooleffects() owner, and rock reached by a hero who Passes_walls has no
-    // arrival effect beyond switch_terrain(), both of which are ported. Lava
-    // arrival by teleport has no matching C recording yet and stays refused.
-    const teleportWater = !pushesBoulder
-        && (is_pool(x, y, state) || IS_OBSTRUCTED(location?.typ));
     // hack.c domove_core():2843-2856 admits liquid through test_move(), then
     // asks swim_move_danger() before moving the hero or applying any arrival
-    // effect.  A warning which is certain to stop the step therefore needs no
-    // ordinary-destination preflight.  Keep this walking-only: teleport.c
-    // teleds() also calls this seam but never calls swim_move_danger().
+    // effect. A warning which is certain to stop the step therefore needs no
+    // arrival preflight.
     if (pushesBoulder && is_pool_or_lava(x, y, state)
         && swim_move_danger_result(x, y, state) === SWIM_DANGER_AVOID) {
         return;
-    }
-    // hack.c test_move() admits every IS_FURNITURE type untouched -- stairs,
-    // ladder, fountain, throne, sink, grave and altar. Its obstacle chain never
-    // claims the square: `IS_OBSTRUCTED` is `typ < POOL` (rm.h:119) and
-    // `IS_DOOR` is `typ == DOOR`, so neither hack.c:1011's arm nor
-    // hack.c:1074's matches and control leaves the chain entirely, resuming at
-    // hack.c:1153's diagonal `bad_rock()` test and then hack.c:1207's rule
-    // against moving diagonally out of an intact doorway. `testdiag` is not
-    // reached; it sits at hack.c:1139, inside the IS_DOOR arm.
-    // domove_core() then ends a run on the square through hack.c:2936-2941,
-    // ported below, and spoteffects() reaches only its IS_SINK arm, refused
-    // there.
-    //
-    // A DOOR that is not closed_door() reaches only test_move()'s testdiag
-    // arm, which refuses a diagonal entry and allows an orthogonal one; the
-    // diagonal case never arrives here, because preflightDomoveDestination()
-    // admits it for test_move() to refuse.
-    // The walking callers admit every door state. domove_core() calls this
-    // seam only after test_move() has accepted the step, and
-    // preflightDomoveDestination() sends closed doors and refused diagonal
-    // entries to test_move() before it would reach here. test_move()'s
-    // closed-door arm (hack.c:1075-1093) lets a closed, locked or trapped
-    // door through only for a hero who Passes_walls or oozes under it, and
-    // its testdiag rule (hack.c:1138-1139) exempts Passes_walls from the
-    // diagonal refusal. Nothing on the arrival path reads the door's state
-    // except through dfeature_at(), describe_decor() and classify_terrain(),
-    // which handle every mask; mklev.c's D_TRAPPED bit is read only by the
-    // door commands and by trap and kick code, none of which arrival runs.
-    //
-    // teleport.c teleds() keeps the three exact non-closed doorway masks
-    // below. hack.c test_move():1074-1150 sends D_BROKEN through testdiag,
-    // where doorless_door() admits it off the Rogue level.
-    const mask = doorMask(location);
-    const doorway = location?.typ === DOOR
-        && (pushesBoulder
-            || mask === D_NODOOR || mask === D_BROKEN || mask === D_ISOPEN);
-    const ordinaryDestination = location && (walkingLiquid || teleportWater
-            || location.typ === ROOM
-            || location.typ === CORR
-            // hack.c:test_move()'s obstacle chain only blocks IS_OBSTRUCTED
-            // terrain and iron bars. ICE therefore passes the same movement
-            // gate and reaches spoteffects(), which owns its melt timer and
-            // underfoot effects.
-            || location.typ === ICE
-            // The naturally open drawbridge on the Valkyrie quest goal is
-            // neither IS_OBSTRUCTED nor a DOOR. C test_move() admits the
-            // ordinary step onto its lowered span.
-            || location.typ === DRAWBRIDGE_DOWN
-            // A raised drawbridge's span over ice or floor is neither
-            // IS_OBSTRUCTED nor a DOOR either; test_move() has no drawbridge
-            // test beyond is_db_wall(), which reads the portcullis square.
-            // Moat or lava under the span is is_pool_or_lava() terrain,
-            // admitted above only where the source admits liquid.
-            || (location.typ === DRAWBRIDGE_UP
-                && !is_pool_or_lava(x, y, state))
-            || IS_AIR(location.typ)
-            || IS_FURNITURE(location.typ)
-            || doorway);
-    if (!ordinaryDestination) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'test_move() door or special terrain movement',
-        );
     }
     // pickup.c pickup() returns before look_here() when the square holds no
     // object, running describe_decor() and read_engr_at(); check_here() calls
@@ -1529,16 +1445,6 @@ export function requireSimpleHeroDestination(
     // pickup() do after the move, so a pushed boulder has already cleared its
     // square by the time this post-move seam reads objects.
     const floorObject = state.level?.objects?.[x]?.[y] ?? null;
-    if (state.flags?.mention_decor) {
-        try {
-            preflight_describe_decor_at(x, y, state);
-        } catch (error) {
-            if (!(error instanceof UnsupportedPickupError)) throw error;
-            throw new UnsupportedHeroMoveBoundaryError(
-                error.reason,
-            );
-        }
-    }
     if (floorObject && !noPickMove) {
         // pickup.c pickup() runs after domove_core() commits the hero
         // position. A late refusal there would leave room-entry writes
@@ -1554,8 +1460,7 @@ export function requireSimpleHeroDestination(
         } catch (error) {
             if (error instanceof UnsupportedShopError)
                 throw new UnsupportedHeroMoveBoundaryError(error.branch);
-            if (!(error instanceof UnsupportedPickupError)) throw error;
-            throw new UnsupportedHeroMoveBoundaryError(error.reason);
+            throw error;
         }
     }
     // invent.c look_here() computes dfeature_at() unconditionally and prints
@@ -1587,27 +1492,6 @@ export function doorless_door(location, state = game) {
         && (doorMask(location) & ~(D_NODOOR | D_BROKEN)) === 0;
 }
 
-// C ref: hack.c domove_attackmon_at() (1954-1992). What the hero has to know
-// about the target before uhitm.c do_attack() can run.
-//
-// C's displacer-beast swap at 1972-1985 short-circuits on the species before
-// its !rn2(2), so every other target reaches do_attack() with no draw spent
-// and only that one species stops here.
-//
-// The gate at 1968-1970 admits a hidden target when it hides under something
-// or is an eel (S_EEL), and is not a safe pet. attack_checks() then handles
-// the reveal message and refuses the attack. Targets hidden another way
-// (ceiling hiders, for example) are not handled in do_attack() and stop here.
-function requireOrdinaryHostileMelee(monster, state) {
-    if (monster.mundetected
-        && !sensemon(monster, state)
-        && !(hides_under(monster.data) || monster.data?.mlet === S_EEL)) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'attacking a hidden monster (ceiling hider or other)',
-        );
-    }
-}
-
 // The destination-monster seam. C splits by `is_safemon(mtmp) &&
 // !svc.context.forcefight` inside do_attack() (uhitm.c:462); this splits the
 // same way, including Stormbringer's inner exception to displacement. The
@@ -1628,9 +1512,11 @@ function requireSupportedDestinationMonster(monster, x, y, state) {
         && !(hides_under(monster.data) || monster.data?.mlet === S_EEL)) {
         return;
     }
+    // uhitm.c do_attack() handles every other attack, including a force-fight
+    // at a ceiling hider still hidden: attack_checks() returns at once for
+    // context.forcefight.
     if (!is_safemon(monster, state) || state.context?.forcefight
         || state.uwep?.oartifact === ART_STORMBRINGER) {
-        requireOrdinaryHostileMelee(monster, state);
         return;
     }
     requireOrdinarySafeMonsterSwap(monster, x, y, state);
@@ -1648,7 +1534,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // (hack.c:1074-1137) returns FALSE for DO_MOVE unless the hero passes
     // walls, can ooze, or chews through: the hero bumps, autoopens, or is
     // told the door is closed, and never reaches domove_swap_with_pet().
-    // Those three falling-through arms stay refused below.
+    // The pass-wall, ooze and chew arms fall through to the swap.
     if (destination && IS_DOOR(destination.typ) && closed_door(x, y, state)
         && !Passes_walls(state.u)
         && !can_ooze(state.youmonst, state)
@@ -1662,8 +1548,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // returns FALSE for DO_MOVE unless the hero passes that wall, is
     // underwater (also FALSE, with a message), or tunnels through it, so
     // domove_core() stops before the swap and the turn costs no time.
-    // The tunnelling arm can fall through, and the autodig arm digs; both
-    // stay refused below.
+    // The tunnelling arm can fall through, and the autodig arm digs.
     if (destination && IS_OBSTRUCTED(destination.typ)
         && !(Passes_walls(state.u)
             && may_passwall(x, y, state))
@@ -1680,7 +1565,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // DO_MOVE, with "You cannot pass through the bars." only under
     // mention_walls, so domove_core() stops before the swap. A rusting,
     // corroding or metal-eating hero may chew through instead, and a hero
-    // who passes bars falls through; both stay refused below.
+    // who passes bars falls through.
     if (destination && destination.typ === IRONBARS
         && !(Passes_walls(state.u)
             && may_passwall(x, y, state))
@@ -1699,68 +1584,9 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
     // arrival never happen.
     if (swim_move_danger_result(x, y, state) === SWIM_DANGER_AVOID)
         return;
-    // C records a pony on wished ICE and CLOUD, a little dog in both an
-    // intact open doorway and a kicked-broken doorway, and a tame water
-    // elemental in a pool. test_move() admits those destinations and
-    // domove_core() completes their arrival effects. The pool witness has
-    // water walking and paranoid_confirm:-swim, so swim_move_danger() does
-    // not stop the swap before arrival.
-    const ordinaryDestination = destination
-        && (destination.typ === ROOM
-            || destination.typ === CORR
-            || destination.typ === ICE
-            || destination.typ === CLOUD
-            // A lowered drawbridge span is neither IS_OBSTRUCTED nor a DOOR,
-            // so test_move() admits it as it does for an ordinary step, and
-            // the arrival reaches the same owners requireSimpleHeroDestination()
-            // admits for it.
-            || destination.typ === DRAWBRIDGE_DOWN
-            || destination.typ === POOL
-            // A moat is a pool to is_pool(), test_move() and
-            // swim_move_danger(); only waterbody_name() tells them apart.
-            || destination.typ === MOAT
-            // The Plane of Air's open sky. test_move() admits AIR like any
-            // other non-obstructed square, and the hero's arrival there runs
-            // the same spoteffects() and describe_decor() owners as a walk
-            // onto it, which requireSimpleHeroDestination() also admits.
-            || IS_AIR(destination.typ)
-            || IS_FURNITURE(destination.typ)
-            || (destination.typ === DOOR
-                && (doorMask(destination) === 0
-                    || doorMask(destination) === D_ISOPEN
-                    || doorMask(destination) === D_BROKEN)));
-    // hack.c:test_move() also admits physical obstacles when Passes_walls and
-    // may_passwall() both allow the step. Preserve that path for a safe-monster
-    // swap; the committed movement still runs the ordinary arrival effects.
-    const passWallDestination = destination
-        && (IS_OBSTRUCTED(destination.typ) || destination.typ === IRONBARS)
-        && Passes_walls(state.u)
-        && may_passwall(x, y, state);
-    if (!ordinaryDestination && !passWallDestination) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'domove_swap_with_pet() door or special terrain movement',
-        );
-    }
-    // The furniture arrival's own consequences. domove_core()'s run stop at
-    // hack.c:2936-2941 reads levl[x][y] after the swap and is ported below;
-    // spoteffects() reaches only its IS_SINK && Levitation arm, refused there;
-    // and C's pickup(1) returns at pickup.c:702-707 without look_here(),
-    // because this seam refuses an object on the square. What is left on that
-    // return is describe_decor() (pickup.c:376-425), whose furniture and
-    // doorway branches are now implemented by the pickup.c source owner.
-    //
-    // ROOM, CORR, furniture and doorway arrivals share describe_decor()'s
-    // source owner. Its preflight reads are mutation-free and run before the
-    // swap, while the committed pickup() call emits any feature message.
-    if (state.flags?.mention_decor) {
-        try {
-            preflight_describe_decor_at(x, y, state);
-        } catch (error) {
-            if (!(error instanceof UnsupportedPickupError)) throw error;
-            throw new UnsupportedHeroMoveBoundaryError(error.reason);
-        }
-    }
-
+    // test_move() admits every other destination, including lava, water, a
+    // raised drawbridge's span and a closed door a hero passes through, and
+    // domove_core() finishes the arrival through spoteffects() and pickup().
     if (state.level?.objects?.[x]?.[y]) {
         // pickup.c pickup() runs only after domove_swap_with_pet() has moved
         // both actors and domove_core() has committed the hero position. A
@@ -1774,12 +1600,7 @@ function requireOrdinarySafeMonsterSwap(monster, x, y, state) {
             gw: { ...(state.gw ?? {}) },
             u: { ...state.u, ux: x, uy: y },
         };
-        try {
-            preflight_projected_random_arrival_pickup(projected);
-        } catch (error) {
-            if (!(error instanceof UnsupportedPickupError)) throw error;
-            throw new UnsupportedHeroMoveBoundaryError(error.reason);
-        }
+        preflight_projected_random_arrival_pickup(projected);
     }
     // Engravings at either square are handled after committed movement by
     // domove()'s maybe_smudge_engr(), including its source-ordered RNG draws.
@@ -1894,18 +1715,18 @@ function could_move_onto_boulder(sx, sy, dx, dy, state) {
     return !state.invent || inv_weight(state) <= WT_SQUEEZABLE_INV * -1;
 }
 
-// remove_object() and place_object() reach vision.c recalc_block_point() and
-// block_point() through the object lifecycle's hook table rather than by
-// importing them, so that js/obj.js needs no import from js/vision.js. A
-// boulder is the only object type that asks for either.
+// remove_object() reaches vision.c recalc_block_point() for a boulder through
+// the object lifecycle's hook table. explode.js scatter() substitutes a no-op
+// only when its caller's hooks lack this one, and a boulder pushed onto a
+// land mine reaches scatter() with these hooks, so the copy stays until that
+// no-op goes.
 function boulderVisionEnv(state) {
     return {
         state,
-        // Both hooks take the lifecycle env as their third argument, not a
-        // state; passing block_point itself would hand vision_reset() an
-        // object with no `level` on it, which it answers by doing nothing.
+        // The hook takes the lifecycle env as its third argument, not a
+        // state; passing recalc_block_point itself would hand vision_reset()
+        // an object with no `level` on it, which it answers by doing nothing.
         hooks: {
-            blockPoint: (x, y, env) => block_point(x, y, env.state),
             recalcBlockPoint:
                 (x, y, env) => recalc_block_point(x, y, env.state),
         },
@@ -3068,14 +2889,6 @@ function travelSquareVisible(x, y, state) {
 // endpoints while checking a proposed destination; and TRAVP_GUESS first
 // chooses a visible reachable point before restarting in TRAVP_TRAVEL.
 export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
-    if (mode !== TRAVP_TRAVEL
-        && mode !== TRAVP_GUESS
-        && mode !== TRAVP_VALID) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'non-ordinary travel path selection',
-        );
-    }
-
     if (!state.travelmap)
         state.travelmap = new Uint8Array(COLNO * ROWNO);
 
@@ -4165,8 +3978,15 @@ async function trapmove(x, y, desttrap, state = game) {
         }
         return false;
     }
+    // set_utrap() sets utrap and utraptype together, so neither arm runs.
+    if (u.utraptype === TT_NONE) {
+        await impossible('trapmove: trapped in nothing?', state);
+        return false;
+    }
     if (u.utraptype !== TT_BEARTRAP) {
-        throw new UnsupportedHeroMoveBoundaryError('held hero movement');
+        await impossible(
+            `trapmove: stuck in unknown trap? (${u.utraptype})`, state);
+        return false;
     }
     // hack.c:1556-1579 names the trapped steed on both the continuing and
     // successful escape arms. The diagonal short circuit still draws no RNG.
@@ -4231,11 +4051,7 @@ async function domove_core(state = game) {
         // move in the requested direction. The swallower owns the hero's
         // position, and the rest of domove_core() handles it as the target of
         // this command so uhitm.c can deliver the guaranteed swallowed hit.
-        if (!u.ustuck) {
-            throw new UnsupportedHeroMoveBoundaryError(
-                'swallowed hero without an engulfer',
-            );
-        }
+        // set_ustuck() clears uswallow with ustuck, so the engulfer exists.
         u.dx = 0;
         u.dy = 0;
         newx = u.ustuck.mx;
@@ -4340,9 +4156,6 @@ async function domove_core(state = game) {
                 message: ttyPline,
                 nearCapacity: near_capacity,
                 overexertion,
-                unsupported: (reason) => {
-                    throw new UnsupportedHeroMoveBoundaryError(reason);
-                },
             },
         );
         if (attack.used) {
@@ -5076,9 +4889,6 @@ function domove_monster_trap_env(state, env = {}) {
         // swallowing an exception.
         dealWithOvercrowding: env.dealWithOvercrowding
             ?? (() => note_unported('mon.c deal_with_overcrowding')),
-        unsupported: env.unsupported ?? ((reason) => {
-            throw new UnsupportedHeroMoveBoundaryError(reason);
-        }),
     };
     return trapEnv;
 }
@@ -5200,9 +5010,7 @@ export async function domove_swap_with_pet(
     newsym(x, y, state);
     newsym(oldX, oldY, state);
 
-    const hasGivenName = Boolean(
-        monster.mextra?.mgivenname || monster.mgivenname,
-    );
+    const hasGivenName = has_mgivenname(monster);
     const article = monster.mtame
         ? ARTICLE_YOUR
         : (!hasGivenName && !type_is_pname(monster.data))
@@ -5262,9 +5070,9 @@ export async function domove_swap_with_pet(
         break;
     }
     default:
-        throw new UnsupportedHeroMoveBoundaryError(
-            'domove_swap_with_pet() unknown trap result',
-        );
+        // minliquid() and mintrap() yield only the four results above.
+        await impossible("that's strange, unknown mintrap result!", state);
+        break;
     }
     return true;
 }
@@ -5705,13 +5513,10 @@ export function notice_mon_on(state = game) {
 // C ref: hack.c notice_all_mons() (1744-1782). Announces every monster the
 // hero can now spot, nearest first, after a notice_mon_off()/notice_mon_on()
 // pair suspended the per-monster notices.
+// Every C and JS caller passes reset TRUE (allmain.c, do.c, teleport.c,
+// vision.c); FALSE would differ only when nothing is spottable, by leaving
+// each monster's mspotted alone instead of clearing it.
 export async function notice_all_mons(reset, state = game, env = {}) {
-    if (!reset) {
-        // reset differs from TRUE only when nothing is spottable, where it
-        // leaves each monster's mspotted alone instead of clearing it.
-        // teleds() is the only ported caller and passes TRUE.
-        throw new UnsupportedHeroMoveBoundaryError('notice_all_mons(FALSE)');
-    }
     if (!state.a11y?.mon_notices || state.a11y?.mon_notices_blocked) return;
     const message = env.message ?? ttyPline;
     for (const line of collectMonsterNoticeMessages(

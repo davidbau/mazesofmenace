@@ -527,7 +527,7 @@ import { ttyPline } from './tty_message.js';
 import { cansee, couldsee, howmonseen, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { bimanual, is_pole, mon_adjust_speed, setnotworn } from './worn.js';
 import { dowrite } from './write.js';
-import { encumber_msg, pickup_object, use_container } from './pickup.js';
+import { pickup_object, use_container } from './pickup.js';
 import {
     buried_ball_to_freedom,
     dig_check,
@@ -980,11 +980,7 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
                     }
                     await hold_another_object(
                         object, 'You drop %s!', donameFresh(object, state),
-                        null, { ...env, state, hooks: {
-                            ...(env.hooks ?? {}),
-                            encumberMessage: env.hooks?.encumberMessage
-                                ?? ((targetState) => encumber_msg(targetState)),
-                        } },
+                        null, { ...env, state },
                     );
                     break;
                 }
@@ -1617,15 +1613,6 @@ export async function use_grapple(obj, state = game, env = {}) {
     return ECMD_TIME;
 }
 
-// Thrown where apply.c reaches a tool or a branch this port has not ported.
-export class UnsupportedApplyError extends Error {
-    constructor(branch) {
-        super(`applying a tool requires ${branch}`);
-        this.name = 'UnsupportedApplyError';
-        this.branch = branch;
-    }
-}
-
 function cameraTransientLightEnv(state) {
     return {
         visionRecalc: (control) => vision_recalc(control, {
@@ -1797,14 +1784,7 @@ async function use_tinning_kit(obj, state = game, env = {}) {
     can.owt = weight(can, { ...env, state });
     can.known = true;
     set_tin_variety(can, HOMEMADE_TIN, { ...env, state });
-    const lifecycleEnv = {
-        ...env,
-        state,
-        hooks: {
-            ...env.hooks,
-            encumberMessage: env.hooks?.encumberMessage ?? encumber_msg,
-        },
-    };
+    const lifecycleEnv = { ...env, state };
 
     if (carried(corpse)) {
         if (corpse.unpaid) {
@@ -3272,10 +3252,6 @@ export async function light_cocktail(objp, state = game, env = {}) {
                 hooks: {
                     ...(env.hooks ?? {}),
                     message: holdMessage,
-                    encumberMessage: env.hooks?.encumberMessage
-                        ?? ((targetState) => encumber_msg(targetState, {
-                            message: holdMessage,
-                        })),
                 },
             },
         );
@@ -3896,8 +3872,8 @@ export async function use_bell(objp, state = game, rawEnv = {}) {
                         });
                         break;
                     case 2:
-                        state.gn.nomovemsg = '';
-                        state.gm.multi_reason = null;
+                        state.nomovemsg = '';
+                        state.multi_reason = null;
                         nomul(-random.rnd(2), state);
                         break;
                     }
@@ -4034,14 +4010,6 @@ async function use_royal_jelly(objp, state = game, rawEnv = {}) {
     return ECMD_TIME;
 }
 
-const DOAPPLY_UNPORTED_NAMED_ARMS = new Set([
-    TOWEL,
-    FLINT,
-    LUCKSTONE,
-    LOADSTONE,
-    TOUCHSTONE,
-]);
-
 // C ref: apply.c beautiful() (1000-1017). Pure charisma/form-gender
 // description shared by the mirror and the name-command source owner.
 export function beautiful(state = game) {
@@ -4099,8 +4067,7 @@ export async function use_mirror(obj, state = game, env = {}) {
                     nomul(-random.rnd(MAXULEV + 6 - u.ulevel), state);
                     state.multi_reason = 'gazing into a mirror';
                 }
-                state.gn ??= {};
-                state.gn.nomovemsg = 0;
+                state.nomovemsg = null;
             }
         } else if (is_vampire(state.youmonst.data)
             || is_vampshifter(state.youmonst)) {
@@ -4531,10 +4498,6 @@ export async function magic_whistled(obj, state = game, env = {}) {
                     mInAir: subject => m_in_air(subject, state),
                     heroDeaf: () => Deaf(state.u),
                     youHear,
-                    unsupported: name => {
-                        note_unported(`trap.c ${name}`);
-                        throw new Error(`magic_whistled needs trap.c ${name}`);
-                    },
                 });
                 if (result === Trap_Killed_Mon) change_luck(-1, state);
                 if (state.iflags.last_msg !== PLNMSG_enum) {
@@ -5058,22 +5021,8 @@ export async function doapply(state = game, env = {}) {
         return dowrite(obj, state, {
             ...env,
             fingersOrGloves: fingers_or_gloves,
-            // write.c discards dropx()'s result. Use the existing ordinary
-            // floor-drop path with the same display and inventory hooks as
-            // other production drop callers.
-            dropx: (object) => dropx(object, {
-                ...env,
-                state,
-                hooks: {
-                    ...(env.hooks ?? {}),
-                    encumberMessage: env.hooks?.encumberMessage
-                        ?? ((targetState) => encumber_msg(targetState, {
-                            message: ttyPline,
-                        })),
-                    newsym: env.hooks?.newsym
-                        ?? ((x, y) => newsym(x, y)),
-                },
-            }),
+            // write.c discards dropx()'s result.
+            dropx: (object) => dropx(object, { ...env, state }),
         });
     case TIN_OPENER: {
         // apply.c:4364-4366 assigns this ECMD result before the common
@@ -5140,12 +5089,6 @@ export async function doapply(state = game, env = {}) {
         // BANANA also falls through here when not hallucinating. Those food
         // objects cannot be poles, picks, or axes because the source macros
         // admit only WEAPON_CLASS and TOOL_CLASS.
-        // The set above preserves each unported named switch arm rather than
-        // mistaking it for a generic refusal.
-        if (DOAPPLY_UNPORTED_NAMED_ARMS.has(obj.otyp))
-            throw new UnsupportedApplyError(
-                `doapply()'s arm for object type ${obj.otyp}`,
-            );
         if (is_pole(obj, state))
             return use_pole(obj, false, state);
         if (is_pick(obj, state) || is_axe(obj, state))
@@ -5184,19 +5127,7 @@ export async function flip_coin(obj, state = game, env = {}) {
     if (loseCoin) {
         if (coin.quan > 1)
             coin = splitobj(coin, 1, { ...env, state });
-        await dropx(coin, {
-            ...env,
-            state,
-            hooks: {
-                ...(env.hooks ?? {}),
-                encumberMessage: env.hooks?.encumberMessage
-                    ?? ((targetState) => encumber_msg(targetState, {
-                        message: ttyPline,
-                    })),
-                newsym: env.hooks?.newsym
-                    ?? ((x, y) => newsym(x, y)),
-            },
-        });
+        await dropx(coin, { ...env, state });
         return ECMD_TIME;
     }
 

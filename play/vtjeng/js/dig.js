@@ -2367,17 +2367,6 @@ function rotEnv(env) {
     return { ...env, state: env.state ?? game, hooks: env.hooks ?? {} };
 }
 
-// Corpses cannot contain objects in valid play. ROT_ORGANIC's generic
-// container callback is separate from this corpse-specific cleanup.
-export function unportedRotCorpseReason(obj, rawEnv = {}) {
-    const env = rotEnv(rawEnv);
-    if (Has_contents(obj))
-        return 'a rotting corpse to hold nothing, but one holds an object';
-    if (obj.where === OBJ_FLOOR && typeof env.hooks.newsym !== 'function')
-        throw new TypeError('rot_corpse requires a newsym seam');
-    return null;
-}
-
 // C ref: dig.c rot_organic() (2125-2140). A rotting buried container releases
 // its contents back into the buried-object list at the same square before the
 // container itself is extracted and freed. bury_an_obj() owns each child's

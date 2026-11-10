@@ -1838,8 +1838,9 @@ export async function playChargen(ctx) {
     let renameallowed = ctx.renameallowed || false;
     const result = () => ({ plname, role: st.role, race: st.race,
                             gender: st.gender, align: st.align, quit: false });
-    const quit = () => ({ plname, role: st.role, race: st.race,
-                          gender: st.gender, align: st.align, quit: true });
+    const quit = (bail = null) => ({ plname, role: st.role, race: st.race,
+                          gender: st.gender, align: st.align, quit: true, bail });
+    const ASKNAME_BAIL = 'Giving up after 10 tries.';   // wintty.c:674
 
     // ── askname ──────────────────────────────────────────────────────────
     // frameFor(typedSoFar) -> {screen, cursor}; supplied by the caller of
@@ -1882,7 +1883,7 @@ export async function playChargen(ctx) {
             screen: buildCopyrightAskname(typed),
             cursor: cursorForAskname(typed),
         }));
-        if (asknameText === null) return quit();
+        if (asknameText === null) return quit(ASKNAME_BAIL);
         plname = plnamesuffix(asknameText, st);
         renameallowed = true;   // wintty.c:747 iflags.renameallowed = TRUE
     }
@@ -2454,7 +2455,7 @@ export async function playChargen(ctx) {
                     renameResidual = await doAskname(typed => (overlayBanner && !fullScreen)
                         ? buildAsknameOverBanner(typed, asknameResidual, bannerClip, asknameRetried)
                         : tty_base_window_prompt(menuBackground, askRow, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(askRow, typed)));
-                    if (renameResidual === null) return quit();
+                    if (renameResidual === null) return quit(ASKNAME_BAIL);
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
                     plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets
                 } while (!plname);

@@ -589,7 +589,7 @@ import {
     place_monster,
     remove_monster,
 } from './monst.js';
-import { livelog_printf, youFeel, youSee } from './pline.js';
+import { livelog_printf, pline_mon, youFeel, youSee } from './pline.js';
 import { SHTYPES } from './shtypes_data.js';
 import {
     clear_dknown,
@@ -1456,11 +1456,7 @@ export async function meatbox(mon, obj, rawEnv = {}) {
             x,
             y,
             '',
-            {
-                ...objectGenerationEnv({ ...rawEnv, state }),
-                unsupported: rawEnv.unsupported
-                    ?? ((reason) => note_unported(`do.c flooreffects ${reason}`)),
-            },
+            objectGenerationEnv({ ...rawEnv, state }),
         )) {
             const placement = place_object(
                 child,
@@ -2794,12 +2790,6 @@ function shapeRedraw(x, y, normalized) {
     }
 }
 
-function shapeUnsupported(normalized, operation) {
-    if (typeof normalized.unsupported === 'function')
-        normalized.unsupported(operation);
-    else note_unported(operation);
-}
-
 function shapeObjectNext(obj) {
     return obj?.nobj ?? null;
 }
@@ -2994,10 +2984,7 @@ function* apply_newcham_steps(
                    || unsolid(target)) {
             // A12 owns the asynchronous cleanup contract; pass the complete
             // environment so its ball/chain and vision order remain intact.
-            yield unstuck(monster, state, {
-                ...normalized,
-                unsupported: (operation) => shapeUnsupported(normalized, operation),
-            });
+            yield unstuck(monster, state, { ...normalized });
         }
     }
 
@@ -3089,7 +3076,6 @@ function* apply_newcham_steps(
             const effect = floorEffects(object, monster.mx, monster.my, '', {
                 ...normalized,
                 state,
-                unsupported: (operation) => shapeUnsupported(normalized, operation),
             });
             if (effect && typeof effect.then === 'function') {
                 if (yield effect) {
@@ -3100,17 +3086,9 @@ function* apply_newcham_steps(
                 object = next;
                 continue;
             }
-            // mkobj.c place_object() calls vision.c block_point() for a
-            // boulder.
             place_object(object, monster.mx, monster.my, {
                 ...normalized,
                 state,
-                hooks: {
-                    ...(normalized.hooks ?? {}),
-                    blockPoint: normalized.hooks?.blockPoint
-                        ?? ((x, y, objectEnv) =>
-                            block_point(x, y, objectEnv.state)),
-                },
             });
             object = next;
         }
@@ -4625,7 +4603,8 @@ export function copy_mextra(mtmp2, mtmp1) {
     const source = mtmp1.mextra;
     mtmp2.mextra ??= {};
     const target = mtmp2.mextra;
-    if (source.mgivenname) target.mgivenname = String(source.mgivenname);
+    if (mtmp1.mextra.mgivenname)
+        mtmp2.mextra.mgivenname = String(mtmp1.mextra.mgivenname);
     for (const record of ['egd', 'epri', 'eshk', 'emin', 'edog', 'ebones'])
         if (source[record]) target[record] = structuredClone(source[record]);
     // mextra.h:234 has_mcorpsenm() is the record's presence plus a species
@@ -4950,21 +4929,11 @@ export function mongone(monster, env = {}) {
         return detachMonster();
     };
     const detachMonster = () => {
-
-        const unsupported = (branch) => {
-            if (branch === 'unhiding a mimic')
-                note_unported('mon.c seemimic');
-            else if (branch === 'the quest leader\'s death')
-                note_unported('questpgr.c leaddead');
-            else
-                note_unported(`mon.c m_detach ${branch}`);
-        };
         // C passes due_to_death=false, so this stays synchronous after the
         // optional swallowed release; source-site failures reach the caller.
         return m_detach(monster, monster.data, false, state, {
             ...env,
             state,
-            unsupported,
         });
     };
     const finishRemoval = () => {
@@ -5118,23 +5087,21 @@ export async function vamprises(mtmp, state = game, env = {}) {
     mtmp.cham = mtmp.data === state.mons[mndx] ? NON_PM : mndx;
 
     if (canspotmon(mtmp, state)) {
-        await message(
-            messageAt(
-                `${upstart(action)} ${x_monnam(
-                    mtmp,
-                    ARTICLE_A,
-                    null,
-                    SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
-                    false,
-                    state,
-                    env,
-                )}!`,
-                x,
-                y,
+        // pline_mon() reads the monster's square now: expels() above has
+        // moved an engulfing fog cloud next to the hero.
+        await pline_mon(
+            mtmp,
+            `${upstart(action)} ${x_monnam(
+                mtmp,
+                ARTICLE_A,
+                null,
+                SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
+                false,
                 state,
-            ),
+                env,
+            )}!`,
             state,
-            env,
+            { ...env, message },
         );
         state.gv ??= {};
         state.gv.vamp_rise_msg = true;
@@ -5859,7 +5826,7 @@ export async function monstone(mdef, state = game, env = {}) {
             objectEnv,
         );
         if (has_mgivenname(mdef))
-            statue = oname(statue, mdef.mextra?.mgivenname ?? mdef.mgivenname,
+            statue = oname(statue, MGIVENNAME(mdef),
                            ONAME_NO_FLAGS, { ...env, state });
         while (oldminvent) {
             const obj = oldminvent;
@@ -6009,15 +5976,8 @@ export async function killed(mtmp, state = game, env = {}) {
 // label's own work runs either way. The newsym() at 3642 is jumped over too,
 // so it belongs inside the guard rather than to cleanup.
 export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
-    // C callers do not supply JavaScript operations for ordinary kill
-    // processing. Keep the old refusal available only at the source branches
-    // that still lack an implementation; requiring it before testing those
-    // guards prevented every production caller from reaching the C path.
-    const unsupported = env.unsupported ?? (() => {
-        throw new TypeError('the monster kill path requires unsupported');
-    });
     const message = env.message ?? ttyPline;
-    env = { ...env, state, unsupported, message };
+    env = { ...env, state, message };
     const random = env.random ?? coreRandom;
     const x = mtmp.mx;
     const y = mtmp.my;
@@ -6387,10 +6347,7 @@ export async function vamp_stone(mtmp, state = game, env = {}) {
                     state,
                     env,
                 );
-                if (state === game)
-                    await displayPendingTtyMessageWindow(state);
-                else
-                    note_unported('windows.c display_nhwindow');
+                await displayPendingTtyMessageWindow(state);
             }
             await newcham(mtmp, state.mons[mndx], { ...env, state });
             mtmp.cham = mtmp.data === state.mons[mndx] ? NON_PM : mndx;
@@ -6960,11 +6917,6 @@ export async function kill_genocided_monsters(state = game, env = {}) {
         state,
         random: env.random ?? coreRandom,
         message: env.message ?? ttyPline,
-        // Preserve the existing death owner's unsupported-operation boundary.
-        // Ordinary deaths need no missing operation; special branches still
-        // require a caller-provided implementation or refusal.
-        unsupported: env.unsupported
-            ?? (reason => requiredKillOperation(env, 'unsupported')(reason)),
     };
     let next;
     for (let monster = state.level.monlist; monster; monster = next) {

@@ -1855,7 +1855,7 @@ function _print_queue_lines(base) {
         // %p (alloc.c:102) prints those bits without leading zero padding.
         const ptr = curr.arg?.a_long != null
             ? '0x' + BigInt.asUintN(64, BigInt(curr.arg.a_long)).toString(16)
-            : '0x' + (o ? 0x55d0c0de0000 + ((o.o_id | 0) << 6) : 0).toString(16).padStart(12, '0');
+            : '<ptr>';
         lines.push(' ' + String(curr.timeout).padStart(4) + '   ' + String(curr.tid).padStart(4)
                    + '  ' + (_TIMER_KINDS[curr.kind] ?? 'unknown').padEnd(6) + ' '
                    + _TIMER_FUNC_NAMES[curr.func_index] + '(' + ptr + ')');

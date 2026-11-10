@@ -222,7 +222,7 @@ import {
     touch_petrifies,
 } from './mondata.js';
 import { hideunder, maybe_unhide_at } from './mon.js';
-import { newsym, obj_to_glyph, mon_to_glyph } from './display.js';
+import { mon_to_glyph, newsym, obj_to_glyph, suppress_map_output } from './display.js';
 import { impossible, livelog_printf } from './pline.js';
 import { fingers_or_gloves, setwornEnv } from './do_wear.js';
 import { visible_region_at } from './region.js';
@@ -247,7 +247,7 @@ import { surface } from './dungeon.js';
 import { ice_descr, self_lookat } from './pager.js';
 import { digests } from './dothrow.js';
 import { can_reach_floor } from './engrave.js';
-import { add_valid_menu_class, allow_all, allow_category, force_decor, query_objlist, query_objlist_selector, query_objlist_sortflags, u_safe_from_fatal_corpse } from './pickup.js';
+import { add_valid_menu_class, allow_all, allow_category, encumber_msg, force_decor, query_objlist, query_objlist_selector, query_objlist_sortflags, u_safe_from_fatal_corpse } from './pickup.js';
 import { hide_unhide_msgtypes } from './options.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
 import { add_menu_heading, getlin, select_menu } from './windows.js';
@@ -338,9 +338,11 @@ import {
     unknwn_contnr_contents,
     weight,
     obj_absorb,
+    obj_no_longer_held,
     pudding_merge_message,
 } from './obj.js';
 import { get_obj_location, obj_merge_light_sources } from './light.js';
+import { maybe_reset_pick } from './lock.js';
 import {
     an,
     assertPricedObjectNameable,
@@ -370,7 +372,7 @@ import { artitouch } from './quest.js';
 import { note_unported } from './unported.js';
 import { unpunish } from './read.js';
 import { record_achievement } from './insight.js';
-import { bypass_objlist, nxt_unbypassed_loot, setnotworn, setuqwep } from './worn.js';
+import { bypass_objlist, nxt_unbypassed_loot, setnotworn, setuqwep, setworn } from './worn.js';
 import {
     inhishop,
     inside_shop,
@@ -1397,7 +1399,7 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
 // C ref: invent.c silly_thing() (2094-2135). OBSOLETE_HANDLING is disabled in
 // the upstream build; the live body only has the Amulet exception and the
 // generic feedback string.
-async function silly_thing(word, otmp, state = game) {
+export async function silly_thing(word, otmp, state = game) {
     if (word === 'call'
         && (otmp?.otyp === AMULET_OF_YENDOR
             || (otmp?.otyp === FAKE_AMULET_OF_YENDOR && !otmp.known))) {
@@ -2705,23 +2707,16 @@ function requiredHook(env, name, obj) {
 // Inventory effects: removeSpecialInventoryEffects(obj, env),
 // archeologistDeciphersScroll(obj, env), recordAchievement(id, env).
 // Ownership/lifetime: objectNoLongerHeld(obj, env), stopObjectTimers(obj, env),
-// deleteObjectLightSource(obj, env), unleashObject(obj, env),
-// resetPick(obj, env). obfreeShopBill(obj, merge, env) returns 'retained' when
+// deleteObjectLightSource(obj, env), unleashObject(obj, env).
+// obfreeShopBill(obj, merge, env) returns 'retained' when
 // the shop moves obj to OBJ_ONBILL, 'billed' when it merged an existing bill
 // entry, or 'unbilled' when normal deletion and price adjustment should run.
 // 'preserved' is obfree's diagnostic return when the merge target lacks a bill.
-// Merge effects: mergeWornMasks(target, obj, env). absorbGlob(target, obj, env) owns
+// Merge effects: absorbGlob(target, obj, env) owns
 // mkobj.c obj_absorb(), including globby_bill_fixup(), timeout recombination,
 // target updates, and leaving obj deallocated as OBJ_DELETED or OBJ_LUAFREE.
-// inventoryComparisonDiscovered(target, env); live addinv supplies merged()'s
-// pline().
-
-function suppressMapOutput(state) {
-    return Boolean(state.in_mklev
-        || state.program_state?.saving
-        || state.program_state?.restoring
-        || state.program_state?.done_hup);
-}
+// inventoryComparisonDiscovered(target, env) stands in for merged()'s pline()
+// in the synchronous merged() only; mergedRuntime() prints it itself.
 
 // C ref: invent.c count_contents() (3620-3651). Counts the items inside a
 // container. With everything=true the function counts every stack; with
@@ -2932,7 +2927,7 @@ export async function learn_unseen_invent(state = game, env = {}) {
 export function update_inventory(env = {}) {
     const state = env.state ?? game;
     if (!state.program_state?.in_moveloop) return;
-    if (suppressMapOutput(state)) return;
+    if (suppress_map_output(state)) return;
     state.iflags ??= {};
     const saveSuppressPrice = state.iflags.suppress_price;
     state.iflags.suppress_price = 0;
@@ -3596,6 +3591,15 @@ export function merge_choice(objlist, obj, state = game) {
     return current ?? null;
 }
 
+// C ref: mkobj.c add_to_container() calls obj_no_longer_held() directly; a
+// caller's objectNoLongerHeld hook remains a test seam, and
+// scripts/lifecycle-hook-defaults.test.mjs keeps js/ from supplying it.
+function objectNoLongerHeld(obj, env) {
+    const hook = env.hooks?.objectNoLongerHeld;
+    return typeof hook === 'function'
+        ? hook(obj, env) : obj_no_longer_held(obj, env);
+}
+
 // C calls timeout.c obj_stop_timers() directly; the optional hook is a test
 // seam, and scripts/lifecycle-hook-defaults.test.mjs keeps js/ from
 // supplying it.
@@ -3614,24 +3618,6 @@ function oidPriceAdjustment(obj, oid, state) {
     return canVary && oid % 4 === 0 ? 1 : 0;
 }
 
-function preflightObfree(obj, merge, env) {
-    if (isContainer(obj)) {
-        const lock = env.state.xlock ?? env.state.context?.xlock;
-        if (lock?.box === obj) requiredHook(env, 'resetPick', obj);
-    }
-    for (let contents = obj.cobj; contents; contents = contents.nobj)
-        preflightObfree(contents, null, env);
-}
-
-// Dependency-only half of shk.c obfree().  Callers such as burial extract an
-// object before freeing it, so they must be able to resolve every downstream
-// lifecycle owner while the original floor chains are still intact.
-export function preflight_obfree(obj, merge = null, env = {}) {
-    const normalized = inventoryEnv(env);
-    preflightObfree(obj, merge, normalized);
-    return normalized;
-}
-
 function comparisonWillDiscover(otmp, obj, state) {
     const targetBknown = otmp.oclass === COIN_CLASS ? false : otmp.bknown;
     return Boolean(obj.known) !== Boolean(otmp.known)
@@ -3645,7 +3631,6 @@ function comparisonWillDiscover(otmp, obj, state) {
 // cleanup uses the same lifecycle operations as ordinary inventory objects.
 export function obfree(obj, merge = null, rawEnv = {}) {
     const env = inventoryEnv(rawEnv);
-    preflightObfree(obj, merge, env);
     if (obj.otyp === LEASH && obj.leashmon)
         o_unleash(obj, env);
 
@@ -3662,11 +3647,7 @@ export function obfree(obj, merge = null, rawEnv = {}) {
         env.state.context.spbook.o_id = 0;
     }
     if (obj.cobj) delete_contents(obj, env);
-    if (isContainer(obj)) {
-        const lock = env.state.xlock ?? env.state.context?.xlock;
-        if (lock?.box === obj)
-            requiredHook(env, 'resetPick', obj)(obj, env);
-    }
+    if (isContainer(obj)) maybe_reset_pick(obj, env.state);
     if (obj.otyp === BOULDER) obj.next_boulder = 0;
 
     let shopDisposition = null;
@@ -3759,10 +3740,31 @@ function beginMerged(otmp, obj, env = {}, globMode = 'sync') {
         if (!isCleric(normalized.state)) discovered = true;
     }
 
+    // invent.c merged() 877-903: fixup for #adjust merging wielded or
+    // quivered stacks. The survivor keeps the strongest of the two slots
+    // (primary weapon, then alternate weapon, then quiver). Only weapon
+    // slots reach here: worn armor and accessories have no oc_merge, and
+    // two artifacts never merge, so setworn()'s effects stay synchronous.
     if (obj.owornmask && otmp.where === OBJ_INVENT) {
-        requiredHook(normalized, 'mergeWornMasks', obj)(otmp, obj, normalized);
-        if (obj.owornmask)
-            throw new Error('mergeWornMasks must clear incoming owornmask');
+        let wmask = otmp.owornmask | obj.owornmask;
+        if (wmask & W_WEP) {
+            wmask = W_WEP;
+        } else if (wmask & W_SWAPWEP) {
+            wmask = W_SWAPWEP;
+        } else if (wmask & W_QUIVER) {
+            wmask = W_QUIVER;
+        } else {
+            // C's impossible("merging strangely worn items (%lx)").
+            note_unported('pline.c impossible');
+            wmask = otmp.owornmask;
+        }
+        const wornEnv = setwornEnv(normalized.state, normalized);
+        const steps = [];
+        if (otmp.owornmask & ~wmask) steps.push(setnotworn(otmp, wornEnv));
+        steps.push(setworn(otmp, wmask, wornEnv));
+        steps.push(setnotworn(obj, wornEnv));
+        if (steps.some(isThenable))
+            throw new Error('merged() worn-mask fixup must not wait');
     }
     if (obj.bypass) otmp.bypass = true;
     if (obj.globby) {
@@ -3859,11 +3861,13 @@ export function mergedRuntime(otmp, obj, env = {}) {
         })();
     }
     if (plan.comparisonDiscovered) {
-        const wait = requiredHook(
-            plan.normalized,
-            'inventoryComparisonDiscovered',
-            plan.target,
-        )(plan.target, plan.normalized);
+        // invent.c merged() 937-942 prints before obfree() runs.
+        const message = plan.normalized.message
+            ?? plan.normalized.hooks?.message ?? ttyPline;
+        const wait = message(
+            'You learn more about your items by comparing them.',
+            plan.normalized.state,
+        );
         if (isThenable(wait)) {
             return Promise.resolve(wait).then(() => finishMerged(plan));
         }
@@ -3877,13 +3881,12 @@ export function mergedRuntime(otmp, obj, env = {}) {
 function preflightMerged(otmp, obj, normalized, globMode = 'sync') {
     normalized = inventoryEnv(normalized);
     if (!mergable(otmp, obj, normalized)) return false;
-    if (obj.owornmask && otmp.where === OBJ_INVENT)
-        requiredHook(normalized, 'mergeWornMasks', obj);
     if (obj.globby && globMode === 'sync')
         requiredHook(normalized, 'absorbGlob', obj);
     // Runtime and projection modes use the canonical owners statically
     // imported above; module linking guarantees both dependencies exist.
-    if (!obj.globby
+    // Only the synchronous merged() cannot print the comparison message.
+    if (globMode === 'sync' && !obj.globby
         && comparisonWillDiscover(otmp, obj, normalized.state)
         && otmp.where === OBJ_INVENT
         && obj.how_lost !== LOST_THROWN
@@ -3891,7 +3894,6 @@ function preflightMerged(otmp, obj, normalized, globMode = 'sync') {
         requiredHook(normalized, 'inventoryComparisonDiscovered', otmp);
     }
     preflightObjectExtraction(obj, normalized);
-    if (!obj.globby) preflightObfree(obj, otmp, normalized);
     if (otmp.oclass === COIN_CLASS || !isPudding(otmp))
         preflightWeight(otmp, normalized);
     return true;
@@ -3964,7 +3966,6 @@ export function delete_contents(container, env = {}) {
         current;
         current = current.nobj) {
         preflightObjectExtraction(current, normalized);
-        preflightObfree(current, null, normalized);
     }
     while (container?.cobj) {
         const current = container.cobj;
@@ -4625,13 +4626,6 @@ async function addinvCore0Runtime(
     const liveEnv = {
         ...env,
         hooks: {
-            // C ref: invent.c merged():941. The live merge prints the
-            // comparison discovery through the same pline() owner, and
-            // mergedRuntime() awaits it before obfree().
-            inventoryComparisonDiscovered: (target, hookEnv) => message(
-                'You learn more about your items by comparing them.',
-                hookEnv.state,
-            ),
             ...(env.hooks ?? {}),
             message,
         },
@@ -4902,7 +4896,9 @@ export async function hold_another_object(
             await prinv(hold_msg, obj, oquan, normalized);
         /* obj made it into inventory and is staying there */
         update_inventory(normalized);
-        await requiredHook(normalized, 'encumberMessage', obj)(state);
+        await encumber_msg(state, {
+            message: normalized.hooks.message ?? ttyPline,
+        });
     }
     return obj;
 }
@@ -5027,9 +5023,7 @@ export function add_to_container(container, obj, env = {}) {
         return obj;
     };
     if (container.where !== OBJ_INVENT && container.where !== OBJ_MINVENT) {
-        const released = requiredHook(normalized, 'objectNoLongerHeld', obj)(
-            obj, normalized,
-        );
+        const released = objectNoLongerHeld(obj, normalized);
         return released && typeof released.then === 'function'
             ? released.then(attach) : attach();
     }
@@ -5073,9 +5067,7 @@ export function addToContainerRuntime(container, obj, env = {}) {
         return insert();
     };
     if (container.where !== OBJ_INVENT && container.where !== OBJ_MINVENT) {
-        const released = requiredHook(normalized, 'objectNoLongerHeld', obj)(
-            obj, normalized,
-        );
+        const released = objectNoLongerHeld(obj, normalized);
         return isThenable(released)
             ? Promise.resolve(released).then(() => scan(container.cobj ?? null))
             : scan(container.cobj ?? null);
@@ -5091,7 +5083,6 @@ export function useupall(obj, env = {}) {
     if (obj.where !== OBJ_INVENT)
         throw new Error('useupall requires an inventory object');
     preflightFreeinvCore(obj, normalized);
-    preflightObfree(obj, null, normalized);
     const afterWear = () => {
         const extracted = freeinv(obj, normalized);
         const finish = () => { obfree(obj, null, normalized); };
@@ -5136,7 +5127,6 @@ export function resetInventory(env = {}) {
     const normalized = inventoryEnv(env);
     for (let obj = inventoryHead(normalized.state); obj; obj = obj.nobj) {
         preflightFreeinvCore(obj, normalized);
-        preflightObfree(obj, null, normalized);
     }
     normalized.state.lastinvnr = INVLET_BASIC - 1;
     while (inventoryHead(normalized.state))
@@ -5312,7 +5302,7 @@ export async function dounpaid(
 // C ref: invent.c this_type_only() (3793-3826). `state.gt.this_type` is the
 // JavaScript storage for the C global getobj context used by dotypeinv().
 export function this_type_only(obj, state = game) {
-    const thisType = state.gt?.this_type ?? state.this_type ?? 0;
+    const thisType = state.gt?.this_type ?? 0;
     let result = obj.oclass === thisType;
     if (thisType === 'P') {
         result = Boolean(obj.pickup_prev);

@@ -523,11 +523,12 @@ export function regions_save_snapshot() {
 export function regions_rest_snapshot(saved, elapsed = 0) {
     gr.regions = saved ? saved.regions : null;
     svn.n_regions = saved ? (saved.n_regions | 0) : 0;
-    gm.max_regions = saved ? (saved.max_regions | 0) : 0;
+    gm.max_regions = svn.n_regions;
     // C rest_regions ages finite lifetimes by the time spent off-level, then
     // removes expired regions without invoking their expiration callbacks.
     for (let i = 0; i < svn.n_regions; i++) {
         const reg = gr.regions[i];
+        reg.max_monst = reg.n_monst | 0;
         if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - elapsed);
     }
     for (let i = svn.n_regions - 1; i >= 0; i--) {

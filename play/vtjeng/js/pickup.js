@@ -51,7 +51,6 @@ import {
     HVY_ENCUMBER,
     ICE,
     KILLED_BY_AN,
-    INCLUDE_HERO,
     INCLUDE_VENOM,
     INVORDER_SORT,
     IS_GRAVE,
@@ -214,7 +213,7 @@ import {
 } from './mondata.js';
 import { m_at } from './monst.js';
 import {
-    carried, g_at, hasContents, isBox, isCandle, isContainer, obj_no_longer_held,
+    carried, g_at, hasContents, isBox, isCandle, isContainer,
     is_pick, remove_object, set_bknown, set_corpsenm, splitobj, unsplitobj, weight,
     unbless,
 } from './obj.js';
@@ -350,15 +349,6 @@ export async function encumber_msg(
     }
     state.go.oldcap = newCapacity;
     return newCapacity;
-}
-
-// A floor square this port cannot answer for yet.
-export class UnsupportedPickupError extends Error {
-    constructor(reason) {
-        super(`unsupported pickup: ${reason}`);
-        this.name = 'UnsupportedPickupError';
-        this.reason = reason;
-    }
 }
 
 
@@ -635,8 +625,9 @@ export function query_objlist_selector(obj, qflags, first) {
 // C ref: pickup.c query_objlist() (1025-1215). The counting loop and both of
 // its early returns are followed by the bounded full-menu branch: sort the
 // floor pile, group rows by inventory order, and return whole-stack choices
-// from the TTY menu. INCLUDE_HERO remains a separate look-here fake-object
-// caller, while OBJ_MINVENT is walked by pickup()'s swallowed branch.
+// from the TTY menu. OBJ_MINVENT is walked by pickup()'s swallowed branch. No
+// caller passes INCLUDE_HERO: invent.c display_minventory() builds its own
+// rows, so 1063-1067's fake entry for the engulfed hero has no port.
 //
 // C's `pick_list` and `how` arguments are not parameters. The caller receives
 // the selection as this function's result instead. `title` preserves the
@@ -646,12 +637,6 @@ export async function query_objlist(
     olist, qflags, allow, state = game, title = 'Pick up what?',
     how = PICK_ANY,
 ) {
-    if (qflags & INCLUDE_HERO) {
-        // 1063-1067 adds the swallowed hero as a fake extra entry.
-        throw new UnsupportedPickupError(
-            'query_objlist() showing the engulfed hero',
-        );
-    }
     const pick_list = [];
     if (!olist) return { n: 0, pick_list };
 
@@ -943,10 +928,6 @@ function pickupObjectEnv(state) {
         state,
         hooks: {
             message: ttyPline,
-            inventoryComparisonDiscovered: () => ttyPline(
-                'You learn more about your items by comparing them.',
-                state,
-            ),
         },
     });
 }
@@ -994,13 +975,9 @@ function preflightPickupObjects(selected, state) {
         && !(obj.where === OBJ_MINVENT
             && obj.owornmask
             && state.u?.uswallow));
+    // Every selection comes from the hero's floor pile or u.ustuck's
+    // inventory, with a positive count (a menu count of 0 selects nothing).
     for (const { obj, count } of actionable) {
-        if ((obj.where !== OBJ_FLOOR && obj.where !== OBJ_MINVENT)
-            || !Number.isInteger(count) || count < 1) {
-            throw new UnsupportedPickupError(
-                'pickup() malformed floor object or monster object',
-            );
-        }
         let objectWeight = Math.trunc(obj.owt);
         if (obj.oclass === COIN_CLASS) {
             const combinedGold = projectedGold + count;
@@ -3227,10 +3204,9 @@ async function in_container(obj, state) {
         await sellobj(obj, state.gc.current_container.ox,
             state.gc.current_container.oy, state);
     }
-    const addition = addToContainerRuntime(state.gc.current_container, obj, {
-        state,
-        hooks: { objectNoLongerHeld: obj_no_longer_held },
-    });
+    const addition = addToContainerRuntime(
+        state.gc.current_container, obj, { state },
+    );
     if (addition && typeof addition.then === 'function') await addition;
     state.gc.current_container.owt = weight(
         state.gc.current_container, { state });
@@ -3873,7 +3849,6 @@ export async function loot_mon(mtmp, passedInfo = null, prevLoot = null,
         state,
         hooks: {
             message,
-            encumberMessage: subject => encumber_msg(subject, { message }),
             dropObject: (obj, actionEnv) => dropx(obj, actionEnv),
             ...rawEnv.hooks,
         },
@@ -4058,7 +4033,6 @@ async function tipcontainer_checks(box, targetbox, allowempty, state) {
                 if (!await hornoplenty(box, true, targetbox, {
                     state,
                     hooks: {
-                        encumberMessage: encumber_msg,
                         newsym,
                     },
                 }))
@@ -4160,7 +4134,6 @@ async function tipcontainer(box, state) {
     const tipDropEnv = {
         state,
         hooks: {
-            encumberMessage: encumber_msg,
             extractExternalObject: remove_object,
             newsym,
         },

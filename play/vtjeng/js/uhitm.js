@@ -23,7 +23,7 @@ import {
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import { upstart } from './hacklib.js';
-import { adjalign, adjattrib, exercise } from './attrib.js';
+import { adjalign, adjattrib, exercise, poisoned } from './attrib.js';
 import { some_armor, setwornEnv } from './do_wear.js';
 import { snuff_lit } from './apply_splash_lit.js';
 import {
@@ -1758,7 +1758,7 @@ export async function hmonas(mon, state = game, env = {}) {
             || mattk.aatyp === AT_TUCH) multiClaw++;
     }
     multiClaw = multiClaw > 1;
-    state.gt.twohits = 0;
+    state.twohits = 0;
     state.gs.skipdrin = false;
 
     for (let i = 0; i < NATTK; i++) {
@@ -1828,7 +1828,7 @@ export async function hmonas(mon, state = game, env = {}) {
             mon_maybe_unparalyze(mon, random);
             const dieRoll = random.rnd(20);
             dhit = rollNeeded > dieRoll || state.u.uswallow;
-            if (multiWeapon) state.gt.twohits++;
+            if (multiWeapon) state.twohits++;
             const hit = { value: dhit };
             const monsterSurvived = await known_hitum(
                 mon, weapon, hit, rollNeeded, armorPenalty, mattk, dieRoll,
@@ -2121,7 +2121,7 @@ export async function hmonas(mon, state = game, env = {}) {
     }
 
     state.gv.vis = false;
-    state.gt.twohits = 0;
+    state.twohits = 0;
     return mon.mhp >= 1;
 }
 
@@ -2217,8 +2217,6 @@ export async function do_attack(monster, state = game, env = {}) {
         message,
         nearCapacity: env.nearCapacity
             ?? (() => near_capacity(state)),
-        unsupported: env.unsupported
-            ?? ((reason) => { throw new Error(`uhitm.c: ${reason}`); }),
     };
     if (await attack_checks(monster, state.uwep, state, attackEnv)) return true;
 
@@ -3718,8 +3716,9 @@ async function hmon_hitmon(mon, obj, thrown, dieroll, state = game, env = {}) {
     const hmd = {
         dmg: 0,
         thrown,
-        /* gt.twohits is turn-scoped state that hitum() owns; a ranged hit
-           reads 0 so it cannot take the two-weapon damage branches */
+        /* gt.twohits is turn-scoped state that hitum() and hmonas() set;
+           a ranged hit reads 0 so it cannot take the two-weapon damage
+           branches */
         twohits: thrown ? 0 : state.twohits,
         dieroll,
         mdat: mon.data,
@@ -3976,9 +3975,6 @@ async function steal_it(mdef, mattk, state = game, rawEnv = {}) {
             // the same floor owner as other artifact pickup callers.
             extractExternalObject: env.hooks?.extractExternalObject
                 ?? remove_object,
-            encumberMessage: env.hooks?.encumberMessage
-                ?? env.encumberMessage
-                ?? ((currentState) => encumber_msg(currentState, { message })),
         },
     };
     let otmp = mdef.minvent;
@@ -4775,14 +4771,14 @@ export async function mhitm_ad_drst(
         if (!negated && !random.rn2(8)) {
             const reason = `${s_suffix(Monnam(magr, state, env))} `
                 + `${mpoisons_subj(magr, mattk, state)}`;
-            const poison = requireAttackOperation(env, 'poisoned');
-            await poison(
+            await poisoned(
                 reason,
                 mattk.adtyp === AD_DRDX ? A_DEX
                     : mattk.adtyp === AD_DRCO ? A_CON : A_STR,
                 pmname(magr.data, Mgender(magr, state)),
                 30,
                 false,
+                state,
                 env,
             );
         }
@@ -5035,12 +5031,13 @@ export async function mhitm_ad_phys(
             if (wasPoisoned && (env.dieroll ?? 0) <= 5) {
                 const reason = `${s_suffix(Monnam(magr, state, env))} `
                     + `${mpoisons_subj(magr, mattk, state)}`;
-                await requireAttackOperation(env, 'poisoned')(
+                await poisoned(
                     reason,
                     A_STR,
                     pmname(magr.data, Mgender(magr, state)),
                     10,
                     false,
+                    state,
                     { ...env, state, random },
                 );
             }
@@ -7510,9 +7507,6 @@ export async function mhitm_adtyping(
     state = game,
     env = {},
 ) {
-    const unsupported = requireAttackOperation(env, 'unsupported');
-    const unported = (name) => unsupported(`uhitm.c ${name}()`);
-
     switch (mattk.adtyp) {
     case AD_STUN:
         await mhitm_ad_stun(magr, mattk, mdef, mhm, state, env);
@@ -7649,7 +7643,6 @@ export async function damageum(
     state = game,
     env = {},
 ) {
-    const unsupported = requireAttackOperation(env, 'unsupported');
     const message = requireAttackOperation(env, 'message');
     const random = env.random ?? coreRandom;
     const mhm = {
@@ -7685,7 +7678,6 @@ export async function damageum(
                     ...env,
                     random,
                     message,
-                    unsupported,
                 });
         } else if (!state.flags?.verbose) {
             await message('You destroy it!', state);
@@ -7694,14 +7686,12 @@ export async function damageum(
                     ...env,
                     random,
                     message,
-                    unsupported,
                 });
         } else if (mhm.damage) {
             await killed(mdef, state, {
                 ...env,
                 random,
                 message,
-                unsupported,
             });
         }
         return M_ATTK_DEF_DIED;

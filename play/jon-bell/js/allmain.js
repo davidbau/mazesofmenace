@@ -186,11 +186,11 @@ import { which_armor } from './worn.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
-import { get_configfile } from './cfgfiles.js';
+import { get_configfile, config_error_secure } from './cfgfiles.js';
 import { dobjsfree, clear_splitobjs } from './mklev.js';
 import { see_nearby_monsters } from './mon.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
-import { topl_force_break_now, force_more_pages } from './display.js';
+import { topl_force_break_now, force_more_pages, report_raw_print_waits } from './display.js';
 import { friday_13th, getnow, phase_of_the_moon } from './calendar.js'; // relocate-fns
 import { pooleffects_breathless } from './cmd.js'; // relocate-fns
 import { A_INT, A_WIS, ENERGY_REGENERATION, EXT_ENCUMBER, HALF_PHDAM, HVY_ENCUMBER, MAXULEV, MOD_ENCUMBER, NO_MM_FLAGS, REGENERATION, SLT_ENCUMBER, UNENCUMBERED, Upolyd } from './const.js'; // relocate-fns
@@ -217,6 +217,7 @@ const NEW_MOON_PHASE = 0; /* const.js NEW_MOON */
 
 // C ref: cfgfiles.c config_error_done() at the end of initoptions()
 export async function report_config_errors() {
+    await report_raw_print_waits();
     const g = game;
     /* C cfgfiles.c:1544-1590 config_erradd() / :1596-1620 config_error_done():
      * the rc errors collected while parsing are reported before any window
@@ -228,14 +229,31 @@ export async function report_config_errors() {
     const nerrs = cfgerrs ? cfgerrs.filter(m => typeof m === 'string').length : 0;
     if (nerrs) {
         const n = nerrs;
-        for (const msg of cfgerrs) {
+        const secure = config_error_secure();
+        let shown_line = -1;
+        for (let i = 0; i < cfgerrs.length; i++) {
+            const msg = cfgerrs[i];
             if (typeof msg !== 'string') { raw_print(msg.pline); continue; }
-            raw_print(`Error: ${msg}${'.!?'.includes(msg.slice(-1)) ? '' : '.'}`);
+            const punct = '.!?'.includes(msg.slice(-1)) ? '' : '.';
+            if (secure) {
+                raw_print(`Error: ${msg}${punct}`);
+                continue;
+            }
+            /* non-secure frame: the offending line once per line, then
+             * " * Line N: msg." (cfgfiles.c:1578-1588) */
+            const ctx = g._config_error_ctx?.[i] ?? { line_num: 0, origline: '' };
+            if (ctx.line_num !== shown_line) {
+                raw_print('');
+                raw_print(ctx.origline);
+                shown_line = ctx.line_num;
+            }
+            raw_print(` * ${ctx.line_num > 0 ? `Line ${ctx.line_num}: ` : ''}${msg}${punct}`);
         }
         raw_print('');
         raw_print(`${n} error${n === 1 ? '' : 's'} in ${get_configfile()}.`);
         raw_print('');
         g._config_errors = [];
+        g._config_error_ctx = [];
         /* The recorded tty cursor never leaves where the raw_print() report
          * parked it: every step of a game that opened with a config-error
          * report records that one position. */
@@ -252,6 +270,12 @@ export async function report_config_errors() {
 }
 
 // C ref: allmain.c newgame()
+const WIZKIT_HOST_FILES = new Set(['/dev/null', '/etc/hosts', '/etc/passwd',
+    '/etc/group', '/etc/shells', '/etc/services', '/etc/protocols']);
+function wizkit_host_readable(path) {
+    return WIZKIT_HOST_FILES.has(path);
+}
+
 export async function newgame() {
     const g = game;
     await report_config_errors();
@@ -455,8 +479,12 @@ export async function newgame() {
      * fopen_wizkit_file(): access() fails (no such file), so raw_printf()
      * "Access to %s denied (%d)." (errno 2, ENOENT) and wait_synch().  The
      * tty raw print writes at the cursor the rc-error report parked, over the
-     * already-drawn map, and the recorded cursor then sits one row lower. */
-    if (g.flags?.debug && g.wizkit) {
+     * already-drawn map, and the recorded cursor then sits one row lower.
+     * When access()/fopen() succeed (files.c:2480,2490) read_wizkit() parses
+     * the file with program_state.wizkit_wishing set, so every "Bad wizkit
+     * item" pline and config_error_done()'s summary are swallowed by
+     * pline.c:172 and wait_synch() only syncs WIN_MAP: no output, no key. */
+    if (g.flags?.debug && g.wizkit && !wizkit_host_readable(g.wizkit)) {
         /* allmain.c:826 runs before docrt(): with no rc-error report having
          * painted the screen, raw_printf lands on a blank terminal at row 0. */
         const noReport = !g._rawCursorFrozen;
@@ -3543,6 +3571,7 @@ async function moveloop_core_faithful() {
     // before the next invocation advances monsters or an occupation.
     if (g.vision_full_recalc)
         vision_recalc(0);
+    run_tport_botl(); // C allmain.c:547-555
     // ===================== go.occupation DRIVER — DIG (faithful) =====================
     // C allmain.c:558: end-turn callbacks follow command and vision effects,
     // before the next invocation's occupation/world block.

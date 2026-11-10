@@ -1,3 +1,4 @@
+import { free_oname } from './do_name.js';
 import { disturb_grave, u_wipe_engr } from './engrave.js';
 import { is_ice as is_ice_real } from './engrave.js';
 // @ts-nocheck
@@ -2232,23 +2233,6 @@ export function christen_orc(mtmp, gang, other) {
             mtmp = christen_monst(mtmp, buf);
     }
     return mtmp;
-}
-/* C do_name.c:80-87: clear ONAME only when allocated; retain oextra.
- * Support both the nested live name and new_oname's flattened name fields.
- * An allocated empty string is still a non-NULL C name pointer. */
-export function free_oname(otmp) {
-    const nested_name = 'oextra' in otmp
-        && otmp.oextra && otmp.oextra.oname != null;
-    const flat_name = 'oextra_present' in otmp && otmp.oextra_present
-        && otmp.oextra_oname_present;
-    if (!nested_name && !flat_name)
-        return;
-    if (nested_name)
-        otmp.oextra.oname = null;
-    if (Object.prototype.hasOwnProperty.call(otmp, 'oextra_oname_present'))
-        otmp.oextra_oname_present = 0;
-    if (Object.prototype.hasOwnProperty.call(otmp, 'oname'))
-        otmp.oname = null;
 }
 export { Shknam }; // C shknam.c:843 — canonical body lives in js/shknam.js
 /* add_to_migration (C mkobj.c:2697-2717) and mksobj_migr_to_species

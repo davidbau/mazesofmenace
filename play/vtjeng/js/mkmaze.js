@@ -153,6 +153,7 @@ import { onscary, set_apparxy } from './monmove.js';
 import {
     Deaf, Swimming,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 // C ref: mkmaze.c iswall(). Wall-spine joins accept doors, lava walls,
 // water, secret doors, and iron bars in addition to ordinary wall types.
@@ -685,18 +686,6 @@ export function maybe_adjust_hero_bubble(state = game, random = rn2) {
     }
 }
 
-// A region placement that needs an unported operation. Both arms below sit
-// inside put_lregion_here()'s `oneshot` handling, which place_lregion() reaches
-// only when a single-square region was asked for or when 200 consecutive
-// random squares were all unusable.
-export class UnsupportedRegionPlacementError extends Error {
-    constructor(reason) {
-        super(`unsupported region placement: ${reason}`);
-        this.name = 'UnsupportedRegionPlacementError';
-        this.reason = reason;
-    }
-}
-
 // C ref: mkmaze.c is_exclusion_zone(). A zone recorded on this level that the
 // given placement type must avoid. LR_TELE covers both teleport directions,
 // which is why each of the two directional types matches an LR_TELE zone as
@@ -906,13 +895,6 @@ async function put_lregion_here(
         // present and avoid consuming its fallback room-selection draws.
         mkstairs(x, y, rtype === LR_UPSTAIR ? 1 : 0, null);
         break;
-    default:
-        // LR_DOWNSTAIR and LR_UPSTAIR reach mkstairs(). Special-level
-        // construction is their only caller and neither is routed through
-        // this function yet.
-        throw new UnsupportedRegionPlacementError(
-            `put_lregion_here() for region type ${rtype}`,
-        );
     }
     return true;
 }
@@ -1171,7 +1153,7 @@ const ORC_FRUIT = Object.freeze(['paddle cactus', 'dwarven root']);
 export async function migrate_orc(monster, flags, state = game) {
     const currentDepth = depth(state.u.uz, state);
     const maxDepth = dunlevs_in_dungeon(state.u.uz, state)
-        + state.dungeons[state.u.uz.dnum].depth_start - 1;
+        + dungeon_at(state.u.uz.dnum, state).depth_start - 1;
     let destinationDepth;
     if (flags === ORC_LEADER) {
         destinationDepth = maxDepth;

@@ -56,7 +56,8 @@ import { SICK, SICK_ALL, TIMEOUT, TT_LAVA, UNCHANGING, HALLUC, HALLUC_RES } from
 import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMMY, PM_ORC_MUMMY, PM_HUMAN_ZOMBIE, PM_ELF_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE, PM_ORC_ZOMBIE, PM_WRAITH, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_GHOUL, PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { G_GENOD } from './const.js';
 import { DOMOVE_WALK, DOMOVE_RUSH } from './const.js';
-import { shkname, free_oname } from './dokick.js';
+import { shkname } from './dokick.js';
+import { free_oname } from './do_name.js';
 import { paybill, finish_paybill, currency, obfree } from './shk.js';
 import { m_monnam } from './mhitm.js';
 import { expels_gu } from './mhitu.js';

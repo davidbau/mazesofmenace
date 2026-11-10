@@ -213,11 +213,10 @@ import { digests } from './dothrow.js';
 import {
     dismissPendingTtyMessage,
     displayPendingTtyMessageWindow,
-    TOPLINE_EMPTY,
-    TOPLINE_NEED_MORE,
     ttyNorep,
     ttyPline,
 } from './tty_message.js';
+import { tty_display_nhwindow_map_blocking } from './wintty.js';
 import {
     cansee,
     do_clear_area_async,
@@ -376,47 +375,6 @@ export function reveal_terrain_getglyph(
     else if (glyph === cmap_to_glyph(S_litcorr, state))
         glyph = cmap_to_glyph(S_corr, state);
     return glyph;
-}
-
-// C ref: detect.c dump_map() (2294-2349), compiled only with DUMPLOG.
-// The minimal recorder disables DUMPLOG. Keep the row traversal and blank-row
-// suppression here; the inactive dump putstr output has no JS owner yet.
-export function dump_map(state = game) {
-    const subset = TER_MAP | TER_TRP | TER_OBJ | TER_MON;
-    const defaultSym = state.level.flags.arboreal ? S_tree : S_stone;
-    const defaultGlyph = cmap_to_glyph(defaultSym, state);
-    let skippedRows = 0;
-    let topRow = true;
-    for (let y = 0; y < ROWNO; ++y) {
-        let blankRow = true;
-        let lastNonblank = -1;
-        const row = [];
-        for (let x = 1; x < COLNO; ++x) {
-            const glyph = reveal_terrain_getglyph(
-                x, y, state.u.uswallow, defaultGlyph, subset, state,
-            );
-            const info = map_glyphinfo(glyph, state, { x, y, mgflags: 0 });
-            row[x - 1] = info.ch;
-            if (info.ch !== ' ') {
-                blankRow = false;
-                lastNonblank = x - 1;
-            }
-        }
-        if (!blankRow) {
-            row.length = lastNonblank + 1;
-            if (topRow) {
-                skippedRows = 0;
-                topRow = false;
-            }
-            for (let x = 0; x < skippedRows; ++x)
-                note_unported('windows.c putstr');
-            note_unported('windows.c putstr');
-            skippedRows = 0;
-        } else {
-            ++skippedRows;
-        }
-    }
-    if (skippedRows) note_unported('windows.c putstr');
 }
 
 // C ref: detect.c browse_map() (94-106). The temporary presentation is a
@@ -1033,7 +991,7 @@ export async function object_detect(detector = null, objectClass = 0,
         `You detect the ${count ? 'presence' : 'absence'} of ${description}.`,
         state,
     );
-    if (!count) note_unported('detect.c display_nhwindow');
+    if (!count) await tty_display_nhwindow_map_blocking(state);
     else await browse_map(terrainType, 'object', state);
     await map_redisplay(state);
     return 0;
@@ -1070,14 +1028,8 @@ export async function monster_detect(
     const message = env.message ?? ttyPline;
     const browse = env.browseMap ?? browse_map;
     const redisplay = env.mapRedisplay ?? map_redisplay;
-    const waitMap = env.waitMap ?? (async waitState => {
-        // C's tty_display_nhwindow(WIN_MAP, TRUE) promotes an occupied
-        // topline to --More--, then displays the message window.
-        if (waitState.nhDisplay
-            && waitState.nhDisplay.toplin !== TOPLINE_EMPTY)
-            waitState.nhDisplay.toplin = TOPLINE_NEED_MORE;
-        await displayPendingTtyMessageWindow(waitState);
-    });
+    // display_nhwindow(WIN_MAP, TRUE).
+    const waitMap = env.waitMap ?? tty_display_nhwindow_map_blocking;
 
     const swallowed = Boolean(state.u?.uswallow);
     await clearScreen();
@@ -1323,7 +1275,7 @@ async function furniture_detect(state = game) {
     if (!found) await ttyPline('There seems to be nothing of interest on this level.', state);
     else if (!revealed)
         await ttyPline('Your map already shows all relevant locations.', state);
-    if (!revealed) note_unported('detect.c display_nhwindow');
+    if (!revealed) await tty_display_nhwindow_map_blocking(state);
     else
         await browse_map(
             TER_DETECT | TER_MAP | TER_TRP | TER_OBJ | TER_MON,
@@ -1335,8 +1287,9 @@ async function furniture_detect(state = game) {
 }
 
 // C ref: detect.c map_redisplay() (94-103). Restore the saved map constraints
-// before redrawing. docrt() expects its caller to supply C's vision phases;
-// the buried overlay remains a named void-callee gap.
+// before redrawing. docrt() expects its caller to supply C's vision phases.
+// C's last arm, `if (u.uburied) under_ground(2)`, is dead in C too: only
+// dig.c bury_you() sets u.uburied, and nothing calls bury_you().
 export async function map_redisplay(state = game) {
     if (state !== game)
         throw new TypeError('map_redisplay() redraws the global game');
@@ -1346,7 +1299,6 @@ export async function map_redisplay(state = game) {
         restoreVision: () => vision_recalc(0, { state }),
     });
     if (state.u.uinwater) await under_water(2, state);
-    if (state.u.uburied) note_unported('display.c under_ground');
 }
 
 // C ref: detect.c level_distance() (1142-1173). The two randomized threshold

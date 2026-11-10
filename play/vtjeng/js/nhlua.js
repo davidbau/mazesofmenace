@@ -8,16 +8,19 @@
 import { game } from './gstate.js';
 import { note_unported } from './unported.js';
 import { rn2 } from './rng.js';
+import { DAT_LUA_FILES } from './dat_files.js';
 import {
     NHCORE_ENTER_TUTORIAL,
     NHCORE_LEAVE_TUTORIAL,
     NUM_TIME_FUNCS,
 } from './const.js';
 
-// C ref: nhlua.c nhcore_call_names[]. The JS port has no Lua VM; a supplied
-// `state.gl.luacore` is therefore only the text-backed boundary object used
-// by source-pinned tests and future callers. It may contain an `nhcore`
-// object, but this module never creates or evaluates Lua code.
+// C ref: nhlua.c nhcore_call_names[]. The JS port has no Lua VM: the
+// nhcore.lua callbacks a game reaches (getpos_tip, enter_tutorial,
+// leave_tutorial) are ported directly, and nhcore.lua comments out the
+// start_new_game, restore_old_game, moveloop_turn and game_exit entries, so
+// nothing calls l_nhcore_call() or l_nhcore_done(). tutorial() keeps C's
+// availability array, which has one entry per name.
 const NHCORE_CALL_NAMES = Object.freeze([
     'start_new_game',
     'restore_old_game',
@@ -28,63 +31,8 @@ const NHCORE_CALL_NAMES = Object.freeze([
     'leave_tutorial',
 ]);
 
-function nhcoreState(state) {
-    return state?.gl ?? null;
-}
-
 function isLuaTable(value) {
     return value !== null && typeof value === 'object';
-}
-
-// C ref: nhlua.c l_nhcore_done(). Lua close and the private pattern state
-// remain explicit gaps because their return values are not used by the C
-// caller and the JS port deliberately has no Lua VM or filesystem-backed
-// pattern matcher.
-export function l_nhcore_done(state = game) {
-    const gl = nhcoreState(state);
-    if (gl?.luacore) {
-        note_unported('nhlua.c nhl_done');
-        // C clears gl.luacore after nhl_done(), even when Lua teardown is not
-        // available at this boundary.
-        gl.luacore = null;
-    }
-    note_unported('nhlua.c end_luapat');
-}
-
-// C ref: nhlua.c l_nhcore_call(). A text-backed core can expose the same
-// table shape for guard and availability tests. Calling the Lua function is
-// still an unported nhl_pcall_handle() operation, so do not execute a JS
-// function as a fabricated Lua VM substitute.
-export function l_nhcore_call(callidx, state = game) {
-    const gl = nhcoreState(state);
-    if (callidx < 0 || callidx >= NHCORE_CALL_NAMES.length
-        || !gl?.luacore)
-        return;
-
-    // l_nhcore_init() marks every entry available after loading nhcore.lua.
-    // A boundary object with luacore is the JS equivalent of that loaded
-    // state; keep the C static availability array beside the represented gl
-    // state so a missing callback stays unavailable until the next init.
-    const available = gl.nhcore_call_available
-        ??= Array(NHCORE_CALL_NAMES.length).fill(true);
-    if (!available[callidx]) return;
-
-    const nhcore = gl.luacore.nhcore;
-    if (!isLuaTable(nhcore)) {
-        // C closes the persistent state and clears gl.luacore when the
-        // global nhcore is not a table.
-        note_unported('nhlua.c nhl_done');
-        gl.luacore = null;
-        return;
-    }
-
-    const callback = nhcore[NHCORE_CALL_NAMES[callidx]];
-    if (typeof callback === 'function') {
-        note_unported('nhlua.c nhl_pcall_handle');
-    } else {
-        // C disables only this callback when the field is not a function.
-        available[callidx] = false;
-    }
 }
 
 // version.js loads this module during startup, before the inventory modules
@@ -344,22 +292,63 @@ export function nhl_init(random) {
     return alignments;
 }
 
-// C ref: nhlua.c load_lua(). This bounded adapter preserves initialization
-// and registered nhlib.lua's top-level effects for discarded-return callers.
-// VM allocation/sandbox enforcement, arbitrary programs, and teardown remain
-// gaps. The alignment arrays are temporary, as in the source Lua state; they
-// are not Lua pointers or success values and are never published to the game.
-export function load_lua(name, sbi, state = game, env = {}) {
+// The dat/ Lua files that are libraries rather than level programs: the
+// dungeon layout, the core and library scripts, the quest text and the
+// themed-room generator. Their top level only defines tables and functions,
+// except nhlib.lua's `align` shuffle (lines 24-25), so running one draws no
+// other random number and changes no game state. Every other dat/ file is a
+// level program, which needs the level coder (scripts/special-level-loaders
+// .test.mjs checks that each has a loader in js/mklev.js).
+export const LUA_LIBRARY_FILES = new Set([
+    'dungeon.lua', 'nhcore.lua', 'nhlib.lua', 'quest.lua', 'themerms.lua',
+]);
+
+// C ref: nhlua.c nhl_loadlua(), opening `name` in the playground and running
+// its top level in a Lua state that nhl_init() made. Returns false when the
+// file cannot be opened, after C's impossible(); 'library' after running a
+// library file's top level, whose nhlib.lua shuffle replaces `lua.align`;
+// and 'level' for a level program, which the caller runs, since only
+// load_special() has the coder its des.* calls need.
+export async function nhl_loadlua(lua, name, state = game, random = rn2) {
+    if (name.includes('/')) {
+        // dlb_fopen() resolves a name with a directory part against the host
+        // filesystem, which the game cannot read.
+        note_unported('nhlua.c nhl_loadlua');
+        return false;
+    }
+    // The unix install copies only dat/'s Lua files into the playground, and
+    // wiz_load_lua() and wiz_load_splua() add ".lua" to a name without a
+    // dot, so no other playground file can be named. ("." and ".." name
+    // directories, which C's fopen() opens and then aborts on.)
+    if (!DAT_LUA_FILES.has(name)) {
+        const { impossible } = await import('./pline.js');
+        await impossible(`nhl_loadlua: Error opening (${name})`, state);
+        return false;
+    }
+    if (!LUA_LIBRARY_FILES.has(name)) return 'level';
+    if (name === 'nhlib.lua') lua.align = nhl_init(random);
+    return 'library';
+}
+
+// C ref: nhlua.c load_lua(), for the callers without a level coder:
+// wiz_load_lua(). VM allocation, the sandbox and teardown have no effect a
+// game can show.
+export async function load_lua(name, sbi, state = game, env = {}) {
+    const random = env.random ?? rn2;
     note_unported('nhlua.c nhlL_newstate');
     state.iflags.in_lua = true;
-    nhl_init(env.random ?? rn2); // Implicit nhlib.lua load during nhl_init.
-    if (name === 'nhlib.lua') {
-        nhl_init(env.random ?? rn2); // Explicit requested library execution.
-    } else {
+    // nhl_init() loads nhlib.lua, whose top level shuffles `align`.
+    const lua = { align: nhl_init(random) };
+    const loaded = await nhl_loadlua(lua, name, state, random);
+    if (loaded === 'level') {
+        // A level program run without a coder: C runs its des.* calls on
+        // the current level, each with sp_lev.c's NULL-coder behaviour,
+        // which the port's level loaders do not have.
         note_unported('nhlua.c nhl_loadlua');
     }
     note_unported('nhlua.c nhl_done');
     state.iflags.in_lua = false;
+    return loaded !== false;
 }
 
 // C ref: nhlua.c nhl_get_timertype(). Lua callback arguments are represented

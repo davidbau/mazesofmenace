@@ -14,7 +14,7 @@ import { inhishop, stolen_value as revive_stolen_value, delete_contents } from '
 import { cant_finish_meal, eaten_stat } from './eat.js';
 import { cant_revive } from './read.js';
 import { enexto_out } from './teleport.js';
-import { free_oname } from './dokick.js';
+import { free_oname } from './do_name.js';
 import { christen_monst, Amonnam } from './mhitm.js';
 import { attach_egg_hatch_timeout, obj_stop_timers } from './timeout.js';
 import { OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, NOBJ_STATES,

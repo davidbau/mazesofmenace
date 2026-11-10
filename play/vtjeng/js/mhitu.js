@@ -505,11 +505,6 @@ export async function cloneu(rawState = game, rawEnv = {}) {
         ...rawEnv,
         state,
         random,
-        // mhitu.c:cloneu() invokes makemon() at the hero square with this
-        // exact inventoryless dog-creation shape during ordinary play.  The
-        // marker lets makemon_create.js admit that source caller outside
-        // level generation without widening the generic runtime allowlist.
-        _cloneu: true,
     };
     let monster = await makemon_runtime(
         state.youmonst.data,
@@ -1544,7 +1539,6 @@ export async function mattacku(monster, rawEnv = {}) {
             'mattacku requires an rn2, rnd and d random source',
         );
     }
-    const unsupported = requireMattackuOperation(rawEnv, 'unsupported');
     // pline_mon(), newsym() and bot().
     const message = rawEnv.message ?? ttyPline;
     // mhitu.c's steal() chain calls ordinary pline() for the worn-item

@@ -23,7 +23,7 @@ import { generateChargenFrames, chargenShallAnswer, playChargen } from './charge
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { nh_terminate } from './end.js';
-import { exit_nhwindows } from './rawterm.js';
+import { exit_nhwindows, raw_print } from './rawterm.js';
 import { worm_seg_at } from './worm.js';
 import { worms_rest_snapshot } from './worm.js';
 import { bubbles_reset_process_state } from './mkmaze.js';
@@ -420,7 +420,13 @@ export class NethackGame {
             // C wintty.c:634-640 -> bail():344-350 exits the process;
             // returning here would let the caller enter moveloop without a hero.
             if (played.quit) {
-                exit_nhwindows(null);
+                /* tty_askname's bail("Giving up after 10 tries.\n"): settty()
+                 * puts() it, so the message row is followed by a blank one. */
+                exit_nhwindows(played.bail);
+                if (played.bail) {
+                    raw_print('');
+                    await g._preNhgetchHook?.();   // as for 'Until next time then...' above
+                }
                 await nh_terminate(0);
             }
             game._screen_output = '';

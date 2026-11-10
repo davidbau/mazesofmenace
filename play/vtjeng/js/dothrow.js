@@ -24,8 +24,7 @@
 // throwit() below follows the complete dothrow.c:1507-1849 source chain;
 // hitfloor() owns the shared landing path from dothrow.c:606-655.
 // Calls whose C result is explicitly discarded retain a named note_unported()
-// boundary; command functions outside this source span may still use the
-// UnsupportedThrowError refusal while their own ports are pending.
+// boundary.
 // #fire shares the source's autoquiver, launcher-selection, polearm and whip
 // helpers. The command-queue tail remains owned by js/cmd.js.
 
@@ -430,7 +429,7 @@ import {
     trapname,
 } from './trap.js';
 import { ttyNorep, ttyPline } from './tty_message.js';
-import { block_point, cansee, vision_recalc } from './vision.js';
+import { cansee, vision_recalc } from './vision.js';
 import { setuwep, doquiver_core, welded, weldmsg } from './wield.js';
 import { could_pole_mon, use_pole, use_whip } from './apply.js';
 import {
@@ -481,17 +480,6 @@ import {
     Stone_resistance, Stunned, Wwalking,
 } from './youprop.js';
 
-
-// A branch of dothrow.c this port has not translated. js/cmd.js
-// failClosedCommandRefusals() lists it, so the segment keeps every frame the
-// command already matched instead of failing hard.
-export class UnsupportedThrowError extends Error {
-    constructor(what) {
-        super(`dothrow.c reached ${what}`);
-        this.name = 'UnsupportedThrowError';
-        this.what = what;
-    }
-}
 
 // C ref: dothrow.c walk_path() (656-735). The callback sees every map cell
 // after the starting coordinate. It can stop the traversal; in that case the
@@ -670,9 +658,6 @@ function mhurtleTrapEnvironment(rawEnv, state) {
         message: rawEnv.message
             ?? ((line, target) => ttyPline(line, target ?? state)),
         redraw: rawEnv.redraw ?? ((x, y) => newsym(x, y)),
-        unsupported: rawEnv.unsupported ?? ((reason) => {
-            throw new Error(`trap.c mintrap cannot run ${reason}`);
-        }),
     };
 }
 
@@ -2851,12 +2836,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
         return;
     }
     clearThrownObject(state);
-    place_object(obj, bx, by, {
-        state,
-        hooks: {
-            blockPoint: (x, y, env) => block_point(x, y, env.state),
-        },
-    });
+    place_object(obj, bx, by, { state });
     if (!IS_SOFT(location.typ)) {
         // dothrow.c passes the hero's launch square, not the landing square.
         await container_impact_dmg(obj, state.u.ux, state.u.uy, { state });
@@ -2883,22 +2863,16 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
     // mkobj.c mkobj(). C draws all of those from the one global RNG.
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
-    // Existing partial owners may still report an unported discarded or
-    // impossible branch. Keep this source function running so such a gap
-    // cannot replace a source arm with a new throw or consume extra RNG.
-    const unsupported = env.unsupported
-        ?? ((what) => note_unported(`dothrow.c ${what}`));
     const operationEnv = {
         ...env,
         state,
         random,
         message,
-        unsupported,
     };
     // attrib.c:exercise() takes the RNG object itself, not this surrounding
     // operation environment. Strength exercise also owns the trailing
     // pickup.c:encumber_msg() call once play has begun.
-    const exerciseHooks = {
+    const exerciseOperations = {
         encumberMessage: (exerciseState) => encumber_msg(
             exerciseState,
             { message },
@@ -3088,7 +3062,7 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
                     chopper,
                     operationEnv,
                 );
-            await exercise(A_DEX, true, state, random, exerciseHooks);
+            await exercise(A_DEX, true, state, random, exerciseOperations);
             if (wasThrown && !thrownObject(state)) return 1;
             if (should_mulch_missile(obj, state, operationEnv)) {
                 if (state.u.ushops?.[0] || obj.unpaid)
@@ -3106,10 +3080,10 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
                 await wakeup(mon, true, operationEnv);
         }
     } else if (otyp === HEAVY_IRON_BALL) {
-        await exercise(A_STR, true, state, random, exerciseHooks);
+        await exercise(A_STR, true, state, random, exerciseOperations);
         if (tmp >= dieroll) {
             const wasSwallowed = guaranteedHit;
-            await exercise(A_DEX, true, state, random, exerciseHooks);
+            await exercise(A_DEX, true, state, random, exerciseOperations);
             const alive = await hmon(
                 mon, obj, hmode, dieroll, state, operationEnv,
             );
@@ -3120,9 +3094,9 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
             await tmiss(obj, mon, true, state, operationEnv);
         }
     } else if (otyp === BOULDER) {
-        await exercise(A_STR, true, state, random, exerciseHooks);
+        await exercise(A_STR, true, state, random, exerciseOperations);
         if (tmp >= dieroll) {
-            await exercise(A_DEX, true, state, random, exerciseHooks);
+            await exercise(A_DEX, true, state, random, exerciseOperations);
             await hmon(mon, obj, hmode, dieroll, state, operationEnv);
         } else {
             await tmiss(obj, mon, true, state, operationEnv);
@@ -3365,9 +3339,6 @@ async function throw_gold(obj, state = game) {
 
     if (await flooreffects(obj, state.gb.bhitpos.x, state.gb.bhitpos.y, 'fall', {
         state,
-        unsupported: (what) => {
-            throw new UnsupportedThrowError(what);
-        },
     }))
         return ECMD_TIME;
     if (u.dz > 0) {

@@ -2873,8 +2873,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* do.c:1969 save_currentstate() runs with program_state.in_checkpoint set, so the
      * save's tty_getmsghistory() remember_topl() (topl.c:170-191) copies gt.toplines into
      * the ring slot at maxrow but neither advances maxrow nor clears toplines; until the
-     * next message overwrites it, that slot is the FIRST line of a ^P full window. */
-    g._ckptToplSlot = String(g._pending_message || g._resultMessage || '') || null;
+     * next message overwrites it, that slot is the FIRST line of a ^P full window.
+     * save.c:406 skips savegamestate (and history) when checkpoint is off. */
+    g._ckptToplSlot = (g.flags.ins_chkpt ?? true) ? String(g._pending_message || g._resultMessage || '') || null : null;
     if ((g.iflags.purge_monsters | 0))
         await dmonsfree();
     notice_all_mons(true);          /* do.c:1973 */

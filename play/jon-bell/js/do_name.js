@@ -926,3 +926,21 @@ export function obj_pmname(obj) {
     impossible("obj_pmname otyp:%i,corpsenm:%i", obj.otyp, obj.corpsenm);
     return "two-legged glorkum-seeker";
 }
+
+/* C do_name.c:80-87: clear ONAME only when allocated; retain oextra.
+ * Support both the nested live name and new_oname's flattened name fields.
+ * An allocated empty string is still a non-NULL C name pointer. */
+export function free_oname(otmp) {
+    const nested_name = 'oextra' in otmp
+        && otmp.oextra && otmp.oextra.oname != null;
+    const flat_name = 'oextra_present' in otmp && otmp.oextra_present
+        && otmp.oextra_oname_present;
+    if (!nested_name && !flat_name)
+        return;
+    if (nested_name)
+        otmp.oextra.oname = null;
+    if (Object.prototype.hasOwnProperty.call(otmp, 'oextra_oname_present'))
+        otmp.oextra_oname_present = 0;
+    if (Object.prototype.hasOwnProperty.call(otmp, 'oname'))
+        otmp.oname = null;
+}

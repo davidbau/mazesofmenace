@@ -243,7 +243,7 @@ import {
     hits_bars, m_useup, m_useupall, rnd_hallublast, thitu,
 } from './mthrowu.js';
 import { note_unported } from './unported.js';
-import { livelog_printf, set_msg_xy, youFeel } from './pline.js';
+import { impossible, livelog_printf, set_msg_xy, youFeel } from './pline.js';
 import { waterbody_name } from './pager.js';
 import { fix_wall_spines } from './mklev.js';
 import { boxlock, doorlock, picking_at, reset_pick } from './lock.js';
@@ -257,15 +257,6 @@ import {
     Maybe_Half_Phys, Passes_walls, Reflecting, Shock_resistance,
     Sleep_resistance, Stoned, Stunned, Teleport_control, Unchanging,
 } from './youprop.js';
-
-// Thrown where zap.c reaches a wand effect this port has not ported.
-export class UnsupportedZapError extends Error {
-    constructor(branch) {
-        super(`zapping a wand requires ${branch}`);
-        this.name = 'UnsupportedZapError';
-        this.branch = branch;
-    }
-}
 
 
 function bhitTransientLightEnv(state, random, rawEnv = {}) {
@@ -368,15 +359,7 @@ export async function boomhit(
                 await thitu(
                     10 + (obj.spe ?? 0), Maybe_Half_Phys(damage, state.u),
                     obj, 'boomerang', state,
-                    {
-                        message: ttyPline,
-                        losehp,
-                        random: coreRandom,
-                        exercise: (index, increase, subject) => exercise(
-                            index, increase, subject, coreRandom,
-                            { encumberMessage: encumber_msg },
-                        ),
-                    },
+                    { message: ttyPline, random: coreRandom },
                 );
                 // C's accepted death enters done() and does not return.
                 if (state.program_state?.gameover) return null;
@@ -1485,10 +1468,6 @@ export async function zapyourself(obj, ordinary, state = game) {
             state,
             hooks: {
                 message: ttyPline,
-                inventoryComparisonDiscovered: () => ttyPline(
-                    'You learn more about your items by comparing them.',
-                    state,
-                ),
             },
         };
         do {
@@ -1605,8 +1584,6 @@ export async function resist(mtmp, oclass, damage, tell, state = game,
                 state,
                 random: rawEnv.random ?? random,
                 message: rawEnv.message ?? ttyPline,
-                unsupported: rawEnv.unsupported
-                    ?? ((reason) => note_unported(`mon.c ${reason}`)),
             };
             if (state.m_using)
                 await monkilled(mtmp, '', AD_RBRE, state, killEnv);
@@ -2044,16 +2021,6 @@ export async function makewish(state = game) {
         state,
         hooks: {
             message: ttyPline,
-            encumberMessage: encumber_msg,
-            // invent.c merged():933-942.  A wished-for object that merges
-            // into a stack the hero already carries settles any known,
-            // rknown or bknown the two disagreed on, and says so.  Only a
-            // random wish reaches this: a named one is spelled the same way
-            // twice, so the second copy agrees with the first.
-            inventoryComparisonDiscovered: () => ttyPline(
-                'You learn more about your items by comparing them.',
-                state,
-            ),
             newsym,
             dropObject: dropx,
             dropy,
@@ -2147,13 +2114,6 @@ export async function makewish(state = game) {
 // to decide what hits it: dothrow.c throwit() reaches the ported thitmonst()
 // through throwit_mon_hit():1492, while dothrow.c throw_gold():2712 reaches
 // dokick.c ghitm(). Kicked objects use the same gold and weapon hit owners.
-export class UnsupportedBhitError extends Error {
-    constructor(branch) {
-        super(`zap.c bhit() reached ${branch}`);
-        this.name = 'UnsupportedBhitError';
-        this.branch = branch;
-    }
-}
 
 // The following helpers are the IMMEDIATE-wand object arm from zap.c.  They
 // live here (rather than in obj.js) because zap.c owns the polymorph policy;
@@ -2716,7 +2676,7 @@ export async function stone_to_flesh_obj(obj, state = game,
                     ox,
                     oy,
                     NO_MINVENT | MM_NOMSG,
-                    { ...env, _stoneFleshFigurine: true },
+                    env,
                 );
                 if (monster) {
                     if (costly_spot(ox, oy, state)
@@ -4184,9 +4144,6 @@ export async function bhit(
     // missile so a web or another early stop can cancel that return before
     // throwit() handles the landing tail.
     const wasReturning = state.iflags?.returning_missile === obj ? obj : null;
-    if (!physical && !zapped && !flashed && !invisBeam) {
-        throw new UnsupportedBhitError(`call type ${weapon}`);
-    }
     state.gb ??= {};
     state.gb.bhitpos = kicked
         ? { x: state.u.ux + ddx, y: state.u.uy + ddy }
@@ -4960,17 +4917,7 @@ export async function zhitu(type, nd, fltxt, sx, sy, state = game,
             await destroy_items(state.youmonst, AD_ELEC, orig_dam, env);
         break;
     case ZT_POISON_GAS:
-        await poisoned('blast', A_DEX, 'poisoned blast', 15, false, state, {
-            ...env,
-            encumberMessage,
-            losehp: (loss, name, prefix, subject) =>
-                losehp(loss, name, prefix, subject, {
-                    ...env, fromMonster: type < 0,
-                }),
-            done: (how, subject) => done(how, subject, {
-                fromMonster: type < 0,
-            }),
-        });
+        await poisoned('blast', A_DEX, 'poisoned blast', 15, false, state, env);
         break;
     case ZT_ACID: {
         const acid = hliquid('acid', {
@@ -5635,8 +5582,6 @@ async function disintegrate_mon(mon, type, fltxt, state, random, env) {
         state,
         random,
         message,
-        unsupported: env.unsupported
-            ?? ((reason) => note_unported(`mon.c ${reason}`)),
     };
     if (type < 0)
         await monkilled(mon, null, -AD_RBRE, state, killEnv);
@@ -5753,8 +5698,6 @@ async function buzzmonst(
             state,
             random,
             message,
-            unsupported: env.unsupported
-                ?? ((what) => note_unported(`mon.c ${what}`)),
         };
         if (type < 0) {
             /* killed by another monster */
@@ -6601,11 +6544,10 @@ export async function weffects(
                 state, random, rawEnv,
             );
         } else {
-            // C's impossible("weffects: unexpected spell or wand"), for a
-            // directional object that is neither a dig nor a ray.
-            throw new UnsupportedZapError(
-                `weffects() for unexpected object type ${otyp}`,
-            );
+            // zap.c:3467, for a directional object that is neither a dig
+            // nor a ray. Every RAY-direction wand and spell in objects.h is
+            // one of those, so no caller reaches it.
+            await impossible('weffects: unexpected spell or wand', state);
         }
         disclose = true;
     }

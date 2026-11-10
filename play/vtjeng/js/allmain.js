@@ -32,7 +32,7 @@ import {
 } from './const.js';
 import { acurr, exerchk } from './attrib.js';
 import {
-    makedog, mon_arrive, mon_catchup_elapsed_time, see_nearby_monsters,
+    makedog, see_nearby_monsters,
 } from './dog.js';
 import { mklev, l_nhcore_init } from './mklev.js';
 import { run_end_turn_callbacks } from './nhlua.js';
@@ -55,7 +55,6 @@ import {
     m_dowear,
     makemon_runtime,
     set_mimic_sym,
-    UnsupportedMonsterCreationError,
 } from './makemon_create.js';
 import { init_objects } from './o_init.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
@@ -83,7 +82,7 @@ import {
 } from './startup_skills.js';
 import { reroll_menu } from './startup_reroll.js';
 import { ttyLegacyIntroduction } from './legacy_startup.js';
-import { cmdq_clear, failClosedCommandRefusals, rhack } from './cmd.js';
+import { cmdq_clear, dolookaround, failClosedCommandRefusals, rhack } from './cmd.js';
 import { next_to_u } from './apply_next_to_u.js';
 import { canletgo, deferred_goto, dropx, save_currentstate } from './do.js';
 import { glibr } from './do_wear.js';
@@ -95,6 +94,7 @@ import {
     monster_nearby,
     near_capacity,
     nomul,
+    notice_all_mons,
     pooleffects,
     overexert_hp,
     runmode_delay_output,
@@ -123,7 +123,7 @@ import {
     ttyPline,
     ttyUrgentPline,
 } from './tty_message.js';
-import { emitGlyphUpdateNotices, emitStartupA11yNotices } from './startup_a11y.js';
+import { emitGlyphUpdateNotices } from './startup_a11y.js';
 import { u_wipe_engr } from './engrave.js';
 import { check_special_room } from './rooms.js';
 import { rloc, tele } from './teleport.js';
@@ -169,7 +169,6 @@ import {
 } from './region.js';
 import { note_unported } from './unported.js';
 import {
-    UnsupportedHeroTimeoutBoundaryError,
     nh_timeout,
     do_storms,
 } from './timeout.js';
@@ -324,7 +323,10 @@ export async function newgame() {
         0,
         g.a11y.mon_notices_blocked - 1,
     );
-    await emitStartupA11yNotices(g, { pline: ttyPline });
+    // allmain.c:845-848. dolookaround() scans with getloc_filter set to
+    // GFILTER_VIEW, whatever whatis_filter the player chose.
+    if (g.a11y?.glyph_updates) await dolookaround(g);
+    else await notice_all_mons(true, g);
 }
 
 // C ref: allmain.c u_calc_moveamt(). Add the hero's next movement ration
@@ -692,9 +694,6 @@ function elapsedTurnMinLiquid(monster, env) {
         state: env.state,
         canSee: (x, y) => cansee(x, y, env.state),
         message: ttyPline,
-        unsupported: unavailableElapsedTurnOperation(
-            'monster liquid effect',
-        ),
         // minliquid() uses rloc()'s result to decide whether its liquid
         // effect is finished. Keep the relocation on the elapsed-turn state
         // and provide the complete teleport.c hook set.
@@ -817,24 +816,10 @@ export async function finishElapsedTurn(state, random) {
         await glibr(state, {
             message: ttyPline,
             canletgo,
-            dropx: (object) => dropx(object, {
-                state,
-                hooks: {
-                    encumberMessage: (targetState) => encumber_msg(
-                        targetState,
-                        { message: ttyPline },
-                    ),
-                    newsym,
-                },
-            }),
+            dropx: (object) => dropx(object, { state }),
         });
     }
 
-    // run_timers() refuses a due timer the port cannot run (a ROT_CORPSE
-    // element whose corpse an M1_COLLECT monster has carried to OBJ_MINVENT,
-    // for one). advanceElapsedTurn() converts that refusal around its call to
-    // this function, so the segment ends on its last matching screen instead
-    // of being discarded whole.
     await nh_timeout(state, {
         random,
         message: ttyPline,
@@ -1007,11 +992,6 @@ export async function finishElapsedTurn(state, random) {
                 message: ttyPline,
                 rndcurse,
                 makemon: makemon_runtime,
-                monArrive: (monster) => mon_arrive(monster, 'Wiz_arrive', {
-                    state, random,
-                }),
-                monCatchupElapsedTime: (monster, elapsed) =>
-                    mon_catchup_elapsed_time(monster, elapsed, { state, random }),
                 hooks: {
                     stopOccupation: (_monster, hookEnv) => stop_occupation(
                         hookEnv.state, hookEnv,
@@ -1048,20 +1028,11 @@ export async function finishElapsedTurn(state, random) {
     }
 }
 
-function unavailableElapsedTurnOperation(operation) {
-    return () => {
-        throw new UnsupportedTurnBoundaryError(
-            `elapsed turn reached ${operation}`,
-        );
-    };
-}
-
 // The refusal classes the monster scan and the once-per-turn round can raise
 // that advanceElapsedTurn() converts to UnsupportedTurnBoundaryError, so the
 // segment stops on its last matching screen rather than throwing out of
 // runSegment(). The turn also raises UnsupportedTurnBoundaryError directly,
-// from finishElapsedTurn()'s own stops and from the operations
-// unavailableElapsedTurnOperation() covers; those pass through the catches
+// from finishElapsedTurn()'s own stops; those pass through the catches
 // unchanged because js/jsmain.js already treats that class as a segment
 // boundary. A refusal class that is neither in this list nor already an
 // UnsupportedTurnBoundaryError escapes runSegment() as a hard failure, so a
@@ -1072,8 +1043,6 @@ function unavailableElapsedTurnOperation(operation) {
 function elapsedTurnRefusals() {
     return [
         UnsupportedSimpleMonsterActionError,
-        UnsupportedHeroTimeoutBoundaryError,
-        UnsupportedMonsterCreationError,
         // Both pickup arms -- dogmove.c dog_invent()'s and mon.c
         // mpickstuff()'s -- call splitobj() and mpickobj() from inside the
         // monster scan, so these classes reach here from a path that used to
@@ -1124,11 +1093,6 @@ async function moveElapsedTurnMonster(monster, env) {
                         location,
                         normalized.state,
                     ),
-                    blockPoint: (x, y, normalized) => block_point(
-                        x,
-                        y,
-                        normalized.state,
-                    ),
                 },
             }),
         }),
@@ -1149,7 +1113,6 @@ async function moveElapsedTurnMonster(monster, env) {
             markInvisible: (x, y) => map_invisible(x, y, env.state),
             redraw: (x, y) => newsym(x, y),
             wieldMonsterItemAgainstMonster,
-            unsupported: unavailableElapsedTurnOperation('conflict combat'),
         }),
         dochugwAction: runElapsedTurnMonsterAction,
     });

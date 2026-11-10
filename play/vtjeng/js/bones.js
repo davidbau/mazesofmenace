@@ -40,6 +40,7 @@ import {
     RIGHT_HANDED,
     W_WEP,
     has_ebones,
+    has_mgivenname,
     has_oname,
     ismnum,
 } from './const.js';
@@ -111,7 +112,6 @@ import {
     set_corpsenm,
 } from './obj.js';
 import { end_burn, restore_timers, timer_is_local } from './timeout.js';
-import { block_point } from './vision.js';
 import { place_wsegs } from './worm.js';
 import { deltrap } from './trap.js';
 import { rest_engravings, sanitize_engravings } from './engrave.js';
@@ -167,6 +167,7 @@ import { delete_bonesfile, open_bonesfile, write_bonesfile } from './files_bones
 import { roles, races, genders, aligns } from './roles.js';
 import { initrack } from './track.js';
 import { ttyPline } from './tty_message.js';
+import { dungeon_at } from './dungeon_table.js';
 
 export function no_bones_level(level, state) {
     // gs.save_dlevel is nonzero only while savebones() temporarily evaluates
@@ -176,7 +177,7 @@ export function no_bones_level(level, state) {
         assign_level(level, saveLevel);
 
     const special = Is_special(level, state);
-    const dungeon = state.dungeons[level.dnum];
+    const dungeon = dungeon_at(level.dnum, state);
     return Boolean(
         (special && !special.boneid)
         || !dungeon.boneid
@@ -1079,12 +1080,7 @@ async function find_lev_obj(state) {
         otmp.where = OBJ_FREE;
         fobjtmp = otmp;
     }
-    const env = {
-        state,
-        hooks: {
-            blockPoint: (x, y, placeEnv) => block_point(x, y, placeEnv.state),
-        },
-    };
+    const env = { state };
     while ((otmp = fobjtmp) != null) {
         fobjtmp = otmp.nobj;
         await place_object(otmp, otmp.ox, otmp.oy, env);
@@ -1097,11 +1093,9 @@ async function find_lev_obj(state) {
 // arrival code begins iterating monsters.
 function purgeDefunctBonesMonsters(state) {
     for (let mtmp = state.level?.monlist; mtmp; mtmp = mtmp.nmon) {
-        // C ref: bones.c:717-718. MGIVENNAME() reads either home.
-        if (mtmp.mextra?.mgivenname)
+        // C ref: bones.c:717-718.
+        if (has_mgivenname(mtmp))
             mtmp.mextra.mgivenname = sanitize_name(mtmp.mextra.mgivenname, state);
-        else if (mtmp.mgivenname)
-            mtmp.mgivenname = sanitize_name(mtmp.mgivenname, state);
         if (mtmp.mhpmax === DEFUNCT_MONSTER) {
             mongone(mtmp, { state });
         } else {

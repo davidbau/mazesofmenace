@@ -80,7 +80,7 @@ import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_backgr
 import { update_lastseentyp } from './dungeon.js';
 import { pline, livelog_printf, You_hear, You_see } from './pline.js';
 import { docorner_status_rows } from './display.js';
-import { set_mention_map_hook } from './display.js';
+import { set_mention_map_hook, mention_map_pline_cells } from './display.js';
 import { GLYPHCLS_WARNING } from './display.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
@@ -179,7 +179,7 @@ import { is_safemon } from './display.js';
 import { resist, dozap, obj_resists, zapyourself, make_blinded, BlindedTimeout, HBlinded, set_HBlinded, incr_HBlinded, zappable, bhito, bhitpile, bhitm, _bhitm_wand_epilogue, zapsetup, zapwrapup, release_hold, boomhit } from './zap.js';
 import { findit } from './detect.js';
 import { explode } from './explode.js';
-import { wiz_rumor_check, wiz_mon_diff } from './wizcmds.js';
+import { wiz_rumor_check, wiz_mon_diff, wiz_panic } from './wizcmds.js';
 import { capture_flushed_cells, docorner_blank_utf8_captures } from './display.js';
 import { wiz_migrate_mons, wiz_level_change, wiz_wish, touch_artifact_youmonst, bane_applies_hero, wiz_genesis, wiz_kill, wiz_show_stats, wiz_flip_level, wiz_detect, wiz_show_seenv, wiz_show_vision, wiz_show_wmodes, wiz_makemap, wiz_objprobs, wiz_load_splua, wiz_load_lua, wiz_telekinesis } from './wizcmds.js';
 import { wiz_light_sources } from './light.js';
@@ -275,7 +275,7 @@ import { floorfood, corpse_floor_xname, doeat, morehungry, is_fainted, reset_fai
 import { tinnable } from './apply.js';
 import { feel_cockatrice, getobj } from './invent.js';
 import { Align2amask } from "./const.js";
-import { eaten_stat } from "./food_props.js";
+import { eaten_stat } from './eat.js';
 import { tin_ok as eat_tin_ok } from './eat.js';
 import { bless as bless_obj, curse as curse_obj, uncurse as uncurse_obj, unbless, copy_oextra, free_omid, unknwn_contnr_contents, is_treefruit, get_mtraits, fixup_oil } from './mkobj.js';
 import { oc_nutrition } from './food_props.js';
@@ -575,6 +575,10 @@ function config_error_add(fmt, ...args) {
     if (config_error_add_lua(msg)) return;
     if (!game._config_errors) game._config_errors = [];
     game._config_errors.push(msg);
+    /* config_error_data->line_num / origline at the time of the error
+     * (cfgfiles.c:1578-1585), for the non-secure report. */
+    if (game._rc_errctx)
+        (game._config_error_ctx ||= [])[game._config_errors.length - 1] = { ...game._rc_errctx };
 }
 
 // Direction deltas: y u k
@@ -3074,6 +3078,7 @@ async function _display_pickinv_window(lets, want_reply) {
         const text = await xprname(otmp, null, lets[0], true, 0, 0);
         if (!want_reply) {await pline(text); return 0;}
         const morc = await force_more(text, otmp.invlet);
+        g._topl_win_stop = g._topl_win_stop_armed = false; /* wintty.c:2843 WIN_CANCELLED == WIN_STOP */
         return morc === otmp.invlet || morc === 27 ? morc : 0;
     }
     if (g.flags.sortloot !== 'i' && g.flags.sortpack !== false && !_Blind_cmd()
@@ -4439,7 +4444,10 @@ export async function useupf(obj, numused) {
         /* C invent.c:4775 — strchr(u.urooms, *in_rooms(otmp->ox, otmp->oy, 0)) */
         const rooms = in_rooms(otmp.ox | 0, otmp.oy | 0, 0);
         const firstRoom = rooms && rooms.length ? rooms[0] : 0;
-        if (u.urooms && u.urooms.indexOf(String.fromCharCode(firstRoom | 0)) !== -1)
+        /* strchr(s, '\0') finds the terminator: an empty in_rooms() list
+         * (first char NUL) is a hit in C, never a miss. */
+        if ((firstRoom | 0) === 0
+            || (u.urooms && u.urooms.indexOf(String.fromCharCode(firstRoom | 0)) !== -1))
             await addtobill(otmp, false, false, false);
         else
             await stolen_value(otmp, otmp.ox | 0, otmp.oy | 0, false, false);
@@ -10896,6 +10904,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
              * answers with itself. */
             const letCode = otmp.invlet | 0;
             const morc = await force_more(mesg, letCode);
+            g._topl_win_stop = g._topl_win_stop_armed = false; /* wintty.c:2843 */
             if (morc === letCode && countRef)
                 countRef.count = -1; /* display_pickinv: select whole stack */
             if (morc === letCode || morc === 27 /* ESC */)
@@ -10911,6 +10920,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
     if (xtraChoice && allowedLets == null && !g.invent
         && !g.iflags?.force_invmenu && !g.iflags?.menu_requested) {
         const morc = await force_more(`- - ${xtraChoice}.`, 45 /* HANDS_SYM */);
+        g._topl_win_stop = g._topl_win_stop_armed = false; /* wintty.c:2843 */
         if (morc === 45 && countRef) countRef.count = -1;
         if (morc === 45 || morc === 27 /* ESC */) return morc;
         return 0;
@@ -26887,11 +26897,22 @@ async function pline_xy_a11y(x, y, text) {
 }
 
 /* C display.c:2060-2072 show_glyph() mention_map announcement: describe the spot
- * just painted and announce it. pline_xy_a11y handles coordinate formatting
- * directly; do not mutate global a11y.accessiblemsg across async boundary. */
-set_mention_map_hook((x, y) => {
+ * just painted and announce it (pline_xy_a11y's coordinate formatting);
+ * do not mutate global a11y.accessiblemsg across async boundary. */
+set_mention_map_hook((x, y, cells) => {
     _autodescribe_firstmatch(x, y).then(async (firstmatch) => {
-        await pline_xy_a11y(x, y, (firstmatch || '') + '.');
+        const text = (firstmatch || '') + '.';
+        const gp = game.iflags?.getpos_coords;
+        const msg = isok(x, y)
+            ? coord_desc(x, y, (!gp || gp === GPCOORDS_NONE) ? GPCOORDS_COMFULL : gp) + ': ' + text
+            : text;
+        /* The frame this pline freezes is the one show_glyph flushed at. */
+        const release = cells && mention_map_pline_cells(msg, cells);
+        try {
+            await pline('%s', msg);
+        } finally {
+            if (release) release();
+        }
     });
 });
 
@@ -27284,7 +27305,12 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "doset": {
         // C ref: cmd.c:1784 #optionsfull -> doset() (options.c:8758).  GENERALCMD:
         // no turn, no RNG.  Same post-menu redraw as doset_simple above.
-        game.iflags.menu_requested = false;
+        if (game.iflags.menu_requested) {
+            /* options.c:8767-8772 doset(): 'm #optionsfull' runs doset_simple() */
+            game.iflags.menu_requested = false;
+            outcome.value = _rhack_cmd_move(await doset_simple());
+            return true;
+        }
         outcome.value = _rhack_cmd_move(await doset());
         /* C #optionsfull has no redraw after doset(): the full-screen menu's own
          * dismissal (wintty.c:972-974) and reset_needed_visuals() already docrt()ed */
@@ -27963,6 +27989,12 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         g.context.move = (res & ECMD_TIME) ? 1 : 0;
     }
         return true;
+    case "wiz_panic":
+        /* C cmd.c extcmdlist { '\0', "panic", ..., wiz_panic, ... } ->
+         * wizcmds.c:534.  Returns ECMD_OK: no turn, no RNG. */
+        g.context.move = 0;
+        outcome.value = await wiz_panic();
+        return true;
     case "wiz_rumor_check":
         /* C wizcmds.c:1102 — text window, ECMD_OK: no turn, no RNG. */
         g.context.move = 0;
@@ -27971,6 +28003,9 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "wiz_show_nhuuid":
         g.context.move = 0;
         await pline("The NHUUID for this game is { %s }.", "");
+        /* wizcmds.c:1785 returns ECMD_OK, so rhack's reset_cmd_vars()
+         * (cmd.c:3814-3815) clears a count prefix: "7V" shows it once. */
+        outcome.value = ECMD_OK;
         return true;
     case "wiz_mon_diff":
         /* C wizcmds.c:1790 — text window, ECMD_OK: no turn, no RNG. */
@@ -29453,7 +29488,8 @@ async function _getpos_menu(gloc) {
             if (ch++ === 122) ch = 65;
         }
     }
-    let curPage = 0, titleErased = false;
+    let curPage = 0, titleErased = false, shownFull = false;
+    try {
     for (;;) {
         const pg = pages[curPage];
         const footer = pages.length > 1 ? `(${curPage + 1} of ${pages.length})` : '(end)';
@@ -29464,6 +29500,7 @@ async function _getpos_menu(gloc) {
          * menu to offx 0 and clears the whole screen (map and status included). */
         const fullScreen = pages.length > 1 || windowLines.length >= 24
             || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        shownFull = fullScreen;
         const offx = fullScreen ? 1 : tty_window_offx(rawLines, 'end');
         g._screen_output = fullScreen
             ? windowLines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
@@ -29498,6 +29535,17 @@ async function _getpos_menu(gloc) {
         if (code === 60 /* '<' */) { if (curPage > 0) { curPage--; titleErased = false; } continue; }
         const hit = pg.find((r) => r.e && r.e.accel === String.fromCharCode(code));
         if (hit) return { x: hit.e.x, y: hit.e.y };
+    }
+    } finally {
+        /* C wintty.c:971-979 erase_menu_or_text: an offx 0 menu is erased by
+         * docrt() + flush_screen(1) inside windows.c:1859-1863's bot_disabled,
+         * so docrt's disp.botlx (display.c:1769) is left for the next flush. */
+        if (shownFull) {
+            const savedBotDisabled = g._bot_disabled;
+            g._bot_disabled = true;
+            try { await docrt(); await flush_screen(1); }
+            finally { g._bot_disabled = savedBotDisabled; }
+        }
     }
 }
 
@@ -29744,6 +29792,7 @@ export async function getpos(ccp, force, goal) {
             break;
         }
         let handled = false;
+        let menuStatusEnd = null;
         /* C ref: getpos.c:914-920 — `else if (movecmd(c, MV_WALK)) { if
          * (rushrun) goto do_rushrun; ... }`: movecmd() runs FIRST (it is what
          * sets u.dx/u.dy from the key), and only then does rushrun redirect
@@ -29867,8 +29916,13 @@ export async function getpos(ccp, force, goal) {
                 const picked = await _getpos_menu(gloc);
                 if (picked) { cx = picked.x; cy = picked.y; }
                 /* getpos.c:1148 nxtc: flush_screen(0) — paints the "You cannot
-                 * see any monsters." topline raised by an empty list. */
+                 * see any monsters." topline raised by an empty list.  The
+                 * menu's docrt ran under bot_disabled (windows.c select_menu),
+                 * so botlx is still set and bot()'s BL_RESET leaves the tty
+                 * cursor past the last status field (display.c:2236-2237). */
+                set_cursor(cx - 1, cy + 1);
                 await flush_screen(0);
+                menuStatusEnd = last_flush_forced_cursor() ? null : last_flush_status_end();
                 handled = true;
             } else if (!garr[gloc]) {
                 garr[gloc] = await _gather_locs(gloc);
@@ -29958,7 +30012,9 @@ export async function getpos(ccp, force, goal) {
         if (handled) {
             /* C ref: getpos.c:1143-1149 `nxtc:` — gg.getposx/y = cx/cy;
              * curs(WIN_MAP, cx, cy); flush_screen(0). */
-            set_cursor(cx - 1, cy + 1);
+            if (menuStatusEnd) set_cursor(menuStatusEnd[0], menuStatusEnd[1]);
+            else set_cursor(cx - 1, cy + 1);
+            menuStatusEnd = null;
         }
     }
     /* C ref: getpos.c:1151-1168 exitgetpos. */
@@ -30094,6 +30150,14 @@ async function _do_look_lookat(x, y) {
             supplemental_pm: looks && !_cmd_Hallucination() ? u.ustuck.data : null,
             dbaseEntry: null,
         };
+    }
+    // C pager.c:794-795,1595-1609: temporary cmap symbols describe the
+    if (dglyph?.cls === GLYPHCLS_CMAP && dglyph.cmap >= 74
+        && DEFSYM_EXPLANATION[dglyph.cmap]) {
+        const classes = pager_cmap_description(dglyph);
+        return { kind: 'cmap-effect', glyphChar: dglyph.ch, glyphDec: !!dglyph.dec,
+            ...classes, firstmatch: DEFSYM_EXPLANATION[dglyph.cmap],
+            dbaseEntry: null };
     }
     /* C pager.c:1512-1528: warning symbols participate in all class scans.
      * Resolve the warning before the monster arm: its m_at() record does
@@ -37481,6 +37545,10 @@ async function doherecmdmenu() {
         g._screen_output = _rows().join('\n');
         set_cursor(WIN_COL + '(end)'.length + 1, endRow);
     };
+    /* wintty.c:1938-1939: an overlaid menu runs tty_clear_nhwindow(WIN_MESSAGE),
+     * erasing getpos's "(For instructions ...)" left on the topline. */
+    g._pending_message = '';
+    g._topl_sticky = '';
     await _show();
     let pick = -1;
     for (;;) {
@@ -43473,7 +43541,8 @@ export function parseautocomplete(autocomplete, condition) {
             return;
         }
     }
-    /* not a real extended command: C raw_printf()s a complaint */
+    /* not a real extended command: C cmd.c:3289 raw_printf() + wait_synch() */
+    (game._raw_print_waits ||= []).push(`Bad autocomplete: invalid extended command '${autocomplete}'.`);
 }
 
 /* C cmd.c:5394-5465 — query_menu replaces the standard response sets with

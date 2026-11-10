@@ -91,6 +91,7 @@ import {
     depth,
     dunlev_reached,
     dunlevs_in_dungeon,
+    find_hell,
     get_level,
     ledger_no,
     lev_by_name,
@@ -111,7 +112,6 @@ import {
 import { docrt, newsym, see_monsters, shieldeff } from './display.js';
 import {
     schedule_goto,
-    UnsupportedLevelChangeError,
 } from './do.js';
 import { next_to_u } from './apply_next_to_u.js';
 import { sengr_at } from './engrave.js';
@@ -210,7 +210,7 @@ import { getpos } from './getpos.js';
 import { in_out_region } from './region.js';
 import { make_blinded, make_confused, make_stunned } from './potion.js';
 import { mon_has_amulet } from './wizard.js';
-import { verbalize, youFeel } from './pline.js';
+import { impossible, verbalize, youFeel } from './pline.js';
 import { y_n, ynq } from './cmd.js';
 import { inhistemple } from './priest.js';
 import { set_voice, yelp } from './sounds.js';
@@ -236,7 +236,7 @@ import { mintrap } from './trap_effects.js';
 import { somexyspace } from './mklev.js';
 import { search_special } from './mkroom.js';
 import { settrack } from './track.js';
-import { ttyPline } from './tty_message.js';
+import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
 import { findgd, uleftvault, vault_occupied } from './vault.js';
 import { couldsee, vision_recalc } from './vision.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
@@ -246,20 +246,13 @@ import {
     Levitation, Passes_walls, Stunned, Swimming, Teleport_control,
     Teleportation, Wwalking,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 // These generated-monster masks are source data which monsters.js does not
 // currently export. Keep their names and values traceable to monflag.h.
 const M1_WALLWALK = 0x00000008;
 const M1_NOEYES = 0x00001000;
 const M2_ROCKTHROW = 0x08000000;
-
-export class UnsupportedPositionCheckError extends Error {
-    constructor(operation) {
-        super(`unsupported monster position check: ${operation}`);
-        this.name = 'UnsupportedPositionCheckError';
-        this.operation = operation;
-    }
-}
 
 function teleportEnv(env = {}) {
     const random = env.random ?? coreRandom;
@@ -561,7 +554,7 @@ export async function u_teleport_mon(monster, giveFeedback, rawEnv = {}) {
 function currentDungeonIsHellish(state) {
     const dnum = state.u?.uz?.dnum;
     return Number.isInteger(dnum)
-        && Boolean(state.dungeons?.[dnum]?.flags?.hellish);
+        && Boolean(dungeon_at(dnum, state)?.flags?.hellish);
 }
 
 function m_blocks_teleporting(monster) {
@@ -723,11 +716,13 @@ export async function mlevel_tele_trap(
     if (monster === state.u?.ustuck) return 'finished';
     if (monster === state.u?.usteed) return 'finished';
     if (!await teleport_pet(monster, forceIt, env)) return 'finished';
+    // trapeffect_level_telep() is the only caller, for holes, trap doors,
+    // level teleporters and magic portals, so this arm never runs.
     if (!portal && !levelTeleporter
         && trapType !== HOLE && trapType !== TRAPDOOR) {
-        throw new UnsupportedPositionCheckError(
-            'non-hole monster level teleportation',
-        );
+        await impossible(
+            `mlevel_tele_trap: unexpected trap type (${trapType})`, state);
+        return 'finished';
     }
     if (!levelTeleporter && (!trap.dst
         || !Number.isInteger(trap.dst.dnum)
@@ -818,7 +813,7 @@ export async function mlevel_tele_trap(
         destination.dnum = state.valley_level?.dnum;
         destination.dlevel = state.valley_level?.dlevel;
     } else {
-        const dungeon = state.dungeons?.[state.u?.uz?.dnum];
+        const dungeon = dungeon_at(state.u?.uz?.dnum, state);
         if (state.u?.uz && dungeon
             && state.u.uz.dlevel === dungeon.num_dunlevs) {
             if (inSight && trap.tseen) {
@@ -1198,12 +1193,7 @@ function rloc_to_core(monster, x, y, rawEnv = {}) {
                         random: env.random,
                         actionEnv: { ...env, state, message },
                     }),
-                    () => thenResult(
-                        state === game
-                            ? docrt()
-                            : note_unported('display.c docrt'),
-                        finishPlacement,
-                    ),
+                    () => thenResult(docrt(), finishPlacement),
                 ));
             }
             if (dist2(monster.mx, monster.my, state.u.ux, state.u.uy) > 2) {
@@ -1831,8 +1821,7 @@ export async function teleds(nux, nuy, teleds_flags, state = game, rawEnv = {}) 
             ball_active = true;
             ball_still_in_range = allow_drag = false;
         }
-        if (state === game) await docrt();
-        else note_unported('display.c docrt');
+        await docrt();
     }
 
     if (ball_active && (ball_still_in_range || allow_drag)) {
@@ -2127,12 +2116,12 @@ export function random_teleport_level(
            no one can randomly teleport past it */
         if (dunlev_reached(state.u.uz, state) < qlocate_depth)
             bottom = qlocate_depth;
-        min_depth = state.dungeons[state.u.uz.dnum].depth_start;
-        max_depth = bottom + (state.dungeons[state.u.uz.dnum].depth_start - 1);
+        min_depth = dungeon_at(state.u.uz.dnum, state).depth_start;
+        max_depth = bottom + (dungeon_at(state.u.uz.dnum, state).depth_start - 1);
     } else {
         min_depth = 1;
         max_depth = dunlevs_in_dungeon(state.u.uz, state)
-            + (state.dungeons[state.u.uz.dnum].depth_start - 1);
+            + (dungeon_at(state.u.uz.dnum, state).depth_start - 1);
         /* can't reach Sanctum if the invocation hasn't been performed */
         if (In_hell(state.u.uz, state) && !state.u?.uevent?.invoked)
             max_depth -= 1;
@@ -2183,18 +2172,6 @@ function levelInSokoban(level, state) {
         && level.dnum === state.sokoban_dnum);
 }
 
-// C ref: dungeon.c find_hell() (1949-1953). This helper has no independent
-// return value; it assigns the Valley of the Dead entrance to its argument.
-function findHell(level, state) {
-    if (!state.valley_level || !Number.isInteger(state.valley_level.dnum)) {
-        throw new UnsupportedLevelChangeError(
-            'level_tele() find_hell() without valley_level',
-        );
-    }
-    level.dnum = state.valley_level.dnum;
-    level.dlevel = 1;
-}
-
 function killerForLevelTele(state) {
     state.killer ??= { name: '', format: KILLED_BY };
     state.killer.name ??= '';
@@ -2243,8 +2220,8 @@ export async function level_tele(state = game) {
         do {
             newlevel.dnum = rn2(nDungeons);
         } while (newlevel.dnum === state.astral_level?.dnum
-            || state.dungeons[newlevel.dnum]?.flags?.unconnected
-            || !state.dungeons[newlevel.dnum]?.num_dunlevs);
+            || dungeon_at(newlevel.dnum, state)?.flags?.unconnected
+            || !dungeon_at(newlevel.dnum, state)?.num_dunlevs);
         newlevel.dlevel = 1 + rn2(
             dunlevs_in_dungeon(newlevel, state),
         );
@@ -2348,7 +2325,7 @@ export async function level_tele(state = game) {
                     `${silent ? 'You writhe' : 'You scream'} in agony as your body begins to warp...`,
                     state,
                 );
-                note_unported('window.c display_nhwindow');
+                await displayPendingTtyMessageWindow(state);
                 await ttyPline('You cease to exist.', state);
                 if (state.gi?.invent || state.invent) {
                     await ttyPline(
@@ -2379,7 +2356,7 @@ export async function level_tele(state = game) {
             // teleport.c:1290-1291. The status line shows "Home N", so a
             // typed Quest level is relative to the Quest dungeon.
             if (levelInQuest(u.uz, state) && newlev > 0) {
-                newlev += state.dungeons[u.uz.dnum].depth_start - 1;
+                newlev += dungeon_at(u.uz.dnum, state).depth_start - 1;
             }
         }
     }
@@ -2442,7 +2419,7 @@ export async function level_tele(state = game) {
         } else if (newlev === -9) {
             await ttyPline(youFeel('deliriously happy.', state), state);
             await ttyPline('(In fact, you\'re on Cloud 9!)', state);
-            note_unported('window.c display_nhwindow');
+            await displayPendingTtyMessageWindow(state);
         } else {
             await ttyPline('You are now high above the clouds...', state);
         }
@@ -2478,11 +2455,11 @@ export async function level_tele(state = game) {
         newlevel = { dnum: 0, dlevel: 0 };
     } else if (!force_dest
         && u.uz.dnum === state.medusa_level?.dnum
-        && newlev >= state.dungeons[u.uz.dnum].depth_start
+        && newlev >= dungeon_at(u.uz.dnum, state).depth_start
             + dunlevs_in_dungeon(u.uz, state)) {
         // teleport.c:1388-1391 calls find_hell(), whose source body assigns
         // the Valley of the Dead entrance at depth 1.
-        findHell(newlevel, state);
+        find_hell(newlevel, state);
     } else if (!force_dest) {
         const qbranch = levelInQuest(u.uz, state)
             ? state.qstart_level
@@ -2490,7 +2467,7 @@ export async function level_tele(state = game) {
                 ? state.mineend_level
                 : state.sanctum_level;
         const qbranchLevel = qbranch ?? u.uz;
-        const deepest = state.dungeons[qbranchLevel.dnum].depth_start
+        const deepest = dungeon_at(qbranchLevel.dnum, state).depth_start
             + dunlevs_in_dungeon(qbranchLevel, state) - 1;
         if (!state.wizard && In_hell(u.uz, state)
             && !u.uevent?.invoked && newlev >= deepest) {

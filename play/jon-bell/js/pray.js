@@ -16,7 +16,7 @@ import { done } from './end.js';
 import { yn_function } from './cmd.js';
 import { freehand } from './engrave.js';
 import { losexp, pluslvl } from './exper.js';
-import { eaten_stat } from './food_props.js';
+import { eaten_stat } from './eat.js';
 import { game, wizard } from './gstate.js';
 import { upstart } from './hacklib.js';
 import { update_inventory } from './inventory_refresh.js';

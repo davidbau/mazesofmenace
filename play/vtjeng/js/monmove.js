@@ -202,12 +202,10 @@ import { sengr_at, wipe_engr_at } from './engrave.js';
 import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
 import { dist2, distmin } from './hacklib.js';
-import { delobj, money_cnt, obj_extract_self, sobj_at } from './invent.js';
+import { delobj, money_cnt, sobj_at } from './invent.js';
 import { picking_lock } from './lock.js';
 import { grow_up, set_malign } from './makemon.js';
-import {
-    healmon, m_in_air, mnearto, mongone, newcham,
-} from './mon.js';
+import { m_in_air, mongone, newcham } from './mon.js';
 import { mattackm, mdisplacem } from './mhitm.js';
 import { m_next2u, ranged_attk_available } from './mhitu.js';
 import {
@@ -425,7 +423,7 @@ import { coreRandom } from './rng.js';
 import { in_rooms } from './rooms.js';
 import { see_wsegs, worm_move, worm_nomove, wormhitu } from './worm.js';
 import { add_damage, after_shk_move, costly_spot, inhishop, shk_move } from './shk.js';
-import { findgold, mdrop_obj, mpickobj } from './steal.js';
+import { findgold, mdrop_obj } from './steal.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
 import { collectMonsterMovementMessage, messageAt } from './startup_a11y.js';
 import { mbodypart } from './polyself.js';
@@ -446,7 +444,6 @@ import {
 import {
     noteleport_level,
     rloc,
-    rloc_to,
     tele_restrict,
 } from './teleport.js';
 import { displayPendingTtyMessageWindow, ttyNorep, ttyPline } from './tty_message.js';
@@ -470,6 +467,7 @@ import {
     Half_spell_damage, Hallucination, Invis, Protection_from_shape_changers,
     Stealth, Unaware,
 } from './youprop.js';
+import { dungeon_at } from './dungeon_table.js';
 
 
 function movementEnv(env = {}) {
@@ -1787,7 +1785,7 @@ function isLawfulMinion(monster) {
 
 function inHell(state) {
     const dnum = state.u?.uz?.dnum;
-    return Boolean(state.dungeons?.[dnum]?.flags?.hellish);
+    return Boolean(dungeon_at(dnum, state)?.flags?.hellish);
 }
 
 function inEndgame(state) {
@@ -2383,9 +2381,8 @@ export async function dochug(monster, rawEnv = {}) {
         rawEnv,
         'monsterCanSeeHero',
     );
-    // The item-selection branch below returns TRUE for a source-supported
-    // offense; dochug falls through to mattacku, which executes the selection
-    // through muse.c:use_offensive().
+    // quest_talk() and castmu()'s unported AD_FIRE arm (through
+    // castUndirectedSpell) refuse through this.
     const unsupported = requireDochugOperation(rawEnv, 'unsupported');
     // monmove.c:895-907 walks the AT_MAGC/AD_SPEL/AD_CLRC attack slots and
     // calls castmu(FALSE, FALSE) for each; the provider answers whether one
@@ -2519,18 +2516,6 @@ export async function dochug(monster, rawEnv = {}) {
             ...env,
             state,
             random,
-            m_at,
-            mnearto,
-            mnexto,
-            rloc,
-            rlocTo: rloc_to,
-            mpickobj,
-            objExtractSelf: obj_extract_self,
-            healmon,
-            monnear,
-            noteleportLevel: noteleport_level,
-            inhishop,
-            inhistemple,
             newsym,
             message: rawEnv.message ?? ttyPline,
         });
@@ -3186,7 +3171,6 @@ export async function postmov(
     const state = rawEnv.state ?? game;
     const env = { ...rawEnv, state };
     const random = rawEnv.random ?? coreRandom;
-    const unsupported = requireMoveOperation(rawEnv, 'unsupported');
     // pline() and newsym().
     const message = rawEnv.message ?? ttyPline;
     const norepMessage = rawEnv.norepMessage ?? ttyNorep;
@@ -3565,7 +3549,6 @@ export async function postmov(
             ...env,
             message,
             random,
-            unsupported,
         });
         // C ref: monmove.c:1692-1699.  A hides_under() species or an eel
         // re-hides after moving, drawing rn2(5) unless it is already hidden;
@@ -3638,7 +3621,6 @@ export async function m_move(monster, rawEnv = {}) {
     );
     const finishEating = requireMoveOperation(rawEnv, 'finishEating');
     const movePet = requireMoveOperation(rawEnv, 'movePet');
-    const unsupported = requireMoveOperation(rawEnv, 'unsupported');
     const env = { ...rawEnv, state, random };
     let oldX = monster.mx;
     let oldY = monster.my;
@@ -3718,12 +3700,7 @@ export async function m_move(monster, rawEnv = {}) {
     if (monster.mtame && !monster.wormno) {
         // C: `return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...)`.
         // dochug() is the only reachable caller and passes after == 0.
-        // postmov() opens, unlocks or digs the pet's chosen door with this
-        // m_move() can_tunnel and can_unlock, so the destination check in
-        // dog_move() reads the same values, as ordinary movement's does below.
-        const petStatus = await movePet(
-            monster, false, { ...env, canTunnel, canUnlock },
-        );
+        const petStatus = await movePet(monster, false, env);
         return await postMonsterMove(monster, oldX, oldY, petStatus, env);
     }
 
@@ -4133,10 +4110,7 @@ export async function m_move(monster, rawEnv = {}) {
         return MMOVE_DONE;
     }
     const mayCrossRegion = rawEnv.mayCrossRegion ?? m_in_out_region;
-    // Carry the same capabilities postmov() reads when it unlocks a door or
-    // digs the square. Admission must use those captured values, rather than
-    // recomputing them after the intervening inventory actions.
-    if (!await mayCrossRegion(monster, nextX, nextY, { ...env, canTunnel, canUnlock }))
+    if (!await mayCrossRegion(monster, nextX, nextY, env))
         return MMOVE_DONE;
     if ((data.info[chosen] & ALLOW_ROCK) && m_can_break_boulder(monster)) {
         await m_break_boulder(monster, nextX, nextY, env);
