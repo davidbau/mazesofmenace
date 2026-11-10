@@ -149,7 +149,6 @@ export async function thitu(tlev, dam, otmp, name) {
         return 1;
     } else if (otmp && (otmp.oclass | 0) === POTION_CLASS) {
         await potionhit_thitu(game.youmonst, otmp, POTHIT_OTHER_THROW);
-        otmp = null; /* C mthrowu.c:138 *objp = obj = 0; scatter() caller in js/explode.js:1048 clears stmp.obj */
         return 1;
     }
     if (otmp && (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) === SILVER) {

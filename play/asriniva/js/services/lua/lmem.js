@@ -5,7 +5,7 @@
  * Host transport mirrors and the JavaScript engine's own heap are excluded.
  */
 import { LuaAllocationTracker } from '../lua-debug.js';
-export const LUA_MANAGED_LAYOUT = Object.freeze({ table:56,node:24,value:16,string:24,proto:128,lclosure:32,cclosure:32,upvalue:40,thread:200,global:1416,callinfo:64,userdata0:32,userdata:40,astNode:32 });
+export const LUA_MANAGED_LAYOUT = Object.freeze({ table:56,node:24,value:16,string:24,proto:128,lclosure:32,cclosure:32,upvalue:40,thread:200,extra:8,global:1416,callinfo:64,userdata0:32,userdata:40,astNode:32 });
 export function createMemoryTracker({ memoryTracker = null, memoryAllocator = null, memoryUserdata = null } = {}) {
   if (memoryTracker) return memoryTracker;
   return new LuaAllocationTracker({ allocator: memoryAllocator ?? ((_ud,_pointer,_old,size) => size ? new Uint8Array(size) : null), userdata: memoryUserdata });

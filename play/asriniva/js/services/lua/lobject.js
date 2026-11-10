@@ -36,7 +36,7 @@ export const MAXINTEGER = (1n << 63n) - 1n;
 export const luaInteger = n => BigInt.asIntN(64, BigInt(n));
 export const truth = value => value !== null && value !== false;
 export class LuaError extends Error {
-  constructor(value) { super(isLuaString(value) ? luaStringBytes(value) : 'Lua error'); this.value = currentHeap()?.adopt(value) ?? value; this.name = 'LuaError'; }
+  constructor(value,{adopt=true}={}) { super(isLuaString(value) ? luaStringBytes(value) : 'Lua error'); this.value = adopt ? currentHeap()?.adopt(value) ?? value : value; this.name = 'LuaError'; }
 }
 export function luaType(value) {
   if (value === null || value === undefined) return 'nil';
@@ -53,6 +53,8 @@ export function canonicalNaN() {numberBits.setBigUint64(0,0x7ff8000000000000n);r
 export function negateFloat(value) {numberBits.setFloat64(0,value);numberBits.setBigUint64(0,numberBits.getBigUint64(0)^0x8000000000000000n);return numberBits.getFloat64(0);}
 export function numberToString(value) {
   if(typeof value==='bigint')return String(value);
+  // The selected native Darwin printf policy prints either NaN sign as nan.
+  if(Number.isNaN(value))return 'nan';
   let text=(floatNegative(value)?'-':'')+formatFloatMagnitude(value,'g',14,false);
   if(/^[-0-9]+$/.test(text))text+='.0';
   return text;

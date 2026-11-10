@@ -11,7 +11,7 @@ import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { menucolor_row } from './coloratt.js';
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js';
 import { money_cnt } from './hack.js';
-import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, COST_DEGRD, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
+import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
 import { is_pick, use_pick_axe2 } from './dig.js';
 import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint } from './display.js';
 import { check_gold_symbol } from './botl.js';
@@ -43,7 +43,7 @@ import { Monnam } from './mcastu.js';
 import { christen_monst as _fl_christen_monst, hcolor, hmon, obj_pmname, s_suffix } from './mhitm.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { gain_guardian_angel as _fl_gain_guardian_angel } from './minion.js';
-import { makemon as _fl_makemon, mkobj as _fl_mkobj, mksobj as _fl_mksobj, engr_reset_text_pointers, dobjsfree, mk_artifact, mklev, place_object, polyfood, set_bknown, sp_levchn_lookup } from './mklev.js';
+import { makemon as _fl_makemon, mkobj as _fl_mkobj, mksobj as _fl_mksobj, engr_reset_text_pointers, mk_artifact, mklev, place_object, polyfood, set_bknown, sp_levchn_lookup } from './mklev.js';
 import { mpickobj } from './steal.js';
 import { Can_fall_thru, In_hell, level_difficulty, u_on_newpos, u_on_rndspot } from './dungeon.js';
 import { stairway_at, stairway_find_from, u_on_dnstairs, u_on_sstairs, u_on_upstairs } from './stairs.js';
@@ -124,6 +124,19 @@ export async function trycall(obj) {
     if (!nameKnown && !hasUname)
         await docall(obj);
 }
+
+// Wizard (initrole 12) starting-inventory object classes (C numbering), in the
+// order they exist in the kit.  C ref: u_init.c:167 Wizard[] TROBJ table:
+//   quarterstaff(WEAPON 2), cloak(ARMOR 3), wand(WAND 11), 2 rings(RING 4),
+//   potions(POTION 8), scrolls(SCROLL 9), 2 spellbooks(SPBOOK 10),
+//   magic marker(TOOL 6).  All starting items get bknown=1 and cursed=0
+//   (u_init.c:1215,1220), so every carried item is either Blessed or Uncursed
+//   — never Cursed, never unknown(X).  The blessed kit items (quarterstaff,
+//   force-bolt spellbook) give bcnt>0; the rest give ucnt>0.
+const ROLE_INVENTORY_CLASSES = {
+    // Each entry: { classes: Set<oclass>, bcnt, ucnt, ccnt, xcnt }
+    12: { classes: [2, 3, 11, 4, 8, 9, 10, 6], bcnt: 2, ucnt: 6, ccnt: 0, xcnt: 0 },
+};
 
 const FE_POTION_CLASS = 8; /* objects.h POTION_CLASS (see the local POTION_CLASS
     const already used, function-scoped, elsewhere in this file). */
@@ -423,7 +436,7 @@ export async function doaltarobj(obj) {
 }
 
 // C ref: do.c:782 dropx(obj) → do.c:788 freeinv(obj); do.c:790-796 ship_object/
-// IS_ALTAR->doaltarobj; do.c:795 dropy(obj) → do.c:806 dropz(obj, FALSE).
+// IS_ALTAR->doaltarobj; do.c:798 dropy(obj) → do.c:806 dropz(obj, FALSE).
 // at the hero's square.  The dropped object must land on game.fobj so the
 // next per-turn pet dog_goal scan iterates it (dogmove.js dogfood → obj_resists
 // rn2(100)) — exactly the leaf the drop unblocks.
@@ -982,6 +995,7 @@ async function ddropSelectedEntries(selectedEntries) {
 export async function doddrop() {
     const g = game;
     const u = g.u || {};
+    const initrole = (g.flags?.initrole ?? -1) | 0;
     /* C do.c:931-936 — `if (flags.menu_style != MENU_TRADITIONAL
      *     || (result = ggetobj("drop", drop, 0, FALSE, 0)) < -1)
      *     result = menu_drop(result);`.  MENU_TRADITIONAL (hack.h, 0) skips the
@@ -1070,21 +1084,47 @@ export async function doddrop() {
         await ddropSelectedEntries(selectedEntries);
         return g.context.move ? ECMD_TIME : ECMD_OK;
     }
-    /* MENU_FULL: C do.c:994-998 query_category("Drop what type of items?",
-     * gi.invent, ...).  gi.invent is non-empty here (do.c:924-927 returned
-     * above), so every count reads the live chain. */
+    /* C ref: do.c:928 — "have nothing to drop" if gi.invent is empty. */
+    /* Determine carried object classes + BUC counts.  Prefer the live invent
+     * chain; fall back to the role's deterministic starting kit (same logic as
+     * dotypeinv). */
     // C do.c:997, pickup.c:1311-1313: INCLUDE_VENOM appends to pack order.
     const dropOrder = (g.flags?.inv_order || INV_ORDER).concat(17);
-    const present = new Set();
-    for (let o = g.invent; o; o = o.nobj) present.add(o.oclass | 0);
-    /* C ref: pickup.c:1263-1281 — query_category calls count_buc() once per
-     * BUCX bit with ofilter NULL (doddrop passes no WORN_TYPES); count_buc()
-     * carries COIN_CLASS and C's Role_if(PM_CLERIC) bknown write. */
-    const bcnt = count_buc(g.invent, BUCT_BLESSED, null);
-    const ccnt = count_buc(g.invent, BUCT_CURSED, null);
-    const ucnt = count_buc(g.invent, BUCT_UNCURSED, null);
-    const xcnt = count_buc(g.invent, BUCT_UNKNOWN, null);
-    const carried = dropOrder.filter((oc) => present.has(oc));
+    let carried;
+    let bcnt = 0, ucnt = 0, ccnt = 0, xcnt = 0;
+    if (g.invent) {
+        const present = new Set();
+        for (let o = g.invent; o; o = o.nobj) present.add(o.oclass | 0);
+        /* C ref: pickup.c:1263-1281 — query_category calls count_buc() ONCE PER
+         * BUCX BIT with the same ofilter (NULL here: doddrop passes no
+         * WORN_TYPES).  Do the same rather than a single hand-rolled tally: the
+         * tally that used to live here had no COIN_CLASS arm, so carried gold
+         * fell through to the bknown test and produced a spurious 'X' row.
+         * count_buc() also carries C's Role_if(PM_CLERIC) bknown WRITE, which a
+         * read-only tally cannot. */
+        bcnt = count_buc(g.invent, BUCT_BLESSED, null);
+        ccnt = count_buc(g.invent, BUCT_CURSED, null);
+        ucnt = count_buc(g.invent, BUCT_UNCURSED, null);
+        xcnt = count_buc(g.invent, BUCT_UNKNOWN, null);
+        carried = dropOrder.filter((oc) => present.has(oc));
+    } else {
+        const kit = ROLE_INVENTORY_CLASSES[initrole];
+        if (!kit) {
+            /* C ref: do.c:928 — no invent → "have nothing to drop." */
+            g.context.move = 0;
+            await pline("You have nothing to drop.");
+            return g.context.move ? ECMD_TIME : ECMD_OK;
+        }
+        const present = new Set(kit.classes);
+        carried = dropOrder.filter((oc) => present.has(oc));
+        bcnt = kit.bcnt; ucnt = kit.ucnt; ccnt = kit.ccnt; xcnt = kit.xcnt;
+    }
+    if (carried.length === 0) {
+        /* C ref: do.c:928 — gi.invent empty. */
+        g.context.move = 0;
+        await pline("You have nothing to drop.");
+        return g.context.move ? ECMD_TIME : ECMD_OK;
+    }
     /* C pickup.c:1511-1536 counts only flags.inv_order, without the venom
      * class appended for display by INCLUDE_VENOM (pickup.c:1311-1313). */
     const ccount = carried.filter((oc) => oc !== 17).length;
@@ -1792,9 +1832,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C do.c:1583 — on_level(newlevel, &u.uz) → no-op (can happen).
     if (oldUz.dnum === (newlevel.dnum | 0) && oldUz.dlevel === (newlevel.dlevel | 0))
         return;
-    /* C do.c:1586-1591 — `if (gl.luacore && nhcb_counts[NHCB_LVL_LEAVE])`
-     * lua_getglobal("nh_callback_run") / lua_pushstring / nhl_pcall_handle /
-     * lua_settop: all done inside js/nhlua.js nh_callback_run(). */
     await nh_callback_run(NHCB_LVL_LEAVE);
     // C do.c:1594-1595: recover the tether before saving the old level.
     if (u.utrap && u.utraptype === TT_BURIEDBALL)
@@ -1814,9 +1851,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const newLedger = ledger_no_cmd(newlevel);
     const oldLedger = ledger_no_cmd(oldUz);
     const newInfo = (g.level_info[newLedger] = g.level_info[newLedger] || { flags: 0 });
-    // currentlevel_rewrite creates the file; savelev marks VISITED when writing.
+    // Mark the level we're leaving as existing+visited (it has been generated).
     const oldInfo = (g.level_info[oldLedger] = g.level_info[oldLedger] || { flags: 0 });
-    oldInfo.flags |= LFILE_EXISTS;
+    oldInfo.flags |= (LFILE_EXISTS | VISITED);
     // C do.c:1604-1622 — the departure bookkeeping between currentlevel_rewrite()
     // and keepdogs(), in C's order.  Every one of these is a call C makes
     // unconditionally on EVERY level change and js/ made none of them
@@ -2054,7 +2091,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 if (!o || !n) continue;
                 for (const k of ['disp_ch', 'disp_color', 'disp_glyph_color', 'disp_decgfx',
                                  'disp_glyph_ch', 'disp_glyph_decgfx',
-                                 'disp_attr', 'disp_cls', 'disp_cmap', 'disp_is_warning', 'disp_warning_level',
+                                 'disp_attr', 'disp_cls', 'disp_cmap', 'disp_is_warning',
                                  'disp_mon_pm', 'disp_mon_kind', 'disp_mon_female',
                                  'disp_obj_corpsenm', 'disp_obj_otyp',
                                  'disp_trap_type'])
@@ -2832,19 +2869,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // teleports back to it at step 1061, where C prints "You remember this
     // level as starting level." and pages it.  obj_delivery(TRUE) is left
     // unwired for the same reason as its do.c:1831 sibling above.
-    g.program_state.saving++;
-    if (g.flags.ins_chkpt ?? true) engr_reset_text_pointers(); /* do.c:1969 checkpoint */
+    engr_reset_text_pointers();     /* do.c:1968 save_currentstate() -> savelev -> save_engravings */
     /* do.c:1969 save_currentstate() runs with program_state.in_checkpoint set, so the
      * save's tty_getmsghistory() remember_topl() (topl.c:170-191) copies gt.toplines into
      * the ring slot at maxrow but neither advances maxrow nor clears toplines; until the
-     * next message overwrites it, that slot is the FIRST line of a ^P full window.
-     * save.c:406 skips savegamestate (and history) when checkpoint is off. */
-    g._ckptToplSlot = (g.flags.ins_chkpt ?? true) ? String(g._pending_message || g._resultMessage || '') || null : null;
-    if ((g.flags.ins_chkpt ?? true) && (g.iflags.purge_monsters | 0))
+     * next message overwrites it, that slot is the FIRST line of a ^P full window. */
+    g._ckptToplSlot = String(g._pending_message || g._resultMessage || '') || null;
+    if ((g.iflags.purge_monsters | 0))
         await dmonsfree();
-    if ((g.flags.ins_chkpt ?? true) && g.objs_deleted) dobjsfree();
-    if (g.flags.ins_chkpt ?? true) newInfo.flags |= VISITED; // save.c:493-494
-    g.program_state.saving--;
     notice_all_mons(true);          /* do.c:1973 */
     await print_level_annotation(); /* do.c:1974 */
     await check_special_room(false);      /* do.c:1977 — room entrance message */
@@ -3029,11 +3061,11 @@ const UTOTYPE_DEFERRED = 0x20;
 export function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {
     const g = game;
     const u = g.u || (g.u = {});
-    // C do.c:2063 — u.utotype = utotype_flags | UTOTYPE_DEFERRED
+    // C do.c:2082 — u.utotype = utotype_flags | UTOTYPE_DEFERRED
     u.utotype = (utotype_flags | UTOTYPE_DEFERRED);
-    // C do.c:2065 — assign_level(&u.utolev, tolev)
+    // C do.c:2084 — assign_level(&u.utolev, tolev)
     u.utolev = { dnum: tolev.dnum | 0, dlevel: tolev.dlevel | 0 };
-    // C do.c:2067-2070 — store optional pre/post messages
+    // C do.c:2086-2089 — store optional pre/post messages
     if (pre_msg != null)
         g._dfr_pre_msg = pre_msg;
     if (post_msg != null)
@@ -3795,8 +3827,6 @@ export async function donull() {
     return ECMD_TIME;
 }
 
-const CRYSKNIFE = 43, WORM_TOOTH = 42; /* objects.h otyps (js/mklev.js:541) */
-
 /* C ref: do.c obj_no_longer_held(struct obj *obj) — things that must change when not held.
  * Called for both player and monsters. Recurses into containers.
  * C do.c:897-901 visits each contained object before the container. */
@@ -3807,11 +3837,11 @@ export async function obj_no_longer_held(obj) {
     for (let contents = obj.cobj; contents; contents = contents.nobj)
         await obj_no_longer_held(contents);
     switch (obj.otyp) {
-    case CRYSKNIFE:
+    case 43: /* CRYSKNIFE */
         if (!obj.oerodeproof || !rn2(10)) {
             if (!game.context.mon_moving && !game.program_state.gameover)
-                await costly_alteration(obj, COST_DEGRD);
-            obj.otyp = WORM_TOOTH;
+                await costly_alteration(obj, 6); /* COST_DEGRD */
+            obj.otyp = 42; /* WORM_TOOTH */
             obj.oerodeproof = 0;
         }
         break;
@@ -3866,7 +3896,7 @@ function strncmpi_local(s1, s2, n) {
     return 0;
 }
 
-// C ref: do.c:2425-2446 — set_wounded_legs(long side, int timex)
+// C ref: do.c:2452-2471 — set_wounded_legs(long side, int timex)
 export function set_wounded_legs(side, timex) {
     const u = game.u;
     if (game.disp) game.disp.botl = 1; /* SET_BOTL */
@@ -3894,7 +3924,7 @@ export function set_wounded_legs(side, timex) {
     encumber_msg();
 }
 
-// C ref: do.c:2448-2486 — heal_legs(int how): 0 ordinary, 1 dismounting
+// C ref: do.c:2474-2513 — heal_legs(int how): 0 ordinary, 1 dismounting
 // steed, 2 limbs turn to stone (petrification countdown; suppress message).
 export function heal_legs(how) {
     const u = game.u;
@@ -3907,7 +3937,7 @@ export function heal_legs(how) {
 
         if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
         if (!u.atemp.a) u.atemp.a = [0, 0, 0, 0, 0, 0];
-        /* C do.c:2454 `if (ATEMP(A_DEX) < 0) ATEMP(A_DEX)++;`.  u.atemp.a is in
+        /* C do.c:2452 `if (ATEMP(A_DEX) < 0) ATEMP(A_DEX)++;`.  u.atemp.a is in
          * DISPLAY order in this port (js/attrib.js getAtemp / C_ATTR_TO_DISP),
          * so the C constant A_DEX(=3) has to be translated — indexing with the
          * raw constant edits the INTELLIGENCE slot.  The same translation
@@ -3938,18 +3968,22 @@ export function heal_legs(how) {
 function recbranch_mapseen(source, dest) {
     if ((source.dnum | 0) === (dest.dnum | 0))
         return;                                  /* not a branch */
+    const on_lev = (a, b) => !!a && !!b && (a.dnum | 0) === (b.dnum | 0)
+                          && (a.dlevel | 0) === (b.dlevel | 0);
     let br = null;
     for (const b of (game._dungeon_branches || [])) {
-        if (!b.end1_floating && on_level(source, b.end1) && on_level(dest, b.end2)) { br = b; break; }
-        if (!b.end1_floating && on_level(source, b.end2) && on_level(dest, b.end1)) return;
+        if (!b.end1_floating && on_lev(source, b.end1) && on_lev(dest, b.end2)) { br = b; break; }
+        if (!b.end1_floating && on_lev(source, b.end2) && on_lev(dest, b.end1)) return;
     }
     if (!br)
         return;                                  /* not a real branch */
-    const mptr = (game._mapseen_entries || []).find(entry => !entry.duplicate && on_level(entry, source));
-    if (mptr) {                                  /* C dungeon.c:2467-2470 */
-        if (mptr.br && br !== mptr.br)
+    const mptr = (game._mapseen_entries || []).find(entry => !entry.duplicate && on_lev(entry, source));
+    if (mptr) {
+        const all = (game._level_br = game._level_br || {});
+        const key = `${source.dnum | 0}:${source.dlevel | 0}`;
+        if (all[key] && br !== all[key])
             impossible_sync('Two branches on the same level?');
-        mptr.br = br;
+        all[key] = br;
     } else {
         impossible_sync("Can't note branch for unseen level (%d, %d)",
                         source.dnum | 0, source.dlevel | 0);

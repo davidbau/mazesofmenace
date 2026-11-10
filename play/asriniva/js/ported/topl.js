@@ -1,0 +1,715 @@
+import {C} from './c-runtime.js';
+/* NetHack 5.0	topl.c	$NHDT-Date: 1717967339 2024/06/09 21:08:59 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.89 $ */
+/* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
+/*-Copyright (c) Michael Allison, 2009. */
+/* NetHack may be freely redistributed.  See license for details. */
+
+
+
+
+
+
+
+
+
+
+
+export function tty_doprev_message()
+{
+    let cw = C.wins[C.WIN_MESSAGE];
+    let prevmsg_win;
+    let i;
+
+    if ((C.iflags.prevmsg_window != 115)
+        && !C.ttyDisplay.inread) {           /* not single */
+        if (C.iflags.prevmsg_window == 102) { /* full */
+            prevmsg_win = C.int(C.create_nhwindow(C.NHW_MENU));
+            C.putstr(prevmsg_win, 0, "Message History");
+            C.putstr(prevmsg_win, 0, "");
+            cw.maxcol = cw.maxrow;
+            i = C.int(cw.maxcol);
+            do {
+                if (cw.data[i] && C.strcmp(cw.data[i], ""))
+                    C.putstr(prevmsg_win, 0, cw.data[i]);
+                i = C.int((C.long(i + 1)) % cw.rows);
+            } while (i != cw.maxcol);
+            C.putstr(prevmsg_win, 0, C.gt.toplines);
+            C.display_nhwindow(prevmsg_win, 1);
+            C.destroy_nhwindow(prevmsg_win);
+        } else if (C.iflags.prevmsg_window == 99) { /* combination */
+            do {
+                C.morc = 0;
+                if (cw.maxcol == cw.maxrow) {
+                    C.ttyDisplay.dismiss_more = C.C(112); /* ^P ok at --More-- */
+                    C.callLocal(redotoplin, C.gt.toplines);
+                    cw.maxcol--;
+                    if (cw.maxcol < 0)
+                        cw.maxcol = cw.rows - C.long(1);
+                    if (!cw.data[cw.maxcol])
+                        cw.maxcol = cw.maxrow;
+                } else if (cw.maxcol == (cw.maxrow - C.long(1))) {
+                    C.ttyDisplay.dismiss_more = C.C(112); /* ^P ok at --More-- */
+                    C.callLocal(redotoplin, cw.data[cw.maxcol]);
+                    cw.maxcol--;
+                    if (cw.maxcol < 0)
+                        cw.maxcol = cw.rows - C.long(1);
+                    if (!cw.data[cw.maxcol])
+                        cw.maxcol = cw.maxrow;
+                } else {
+                    prevmsg_win = C.int(C.create_nhwindow(C.NHW_MENU));
+                    C.putstr(prevmsg_win, 0, "Message History");
+                    C.putstr(prevmsg_win, 0, "");
+                    cw.maxcol = cw.maxrow;
+                    i = C.int(cw.maxcol);
+                    do {
+                        if (cw.data[i] && C.strcmp(cw.data[i], ""))
+                            C.putstr(prevmsg_win, 0, cw.data[i]);
+                        i = C.int((C.long(i + 1)) % cw.rows);
+                    } while (i != cw.maxcol);
+                    C.putstr(prevmsg_win, 0, C.gt.toplines);
+                    C.display_nhwindow(prevmsg_win, 1);
+                    C.destroy_nhwindow(prevmsg_win);
+                }
+
+            } while (C.morc == C.C(112));
+            C.ttyDisplay.dismiss_more = 0;
+        } else { /* reversed */
+            C.morc = 0;
+            prevmsg_win = C.int(C.create_nhwindow(C.NHW_MENU));
+            C.putstr(prevmsg_win, 0, "Message History");
+            C.putstr(prevmsg_win, 0, "");
+            C.putstr(prevmsg_win, 0, C.gt.toplines);
+            cw.maxcol = cw.maxrow - C.long(1);
+            if (cw.maxcol < 0)
+                cw.maxcol = cw.rows - C.long(1);
+            do {
+                C.putstr(prevmsg_win, 0, cw.data[cw.maxcol]);
+                cw.maxcol--;
+                if (cw.maxcol < 0)
+                    cw.maxcol = cw.rows - C.long(1);
+                if (!cw.data[cw.maxcol])
+                    cw.maxcol = cw.maxrow;
+            } while (cw.maxcol != cw.maxrow);
+
+            C.display_nhwindow(prevmsg_win, 1);
+            C.destroy_nhwindow(prevmsg_win);
+            cw.maxcol = cw.maxrow;
+            C.ttyDisplay.dismiss_more = 0;
+        }
+    } else if (C.iflags.prevmsg_window == 115) { /* single */
+        C.ttyDisplay.dismiss_more = C.C(112); /* <ctrl/P> allowed at --More-- */
+        do {
+            C.morc = 0;
+            if (cw.maxcol == cw.maxrow)
+                C.callLocal(redotoplin, C.gt.toplines);
+            else if (cw.data[cw.maxcol])
+                C.callLocal(redotoplin, cw.data[cw.maxcol]);
+            cw.maxcol--;
+            if (cw.maxcol < 0)
+                cw.maxcol = cw.rows - C.long(1);
+            if (!cw.data[cw.maxcol])
+                cw.maxcol = cw.maxrow;
+        } while (C.morc == C.C(112));
+        C.ttyDisplay.dismiss_more = 0;
+    }
+    return 0;
+}
+
+
+export function redotoplin(str)
+{
+    let otoplin = C.int(C.ttyDisplay.toplin);
+
+    C.home();
+    if (!C.ttyDisplay.topl_utf8) {
+        if (C.ttyDisplay.mixed && (C.byte(str).value & 0x80)) {
+            /* kludge for the / command, the only time we ever want a */
+            /* graphics character on the top line */
+            C.g_putch(C.int(C.byte(str++).value));
+            C.ttyDisplay.curx++;
+        }
+        C.end_glyphout(); /* in case message printed during graphics output */
+    }
+    C.callLocal(putsyms, str);
+    C.cl_end();
+    C.ttyDisplay.toplin = C.TOPLINE_NEED_MORE;
+    if (C.ttyDisplay.cury && otoplin != C.TOPLINE_SPECIAL_PROMPT)
+        C.callLocal(more);
+}
+
+/* for use by tty_putstr() */
+
+export function show_topl(str)
+{
+    let cw = C.wins[C.WIN_MESSAGE];
+
+    /* show if either STOP isn't set or current message specifies NOSTOP */
+    if ((cw.flags & (C.WIN_STOP | C.WIN_NOSTOP)) != C.WIN_STOP) {
+        /* NOSTOP cancels persistent STOP and is a one-shot operation;
+           force both to be cleared (no-op for either bit that isn't set) */
+        cw.flags &= ~(C.WIN_STOP | C.WIN_NOSTOP);
+
+        if (C.ttyDisplay.cury && C.ttyDisplay.toplin == C.TOPLINE_NON_EMPTY)
+            C.tty_clear_nhwindow(C.WIN_MESSAGE);
+
+        cw.curx = cw.cury = 0;
+        C.home();
+        C.cl_end();
+        C.callLocal(addtopl, str);
+
+        if (C.ttyDisplay.cury && C.ttyDisplay.toplin != C.TOPLINE_SPECIAL_PROMPT)
+            C.ttyDisplay.toplin = C.TOPLINE_NON_EMPTY;
+    }
+}
+
+/* used by update_topl(); also by tty_putstr() */
+
+export function remember_topl()
+{
+    let cw = C.wins[C.WIN_MESSAGE];
+    let idx = C.int(cw.maxrow);
+    let len = C.uint(C.strlen(C.gt.toplines) + C.long(1));
+
+    if ((cw.flags & C.WIN_LOCKHISTORY) || !C.byte(C.gt.toplines).value)
+        return;
+
+    if (len > C.uint(cw.datlen[idx])) {
+        if (cw.data[idx])
+            C.free(cw.data[idx]);
+        len += (8 - (len & 7)); /* pad up to next multiple of 8 */
+        cw.data[idx] = C.alloc(len);
+        cw.datlen[idx] = C.short(len);
+    }
+    C.Strcpy(cw.data[idx], C.gt.toplines);
+    if (!C.program_state.in_checkpoint) {
+        C.byte(C.gt.toplines).value = 0;
+        cw.maxcol = cw.maxrow = (C.long(idx + 1)) % cw.rows;
+    }
+}
+
+
+export function addtopl(s)
+{
+    let cw = C.wins[C.WIN_MESSAGE];
+
+    C.tty_curs(C.BASE_WINDOW, cw.curx + C.long(1), cw.cury);
+    C.callLocal(putsyms, s);
+    C.cl_end();
+    C.ttyDisplay.toplin = C.TOPLINE_NEED_MORE;
+}
+
+
+export function more()
+{
+    let cw = C.wins[C.WIN_MESSAGE];
+
+    if (C.iflags.debug_fuzzer)
+        return;
+
+    /* avoid recursion -- only happens from interrupts */
+    if (C.ttyDisplay.inmore)
+        return;
+
+    C.ttyDisplay.inmore++;
+
+    if (C.ttyDisplay.toplin) {
+        C.tty_curs(C.BASE_WINDOW, cw.curx + C.long(1), cw.cury);
+        if (cw.curx >= C.CO - 8)
+            C.callLocal(topl_putsym, 10);
+    }
+
+    if (C.flags.standout)
+        C.standoutbeg();
+    C.callLocal(putsyms, C.defmorestr);
+    if (C.flags.standout)
+        C.standoutend();
+
+    C.xwaitforspace("\x1b ");
+
+    if (C.morc == 27) {
+        if (!(cw.flags & C.WIN_NOSTOP))
+            cw.flags |= C.WIN_STOP;
+    }
+
+    if (C.ttyDisplay.toplin && cw.cury) {
+        C.docorner(1, cw.cury + C.long(1), 0);
+        cw.curx = cw.cury = 0;
+        C.home();
+    } else if (C.morc == 27) {
+        cw.curx = cw.cury = 0;
+        C.home();
+        C.cl_end();
+    }
+    C.ttyDisplay.toplin = C.TOPLINE_EMPTY;
+    C.ttyDisplay.inmore = 0;
+}
+
+
+export function update_topl(bp)
+{
+    let tl, otl;
+    let n0;
+    let notdied = C.int(1);
+    let cw = C.wins[C.WIN_MESSAGE];
+    let skip = C.char((cw.flags & (C.WIN_STOP | C.WIN_NOSTOP)) == C.WIN_STOP);
+
+    /* If there is room on the line, print message on same line */
+    /* But messages like "You die..." deserve their own line */
+    n0 = C.int(C.strlen(bp));
+    if ((C.ttyDisplay.toplin == C.TOPLINE_NEED_MORE || skip)
+        && cw.cury == 0
+        && n0 + C.int(C.strlen(C.gt.toplines)) + 3 < C.CO - 8 /* room for --More-- */
+        && (notdied = C.int(C.strncmp(bp, "You die", 7))) != 0) {
+        C.Strcat(C.gt.toplines, "  ");
+        C.Strcat(C.gt.toplines, bp);
+        cw.curx += C.long(2);
+        if (!skip)
+            C.callLocal(addtopl, bp);
+        return;
+    } else if (!skip) {
+        if (C.ttyDisplay.toplin == C.TOPLINE_NEED_MORE) {
+            C.callLocal(more);
+        } else if (cw.cury) { /* for toplin==TOPLINE_NON_EMPTY && cury > 1 */
+            C.docorner(1, cw.cury + C.long(1), 0); /* reset cury = 0 if redraw screen */
+            cw.curx = cw.cury = 0;   /* from home--cls() & docorner(1,n,0) */
+        }
+    }
+    C.callLocal(remember_topl);
+    C.strncpy(C.gt.toplines, bp, C.TBUFSZ);
+    C.byte(C.gt.toplines+C.TBUFSZ-1).value = 0;
+
+    for (tl = C.gt.toplines; n0 >= C.CO; ) {
+        otl = tl;
+        for (tl += C.CO - 1; tl != otl; --tl)
+            if (C.byte(tl).value == 32)
+                break;
+        if (tl == otl) {
+            /* Eek!  A huge token.  Try splitting after it. */
+            tl = C.strchr(otl, 32);
+            if (!tl)
+                break; /* No choice but to spit it out whole. */
+        }
+        C.byte(tl++).value = 10;
+        n0 = C.int(C.strlen(tl));
+    }
+    if (!notdied) /* double negative => "You die"; avoid suppressing mesg */
+        cw.flags &= ~C.WIN_STOP, skip = C.char(0);
+    if (!skip)
+        C.callLocal(redotoplin, C.gt.toplines);
+}
+
+
+export function topl_putsym(c)
+{
+    let cw = C.wins[C.WIN_MESSAGE];
+
+    if (cw == 0)
+        C.panic("Putsym window MESSAGE nonexistent");
+
+    switch (c) {
+    case 8:
+        if (C.ttyDisplay.curx == 0 && C.ttyDisplay.cury > 0)
+            C.tty_curs(C.BASE_WINDOW, C.CO, C.int(C.ttyDisplay.cury) - 1);
+        C.backsp();
+        C.toplAssert("ttyDisplay->curx > 0", 317, C.ttyDisplay.curx > 0);
+        C.ttyDisplay.curx--;
+        cw.curx = C.ttyDisplay.curx;
+        return;
+    case 10:
+        C.cl_end();
+        C.ttyDisplay.curx = 0;
+        C.ttyDisplay.cury++;
+        cw.cury = C.ttyDisplay.cury;
+        break;
+    default:
+        if (C.ttyDisplay.curx == C.CO - 1)
+            C.callLocal(topl_putsym, 10); /* 1 <= curx < CO; avoid CO */
+        C.ttyDisplay.curx++;
+    }
+    cw.curx = C.ttyDisplay.curx;
+    if (cw.curx == 0)
+        C.cl_end();
+    C.putchar(c);
+    /* On non-WIN32CON, curx is incremented BEFORE putchar (see line 336
+       above), so curx is one ahead of where the character was actually
+       written.  Temporarily decrement to write to the correct shadow
+       buffer position — same pattern used by process_menu_window,
+       process_text_window, and other NOMUX hooks in wintty.c. */
+    { let svx = C.int(C.ttyDisplay.curx); C.ttyDisplay.curx--; C.nomux_putch(c); C.ttyDisplay.curx = svx; }
+}
+
+
+export function putsyms(str)
+{
+    while (C.byte(str).value)
+        C.callLocal(topl_putsym, C.byte(str++).value);
+}
+
+
+export function removetopl(n)
+{
+    /* assume addtopl() has been done, so ttyDisplay->toplin is already set */
+    while (n-- > 0)
+        C.callLocal(putsyms, "\b \b");
+}
+
+ /* from xxxtty.c; don't need kill_char */
+
+/* returns a single keystroke; also sets 'yn_number' */
+
+export function tty_yn_function(query, resp, def)
+{
+    /*
+     * Generic yes/no function.  'def' is the default (returned by space
+     * or return; 'esc' returns 'q', or 'n', or the default, depending on
+     * what's in the expected-response string.  The 'query' string is
+     * printed before the user is asked about the string.
+     *
+     * If resp is NULL, any single character is accepted and returned.
+     * If not-NULL, only characters in it are allowed (exceptions:  the
+     * quitchars are always allowed, and if it contains '#' then digits
+     * are allowed).  If it includes an <esc>, anything beyond that won't
+     * be shown in the prompt to the user but will be acceptable as input.
+     */
+    let q;
+    let rtmp = C.stackAlloc(40);
+    let digit_ok, allow_num, preserve_case = C.char(0);
+    let cw = C.wins[C.WIN_MESSAGE];
+    let doprev = C.char(0);
+    let prompt = C.stackAlloc(256);
+
+    C.yn_number = 0n;
+    if (C.ttyDisplay.toplin == C.TOPLINE_NEED_MORE
+        && (cw.flags & (C.WIN_STOP | C.WIN_NOSTOP)) != C.WIN_STOP)
+        C.callLocal(more);
+    cw.flags &= ~(C.WIN_STOP | C.WIN_NOSTOP);
+    C.ttyDisplay.toplin = C.TOPLINE_SPECIAL_PROMPT;
+    C.ttyDisplay.inread++;
+    clean_up: {
+    if (resp) {
+        let rb, respbuf = C.stackAlloc(128);
+
+        allow_num = (C.char(C.strchr(resp, 35) != 0));
+        C.Strcpy(respbuf, resp);
+        /* normally we force lowercase, but if any uppercase letters
+           are present in the allowed response, preserve case;
+           check this before stripping the hidden choices */
+        for (rb = respbuf; C.byte(rb).value; ++rb)
+            if (65 <= C.byte(rb).value && C.byte(rb).value <= 90) {
+                preserve_case = C.char(1);
+                break;
+            }
+        /* any acceptable responses that follow <esc> aren't displayed */
+        if ((rb = C.strchr(respbuf, 27)) != 0)
+            C.byte(rb).value = 0;
+        C.strncpy(prompt, query, C.QBUFSZ - 1);
+        C.byte(prompt+(C.QBUFSZ - 1)).value = 0;
+        C.Sprintf(C.eos(prompt), " [%s]", respbuf);
+        if (def)
+            C.Sprintf(C.eos(prompt), " (%c)", def);
+        /* not pline("%s ", prompt);
+           trailing space is wanted here in case of reprompt */
+        C.Strcat(prompt, " ");
+        C.custompline(C.OVERRIDE_MSGTYPE | C.SUPPRESS_HISTORY, "%s", prompt);
+    } else {
+        /* no restriction on allowed response, so always preserve case */
+        /* preserve_case = TRUE; -- moot since we're jumping to the end */
+        C.Sprintf(prompt, "%s ", query);
+        C.custompline(C.OVERRIDE_MSGTYPE | C.SUPPRESS_HISTORY, "%s", prompt);
+        q = C.char(C.readchar());
+        break clean_up;
+    }
+
+    do { /* loop until we get valid input */
+        q = C.char(C.readchar());
+        if (!preserve_case)
+            q = C.char(C.lowc(q));
+        if (q == 16) { /* ctrl-P */
+            if (C.iflags.prevmsg_window != 115) {
+                let sav = C.int(C.ttyDisplay.inread);
+                C.ttyDisplay.inread = 0;
+                C.callLocal(tty_doprev_message);
+                C.ttyDisplay.inread = sav;
+                C.tty_clear_nhwindow(C.WIN_MESSAGE);
+                cw.maxcol = cw.maxrow;
+                C.callLocal(addtopl, prompt);
+            } else {
+                if (!doprev)
+                    C.callLocal(tty_doprev_message); /* need two initially */
+                C.callLocal(tty_doprev_message);
+                doprev = C.char(1);
+            }
+            q = C.char(0); /* force another loop iteration */
+            continue;
+        } else if (doprev) {
+            /* BUG[?]: this probably ought to check whether the
+               character which has just been read is an acceptable
+               response; if so, skip the reprompt and use it. */
+            C.tty_clear_nhwindow(C.WIN_MESSAGE);
+            cw.maxcol = cw.maxrow;
+            doprev = C.char(0);
+            C.callLocal(addtopl, prompt);
+            q = C.char(0); /* force another loop iteration */
+            continue;
+        }
+        digit_ok = C.char(Number(Boolean(allow_num && C.digit(q))));
+        if (q == 27) {
+            if (C.strchr(resp, 113))
+                q = C.char(113);
+            else if (C.strchr(resp, 110))
+                q = C.char(110);
+            else
+                q = C.char(def);
+            break;
+        } else if (C.strchr(C.quitchars, q)) {
+            q = C.char(def);
+            break;
+        }
+        if (!C.strchr(resp, q) && !digit_ok) {
+            C.tty_nhbell();
+            q = C.char(C.char(0));
+        } else if (q == 35 || digit_ok) {
+            let z, digit_string = C.stackAlloc(2);
+            let n_len = C.int(0);
+            let value = C.long(0);
+
+            C.callLocal(addtopl, "#"), n_len++;
+            C.byte(digit_string+(1)).value = 0;
+            if (q != 35) {
+                C.byte(digit_string+(0)).value = q;
+                C.callLocal(addtopl, digit_string), n_len++;
+                value = C.long(q - 48);
+                q = C.char(35);
+            }
+            do { /* loop until we get a non-digit */
+                z = C.char(C.readchar());
+                if (!preserve_case)
+                    z = C.char(C.lowc(z));
+                if (C.digit(z)) {
+                    let dgt = C.long(C.long((z - 48)));
+
+                    /* value = (10 * value) + (z - '0'); */
+                    value = C.long(C.AppendLongDigit(value, dgt));
+                    if (value < 0)
+                        break; /* overflow: try again */
+                    C.byte(digit_string+(0)).value = z;
+                    C.callLocal(addtopl, digit_string), n_len++;
+                } else if (z == 121 || C.strchr(C.quitchars, z)) {
+                    if (z == 27)
+                        value = C.long(-1); /* abort */
+                    z = C.char(10);       /* break */
+                } else if (z == C.erase_char || z == 8) {
+                    if (n_len <= 1) {
+                        value = C.long(-1);
+                        break;
+                    } else {
+                        value /= C.long(10);
+                        C.callLocal(removetopl, 1), n_len--;
+                    }
+                } else {
+                    value = C.long(-1); /* abort */
+                    C.tty_nhbell();
+                    break;
+                }
+            } while (z != 10);
+            if (value > 0)
+                C.yn_number = value;
+            else if (value == 0)
+                q = C.char(110); /* 0 => "no" */
+            else {       /* remove number from top line, then try again */
+                C.callLocal(removetopl, n_len), n_len = C.int(0);
+                q = C.char(0);
+            }
+        }
+    } while (!q);
+
+    }
+    if (C.yn_number)
+        C.Sprintf(rtmp, "#%ld", C.yn_number);
+    else
+        C.key2txt(q, rtmp);
+    /* addtopl(rtmp); -- rewrite gt.toplines instead */
+    C.Sprintf(C.gt.toplines, "%s%s", prompt, rtmp);
+    C.dumplogmsg(C.gt.toplines);
+    C.ttyDisplay.inread--;
+    C.ttyDisplay.toplin = C.TOPLINE_NON_EMPTY;
+    if (C.ttyDisplay.intr)
+        C.ttyDisplay.intr--;
+    if (C.wins[C.WIN_MESSAGE].cury)
+        C.tty_clear_nhwindow(C.WIN_MESSAGE);
+
+    return q;
+}
+
+/* shared by tty_getmsghistory() and tty_putmsghistory() */
+
+
+/* collect currently available message history data into a sequential array;
+   optionally, purge that data from the active circular buffer set as we go */
+
+export function msghistory_snapshot(purge)
+/* clear message history buffer as we copy it */
+{
+    let mesg;
+    let i, inidx, outidx;
+    let cw;
+
+    /* paranoia (too early or too late panic save attempt?) */
+    if (C.WIN_MESSAGE == C.WIN_ERR || !C.wins[C.WIN_MESSAGE])
+        return;
+    cw = C.wins[C.WIN_MESSAGE];
+
+    /* flush gt.toplines[], moving most recent message to history */
+    C.callLocal(remember_topl);
+
+    /* for a passive snapshot, we just copy pointers, so can't allow further
+       history updating to take place because that could clobber them */
+    if (!purge)
+        cw.flags |= C.WIN_LOCKHISTORY;
+
+    C.snapshot_mesgs = C.alloc((cw.rows + C.long(1)) * C.long(C.pointerSize));
+    outidx = C.int(0);
+    inidx = C.int(cw.maxrow);
+    for (i = C.int(0); i < cw.rows; ++i) {
+        C.snapshot_mesgs[i] = 0;
+        mesg = cw.data[inidx];
+        if (mesg && C.byte(mesg).value) {
+            C.snapshot_mesgs[outidx++] = mesg;
+            if (purge) {
+                /* we're taking this pointer away; subsequent history
+                   updates will eventually allocate a new one to replace it */
+                cw.data[inidx] = 0;
+                cw.datlen[inidx] = 0;
+            }
+        }
+        inidx = C.int((C.long(inidx + 1)) % cw.rows);
+    }
+    C.snapshot_mesgs[cw.rows] = 0; /* sentinel */
+
+    /* for a destructive snapshot, history is now completely empty */
+    if (purge)
+        cw.maxcol = cw.maxrow = 0;
+}
+
+/* release memory allocated to message history snapshot */
+
+export function free_msghistory_snapshot(purged)
+/* True: took history's pointers,
+                     * False: just cloned them */
+{
+    if (C.snapshot_mesgs) {
+        /* snapshot pointers are no longer in use */
+        if (purged) {
+            let i;
+
+            for (i = C.int(0); C.snapshot_mesgs[i]; ++i)
+                C.free(C.snapshot_mesgs[i]);
+        }
+
+        C.free(C.snapshot_mesgs), C.snapshot_mesgs = 0;
+
+        /* history can resume being updated at will now... */
+        if (!purged)
+            C.wins[C.WIN_MESSAGE].flags &= ~C.WIN_LOCKHISTORY;
+    }
+}
+
+/*
+ * This is called by the core save routines.
+ * Each time we are called, we return one string from the
+ * message history starting with the oldest message first.
+ * When none are left, we return a final null string.
+ *
+ * History is collected at the time of the first call.
+ * Any new messages issued after that point will not be
+ * included among the output of the subsequent calls.
+ */
+
+export function tty_getmsghistory(init)
+{
+
+    let nextmesg;
+    let result = 0;
+
+    if (init) {
+        C.callLocal(msghistory_snapshot, 0);
+        C.nxtidx = 0;
+    }
+
+    if (C.snapshot_mesgs) {
+        nextmesg = C.snapshot_mesgs[C.nxtidx++];
+        if (nextmesg) {
+            result = nextmesg;
+        } else {
+            C.callLocal(free_msghistory_snapshot, 0);
+        }
+    }
+    return result;
+}
+
+/*
+ * This is called by the core savefile restore routines.
+ * Each time we are called, we stuff the string into our message
+ * history recall buffer. The core will send the oldest message
+ * first (actually it sends them in the order they exist in the
+ * save file, but that is supposed to be the oldest first).
+ * These messages get pushed behind any which have been issued
+ * since this session with the program has been started, since
+ * they come from a previous session and logically precede
+ * anything (like "Restoring save file...") that's happened now.
+ *
+ * Called with a null pointer to finish up restoration.
+ *
+ * It's also called by the quest pager code when a block message
+ * has a one-line summary specified.  We put that line directly
+ * into message history for ^P recall without having displayed it.
+ */
+
+export function tty_putmsghistory(msg, restoring_msghist)
+{
+
+    let idx;
+
+    if (restoring_msghist && !C.initd) {
+        /* we're restoring history from the previous session, but new
+           messages have already been issued this session ("Restoring...",
+           for instance); collect current history (ie, those new messages),
+           and also clear it out so that nothing will be present when the
+           restored ones are being put into place */
+        C.callLocal(msghistory_snapshot, 1);
+        C.initd = 1;
+        /* this suffices; there's no need to scrub saved_pline[] pointers */
+        C.gs.saved_pline_index = 0;
+    }
+
+    if (msg) {
+        /* Caller is asking us to remember a top line that needed more.
+           Should we call more?  This can happen when the player has set
+           iflags.force_invmenu and they attempt to shoot with nothing in
+           the quiver. */
+        if (C.ttyDisplay && C.ttyDisplay.toplin == C.TOPLINE_NEED_MORE)
+            C.ttyDisplay.toplin = C.TOPLINE_NON_EMPTY;
+
+        /* move most recent message to history, make this become most recent */
+        C.callLocal(remember_topl);
+        C.Strcpy(C.gt.toplines, msg);
+        C.dumplogmsg(C.gt.toplines);
+    } else if (C.snapshot_mesgs) {
+        C.toplAssert("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE", 719, Number(Boolean(C.ttyDisplay == 0 ||
+                 C.ttyDisplay.toplin != C.TOPLINE_NEED_MORE)));
+
+        /* done putting arbitrary messages in; put the snapshot ones back */
+        for (idx = C.int(0); C.snapshot_mesgs[idx]; ++idx) {
+            C.callLocal(remember_topl);
+            C.Strcpy(C.gt.toplines, C.snapshot_mesgs[idx]);
+            C.dumplogmsg(C.gt.toplines);
+        }
+        /* now release the snapshot */
+        C.callLocal(free_msghistory_snapshot, 1);
+        C.initd = 0; /* reset */
+    }
+}
+
+/* TTY_GRAPHICS */
+
+/*topl.c*/

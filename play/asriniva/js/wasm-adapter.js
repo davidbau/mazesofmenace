@@ -7,6 +7,7 @@ import { createPortedRuntime } from './ported/wasm-runtime.js';
 import { createWasmDependencyRuntime } from './services/wasm-dependency-runtime.js';
 import { filesUnder, restoreGameFiles, captureGameFiles } from './services/game-files.js';
 import tuLayouts from './wasm/tu-layouts.json' with { type: 'json' };
+import buildMetadata from './wasm/build.json' with { type: 'json' };
 
 const STATE_PATH = '/teleport-wasm64-state.json';
 
@@ -35,9 +36,17 @@ async function runWithTerminal(input) {
     const dependencyRuntime = createWasmDependencyRuntime({ regex: true });
     const portedRuntime = createPortedRuntime(tuLayouts);
     const recordingEpoch = recordingClockEpoch();
+    let luaRuntime;
+    if (buildMetadata.luaBackend === 'javascript') {
+        const [{ createWasmLuaRuntime }, { createLuaBytecodeVM }] = await Promise.all([
+            import('./services/wasm-lua-runtime.js'), import('./services/lua-bytecode-vm.js'),
+        ]);
+        luaRuntime = createWasmLuaRuntime({ vmFactory: createLuaBytecodeVM });
+    }
     const module = await createNethack({
         nethackPorted: portedRuntime,
         nethackDependencies: dependencyRuntime,
+        nethackLua: luaRuntime,
         nethackCalendarTime: () => BigInt(recordingEpoch),
         noInitialRun: true,
         print: line => { diagnostics.push(line); if (diagnostics.length > 40) diagnostics.shift(); },
@@ -117,6 +126,7 @@ async function runWithTerminal(input) {
         };
     const dependencyDiagnostics = {
         backend: module.nethackDependencyBackend || 'c',
+        lua: module.nethackLuaBackend || 'c',
         calls: module.nethackDependencyBackend === 'javascript'
             ? { ...dependencyRuntime.calls, ...(regexDiagnostics.calls || {}) } : null,
         wasmBridgeCalls: module.nethackDependencyBackend === 'javascript'

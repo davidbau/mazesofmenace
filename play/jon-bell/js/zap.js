@@ -40,7 +40,7 @@ import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
 import { is_magical_trap, MAGIC_PORTAL, VIBRATING_SQUARE } from './const.js';
 import { spell_skilltype } from './spell.js';
 import { P_SKILL } from './skills.js';
-import { P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT, P_RIDING } from './const.js';
+import { P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT } from './const.js';
 import { mkobj, mksobj, rnd_class, OC_MERGE, dealloc_oextra, OC_USES_KNOWN, engr_at, del_engr_at, make_engr_at, wipe_engr_at, random_engraving, makemon, MONS_CWT } from './mklev.js';
 import { sobj_at } from './invent.js';
 import { lowc } from './hacklib.js';
@@ -135,7 +135,7 @@ import { xytodir, set_msg_xy } from './cmd.js';
 import { throwit_mon_hit, endmultishot } from './dothrow.js';
 import { ceiling, body_part, force_decor } from './cmd.js';
 import { hot_pursuit, Shknam, obfree } from './dokick.js';
-import { breaks, breakobj } from './dothrow.js';
+import { breaks } from './dothrow.js';
 import { delobj } from './invent.js';
 import { losehp } from './hack.js';
 import { weight } from './weight.js';
@@ -888,7 +888,6 @@ async function maybe_destroy_item(obj, dmgtyp) {
             dmg = Math.trunc(((obj.owt | 0) + 19) / 20);
         }
     } else {
-        await impossible("maybe_destroy_item with unexpected dmgtyp %d", dmgtyp);
         return 0;
     }
     if (!skip) {
@@ -1748,7 +1747,7 @@ export async function zapyourself(obj, ordinary) {
         case SPE_EXTRA_HEALING:
             /* C zap.c:2903-2909 */
             learn_it = true; /* (no effect for spells...) */
-            await healup(d(6, otyp === SPE_EXTRA_HEALING ? 8 : 4), 0, false,
+            healup(d(6, otyp === SPE_EXTRA_HEALING ? 8 : 4), 0, false,
                    (obj.blessed || otyp === SPE_EXTRA_HEALING));
             await pline(`You feel ${otyp === SPE_EXTRA_HEALING ? 'much ' : ''}better.`);
             break;
@@ -3006,7 +3005,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
         await wakeup_attack(mon, (type >= 0));
     return rangemod;
 }
-/* C zap.c:5040-5079 melt_ice(). */
+/* C zap.c:5033-5074 melt_ice(). */
 export async function melt_ice_zap(x, y, msg) {
     const lev = _buzz_cell(x, y);
     if (!lev)
@@ -3037,7 +3036,7 @@ export async function melt_ice_zap(x, y, msg) {
             await pline(`${An(xname(boulder))} settles...`);
         do {
             obj_extract_self_general(boulder);
-            if (!await boulder_hits_pool(boulder, x, y, false)) await impossible("melt_ice: no pool?");
+            await boulder_hits_pool(boulder, x, y, false);
         } while (is_pool(x, y)
                  && (boulder = sobj_at(475 /* BOULDER */, x, y)) != null);
         newsym(x, y);
@@ -3264,7 +3263,6 @@ async function maybe_destroy_item_mon(carrier, obj, dmgtyp) {
             return 0;
         }
     } else {
-        await impossible("maybe_destroy_item with unexpected dmgtyp %d", dmgtyp);
         return 0;
     }
     if (chargeit) {
@@ -4553,21 +4551,27 @@ function _zp_place_on_floor(obj, x, y) {
         block_point(xi, yi);
 }
 
-/* C zap.c:5537-5578 fracture_rock(struct obj *obj) /* no texts here! *\/ —
- * fractured by pick-axe or wand of striking or by vault guard or shopkeeper. */
+/* C zap.c:5537 fracture_rock(struct obj *obj) /* no texts here! *\/ —
+ * "fractured by pick-axe or wand of striking or by vault guard or
+ * shopkeeper".  Only the bhito() WAN_STRIKING/SPE_FORCE_BOLT BOULDER caller
+ * below reaches this in this file, and that caller is always a hero zap
+ * (context.mon_moving is only ever set for a MONSTER zap, which this file's
+ * weffects()->bhitpile()->bhito() chain never reaches — see the comment on
+ * the default arm of bhito()'s WAN_STRIKING case), so by_you is always true
+ * here.  RNG: rn1(60,7) = rn2(60)+7 for the new rock's quantity
+ * (zap.c:5560). */
 export async function fracture_rock(obj) {
     const g = game;
     const by_you = !_expl_mon_moving();
-    const xp = { value: 0 }, yp = { value: 0 };
-    if (by_you && get_obj_location(obj, xp, yp, 0)) {
-        const x = xp.value, y = yp.value;
+    if (by_you && (obj.where | 0) === ZP_OBJ_FLOOR) {
+        const x = obj.ox | 0, y = obj.oy | 0;
         if (costly_spot(x, y)) {
             const room = in_rooms(x, y, SHOPBASE);
             const shkbox = { value: null };
             if ((await billable(shkbox, obj, room.length ? room[0] : 0, false))) {
                 const shkp = shkbox.value;
                 await pline(`You fracture ${s_suffix(shkname(shkp))} ${xname(obj)}.`);
-                await breakobj(obj, x, y, true, false);
+                await stolen_value(obj, x, y, !!shkp.mpeaceful, false);
             }
         }
     }
@@ -5225,7 +5229,7 @@ async function maybe_explode_trap(ttmp, obj) {
     return false;
 }
 
-async function _zap_engravings_at(x, y, obj) {
+async function _zap_map_engraving(x, y, obj) {
     const e = engr_at(x, y);
     if (!e || e.engr_type === HEADSTONE)
         return;
@@ -5437,7 +5441,7 @@ async function zap_updown(obj) {
             ptmp += await bhitpile(obj, bhito, x, y, u.dz);
             const ltyp = loc?.typ === DRAWBRIDGE_UP
                 ? db_under_typ(loc.drawbridgemask | 0) : (loc?.typ | 0);
-            await _zap_engravings_at(x, y, obj);
+            await _zap_map_engraving(x, y, obj);
             await _zap_map_probing(x, y, obj); // C zap.c:3248 zap_map probing tail
             let surf;
             if (ltyp === ICE || IS_FURNITURE(ltyp)) {
@@ -5575,7 +5579,7 @@ async function zap_updown(obj) {
          * commented out, "not needed due to early return"), so this call is
          * unconditional. */
         const learn_it = await maybe_explode_trap(t_at(x, y), obj); // C zap_map:3642
-        await _zap_engravings_at(x, y, obj);
+        await _zap_map_engraving(x, y, obj);
         if (learn_it) learnwand(obj); // C zap_map:3797-3798
     } else if (u.dz < 0) {
         /* zapping upward: game flavor, hits whatever the hero is hiding
@@ -6324,13 +6328,11 @@ function _mindless(ptr) {
     return !!(((ptr?.mflags1) | 0) & _ZK_M1_MINDLESS);
 }
 const _ZK_MZ_HUMAN = 2; /* monflag.h MZ_HUMAN (== MZ_MEDIUM) */
-/* C zap.c:578-609 release_hold(void) — hero is held by/holding a monster and
- * zapped opening/knock magic at holder/holdee/self. */
 export async function release_hold() {
     const u = game.u || {};
     const mtmp = u.ustuck;
     if (!mtmp) {
-        await impossible("release_hold when not held?");
+        /* C: impossible("release_hold when not held?"); — state guard only. */
         return;
     }
     if (u.uswallow) { /* zap.c:583 — possible for sticky hero to be swallowed */
@@ -6662,7 +6664,7 @@ function _ci_carried(obj) {
     return false;
 }
 /* C attrib.h ABON(x) = u.abon.a[x]. */
-function _ci_u_abon_a() {
+function _ci_abon() {
     const u = game.u || (game.u = {});
     if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
     if (!u.abon.a) u.abon.a = [0, 0, 0, 0, 0, 0];
@@ -6688,19 +6690,19 @@ async function cancel_item(obj) {
         switch (otyp) {
         case CI_RIN_GAIN_STRENGTH:
             if ((worn & W_RING) !== 0) {
-                _ci_u_abon_a()[C_ATTR_TO_DISP[A_STR]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_STR]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
         case CI_RIN_GAIN_CONSTITUTION:
             if ((worn & W_RING) !== 0) {
-                _ci_u_abon_a()[C_ATTR_TO_DISP[A_CON]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_CON]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
         case CI_RIN_ADORNMENT:
             if ((worn & W_RING) !== 0) {
-                _ci_u_abon_a()[C_ATTR_TO_DISP[A_CHA]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_CHA]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
@@ -6722,14 +6724,14 @@ async function cancel_item(obj) {
             break;
         case CI_GAUNTLETS_OF_DEXTERITY:
             if ((worn & W_ARMG) !== 0) {
-                _ci_u_abon_a()[C_ATTR_TO_DISP[A_DEX]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_DEX]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
         case CI_HELM_OF_BRILLIANCE:
             if ((worn & W_ARMH) !== 0) {
-                _ci_u_abon_a()[C_ATTR_TO_DISP[A_INT]] -= (obj.spe | 0);
-                _ci_u_abon_a()[C_ATTR_TO_DISP[A_WIS]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_INT]] -= (obj.spe | 0);
+                _ci_abon()[C_ATTR_TO_DISP[A_WIS]] -= (obj.spe | 0);
                 _ci_botl();
             }
             break;
@@ -7111,7 +7113,7 @@ export function inventory_resistance_check(dmgtyp) {
 /**
  * Returns a string describing what item(s) protect against the given
  * damage type. Currently only useful in wizard mode.
- * C ref: zap.c:5722-5763 item_what()
+ * C ref: zap.c item_what(5714-5753)
  *
  * @param {number} dmgtyp
  * @returns {string}
@@ -7125,9 +7127,9 @@ export function item_what(dmgtyp) {
     const xtrinsic = uprop.extrinsic || 0;
     let what = null;
 
-    if (wizard()) {
+    if (true) {
         if (!prop || !xtrinsic) {
-            /* 'what' stays null (C zap.c:5732). */
+            return " by your " + (dmgtyp === 3 ? "cloak" : "armor");
         } else if (xtrinsic & W_ARMC) {
             what = cloak_simple_name(u.uarmc);
         } else if (xtrinsic & W_ARM) {
@@ -7310,7 +7312,7 @@ function untrap_prob(ttmp) {
     if (unpr(STUNNED)) chance += 2;
     if (unpr(FUMBLING)) chance *= 2;
     if (ttmp.madeby_u) chance--;
-    if (_wand_Role_if(PM_RANGER) && (ttmp.ttyp | 0) === BEAR_TRAP && chance <= 3)
+    if (_wand_Role_if(PM_RANGER) && (ttmp.ttyp | 0) === 5 && chance <= 3)
         return 0;
     if (_wand_Role_if(PM_ROGUE)) {
         if (rn2(2 * 30) < (u.ulevel | 0)) chance--;
@@ -7356,7 +7358,7 @@ export async function try_disarm(ttmp, force_failure) {
     const mtmp = m_at(ttmp.tx, ttmp.ty);
     const ttype = ttmp.ttyp | 0;
     const under_u = !(u.dx | 0) && !(u.dy | 0);
-    const holdingtrap = (ttype === BEAR_TRAP || ttype === WEB_ZAP);
+    const holdingtrap = (ttype === 5 || ttype === WEB_ZAP);
     if (mtmp && (!mtmp.mtrapped || !holdingtrap)) {
         await pline(`${Monnam(mtmp)} is in the way.`);
         return 0;
@@ -7374,7 +7376,7 @@ export async function try_disarm(ttmp, force_failure) {
         }
     }
     if (!can_reach_floor(under_u)) {
-        if (u.usteed && P_SKILL(P_RIDING) < P_BASIC) await _ut_rider_cant_reach();
+        if (u.usteed) await _ut_rider_cant_reach();
         else await pline(`You are unable to reach the ${trapname(ttype, false)}!`);
         return 0;
     }
@@ -7382,7 +7384,7 @@ export async function try_disarm(ttmp, force_failure) {
         if (rnl(5)) {
             await pline('Whoops...');
             if (mtmp) {
-                if (ttype === BEAR_TRAP) {
+                if (ttype === 5) {
                     if (mtmp.mtame) await abuse_dog(mtmp);
                     mtmp.mhp -= rnd(4);
                     if (DEADMONSTER(mtmp)) await killed(mtmp);
@@ -7420,9 +7422,9 @@ async function disarm_holdingtrap(ttmp) {
     let mtmp;
     if ((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) {
         mtmp.mtrapped = 0;
-        await pline(`You extract ${mon_nam(mtmp)} from ${which} ${(ttmp.ttyp | 0) === BEAR_TRAP ? 'bear trap' : 'web'}.`);
+        await pline(`You extract ${mon_nam(mtmp)} from ${which} ${(ttmp.ttyp | 0) === 5 ? 'bear trap' : 'web'}.`);
         await reward_untrap(ttmp, mtmp);
-    } else if ((ttmp.ttyp | 0) === BEAR_TRAP) {
+    } else if ((ttmp.ttyp | 0) === 5) {
         await pline(`You disarm ${which} bear trap.`);
         await cnv_trap_obj(244 /* BEARTRAP */, 1, ttmp, false);
     } else if ((ttmp.ttyp | 0) === WEB_ZAP) {
@@ -7459,14 +7461,13 @@ async function disarm_shooting_trap(ttmp, otyp) {
     return 1;
 }
 
-const S_HUMAN = 53;
 /* C trap.c:5677-5694 try_lift() */
 async function try_lift(mtmp, ttmp, xtra_wt, stuff) {
     if (_ut_calc_capacity(xtra_wt) >= HVY_ENCUMBER) {
         await pline(`${Monnam(mtmp)} is ${stuff ? 'carrying too much' : 'too heavy'} for you to lift.`);
         const d = mtmp.data;
         if (!ttmp.madeby_u && !mtmp.mpeaceful && mtmp.mcanmove
-            && !_mindless(d) && (d.mlet | 0) !== S_HUMAN
+            && !(((d.mflags1 | 0) & 0x00010000) !== 0) && (d.mlet | 0) !== 53 /* S_HUMAN */
             && rnl(10) < 3) {
             mtmp.mpeaceful = 1;
             _ut_set_malign(mtmp);
@@ -7586,7 +7587,7 @@ export async function untrap_holdingtrap_here(ttmp) {
         }
         return 1;
     }
-    if ((ttmp.ttyp | 0) === BEAR_TRAP) {
+    if ((ttmp.ttyp | 0) === 5) {
         await pline(`You disarm ${the_your} bear trap.`);
         await cnv_trap_obj(244, 1, ttmp, false);
     } else {
@@ -7601,6 +7602,16 @@ export async function untrap_holdingtrap_here(ttmp) {
 }
 
 export function get_obj_location(obj, xp, yp, locflags = 0) {
+    /* Some restored inventory objects do not carry C's OBJ_INVENT `where`
+     * stamp yet, but they are still linked from gi.invent.  C's
+     * get_obj_location() sees those as inventory items; recognize the live
+     * chain so carried light sources can arm their radius immediately. */
+    for (let inv = game.invent; inv; inv = inv.nobj) {
+        if (inv === obj) {
+            xp.value = game.u.ux | 0; yp.value = game.u.uy | 0;
+            return true;
+        }
+    }
     switch (obj?.where | 0) {
     case OBJ_INVENT:
         xp.value = game.u.ux | 0; yp.value = game.u.uy | 0;

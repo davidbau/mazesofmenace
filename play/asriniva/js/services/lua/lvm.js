@@ -8,6 +8,7 @@ import { LuaTable, LuaUserdata, LuaLightUserdata, LuaThread, LuaError, isLuaStri
 import { parse } from './lparser.js';
 import { LuaHeap } from './lgc.js';
 import { LuaDebugState } from '../lua-debug.js';
+import { luaAuxError, luaTypeError, luaAuxTop } from '../lua-aux-error.js';
 
 class ReturnSignal { constructor(values) { this.values = values; } }
 class BreakSignal {}
@@ -21,16 +22,38 @@ export class LuaVM {
   constructor({ globals = {}, instructionLimit = 1000000, hook = null, warning = null, memoryTracker = null, memoryAllocator = null, memoryUserdata = null, memoryLayout = null, gcScheduler = true, memoryReady = true, debug = null } = {}) {
     this.heap = new LuaHeap(this, { warning, memoryTracker, memoryAllocator, memoryUserdata, memoryLayout });
     try {
-    this.globals = this.heap.with(() => new LuaTable()); this.instructions = 0; this.instructionLimit = instructionLimit; this.hook = hook;
+    this.mainThread=this.heap.with(()=>new LuaThread(null,true));this.currentThread=this.mainThread;
+    this.registry=this.heap.with(()=>new LuaTable([],{arraySize:2}));
+    this.globals = this.heap.with(() => new LuaTable());this.registry.rawset(1n,this.mainThread);this.registry.rawset(2n,this.globals);this.heap.initializeStrings(); this.instructions = 0; this.instructionLimit = instructionLimit; this.hook = hook;
     this.environment = new Environment(null, this.globals); this.environment.define('_ENV', this.globals);
     for (const [name, value] of Object.entries(globals)) this.setGlobal(name, value);
-    this.typeMetatables=new Map();this.stringMetatable = null; this.mainThread = this.heap.with(() => new LuaThread(null, true)); this.currentThread = this.mainThread;
+    this.typeMetatables=new Map();this.stringMetatable = null;
     const objectPointers=new WeakMap(),shortPointers=new Map();let nextPointer=16n;
     this.pointerOf=value=>{if(value instanceof LuaLightUserdata){if(typeof value.value==='number'||typeof value.value==='bigint')return BigInt(value.value);value=value.value;}if(!(isLuaString(value)||typeof value==='function'||value&&typeof value==='object'))return 0n;const map=typeof value==='string'?shortPointers:objectPointers;if(!map.has(value)){map.set(value,nextPointer);nextPointer+=16n;}return map.get(value);};
     this.debug=debug??new LuaDebugState({mainThread:this.mainThread});if(gcScheduler)this.heap.attachScheduler();this.heap.memoryTracker.ready=memoryReady;
     } catch (error) { this.heap.close(); throw error; }
   }
   tick() { if (++this.instructions > this.instructionLimit) throw new LuaError('instruction limit exceeded'); if (this.hook) this.hook(this.instructions); }
+  setHostStackTop(count) {
+    if(!Number.isInteger(count)||count<0)throw new TypeError('nonnegative host stack size required');
+    const thread=this.currentThread,metadata=this.heap.frameMetadata(thread),frame=this.debug.thread(thread).frames.at(-1);
+    const values=metadata?.values??frame?.args;if(!values)throw new TypeError('host Lua stack required');
+    const previous=values.length;values.length=count;for(let i=previous;i<count;i++)values[i]=null;
+    if(frame)frame.args=values;
+    if(metadata){metadata.values=values;metadata.argumentTop=metadata.checkTop=metadata.func+1+count;const record=this.heap.objects.get(thread);if(record?.gcTopFrame===metadata)record.gcTop=metadata.argumentTop;}
+    return values;
+  }
+  auxError(message) {return luaAuxError(this,'%s',message);}
+  checkString(value,index=0) {
+    if(isLuaString(value))return luaStringBytes(value);
+    if(luaType(value)!=='number')return luaTypeError(this,index+1,'string',value);
+    const bytes=numberToString(value),frame=this.debug.thread(this.currentThread).frames.at(-1),args=frame?.what==='C'?frame.args:null;
+    if(index>=0&&isLuaString(args?.[index])&&luaStringBytes(args[index])===bytes)return bytes;
+    const text=this.heap.adopt(bytes);if(index>=0&&args&&index<args.length)args[index]=text;
+    const release=this.heap.addRoots(()=>text),top=luaAuxTop(this);
+    try{this.heap.withStackTop(top+(index<0?1:0),()=>this.heap.checkpoint());}finally{release();}
+    return bytes;
+  }
   getGlobal(name) { return this.globals.rawget(name); }
   setGlobal(name, value) { value = this.heap.adopt(value); this.globals.rawset(name, value); }
   metatableOf(value) {return value instanceof LuaTable||value instanceof LuaUserdata?value.metatable:isLuaString(value)?this.stringMetatable:this.typeMetatables.get(value instanceof LuaLightUserdata?'lightuserdata':luaType(value))??null;}
@@ -42,6 +65,7 @@ export class LuaVM {
     if (thread.nativeCalls >= 220) { const error=new LuaError('error in error handling');error.status=5;throw error; }
   }
   run(generator,{boundary=true}={}) {
+    if(this.heap.closed)throw new LuaError('Lua state is closed');
     const thread=this.currentThread;thread.nonYieldableDepth++;if(boundary)thread.nativeCalls=(thread.nativeCalls??0)+1;
     try {
       if(boundary)this.checkCStack(thread);
@@ -60,10 +84,10 @@ export class LuaVM {
     try {error.value=this.call(context.handler,[error.value])[0]??null;return error;}
     catch(next){return next;}
   }
-  *protectedCallG(fn,args,handler=null) {
+  *protectedCallG(fn,args,handler=null,stack=null) {
     const thread=this.currentThread,context={handler};thread.errorHandlers??=[];thread.errorHandlers.push(context);
     const serial=thread.resumeSerial??0;thread.nativeCalls=(thread.nativeCalls??0)+1;
-    try{this.checkCStack(thread);return yield* this.callG(fn,args);}
+    try{this.checkCStack(thread);return yield* this.callG(fn,args,stack);}
     catch(error){throw this.dispatchError(error);}
     finally{if((thread.resumeSerial??0)===serial)thread.nativeCalls--;thread.errorHandlers.pop();}
   }
@@ -111,7 +135,7 @@ export class LuaVM {
     if (op === 'not') return !truth(value);
     if (op === '#') return (yield* this.lengthG(value));
     const mm = this.metamethod(value, op === '-' ? '__unm' : '__bnot');
-    if (toNumber(value) === null && mm !== null) return (yield* this.callG(mm, [value, value]))[0] ?? null;
+    if (!['number','bigint'].includes(typeof value) && mm !== null) return (yield* this.callG(mm, [value, value]))[0] ?? null;
     return arithmetic(op === '-' ? 'unm' : 'bnot', value);
   }
   *binaryG(op, a, b) {
@@ -138,7 +162,7 @@ export class LuaVM {
       if (mm !== null) return (yield* this.callG(mm, [a, b]))[0] ?? null;
       throw new LuaError('attempt to concatenate a non-string value');
     }
-    const valid = ['&', '|', '~', '<<', '>>'].includes(op) ? ['number', 'bigint'].includes(typeof a) && ['number', 'bigint'].includes(typeof b) && toInteger(a) !== null && toInteger(b) !== null : toNumber(a) !== null && toNumber(b) !== null;
+    const valid = ['&', '|', '~', '<<', '>>'].includes(op) ? ['number', 'bigint'].includes(typeof a) && ['number', 'bigint'].includes(typeof b) && toInteger(a) !== null && toInteger(b) !== null : ['number','bigint'].includes(typeof a) && ['number','bigint'].includes(typeof b);
     if (valid) return arithmetic(op, a, b);
     const mm = this.metamethod(a, metamethods[op]) ?? this.metamethod(b, metamethods[op]);
     if (mm !== null) return (yield* this.callG(mm, [a, b]))[0] ?? null;
@@ -332,15 +356,20 @@ export class LuaVM {
     return env;
     } catch (error) { pending = error; throw error; } finally {
       try {
-        if (pending instanceof LuaError && !gcThread.main) { pending.luaPendingClose ??= []; pending.luaPendingClose.push(gcFrame.closing.slice()); }
+        if (pending instanceof LuaError) { pending.luaPendingClose ??= []; pending.luaPendingClose.push(gcFrame.closing.slice()); }
         else yield* this.closeValuesG(gcFrame.closing, pending instanceof LuaError ? pending : null);
       } finally { gcThread.gcRoots.delete(gcFrame); }
     }
   }
+  deferClose(error,callback,roots=[]) {
+    if(!(error instanceof LuaError))throw new TypeError('deferred Lua close requires LuaError');
+    error.luaPendingClose??=[];error.luaPendingClose.push({luaCCloser:true,callback,roots});
+  }
   closeError(error) {
-    let pending = error; const groups = error.luaPendingClose ?? []; error.luaPendingClose = [];
-    for (const group of groups) { try { this.run(this.closeValuesG(group, pending)); } catch (next) { pending = next; } }
-    return pending;
+    let pending=error;const groups=error.luaPendingClose??[];error.luaPendingClose=[];
+    const release=this.heap.addRoots(()=>[pending,groups]);
+    try{for(const group of groups){try{if(group?.luaCCloser)group.callback(pending);else this.run(this.closeValuesG(group,pending));}catch(next){pending=next instanceof LuaError?this.closeError(next):next;}}return pending;}
+    finally{release();}
   }
   closeThread(co, reset = false) {
     if (!reset && (co.status === 'running' || co.status === 'normal')) throw new LuaError(`cannot close a ${co.status} coroutine`);

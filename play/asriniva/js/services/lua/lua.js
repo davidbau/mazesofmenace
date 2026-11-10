@@ -5,10 +5,10 @@
  * functions/closures, varargs, multiresults, loops, 64-bit integer operations,
  * byte strings, host callbacks and common metamethods.
  * Missing: C continuations,
- * full C stack API (bounded layer in lapi.js), native GC scheduling/allocation cadence, hooks matching AST VM opcodes,
+ * full C stack API (bounded layer in lapi.js), native allocation layout/cadence, hooks matching AST VM opcodes,
  * native table hash-seed/pointer-layout matching (logical object hashes remain
  * module-scoped), tail calls, goto, bytecode in the AST backend,
- * randomized sort pivots and complete diagnostics. Managed allocation counts
+ * complete diagnostics and native host pointer/hash layout. Managed allocation counts
  * include declared AST reservations. Long byte strings retain object identity;
  * short strings are interned. Exact native heap-size/cadence remains unfinished. No host I/O,
  * module loading, Wasm or fetching.

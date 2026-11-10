@@ -81,8 +81,7 @@ import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB } from './mkobj_data.js';
 import { PM_ORC, PM_ORC_SHAMAN, PM_ORC_CAPTAIN } from './pm.generated.js';
 import { MM_NONAME, MIGR_RANDOM, MIGR_LEFTOVERS, has_mgivenname } from './const.js';
 import { ENV } from './hostenv.js';
-import { CROSSWALL, DBWALL, IS_STWALL, IS_WALL, Is_earthlevel, LR_DOWNTELE, LR_TELE, LR_UPTELE, LR_PORTAL, LR_UPSTAIR, LR_DOWNSTAIR, LR_BRANCH, VWALL, W_NONPASSWALL } from './const.js'; // relocate-fns
-import { mkportal } from './sp_lev.js';
+import { CROSSWALL, DBWALL, IS_STWALL, IS_WALL, Is_earthlevel, LR_DOWNTELE, LR_TELE, LR_UPTELE, VWALL, W_NONPASSWALL } from './const.js'; // relocate-fns
 import { m_into_limbo } from './dog.js'; // relocate-fns
 import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
 import { deltrap } from './trap.js'; // relocate-fns
@@ -1561,38 +1560,21 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
                 return false;
         }
     }
-    switch (rtype) {
-    case LR_TELE:
-    case LR_UPTELE:
-    case LR_DOWNTELE: {
-        /* "something" means the player in this case */
-        const mtmp = m_at(x, y);
-        if (mtmp) {
-            if (lregionTrace)
-                pushRngLogEntry(`^lregion_occupied[x=${x | 0},${y | 0} id=${mtmp.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1} oneshot=${oneshot ? 1 : 0}]`);
-            /* move the monster if no choice, or just try again */
-            if (oneshot) {
-                /* C mkmaze.c:450-451: migrate the monster if relocation fails. */
-                if (!await rloc(mtmp, RLOC_NOMSG))
-                    await m_into_limbo(mtmp);
-            } else {
-                return false;
-            }
+    /* "something" means the player in this case */
+    const mtmp = m_at(x, y);
+    if (mtmp) {
+        if (lregionTrace)
+            pushRngLogEntry(`^lregion_occupied[x=${x | 0},${y | 0} id=${mtmp.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1} oneshot=${oneshot ? 1 : 0}]`);
+        /* move the monster if no choice, or just try again */
+        if (oneshot) {
+            /* C mkmaze.c:450-451: migrate the monster if relocation fails. */
+            if (!await rloc(mtmp, RLOC_NOMSG))
+                await m_into_limbo(mtmp);
+        } else {
+            return false;
         }
-        await u_on_newpos(x, y);
-        break;
     }
-    case LR_PORTAL:
-        await mkportal(x, y, lev?.dnum ?? 0, lev?.dlevel ?? 0);
-        break;
-    case LR_DOWNSTAIR:
-    case LR_UPSTAIR:
-        mkstairs(x, y, rtype === LR_UPSTAIR, null);
-        break;
-    case LR_BRANCH:
-        await place_branch(Is_branchlev(game.u?.uz), x, y);
-        break;
-    }
+    await u_on_newpos(x, y);
     return true;
 }
 
@@ -1601,15 +1583,12 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
  * still constructing its destination region. */
 function lxSafe(v) { return Number.isFinite(v) ? (v | 0) : 0; }
 
-// C ref: mkmaze.c:353-410 place_lregion — pick a spot in the area and place something there
+// C ref: mkmaze.c:355-408 place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
 export async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (!lx) {
-        /* if there are rooms and this a branch, let place_branch choose
-           the branch location (to avoid putting branches in corridors). */
-        if (rtype === LR_BRANCH && (game.level?.nroom ?? 0)) {
-            await place_branch(Is_branchlev(game.u?.uz), 0, 0);
-            return;
-        }
+        /* C mkmaze.c:366-373 also short-circuits `rtype == LR_BRANCH &&
+           svn.nroom` to place_branch() here; unreachable from this copy, whose
+           only caller (u_on_rndspot) always passes an LR_*TELE rtype. */
         lx = 1;
         hx = COLNO - 1;
         ly = 0;

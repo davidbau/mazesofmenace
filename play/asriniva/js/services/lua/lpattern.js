@@ -2,7 +2,9 @@
  * Preserves captures, balanced/frontier matching, greedy/minimal expansion and
  * replacement callback ordering. Uses no JavaScript RegExp for Lua patterns.
  */
-import { LuaError, isLuaString, luaStringBytes, LuaTable, luaType, numberToString, truth } from './lobject.js';
+import { LuaError, isLuaString, luaStringBytes, LuaTable, LuaUserdata, luaType, numberToString, truth } from './lobject.js';
+import { LuaBuffer } from '../lua-buffer.js';
+import {luaCheckInteger,luaTypeError} from '../lua-aux-error.js';
 function matchClass(c, cls) {
   const lower = cls.toLowerCase(); let result;
   if (lower === 'a') result = c >= 65 && c <= 90 || c >= 97 && c <= 122;
@@ -23,11 +25,11 @@ class MatchState {
   constructor(vm, source, pattern) { this.vm = vm; this.source = source; this.pattern = pattern; }
   classend(p) {
     const pattern = this.pattern;
-    if (pattern[p] === '%') { if (p + 1 === pattern.length) throw new LuaError("malformed pattern (ends with '%')"); return p + 2; }
+    if (pattern[p] === '%') { if (p + 1 === pattern.length) this.vm.auxError("malformed pattern (ends with '%')"); return p + 2; }
     if (pattern[p] !== '[') return p + 1;
     let at = p + 1; if (pattern[at] === '^') at++;
     do {
-      if (at >= pattern.length) throw new LuaError("malformed pattern (missing ']')");
+      if (at >= pattern.length) this.vm.auxError("malformed pattern (missing ']')");
       if (pattern[at++] === '%' && at < pattern.length) at++;
     } while (pattern[at] !== ']');
     return at + 1;
@@ -48,24 +50,24 @@ class MatchState {
     return token === '.' ? true : token === '%' ? matchClass(c, this.pattern[p + 1]) : token === '[' ? this.bracket(c, p, end - 1) : this.pattern.charCodeAt(p) === c;
   }
   match(s, p = 0, captures = [], depth = 0) {
-    if (depth >= 200) throw new LuaError('pattern too complex');
+    if (depth >= 200) this.vm.auxError('pattern too complex');
     const pattern = this.pattern, source = this.source;
     while (p < pattern.length) {
       this.vm.tick();
       if (pattern[p] === '(') {
-        if (captures.length >= 32) throw new LuaError('too many captures');
+        if (captures.length >= 32) this.vm.auxError('too many captures');
         const position = pattern[p + 1] === ')';
         return this.match(s, p + (position ? 2 : 1), [...captures, { start: s, length: position ? -2 : -1 }], depth + 1);
       }
       if (pattern[p] === ')') {
         let i = captures.length - 1; while (i >= 0 && captures[i].length !== -1) i--;
-        if (i < 0) throw new LuaError('invalid pattern capture');
+        if (i < 0) this.vm.auxError('invalid pattern capture');
         const closed = captures.slice(); closed[i] = { start: captures[i].start, length: s - captures[i].start };
         return this.match(s, p + 1, closed, depth + 1);
       }
       if (pattern[p] === '$' && p + 1 === pattern.length) return s === source.length ? { end: s, captures } : null;
       if (pattern[p] === '%' && pattern[p + 1] === 'b') {
-        if (p + 3 >= pattern.length) throw new LuaError("malformed pattern (missing arguments to '%b')");
+        if (p + 3 >= pattern.length) this.vm.auxError("malformed pattern (missing arguments to '%b')");
         if (source[s] !== pattern[p + 2]) return null;
         let count = 1; while (++s < source.length) {
           this.vm.tick();
@@ -76,14 +78,14 @@ class MatchState {
         s++; p += 4; continue;
       }
       if (pattern[p] === '%' && pattern[p + 1] === 'f') {
-        p += 2; if (pattern[p] !== '[') throw new LuaError("missing '[' after '%f' in pattern");
+        p += 2; if (pattern[p] !== '[') this.vm.auxError("missing '[' after '%f' in pattern");
         const end = this.classend(p), previous = s === 0 ? 0 : source.charCodeAt(s - 1), current = s === source.length ? 0 : source.charCodeAt(s);
         if (this.bracket(previous, p, end - 1) || !this.bracket(current, p, end - 1)) return null;
         p = end; continue;
       }
       if (pattern[p] === '%' && /\d/.test(pattern[p + 1] ?? '')) {
         const i = Number(pattern[p + 1]) - 1, capture = captures[i];
-        if (!capture || capture.length === -1) throw new LuaError(`invalid capture index %${i + 1}`);
+        if (!capture || capture.length === -1) this.vm.auxError(`invalid capture index %${i + 1}`);
         if (capture.length < 0 || source.slice(capture.start, capture.start + capture.length) !== source.slice(s, s + capture.length)) return null;
         s += capture.length; p += 2; continue;
       }
@@ -108,9 +110,9 @@ class MatchState {
     return { end: s, captures };
   }
   capture(found, start, index) {
-    if (index >= found.captures.length) { if (index === 0) return this.source.slice(start, found.end); throw new LuaError(`invalid capture index %${index + 1}`); }
+    if (index >= found.captures.length) { if (index === 0) return this.source.slice(start, found.end); this.vm.auxError(`invalid capture index %${index + 1}`); }
     const capture = found.captures[index];
-    if (capture.length === -1) throw new LuaError('unfinished capture');
+    if (capture.length === -1) this.vm.auxError('unfinished capture');
     return capture.length === -2 ? BigInt(capture.start + 1) : this.source.slice(capture.start, capture.start + capture.length);
   }
   values(found, start, whole = true) {
@@ -119,10 +121,10 @@ class MatchState {
   }
 }
 export function openPatterns(vm, lib, { string, integer }) {
-  const initial = (index, length) => { index = integer(index); return index < 0n ? Math.max(0, length + Number(index)) : Math.max(0, Number(index) - 1); };
+  const initial = (index, length) => { index = luaCheckInteger(vm,index,3); return index < 0n ? Math.max(0, length + Number(index)) : Math.max(0, Number(index) - 1); };
   const find = (subject, pattern, init = 1n, plain = false, positions = true) => {
     init ??= 1n; const roots=[subject,pattern];
-    subject = string(subject); pattern = string(pattern); const start = initial(init, subject.length);
+    subject = vm.checkString(subject,0); pattern = vm.checkString(pattern,1); const start = initial(init, subject.length);
     if (start > subject.length) return [null];
     if (positions && (truth(plain) || !/[\^$*+?.([%\-]/.test(pattern))) {
       const at = subject.indexOf(pattern, start); return at < 0 ? [null] : [BigInt(at + 1), BigInt(at + pattern.length)];
@@ -131,57 +133,101 @@ export function openPatterns(vm, lib, { string, integer }) {
     const matcher = new MatchState(vm, subject, pattern);
     for (let at = start; at <= subject.length; at++) {
       const found = matcher.match(at);
-      if (found) return positions ? [BigInt(at + 1), BigInt(found.end), ...matcher.values(found, at, false)] : matcher.values(found, at);
+      if (found) return positions ? [BigInt(at + 1), BigInt(found.end), ...captureValues(matcher,found,at,top()+2,false)] : captureValues(matcher,found,at,top());
       if (anchor) break;
     }
     return [null];
   };
   lib.rawset('find', (subject, pattern, init = 1n, plain = false) => find(subject, pattern, init, plain, true));
   lib.rawset('match', (subject, pattern, init = 1n) => find(subject, pattern, init, false, false));
-  lib.rawset('gmatch', (subject, pattern, init = 1n) => {
-    init ??= 1n; const roots=[subject,pattern];
-    subject = string(subject); pattern = string(pattern);
-    const matcher = new MatchState(vm, subject, pattern); let at = initial(init, subject.length), lastEnd = null;
-    const iterator = () => {
-      for (; at <= subject.length; at++) {
-        const found = matcher.match(at);
-        if (found && found.end !== lastEnd) { const result = matcher.values(found, at); at = lastEnd = found.end; return result; }
+  const top = () => {const m=vm.heap.frameMetadata(vm.currentThread);return m?.argumentTop??m?.checkTop??vm.heap.getStackTop(vm.currentThread);};
+  const captureValues = (matcher, found, start, stackTop, whole=true) => {
+    const values=[],release=vm.heap.addRoots(()=>values);
+    try {
+      const count=found.captures.length||(whole?1:0);
+      if(!vm.heap.checkStack(vm.currentThread,stackTop,count,{safe:false,gc:false}))vm.auxError('too many captures');
+      for(let i=0;i<count;i++) {
+        const value=matcher.capture(found,start,i);values.push(vm.heap.adopt(value));
+        if(isLuaString(value))vm.heap.withStackTop(stackTop+values.length,()=>vm.heap.checkpoint());
       }
-      return [];
-    }; iterator.luaGcRoots=roots; return [iterator];
-  });
-  lib.rawset('gsub', (subject, pattern, replacement, maximum = null) => {
-    subject = string(subject); pattern = string(pattern); maximum = maximum === null ? BigInt(subject.length + 1) : integer(maximum);
-    const type = luaType(replacement); if (!['string', 'number', 'function', 'table'].includes(type)) throw new LuaError('string/function/table expected');
-    if (type === 'number') replacement = numberToString(replacement); else if(type==='string')replacement=string(replacement);
-    const anchor = pattern[0] === '^'; if (anchor) pattern = pattern.slice(1);
-    const matcher = new MatchState(vm, subject, pattern); let at = 0, lastEnd = null, count = 0n, output = '';
-    while (count < maximum) {
-      const found = matcher.match(at);
-      if (found && found.end !== lastEnd) {
-        count++; let value;
-        if (type === 'function') value = vm.call(replacement, matcher.values(found, at))[0] ?? null;
-        else if (type === 'table') value = vm.get(replacement, matcher.capture(found, at, 0));
-        else {
-          value = '';
-          for (let i = 0; i < replacement.length; i++) {
-            if (replacement[i] !== '%') { value += replacement[i]; continue; }
-            const next = replacement[++i];
-            if (next === '%') value += '%';
-            else if (next === '0') value += subject.slice(at, found.end);
-            else if (/\d/.test(next ?? '')) { const capture = matcher.capture(found, at, Number(next) - 1); value += typeof capture === 'bigint' ? String(capture) : capture; }
-            else throw new LuaError("invalid use of '%' in replacement string");
+      return values;
+    } finally {release();}
+  };
+  lib.rawset('gmatch', (subject, pattern, init = 1n) => {
+    init ??= 1n;
+    const args=vm.debug.thread(vm.currentThread).frames.at(-1)?.args;
+    const source=vm.checkString(subject,0),expression=vm.checkString(pattern,1);
+    const offset=Math.min(initial(init,source.length),source.length+1),roots=[args?.[0]??subject,args?.[1]??pattern],release=vm.heap.addRoots(()=>roots);
+    if(args)vm.setHostStackTop(2);
+    try {
+      // Original LP64 GMatchState: three pointers + MatchState (552 bytes).
+      const state=vm.heap.with(()=>new LuaUserdata({matcher:new MatchState(vm,source,expression),at:offset,lastEnd:null},null,[],576));
+      roots.push(state);const metadata=vm.heap.frameMetadata(vm.currentThread),base=(metadata?.func??0)+1;
+      vm.heap.withStackTop(base+3,()=>vm.heap.checkpoint());
+      const iterator=()=>{
+        const current=state.value,matcher=current.matcher;
+        for(let at=current.at;at<=source.length;at++) {
+          const found=matcher.match(at);
+          if(found&&found.end!==current.lastEnd) {
+            current.at=current.lastEnd=found.end;
+            return captureValues(matcher,found,at,top());
           }
         }
-        if (!truth(value)) value = subject.slice(at, found.end);
-        else if (luaType(value) === 'number') value = numberToString(value);
-        else if (!isLuaString(value)) throw new LuaError('invalid replacement value');
-        if (isLuaString(value)) value=luaStringBytes(value);
-        output += value; at = lastEnd = found.end;
-      } else if (at < subject.length) output += subject[at++];
-      else break;
-      if (anchor) break;
-    }
-    return [output + subject.slice(at), count];
+        return [];
+      };
+      iterator.luaGcRoots=roots.slice();vm.heap.adopt(iterator);roots.push(iterator);
+      vm.heap.withStackTop(base+1,()=>vm.heap.checkpoint());return [iterator];
+    }finally{release();}
+  });
+  lib.rawset('gsub', (subject, pattern, replacement, maximum = null) => {
+    const source=vm.checkString(subject,0),expression=vm.checkString(pattern,1),args=vm.debug.thread(vm.currentThread).frames.at(-1)?.args;
+    const original=args?.[0]??subject;
+    maximum=maximum===null?BigInt(source.length+1):luaCheckInteger(vm,maximum,4);
+    const type=luaType(replacement);if(!['string','number','function','table'].includes(type))luaTypeError(vm,3,'string/function/table',replacement);
+    const anchor=expression[0]==='^',matcher=new MatchState(vm,source,anchor?expression.slice(1):expression),buffer=new LuaBuffer(vm);
+    const roots=[original,replacement],release=vm.heap.addRoots(()=>roots);let at=0,lastEnd=null,count=0n,changed=false;
+    try {
+      while(count<maximum) {
+        const found=matcher.match(at);
+        if(found&&found.end!==lastEnd) {
+          count++;
+          if(type==='string'||type==='number') {
+            const text=vm.checkString(replacement,2);let segment=0;
+            for(let i=0;i<text.length;i++)if(text[i]==='%') {
+              buffer.add(text.slice(segment,i));const next=text[++i];
+              if(next==='%')buffer.add('%');
+              else if(next==='0')buffer.add(source.slice(at,found.end));
+              else if(next>='1'&&next<='9') {
+                const value=matcher.capture(found,at,Number(next)-1);
+                if(typeof value==='bigint')buffer.addValue(value);else buffer.add(value);
+              }else vm.auxError("invalid use of '%' in replacement string");
+              segment=i+1;
+            }
+            buffer.add(text.slice(segment));changed=true;
+          }else {
+            const stackTop=buffer.stackBase+1;let value;
+            if(type==='function') {
+              const values=captureValues(matcher,found,at,stackTop+1);roots.push(values);
+              try {value=vm.call(replacement,values,{func:stackTop,checkTop:stackTop+1+values.length})[0]??null;}
+              finally{roots.pop();}
+            }else {
+              const values=captureValues(matcher,{...found,captures:found.captures.slice(0,1)},at,stackTop);roots.push(values);
+              try{value=vm.heap.withStackTop(stackTop+1,()=>vm.get(replacement,values[0]));}finally{roots.pop();}
+            }
+            roots.push(value);
+            try {
+              if(!truth(value))buffer.add(source.slice(at,found.end));
+              else if(isLuaString(value)||luaType(value)==='number'){buffer.addValue(value);changed=true;}
+              else vm.auxError(`invalid replacement value (a ${luaType(value)})`);
+            }finally{roots.pop();}
+          }
+          at=lastEnd=found.end;
+        }else if(at<source.length)buffer.add(source[at++]);
+        else break;
+        if(anchor)break;
+      }
+      if(!changed){buffer.close();return [original,count];}
+      buffer.add(source.slice(at));return [buffer.finish(),count];
+    }catch(error){buffer.close(error);throw error;}finally{release();}
   });
 }

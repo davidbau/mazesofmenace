@@ -10,8 +10,8 @@ import { openString } from './lua/lstrlib.js';
 import { openUtf8 } from './lua/lutf8lib.js';
 import { openCoroutine } from './lua/lcorolib.js';
 import { LuaMemoryError } from './lua-debug.js';
-import { openDebugLibrary } from './lua-debug-library.js';
-import { openBaseIO } from './lua-base-io.js';
+import { openDebugLibrary, installLuaDebugNames } from './lua-debug-library.js';
+import { createBaseIOFunctions } from './lua-base-io.js';
 import { luaSortEntropy } from './lua-table-sort.js';
 import { openLuaOS } from './lua-os-library.js';
 import { createLuaOSServices } from './wasm-lua-os-services.js';
@@ -236,7 +236,9 @@ export function createWasmLuaRuntime(options = {}) {
         warning: (message, continued = 0) => {
           if (record.warn) services.callback(record.warn)(BigInt(record.warnData), BigInt(stringPointer(record, message)), Number(continued));
         } });
+      installLuaDebugNames(record.state.vm,record.state.registry);
       record.state.vm.pointerOf = value => valuePointer(record, value);
+      record.state.vm.randomSeed=()=>[BigInt(services.sortTime()),BigInt(record.state.vm.pointerOf(record.state.vm.currentThread))];
       record.state.vm.sortRandomize = options.sortRandomize ?? (() => luaSortEntropy(services.sortClock(), services.sortTime()));
       states.set(handle, record);
       return handle;
@@ -252,14 +254,19 @@ export function createWasmLuaRuntime(options = {}) {
   function openLibrary(record, name) {
     const state = record.state, vm = state.vm;
     switch (name) {
-      case 'base': openBase(vm, { baseError: true, baseMeta: true, baseGC: true }); openBaseIO(vm, { readFile: options.readFile ?? services.readFile, readStdin: options.readStdin ?? services.readStdin }); state.push(vm.globals); break;
-      case 'table': state.push(openTable(vm)); break;
-      case 'math': state.push(openMath(vm, options.seed ?? 0n)); break;
-      case 'string': state.push(openString(vm)); break;
-      case 'utf8': state.push(openUtf8(vm)); break;
-      case 'coroutine': state.push(openCoroutine(vm)); break;
-      case 'os': state.push(openLuaOS(vm, options.os ?? createLuaOSServices(services))); break;
-      case 'debug': state.push(openDebugLibrary(vm, { registry: state.registry })); break;
+      case 'base': {
+        const input = reader => path => { try { return reader(path); } catch (error) { if (Number.isInteger(error.errno) && services.osErrorMessage) error.strerror = cstring(services.osErrorMessage(error.errno)); throw error; } };
+        const baseFunctions=createBaseIOFunctions(vm, { readFile: options.readFile ?? input(services.readFile), readStdin: options.readStdin ?? input(services.readStdin) });
+        openBase(vm, { baseError: true, baseMeta: true, baseGC: true, baseFunctions,nativeRegistration:true });
+        state.push(vm.globals); break;
+      }
+      case 'table': state.push(openTable(vm,{publish:false})); break;
+      case 'math': state.push(openMath(vm, options.seed ?? 0n,{publish:false})); break;
+      case 'string': state.push(openString(vm,{publish:false})); break;
+      case 'utf8': state.push(openUtf8(vm,{publish:false})); break;
+      case 'coroutine': state.push(openCoroutine(vm,{publish:false})); break;
+      case 'os': state.push(openLuaOS(vm, options.os ?? createLuaOSServices(services),{publish:false,nativeRegistration:true})); break;
+      case 'debug': state.push(openDebugLibrary(vm, { registry: state.registry,publish:false,filtered:false })); break;
       default: throw new LuaError(`luaopen_${name} is not implemented for this Lua configuration`);
     }
     return 1;
@@ -296,7 +303,7 @@ export function createWasmLuaRuntime(options = {}) {
       case 'lua_getglobal': case 'lua_setglobal': return state[operation](cstring(a));
       case 'lua_getfield': case 'lua_setfield': return state[operation](index, cstring(b));
       case 'lua_geti': case 'lua_seti': case 'lua_rawgeti': case 'lua_rawseti': return state[operation](index, i64(b));
-      case 'lua_copy': case 'lua_rotate': case 'lua_createtable': case 'luaL_checktype': return state[operation](index, i32(b));
+      case 'lua_rawequal': case 'lua_copy': case 'lua_rotate': case 'lua_createtable': case 'luaL_checktype': return state[operation](index, i32(b));
       case 'luaL_optinteger': return state.luaL_optinteger(index, i64(b));
       case 'luaL_checkoption': {
         const list = []; let cursor = address(c), pointer;

@@ -1288,10 +1288,8 @@ export async function panic(_msg) {
         try { raw = await nhgetch(); } catch (e) { hangup = e; break; }
         const c = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
         if (c === 10 || c === 13 || c === 27 || c === 32
-            || c === (game._ttyDismissMore | 0)) {
-            if (c === 27) game._ttyDismissMore = 1; /* getline.c:245-247 */
+            || c === (game._ttyDismissMore | 0))
             break;
-        }
     }
     /* C end.c:445-447 set_error_savefile() + dosave0(): the panic save is
      * "<savefile>.e"; the next process's check_panic_save() (files.c:1312)

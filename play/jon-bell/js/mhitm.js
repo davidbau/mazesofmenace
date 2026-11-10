@@ -70,7 +70,7 @@ import { cansee, couldsee, clear_path, is_lightblocker_mappear, does_block, unbl
 import { linedup } from './mthrowu.js';
 import { hmon_egg_petrify, touch_petrifies, mon_nam, artifact_hit, hmon_hitmon_do_hit, hmon_hitmon_poison, hmon_hitmon_splitmon, hmon_hitmon_msg_hit, hmon_hitmon_msg_silver, hmon_hitmon_msg_lightobj, hmon_hitmon_dmg_recalc, hmon_hitmon_special } from './uhitm.js';
 import { exclam } from './zap.js';
-import { first_weapon_hit, hmon_hitmon_knockback, Monnam, hmon_hitmon_pet, backstabbable, uwep_skill_type, setmnotwielded } from './uhitm.js';
+import { first_weapon_hit, hmon_hitmon_knockback, Monnam as Monnam_real, hmon_hitmon_pet, backstabbable, uwep_skill_type, setmnotwielded } from './uhitm.js';
 import { PM_HEALER as PM_HEALER_HM, PM_ROGUE as PM_ROGUE_HM } from './pm.generated.js';
 import { P_NONE as P_NONE_HM, P_KNIFE as P_KNIFE_HM, P_SKILLED as P_SKILLED_HM, NEED_WEAPON as NEED_WEAPON_HM } from './const.js';
 import { P_SKILL } from './skills.js';
@@ -119,8 +119,8 @@ import { ROLE_PM_MNUM } from './roles.js';   /* C role.c roles[].mnum (the mons[
 /* x_monnam's priest/minion and hallucination branches — C ref: do_name.c:887-904,
  * 950-955.  priestname() is ported (js/priest.js:424); rndmonnam()/bogon_is_pname()
  * are not yet, and self-report if a hallucinating name is ever requested. */
-import { rndmonnam, bogon_is_pname } from './do_name.js';
-import { priestname, temple_occupied, has_shrine } from './priest.js';
+import { rndmonnam } from './do_name.js';
+import { priestname, bogon_is_pname, temple_occupied, has_shrine } from './priest.js';
 /* x_monnam's shopkeeper branch — C ref: do_name.c:919-936. */
 import { shkname, hot_pursuit } from './dokick.js';
 import { free_oname } from './do_name.js';
@@ -128,7 +128,7 @@ import { nomul } from './allmain.js';
 import { monstseesu, monstunseesu, shieldeff, buzz } from './mcastu.js';
 import { resist, drain_item, hit } from './zap.js';
 import { finish_meating, dmgtype as dmgtype_real } from './dogmove.js';
-import { FAINTED, M_AP_NOTHING, PRONOUN_HALLU, TEMPLE, TRUE, FALSE } from './const.js';
+import { FAINTED, M_AP_NOTHING, PRONOUN_HALLU, TEMPLE } from './const.js';
 import { in_rooms } from './hack.js';
 import { PM_SAMURAI as PM_SAMURAI_HM, PM_ELF as PM_ELF_HM } from './pm.generated.js';
 /* C end.c:185-300 done_in_by — use the canonical death attribution path.
@@ -686,6 +686,11 @@ export function l_monnam(mtmp) {
                     xm_has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, true);
 }
 
+/* Monnam — C ref: nethack-c/src/do_name.c:1073-1080 */
+function Monnam(mtmp) {
+    return Monnam_real(mtmp);
+}
+
 /* noit_Monnam — C ref: nethack-c/src/do_name.c:1082-1089 */
 export function noit_Monnam(mtmp) {
     return xm_highc_first(noit_mon_nam(mtmp));
@@ -788,7 +793,7 @@ const ghostnames = [
 ];
 
 export function rndghostname() {
-    return rn2(7) ? ghostnames[rn2(ghostnames.length)] : String(game.plname);
+    return rn2(7) ? ghostnames[rn2(34)] : String(game.plname);
 }
 
 
@@ -1361,7 +1366,7 @@ export function mon_nam_too(mon, other_mon) {
  */
 export function new_oname(obj, lth) {
     if (lth) {
-        if (!obj.oextra_present && !obj.oextra) {
+        if (!obj.oextra_present) {
             const oe = newoextra();
             obj.oextra_present = 1;
             obj.oextra_oname_present = oe.oname ? 1 : 0;
@@ -1377,7 +1382,7 @@ export function new_oname(obj, lth) {
         obj.oname = obj.oextra.oname;
     } else {
         /* zero length: the new name is empty; get rid of the old name */
-        if ((obj.oextra_present && obj.oextra_oname_present) || obj.oextra?.oname != null)
+        if (obj.oextra_present && obj.oextra_oname_present)
             free_oname(obj);
     }
 }
@@ -1465,10 +1470,9 @@ export async function domindblast() {
     pline("You concentrate.");
     pline("A wave of psychic energy pours out.");
 
-    /* Iterate through all monsters on level (C polyself.c:1908-1911: advance with nmon) */
-    let nmon;
-    for (let mtmp = game.fmon; mtmp; mtmp = nmon) {
-        nmon = mtmp.nmon;
+    /* Iterate through all monsters on level */
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        let nmon = mtmp.nmon;
         let u_sen;
         let dmg;
 
@@ -2365,7 +2369,7 @@ const SCROLL_CLASS = 9;
 export function objtyp_is_callable(i) {
     const ityp = i | 0;
     if (game._oc_uname?.[ityp] != null)
-        return TRUE;
+        return 1;
     const oc_class = (MKOBJ_OC_CLASS[ityp] | 0);
 
     switch (oc_class) {
@@ -2374,7 +2378,7 @@ export function objtyp_is_callable(i) {
          * cannot be called to prevent players from identifying them
          * via the discovery mechanism. */
         if (ityp === AMULET_OF_YENDOR || ityp === FAKE_AMULET_OF_YENDOR)
-            return FALSE;
+            return 0; /* FALSE */
         /* FALLTHROUGH */
     case SCROLL_CLASS:
     case POTION_CLASS:
@@ -2385,11 +2389,11 @@ export function objtyp_is_callable(i) {
     case ARMOR_CLASS:
     case TOOL_CLASS:
     case VENOM_CLASS:
-        return getObjDescr(ityp) != null ? TRUE : FALSE;
+        return getObjDescr(ityp) != null ? 1 : 0;
     default:
         break;
     }
-    return FALSE;
+    return 0; /* FALSE */
 }
 
 
@@ -2447,31 +2451,23 @@ export { christen_monst } from './do_name.js';
 
 /* new_mgivenname — C ref: nethack-c/src/do_name.c:30-46
  * Allocate space for a monster's name; removes old name if one is present.
- * The new buffer is alloc()'s empty string; the caller Strcpy's the name in.
+ * In JS we just clear the old name; caller assigns the new one via Strcpy.
  */
 export function new_mgivenname(mtmp, lth) {
     if (lth) {
         /* C: if (!mtmp->mextra) mtmp->mextra = newmextra();
-         *    else free_mgivenname(mtmp);
+         *    if (MGIVENNAME(mtmp)) free(MGIVENNAME(mtmp));
          *    MGIVENNAME(mtmp) = (char *) alloc((unsigned) lth);
          * The name lives ONLY in mextra (mextra.h MGIVENNAME); the flat
          * mtmp.mgivenname this used to write was invisible to C's
          * has_mgivenname() macro and to every reader that mirrors it. */
         if (!mtmp.mextra)
             mtmp.mextra = newmextra();
-        else
-            free_mgivenname(mtmp);
-        mtmp.mextra.mgivenname = alloc(lth); /* C do_name.c:41 */
+        mtmp.mextra.mgivenname = null;
     } else {
-        /* zero length: the new name is empty; get rid of the old name */
-        if (mtmp.mextra && mtmp.mextra.mgivenname != null) /* has_mgivenname */
-            free_mgivenname(mtmp);
+        if (mtmp.mextra && mtmp.mextra.mgivenname)
+            mtmp.mextra.mgivenname = null;
     }
-}
-
-export function free_mgivenname(mon) {
-    if (mon.mextra && mon.mextra.mgivenname != null)
-        mon.mextra.mgivenname = null;
 }
 
 const _cc_cache = new Map();

@@ -1838,9 +1838,8 @@ export async function playChargen(ctx) {
     let renameallowed = ctx.renameallowed || false;
     const result = () => ({ plname, role: st.role, race: st.race,
                             gender: st.gender, align: st.align, quit: false });
-    const quit = (bail = null) => ({ plname, role: st.role, race: st.race,
-                          gender: st.gender, align: st.align, quit: true, bail });
-    const ASKNAME_BAIL = 'Giving up after 10 tries.';   // wintty.c:674
+    const quit = () => ({ plname, role: st.role, race: st.race,
+                          gender: st.gender, align: st.align, quit: true });
 
     // ── askname ──────────────────────────────────────────────────────────
     // frameFor(typedSoFar) -> {screen, cursor}; supplied by the caller of
@@ -1883,7 +1882,7 @@ export async function playChargen(ctx) {
             screen: buildCopyrightAskname(typed),
             cursor: cursorForAskname(typed),
         }));
-        if (asknameText === null) return quit(ASKNAME_BAIL);
+        if (asknameText === null) return quit();
         plname = plnamesuffix(asknameText, st);
         renameallowed = true;   // wintty.c:747 iflags.renameallowed = TRUE
     }
@@ -1993,7 +1992,6 @@ export async function playChargen(ctx) {
             const key = await read(f.screen, f.cursor);
             // C wintty.c:1564-1614: invalid keys preserve a count; ESC stops it.
             if (key >= 48 && key <= 57) { count = count * 10 + key - 48; continue; }
-            if (key === K_ESC) game._ttyDismissMore = 1; /* getline.c:245-247 */
             if (key === K_ESC && count) { count = 0; continue; }
             // C wintty.c:1652,1681: unselect works for PICK_ONE too.
             if (key === 45 || key === 92) { randomMark = '-'; count = 0; continue; }
@@ -2116,7 +2114,6 @@ export async function playChargen(ctx) {
                 if (count !== 0) { counting = true; resetCount = false; }
                 continue;
             }
-            if (code === K_ESC) game._ttyDismissMore = 1; /* getline.c:245-247 */
             if (code === K_ESC && counting) continue;   // wintty.c:1604 only stops count
             if (ch === ':') {               // wintty.c:1700 MENU_SEARCH
                 const answer = await searchGetlin(f);
@@ -2410,7 +2407,7 @@ export async function playChargen(ctx) {
             if (key === K_CR || key === K_LF) break confirm;
             // wintty.c:1603 — ESC cancels the whole menu; select_menu() returns
             // -1 and role.c:2681's default arm quits.
-            if (key === K_ESC) { game._ttyDismissMore = 1; /* getline.c:245-247 */ return quit(); }
+            if (key === K_ESC) return quit();
 
             // Page selectors.  role.c:2657-2672; 'a' exists only when
             // iflags.renameallowed, so otherwise it is not in resp at all.
@@ -2457,7 +2454,7 @@ export async function playChargen(ctx) {
                     renameResidual = await doAskname(typed => (overlayBanner && !fullScreen)
                         ? buildAsknameOverBanner(typed, asknameResidual, bannerClip, asknameRetried)
                         : tty_base_window_prompt(menuBackground, askRow, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(askRow, typed)));
-                    if (renameResidual === null) return quit(ASKNAME_BAIL);
+                    if (renameResidual === null) return quit();
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
                     plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets
                 } while (!plname);

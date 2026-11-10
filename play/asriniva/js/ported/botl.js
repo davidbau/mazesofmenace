@@ -1,0 +1,4180 @@
+import {C} from './c-runtime.js';
+/* NetHack 5.0	botl.c	$NHDT-Date: 1769839231 2026/01/30 22:00:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.277 $ */
+/* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
+/*-Copyright (c) Michael Allison, 2006. */
+/* NetHack may be freely redistributed.  See license for details. */
+/* defined in eat.c */
+/* also used in insight.c */
+
+export function get_strength_str()
+{
+    
+const buf = C.staticBuffer("get_strength_str_buf", 32);
+    let st = C.ACURR(C.A_STR);
+
+    if (st > 18) {
+        if (st > C.STR18(100))
+            C.Sprintf(buf, "%2d", st - 100, C.varargs(0));
+        else if (st < C.STR18(100))
+            C.Sprintf(buf, "18/%02d", st - 18, C.varargs(1));
+        else
+            C.Sprintf(buf, "18/**", C.varargs(2));
+    } else
+        C.Sprintf(buf, "%-1d", st, C.varargs(3));
+
+    return buf;
+}
+
+
+export function check_gold_symbol()
+{
+    let goldch = C.gs.showsyms[C.COIN_CLASS + C.SYM_OFF_O];
+
+    C.iflags.invis_goldsym = (goldch <= C.uchar(32));
+}
+
+
+export function do_statusline1()
+{
+    
+const newbot1 = C.staticBuffer("do_statusline1_newbot1", C.BUFSZ);
+    let nb;
+    let i, j;
+
+    if (C.suppress_map_output())
+        return C.strcpy(newbot1, "");
+
+    C.Strcpy(newbot1, C.svp.plname);
+    if ((+!!(97 <= newbot1[0] && newbot1[0] <= 122)))
+        newbot1[0] += 65 - 97;
+    newbot1[C.BOTL_NSIZ] = 0;
+    C.Sprintf(nb = C.eos(newbot1), " the ", C.varargs(4));
+
+    if (C.Upolyd) {
+        const mbot = C.charArray(C.BUFSZ, "do_statusline1:automatic:0");
+        let k = 0;
+
+        C.Strcpy(mbot, C.pmname(C.mons[C.u.umonnum], C.Ugender));
+        while (mbot[k] != 0) {
+            if ((+!!((+!!(((+!!(k == 0 || ((+!!(k > 0 && mbot[k - 1] == 32)))))) && 97 <= mbot[k]))
+                && mbot[k] <= 122)))
+                mbot[k] += 65 - 97;
+            k++;
+        }
+        C.Strcpy(nb = C.eos(nb), mbot);
+    } else {
+        C.Strcpy(nb = C.eos(nb), C.callLocal(rank));
+    }
+
+    C.Sprintf(nb = C.eos(nb), "  ", C.varargs(5));
+    i = C.gm.mrank_sz + 15;
+    j = C.int(((nb + 2) - newbot1)); /* strlen(newbot1) but less computation */
+    if ((i - j) > 0)
+        C.Sprintf(nb = C.eos(nb), "%*s", i - j, " ", C.varargs(6)); /* pad with spaces */
+
+    C.Sprintf(nb = C.eos(nb), "St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d",
+            C.callLocal(get_strength_str),
+            C.ACURR(C.A_DEX), C.ACURR(C.A_CON), C.ACURR(C.A_INT), C.ACURR(C.A_WIS),
+            C.ACURR(C.A_CHA), C.varargs(7));
+    C.Sprintf(nb = C.eos(nb), "%s",
+            (C.u.ualign.type == C.A_CHAOTIC) ? "  Chaotic"
+              : (C.u.ualign.type == C.A_NEUTRAL) ? "  Neutral"
+                : "  Lawful", C.varargs(8));
+    return newbot1;
+}
+
+
+export function do_statusline2()
+{
+    /* MAXCO: botl.h *//* dungeon location (and gold), hero health (HP, PW, AC),
+            experience (HD if poly'd, else Exp level and maybe Exp points),
+            time (in moves), varying number of status conditions */
+const newbot2 = C.staticPointerArray("do_statusline2_newbot2", C.BUFSZ);
+const dloc = C.staticPointerArray("do_statusline2_dloc", C.QBUFSZ);
+const hlth = C.staticPointerArray("do_statusline2_hlth", C.QBUFSZ);
+const expr = C.staticPointerArray("do_statusline2_expr", C.QBUFSZ);
+const tmmv = C.staticPointerArray("do_statusline2_tmmv", C.QBUFSZ);
+const cond = C.staticPointerArray("do_statusline2_cond", C.QBUFSZ);
+const vers = C.staticPointerArray("do_statusline2_vers", C.QBUFSZ);
+    let nb;
+    let dln, dx, hln, xln, tln, cln, vrn;
+    let hp, hpmax, cap;
+    let money;
+
+    if (C.suppress_map_output())
+        return C.strcpy(newbot2, "");
+
+    /*
+     * Various min(x,9999)'s are to avoid having excessive values
+     * violate the field width assumptions in botl.h and should not
+     * impact normal play.  Particularly 64-bit long for gold which
+     * could require many more digits if someone figures out a way
+     * to get and carry a really large (or negative) amount of it.
+     * Turn counter is also long, but we'll risk that.
+     */
+
+    /* dungeon location plus gold */
+    C.callLocal(describe_level, dloc, 1); /* includes at least one trailing space */
+    if ((money = C.money_cnt(C.gi.invent)) < 0n)
+        money = 0n; /* ought to issue impossible() and then discard gold */
+    C.Sprintf(C.eos(dloc), "%s:%-2ld", /* strongest hero can lift ~300000 gold */
+            ((+!!(C.iflags.in_dumplog || C.iflags.invis_goldsym))) ? "$"
+              : C.encglyph(C.objnum_to_glyph(C.GOLD_PIECE)),
+            ((money) < ( 999999n) ? (money) : ( 999999n)), C.varargs(9));
+    dln = C.strlen(dloc);
+    /* '$' encoded as \GXXXXNNNN is 9 chars longer than display will need */
+    dx = C.strstri(dloc, "\\G") ? 9 : 0;
+
+    /* health and armor class (has trailing space for AC 0..9) */
+    hp = C.Upolyd ? C.u.mh : C.u.uhp;
+    hpmax = C.Upolyd ? C.u.mhmax : C.u.uhpmax;
+    if (hp < 0)
+        hp = 0;
+    C.Sprintf(hlth, "HP:%d(%d) Pw:%d(%d) AC:%-2d",
+            ((hp) < ( 9999) ? (hp) : ( 9999)), ((hpmax) < ( 9999) ? (hpmax) : ( 9999)),
+            ((C.u.uen) < ( 9999) ? (C.u.uen) : ( 9999)), ((C.u.uenmax) < ( 9999) ? (C.u.uenmax) : ( 9999)), C.u.uac, C.varargs(10));
+    hln = C.strlen(hlth);
+
+    /* experience */
+    if (C.Upolyd)
+        C.Sprintf(expr, "HD:%d", C.mons[C.u.umonnum].mlevel, C.varargs(11));
+    else if (C.flags.showexp)
+        C.Sprintf(expr, "Xp:%d/%-1ld", C.u.ulevel, C.u.uexp, C.varargs(12));
+    else
+        C.Sprintf(expr, "Xp:%d", C.u.ulevel, C.varargs(13));
+    xln = C.strlen(expr);
+
+    /* time/move counter */
+    if (C.flags.time)
+        C.Sprintf(tmmv, "T:%ld", C.svm.moves, C.varargs(14));
+    else
+        tmmv[0] = 0;
+    tln = C.strlen(tmmv);
+
+    /* status conditions; worst ones first */
+    cond[0] = 0; /* once non-empty, cond will have a leading space */
+    nb = cond;
+    /*
+     * Stoned, Slimed, Strangled, and both types of Sick are all fatal
+     * unless remedied before timeout expires.  Should we order them by
+     * shortest time left?  [Probably not worth the effort, since it's
+     * unusual for more than one of them to apply at a time.]
+     */
+    if (C.Stoned)
+        C.Strcpy(nb = C.eos(nb), " Stone");
+    if (C.Slimed)
+        C.Strcpy(nb = C.eos(nb), " Slime");
+    if (C.Strangled)
+        C.Strcpy(nb = C.eos(nb), " Strngl");
+    if (C.Sick) {
+        if (C.u.usick_type & C.SICK_VOMITABLE)
+            C.Strcpy(nb = C.eos(nb), " FoodPois");
+        if (C.u.usick_type & C.SICK_NONVOMITABLE)
+            C.Strcpy(nb = C.eos(nb), " TermIll");
+    }
+    if (C.u.uhs != C.NOT_HUNGRY)
+        C.Sprintf(nb = C.eos(nb), " %s", C.hu_stat[C.u.uhs], C.varargs(15));
+    if ((cap = C.near_capacity()) > C.UNENCUMBERED)
+        C.Sprintf(nb = C.eos(nb), " %s", C.enc_stat[cap], C.varargs(16));
+    if (C.Blind)
+        C.Strcpy(nb = C.eos(nb), " Blind");
+    if (C.Deaf)
+        C.Strcpy(nb = C.eos(nb), " Deaf");
+    if (C.Stunned)
+        C.Strcpy(nb = C.eos(nb), " Stun");
+    if (C.Confusion)
+        C.Strcpy(nb = C.eos(nb), " Conf");
+    if (C.Hallucination)
+        C.Strcpy(nb = C.eos(nb), " Hallu");
+    /* levitation and flying are mutually exclusive; riding is not */
+    if (C.Levitation)
+        C.Strcpy(nb = C.eos(nb), " Lev");
+    if (C.Flying)
+        C.Strcpy(nb = C.eos(nb), " Fly");
+    if (C.u.usteed)
+        C.Strcpy(nb = C.eos(nb), " Ride");
+    cln = C.strlen(cond);
+
+    /* version on status line, with leading space */
+    if (C.flags.showvers)
+        C.status_version(vers, C.sizes.typeSize_0, 1);
+    else
+        vers[0] = 0;
+    vrn = C.strlen(vers);
+
+    /*
+     * Put the pieces together.  If they all fit, keep the traditional
+     * sequence.  Otherwise, move least important parts to the end in
+     * case the interface side of things has to truncate.  Note that
+     * dloc[] contains '$' encoded in ten character sequence \GXXXXNNNN
+     * so we want to test its display length rather than buffer length.
+     *
+     * We don't have an actual display limit here, so have to go by the
+     * width of the map.  Since we're reordering rather than truncating,
+     * wider displays can still show wider status than the map if the
+     * interface supports that.
+     */
+    if ((dln - dx) + 1 + hln + 1 + xln + 1 + tln + 1 + cln + vrn <= C.COLNO) {
+        C.Snprintf(newbot2, C.sizes.typeSize_1, "%s %s %s %s %s%s", dloc, hlth,
+                 expr, tmmv, cond, vers, C.varargs(17));
+    } else {
+        if (dln + 1 + hln + 1 + xln + 1 + tln + 1 + cln + vrn > C.MAXCO) {
+            C.panic("bot2: second status line exceeds MAXCO (%u > %d)",
+                  C.uint((dln + 1 + hln + 1 + xln + 1 + tln + 1 + cln
+                              + vrn)),
+                  C.MAXCO, C.varargs(18));
+        } else if ((dln - dx) + 1 + hln + 1 + xln + 1 + cln <= C.COLNO) {
+            C.Snprintf(newbot2, C.sizes.typeSize_2, "%s %s %s %s %s%s", dloc, hlth,
+                     expr, cond, tmmv, vers, C.varargs(19));
+        } else if ((dln - dx) + 1 + hln + 1 + cln <= C.COLNO) {
+            C.Snprintf(newbot2, C.sizes.typeSize_3, "%s %s %s %s %s%s", dloc, hlth,
+                     cond, expr, tmmv, vers, C.varargs(20));
+        } else {
+            C.Snprintf(newbot2, C.sizes.typeSize_4, "%s %s %s %s %s%s", hlth, cond,
+                     dloc, expr, tmmv, vers, C.varargs(21));
+        }
+        /* only two or three consecutive spaces available to squeeze out */
+        C.mungspaces(newbot2);
+    }
+    return newbot2;
+}
+
+
+export function bot()
+{
+    if (C.gb.bot_disabled)
+        return;
+    /* dosave() flags completion by setting u.uhp to -1; suppress_map_output()
+       covers program_state.restoring and is used for status as well as map */
+    if ((+!!((+!!((+!!(C.u.uhp != -1 && C.gy.youmonst.data))
+        && C.iflags.status_updates)) && !C.suppress_map_output()))) {
+        if (C.VIA_WINDOWPORT()) {
+            C.callLocal(bot_via_windowport);
+        } else {
+            C.curs(C.WIN_STATUS, 1, 0);
+            C.putstr(C.WIN_STATUS, 0, C.callLocal(do_statusline1));
+            C.curs(C.WIN_STATUS, 1, 1);
+            C.putmixed(C.WIN_STATUS, 0, C.callLocal(do_statusline2));
+        }
+    }
+    C.disp.botl = C.disp.botlx = C.disp.time_botl = 0;
+}
+/* special purpose status update: move counter ('time' status) only */
+
+export function timebot()
+{
+    if (C.gb.bot_disabled)
+        return;
+    /* we're called when disp.time_botl is set and general disp.botl
+       is clear; disp.time_botl gets set whenever svm.moves changes value
+       so there's no benefit in tracking previous value to decide whether
+       to skip update; suppress_map_output() handles program_state.restoring
+       and program_state.done_hup (tty hangup => no further output at all)
+       and we use it for maybe skipping status as well as for the map */
+    if ((+!!((+!!(C.flags.time && C.iflags.status_updates)) && !C.suppress_map_output()))) {
+        if (C.VIA_WINDOWPORT()) {
+            C.callLocal(stat_update_time);
+        } else {
+            /* old status display updates everything */
+            C.callLocal(bot);
+        }
+    }
+    C.disp.time_botl = 0;
+}
+/* convert experience level (1..30) to rank index (0..8) */
+
+export function xlev_to_rank(xlev)
+{
+    /*
+     *   1..2  => 0
+     *   3..5  => 1
+     *   6..9  => 2
+     *  10..13 => 3
+     *      ...
+     *  26..29 => 7
+     *    30   => 8
+     * Conversion is precise but only partially reversible.
+     */
+    return (xlev <= 2) ? 0 : (xlev <= 30) ? (C.intDiv((xlev + 2) , 4)) : 8;
+}
+/* convert rank index (0..8) to experience level (1..30) */
+
+export function rank_to_xlev(rank)
+{
+    /*
+     *  0 =>  1..2
+     *  1 =>  3..5
+     *  2 =>  6..9
+     *  3 => 10..13
+     *      ...
+     *  7 => 26..29
+     *  8 =>   30
+     * We return the low end of each range.
+     */
+    return (rank < 1) ? 1 : (rank < 2) ? 3
+           : (rank < 8) ? ((rank * 4) - 2) : 30;
+}
+
+
+export function rank_of(lev, monnum, female)
+{
+    let role;
+    let i;
+
+    /* Find the role */
+    for (role = C.roles[0]; role.name.m; role = C.advance(role, 1))
+        if (monnum == role.mnum)
+            break;
+    if (!role.name.m)
+        role = C.gu.urole;
+
+    /* Find the rank */
+    for (i = C.callLocal(xlev_to_rank, C.int(lev)); i >= 0; i--) {
+        if ((+!!(female && role.rank[i].f)))
+            return role.rank[i].f;
+        if (role.rank[i].m)
+            return role.rank[i].m;
+    }
+
+    /* Try the role name, instead */
+    if ((+!!(female && role.name.f)))
+        return role.name.f;
+    else if (role.name.m)
+        return role.name.m;
+    return "Player";
+}
+
+
+export function rank()
+{
+    return C.callLocal(rank_of, C.u.ulevel, C.Role_switch, C.flags.female);
+}
+
+
+export function title_to_mon(str, rank_indx, title_length)
+{
+    let i, j;
+
+    /* Loop through each of the roles */
+    for (i = 0; C.roles[i].name.m; i++) {
+        /* loop through each of the rank titles for role #i */
+        for (j = 0; j < 9; j++) {
+            if ((+!!(C.roles[i].rank[j].m
+                && C.str_start_is(str, C.roles[i].rank[j].m, 1)))) {
+                if (rank_indx)
+                    rank_indx.value = j;
+                if (title_length)
+                    title_length.value = C.Strlen(C.roles[i].rank[j].m, "title_to_mon", 383);
+                return C.roles[i].mnum;
+            }
+            if ((+!!(C.roles[i].rank[j].f
+                && C.str_start_is(str, C.roles[i].rank[j].f, 1)))) {
+                if (rank_indx)
+                    rank_indx.value = j;
+                if (title_length)
+                    title_length.value = C.Strlen(C.roles[i].rank[j].f, "title_to_mon", 391);
+                return C.roles[i].mnum;
+            }
+        }
+    }
+    if (title_length)
+        title_length.value = 0;
+    return C.NON_PM;
+}
+
+
+export function max_rank_sz()
+{
+    let i;
+    let r, maxr = 0;
+
+    for (i = 0; i < 9; i++) {
+        if ((+!!(C.gu.urole.rank[i].m && (r = C.strlen(C.gu.urole.rank[i].m)) > maxr)))
+            maxr = r;
+        if ((+!!(C.gu.urole.rank[i].f && (r = C.strlen(C.gu.urole.rank[i].f)) > maxr)))
+            maxr = r;
+    }
+    C.gm.mrank_sz = C.int(maxr);
+    return;
+}
+/* hidden_gold(False): only gold in containers whose contents are known */
+/* don't include initial gold; don't impose penalty if it's all gone */
+/* neither umoney nor depthbonus can grow unusually big (gold due to
+       weight); u.urexp might */
+/* SCORE_ON_BOTL */
+/* provide the name of the current level for display by various ports */
+/* output buffer *//* 1: append trailing space; 2: include dungeon branch name */
+export function describe_level(buf, dflgs)
+{
+    let addspace = (dflgs & 1) != 0,  /* (used to be unconditional) */
+            addbranch = (dflgs & 2) != 0; /* False: status, True: livelog */
+    let ret = 1;
+
+    if (C.Is_knox(C.u.uz)) {
+        C.Sprintf(buf, "%s", C.svd.dungeons[C.u.uz.dnum].dname, C.varargs(22));
+        addbranch = 0;
+    } else if (C.In_quest(C.u.uz)) {
+        C.Sprintf(buf, "Home %d", C.dunlev(C.u.uz), C.varargs(23));
+    } else if (C.In_endgame(C.u.uz)) {
+        /* [3.6.2: this used to be "Astral Plane" or generic "End Game"] */
+        C.endgamelevelname(buf, C.depth(C.u.uz));
+        if (!addbranch)
+            C.strsubst(buf, "Plane of ", ""); /* just keep <element> */
+        addbranch = 0;
+    } else {
+        /* ports with more room may expand this one */
+        if (!addbranch)
+            C.Sprintf(buf, "%s:%-2d", /* "Dlvl:n" (grep fodder) */
+                    C.In_tutorial(C.u.uz) ? "Tutorial" : "Dlvl", C.depth(C.u.uz), C.varargs(24));
+        else
+            C.Sprintf(buf, "level %d", C.depth(C.u.uz), C.varargs(25));
+        ret = 0;
+    }
+    if (addbranch) {
+        C.Sprintf(C.eos(buf), ", %s", C.svd.dungeons[C.u.uz.dnum].dname, C.varargs(26));
+        C.strsubst(buf, "The ", "the ");
+    }
+    if (addspace)
+        C.Strcat(buf, " ");
+    return ret;
+}
+/* weapon description for status lines; started as a terser version of
+   what ^X shows but has diverged to some extent */
+
+export function weapon_status(outbuf)
+{
+    let res = 0;
+
+    C.storeChar(outbuf, 0); /* lint suppression */
+    if (!C.uwep) {
+        /* no weapon; gloves imply hands; humanoid also implies hands;
+           otherwise make no assumptions */
+        res = C.uarmg ? "Empty-hnd" /* empty handed means "gloves only" */
+              : C.humanoid(C.gy.youmonst.data) ? "Bare-hnds" /* bare hands */
+                : "No-weapon";
+    } else if (C.u.twoweap) {
+        /* two-weaponing implies hands and a weapon or wep-tool
+           (not other odd stuff) in each hand */
+        res = "Dual-weps";
+        /* note: dual wielding two lances doesn't produce double joust */
+        if ((+!!(C.u.usteed && ((+!!(C.weapon_type(C.uwep) == C.P_LANCE
+                         || C.weapon_type(C.uswapwep) == C.P_LANCE))))))
+            res = "Dual+joust"; /* lance behaves specially when mounted */
+    } else {
+        /* report most weapons by their skill class (so a katana will be
+           described as a long sword, for instance; mattock and hook are
+           exceptions), or wielded non-weapon item by its object class */
+        let p;
+        let skill = C.weapon_type(C.uwep);
+
+        if ((+!!(C.u.usteed && skill == C.P_LANCE))) {
+            /* lance behaves specially when hero is mounted */
+            res = "joust";
+        } else if (C.uwep.otyp == C.AKLYS) {
+            /* aklys behaves specially when thrown while wielded, so
+               give it a distinct name instead of skill name of "club";
+               [maybe FIXME?] for the time being
+               use real name even if 'obj' is undiscovered "thonged club" */
+            res = "aklys";
+        } else if (C.is_sword(C.uwep)) {
+            /* simplify short short/broad sword/long sword/two-handed sword
+               (similar to messages when dropped due to slippery fingers) */
+            res = "sword";
+        } else {
+            /* shorten several */
+            switch (skill) {
+            case C.P_QUARTERSTAFF:
+                res = "staff";
+                break;
+            case C.P_MORNING_STAR:
+                res = "mrng-star"; /* still pretty long */
+                break;
+            case C.P_POLEARMS:
+                res = "pole";
+                break;
+            case C.P_UNICORN_HORN:
+                res = "unihorn";
+                break;
+            default:
+                res = C.weapon_descr(C.uwep);
+                /* [should this be moved into weapon_descr()?] */
+                if ((+!!(!C.strcmpi(res, "food") && C.uwep.otyp == C.CREAM_PIE)))
+                    res = "pie";
+                break;
+            }
+        }
+
+        if ((+!!((+!!((+!!(((+!!(C.uwep.oclass == C.WEAPON_CLASS || C.is_weptool(C.uwep))))
+            && C.bimanual(C.uwep))) && C.loadChar(res) != 50)) && C.strncmpi(res, "two", 3))))
+            C.Strcat(outbuf, "2H-");
+        C.Strcpy(p = C.eos(outbuf), res), res = outbuf;
+        C.storeChar(p, C.highc(C.loadChar(p)));
+        /* avoid embedded spaces since its designed to appear as part
+           of a space-separated status line */
+        C.strNsubst(outbuf, " ", "-", 0);
+    }
+
+    return (C.samePointer(outbuf , res)) ? outbuf : C.strcpy(outbuf, res);
+}
+/* armor description for status lines */
+
+export function armor_status(armbuf)
+{
+    let n = !!C.uarmg + !!C.uarmc + !!C.uarm + !!C.uarmu + !!C.uarmh + !!C.uarmf + !!C.uarms;
+
+    /*
+     * FIXME: ^X needs to provide non-abbreviated version of this info.
+     * At present it just reports the "no armor" case.
+     */
+    if (n == 0) { /* no armor */
+        C.Strcpy(armbuf, "naked");
+    } else if (n == 1) { /* just one piece; spell it out */
+        C.Strcpy(armbuf, C.uarmg ? "gloves"
+                       : C.uarmc ? "cloak"
+                         : C.uarm  ? "suit"
+                           : C.uarmu ? "shirt"
+                             : C.uarmh ? C.helm_simple_name(C.uarmh) /* hat|helm */
+                               : C.uarmf ? "boots"
+                                 : C.uarms ? "shield"
+                                   : ""); /* not possible */
+    } else { /* more than one piece */
+        let p = armbuf;
+
+        /* gloves first since this is expected to follow weapon_status();
+           cloak next since it tends to provide the most protection
+           aside from raw AC */
+        if (C.uarmg)
+            C.storeChar(p++, 71); /* gloves */
+        if (C.uarmc)
+            C.storeChar(p++, 67); /* cloak */
+        if (C.uarm)
+            C.storeChar(p++, 65); /* suit but 's' is for shield */
+        if (C.uarmu)
+            C.storeChar(p++, 85); /* underwear? => shirt */
+        if (C.uarmh)
+            C.storeChar(p++, 72); /* hat/helm */
+        if (C.uarmf)
+            C.storeChar(p++, 66); /* footwear => boots */
+        if (C.uarms)
+            C.storeChar(p++, 83); /* shield */
+        C.storeChar(p, 0);
+    }
+    /*
+     * Add a hint about MC by appending a plus sign if that's augmented.
+     * Bug:  we should modfiy magical_negation() to return extra info and
+     * call it to scan whole inventory looking for sources of protection.
+     * This is a hack for efficiency to avoid that during status updates.
+     */
+    if ((+!!((+!!((+!!((+!!((+!!(((+!!(C.uright && C.uright.otyp == C.RIN_PROTECTION)))
+        || ((+!!(C.uleft && C.uleft.otyp == C.RIN_PROTECTION)))))
+        || ((+!!(C.uamul && C.uamul.otyp == C.AMULET_OF_GUARDING)))))
+        || ((+!!(C.uarmc && C.uarmc.otyp == C.CLOAK_OF_PROTECTION)))))
+        || ((+!!(C.uarmh && C.uarmh.oartifact == C.ART_MITRE_OF_HOLINESS)))))
+        || ((+!!(C.uwep && C.uwep.oartifact == C.ART_TSURUGI_OF_MURAMASA))))))
+        C.strkitten(armbuf, 43);
+
+    return C.upstart(armbuf);
+}
+/* =======================================================================*/
+/*  statusnew routines                                                    */
+/* =======================================================================*/
+/* structure that tracks the status details in the core */
+/* STATUS_HILITES */
+/* TH_UPDOWN encompasses specific 'up' and 'down' also general 'changed' */
+/* pointers to current hilite rule and list of this field's defined rules */
+/* !STATUS_HILITES */
+/*empty*/
+/*
+ * If entries are added to this, botl.h will require updating too.
+ *
+ * 'max' values of BL_XP and BL_EXP get special handling since the
+ * percentage involved isn't a direct 100*current/maximum calculation.
+ *
+ * long int fields are given a buffer size of 30 which is guaranteed to
+ * be big enough for short prefix followed by a 20+ digit 64-bit long
+ * even though the actual values will be much smaller.  The gold field
+ * is even bigger due to its encoded dollar sign prefix.
+ */
+/* hunger used to be 'ANY_UINT'; see note below in bot_via_windowport() */
+/* optional; once set it doesn't change unless 'showvers' option is
+       toggled or player modifies the 'versinfo' option;
+       available mostly for screenshots or someone looking over shoulder;
+       blstat[][BL_VERS] is actually an int copy of flags.versinfo (0...7) */
+/* weapon and armor are constructed strings with no particular numeric
+       equivalent */
+/* terrain is tracked by a number but designating it as type 'int'
+       isn't useful; using type 'string' allows highlighting based on text
+       matching which is potentially useful */
+/* STATUS_HILITES */
+/* condition names and their abbreviations are used by windowport code */
+/* ranking, mask, identifier, txt1, txt2, txt3 */
+/* [perhaps these should all be opt_out with default of 'in';
+   otherwise some players may never learn about them] */
+/* id, useropt, opt_in or out, enabled, configchoice, testresult;
+       default value for enabled is !opt_in but can get changed via options */
+/* condition indexing */
+/*
+ *  Terrain descriptions for flags.terrainstatus; simplified from
+ *  def_syms[].name and indexed by iflags.terrain_typ; should be
+ *  kept in sync with rm.h types and the first half of def_syms[].
+ *  The extra pseudo-types are specified by classify_terrain()
+ *  when it sets up iflags.terrain_typ.  Walls and a few of the
+ *  others can only occur when hero has the Passes_walls ability.
+ */
+/* 0*/
+/* stone */
+/* vwall */
+/* hwall */
+/* tlcorner */
+/* trcorner */
+/* blcorner */
+/* brcorner */
+/* crosswall */
+/* tuwall */
+/* tdwall */
+/*10*/
+/* tlwall */
+/* trwall */
+/* dbwall, closed drawbridge 'door' */
+/* sdoor: secret door */
+/* scorr: secret corridor */
+/* pool or non-moat water; can be boiled away */
+/* water that can't be boiled away */
+/* water on Water level; can't be boiled or frozen */
+/* drawbridge_up; replaced by whatever is under */
+/*20*/
+/* lavapool */
+/* lava that extends to ceiling */
+/* ironbars */
+/* doorless or broken door; diagonal movement is ok */
+/* replaced by "Floor" */
+/* also replaced by "Floor" */
+/*30*/
+/* drawbridge_down, span across moat/ice/lava/floor */
+/* open air on Air level or bubble on Water level */
+/* [part of] a cloud or Air level */
+/*
+        */
+/*37*/
+/* MAX_TYPE; skipped ratther than overloaded */
+/*38*/
+/* MATCH_WALL for special levels; shouldn't happen */
+/*
+        * additional terrain names that aren't simple levl[][].typ values
+        */
+/*39*/
+/* substituted for room or corridor */
+/*40*/
+/* 'room' on Earth level */
+/* open (not broken or doorless) */
+/* closed or locked (or trapped) */
+/* Juiblex level */
+/* under water */
+/* moat terrain on Medusa's level: "shallow sea" */
+/* water that extends to the ceiling */
+/* cache-related */
+/* we don't put this next declaration in #ifdef STATUS_HILITES.
+ * In the absence of STATUS_HILITES, each array
+ * element will be 0 however, and quite meaningless,
+ * but we need to pass the first array element as
+ * the final argument of status_update, with or
+ * without STATUS_HILITES.
+ */
+
+export function bot_via_windowport()
+{
+    const buf = C.charArray(C.BUFSZ, "bot_via_windowport:automatic:0");
+    let titl;
+    let nb;
+    let i, idx, cap;
+    let money;
+
+    if (!C.gb.blinit)
+        C.panic("bot before init.", C.varargs(27));
+
+    /* toggle from previous iteration */
+    idx = 1 - C.gn.now_or_before_idx; /* 0 -> 1, 1 -> 0 */
+    C.gn.now_or_before_idx = idx;
+
+    /* clear the "value set" indicators */
+    C.memset(C.gv.valset, 0, C.MAXBLSTATS * C.sizes.typeSize_5);
+
+    /*
+     * Note: min(x,9999) - we enforce the same maximum on hp, maxhp,
+     * pw, maxpw, and gold as basic status formatting so that the two
+     * modes of status display don't produce different information.
+     */
+
+    /*
+     *  Player name and title.
+     */
+    C.Strcpy(nb = buf, C.svp.plname);
+    nb[0] = C.highc(nb[0]);
+    titl = !C.Upolyd ? C.callLocal(rank) : C.pmname(C.mons[C.u.umonnum], C.Ugender);
+    i = C.int((C.strlen(buf) + C.sizes.typeSize_6 + C.strlen(titl) - C.sizes.typeSize_7));
+    /* if "Name the Rank/monster" is too long, we truncate the name but
+       always keep at least BOTL_NSIZ characters of it; when hitpointbar is
+       enabled, anything beyond 30 (long monster name) will be truncated */
+    if (i > 30) {
+        i = 30 - C.int((C.sizes.typeSize_8 + C.strlen(titl) - C.sizes.typeSize_9));
+        nb[((i) > ( C.BOTL_NSIZ) ? (i) : ( C.BOTL_NSIZ))] = 0;
+    }
+    C.Strcpy(nb = C.eos(nb), " the ");
+    C.Strcpy(nb = C.eos(nb), titl);
+    if (C.Upolyd) { /* when poly'd, capitalize monster name */
+        for (i = 0; nb[i]; i++)
+            if ((+!!(i == 0 || nb[i - 1] == 32)))
+                nb[i] = C.highc(nb[i]);
+    }
+    C.Sprintf(C.gb.blstats[idx][C.BL_TITLE].val, "%-30s", buf, C.varargs(28));
+    C.gv.valset[C.BL_TITLE] = 1; /* indicate val already set */
+
+    /* Strength */
+    C.gb.blstats[idx][C.BL_STR].a.a_int = C.ACURR(C.A_STR);
+    C.Strcpy(C.gb.blstats[idx][C.BL_STR].val, C.callLocal(get_strength_str));
+    C.gv.valset[C.BL_STR] = 1; /* indicate val already set */
+
+    /*  Dexterity, constitution, intelligence, wisdom, charisma. */
+    C.gb.blstats[idx][C.BL_DX].a.a_int = C.ACURR(C.A_DEX);
+    C.gb.blstats[idx][C.BL_CO].a.a_int = C.ACURR(C.A_CON);
+    C.gb.blstats[idx][C.BL_IN].a.a_int = C.ACURR(C.A_INT);
+    C.gb.blstats[idx][C.BL_WI].a.a_int = C.ACURR(C.A_WIS);
+    C.gb.blstats[idx][C.BL_CH].a.a_int = C.ACURR(C.A_CHA);
+
+    /* Alignment */
+    C.Strcpy(C.gb.blstats[idx][C.BL_ALIGN].val, (C.u.ualign.type == C.A_CHAOTIC)
+                                          ? "Chaotic"
+                                          : (C.u.ualign.type == C.A_NEUTRAL)
+                                               ? "Neutral"
+                                               : "Lawful");
+
+    /* Score */
+    C.gb.blstats[idx][C.BL_SCORE].a.a_long =
+        0n;
+
+    /*  Hit points  */
+    i = C.Upolyd ? C.u.mh : C.u.uhp;
+    if (i < 0) /* gameover sets u.uhp to -1 */
+        i = 0;
+    C.gb.blstats[idx][C.BL_HP].rawval.a_int = i;
+    C.gb.blstats[idx][C.BL_HP].a.a_int = ((i) < ( 9999) ? (i) : ( 9999));
+    i = C.Upolyd ? C.u.mhmax : C.u.uhpmax;
+    C.gb.blstats[idx][C.BL_HPMAX].rawval.a_int = i;
+    C.gb.blstats[idx][C.BL_HPMAX].a.a_int = ((i) < ( 9999) ? (i) : ( 9999));
+
+    /*  Dungeon level. */
+    C.callLocal(describe_level, C.gb.blstats[idx][C.BL_LEVELDESC].val, 1);
+    C.gv.valset[C.BL_LEVELDESC] = 1; /* indicate val already set */
+
+    /* Gold */
+    if ((money = C.money_cnt(C.gi.invent)) < 0n)
+        money = 0n; /* ought to issue impossible() and then discard gold */
+    C.gb.blstats[idx][C.BL_GOLD].rawval.a_long = money;
+    C.gb.blstats[idx][C.BL_GOLD].a.a_long = ((money) < ( 999999n) ? (money) : ( 999999n));
+    /*
+     * The tty port needs to display the current symbol for gold
+     * as a field header, so to accommodate that we pass gold with
+     * that already included. If a window port needs to use the text
+     * gold amount without the leading "$:" the port will have to
+     * skip past ':' to the value pointer it was passed in status_update()
+     * for the BL_GOLD case.
+     *
+     * Another quirk of BL_GOLD is that the field display may have
+     * changed if a new symbol set was loaded, or we entered or left
+     * the rogue level.
+     *
+     * The currency prefix is encoded as ten character \GXXXXNNNN
+     * sequence.
+     */
+    C.Sprintf(C.gb.blstats[idx][C.BL_GOLD].val, "%s:%ld",
+            ((+!!(C.iflags.in_dumplog || C.iflags.invis_goldsym))) ? "$"
+              : C.encglyph(C.objnum_to_glyph(C.GOLD_PIECE)),
+            C.gb.blstats[idx][C.BL_GOLD].a.a_long, C.varargs(29));
+    C.gv.valset[C.BL_GOLD] = 1; /* indicate val already set */
+
+    /* Power (magical energy) */
+    C.gb.blstats[idx][C.BL_ENE].rawval.a_int = C.u.uen;
+    C.gb.blstats[idx][C.BL_ENE].a.a_int = ((C.u.uen) < ( 9999) ? (C.u.uen) : ( 9999));
+    C.gb.blstats[idx][C.BL_ENEMAX].rawval.a_int = C.u.uenmax;
+    C.gb.blstats[idx][C.BL_ENEMAX].a.a_int = ((C.u.uenmax) < ( 9999) ? (C.u.uenmax) : ( 9999));
+
+    /* Armor class */
+    C.gb.blstats[idx][C.BL_AC].a.a_int = C.u.uac;
+
+    /* Monster level (if Upolyd) */
+    C.gb.blstats[idx][C.BL_HD].a.a_int = C.Upolyd ? C.int(C.mons[C.u.umonnum].mlevel) : 0;
+
+    /* Experience */
+    C.gb.blstats[idx][C.BL_XP].a.a_int = C.u.ulevel;
+    C.gb.blstats[idx][C.BL_EXP].a.a_long = C.u.uexp;
+
+    /* Time (moves) */
+    C.gb.blstats[idx][C.BL_TIME].a.a_long = C.svm.moves;
+
+    /* Hunger */
+    /* note: u.uhs is unsigned, and 3.6.1's STATUS_HILITE defined
+       BL_HUNGER to be ANY_UINT, but that was the only non-int/non-long
+       numeric field so it's far simpler to treat it as plain int and
+       not need ANY_UINT handling at all */
+    C.gb.blstats[idx][C.BL_HUNGER].a.a_int = C.int(C.u.uhs);
+    C.Strcpy(C.gb.blstats[idx][C.BL_HUNGER].val,
+           (C.u.uhs != C.NOT_HUNGRY) ? C.hu_stat[C.u.uhs] : "");
+    C.gv.valset[C.BL_HUNGER] = 1;
+
+    /* Carrying capacity */
+    cap = C.near_capacity();
+    C.gb.blstats[idx][C.BL_CAP].a.a_int = cap;
+    C.Strcpy(C.gb.blstats[idx][C.BL_CAP].val,
+           (cap > C.UNENCUMBERED) ? C.enc_stat[cap] : "");
+    C.gv.valset[C.BL_CAP] = 1;
+
+    /* Version; unchanging unless player toggles 'showvers' option or
+       modifies 'versinfo' option; toggling showvers off will clear it */
+    if (C.gb.blstats[idx][C.BL_VERS].a.a_int != C.int(C.flags.versinfo)) {
+        C.gb.blstats[idx][C.BL_VERS].a.a_int = C.int(C.flags.versinfo);
+        C.gv.valset[C.BL_VERS] = 0;
+    }
+    if (!C.gv.valset[C.BL_VERS]) {
+        C.status_version(C.gb.blstats[idx][C.BL_VERS].val,
+                              C.gb.blstats[idx][C.BL_VERS].valwidth, 0);
+        C.gv.valset[C.BL_VERS] = 1;
+    }
+
+    /* Conditions */
+
+    C.gb.blstats[idx][C.BL_CONDITION].a.a_ulong = 0n;
+
+    /*
+     * Avoid anything that does string comparisons in here because this
+     * is called *extremely* often, for every screen update and the same
+     * string comparisons would be repeated, thus contributing toward
+     * performance degradation.  If it is essential that string comparisons
+     * are needed for a particular condition, consider adding a caching
+     * mechanism to limit the string comparisons to the first occurrence
+     * for that cache lifetime.  There is caching of that nature done for
+     * unconsc (1) and parlyz (2) because the suggested way of being able
+     * to distinguish unconsc, parlyz, sleeping, and busy involves multiple
+     * string comparisons.
+     *
+     * [Rebuttal:  it's called a lot for Windows and MS-DOS because their
+     * sample run-time configuration file enables 'time' (move counter).
+     * The optimization to bypass full status update when only 'time'
+     * has changed (via timebot(), only effective for VIA_WINDOWPORT()
+     * configurations) should ameliorate that.]
+     */
+
+
+    C.condtests[C.bl_foodpois].test = C.condtests[C.bl_termill].test = 0;
+    if (C.Sick) {
+        if (C.condtests[C.bl_foodpois].enabled) C.condtests[C.bl_foodpois].test = (C.u.usick_type & C.SICK_VOMITABLE) != 0;
+        if (C.condtests[C.bl_termill].enabled) C.condtests[C.bl_termill].test = (C.u.usick_type & C.SICK_NONVOMITABLE) != 0;
+    }
+    C.condtests[C.bl_inlava].test = C.condtests[C.bl_tethered].test
+        = C.condtests[C.bl_trapped].test = 0;
+    if (C.u.utrap) {
+        if (C.condtests[C.bl_inlava].enabled) C.condtests[C.bl_inlava].test = (C.u.utraptype == C.TT_LAVA);
+        if (C.condtests[C.bl_tethered].enabled) C.condtests[C.bl_tethered].test = (C.u.utraptype == C.TT_BURIEDBALL);
+        /* if in-lava or tethered is disabled and the condition applies,
+           lump it in with trapped */
+        if (C.condtests[C.bl_trapped].enabled) C.condtests[C.bl_trapped].test = ((+!!(!C.condtests[C.bl_inlava].test
+                                       && !C.condtests[C.bl_tethered].test)));
+    }
+    C.condtests[C.bl_grab].test = C.condtests[C.bl_held].test
+        = C.condtests[C.bl_holding].test = 0;
+    if (C.u.ustuck) {
+        /* it is possible for a hero in sticks() form to be swallowed,
+           so swallowed needs to be checked first; it is not possible for
+           a hero in sticks() form to be held--sticky hero does the holding
+           even if u.ustuck is also a holder */
+        if (C.u.uswallow) {
+            /* engulfed/swallowed isn't currently a tracked status condition;
+               "held" might look odd for it but seems better than blank */
+            if (C.condtests[C.bl_held].enabled) C.condtests[C.bl_held].test = 1;
+        } else if ((+!!(C.Upolyd && C.sticks(C.gy.youmonst.data)))) {
+            if (C.condtests[C.bl_holding].enabled) C.condtests[C.bl_holding].test = 1;
+        } else {
+            /* grab == hero is held by sea monster and about to be drowned;
+               held == hero is held by something else and can't move away */
+            if (C.condtests[C.bl_grab].enabled) C.condtests[C.bl_grab].test = (C.u.ustuck.data.mlet == C.S_EEL);
+            if (C.condtests[C.bl_held].enabled) C.condtests[C.bl_held].test = !C.condtests[C.bl_grab].test;
+        }
+    }
+    C.condtests[C.bl_blind].test     = (C.Blind) ? 1 : 0;
+    C.condtests[C.bl_conf].test      = (C.Confusion) ? 1 : 0;
+    C.condtests[C.bl_deaf].test      = (C.Deaf) ? 1 : 0;
+    C.condtests[C.bl_fly].test       = (C.Flying) ? 1 : 0;
+    C.condtests[C.bl_glowhands].test = (C.u.umconf) ? 1 : 0;
+    C.condtests[C.bl_hallu].test     = (C.Hallucination) ? 1 : 0;
+    C.condtests[C.bl_lev].test       = (C.Levitation) ? 1 : 0;
+    C.condtests[C.bl_ride].test      = (C.u.usteed) ? 1 : 0;
+    C.condtests[C.bl_slime].test     = (C.Slimed) ? 1 : 0;
+    C.condtests[C.bl_stone].test     = (C.Stoned) ? 1 : 0;
+    C.condtests[C.bl_strngl].test    = (C.Strangled) ? 1 : 0;
+    C.condtests[C.bl_stun].test      = (C.Stunned) ? 1 : 0;
+    C.condtests[C.bl_submerged].test = (C.Underwater) ? 1 : 0;
+    if (C.condtests[C.bl_elf_iron].enabled) C.condtests[C.bl_elf_iron].test = (0);
+    if (C.condtests[C.bl_bareh].enabled) C.condtests[C.bl_bareh].test    = ((+!!(!C.uarmg && !C.uwep)));
+    if (C.condtests[C.bl_icy].enabled) C.condtests[C.bl_icy].test      = (C.levl[C.u.ux][C.u.uy].typ == C.ICE);
+    if (C.condtests[C.bl_slippery].enabled) C.condtests[C.bl_slippery].test = (C.Glib) ? 1 : 0;
+    if (C.condtests[C.bl_woundedl].enabled) C.condtests[C.bl_woundedl].test = (C.Wounded_legs) ? 1 : 0;
+
+    if (C.gm.multi < 0) {
+        {                                                        
+    let clear_cache = 0, refresh_cache = 0;     
+                                                            
+    if (C.gm.multi < 0) {                                     
+        if (C.gn.nomovemsg || C.gm.multi_reason) {              
+            if (C.cache_nomovemsg != C.gn.nomovemsg)            
+                refresh_cache = 1;                       
+            if (C.cache_multi_reason != C.gm.multi_reason)      
+                refresh_cache = 1;                       
+        } else {                                            
+            clear_cache = 1;                             
+        }                                                   
+    } else {                                                
+        clear_cache = 1;                                 
+    }                                                       
+    if (clear_cache) {                                      
+        C.cache_nomovemsg =  0;                 
+        C.cache_multi_reason =  0;              
+    }                                                       
+    if (refresh_cache) {                                    
+        C.cache_nomovemsg = C.gn.nomovemsg;                     
+        C.cache_multi_reason = C.gm.multi_reason;               
+    }                                                       
+    if (clear_cache || refresh_cache) {                     
+        C.cache_reslt[0] = C.cache_avail[0] = 0;            
+        C.cache_reslt[1] = C.cache_avail[1] = 0;            
+    }                                                       
+}
+        if ((+!!((+!!(C.condtests[C.bl_unconsc].enabled
+            && C.cache_nomovemsg)) && !C.cache_avail[0]))) {
+                C.cache_reslt[0] = ((+!!(!C.u.usleep && C.unconscious())));
+                C.cache_avail[0] = 1;
+        }
+        if ((+!!((+!!(C.condtests[C.bl_parlyz].enabled
+            && C.cache_multi_reason)) && !C.cache_avail[1]))) {
+                C.cache_reslt[1] = ((+!!(!C.strncmp(C.cache_multi_reason, "paralyzed", 9)
+                                 || !C.strncmp(C.cache_multi_reason, "frozen", 6))));
+                C.cache_avail[1] = 1;
+        }
+        if ((+!!(C.cache_avail[0] && C.cache_reslt[0]))) {
+            C.condtests[C.bl_unconsc].test = C.cache_reslt[0];
+        } else if ((+!!(C.cache_avail[1] && C.cache_reslt[1]))) {
+            C.condtests[C.bl_parlyz].test = C.cache_reslt[1];
+        } else if ((+!!(C.condtests[C.bl_sleeping].enabled && C.u.usleep))) {
+            C.condtests[C.bl_sleeping].test = 1;
+        } else if (C.condtests[C.bl_busy].enabled) {
+            C.condtests[C.bl_busy].test = 1;
+        }
+    } else {
+        C.condtests[C.bl_unconsc].test = C.condtests[C.bl_parlyz].test =
+            C.condtests[C.bl_sleeping].test = C.condtests[C.bl_busy].test = 0;
+    }
+
+
+    for (i = 0; i < C.CONDITION_COUNT; ++i) {
+        if ((+!!(C.condtests[i].enabled
+             /* && i != bl_holding  */ /* uncomment to suppress UHold */
+                && C.condtests[i].test)))
+            C.gb.blstats[idx][C.BL_CONDITION].a.a_ulong |= C.conditions[i].mask;
+    }
+
+    /*
+     * Optionally displayed weapon(s), armor, and terrain.
+     */
+    if (C.flags.weaponstatus)
+        C.callLocal(weapon_status, C.gb.blstats[idx][C.BL_WEAPON].val);
+    else
+        C.storeChar(C.gb.blstats[idx][C.BL_WEAPON].val, 0);
+
+    if (C.flags.armorstatus)
+        C.callLocal(armor_status, C.gb.blstats[idx][C.BL_ARMOR].val);
+    else
+        C.storeChar(C.gb.blstats[idx][C.BL_ARMOR].val, 0);
+
+    if (C.flags.terrainstatus) {
+        if (C.iflags.terrain_typ == C.MAX_TYPE)
+            C.classify_terrain();
+        i = C.iflags.terrain_typ;
+        if (C.gb.blstats[idx][C.BL_TERRAIN].a.a_int != i) {
+            C.Strcpy(C.gb.blstats[idx][C.BL_TERRAIN].val, C.terrain_descr[i]);
+            C.gb.blstats[idx][C.BL_TERRAIN].a.a_int = i;
+        }
+    } else {
+        C.storeChar(C.gb.blstats[idx][C.BL_TERRAIN].val, 0);
+        /* MAX_TYPE is "none of the above" for levl[][].typ */
+        C.gb.blstats[idx][C.BL_TERRAIN].a.a_int = C.MAX_TYPE;
+    }
+    C.gv.valset[C.BL_TERRAIN] = 1;
+
+    /* now request rendering */
+    C.callLocal(evaluate_and_notify_windowport, C.gv.valset, idx);
+}
+/* update just the status lines' 'time' field */
+
+export function stat_update_time()
+{
+    let idx = C.gn.now_or_before_idx; /* no 0/1 toggle */
+    let fld = C.BL_TIME;
+
+    /* Time (moves) */
+    C.gb.blstats[idx][fld].a.a_long = C.svm.moves;
+    C.gv.valset[fld] = 0;
+
+    C.callLocal(eval_notify_windowport_field, fld, C.gv.valset, idx);
+    if ((C.windowprocs.wincap2 & C.WC2_FLUSH_STATUS) != 0n)
+        C.status_update(C.BL_FLUSH, 0, 0, 0,
+                      C.NO_COLOR, 0);
+    return;
+}
+/* deal with player's choice to change processing of a condition */
+
+export function condopt(idx, addr, negated)
+{
+    let i;
+
+    /* sanity check */
+    if ((+!!(((+!!(idx < 0 || idx >= C.CONDITION_COUNT)))
+        || ((+!!(addr && !C.samePointer(addr , C.addressOf(C.condtests[idx], "choice"))))))))
+        return;
+
+    if (!addr) {
+        /* special: indicates a request to init so
+           set the choice values to match the defaults */
+        C.gc.condmenu_sortorder = 0;
+        for (i = 0; i < C.CONDITION_COUNT; ++i) {
+            C.cond_idx[i] = i;
+            C.condtests[i].choice = C.condtests[i].enabled;
+        }
+        C.qsort(C.cond_idx, C.CONDITION_COUNT,
+              C.sizes.typeSize_10, cond_cmp);
+    } else {
+        /* (addr == &condtests[idx].choice) */
+        C.condtests[idx].enabled = negated ? 0 : 1;
+        C.condtests[idx].choice = C.condtests[idx].enabled;
+        /* avoid lingering false positives if test is no longer run */
+        C.condtests[idx].test = 0;
+    }
+}
+/* qsort callback routine for sorting the condition index */
+
+export function cond_cmp(vptr1, vptr2)
+{
+    let indx1 = C.loadInt(vptr1), indx2 = C.loadInt(vptr2),
+        c1 = C.conditions[indx1].ranking, c2 = C.conditions[indx2].ranking;
+
+    if (c1 != c2)
+        return c1 - c2;
+    /* tie-breaker - visible alpha by name */
+    return C.strcmpi(C.condtests[indx1].useroption, C.condtests[indx2].useroption);
+}
+/* qsort callback routine for alphabetical sorting of index */
+
+export function menualpha_cmp(vptr1, vptr2)
+{
+    let indx1 = C.loadInt(vptr1), indx2 = C.loadInt(vptr2);
+
+    return C.strcmpi(C.condtests[indx1].useroption, C.condtests[indx2].useroption);
+}
+
+
+export function parse_cond_option(negated, opts)
+{
+    let i, sl;
+    let compareto,uniqpart, prefix = "cond_";
+
+    if ((+!!(!opts || C.strlen(opts) <= C.sizes.typeSize_11 - 1)))
+        return 2;
+    uniqpart = opts + (C.sizes.typeSize_12 - 1);
+    for (i = 0; i < C.CONDITION_COUNT; ++i) {
+        compareto = C.condtests[i].useroption;
+        sl = C.Strlen(compareto, "parse_cond_option", 1364);
+        if (C.match_optname(uniqpart, compareto, (sl >= 4) ? 4 : sl, 0)) {
+            C.callLocal(condopt, i, C.addressOf(C.condtests[i], "choice"), negated);
+            return 0;
+        }
+    }
+    return 1;  /* !0 indicates error */
+}
+/* display a menu of all available status condition options and let player
+   toggled them on or off; returns True iff any changes are made */
+
+export function cond_menu()
+{
+    const menutitle = [
+        "alphabetically", "by ranking"
+    ];
+    let i, res, idx = 0;
+    const sequence = C.intArray(C.CONDITION_COUNT, "cond_menu:automatic:0");
+    let tmpwin;
+    const any = C.localStruct("any", "cond_menu:automatic:1");
+    let picks = 0;
+    const mbuf = C.charArray(C.QBUFSZ, "cond_menu:automatic:2");
+    let showmenu = 1;
+    let clr = C.NO_COLOR;
+    let changed = 0;
+
+    do {
+        for (i = 0; i < C.CONDITION_COUNT; ++i) {
+            sequence[i] = i;
+        }
+        C.qsort(sequence, C.CONDITION_COUNT,
+              C.sizes.typeSize_13,
+              (C.gc.condmenu_sortorder) ? cond_cmp : menualpha_cmp);
+
+        tmpwin = C.create_nhwindow(C.NHW_MENU);
+        C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = 1;
+        C.Sprintf(mbuf, "change sort order from \"%s\" to \"%s\"",
+                menutitle[C.gc.condmenu_sortorder],
+                menutitle[1 - C.gc.condmenu_sortorder], C.varargs(30));
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 83, 0, C.ATR_NONE,
+                 clr, mbuf, C.MENU_ITEMFLAGS_SKIPINVERT);
+        C.copyStruct(any, C.cg.zeroany);
+        C.Sprintf(mbuf, "sorted %s", menutitle[C.gc.condmenu_sortorder], C.varargs(31));
+        C.add_menu_heading(tmpwin, mbuf);
+        for (i = 0; i < C.condtests.length; i++) {
+            idx = sequence[i];
+            C.Sprintf(mbuf, "cond_%-14s", C.condtests[idx].useroption, C.varargs(32));
+            C.copyStruct(any, C.cg.zeroany);
+            any.a_int = idx + 2; /* avoid zero and the sort change pick */
+            C.condtests[idx].choice = 0;
+            C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE, clr, mbuf,
+                     C.condtests[idx].enabled
+                        ? C.MENU_ITEMFLAGS_SELECTED : C.MENU_ITEMFLAGS_NONE);
+        }
+
+        C.end_menu(tmpwin, "Choose status conditions to toggle");
+
+        res = C.select_menu(tmpwin, C.PICK_ANY, C.reference("menuarray", () => picks, value => picks = value, "cond_menu:cell:picks"));
+        C.destroy_nhwindow(tmpwin);
+        showmenu = 0;
+        if (res > 0) {
+            for (i = 0; i < res; i++) {
+                idx = picks[i].item.a_int;
+                if (idx == 1) {
+                   /* sort change requested */
+                   C.gc.condmenu_sortorder = 1 - C.gc.condmenu_sortorder;
+                   showmenu = 1;
+                   break;       /* for loop */
+                } else {
+                    idx -= 2;
+                    C.condtests[idx].choice = 1;
+                }
+            }
+            C.free(picks);
+        }
+    } while (showmenu);
+
+    if (res >= 0) {
+        for (i = 0; i < C.CONDITION_COUNT; ++i)
+            if (C.condtests[i].enabled != C.condtests[i].choice) {
+                C.condtests[i].enabled = C.condtests[i].choice;
+                C.condtests[idx].test = 0;
+                C.disp.botl = changed = 1;
+            }
+    }
+    return changed;
+}
+/* called by all_options_conds() to get value for next cond_xyz option
+   so that #saveoptions can collect it and write the set into new RC file.
+   returns zero-length string if the option is the default value. */
+
+export function opt_next_cond(indx, outbuf)
+{
+    C.storeChar(outbuf, 0);
+    if (indx >= C.CONDITION_COUNT)
+        return 0;
+
+    /*
+     * The entries are returned in internal order which requires the
+     * least code.  It would be easy to sort them into alphabetic order
+     * (just sort all over again for every requested entry:
+     *  int i, sequence[CONDITION_COUNT]
+     *  for (i = 0; i < CONDITION_COUNT; ++i) sequence[i] = i;
+     *  qsort(sequence, ..., menualpha_cmp);
+     *  indx = sequence[indx];
+     *  Sprintf(outbuf, ...);
+     * with no need to hang on to 'sequence[]' between calls).
+     *
+     * But using 'severity order' isn't feasible unless the player has
+     * used 'mO' on conditions in this session.  Even then, they would
+     * revert to the default order (whether internal or alphabetical)
+     * if #saveoptions got used in some later session where doset()
+     * wasn't used to choose their preferred order.
+     */
+
+    if ((+!!(((+!!(C.condtests[indx].opt == C.opt_in && C.condtests[indx].enabled)))
+        || ((+!!(C.condtests[indx].opt == C.opt_out && !C.condtests[indx].enabled)))))) {
+        C.Sprintf(outbuf, "%scond_%s", C.condtests[indx].enabled ? "" : "!",
+                C.condtests[indx].useroption, C.varargs(33));
+    }
+    return 1;
+}
+
+
+export function eval_notify_windowport_field(fld, valsetlist, idx)
+{
+    void C.oldrndencode;
+    void C.oldgoldsym;
+    let pc, chg, color = C.NO_COLOR;
+    let anytype;
+    let updated = 0, reset;
+    let curr,prev;
+    let fldmax;
+
+    /*
+     *  Now pass the changed values to window port.
+     */
+    anytype = C.gb.blstats[idx][fld].anytype;
+    curr = C.gb.blstats[idx][fld];
+    prev = C.gb.blstats[1 - idx][fld];
+    color = C.NO_COLOR;
+
+    chg = C.gu.update_all ? 0 : C.callLocal(compare_blstats, prev, curr);
+    /*
+     * TODO:
+     *  Dynamically update 'percent_matters' as rules are added or
+     *  removed to track whether any of them are percentage rules.
+     *  Then there'll be no need to assume that non-Null 'thresholds'
+     *  means that percentages need to be kept up to date.
+     *  [Affects exp_percent_changing() too.]
+     */
+    if ((+!!(((+!!((+!!(((+!!((+!!(chg || C.gu.update_all)) || fld == C.BL_XP)))
+         && curr.percent_matters))
+         && curr.thresholds))
+        )
+        /* when 'hitpointbar' is On, percent matters even if HP
+           hasn't changed and has no percentage rules (in case HPmax
+           has changed when HP hasn't, where we ordinarily wouldn't
+           update HP so would miss an update of the hitpoint bar) */
+        || ((+!!(fld == C.BL_HP && C.iflags.wc2_hitpointbar)))))) {
+        fldmax = curr.idxmax;
+        pc = (fldmax == C.BL_EXP) ? C.callLocal(exp_percentage)
+              : ((+!!(fldmax >= 0 && fldmax < C.MAXBLSTATS)))
+                 ? C.callLocal(percentage, curr, C.gb.blstats[idx][fldmax])
+                 : 0; /* bullet proofing; can't get here */
+        if (pc != prev.percent_value)
+            chg = (pc < prev.percent_value) ? -1 : 1;
+        curr.percent_value = pc;
+    } else {
+        pc = 0;
+    }
+
+    /* Temporary? hack: moveloop()'s prolog for a new game sets
+     * svc.context.rndencode after the status window has been init'd,
+     * so $:0 has already been encoded and cached by the window
+     * port.  Without this hack, gold's \G sequence won't be
+     * recognized and ends up being displayed as-is for 'gu.update_all'.
+     *
+     * Also, even if svc.context.rndencode hasn't changed and the
+     * gold amount itself hasn't changed, the glyph portion of the
+     * encoding may have changed if a new symset was put into effect.
+     *
+     *  \GXXXXNNNN:25
+     *  XXXX = the svc.context.rndencode portion
+     *  NNNN = the glyph portion
+     *  25   = the gold amount
+     *
+     * Setting 'chg = 2' is enough to render the field properly, but
+     * not to honor an initial highlight, so force 'gu.update_all = TRUE'.
+     */
+    if ((+!!(fld == C.BL_GOLD
+        && ((+!!(C.svc.context.rndencode != C.oldrndencode
+            || C.gs.showsyms[C.COIN_CLASS + C.SYM_OFF_O] != C.oldgoldsym)))))) {
+        C.gu.update_all = 1; /* chg = 2; */
+        C.oldrndencode = C.svc.context.rndencode;
+        C.oldgoldsym = C.gs.showsyms[C.COIN_CLASS + C.SYM_OFF_O];
+    }
+
+    reset = 0;
+    if (C.gu.update_all) {
+        chg = 0;
+        curr.time = prev.time = 0n;
+    } else if ((+!!(!chg && curr.time))) {
+        reset = C.callLocal(hilite_reset_needed, prev, C.gb.bl_hilite_moves);
+        if (reset)
+            curr.time = prev.time = 0n;
+    }
+
+   if ((+!!((+!!(C.gu.update_all || chg)) || reset))) {
+        if (!valsetlist[fld])
+            C.callLocal(anything_to_s, curr.val, curr.a, anytype);
+
+        if (anytype != C.ANY_MASK32) {
+            if ((+!!(chg || C.loadChar(curr.val)))) {
+                /* if Xp percentage changed, we set 'chg' to 1 above;
+                   reset that if the Xp value hasn't actually changed
+                   or possibly went down rather than up (level loss) */
+                if ((+!!(chg == 1 && fld == C.BL_XP)))
+                    chg = C.callLocal(compare_blstats, prev, curr);
+
+                curr.hilite_rule = C.callLocal(get_hilite, idx, fld,
+                                               curr.a,
+                                               chg, pc, C.reference("int", () => color, value => color = value, "eval_notify_windowport_field:cell:color"));
+                prev.hilite_rule = curr.hilite_rule;
+                if (chg == 2) {
+                    color = C.NO_COLOR;
+                    chg = 0;
+                }
+            }
+/* STATUS_HILITES */
+            C.status_update(fld, curr.val,
+                          chg, pc, color, 0);
+        } else {
+            /* Color for conditions is done through gc.cond_hilites[] */
+            C.status_update(fld, C.addressOf(curr.a, "a_ulong"),
+                          chg, pc, color, C.gc.cond_hilites);
+        }
+        curr.chg = prev.chg = 1;
+        updated = 1;
+    }
+    return updated;
+}
+
+
+export function evaluate_and_notify_windowport(valsetlist, idx)
+{
+    let i, fld, updated = 0;
+
+    /*
+     *  Now pass the changed values to window port.
+     */
+    for (i = 0; i < C.MAXBLSTATS; i++) {
+        fld = C.initblstats[i].fld;
+        if ((+!!((+!!((+!!((+!!((+!!((+!!((+!!((+!!(((+!!((fld == C.BL_SCORE) && !C.flags.showscore)))
+            || ((+!!((fld == C.BL_EXP) && !C.flags.showexp)))))
+            || ((+!!((fld == C.BL_TIME) && !C.flags.time)))))
+            || ((+!!((fld == C.BL_HD) && !C.Upolyd)))))
+            || ((+!!(((+!!(fld == C.BL_XP || fld == C.BL_EXP))) && C.Upolyd)))))
+            || ((+!!((fld == C.BL_VERS) && !C.flags.showvers)))))
+            || ((+!!((fld == C.BL_TERRAIN) && !C.flags.terrainstatus)))))
+            || ((+!!((fld == C.BL_WEAPON) && !C.flags.weaponstatus)))))
+            || ((+!!((fld == C.BL_ARMOR) && !C.flags.armorstatus)))))
+            ) {
+            continue;
+        }
+        if (C.callLocal(eval_notify_windowport_field, fld, valsetlist, idx))
+            updated++;
+    }
+    /*
+     * Notes:
+     *  1. It is possible to get here, with nothing having been pushed
+     *     to the window port, when none of the info has changed.
+     *
+     *  2. Some window ports are also known to optimize by only drawing
+     *     fields that have changed since the previous update.
+     *
+     * In both of those situations, we need to force updates to
+     * all of the fields when disp.botlx is set. The tty port in
+     * particular has a problem if that isn't done, since the core sets
+     * disp.botlx when a menu or text display obliterates the status
+     * line.
+     *
+     * For those situations, to trigger the full update of every field
+     * whether changed or not, call status_update() with BL_RESET.
+     *
+     * For regular processing and to notify the window port that a
+     * bot() round has finished and it's time to trigger a flush of
+     * all buffered changes received thus far but not reflected in
+     * the display, call status_update() with BL_FLUSH.
+     *
+     */
+    if ((+!!(C.disp.botlx && (C.windowprocs.wincap2 & C.WC2_RESET_STATUS) != 0n)))
+        C.status_update(C.BL_RESET, 0, 0, 0,
+                      C.NO_COLOR, 0);
+    else if ((+!!(((+!!(updated || C.disp.botlx)))
+             && (C.windowprocs.wincap2 & C.WC2_FLUSH_STATUS) != 0n)))
+        C.status_update(C.BL_FLUSH, 0, 0, 0,
+                      C.NO_COLOR, 0);
+
+    C.disp.botl = C.disp.botlx = C.disp.time_botl = 0;
+    C.gu.update_all = 0;
+}
+
+/* True: just recheck fields without other init */
+export function status_initialize(reassessment)
+{
+    let fld;
+    let fldenabl;
+    let i;
+    let fieldfmt,fieldname;
+
+    if (!reassessment) {
+        if (C.gb.blinit)
+            C.impossible("2nd status_initialize with full init.", C.varargs(34));
+        C.callLocal(init_blstats);
+        C.windowprocsStatusInit();
+        C.gb.blinit = 1;
+    } else if (!C.gb.blinit) {
+        C.panic("status 'reassess' before init", C.varargs(35));
+    }
+    for (i = 0; i < C.MAXBLSTATS; ++i) {
+        fld = C.initblstats[i].fld;
+        fldenabl = (fld == C.BL_SCORE) ? C.flags.showscore
+                   : (fld == C.BL_TIME) ? C.flags.time
+                     : (fld == C.BL_EXP) ? C.schar(((+!!(C.flags.showexp && !C.Upolyd))))
+                       : (fld == C.BL_XP) ? C.schar(!C.Upolyd)
+                         : (fld == C.BL_HD) ? C.schar(C.Upolyd)
+                           : (fld == C.BL_VERS) ? C.flags.showvers
+                             : (fld == C.BL_WEAPON) ? C.flags.weaponstatus
+                               : (fld == C.BL_ARMOR) ? C.flags.armorstatus
+                                 : (fld == C.BL_TERRAIN) ? C.flags.terrainstatus
+                                   : 1;
+
+        fieldname = C.initblstats[i].fldname;
+        fieldfmt = ((+!!(fld == C.BL_TITLE && C.iflags.wc2_hitpointbar))) ? "%-30.30s"
+                   : C.initblstats[i].fldfmt;
+        C.status_enablefield(fld, fieldname, fieldfmt, fldenabl);
+    }
+    C.gu.update_all = 1;
+    C.disp.botlx = 1;
+}
+
+
+export function status_finish()
+{
+    let i;
+
+    /* call the window port cleanup routine first */
+    if (C.windowprocs.win_status_finish)
+        C.windowprocsStatusFinish();
+
+    /* free memory that we alloc'd now */
+    for (i = 0; i < C.MAXBLSTATS; ++i) {
+        if (C.gb.blstats[0][i].val)
+            C.free(C.gb.blstats[0][i].val),
+                C.gb.blstats[0][i].val = C.charPointer(0);
+        if (C.gb.blstats[1][i].val)
+            C.free(C.gb.blstats[1][i].val),
+                C.gb.blstats[1][i].val = C.charPointer(0);
+        /* pointer to an entry in thresholds list; Null it out since
+           that list is about to go away */
+        C.gb.blstats[0][i].hilite_rule = C.gb.blstats[1][i].hilite_rule = 0;
+        if (C.gb.blstats[0][i].thresholds) {
+            let temp,next;
+
+            for (temp = C.gb.blstats[0][i].thresholds; temp; temp = next) {
+                next = temp.next;
+                C.free(temp);
+            }
+            C.gb.blstats[0][i].thresholds
+                = C.gb.blstats[1][i].thresholds
+                    = C.view("hilite_s", 0);
+        }
+/* STATUS_HILITES */
+    }
+}
+
+
+export function init_blstats()
+{
+    void C.initalready;
+    let i, j;
+
+    if (C.initalready) {
+        C.impossible("init_blstats called more than once.", C.varargs(36));
+        return;
+    }
+    for (i = 0; i <= 1; ++i) {
+        for (j = 0; j < C.MAXBLSTATS; ++j) {
+            let keep_hilite_chain = C.gb.blstats[i][j].thresholds;
+
+            C.gb.blstats[i][j] = C.initblstats[j];
+            C.gb.blstats[i][j].a = C.cg.zeroany;
+            if (C.gb.blstats[i][j].valwidth) {
+                C.gb.blstats[i][j].val
+                    = C.charPointer(C.alloc(C.gb.blstats[i][j].valwidth));
+                C.gb.blstats[i][j].val[0] = 0;
+            } else
+                C.gb.blstats[i][j].val = C.charPointer(0);
+            C.gb.blstats[i][j].thresholds = keep_hilite_chain;
+        }
+    }
+    C.initalready = 1;
+}
+/*
+ * This compares the previous stat with the current stat,
+ * and returns one of the following results based on that:
+ *
+ *   if prev_value < new_value (stat went up, increased)
+ *      return 1
+ *
+ *   if prev_value > new_value (stat went down, decreased)
+ *      return  -1
+ *
+ *   if prev_value == new_value (stat stayed the same)
+ *      return 0
+ *
+ *   Special cases:
+ *     - for bitmasks, 0 = stayed the same, 1 = changed
+ *     - for strings,  0 = stayed the same, 1 = changed
+ *
+ */
+
+export function compare_blstats(bl1, bl2)
+{
+    let a1,a2;
+    let use_rawval;
+    let anytype, fld, result = 0;
+
+    if ((+!!(!bl1 || !bl2))) {
+        C.panic("compare_blstat: bad istat pointer %s, %s",
+              C.fmt_ptr(bl1), C.fmt_ptr(bl2), C.varargs(37));
+    }
+
+    anytype = bl1.anytype;
+    if ((+!!(((+!!(!bl1.a.a_void || !bl2.a.a_void)))
+        && ((+!!((+!!((+!!(anytype == C.ANY_IPTR || anytype == C.ANY_UPTR))
+            || anytype == C.ANY_LPTR)) || anytype == C.ANY_ULPTR)))))) {
+        C.panic("compare_blstat: invalid pointer %s, %s",
+              C.fmt_ptr(bl1.a.a_void),
+              C.fmt_ptr(bl2.a.a_void), C.varargs(38));
+    }
+    /* cheat; terrain is highlighted as a string but we have a handy int
+       reflecting its value to use when checking for changes */
+    if (bl1.fld == C.BL_TERRAIN)
+        anytype = C.ANY_INT;
+
+    fld = bl1.fld;
+    use_rawval = ((+!!((+!!((+!!((+!!(fld == C.BL_HP || fld == C.BL_HPMAX))
+                  || fld == C.BL_ENE)) || fld == C.BL_ENEMAX))
+                  || fld == C.BL_GOLD)));
+    a1 = use_rawval ? bl1.rawval : bl1.a;
+    a2 = use_rawval ? bl2.rawval : bl2.a;
+
+    switch (anytype) {
+    case C.ANY_INT:
+        result = (a1.a_int < a2.a_int) ? 1
+                     : (a1.a_int > a2.a_int) ? -1 : 0;
+        break;
+    case C.ANY_IPTR:
+        result = (a1.a_iptr[0] < a2.a_iptr[0]) ? 1
+                     : (a1.a_iptr[0] > a2.a_iptr[0]) ? -1 : 0;
+        break;
+    case C.ANY_LONG:
+        result = (a1.a_long < a2.a_long) ? 1
+                     : (a1.a_long > a2.a_long) ? -1 : 0;
+        break;
+    case C.ANY_LPTR:
+        result = (a1.a_lptr[0] < a2.a_lptr[0]) ? 1
+                     : (a1.a_lptr[0] > a2.a_lptr[0]) ? -1 : 0;
+        break;
+    case C.ANY_UINT:
+        result = (a1.a_uint < a2.a_uint) ? 1
+                     : (a1.a_uint > a2.a_uint) ? -1 : 0;
+        break;
+    case C.ANY_UPTR:
+        result = (a1.a_uptr[0] < a2.a_uptr[0]) ? 1
+                     : (a1.a_uptr[0] > a2.a_uptr[0]) ? -1 : 0;
+        break;
+    case C.ANY_ULONG:
+        result = (a1.a_ulong < a2.a_ulong) ? 1
+                     : (a1.a_ulong > a2.a_ulong) ? -1 : 0;
+        break;
+    case C.ANY_ULPTR:
+        result = (a1.a_ulptr[0] < a2.a_ulptr[0]) ? 1
+                     : (a1.a_ulptr[0] > a2.a_ulptr[0]) ? -1 : 0;
+        break;
+    case C.ANY_STR:
+        result = C.sgn(C.strcmp(bl1.val, bl2.val));
+        break;
+    case C.ANY_MASK32:
+        result = (a1.a_ulong != a2.a_ulong);
+        break;
+    default:
+        result = 1;
+    }
+    return result;
+}
+
+
+export function anything_to_s(buf, a, anytype)
+{
+    if (!buf)
+        return C.charPointer(0);
+
+    switch (anytype) {
+    case C.ANY_ULONG:
+        C.Sprintf(buf, "%lu", a.a_ulong, C.varargs(39));
+        break;
+    case C.ANY_MASK32:
+        C.Sprintf(buf, "%lx", a.a_ulong, C.varargs(40));
+        break;
+    case C.ANY_LONG:
+        C.Sprintf(buf, "%ld", a.a_long, C.varargs(41));
+        break;
+    case C.ANY_INT:
+        C.Sprintf(buf, "%d", a.a_int, C.varargs(42));
+        break;
+    case C.ANY_UINT:
+        C.Sprintf(buf, "%u", a.a_uint, C.varargs(43));
+        break;
+    case C.ANY_IPTR:
+        C.Sprintf(buf, "%d", a.a_iptr[0], C.varargs(44));
+        break;
+    case C.ANY_LPTR:
+        C.Sprintf(buf, "%ld", a.a_lptr[0], C.varargs(45));
+        break;
+    case C.ANY_ULPTR:
+        C.Sprintf(buf, "%lu", a.a_ulptr[0], C.varargs(46));
+        break;
+    case C.ANY_UPTR:
+        C.Sprintf(buf, "%u", a.a_uptr[0], C.varargs(47));
+        break;
+    case C.ANY_STR: /* do nothing */
+        ;
+        break;
+    default:
+        buf[0] = 0;
+    }
+    return buf;
+}
+
+
+export function s_to_anything(a, buf, anytype)
+{
+    if ((+!!(!buf || !a)))
+        return;
+
+    switch (anytype) {
+    case C.ANY_LONG:
+        a.a_long = C.atol(buf);
+        break;
+    case C.ANY_INT:
+        a.a_int = C.atoi(buf);
+        break;
+    case C.ANY_UINT:
+        a.a_uint = C.uint(C.atoi(buf));
+        break;
+    case C.ANY_ULONG:
+        a.a_ulong = C.ulong(C.atol(buf));
+        break;
+    case C.ANY_IPTR:
+        if (a.a_iptr)
+            a.a_iptr[0] = C.atoi(buf);
+        break;
+    case C.ANY_UPTR:
+        if (a.a_uptr)
+            a.a_uptr[0] = C.uint(C.atoi(buf));
+        break;
+    case C.ANY_LPTR:
+        if (a.a_lptr)
+            a.a_lptr[0] = C.atol(buf);
+        break;
+    case C.ANY_ULPTR:
+        if (a.a_ulptr)
+            a.a_ulptr[0] = C.ulong(C.atol(buf));
+        break;
+    case C.ANY_MASK32:
+        a.a_ulong = C.ulong(C.atol(buf));
+        break;
+    default:
+        a.a_void = 0;
+        break;
+    }
+    return;
+}
+/* STATUS_HILITES */
+/* integer percentage is 100 * bl->a / maxbl->a */
+
+export function percentage(bl, maxbl)
+{
+    let result = 0;
+    let anytype;
+    let ival, mval;
+    let lval;
+    let uval;
+    let ulval;
+    let fld;
+    let use_rawval;
+
+    if ((+!!(!bl || !maxbl))) {
+        C.impossible("percentage: bad istat pointer %s, %s",
+                   C.fmt_ptr(bl), C.fmt_ptr(maxbl), C.varargs(48));
+        return 0;
+    }
+
+    fld = bl.fld;
+    use_rawval = ((+!!(fld == C.BL_HP || fld == C.BL_ENE)));
+    ival = 0, lval = 0n, uval = 0, ulval = 0n;
+    anytype = bl.anytype;
+    if (maxbl.a.a_void) {
+        switch (anytype) {
+        case C.ANY_INT:
+            /* HP and energy are int so this is the only case that cares
+               about 'rawval'; for them, we use that rather than their
+               potentially truncated (to 9999) display value */
+            ival = use_rawval ? bl.rawval.a_int : bl.a.a_int;
+            mval = use_rawval ? maxbl.rawval.a_int : maxbl.a.a_int;
+            result = (C.intDiv((100 * ival) , mval));
+            break;
+        case C.ANY_LONG:
+            lval  = bl.a.a_long;
+            result = C.int(((100n * lval) / maxbl.a.a_long));
+            break;
+        case C.ANY_UINT:
+            uval = bl.a.a_uint;
+            result = C.int((C.uintDiv((100 * uval) , maxbl.a.a_uint)));
+            break;
+        case C.ANY_ULONG:
+            ulval = bl.a.a_ulong;
+            result = C.int(((C.ulong(100n * ulval)) / maxbl.a.a_ulong));
+            break;
+        case C.ANY_IPTR:
+            ival = bl.a.a_iptr[0];
+            result = (C.intDiv((100 * ival) , (maxbl.a.a_iptr[0])));
+            break;
+        case C.ANY_LPTR:
+            lval = bl.a.a_lptr[0];
+            result = C.int(((100n * lval) / (maxbl.a.a_lptr[0])));
+            break;
+        case C.ANY_UPTR:
+            uval = bl.a.a_uptr[0];
+            result = C.int((C.uintDiv((100 * uval) , (maxbl.a.a_uptr[0]))));
+            break;
+        case C.ANY_ULPTR:
+            ulval = bl.a.a_ulptr[0];
+            result = C.int(((C.ulong(100n * ulval)) / (maxbl.a.a_ulptr[0])));
+            break;
+        }
+    }
+    /* don't let truncation from integer division produce a zero result
+       from a non-zero input; note: if we ever change to something like
+       ((((1000 * val) / max) + 5) / 10) for a rounded result, we'll
+       also need to check for and convert false 100 to 99 */
+    if ((+!!(result == 0
+        && ((+!!((+!!((+!!(ival != 0 || lval != 0n)) || uval != 0)) || ulval != 0n))))))
+        result = 1;
+
+    return result;
+}
+/* percentage for both xp (level) and exp (points) is the percentage for
+   (curr_exp - this_level_start) in (next_level_start - this_level_start) */
+
+export function exp_percentage()
+{
+    let res = 0;
+
+    if (C.u.ulevel < 30) {
+        let exp_val, nxt_exp_val, curlvlstart;
+
+        curlvlstart = C.newuexp(C.u.ulevel - 1);
+        exp_val = C.u.uexp - curlvlstart;
+        nxt_exp_val = C.newuexp(C.u.ulevel) - curlvlstart;
+        if (exp_val == nxt_exp_val - 1n) {
+            /*
+             * Full 100% is unattainable since hero gains a level
+             * and the threshold for next level increases, but treat
+             * (next_level_start - 1 point) as a special case.  It's a
+             * key value after being level drained so is something that
+             * some players would like to be able to highlight distinctly.
+             */
+            res = 100;
+        } else {
+            const curval = C.localStruct("istat_s", "exp_percentage:automatic:0"), maxval = C.localStruct("istat_s", "exp_percentage:automatic:1");
+
+            curval.anytype = maxval.anytype = C.ANY_LONG;
+            curval.a = maxval.a = C.cg.zeroany;
+            curval.a.a_long = exp_val;
+            maxval.a.a_long = nxt_exp_val;
+            curval.fld = maxval.fld = C.BL_EXP; /* (neither BL_HP nor BL_ENE) */
+            /* maximum delta between levels is 10000000; calculation of
+               100 * (10000000 - N) / 10000000 fits within 32-bit long */
+            res = C.callLocal(percentage, curval, maxval);
+        }
+    }
+    return res;
+}
+/* experience points have changed but experience level hasn't; decide whether
+   botl update is needed for a different percentage highlight rule for Xp */
+
+export function exp_percent_changing()
+{
+    let pc;
+    const a = C.localStruct("any", "exp_percent_changing:automatic:0");
+    let color_dummy;
+    let rule;
+    let curr;
+
+    /* if status update is already requested, skip this processing */
+    if (!C.disp.botl) {
+        /*
+         * Status update is warranted iff percent integer changes and the new
+         * percentage results in a different highlighting rule being selected.
+         */
+        curr = C.gb.blstats[C.gn.now_or_before_idx][C.BL_XP];
+        /* TODO: [see eval_notify_windowport_field() about percent_matters
+           and the check against 'thresholds'] */
+        if ((+!!((+!!(curr.percent_matters
+            && curr.thresholds))
+            && (pc = C.callLocal(exp_percentage)) != curr.percent_value))) {
+            C.copyStruct(a, C.cg.zeroany);
+            a.a_int = C.int(C.u.ulevel);
+            rule = C.callLocal(get_hilite, C.gn.now_or_before_idx, C.BL_XP,
+                              a, 0, pc, C.reference("int", () => color_dummy, value => color_dummy = value, "exp_percent_changing:cell:color_dummy"));
+            if (!C.samePointer(rule , curr.hilite_rule))
+                return 1; /* caller should set 'disp.botl' to True */
+        }
+    }
+    return 0;
+}
+/* callback so that interface can get capacity index rather than trying
+   to reconstruct that from the encumbrance string or asking the general
+   core what the value is */
+
+export function stat_cap_indx()
+{
+    let cap;
+
+    cap = C.gb.blstats[C.gn.now_or_before_idx][C.BL_CAP].a.a_int;
+    return cap;
+}
+/* callback so that interface can get hunger index rather than trying to
+   reconstruct that from the hunger string or dipping into core internals */
+
+export function stat_hunger_indx()
+{
+    let uhs;
+
+    uhs = C.gb.blstats[C.gn.now_or_before_idx][C.BL_HUNGER].a.a_int;
+    return uhs;
+}
+/* used by X11 for "tty status" even when STATUS_HILITES is disabled */
+
+export function bl_idx_to_fldname(idx)
+{
+    if ((+!!(idx >= 0 && idx < C.MAXBLSTATS)))
+        return C.initblstats[idx].fldname;
+    return C.charPointer(0);
+}
+/* used when rendering hitpointbar; inoutbuf[] has been padded with
+   trailing spaces; replace pairs of spaces with pairs of space+dash */
+
+export function repad_with_dashes(inoutbuf)
+{
+    let p = C.eos(inoutbuf);
+
+    while ((+!!((+!!(p >= inoutbuf + 2 && p[-1] == 32)) && p[-2] == 32))) {
+        p[-1] = 45;
+        p -= 2;
+    }
+}
+/****************************************************************************/
+/* Core status hiliting support */
+/****************************************************************************/
+/* format arguments */
+/* field name to bottom line index */
+
+export function fldname_to_bl_indx(name)
+{
+    let i, nmatches = 0, fld = 0;
+
+    if ((+!!(name && C.loadChar(name)))) {
+        /* check matches to canonical names */
+        for (i = 0; i < C.initblstats.length; i++)
+            if (C.fuzzymatch(C.initblstats[i].fldname, name, " -_", 1)) {
+                fld = C.initblstats[i].fld;
+                nmatches++;
+            }
+        if (!nmatches) {
+            /* check aliases */
+            for (i = 0; C.fieldids_alias[i].fieldname; i++)
+                if (C.fuzzymatch(C.fieldids_alias[i].fieldname, name,
+                               " -_", 1)) {
+                    fld = C.fieldids_alias[i].fldid;
+                    nmatches++;
+                }
+        }
+        if (!nmatches) {
+            /* check partial matches to canonical names */
+            let len = C.int(C.strlen(name));
+
+            for (i = 0; i < C.initblstats.length; i++)
+                if (!C.strncmpi(name, C.initblstats[i].fldname, len)) {
+                    fld = C.initblstats[i].fld;
+                    nmatches++;
+                }
+        }
+
+    }
+    return (nmatches == 1) ? fld : C.BL_FLUSH;
+}
+
+/* no longer augmented; it once encoded fractional
+                          * amounts for multiple moves within same turn */
+export function hilite_reset_needed(bl_p, augmented_time)
+{
+    /*
+     * This 'multi' handling may need some tuning...
+     */
+    if (C.gm.multi)
+        return 0;
+
+    if (!(+!!((bl_p.hilite_rule) && (bl_p.hilite_rule).behavior == C.BL_TH_UPDOWN)))
+        return 0;
+
+    if ((+!!(bl_p.time == 0 || bl_p.time >= augmented_time)))
+        return 0;
+
+    return 1;
+}
+/* called from moveloop(); sets context.botl if temp hilites have timed out */
+
+export function status_eval_next_unhilite()
+{
+    let i;
+    let curr;
+    let next_unhilite, this_unhilite;
+
+    C.gb.bl_hilite_moves = C.svm.moves; /* simplified; at one point we used to
+                                     * try to encode fractional amounts for
+                                     * multiple moves within same turn */
+    /* figure out whether an unhilight needs to be performed now */
+    next_unhilite = 0n;
+    for (i = 0; i < C.MAXBLSTATS; ++i) {
+        curr = C.gb.blstats[0][i]; /* blstats[0][*].time==blstats[1][*].time */
+
+        if (curr.chg) {
+            let prev = C.gb.blstats[1][i];
+
+            if ((+!!((curr.hilite_rule) && (curr.hilite_rule).behavior == C.BL_TH_UPDOWN)))
+                curr.time = (C.gb.bl_hilite_moves + C.iflags.hilite_delta);
+            else
+                curr.time = 0n;
+            prev.time = curr.time;
+
+            curr.chg = prev.chg = 0;
+            C.disp.botl = 1;
+        }
+        if (C.disp.botl)
+            continue; /* just process other gb.blstats[][].time and .chg */
+
+        this_unhilite = curr.time;
+        if ((+!!((+!!(this_unhilite > 0n
+            && ((+!!(next_unhilite == 0n || this_unhilite < next_unhilite)))))
+            && C.callLocal(hilite_reset_needed, curr, this_unhilite + 1n)))) {
+            next_unhilite = this_unhilite;
+            if (next_unhilite < C.gb.bl_hilite_moves)
+                C.disp.botl = 1;
+        }
+    }
+}
+/* called by options handling when 'statushilites' value is changed */
+
+export function reset_status_hilites()
+{
+    if (C.iflags.hilite_delta) {
+        let i;
+
+        for (i = 0; i < C.MAXBLSTATS; ++i)
+            C.gb.blstats[0][i].time = C.gb.blstats[1][i].time = 0n;
+        C.gu.update_all = 1;
+    }
+    C.disp.botlx = 1;
+}
+/* test whether the text from a title rule matches the string for
+   title-while-polymorphed in the 'textmatch' menu */
+
+export function noneoftheabove(hl_text)
+{
+    if ((+!!((+!!(C.fuzzymatch(hl_text, "none of the above", "\" -_", 1)
+        || C.fuzzymatch(hl_text, "(polymorphed)", "\"()", 1)))
+        || C.fuzzymatch(hl_text, "none of the above (polymorphed)",
+                      "\" -_()", 1))))
+        return 1;
+    return 0;
+}
+/*
+ * get_hilite
+ *
+ * Returns, based on the value and the direction it is moving,
+ * the highlight rule that applies to the specified field.
+ *
+ * Provide get_hilite() with the following to work with:
+ *     actual value vp
+ *          useful for BL_TH_VAL_ABSOLUTE
+ *     indicator of down, up, or the same (-1, 1, 0) chg
+ *          useful for BL_TH_UPDOWN or change detection
+ *     percentage (current value percentage of max value) pc
+ *          useful for BL_TH_VAL_PERCENTAGE
+ *
+ * Get back:
+ *     pointer to rule that applies; Null if no rule does.
+ */
+
+export function get_hilite(idx, fldidx, vp, chg, pc, colorptr)
+{
+    let hl,rule = 0;
+    let value = vp;
+    let txtstr;
+
+    if ((+!!(fldidx < 0 || fldidx >= C.MAXBLSTATS)))
+        return C.view("hilite_s", 0);
+
+    if ((C.gb.blstats[0][fldidx].thresholds)) {
+        let dt;
+        /* there are hilites set here */
+        let max_pc = -1, min_pc = 101;
+        /* LARGEST_INT isn't INT_MAX; it fits within 16 bits, but that
+           value is big enough to handle all 'int' status fields */
+        let max_ival = -C.LARGEST_INT, min_ival = C.LARGEST_INT;
+        /* LONG_MAX comes from <limits.h> which might not be available for
+           ancient configurations; we don't need LONG_MIN */
+        let max_lval = -C.LONG_MAX, min_lval = C.LONG_MAX;
+        let exactmatch = 0, updown = 0, changed = 0,
+                perc_or_abs = 0, crit_hp = 0;
+
+        /* min_/max_ are used to track best fit */
+        for (hl = C.gb.blstats[0][fldidx].thresholds; hl; hl = hl.next) {
+            dt = C.initblstats[fldidx].anytype; /* only needed for 'absolute' */
+            /* for HP, if we already have a critical-hp rule then we ignore
+               other HP rules unless we hit another critical-hp one (last
+               one found wins); critical-hp takes precedence over temporary
+               HP highlights, otherwise a hero with regeneration and an up
+               or changed rule for HP would always show that up or changed
+               highlight even when within the critical-hp threshold because
+               the value will go up by at least one on every move */
+            if ((+!!(crit_hp && hl.behavior != C.BL_TH_CRITICALHP)))
+                continue;
+            /* if we've already matched a temporary highlight, it takes
+               precedence over all persistent ones; we still process
+               updown rules to get the last one which qualifies */
+            if ((+!!(((+!!(updown || changed))) && hl.behavior != C.BL_TH_UPDOWN)))
+                continue;
+            /* among persistent highlights, if a 'percentage' or 'absolute'
+               rule has been matched, it takes precedence over 'always' */
+            if ((+!!(perc_or_abs && hl.behavior == C.BL_TH_ALWAYS_HILITE)))
+                continue;
+
+            switch (hl.behavior) {
+            case C.BL_TH_VAL_PERCENTAGE: /* percent values are always ANY_INT */
+                if ((+!!(hl.rel == C.EQ_VALUE && pc == hl.value.a_int))) {
+                    rule = hl;
+                    min_pc = max_pc = hl.value.a_int;
+                    exactmatch = perc_or_abs = 1;
+                } else if (exactmatch) {
+                    ; /* already found best fit, skip lt,ge,&c */
+                } else if ((+!!((+!!(hl.rel == C.LT_VALUE
+                           && (pc < hl.value.a_int)))
+                           && (hl.value.a_int <= min_pc)))) {
+                    rule = hl;
+                    min_pc = hl.value.a_int;
+                    perc_or_abs = 1;
+                } else if ((+!!((+!!(hl.rel == C.LE_VALUE
+                           && (pc <= hl.value.a_int)))
+                           && (hl.value.a_int <= min_pc)))) {
+                    rule = hl;
+                    min_pc = hl.value.a_int;
+                    perc_or_abs = 1;
+                } else if ((+!!((+!!(hl.rel == C.GT_VALUE
+                           && (pc > hl.value.a_int)))
+                           && (hl.value.a_int >= max_pc)))) {
+                    rule = hl;
+                    max_pc = hl.value.a_int;
+                    perc_or_abs = 1;
+                } else if ((+!!((+!!(hl.rel == C.GE_VALUE
+                           && (pc >= hl.value.a_int)))
+                           && (hl.value.a_int >= max_pc)))) {
+                    rule = hl;
+                    max_pc = hl.value.a_int;
+                    perc_or_abs = 1;
+                }
+                break;
+            case C.BL_TH_UPDOWN: /* uses 'chg' (set by caller), not 'dt' */
+                /* specific 'up' or 'down' takes precedence over general
+                   'changed' regardless of their order in the rule set */
+                if ((+!!(chg < 0 && hl.rel == C.LT_VALUE))) {
+                    rule = hl;
+                    updown = 1;
+                } else if ((+!!(chg > 0 && hl.rel == C.GT_VALUE))) {
+                    rule = hl;
+                    updown = 1;
+                } else if ((+!!((+!!(chg != 0 && hl.rel == C.EQ_VALUE)) && !updown))) {
+                    rule = hl;
+                    changed = 1;
+                }
+                break;
+            case C.BL_TH_VAL_ABSOLUTE: /* either ANY_INT or ANY_LONG */
+                /*
+                 * The int and long variations here are identical aside from
+                 * union field and min_/max_ variable names.  If you change
+                 * one, be sure to make a corresponding change in the other.
+                 */
+                if (dt == C.ANY_INT) {
+                    if ((+!!(hl.rel == C.EQ_VALUE
+                        && hl.value.a_int == value.a_int))) {
+                        rule = hl;
+                        min_ival = max_ival = hl.value.a_int;
+                        exactmatch = perc_or_abs = 1;
+                    } else if (exactmatch) {
+                        ; /* already found best fit, skip lt,ge,&c */
+                    } else if ((+!!((+!!(hl.rel == C.LT_VALUE
+                               && (value.a_int < hl.value.a_int)))
+                               && (hl.value.a_int <= min_ival)))) {
+                        rule = hl;
+                        min_ival = hl.value.a_int;
+                        perc_or_abs = 1;
+                    } else if ((+!!((+!!(hl.rel == C.LE_VALUE
+                               && (value.a_int <= hl.value.a_int)))
+                               && (hl.value.a_int <= min_ival)))) {
+                        rule = hl;
+                        min_ival = hl.value.a_int;
+                        perc_or_abs = 1;
+                    } else if ((+!!((+!!(hl.rel == C.GT_VALUE
+                               && (value.a_int > hl.value.a_int)))
+                               && (hl.value.a_int >= max_ival)))) {
+                        rule = hl;
+                        max_ival = hl.value.a_int;
+                        perc_or_abs = 1;
+                    } else if ((+!!((+!!(hl.rel == C.GE_VALUE
+                               && (value.a_int >= hl.value.a_int)))
+                               && (hl.value.a_int >= max_ival)))) {
+                        rule = hl;
+                        max_ival = hl.value.a_int;
+                        perc_or_abs = 1;
+                    }
+                } else { /* ANY_LONG */
+                    if ((+!!(hl.rel == C.EQ_VALUE
+                        && hl.value.a_long == value.a_long))) {
+                        rule = hl;
+                        min_lval = max_lval = hl.value.a_long;
+                        exactmatch = perc_or_abs = 1;
+                    } else if (exactmatch) {
+                        ; /* already found best fit, skip lt,ge,&c */
+                    } else if ((+!!((+!!(hl.rel == C.LT_VALUE
+                               && (value.a_long < hl.value.a_long)))
+                               && (hl.value.a_long <= min_lval)))) {
+                        rule = hl;
+                        min_lval = hl.value.a_long;
+                        perc_or_abs = 1;
+                    } else if ((+!!((+!!(hl.rel == C.LE_VALUE
+                               && (value.a_long <= hl.value.a_long)))
+                               && (hl.value.a_long <= min_lval)))) {
+                        rule = hl;
+                        min_lval = hl.value.a_long;
+                        perc_or_abs = 1;
+                    } else if ((+!!((+!!(hl.rel == C.GT_VALUE
+                               && (value.a_long > hl.value.a_long)))
+                               && (hl.value.a_long >= max_lval)))) {
+                        rule = hl;
+                        max_lval = hl.value.a_long;
+                        perc_or_abs = 1;
+                    } else if ((+!!((+!!(hl.rel == C.GE_VALUE
+                               && (value.a_long >= hl.value.a_long)))
+                               && (hl.value.a_long >= max_lval)))) {
+                        rule = hl;
+                        max_lval = hl.value.a_long;
+                        perc_or_abs = 1;
+                    }
+                }
+                break;
+            case C.BL_TH_TEXTMATCH: /* ANY_STR */
+                txtstr = C.gb.blstats[idx][fldidx].val;
+                if (fldidx == C.BL_TITLE)
+                    /* "<name> the <rank-title>", skip past "<name> the " */
+                    txtstr += C.strlen(C.svp.plname) + C.sizes.typeSize_14 - C.sizes.typeSize_15;
+                if ((+!!(hl.rel == C.TXT_VALUE && hl.textmatch[0]))) {
+                    if (C.fuzzymatch(hl.textmatch, txtstr, "\" -_", 1)) {
+                        rule = hl;
+                        exactmatch = 1;
+                    } else if (exactmatch) {
+                        ; /* already found best fit, skip "noneoftheabove" */
+                    } else if ((+!!((+!!(fldidx == C.BL_TITLE
+                               && C.Upolyd)) && C.callLocal(noneoftheabove, hl.textmatch)))) {
+                        rule = hl;
+                    }
+                }
+                break;
+            case C.BL_TH_ALWAYS_HILITE:
+                rule = hl;
+                break;
+            case C.BL_TH_CRITICALHP:
+                if ((+!!(fldidx == C.BL_HP && C.critically_low_hp(0)))) {
+                    rule = hl;
+                    crit_hp = 1;
+                    updown = changed = perc_or_abs = 0;
+                }
+                break;
+            case C.BL_TH_NONE:
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    colorptr.value = rule ? rule.coloridx : C.NO_COLOR;
+    return rule;
+}
+
+
+export function split_clridx(idx, coloridx, attrib)
+{
+    if (coloridx)
+        coloridx.value = idx & 0x00FF;
+    if (attrib)
+        attrib.value = (idx >> 8) & 0x00FF;
+}
+/*
+ * This is the parser for the hilite options.
+ *
+ * parse_status_hl1() separates each hilite entry into
+ * a set of field threshold/action component strings,
+ * then calls parse_status_hl2() to parse further
+ * and configure the hilite.
+ */
+
+export function parse_status_hl1(op, from_configfile)
+{
+const MAX_THRESH = 21;
+    const hsbuf = C.charArray2D(MAX_THRESH, C.QBUFSZ, "parse_status_hl1:automatic:0");
+    let rslt, badopt = 0;
+    let i, fldnum, ccount = 0;
+    let c;
+
+    fldnum = 0;
+    for (i = 0; i < MAX_THRESH; ++i) {
+        hsbuf[i][0] = 0;
+    }
+    while ((+!!((+!!(C.loadChar(op) && fldnum < MAX_THRESH)) && ccount < (C.QBUFSZ - 2)))) {
+        c = C.lowc(C.loadChar(op));
+        if (c == 32) {
+            if (fldnum >= 1) {
+                if ((+!!(fldnum == 1 && C.strcmpi(hsbuf[0], "title") == 0))) {
+                    /* spaces are allowed in title */
+                    hsbuf[fldnum][ccount++] = c;
+                    hsbuf[fldnum][ccount] = 0;
+                    op++;
+                    continue;
+                }
+                rslt = C.callLocal(parse_status_hl2, hsbuf, from_configfile);
+                if (!rslt) {
+                    badopt = 1;
+                    break;
+                }
+            }
+            for (i = 0; i < MAX_THRESH; ++i) {
+                hsbuf[i][0] = 0;
+            }
+            fldnum = 0;
+            ccount = 0;
+        } else if (c == 47) {
+            fldnum++;
+            ccount = 0;
+        } else {
+            hsbuf[fldnum][ccount++] = c;
+            hsbuf[fldnum][ccount] = 0;
+        }
+        op++;
+    }
+    if ((+!!(fldnum >= 1 && !badopt))) {
+        rslt = C.callLocal(parse_status_hl2, hsbuf, from_configfile);
+        if (!rslt)
+            badopt = 1;
+    }
+    if (badopt)
+        return 0;
+    /* make sure highlighting is On; use short duration for temp highlights */
+    if (!C.iflags.hilite_delta)
+        C.iflags.hilite_delta = 3n;
+    return 1;
+}
+/* is str in the format of "[<>]?=?[-+]?[0-9]+%?" regex */
+
+export function is_ltgt_percentnumber(str)
+{
+    let s = str;
+
+    if ((+!!(C.loadChar(s) == 60 || C.loadChar(s) == 62)))
+        s++;
+    if (C.loadChar(s) == 61)
+        s++;
+    if ((+!!(C.loadChar(s) == 45 || C.loadChar(s) == 43)))
+        s++;
+    if (!C.digit(C.loadChar(s)))
+        return 0;
+    while (C.digit(C.loadChar(s)))
+        s++;
+    if (C.loadChar(s) == 37)
+        s++;
+    return (C.loadChar(s) == 0);
+}
+/* does str only contain "<>=-+0-9%" chars */
+
+export function has_ltgt_percentnumber(str)
+{
+    let s = str;
+
+    while (C.loadChar(s)) {
+        if (!C.strchr("<>=-+0123456789%", C.loadChar(s)))
+            return 0;
+        s++;
+    }
+    return 1;
+}
+/* splitsubfields(): splits str in place into '+' or '&' separated strings.
+   returns number of strings, or -1 if more than maxsf or MAX_SUBFIELDS */
+
+export function splitsubfields(str, sfarr, maxsf)
+{
+const MAX_SUBFIELDS = 16;
+    
+const subfields = C.staticPointerArray("splitsubfields_subfields", MAX_SUBFIELDS);
+    let st = C.charPointer(0);
+    let sf = 0;
+
+    if (!str)
+        return 0;
+    for (sf = 0; sf < MAX_SUBFIELDS; ++sf)
+        subfields[sf] = C.charPointer(0);
+
+    maxsf = (maxsf == 0) ? MAX_SUBFIELDS : ((maxsf) < ( MAX_SUBFIELDS) ? (maxsf) : ( MAX_SUBFIELDS));
+
+    if ((+!!(C.strchr(str, 43) || C.strchr(str, 38)))) {
+        let c = str;
+
+        sf = 0;
+        st = c;
+        while ((+!!(C.loadChar(c) && sf < maxsf))) {
+            if ((+!!(C.loadChar(c) == 38 || C.loadChar(c) == 43))) {
+                C.storeChar(c, 0);
+                subfields[sf] = st;
+                st = c+1;
+                sf++;
+            }
+            c++;
+        }
+        if (sf >= maxsf - 1)
+            return -1;
+        if ((+!!(!C.loadChar(c) && !C.samePointer(c , st))))
+            subfields[sf++] = st;
+    } else {
+        sf = 1;
+        subfields[0] = str;
+    }
+    sfarr.value = subfields;
+    return sf;
+}
+
+
+export function is_fld_arrayvalues(str, arr, arrmin, arrmax, retidx)
+{
+    let i;
+
+    for (i = arrmin; i < arrmax; i++)
+        if (!C.strcmpi(str, arr[i])) {
+            retidx.value = i;
+            return 1;
+        }
+    return 0;
+}
+
+
+export function query_arrayvalue(querystr, arr, arrmin, arrmax)
+{
+    let i, res, ret = arrmin - 1;
+    let tmpwin;
+    const any = C.localStruct("any", "query_arrayvalue:automatic:0");
+    let picks = 0;
+    let adj = (arrmin > 0) ? 1 : arrmax;
+    let clr = C.NO_COLOR;
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    for (i = arrmin; i < arrmax; i++) {
+        if (!arr[i])  /* the array of hunger status values has a gap ...*/
+            continue; /*... set to Null between Satiated and Hungry     */
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = i + adj;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                 clr, arr[i], C.MENU_ITEMFLAGS_NONE);
+    }
+
+    C.end_menu(tmpwin, querystr);
+
+    res = C.select_menu(tmpwin, C.PICK_ONE, C.reference("menuarray", () => picks, value => picks = value, "query_arrayvalue:cell:picks"));
+    C.destroy_nhwindow(tmpwin);
+    if (res > 0) {
+        ret = picks[0].item.a_int - adj;
+        C.free(picks);
+    }
+
+    return ret;
+}
+
+
+export function status_hilite_add_threshold(fld, hilite)
+{
+    let new_hilite,old_hilite;
+
+    if (!hilite)
+        return;
+
+    /* alloc and initialize a new hilite_s struct */
+    new_hilite = C.view("hilite_s", C.alloc(C.sizes.typeSize_16));
+    C.copyStruct(new_hilite, hilite);   /* copy struct */
+
+    new_hilite.set = 1;
+    new_hilite.fld = fld;
+    new_hilite.next = C.view("hilite_s", 0);
+    /* insert new entry at the end of the list */
+    if (!C.gb.blstats[0][fld].thresholds) {
+        C.gb.blstats[0][fld].thresholds = new_hilite;
+    } else {
+        for (old_hilite = C.gb.blstats[0][fld].thresholds; old_hilite.next;
+             old_hilite = old_hilite.next)
+            continue;
+        old_hilite.next = new_hilite;
+    }
+    /* sort_hilites(fld) */
+
+    /* current and prev must both point at the same hilites */
+    C.gb.blstats[1][fld].thresholds = C.gb.blstats[0][fld].thresholds;
+}
+
+
+export function parse_status_hl2(s, from_configfile)
+{
+    const aligntxt = [ "chaotic", "neutral", "lawful" ];
+    /* hu_stat[] from eat.c has trailing spaces which foul up comparisons;
+       for the "not hungry" case, there's no text hence no way to highlight */
+    const hutxt = [
+        "Satiated", "", "Hungry", "Weak", "Fainting", "Fainted", "Starved"
+    ];
+    let tmp,how;
+    let sidx = 0, i = -1, dt = C.ANY_INVALID;
+    let coloridx = -1, successes = 0;
+    let disp_attrib = 0;
+    let percent, changed, numeric, down, up,
+            grt, lt, gte, le, eq, txtval, always, criticalhp;
+    let txt;
+    let fld = C.BL_FLUSH;
+    const hilite = C.localStruct("hilite_s", "parse_status_hl2:automatic:0");
+    const tmpbuf = C.charArray(C.BUFSZ, "parse_status_hl2:automatic:1");
+
+    /* Examples:
+        3.6.1:
+      OPTION=hilite_status: hitpoints/<10%/red
+      OPTION=hilite_status: hitpoints/<10%/red/<5%/purple/1/red&blink+inverse
+      OPTION=hilite_status: experience/down/red/up/green
+      OPTION=hilite_status: cap/strained/yellow/overtaxed/orange
+      OPTION=hilite_status: title/always/blue
+      OPTION=hilite_status: title/blue
+    */
+
+    /* field name to statusfield */
+    fld = C.callLocal(fldname_to_bl_indx, s[sidx]);
+
+    if (fld == C.BL_CHARACTERISTICS) {
+        let res = 0;
+
+        /* recursively set each of strength, dexterity, constitution, &c */
+        for (fld = C.BL_STR; fld <= C.BL_CH; fld++) {
+            C.Strcpy(s[sidx], C.initblstats[fld].fldname);
+            res = C.callLocal(parse_status_hl2, s, from_configfile);
+            if (!res)
+                return 0;
+        }
+        return 1;
+    }
+    if (fld == C.BL_FLUSH) {
+        C.config_error_add("Unknown status field '%s'", s[sidx], C.varargs(49));
+        return 0;
+    }
+    if (fld == C.BL_CONDITION)
+        return C.callLocal(parse_condition, s, sidx);
+
+    ++sidx;
+    while (s[sidx][0]) {
+        const buf = C.charArray(C.BUFSZ, "parse_status_hl2:automatic:2"); let subfields;
+        let sf = 0;     /* subfield count */
+        let kidx;
+
+        txt = C.charPointer(0);
+        percent = numeric = always = 0;
+        down = up = changed = 0;
+        criticalhp = 0;
+        grt = gte = eq = le = lt = txtval = 0;
+/* threshold value - return on empty string */
+        C.memset(hilite, 0, C.sizes.typeSize_17);
+        hilite.set = 0; /* mark it "unset" */
+        hilite.fld = fld;
+
+        if ((+!!(C.loadChar(s[sidx + 1]) == 0 || !C.strcmpi(s[sidx], "always")))) {
+            /* "field/always/color" OR "field/color" */
+            always = 1;
+            if (C.loadChar(s[sidx + 1]) == 0)
+                sidx--;
+        } else if ((+!!(!C.strcmpi(s[sidx], "up") || !C.strcmpi(s[sidx], "down")))) {
+            if (C.initblstats[fld].anytype == C.ANY_STR)
+                /* ordered string comparison is supported but LT/GT for
+                   the string fields (title, dungeon-level, alignment)
+                   is pointless; treat 'up' or 'down' for string fields
+                   as 'changed' rather than rejecting them outright */
+                ;
+            else if (!C.strcmpi(s[sidx], "down"))
+                down = 1;
+            else
+                up = 1;
+            changed = 1;
+        } else if ((+!!(fld == C.BL_CAP
+                   && C.callLocal(is_fld_arrayvalues, s[sidx], C.enc_stat,
+                                         C.SLT_ENCUMBER, C.OVERLOADED + 1,
+                                         C.reference("int", () => kidx, value => kidx = value, "parse_status_hl2:cell:kidx"))))) {
+            txt = C.enc_stat[kidx];
+            txtval = 1;
+        } else if ((+!!(fld == C.BL_ALIGN
+                   && C.callLocal(is_fld_arrayvalues, s[sidx], aligntxt, 0, 3, C.reference("int", () => kidx, value => kidx = value, "parse_status_hl2:cell:kidx"))))) {
+            txt = aligntxt[kidx];
+            txtval = 1;
+        } else if ((+!!(fld == C.BL_HUNGER
+                   && C.callLocal(is_fld_arrayvalues, s[sidx], hutxt,
+                                         C.SATIATED, C.STARVED + 1, C.reference("int", () => kidx, value => kidx = value, "parse_status_hl2:cell:kidx"))))) {
+            txt = C.hu_stat[kidx];   /* store hu_stat[] val, not hutxt[] */
+            txtval = 1;
+        } else if (!C.strcmpi(s[sidx], "changed")) {
+            changed = 1;
+        } else if ((+!!(fld == C.BL_HP && !C.strcmpi(s[sidx], "criticalhp")))) {
+            criticalhp = 1;
+        } else if (C.callLocal(is_ltgt_percentnumber, s[sidx])) {
+            let op;
+
+            tmp = s[sidx]; /* is_ltgt_() guarantees [<>]?=?[-+]?[0-9]+%? */
+            if (C.strchr(tmp, 37))
+               percent = 1;
+            if (C.loadChar(tmp) == 60) {
+                if (tmp[1] == 61)
+                    le = 1;
+                else
+                    lt = 1;
+            } else if (C.loadChar(tmp) == 62) {
+                if (tmp[1] == 61)
+                    gte = 1;
+                else
+                    grt = 1;
+            }
+            /* '%', '<', '>' have served their purpose, '=' is either
+               part of '<' or '>' or optional for '=N', unary '+' is
+               just decorative, so get rid of them, leaving -?[0-9]+ */
+            tmp = C.stripchars(tmpbuf, "%<>=+", tmp);
+            numeric = 1;
+            dt = percent ? C.ANY_INT : C.initblstats[fld].anytype;
+            C.callLocal(s_to_anything, hilite.value, tmp, dt);
+
+            op = grt ? ">" : gte ? ">=" : lt ? "<" : le ? "<=" : "=";
+            if ((+!!(dt == C.ANY_INT
+                /* AC is the only field where negative values make sense but
+                   accept >-1 for other fields; reject <0 for non-AC */
+                && ((+!!(hilite.value.a_int
+                    < ((fld == C.BL_AC) ? -128 : grt ? -1 : lt ? 1 : 0)
+                /* percentages have another more comprehensive check below */
+                    || hilite.value.a_int > (percent ? (lt ? 101 : 100)
+                                                     : C.LARGEST_INT))))))) {
+                C.config_error_add("%s'%s%d%s'%s", C.threshold_value,
+                                 op, hilite.value.a_int, percent ? "%" : "",
+                                 C.is_out_of_range, C.varargs(50));
+                return 0;
+            } else if ((+!!(dt == C.ANY_LONG
+                       && hilite.value.a_long < (grt ? -1n : lt ? 1n : 0n)))) {
+                C.config_error_add("%s'%s%ld'%s", C.threshold_value,
+                                 op, hilite.value.a_long, C.is_out_of_range, C.varargs(51));
+                return 0;
+            }
+        } else if (C.initblstats[fld].anytype == C.ANY_STR) {
+            txt = s[sidx];
+            txtval = 1;
+        } else {
+            C.config_error_add(C.callLocal(has_ltgt_percentnumber, s[sidx])
+                 ? "Wrong format '%s', expected a threshold number or percent"
+                 : "Unknown behavior '%s'",
+                             s[sidx], C.varargs(52));
+            return 0;
+        }
+
+        /* relationships {LT_VALUE, LE_VALUE, EQ_VALUE, GE_VALUE, GT_VALUE} */
+        if ((+!!(grt || up)))
+            hilite.rel = C.GT_VALUE;
+        else if ((+!!(lt || down)))
+            hilite.rel = C.LT_VALUE;
+        else if (gte)
+            hilite.rel = C.GE_VALUE;
+        else if (le)
+            hilite.rel = C.LE_VALUE;
+        else if ((+!!((+!!((+!!(eq  || percent)) || numeric)) || changed)))
+            hilite.rel = C.EQ_VALUE;
+        else if (txtval)
+            hilite.rel = C.TXT_VALUE;
+        else
+            hilite.rel = C.LT_VALUE;
+
+        if ((+!!(C.initblstats[fld].anytype == C.ANY_STR && ((+!!(percent || numeric)))))) {
+            C.config_error_add("Field '%s' does not support numeric values",
+                             C.initblstats[fld].fldname, C.varargs(53));
+            return 0;
+        }
+
+        if (percent) {
+            if (C.initblstats[fld].idxmax < 0) {
+                C.config_error_add("Cannot use percent with '%s'",
+                                 C.initblstats[fld].fldname, C.varargs(54));
+                return 0;
+            } else if ((+!!((+!!((+!!((+!!((+!!((hilite.value.a_int < -1)
+                       || ((+!!(hilite.value.a_int == -1
+                           && hilite.value.a_int != C.GT_VALUE)))))
+                       || ((+!!(hilite.value.a_int == 0
+                           && hilite.rel == C.LT_VALUE)))))
+                       || ((+!!(hilite.value.a_int == 100
+                           && hilite.rel == C.GT_VALUE)))))
+                       || ((+!!(hilite.value.a_int == 101
+                           && hilite.value.a_int != C.LT_VALUE)))))
+                       || (hilite.value.a_int > 101)))) {
+                C.config_error_add(
+                           "hilite_status: invalid percentage value '%s%d%%'",
+                                 (hilite.rel == C.LT_VALUE) ? "<"
+                                   : (hilite.rel == C.LE_VALUE) ? "<="
+                                     : (hilite.rel == C.GT_VALUE) ? ">"
+                                       : (hilite.rel == C.GE_VALUE) ? ">="
+                                         : "=",
+                                 hilite.value.a_int, C.varargs(55));
+                return 0;
+            }
+        }
+
+        /* actions */
+        sidx++;
+        how = s[sidx];
+        if (!how) {
+            if (!successes)
+                return 0;
+        }
+        coloridx = -1;
+        C.Strcpy(buf, how);
+        sf = C.callLocal(splitsubfields, buf, C.reference("pointerarray", () => subfields, value => subfields = value, "parse_status_hl2:cell:subfields"), 0);
+
+        if (sf < 1)
+            return 0;
+
+        disp_attrib = C.HL_UNDEF;
+
+        for (i = 0; i < sf; ++i) {
+            let a = C.match_str2attr(subfields[i], 0);
+
+            if (a == C.ATR_BOLD)
+                disp_attrib |= C.HL_BOLD;
+            else if (a == C.ATR_DIM)
+                disp_attrib |= C.HL_DIM;
+            else if (a == C.ATR_ITALIC)
+                disp_attrib |= C.HL_ITALIC;
+            else if (a == C.ATR_ULINE)
+                disp_attrib |= C.HL_ULINE;
+            else if (a == C.ATR_BLINK)
+                disp_attrib |= C.HL_BLINK;
+            else if (a == C.ATR_INVERSE)
+                disp_attrib |= C.HL_INVERSE;
+            else if (a == C.ATR_NONE)
+                disp_attrib = C.HL_NONE;
+            else {
+                let c = C.match_str2clr(subfields[i], 0);
+
+                if ((+!!(c >= C.CLR_MAX || coloridx != -1))) {
+                    C.config_error_add("bad color '%d %d'", c, coloridx, C.varargs(56));
+                    return 0;
+                }
+                coloridx = c;
+            }
+        }
+        if (coloridx == -1)
+            coloridx = C.NO_COLOR;
+
+        /* Assign the values */
+        hilite.coloridx = coloridx | (disp_attrib << 8);
+
+        if (always)
+            hilite.behavior = C.BL_TH_ALWAYS_HILITE;
+        else if (percent)
+            hilite.behavior = C.BL_TH_VAL_PERCENTAGE;
+        else if (changed)
+            hilite.behavior = C.BL_TH_UPDOWN;
+        else if (numeric)
+            hilite.behavior = C.BL_TH_VAL_ABSOLUTE;
+        else if (txtval)
+            hilite.behavior = C.BL_TH_TEXTMATCH;
+        else if (hilite.value.a_void)
+            hilite.behavior = C.BL_TH_VAL_ABSOLUTE;
+        else if (criticalhp)
+            hilite.behavior = C.BL_TH_CRITICALHP;
+        else
+            hilite.behavior = C.BL_TH_NONE;
+
+        hilite.anytype = dt;
+
+        if ((+!!(hilite.behavior == C.BL_TH_TEXTMATCH && txt))) {
+            C.strncpy(hilite.textmatch, txt, C.sizes.typeSize_18);
+            hilite.textmatch[C.sizes.typeSize_19 - 1] = 0;
+            C.trimspaces(hilite.textmatch);
+        }
+
+        C.callLocal(status_hilite_add_threshold, fld, hilite);
+
+        successes++;
+        sidx++;
+    }
+
+    return (successes > 0);
+}
+
+
+export function query_conditions()
+{
+    let i,res;
+    let ret = 0n;
+    let tmpwin;
+    const any = C.localStruct("any", "query_conditions:automatic:0");
+    let picks = 0;
+    let clr = C.NO_COLOR;
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    for (i = 0; i < C.conditions.length; i++) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_ulong = C.conditions[i].mask;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                 clr, C.conditions[i].text[0], C.MENU_ITEMFLAGS_NONE);
+    }
+
+    C.end_menu(tmpwin, "Choose status conditions");
+
+    res = C.select_menu(tmpwin, C.PICK_ANY, C.reference("menuarray", () => picks, value => picks = value, "query_conditions:cell:picks"));
+    C.destroy_nhwindow(tmpwin);
+    if (res > 0) {
+        for (i = 0; i < res; i++)
+            ret |= picks[i].item.a_ulong;
+        C.free(picks);
+    }
+    return ret;
+}
+
+
+export function conditionbitmask2str(ul)
+{
+    
+const buf = C.staticBuffer("conditionbitmask2str_buf", C.BUFSZ);
+    let i;
+    let first = 1;
+    let alias = C.charPointer(0);
+
+
+    buf[0] = 0;
+    if (!ul)
+        return buf;
+
+    for (i = 1; i < C.condition_aliases.length; i++)
+        if (C.condition_aliases[i].bitmask == ul)
+            alias = C.condition_aliases[i].id;
+
+    for (i = 0; i < C.conditions.length; i++)
+        if ((C.conditions[i].mask & ul) != 0n) {
+            C.Sprintf(C.eos(buf), "%s%s", (first) ? "" : "+",
+                    C.conditions[i].text[0], C.varargs(57));
+            first = 0;
+        }
+
+    if ((+!!(!first && alias)))
+        C.Sprintf(buf, "%s", alias, C.varargs(58));
+
+    return buf;
+}
+
+
+export function match_str2conditionbitmask(str)
+{
+    let i, nmatches = 0;
+    let mask = 0n;
+
+    if ((+!!(str && C.loadChar(str)))) {
+        /* check matches to canonical names */
+        for (i = 0; i < C.conditions.length; i++)
+            if (C.fuzzymatch(C.conditions[i].text[0], str, " -_", 1)) {
+                mask |= C.conditions[i].mask;
+                nmatches++;
+            }
+
+        if (!nmatches) {
+            /* check aliases */
+            for (i = 0; i < C.condition_aliases.length; i++)
+                if (C.fuzzymatch(C.condition_aliases[i].id, str, " -_", 1)) {
+                    mask |= C.condition_aliases[i].bitmask;
+                    nmatches++;
+                }
+        }
+
+        if (!nmatches) {
+            /* check partial matches to aliases */
+            let len = C.int(C.strlen(str));
+
+            for (i = 0; i < C.condition_aliases.length; i++)
+                if (!C.strncmpi(str, C.condition_aliases[i].id, len)) {
+                    mask |= C.condition_aliases[i].bitmask;
+                    nmatches++;
+                }
+        }
+    }
+
+    return mask;
+}
+
+
+export function str2conditionbitmask(str)
+{
+    let conditions_bitmask = 0n;
+    let subfields;
+    let i, sf;
+
+    sf = C.callLocal(splitsubfields, str, C.reference("pointerarray", () => subfields, value => subfields = value, "str2conditionbitmask:cell:subfields"), C.conditions.length);
+
+    if (sf < 1)
+        return 0n;
+
+    for (i = 0; i < sf; ++i) {
+        let bm = C.callLocal(match_str2conditionbitmask, subfields[i]);
+
+        if (!bm) {
+            C.config_error_add("Unknown condition '%s'", subfields[i], C.varargs(59));
+            return 0n;
+        }
+        conditions_bitmask |= bm;
+    }
+    return conditions_bitmask;
+}
+
+
+export function parse_condition(s, sidx)
+{
+    let i;
+    let coloridx = C.NO_COLOR;
+    let tmp,how;
+    let conditions_bitmask = 0n;
+    let result = 0;
+
+    if (!s)
+        return 0;
+
+    /*3.6.1:
+      OPTION=hilite_status: condition/stone+slime+foodPois/red&inverse */
+
+    /*
+     * TODO?
+     *  It would be simpler to treat each condition (also hunger state
+     *  and encumbrance level) as if it were a separate field.  That
+     *  way they could have either or both 'changed' temporary rule and
+     *  'always' persistent rule and wouldn't need convoluted access to
+     *  the intended color and attributes.
+     */
+
+    sidx++;
+    if (!s[sidx][0]) {
+        C.config_error_add("Missing condition(s)", C.varargs(60));
+        return 0;
+    }
+    while (s[sidx][0]) {
+        let sf = 0;     /* subfield count */
+        const buf = C.charArray(C.BUFSZ, "parse_condition:automatic:0"); let subfields;
+
+        tmp = s[sidx];
+        C.Strcpy(buf, tmp);
+        conditions_bitmask = C.callLocal(str2conditionbitmask, buf);
+
+        if (!conditions_bitmask)
+            return 0;
+
+        /*
+         * We have the conditions_bitmask with bits set for
+         * each ailment we want in a particular color and/or
+         * attribute, but we need to assign it to an array of
+         * bitmasks indexed by the color chosen
+         *        (0 to (CLR_MAX - 1))
+         * and/or attributes chosen
+         *        (HL_ATTCLR_NONE to (BL_ATTCLR_MAX - 1))
+         * We still have to parse the colors and attributes out.
+         */
+
+        /* actions */
+        sidx++;
+        how = s[sidx];
+        if ((+!!(!how || !C.loadChar(how)))) {
+            C.config_error_add("Missing color+attribute", C.varargs(61));
+            return 0;
+        }
+
+        C.Strcpy(buf, how);
+        sf = C.callLocal(splitsubfields, buf, C.reference("pointerarray", () => subfields, value => subfields = value, "parse_condition:cell:subfields"), 0);
+
+        /*
+         * conditions_bitmask now has bits set representing
+         * the conditions that player wants represented, but
+         * now we parse out *how* they will be represented.
+         *
+         * Only 1 colour is allowed, but potentially multiple
+         * attributes are allowed.
+         *
+         * We have the following additional array offsets to
+         * use for storing the attributes beyond the end of
+         * the color indexes, all of which are less than CLR_MAX.
+         *
+         */
+
+        for (i = 0; i < sf; ++i) {
+            let a = C.match_str2attr(subfields[i], 0);
+
+            if (a == C.ATR_BOLD)
+                C.gc.cond_hilites[C.HL_ATTCLR_BOLD] |= conditions_bitmask;
+            else if (a == C.ATR_DIM)
+                C.gc.cond_hilites[C.HL_ATTCLR_DIM] |= conditions_bitmask;
+            else if (a == C.ATR_ITALIC)
+                C.gc.cond_hilites[C.HL_ATTCLR_ITALIC] |= conditions_bitmask;
+            else if (a == C.ATR_ULINE)
+                C.gc.cond_hilites[C.HL_ATTCLR_ULINE] |= conditions_bitmask;
+            else if (a == C.ATR_BLINK)
+                C.gc.cond_hilites[C.HL_ATTCLR_BLINK] |= conditions_bitmask;
+            else if (a == C.ATR_INVERSE)
+                C.gc.cond_hilites[C.HL_ATTCLR_INVERSE] |= conditions_bitmask;
+            else if (a == C.ATR_NONE) {
+                C.gc.cond_hilites[C.HL_ATTCLR_BOLD] &= ~conditions_bitmask;
+                C.gc.cond_hilites[C.HL_ATTCLR_DIM] &= ~conditions_bitmask;
+                C.gc.cond_hilites[C.HL_ATTCLR_ITALIC] &= ~conditions_bitmask;
+                C.gc.cond_hilites[C.HL_ATTCLR_ULINE] &= ~conditions_bitmask;
+                C.gc.cond_hilites[C.HL_ATTCLR_BLINK] &= ~conditions_bitmask;
+                C.gc.cond_hilites[C.HL_ATTCLR_INVERSE] &= ~conditions_bitmask;
+            } else {
+                let k = C.match_str2clr(subfields[i], 0);
+
+                if (k >= C.CLR_MAX) {
+                    C.config_error_add("bad color %d", k, C.varargs(62));
+                    return 0;
+                }
+                coloridx = k;
+            }
+        }
+        /* set the bits in the appropriate member of the
+           condition array according to color chosen as index */
+
+        C.gc.cond_hilites[coloridx] |= conditions_bitmask;
+        result = 1;
+        sidx++;
+    }
+    return result;
+}
+
+
+export function clear_status_hilites()
+{
+    let i;
+
+    for (i = 0; i < C.MAXBLSTATS; ++i) {
+        let temp,next;
+
+        for (temp = C.gb.blstats[0][i].thresholds; temp; temp = next) {
+            next = temp.next;
+            C.free(temp);
+        }
+        C.gb.blstats[0][i].thresholds = C.gb.blstats[1][i].thresholds = 0;
+        /* pointer into thresholds list, now stale */
+        C.gb.blstats[0][i].hilite_rule = C.gb.blstats[1][i].hilite_rule = 0;
+    }
+}
+
+
+export function hlattr2attrname(attrib, buf, bufsz)
+{
+    if ((+!!(attrib && buf))) {
+        const attbuf = C.charArray(C.BUFSZ, "hlattr2attrname:automatic:0");
+        let first = 0;
+        let k;
+
+        attbuf[0] = 0;
+        if (attrib == C.HL_NONE) {
+            C.Strcpy(buf, "normal");
+            return buf;
+        }
+
+        if (attrib & C.HL_BOLD)
+            C.Strcat(attbuf, first++ ? "+bold" : "bold");
+        if (attrib & C.HL_DIM)
+            C.Strcat(attbuf, first++ ? "+dim" : "dim");
+        if (attrib & C.HL_ITALIC)
+            C.Strcat(attbuf, first++ ? "+italic" : "italic");
+        if (attrib & C.HL_ULINE)
+            C.Strcat(attbuf, first++ ? "+underline" : "underline");
+        if (attrib & C.HL_BLINK)
+            C.Strcat(attbuf, first++ ? "+blink" : "blink");
+        if (attrib & C.HL_INVERSE)
+            C.Strcat(attbuf, first++ ? "+inverse" : "inverse");
+
+        k = C.strlen(attbuf);
+        if (k < C.ulong((bufsz - 1n)))
+            C.Strcpy(buf, attbuf);
+        return buf;
+    }
+    return C.charPointer(0);
+}
+/* these don't need to be in 'struct g' */
+
+export function status_hilite_linestr_add(fld, hl, mask, str)
+{
+    let tmp,nxt;
+
+    tmp = C.view("_status_hilite_line_str", C.alloc(C.sizes.typeSize_20));
+    C.memset(tmp, 0, C.sizes.typeSize_21);
+    tmp.next = C.view("_status_hilite_line_str", 0);
+
+    tmp.id = ++C.status_hilite_str_id;
+    tmp.fld = fld;
+    tmp.hl = hl;
+    tmp.mask = mask;
+    if (fld == C.BL_TITLE)
+        C.Strcpy(tmp.str, str);
+    else
+        C.stripchars(tmp.str, " ", str);
+
+    if (!C.samePointer((nxt = C.status_hilite_str) , 0)) {
+        while (nxt.next)
+            nxt = nxt.next;
+        nxt.next = tmp;
+    } else {
+        C.status_hilite_str = tmp;
+    }
+}
+
+
+export function status_hilite_linestr_done()
+{
+    let nxt,tmp = C.status_hilite_str;
+
+    while (tmp) {
+        nxt = tmp.next;
+        C.free(tmp);
+        tmp = nxt;
+    }
+    C.status_hilite_str = C.view("_status_hilite_line_str", 0);
+    C.status_hilite_str_id = 0;
+}
+
+
+export function status_hilite_linestr_countfield(fld)
+{
+    let tmp;
+    let countall = (fld == C.BL_FLUSH);
+    let count = 0;
+
+    for (tmp = C.status_hilite_str; tmp; tmp = tmp.next) {
+        if ((+!!(countall || tmp.fld == fld)))
+            count++;
+    }
+    return count;
+}
+/* used by options handling, doset(options.c) */
+
+export function count_status_hilites()
+{
+    let count;
+
+    C.callLocal(status_hilite_linestr_gather);
+    count = C.callLocal(status_hilite_linestr_countfield, C.BL_FLUSH);
+    C.callLocal(status_hilite_linestr_done);
+    return count;
+}
+
+
+export function status_hilite_linestr_gather_conditions()
+{
+    let i;
+    const cond_maps = C.structArray("_cond_map", C.conditions.length, "status_hilite_linestr_gather_conditions:automatic:0");
+
+    C.memset(cond_maps, 0,
+                  C.conditions.length * C.sizes.typeSize_22);
+
+    for (i = 0; i < C.conditions.length; i++) {
+        let clr = C.NO_COLOR;
+        let atr = C.HL_NONE;
+        let j;
+
+        for (j = 0; j < C.CLR_MAX; j++)
+            if (C.gc.cond_hilites[j] & C.conditions[i].mask) {
+                clr = j;
+                break;
+            }
+        if (C.gc.cond_hilites[C.HL_ATTCLR_BOLD] & C.conditions[i].mask)
+            atr |= C.HL_BOLD;
+        if (C.gc.cond_hilites[C.HL_ATTCLR_DIM] & C.conditions[i].mask)
+            atr |= C.HL_DIM;
+        if (C.gc.cond_hilites[C.HL_ATTCLR_ITALIC] & C.conditions[i].mask)
+            atr |= C.HL_ITALIC;
+        if (C.gc.cond_hilites[C.HL_ATTCLR_ULINE] & C.conditions[i].mask)
+            atr |= C.HL_ULINE;
+        if (C.gc.cond_hilites[C.HL_ATTCLR_BLINK] & C.conditions[i].mask)
+            atr |= C.HL_BLINK;
+        if (C.gc.cond_hilites[C.HL_ATTCLR_INVERSE] & C.conditions[i].mask)
+            atr |= C.HL_INVERSE;
+        if (atr != C.HL_NONE)
+            atr &= ~C.HL_NONE;
+
+        if ((+!!(clr != C.NO_COLOR || atr != C.HL_NONE))) {
+            let ca = clr | (atr << 8);
+            let added_condmap = 0;
+
+            for (j = 0; j < C.conditions.length; j++)
+                if (cond_maps[j].clratr == ca) {
+                    cond_maps[j].bm |= C.conditions[i].mask;
+                    added_condmap = 1;
+                    break;
+                }
+            if (!added_condmap) {
+                for (j = 0; j < C.conditions.length; j++)
+                    if (!cond_maps[j].bm) {
+                        cond_maps[j].bm = C.conditions[i].mask;
+                        cond_maps[j].clratr = ca;
+                        break;
+                    }
+            }
+        }
+    }
+
+    for (i = 0; i < C.conditions.length; i++)
+        if (cond_maps[i].bm) {
+            let clr = C.NO_COLOR, atr = C.HL_NONE;
+
+            C.callLocal(split_clridx, cond_maps[i].clratr, C.reference("int", () => clr, value => clr = value, "status_hilite_linestr_gather_conditions:cell:clr"), C.reference("int", () => atr, value => atr = value, "status_hilite_linestr_gather_conditions:cell:atr"));
+            if ((+!!(clr != C.NO_COLOR || atr != C.HL_NONE))) {
+                const clrbuf = C.charArray(C.BUFSZ, "status_hilite_linestr_gather_conditions:automatic:1");
+                const attrbuf = C.charArray(C.BUFSZ, "status_hilite_linestr_gather_conditions:automatic:2");
+                const condbuf = C.charArray(C.BUFSZ, "status_hilite_linestr_gather_conditions:automatic:3");
+                let tmpattr;
+
+                C.strNsubst(C.strcpy(clrbuf, C.clr2colorname(clr)),
+                                 " ", "-", 0);
+                tmpattr = C.callLocal(hlattr2attrname, atr, attrbuf, C.BUFSZ);
+                if (tmpattr)
+                    C.Sprintf(C.eos(clrbuf), "&%s", tmpattr, C.varargs(63));
+                C.Snprintf(condbuf, C.sizes.typeSize_23, "condition/%s/%s",
+                         C.callLocal(conditionbitmask2str, cond_maps[i].bm), clrbuf, C.varargs(64));
+                C.callLocal(status_hilite_linestr_add, C.BL_CONDITION, 0,
+                                          cond_maps[i].bm, condbuf);
+            }
+        }
+}
+
+
+export function status_hilite_linestr_gather()
+{
+    let i;
+    let hl;
+
+    C.callLocal(status_hilite_linestr_done);
+
+    for (i = 0; i < C.MAXBLSTATS; i++) {
+        hl = C.gb.blstats[0][i].thresholds;
+        while (hl) {
+            C.callLocal(status_hilite_linestr_add, i, hl, 0n, C.callLocal(status_hilite2str, hl));
+            hl = hl.next;
+        }
+    }
+
+    C.callLocal(status_hilite_linestr_gather_conditions);
+}
+
+
+export function status_hilite2str(hl)
+{
+    
+const buf = C.staticBuffer("status_hilite2str_buf", C.BUFSZ);
+    let clr = C.NO_COLOR, attr = C.ATR_NONE;
+    const behavebuf = C.charArray(C.BUFSZ, "status_hilite2str:automatic:0");
+    const clrbuf = C.charArray(C.BUFSZ, "status_hilite2str:automatic:1");
+    const attrbuf = C.charArray(C.BUFSZ, "status_hilite2str:automatic:2");
+    let tmpattr;
+    let op;
+
+    if (!hl)
+        return C.charPointer(0);
+
+    behavebuf[0] = 0;
+    clrbuf[0] = 0;
+    op = (hl.rel == C.LT_VALUE) ? "<"
+           : (hl.rel == C.LE_VALUE) ? "<="
+             : (hl.rel == C.GT_VALUE) ? ">"
+               : (hl.rel == C.GE_VALUE) ? ">="
+                 : (hl.rel == C.EQ_VALUE) ? "="
+                   : 0;
+
+    switch (hl.behavior) {
+    case C.BL_TH_VAL_PERCENTAGE:
+        if (op)
+            C.Sprintf(behavebuf, "%s%d%%", op, hl.value.a_int, C.varargs(65));
+        else
+            C.impossible("hl.behavior=percentage, rel error", C.varargs(66));
+        break;
+    case C.BL_TH_UPDOWN:
+        if (hl.rel == C.LT_VALUE)
+            C.Sprintf(behavebuf, "down", C.varargs(67));
+        else if (hl.rel == C.GT_VALUE)
+            C.Sprintf(behavebuf, "up", C.varargs(68));
+        else if (hl.rel == C.EQ_VALUE)
+            C.Sprintf(behavebuf, "changed", C.varargs(69));
+        else
+            C.impossible("hl.behavior=updown, rel error", C.varargs(70));
+        break;
+    case C.BL_TH_VAL_ABSOLUTE:
+        if (op)
+            C.Sprintf(behavebuf, "%s%d", op, hl.value.a_int, C.varargs(71));
+        else
+            C.impossible("hl.behavior=absolute, rel error", C.varargs(72));
+        break;
+    case C.BL_TH_TEXTMATCH:
+        if ((+!!(hl.rel == C.TXT_VALUE && hl.textmatch[0])))
+            C.Sprintf(behavebuf, "%s", hl.textmatch, C.varargs(73));
+        else
+            C.impossible("hl.behavior=textmatch, rel or textmatch error", C.varargs(74));
+        break;
+    case C.BL_TH_CONDITION:
+        if (hl.rel == C.EQ_VALUE)
+            C.Sprintf(behavebuf, "%s", C.callLocal(conditionbitmask2str, hl.value.a_ulong), C.varargs(75));
+        else
+            C.impossible("hl.behavior=condition, rel error", C.varargs(76));
+        break;
+    case C.BL_TH_ALWAYS_HILITE:
+        C.Sprintf(behavebuf, "always", C.varargs(77));
+        break;
+    case C.BL_TH_CRITICALHP:
+        C.Sprintf(behavebuf, "criticalhp", C.varargs(78));
+        break;
+    case C.BL_TH_NONE:
+        break;
+    default:
+        break;
+    }
+
+    C.callLocal(split_clridx, hl.coloridx, C.reference("int", () => clr, value => clr = value, "status_hilite2str:cell:clr"), C.reference("int", () => attr, value => attr = value, "status_hilite2str:cell:attr"));
+    C.strNsubst(C.strcpy(clrbuf, C.clr2colorname(clr)), " ", "-", 0);
+    if (attr != C.HL_UNDEF) {
+        if (!C.samePointer((tmpattr = C.callLocal(hlattr2attrname, attr, attrbuf, C.BUFSZ)) , 0))
+            C.Sprintf(C.eos(clrbuf), "&%s", tmpattr, C.varargs(79));
+    }
+    C.Snprintf(buf, C.sizes.typeSize_24, "%s/%s/%s", C.initblstats[hl.fld].fldname,
+             behavebuf, clrbuf, C.varargs(80));
+
+    return buf;
+}
+
+
+export function status_hilite_menu_choose_field()
+{
+    let tmpwin;
+    let i, res, fld = C.BL_FLUSH;
+    const any = C.localStruct("any", "status_hilite_menu_choose_field:automatic:0");
+    let picks = 0;
+    let clr = C.NO_COLOR;
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    for (i = 0; i < C.MAXBLSTATS; i++) {
+        if ((+!!(C.initblstats[i].fld == C.BL_SCORE
+            && !C.gb.blstats[0][C.BL_SCORE].thresholds)))
+            continue;
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = (i + 1);
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                 clr, C.initblstats[i].fldname, C.MENU_ITEMFLAGS_NONE);
+    }
+
+    C.end_menu(tmpwin, "Select a hilite field:");
+
+    res = C.select_menu(tmpwin, C.PICK_ONE, C.reference("menuarray", () => picks, value => picks = value, "status_hilite_menu_choose_field:cell:picks"));
+    C.destroy_nhwindow(tmpwin);
+    if (res > 0) {
+        fld = picks[0].item.a_int - 1;
+        C.free(picks);
+    }
+    return fld;
+}
+
+
+export function status_hilite_menu_choose_behavior(fld)
+{
+    let tmpwin;
+    let res = 0, beh = C.BL_TH_NONE-1;
+    const any = C.localStruct("any", "status_hilite_menu_choose_behavior:automatic:0");
+    let picks = 0;
+    const buf = C.charArray(C.BUFSZ, "status_hilite_menu_choose_behavior:automatic:1");
+    let at;
+    let onlybeh = C.BL_TH_NONE, nopts = 0;
+    let clr = C.NO_COLOR;
+
+    if ((+!!(fld < 0 || fld >= C.MAXBLSTATS)))
+        return C.BL_TH_NONE;
+
+    at = C.initblstats[fld].anytype;
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    if (fld != C.BL_CONDITION) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_ALWAYS_HILITE;
+        C.Sprintf(buf, "Always highlight %s", C.initblstats[fld].fldname, C.varargs(81));
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 97, 0, C.ATR_NONE,
+                 clr, buf, C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if (fld == C.BL_CONDITION) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_CONDITION;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 98, 0, C.ATR_NONE,
+                 clr, "Bitmask of conditions", C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if ((+!!(fld != C.BL_CONDITION && fld != C.BL_VERS))) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_UPDOWN;
+        C.Sprintf(buf, "%s value changes", C.initblstats[fld].fldname, C.varargs(82));
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 99, 0, C.ATR_NONE,
+                 clr, buf, C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if ((+!!((+!!(fld != C.BL_CAP && fld != C.BL_HUNGER))
+        && ((+!!(at == C.ANY_INT || at == C.ANY_LONG)))))) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_VAL_ABSOLUTE;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 110, 0, C.ATR_NONE,
+                 clr, "Number threshold", C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if (C.initblstats[fld].idxmax >= 0) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_VAL_PERCENTAGE;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 112, 0, C.ATR_NONE,
+                 clr, "Percentage threshold", C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if (fld == C.BL_HP) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_CRITICALHP;
+        C.Sprintf(buf,  "Highlight critically low %s",
+                C.initblstats[fld].fldname, C.varargs(83));
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 67, 0, C.ATR_NONE,
+                 clr, buf, C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if ((+!!((+!!(C.initblstats[fld].anytype == C.ANY_STR
+        || fld == C.BL_CAP)) || fld == C.BL_HUNGER))) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = onlybeh = C.BL_TH_TEXTMATCH;
+        C.Sprintf(buf, "%s text match", C.initblstats[fld].fldname, C.varargs(84));
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 116, 0, C.ATR_NONE,
+                 clr, buf, C.MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    C.Sprintf(buf, "Select %s field hilite behavior:",
+            C.initblstats[fld].fldname, C.varargs(85));
+    C.end_menu(tmpwin, buf);
+
+    if (nopts > 1) {
+        res = C.select_menu(tmpwin, C.PICK_ONE, C.reference("menuarray", () => picks, value => picks = value, "status_hilite_menu_choose_behavior:cell:picks"));
+        if (res == 0) /* none chosen*/
+            beh = C.BL_TH_NONE;
+        else if (res == -1) /* menu cancelled */
+            beh = (C.BL_TH_NONE - 1);
+    } else if (onlybeh != C.BL_TH_NONE) {
+        beh = onlybeh;
+    }
+    C.destroy_nhwindow(tmpwin);
+    if (res > 0) {
+        beh = picks[0].item.a_int;
+        C.free(picks);
+    }
+    return beh;
+}
+
+
+export function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
+{
+    let res, ret = C.NO_LTEQGT;
+    let tmpwin;
+    const buf = C.charArray(C.BUFSZ, "status_hilite_menu_choose_updownboth:automatic:0");
+    const any = C.localStruct("any", "status_hilite_menu_choose_updownboth:automatic:1");
+    let picks = 0;
+    let clr = C.NO_COLOR;
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    if (ltok) {
+        if (str)
+            C.Sprintf(buf, "%s than %s",
+                    (fld == C.BL_AC) ? "Better (lower)" : "Less", str, C.varargs(86));
+        else
+            C.Sprintf(buf, "Value goes down", C.varargs(87));
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = 10 + C.LT_VALUE;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                 clr, buf, C.MENU_ITEMFLAGS_NONE);
+
+        if (str) {
+            C.Sprintf(buf, "%s or %s",
+                    str, (fld == C.BL_AC) ? "better (lower)" : "less", C.varargs(88));
+            C.copyStruct(any, C.cg.zeroany);
+            any.a_int = 10 + C.LE_VALUE;
+            C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                     clr, buf, C.MENU_ITEMFLAGS_NONE);
+        }
+    }
+
+    if (str)
+        C.Sprintf(buf, "Exactly %s", str, C.varargs(89));
+    else
+        C.Sprintf(buf, "Value changes", C.varargs(90));
+    C.copyStruct(any, C.cg.zeroany);
+    any.a_int = 10 + C.EQ_VALUE;
+    C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+             clr, buf, C.MENU_ITEMFLAGS_NONE);
+
+    if (gtok) {
+        if (str) {
+            C.Sprintf(buf, "%s or %s",
+                    str, (fld == C.BL_AC) ? "worse (higher)" : "more", C.varargs(91));
+            C.copyStruct(any, C.cg.zeroany);
+            any.a_int = 10 + C.GE_VALUE;
+            C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                     clr, buf, C.MENU_ITEMFLAGS_NONE);
+        }
+
+        if (str)
+            C.Sprintf(buf, "%s than %s",
+                    (fld == C.BL_AC) ? "Worse (higher)" : "More", str, C.varargs(92));
+        else
+            C.Sprintf(buf, "Value goes up", C.varargs(93));
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = 10 + C.GT_VALUE;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE, clr,
+                 buf, C.MENU_ITEMFLAGS_NONE);
+    }
+    C.Sprintf(buf, "Select field %s value:", C.initblstats[fld].fldname, C.varargs(94));
+    C.end_menu(tmpwin, buf);
+
+    res = C.select_menu(tmpwin, C.PICK_ONE, C.reference("menuarray", () => picks, value => picks = value, "status_hilite_menu_choose_updownboth:cell:picks"));
+    C.destroy_nhwindow(tmpwin);
+    if (res > 0) {
+        ret = picks[0].item.a_int - 10;
+        C.free(picks);
+    }
+
+    return ret;
+}
+
+
+export function status_hilite_menu_add(origfld)
+{
+    let fld;
+    let behavior;
+    let lt_gt_eq;
+    let clr = C.NO_COLOR, atr = C.HL_UNDEF;
+    const hilite = C.localStruct("hilite_s", "status_hilite_menu_add:automatic:0");
+    let cond = 0n;
+    const colorqry = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:1");
+    const attrqry = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:2");
+    let retry = 0;
+
+ choose_field: while (true) {
+    fld = origfld;
+    if (fld == C.BL_FLUSH) {
+        fld = C.callLocal(status_hilite_menu_choose_field);
+        /* isn't this redundant given what follows? */
+        if (fld == C.BL_FLUSH)
+            return 0;
+    }
+
+    if (fld == C.BL_FLUSH)
+        return 0;
+
+    colorqry[0] = 0;
+    attrqry[0] = 0;
+
+    C.memset(hilite, 0, C.sizes.typeSize_25);
+    hilite.next = C.view("hilite_s", 0);
+    hilite.set = 0; /* mark it "unset" */
+    hilite.fld = fld;
+
+ choose_behavior: while (true) {
+    behavior = C.callLocal(status_hilite_menu_choose_behavior, fld);
+
+    if (behavior == (C.BL_TH_NONE - 1)) {
+        return 0;
+    } else if (behavior == C.BL_TH_NONE) {
+        if (origfld == C.BL_FLUSH)
+            continue choose_field;
+        return 0;
+    }
+
+    hilite.behavior = behavior;
+
+ choose_value: while (true) {
+    if (retry++ > 5) {
+        C.pline("That's enough tries.", C.varargs(95));
+        return 0;
+    }
+    if ((+!!(behavior == C.BL_TH_VAL_PERCENTAGE
+        || behavior == C.BL_TH_VAL_ABSOLUTE))) {
+        const inbuf = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:3"), buf = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:4");
+        const aval = C.localStruct("any", "status_hilite_menu_add:automatic:5");
+        let val, dt;
+        let gotnum = 0, percent = (behavior == C.BL_TH_VAL_PERCENTAGE);
+        let inp,numstart;
+        let op;
+
+        lt_gt_eq = C.NO_LTEQGT; /* not set up yet */
+        inbuf[0] = 0;
+        C.Sprintf(buf, "Enter %svalue for %s threshold:",
+                percent ? "percentage " : "",
+                C.initblstats[fld].fldname, C.varargs(96));
+        C.getlin(buf, inbuf);
+        if ((+!!(inbuf[0] == 0 || inbuf[0] == 27)))
+            continue choose_behavior;
+
+        inp = numstart = C.trimspaces(inbuf);
+        if (!C.loadChar(inp))
+            continue choose_behavior;
+
+        /* allow user to enter "<50%" or ">50" or just "50"
+           or <=50% or >=50 or =50 */
+        if ((+!!((+!!(C.loadChar(inp) == 62 || C.loadChar(inp) == 60)) || C.loadChar(inp) == 61))) {
+            lt_gt_eq = (C.loadChar(inp) == 62) ? ((inp[1] == 61) ? C.GE_VALUE : C.GT_VALUE)
+                     : (C.loadChar(inp) == 60) ? ((inp[1] == 61) ? C.LE_VALUE : C.LT_VALUE)
+                       : C.EQ_VALUE;
+            C.storeChar(inp++, 32);
+            numstart++;
+            if ((+!!(lt_gt_eq == C.GE_VALUE || lt_gt_eq == C.LE_VALUE))) {
+                C.storeChar(inp++, 32);
+                numstart++;
+            }
+        }
+        if (C.loadChar(inp) == 45) {
+            inp++;
+        } else if (C.loadChar(inp) == 43) {
+            C.storeChar(inp++, 32);
+            numstart++;
+        }
+        while (C.digit(C.loadChar(inp))) {
+            inp++;
+            gotnum = 1;
+        }
+        if (C.loadChar(inp) == 37) {
+            if (!percent) {
+                C.pline("Not expecting a percentage.", C.varargs(97));
+                continue choose_behavior;
+            }
+            C.storeChar(inp, 0); /* strip '%' [this accepts trailing junk!] */
+        } else if (C.loadChar(inp)) {
+            /* some random characters */
+            C.pline("\"%s\" is not a recognized number.", inp, C.varargs(98));
+            continue choose_value;
+        }
+        if (!gotnum) {
+            C.pline("Is that an invisible number?", C.varargs(99));
+            continue choose_value;
+        }
+        op = (lt_gt_eq == C.LT_VALUE) ? "<"
+               : (lt_gt_eq == C.LE_VALUE) ? "<="
+                 : (lt_gt_eq == C.GT_VALUE) ? ">"
+                   : (lt_gt_eq == C.GE_VALUE) ? ">="
+                     : (lt_gt_eq == C.EQ_VALUE) ? "="
+                       : ""; /* didn't specify lt_gt_eq with number */
+
+        C.copyStruct(aval, C.cg.zeroany);
+        dt = percent ? C.ANY_INT : C.initblstats[fld].anytype;
+        C.callLocal(s_to_anything, aval, numstart, dt);
+
+        if (percent) {
+            val = aval.a_int;
+            if (C.initblstats[fld].idxmax == -1) {
+                C.pline("Field '%s' does not support percentage values.",
+                      C.initblstats[fld].fldname, C.varargs(100));
+                behavior = C.BL_TH_VAL_ABSOLUTE;
+                continue choose_value;
+            }
+            /* if player only specified a number then lt_gt_eq isn't set
+               up yet and the >-1 and <101 exceptions can't be honored;
+               deliberate use of those should be uncommon enough for
+               that to be palatable; for 0 and 100, choose_updown_both()
+               will prevent useless operations */
+            if ((+!!((+!!((+!!(((+!!(val < 0 && ((+!!(val != -1 || lt_gt_eq != C.GT_VALUE))))))
+                || ((+!!(val == 0 && lt_gt_eq == C.LT_VALUE)))))
+                || ((+!!(val == 100 && lt_gt_eq == C.GT_VALUE)))))
+                || ((+!!(val > 100 && ((+!!(val != 101 || lt_gt_eq != C.LT_VALUE))))))))) {
+                C.pline("'%s%d%%' is not a valid percent value.", op, val, C.varargs(101));
+                continue choose_value;
+            }
+            /* restore suffix for use in color and attribute prompts */
+            if (!C.strchr(numstart, 37))
+                C.Strcat(numstart, "%");
+
+        /* reject negative values except for AC and >-1; reject 0 for < */
+        } else if ((+!!(dt == C.ANY_INT
+                   && (aval.a_int < ((fld == C.BL_AC) ? -128
+                                     : (lt_gt_eq == C.GT_VALUE) ? -1
+                                       : (lt_gt_eq == C.LT_VALUE) ? 1 : 0))))) {
+            C.pline("%s'%s%d'%s", C.threshold_value,
+                  op, aval.a_int, C.is_out_of_range, C.varargs(102));
+            continue choose_value;
+        } else if ((+!!(dt == C.ANY_LONG
+                   && (aval.a_long < ((lt_gt_eq == C.GT_VALUE) ? -1n
+                                      : (lt_gt_eq == C.LT_VALUE) ? 1n : 0n))))) {
+            C.pline("%s'%s%ld'%s", C.threshold_value,
+                  op, aval.a_long, C.is_out_of_range, C.varargs(103));
+            continue choose_value;
+        }
+
+        if (lt_gt_eq == C.NO_LTEQGT) {
+            let ltok = ((dt == C.ANY_INT)
+                            ? ((+!!(aval.a_int > 0 || fld == C.BL_AC)))
+                            : (aval.a_long > 0n)),
+                    gtok = ((+!!(!percent || aval.a_long < 100)));
+
+            lt_gt_eq = C.callLocal(status_hilite_menu_choose_updownboth, fld, inbuf,
+                                                            ltok, gtok);
+            if (lt_gt_eq == C.NO_LTEQGT)
+                continue choose_value;
+        }
+
+        C.Sprintf(colorqry, "Choose a color for when %s is %s%s%s:",
+                C.initblstats[fld].fldname,
+                (lt_gt_eq == C.LT_VALUE) ? "less than "
+                  : (lt_gt_eq == C.GT_VALUE) ? "more than "
+                    : "",
+                numstart,
+                (lt_gt_eq == C.LE_VALUE) ? " or less"
+                  : (lt_gt_eq == C.GE_VALUE) ? " or more"
+                    : "", C.varargs(104));
+        C.Sprintf(attrqry, "Choose attribute for when %s is %s%s%s:",
+                C.initblstats[fld].fldname,
+                (lt_gt_eq == C.LT_VALUE) ? "less than "
+                  : (lt_gt_eq == C.GT_VALUE) ? "more than "
+                    : "",
+                numstart,
+                (lt_gt_eq == C.LE_VALUE) ? " or less"
+                  : (lt_gt_eq == C.GE_VALUE) ? " or more"
+                    : "", C.varargs(105));
+
+        hilite.rel = lt_gt_eq;
+        hilite.value = aval;
+    } else if (behavior == C.BL_TH_UPDOWN) {
+        if (C.initblstats[fld].anytype != C.ANY_STR) {
+            let ltok = (fld != C.BL_TIME), gtok = 1;
+
+            lt_gt_eq = C.callLocal(status_hilite_menu_choose_updownboth, fld, C.charPointer(0),
+                                                            ltok, gtok);
+            if (lt_gt_eq == C.NO_LTEQGT)
+                continue choose_behavior;
+        } else { /* ANY_STR */
+            /* player picked '<field> value changes' in outer menu;
+               ordered string comparison is supported but LT/GT for the
+               string status fields (title, dungeon level, alignment)
+               is pointless; rather than calling ..._choose_updownboth()
+               with ltok==False plus gtok=False and having a menu with a
+               single choice, skip it altogether and just use 'changed' */
+            lt_gt_eq = C.EQ_VALUE;
+        }
+        C.Sprintf(colorqry, "Choose a color for when %s %s:",
+                C.initblstats[fld].fldname,
+                (lt_gt_eq == C.EQ_VALUE) ? "changes"
+                  : (lt_gt_eq == C.LT_VALUE) ? "decreases"
+                    : "increases", C.varargs(106));
+        C.Sprintf(attrqry, "Choose attribute for when %s %s:",
+                C.initblstats[fld].fldname,
+                (lt_gt_eq == C.EQ_VALUE) ? "changes"
+                  : (lt_gt_eq == C.LT_VALUE) ? "decreases"
+                    : "increases", C.varargs(107));
+        hilite.rel = lt_gt_eq;
+    } else if (behavior == C.BL_TH_CONDITION) {
+        cond = C.callLocal(query_conditions);
+        if (!cond) {
+            if (origfld == C.BL_FLUSH)
+                continue choose_field;
+            return 0;
+        }
+        C.Snprintf(colorqry, C.sizes.typeSize_26,
+                "Choose a color for conditions %s:",
+                C.callLocal(conditionbitmask2str, cond), C.varargs(108));
+        C.Snprintf(attrqry, C.sizes.typeSize_27,
+                "Choose attribute for conditions %s:",
+                C.callLocal(conditionbitmask2str, cond), C.varargs(109));
+    } else if (behavior == C.BL_TH_TEXTMATCH) {
+        const qry_buf = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:6");
+
+        C.Sprintf(qry_buf, "%s %s text value to match:",
+                ((+!!((+!!((+!!(fld == C.BL_CAP
+                 || fld == C.BL_ALIGN))
+                 || fld == C.BL_HUNGER))
+                 || fld == C.BL_TITLE))) ? "Choose" : "Enter",
+                C.initblstats[fld].fldname, C.varargs(110));
+        if (fld == C.BL_CAP) {
+            let rv = C.callLocal(query_arrayvalue, qry_buf,
+                                      C.enc_stat,
+                                      C.SLT_ENCUMBER, C.OVERLOADED + 1);
+
+            if (rv < C.SLT_ENCUMBER)
+                continue choose_behavior;
+
+            hilite.rel = C.TXT_VALUE;
+            C.Strcpy(hilite.textmatch, C.enc_stat[rv]);
+        } else if (fld == C.BL_ALIGN) {
+            const aligntxt = [
+                "chaotic", "neutral", "lawful"
+            ];
+            let rv = C.callLocal(query_arrayvalue, qry_buf,
+                                      aligntxt, 0, 2 + 1);
+
+            if (rv < 0)
+                continue choose_behavior;
+
+            hilite.rel = C.TXT_VALUE;
+            C.Strcpy(hilite.textmatch, aligntxt[rv]);
+        } else if (fld == C.BL_HUNGER) {
+            const hutxt = [
+                "Satiated", C.charPointer(0), "Hungry", "Weak",
+                "Fainting", "Fainted", "Starved"
+            ];
+            let rv = C.callLocal(query_arrayvalue, qry_buf, hutxt, C.SATIATED, C.STARVED + 1);
+
+            if (rv < C.SATIATED)
+                continue choose_behavior;
+
+            hilite.rel = C.TXT_VALUE;
+            C.Strcpy(hilite.textmatch, hutxt[rv]);
+        } else if (fld == C.BL_TITLE) {
+            const rolelist = C.pointerArray(3 * 9 + 1, "status_hilite_menu_add:automatic:7");
+            const mbuf = C.charArray(C.MAXVALWIDTH, "status_hilite_menu_add:automatic:8"), fbuf = C.charArray(C.MAXVALWIDTH, "status_hilite_menu_add:automatic:9"), obuf = C.charArray(C.MAXVALWIDTH, "status_hilite_menu_add:automatic:10");
+            let i, j, rv;
+
+            for (i = j = 0; i < 9; i++) {
+                C.Sprintf(mbuf, "\"%s\"", C.gu.urole.rank[i].m, C.varargs(111));
+                if (C.gu.urole.rank[i].f) {
+                    C.Sprintf(fbuf, "\"%s\"", C.gu.urole.rank[i].f, C.varargs(112));
+                    C.Snprintf(obuf, C.sizes.typeSize_28, "%s or %s",
+                            C.flags.female ? fbuf : mbuf,
+                            C.flags.female ? mbuf : fbuf, C.varargs(113));
+                } else {
+                    fbuf[0] = obuf[0] = 0;
+                }
+                if (C.flags.female) {
+                    if (C.loadChar(fbuf))
+                        rolelist[j++] = C.dupstr(fbuf);
+                    rolelist[j++] = C.dupstr(mbuf);
+                    if (C.loadChar(obuf))
+                        rolelist[j++] = C.dupstr(obuf);
+                } else {
+                    rolelist[j++] = C.dupstr(mbuf);
+                    if (C.loadChar(fbuf))
+                        rolelist[j++] = C.dupstr(fbuf);
+                    if (C.loadChar(obuf))
+                        rolelist[j++] = C.dupstr(obuf);
+                }
+            }
+            rolelist[j++] = C.dupstr("\"none of the above (polymorphed)\"");
+
+            rv = C.callLocal(query_arrayvalue, qry_buf, rolelist, 0, j);
+            if (rv >= 0) {
+                hilite.rel = C.TXT_VALUE;
+                C.Strcpy(hilite.textmatch, rolelist[rv]);
+            }
+            for (i = 0; i < j; i++)
+                C.free(rolelist[i]), rolelist[i] = 0;
+            if (rv < 0)
+                continue choose_behavior;
+        } else {
+            const inbuf = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:11");
+
+            inbuf[0] = 0;
+            C.getlin(qry_buf, inbuf);
+            if ((+!!(inbuf[0] == 0 || inbuf[0] == 27)))
+                continue choose_behavior;
+
+            hilite.rel = C.TXT_VALUE;
+            if (C.strlen(inbuf) < C.sizes.typeSize_29)
+                C.Strcpy(hilite.textmatch, inbuf);
+            else
+                return 0;
+        }
+        C.Sprintf(colorqry, "Choose a color for when %s is '%s':",
+                C.initblstats[fld].fldname, hilite.textmatch, C.varargs(114));
+        C.Sprintf(attrqry, "Choose attribute for when %s is '%s':",
+                C.initblstats[fld].fldname, hilite.textmatch, C.varargs(115));
+    } else if (behavior == C.BL_TH_ALWAYS_HILITE) {
+        C.Sprintf(colorqry, "Choose a color to always hilite %s:",
+                C.initblstats[fld].fldname, C.varargs(116));
+        C.Sprintf(attrqry, "Choose attribute to always hilite %s:",
+                C.initblstats[fld].fldname, C.varargs(117));
+    }
+
+ choose_color: while (true) {
+    clr = C.query_color(colorqry, C.NO_COLOR);
+    if (clr == -1) {
+        if (behavior != C.BL_TH_ALWAYS_HILITE)
+            continue choose_value;
+        else
+            continue choose_behavior;
+    }
+    atr = C.query_attr(attrqry, C.ATR_NONE);
+    if (atr == -1)
+        continue choose_color;
+
+    if (behavior == C.BL_TH_CONDITION) {
+        const clrbuf = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:12");
+        const attrbuf = C.charArray(C.BUFSZ, "status_hilite_menu_add:automatic:13");
+        let tmpattr;
+
+        if (atr & C.HL_BOLD)
+            C.gc.cond_hilites[C.HL_ATTCLR_BOLD] |= cond;
+        if (atr & C.HL_DIM)
+            C.gc.cond_hilites[C.HL_ATTCLR_DIM] |= cond;
+        if (atr & C.HL_ITALIC)
+            C.gc.cond_hilites[C.HL_ATTCLR_ITALIC] |= cond;
+        if (atr & C.HL_ULINE)
+            C.gc.cond_hilites[C.HL_ATTCLR_ULINE] |= cond;
+        if (atr & C.HL_BLINK)
+            C.gc.cond_hilites[C.HL_ATTCLR_BLINK] |= cond;
+        if (atr & C.HL_INVERSE)
+            C.gc.cond_hilites[C.HL_ATTCLR_INVERSE] |= cond;
+        if (atr == C.HL_NONE) {
+            C.gc.cond_hilites[C.HL_ATTCLR_BOLD] &= ~cond;
+            C.gc.cond_hilites[C.HL_ATTCLR_DIM] &= ~cond;
+            C.gc.cond_hilites[C.HL_ATTCLR_ITALIC] &= ~cond;
+            C.gc.cond_hilites[C.HL_ATTCLR_ULINE] &= ~cond;
+            C.gc.cond_hilites[C.HL_ATTCLR_BLINK] &= ~cond;
+            C.gc.cond_hilites[C.HL_ATTCLR_INVERSE] &= ~cond;
+        }
+        C.gc.cond_hilites[clr] |= cond;
+        C.strNsubst(C.strcpy(clrbuf, C.clr2colorname(clr)), " ", "-", 0);
+        tmpattr = C.callLocal(hlattr2attrname, atr, attrbuf, C.BUFSZ);
+        if (tmpattr)
+            C.Sprintf(C.eos(clrbuf), "&%s", tmpattr, C.varargs(118));
+        C.pline("Added hilite condition/%s/%s",
+              C.callLocal(conditionbitmask2str, cond), clrbuf, C.varargs(119));
+    } else {
+        let p,q;
+
+        hilite.coloridx = clr | (atr << 8);
+        hilite.anytype = C.initblstats[fld].anytype;
+
+        if ((+!!(fld == C.BL_TITLE && !C.samePointer((p = C.strstri(hilite.textmatch, " or ")) , 0)))) {
+            /* split menu choice "male-rank or female-rank" into two distinct
+               but otherwise identical rules, "male-rank" and "female-rank" */
+            C.storeChar(p, 0); /* chop off " or female-rank" */
+            /* new rule for male-rank */
+            C.callLocal(status_hilite_add_threshold, fld, hilite);
+            C.pline("Added hilite %s", C.callLocal(status_hilite2str, hilite), C.varargs(120));
+            /* transfer female-rank to start of hilite.textmatch buffer */
+            p += C.sizes.typeSize_30 - C.sizes.typeSize_31;
+            q = hilite.textmatch;
+            while (C.storeChar(q++, C.loadChar(p++)) != 0)
+                continue;
+            /* proceed with normal addition of new rule */
+        }
+        C.callLocal(status_hilite_add_threshold, fld, hilite);
+        C.pline("Added hilite %s", C.callLocal(status_hilite2str, hilite), C.varargs(121));
+    }
+    C.callLocal(reset_status_hilites);
+    return 1;
+
+}
+}
+}
+}
+}
+
+
+export function status_hilite_remove(id)
+{
+    let hlstr = C.status_hilite_str;
+
+    while ((+!!(hlstr && hlstr.id != id))) {
+        hlstr = hlstr.next;
+    }
+
+    if (!hlstr)
+        return 0;
+
+    if (hlstr.fld == C.BL_CONDITION) {
+        let i;
+
+        for (i = 0; i < C.CLR_MAX; i++)
+            C.gc.cond_hilites[i] &= ~hlstr.mask;
+        C.gc.cond_hilites[C.HL_ATTCLR_BOLD] &= ~hlstr.mask;
+        C.gc.cond_hilites[C.HL_ATTCLR_DIM] &= ~hlstr.mask;
+        C.gc.cond_hilites[C.HL_ATTCLR_ITALIC] &= ~hlstr.mask;
+        C.gc.cond_hilites[C.HL_ATTCLR_ULINE] &= ~hlstr.mask;
+        C.gc.cond_hilites[C.HL_ATTCLR_BLINK] &= ~hlstr.mask;
+        C.gc.cond_hilites[C.HL_ATTCLR_INVERSE] &= ~hlstr.mask;
+        return 1;
+    } else {
+        let fld = hlstr.fld;
+        let hl,hlprev = C.view("hilite_s", 0);
+
+        for (hl = C.gb.blstats[0][fld].thresholds; hl; hl = hl.next) {
+            if (C.samePointer(hlstr.hl , hl)) {
+                if (hlprev) {
+                    hlprev.next = hl.next;
+                } else {
+                    C.gb.blstats[0][fld].thresholds = hl.next;
+                    C.gb.blstats[1][fld].thresholds
+                        = C.gb.blstats[0][fld].thresholds;
+                }
+                if (C.samePointer(C.gb.blstats[0][fld].hilite_rule , hl)) {
+                    C.gb.blstats[0][fld].hilite_rule
+                        = C.gb.blstats[1][fld].hilite_rule
+                        = C.view("hilite_s", 0);
+                    C.gb.blstats[0][fld].time = C.gb.blstats[1][fld].time = 0n;
+                }
+                C.free(hl);
+                return 1;
+            }
+            hlprev = hl;
+        }
+    }
+    return 0;
+}
+
+
+export function status_hilite_menu_fld(fld)
+{
+    let tmpwin;
+    let i, res;
+    let picks = 0;
+    const any = C.localStruct("any", "status_hilite_menu_fld:automatic:0");
+    let count = C.callLocal(status_hilite_linestr_countfield, fld);
+    let hlstr;
+    const buf = C.charArray(C.BUFSZ, "status_hilite_menu_fld:automatic:1");
+    let acted;
+    let clr = C.NO_COLOR;
+
+    if (!count) {
+        if (C.callLocal(status_hilite_menu_add, fld)) {
+            C.callLocal(status_hilite_linestr_done);
+            C.callLocal(status_hilite_linestr_gather);
+            count = C.callLocal(status_hilite_linestr_countfield, fld);
+        } else
+            return 0;
+    }
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    if (count) {
+        hlstr = C.status_hilite_str;
+        while (hlstr) {
+            if (hlstr.fld == fld) {
+                C.copyStruct(any, C.cg.zeroany);
+                any.a_int = hlstr.id;
+                C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                         clr, hlstr.str, C.MENU_ITEMFLAGS_NONE);
+            }
+            hlstr = hlstr.next;
+        }
+    } else {
+        C.Sprintf(buf, "No current hilites for %s", C.initblstats[fld].fldname, C.varargs(122));
+        C.add_menu_str(tmpwin, buf);
+    }
+
+    /* separator line */
+    C.add_menu_str(tmpwin, "");
+
+    if (count) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = -1;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 88, 0, C.ATR_NONE, clr,
+                 "Remove selected hilites", C.MENU_ITEMFLAGS_NONE);
+    }
+
+    if (fld == C.BL_SCORE) {
+        /* suppress 'Z - Add a new hilite' for 'score' when SCORE_ON_BOTL
+           is disabled; we wouldn't be called for 'score' unless it has
+           hilite rules from the config file, so count must be positive
+           (hence there's no risk that we're putting up an empty menu) */
+        ;
+    } else
+    {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = -2;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 90, 0, C.ATR_NONE,
+                 clr, "Add new hilites", C.MENU_ITEMFLAGS_NONE);
+    }
+
+    C.Sprintf(buf, "Current %s hilites:", C.initblstats[fld].fldname, C.varargs(123));
+    C.end_menu(tmpwin, buf);
+
+    acted = 0;
+    if ((res = C.select_menu(tmpwin, C.PICK_ANY, C.reference("menuarray", () => picks, value => picks = value, "status_hilite_menu_fld:cell:picks"))) > 0) {
+        let idx;
+        let mode = 0;
+
+        for (i = 0; i < res; i++) {
+            idx = picks[i].item.a_int;
+            if (idx == -1)
+                mode |= 1; /* delete selected hilites */
+            else if (idx == -2)
+                mode |= 2; /* create new hilites */
+        }
+        if (mode & 1) { /* delete selected hilites */
+            for (i = 0; i < res; i++) {
+                idx = picks[i].item.a_int;
+                if ((+!!(idx > 0 && C.callLocal(status_hilite_remove, idx))))
+                    acted = 1;
+            }
+        }
+        if (mode & 2) { /* create new hilites */
+            while (C.callLocal(status_hilite_menu_add, fld))
+                acted = 1;
+        }
+        C.free(picks), picks = 0;
+    }
+    C.destroy_nhwindow(tmpwin);
+    return acted;
+}
+
+
+export function status_hilites_viewall()
+{
+    let datawin;
+    let hlstr = C.status_hilite_str;
+    const buf = C.charArray(C.BUFSZ, "status_hilites_viewall:automatic:0");
+
+    datawin = C.create_nhwindow(C.NHW_TEXT);
+
+    while (hlstr) {
+        C.Sprintf(buf, "OPTIONS=hilite_status: %.*s",
+                C.int((C.BUFSZ - C.sizes.typeSize_32 - 1)),
+                hlstr.str, C.varargs(124));
+        C.putstr(datawin, 0, buf);
+        hlstr = hlstr.next;
+    }
+
+    C.display_nhwindow(datawin, 0);
+    C.destroy_nhwindow(datawin);
+}
+
+
+export function all_options_statushilites(sbuf)
+{
+    let hlstr;
+    const buf = C.charArray(C.BUFSZ, "all_options_statushilites:automatic:0");
+
+    C.callLocal(status_hilite_linestr_done);
+    C.callLocal(status_hilite_linestr_gather);
+
+    hlstr = C.status_hilite_str;
+
+    while (hlstr) {
+        C.Sprintf(buf, "OPTIONS=hilite_status: %.*s\n",
+                C.int((C.BUFSZ - C.sizes.typeSize_33 - 1)),
+                hlstr.str, C.varargs(125));
+        C.strbuf_append(sbuf, buf);
+        hlstr = hlstr.next;
+    }
+    C.callLocal(status_hilite_linestr_done);
+}
+
+
+export function status_hilite_menu()
+{
+    let tmpwin;
+    let i, fld, res;
+    let picks = 0;
+    const any = C.localStruct("any", "status_hilite_menu:automatic:0");
+    let redo;
+    let countall;
+    let clr = C.NO_COLOR;
+
+ shlmenu_redo: while (true) {
+    redo = 0;
+
+    tmpwin = C.create_nhwindow(C.NHW_MENU);
+    C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+    C.callLocal(status_hilite_linestr_gather);
+    countall = C.callLocal(status_hilite_linestr_countfield, C.BL_FLUSH);
+    if (countall) {
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = -1;
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                 clr, "View all hilites in config format",
+                 C.MENU_ITEMFLAGS_NONE);
+
+        C.add_menu_str(tmpwin, "");
+    }
+
+    for (i = 0; i < C.MAXBLSTATS; i++) {
+        let count;
+        const buf = C.charArray(C.BUFSZ, "status_hilite_menu:automatic:1");
+
+        fld = C.initblstats[i].fld;
+        count = C.callLocal(status_hilite_linestr_countfield, fld);
+        /* config file might contain rules for highlighting 'score'
+           even when SCORE_ON_BOTL is disabled; if so, 'O' command
+           menus will show them and allow deletions but not additions,
+           otherwise, it won't show 'score' at all */
+        if ((+!!(fld == C.BL_SCORE && !count)))
+            continue;
+        C.copyStruct(any, C.cg.zeroany);
+        any.a_int = fld + 1;
+        C.Sprintf(buf, "%-18s", C.initblstats[i].fldname, C.varargs(126));
+        if (count)
+            C.Sprintf(C.eos(buf), " (%d defined)", count, C.varargs(127));
+        C.add_menu(tmpwin, C.nul_glyphinfo, any, 0, 0, C.ATR_NONE,
+                 clr, buf, C.MENU_ITEMFLAGS_NONE);
+    }
+
+    C.end_menu(tmpwin, "Status hilites:");
+    if ((res = C.select_menu(tmpwin, C.PICK_ONE, C.reference("menuarray", () => picks, value => picks = value, "status_hilite_menu:cell:picks"))) > 0) {
+        fld = picks[0].item.a_int - 1;
+        if (fld < 0) {
+            C.callLocal(status_hilites_viewall);
+        } else {
+            if (C.callLocal(status_hilite_menu_fld, fld))
+                C.callLocal(reset_status_hilites);
+        }
+        C.free(picks), picks = 0;
+        redo = 1;
+    }
+
+    C.destroy_nhwindow(tmpwin);
+    countall = C.callLocal(status_hilite_linestr_countfield, C.BL_FLUSH);
+    C.callLocal(status_hilite_linestr_done);
+
+    /* fuzzer is unlikely to pick something useful within nested menus;
+       limit it to one try */
+    if ((+!!(redo && !C.iflags.debug_fuzzer)))
+        continue shlmenu_redo;
+
+    /* hilite_delta=='statushilites' does double duty:  it is the
+       number of turns for temporary highlights to remain visible
+       and also when non-zero it is the flag to enable highlighting */
+    if ((+!!(countall > 0 && !C.iflags.hilite_delta)))
+        C.iflags.hilite_delta = 3n;
+
+    return 1;
+
+}
+}
+/* STATUS_HILITES */
+/*botl.c*/

@@ -8,8 +8,7 @@ import { pline, There } from './pline.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN } from './const.js';
 import { setworn } from './worn.js';
 import { save_light_sources, lights_save_snapshot, dangling_light_check } from './light.js';
-import { save_engravings, clear_level_structures, dobjsfree } from './mklev.js';
-import { maxledgerno } from './dungeon.js';
+import { save_engravings, clear_level_structures } from './mklev.js';
 import { dmonsfree } from './mon.js';
 import { forget_temple_entry } from './priest.js';
 import { regions_save_snapshot } from './region.js';
@@ -33,7 +32,6 @@ function levelStore() {
 /* C ref: save.c:429 savelev(nhfp, lev).  `lev` is ledger_no(&u.uz) — the
  * absolute cross-branch level index, the same key getlev() reads back. */
 export async function savelev(lev, freeing = false) {
-    game.program_state.saving = (game.program_state.saving | 0) + 1; // save.c:460
     /* C save.c:483-488 — savelev_core purges dead monsters before it writes
      * the level when iflags.purge_monsters is set (mon.c:2796's m_detach
      * counter — every m_detach twin increments it).  Only a WRITING save
@@ -41,12 +39,11 @@ export async function savelev(lev, freeing = false) {
      * where C skips the purge and the counter survives the level change. */
     if (!freeing && (game.iflags.purge_monsters | 0) > 0)
         await dmonsfree();
-    if (!freeing && game.objs_deleted) dobjsfree(); // save.c:489-491
     /* C save.c:475 — `if (lev >= 0 && lev <= maxledgerno())
      *     svl.level_info[lev].flags |= VISITED;`  Marked by the SAVE, not by
      * the departure bookkeeping, so a level is VISITED exactly when a copy of
      * it exists. */
-    if (!freeing && lev >= 0 && lev <= maxledgerno()) {
+    if (lev >= 0) {
         game.level_info = game.level_info || {};
         const info = (game.level_info[lev] = game.level_info[lev] || { flags: 0 });
         info.flags |= VISITED;
@@ -107,8 +104,7 @@ export async function savelev(lev, freeing = false) {
      * so the free ALWAYS happens on this path.  The snapshot above holds
      * REFERENCES, and clear_level_structures() replaces its containers rather
      * than mutating them (a fresh GameMap, g.fmon = null, gr.regions = null —
-     * and free_region() only nulls the live region's rects/monsters/msgs,
-     * which regions_save_snapshot() deep-copied), so the stored copy is
+     * and free_region() is a no-op, js/region.js:298), so the stored copy is
      * unaffected.  The engraving map and the hero track ARE cleared in place,
      * which is exactly why those two are copied rather than referenced.
      * svr.rooms is g.level.rooms, already dropped with the GameMap; billobjs
@@ -118,7 +114,6 @@ export async function savelev(lev, freeing = false) {
         if (bc)
             await setworn(null, bc);
     }
-    game.program_state.saving--; // save.c:560, before clear_level_structures
     clear_level_structures();
     bubbles_clear_level();
     g.ftrap = null;
@@ -160,7 +155,6 @@ export function savefile_name(plname) {
 }
 
 export const NOT_SAVED = [
-    'roleoptvals', // C options.c:800-844: saveoptvals/restoptvals are #if 0.
     // C do_name.c:22-23: nextmbuf's storage is process-local static data.
     '_mbufs',
     'program_state', 'iflags', 'keybindings', 'sysopt', 'disp', 'env',
@@ -361,7 +355,6 @@ export async function dosave0() {
         // C save.c:168 -> savelev_core(:483-488): purge before writing.
         if ((g.iflags.purge_monsters | 0) > 0)
             await dmonsfree();
-        if (g.objs_deleted) dobjsfree(); // save.c:489-491
         /* C save.c:168-169,307,894: saving the current level and migrating
          * monsters runs savemonchn(), resetting each priest's entry timers
          * before the save is written, just as savelev() does on departure. */
@@ -375,8 +368,7 @@ export async function dosave0() {
         if (g.u?.uz) {
             const cur = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + (g.u.uz.dlevel | 0);
             g.level_info = g.level_info || {};
-            if (cur >= 0 && cur <= maxledgerno())
-                (g.level_info[cur] = g.level_info[cur] || { flags: 0 }).flags |= VISITED;
+            (g.level_info[cur] = g.level_info[cur] || { flags: 0 }).flags |= VISITED;
         }
         /* Detach before C's inactive-level copy pass: those getlev/savelev
          * operations work on file records, not on the live current level. */

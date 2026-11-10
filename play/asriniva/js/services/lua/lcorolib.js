@@ -3,9 +3,10 @@
  * coroutine.close unwinds suspended frames and pending error closers.
  * C continuation APIs remain unimplemented.
  */
+import {prepareLibrary} from './llib.js';
 import { LuaTable, LuaThread, LuaError, luaType } from './lobject.js';
-export function openCoroutine(vm) {
-  const lib = new LuaTable();
+export function openCoroutine(vm,{publish=true}={}) {
+  const lib=prepareLibrary(vm,['create','resume','running','status','wrap','yield','isyieldable','close']);try{
   const thread = value => { if (!(value instanceof LuaThread)) throw new LuaError('thread expected'); return value; };
   const create = fn => { if (luaType(fn) !== 'function') throw new LuaError('function expected'); const co = new LuaThread(fn); vm.debug.inheritThread(co, vm.currentThread); return co; };
   const resume = (value, args) => {
@@ -46,5 +47,5 @@ export function openCoroutine(vm) {
     const wrapped = (...args) => { const [ok, ...values] = resume(co, args); if (!ok) throw new LuaError(values[0] ?? null); return values; }; wrapped.luaInvoke=args=>{const[ok,...values]=resume(co,args);if(!ok)throw new LuaError(values[0]??null);return values;}; wrapped.luaGcRoots = [co]; return [wrapped];
   });
   lib.rawset('close', co => vm.closeThread(thread(co)));
-  vm.setGlobal('coroutine', lib); return lib;
+  const table=lib.finish();if(publish)vm.setGlobal('coroutine',table);return table;}finally{lib.release();}
 }

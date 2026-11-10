@@ -158,6 +158,7 @@ export class LuaDebugState {
     frames = frames ?? this.thread(thread).frames;
     const view = frames.slice().reverse(), last = view.length - 1;
     let text = message === null ? '' : cstring(message) + '\n'; text += 'stack traceback:';
+    if (level < 0) return text;
     let limit = last - level > 21 ? 10 : -1;
     while (level <= last) {
       const frame = view[level++];
@@ -174,7 +175,7 @@ export class LuaDebugState {
 }
 
 export class LuaMemoryError extends LuaError {
-  constructor() { super('not enough memory'); this.status = LUA_ERRMEM; }
+  constructor() { super('not enough memory',{adopt:false}); this.status = LUA_ERRMEM; }
 }
 export class LuaTimeLimitError extends Error {
   constructor(sid, name) { super(`Lua time exceeded ${sid}:${name ?? '(unknown)'}`); this.name = 'LuaTimeLimitError'; }

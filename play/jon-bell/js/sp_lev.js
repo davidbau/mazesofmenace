@@ -30,7 +30,7 @@ import { wallification, get_level_extends, fix_wall_spines } from './mkmaze.js';
 import { In_hell, Can_fall_thru, level_difficulty } from './dungeon.js';
 import { stairway_add } from './stairs.js';
 import { somexy, somex, somey } from './mkroom.js';
-import { set_levltyp, set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom } from './mkmaze.js';
+import { set_levltyp, set_levltyp_lit, create_maze, baalz_fixup, setup_waterlevel, stolen_booty, walkfrom as maze_walkfrom } from './mkmaze.js';
 import { vision_reset, block_point } from './vision.js';
 import { litstate_rnd, mkmap, flood_fill_rm } from './mkmap.js';
 import { priestini, mk_roamer } from './priest.js';
@@ -58,14 +58,14 @@ import { t_at, deltrap, maketrap, goodpos } from './trap.js';
 import { update_mon_extrinsics, m_dowear } from './worn.js';
 /* C keeps pick_vibrasquare_location in mkmaze.c; create_trap's VIBRATING_SQUARE
  * arm (sp_lev.c:1819) is its only caller outside makemaz. */
-import { pick_vibrasquare_location, place_lregion } from './mkmaze.js';
+import { pick_vibrasquare_location } from './mkmaze.js';
 import { mergable } from './cmd.js';
 import { on_level } from './dungeon.js';
 import { m_at, monmightthrowwep } from './uhitm.js';
 import { christen_monst } from './mhitm.js';
 import { poly_when_stoned } from './mondata.js';
 import { within_bounded_area } from './rect.js';
-import { create_gas_cloud, create_gas_cloud_selection, regions_list } from './region.js';
+import { create_gas_cloud, create_gas_cloud_selection as create_region_gas_cloud_selection, regions_list } from './region.js';
 import { PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_CLERIC, PM_DWARF, PM_GNOME, NUMMONS } from './pm.generated.js';
 import { dat_content } from './dat_source.js';
 import { tokenize } from './lua/lexer.js';
@@ -4839,6 +4839,38 @@ function splev_is_branchlev(uz) {
     return null;
 }
 
+// C ref: mkmaze.c:317-332 is_exclusion_zone(). Mirrors game.exclusion_zones
+// (pushed by lspo_exclusion, real/ported — see above) exactly against the C
+// sve.exclusion_zones linked list: LR_DOWNTELE/LR_UPTELE also match the
+// generic LR_TELE zonetype, everything else needs an exact zonetype match.
+function is_exclusion_zone(type, x, y) {
+    const zones = game.exclusion_zones || [];
+    for (const ez of zones) {
+        const typeMatches =
+            (type === LR_DOWNTELE && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+            || (type === LR_UPTELE && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+            || type === ez.zonetype;
+        if (typeMatches && within_bounded_area(x, y, ez.lx, ez.ly, ez.hx, ez.hy))
+            return true;
+    }
+    return false;
+}
+
+// C ref: mkmaze.c:334-350 bad_location(). js/mklev.js has its own copy
+// (function bad_location(), module-local, not exported, used by that
+// file's narrower hero-placement place_lregion) — can't be imported without
+// splev_is_branchlev precedent above.
+function splev_bad_location(x, y, nlx, nly, nhx, nhy) {
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return true;
+    return !!(occupied(x, y)
+        || within_bounded_area(x, y, nlx, nly, nhx, nhy)
+        || !((loc.typ === CORR && game.level?.flags?.is_maze_lev)
+             || loc.typ === ROOM
+             || loc.typ === AIR));
+}
+
 // C ref: mkmaze.c:1458-1474 mkportal(). The one body in js/ — small and
 // self-contained (maketrap + dst wiring), needed as a
 // put_lregion_here/place_branch callee. C's debug_fuzzer branch is skipped
@@ -4856,6 +4888,55 @@ export async function mkportal(x, y, todnum, todlevel) {
     ttmp.dst.dlevel = todlevel;
 }
 
+// C ref: mklev.c:1699-1757 place_branch(branchp, x, y). js/mklev.js's own
+// place_branch (module-local, not exported) only implements the x==0
+// "whole level" path (its sole caller, the u_on_rndspot chain, never passes
+// explicit coords) — duplicating it wholesale would also require importing
+// its RNG-consuming find_branch_room/generate_stairs_find_room/somexyspace
+// dependency chain, none of which are exported either. put_lregion_here
+// below always calls with explicit (x,y) already chosen by place_lregion's
+// own search loop, i.e. the x!=0 path, which is self-contained (on_level
+// dispatch + mkportal/stairway_add) and ported faithfully here. The x==0
+// path (mklev.c:1718-1725, only reachable via the !lx LR_BRANCH+nroom
+// shortcut in place_lregion below, or fixup_special's own !added_branch
+// tail fallback) throws — none of the quest-file branch regions checked
+// bounded branch regions. C: pos_to_room(x,y) return value is discarded by
+// the caller (mklev.c:1724) and has no side effects — skipped.
+async function splev_place_branch(branchp, x, y) {
+    if (!branchp || game.made_branch)
+        return;
+    if (!x) { /* find random coordinates for branch */
+        const m = { x: 0, y: 0 };
+        await find_branch_room(m);
+        x = m.x;
+        y = m.y;
+    }
+    const uz = game.u?.uz;
+    const dnum = uz?.dnum ?? 0;
+    const dlevel = uz?.dlevel ?? 1;
+    const on_end1 = (branchp.end1?.dnum === dnum && branchp.end1?.dlevel === dlevel);
+    const dest = on_end1 ? branchp.end2 : branchp.end1;
+    const BR_NO_END1 = 1, BR_NO_END2 = 2, BR_PORTAL = 3;
+    const brtype = branchp.type ?? 0;
+    const make_stairs = on_end1 ? (brtype !== BR_NO_END1) : (brtype !== BR_NO_END2);
+    if (brtype === BR_PORTAL) {
+        await mkportal(x, y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
+    } else if (make_stairs) {
+        const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
+        stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
+        const loc = game.level?.at(x, y);
+        if (loc) {
+            loc.typ = STAIRS;
+            loc.ladder = goes_up ? LA_UP : LA_DOWN;
+        }
+        if (goes_up)
+            game.level.upstair = { x, y };
+        else
+            game.level.dnstair = { x, y };
+    }
+    game.made_branch = true;
+}
+
 /* C ref: dungeon.c:299-307 find_level(s) — scan svs.sp_levchn for the s_level
  * whose proto matches `s`, case-insensitively; returns NULL when there is none.
  * No RNG, no state change.  game._sp_levchn is the JS sp_levchn (built by
@@ -4868,6 +4949,104 @@ export function find_level(s) {
         if (String(chn[i].proto ?? '').toLowerCase() === want)
             return chn[i];
     return null;
+}
+
+// C ref: mkmaze.c:414-499 put_lregion_here().
+async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+    const lregionTrace = typeof process !== 'undefined' && ENV?.FF_LREGION_TRACE === '1';
+    if (lregionTrace)
+        pushRngLogEntry(`^splev_lregion_try[x=${x | 0},${y | 0} rtype=${rtype | 0} oneshot=${oneshot ? 1 : 0}]`);
+    if (splev_bad_location(x, y, nlx, nly, nhx, nhy) || is_exclusion_zone(rtype, x, y)) {
+        if (!oneshot)
+            return false;
+        const t = t_at(x, y);
+        if (t && !splev_undestroyable_trap(t.ttyp)) {
+            const mtmp = m_at(x, y);
+            if (mtmp)
+                mtmp.mtrapped = 0;
+            deltrap(t);
+        }
+        if (splev_bad_location(x, y, nlx, nly, nhx, nhy) || is_exclusion_zone(rtype, x, y))
+            return false;
+    }
+    switch (rtype) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE:
+        /* C treats the destination as the hero: clear an occupying monster
+         * when this is the one-shot fallback, then perform the normal
+         * u_on_newpos bookkeeping. */
+        {
+            const mtmp = m_at(x, y);
+            if (mtmp) {
+                if (lregionTrace)
+                    pushRngLogEntry(`^splev_lregion_occupied[x=${x | 0},${y | 0} id=${mtmp.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1} rtype=${rtype | 0} oneshot=${oneshot ? 1 : 0}]`);
+                if (!oneshot)
+                    return false;
+                if (!await rloc(mtmp, RLOC_NOMSG))
+                    await m_into_limbo(mtmp);
+            }
+            await u_on_newpos(x, y);
+        }
+        break;
+    case LR_PORTAL:
+        await mkportal(x, y, lev?.dnum ?? 0, lev?.dlevel ?? 0);
+        break;
+    case LR_DOWNSTAIR:
+    case LR_UPSTAIR:
+        mkstairs(x, y, rtype === LR_UPSTAIR, null);
+        break;
+    case LR_BRANCH:
+        await splev_place_branch(splev_is_branchlev(game.u?.uz), x, y);
+        break;
+    }
+    return true;
+}
+
+// C ref: mkmaze.c:353-410 place_lregion(). RNG-CRITICAL: two rn1() calls
+// per probabilistic try (x then y), up to 200 tries, matching C's exact
+// call order, before falling back to the deterministic x/y nested-loop
+async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
+    if (!lx) { // default to whole level
+        // if there are rooms and this a branch, let place_branch choose
+        // the branch location (to avoid putting branches in corridors).
+        if (rtype === LR_BRANCH && (game.level?.nroom ?? 0)) {
+            await splev_place_branch(splev_is_branchlev(game.u?.uz), 0, 0);
+            return;
+        }
+        lx = 1; // column 0 is not used
+        hx = COLNO - 1;
+        ly = 0;
+        hy = ROWNO - 1;
+    }
+
+    // clamp the area to the map
+    if (lx < 1)
+        lx = 1;
+    if (hx > COLNO - 1)
+        hx = COLNO - 1;
+    if (ly < 0)
+        ly = 0;
+    if (hy > ROWNO - 1)
+        hy = ROWNO - 1;
+
+    // first a probabilistic approach
+    const oneshot = (lx === hx && ly === hy);
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        const x = rn1((hx - lx) + 1, lx);
+        const y = rn1((hy - ly) + 1, ly);
+        if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
+            return;
+    }
+
+    // then a deterministic one
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++)
+            if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
+                return;
+
+    // C mkmaze.c:409
+    await impossible("Couldn't place lregion type %d!", rtype);
 }
 
 const MR_STONE = 0x80;
@@ -5037,7 +5216,7 @@ async function fixup_special() {
         // above. Unreachable for tut-1/tut-2 (Tutorial is "unconnected" in
         // nethack-c/dat/dungeon.lua, no branches entry points at it); this
         // is place_lregion's !lx path, which throws on the x==0 place_branch
-        // sub-case if ever actually hit.
+        // sub-case (see splev_place_branch above) if ever actually hit.
         await place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     }
 
@@ -5406,6 +5585,23 @@ export async function lspo_grave(...args) {
 // as this handler returns; fog clouds then fail visible_region_at() and emit
 // spurious vapor on their first m_everyturn_effect call.
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── create_gas_cloud_selection — C ref: region.c:1312-1335 ──────────────────
+
+function create_gas_cloud_selection(sel, damage) {
+    const r = { lx: 0, ly: 0, hx: 0, hy: 0 };
+    selection_getbounds(sel, r);
+    const points = [];
+
+    for (let x = r.lx; x <= r.hx; x++) {
+        for (let y = r.ly; y <= r.hy; y++) {
+            if (selection_getpoint(x, y, sel))
+                points.push({ x, y });
+        }
+    }
+
+    return create_region_gas_cloud_selection(points, damage);
+}
 
 // ─── lspo_gas_cloud — C ref: sp_lev.c:4935-4972 ──────────────────────────────
 
@@ -6461,6 +6657,19 @@ function mz_move(coord, dir) {
     default:
         throw new Error('mz_move: bad direction ' + dir);
     }
+}
+
+/** C ref: mkmaze.c:1279-1309 walkfrom(x, y, typ) — recursive backtracking
+ *  maze-carver. Ported as a genuinely recursive function per Cardinal Rule 1
+ *  (a MICRO iterative variant exists in C but is NOT what this non-MICRO
+ *  build uses) — do NOT flatten the `while(1) { ...; walkfrom(...); }` loop
+ *  into pure iteration; C's own loop re-scans directions from the SAME cell
+ *  after each recursive excursion returns, which only works because the
+ *  recursive call already fully explored (and can no longer re-explore) the
+ *  cells it touched. */
+function walkfrom(x, y, typ) {
+    // Share C's maze walk with create_maze(), including its RNG order.
+    return maze_walkfrom(x, y, typ);
 }
 
 /* objclass.h RANDOM_CLASS / GEM_CLASS — module-local per this file's existing

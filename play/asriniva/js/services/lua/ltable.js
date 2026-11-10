@@ -38,17 +38,18 @@ class ContentMap {
 export class LuaTable {
   constructor(entries = [], { arraySize = 0, hashSize = 0, seed = 0 } = {}) {
     this.values = new ContentMap(); this._metatable = null; this.seed = seed >>> 0;
-    this.arraySize = arraySize; this.alimit = arraySize; this.realLimit = true;
-    this.nodes = []; this.lastfree = 0; this.setnodes(hashSize);
+    this.arraySize = 0; this.alimit = 0; this.realLimit = true;
+    this.nodes = []; this.lastfree = 0; this.setnodes(0);
     this.heap = currentHeap(); this.heap?.register(this, 'table');
+    if(arraySize||hashSize)this.resize(arraySize,hashSize);
     for (const [key, value] of entries) this.rawset(key, value);
   }
   get metatable() { return this._metatable; }
   set metatable(value) { this._metatable = value; this.heap?.adopt(value);this.heap?.barrier(this,value); this.heap?.checkFinalizer(this); }
-  setnodes(size) {
+  setnodes(size, allocate = true) {
     const count = roundedSize(size);
     if (count > 2 ** 30 || !Number.isInteger(count) || count < 0) throw new LuaError('table overflow');
-    this.heap?.resizeTable(this, this.arraySize, count);
+    if(allocate)this.heap?.resizeTable(this, this.arraySize, count);
     this.nodes = Array.from({ length: count }, () => ({ key: null, value: null, next: null })); this.lastfree = count;
   }
   hash(key) {
@@ -116,7 +117,7 @@ export class LuaTable {
   resize(arraySize, hashSize) {
     const previousNodes = this.nodes, previousArray = this.arraySize;
     this.heap?.resizeTable(this, arraySize, roundedSize(hashSize));
-    this.arraySize = arraySize; this.setnodes(hashSize); this.alimit = arraySize; this.realLimit = true;
+    this.arraySize = arraySize; this.setnodes(hashSize,false); this.alimit = arraySize; this.realLimit = true;
     // Shrinking array slots are inserted before old hash nodes, as in luaH_resize.
     for (let i = arraySize + 1; i <= previousArray; i++) { const key = BigInt(i), value = this.values.get(key); if (value !== undefined) this.rawset(key, value); }
     for (const node of previousNodes) if (node.value !== null) this.rawset(node.key, node.value);

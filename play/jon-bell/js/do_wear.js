@@ -37,7 +37,7 @@ function _hero_mflags1_dw() {
 const M1_HUMANOID_DW = 0x00020000;
 function _humanoid_dw() { return (_hero_mflags1_dw() & M1_HUMANOID_DW) !== 0; }
 import { pline, urgent_pline, livelog_printf } from './pline.js';
-import { You, You_cant, Your, You_feel } from './pline.js';
+import { You, Your, You_feel } from './pline.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
 import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
@@ -47,7 +47,7 @@ import { nhgetch } from './input.js';
 import { nomul, unmul, stop_occupation } from './allmain.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { discover_object, observe_object } from './o_init.js';
-import { exercise, change_luck, acurr, getAbase, C_ATTR_TO_DISP, adjalign } from './attrib.js';
+import { exercise, change_luck, acurr, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
 import { float_vs_flight, obj_pmname, y_monnam, x_monnam, is_youmonst } from './mhitm.js';
@@ -66,11 +66,11 @@ import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js
 import { which_armor } from './worn.js';
 import { canletgo } from './makemon.js';
 import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
-import { cmdq_add_key, cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok, NH_BLACK } from './cmd.js';
+import { cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok } from './cmd.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed } from './wield.js';
 import { dropx } from './do.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
-import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CQ_REPEAT, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
+import { HAND, FINGER, RIGHT_HANDED, LEFT_HANDED, CQ_CANNED, CXN_ARTICLE as PETRIFY_ARTICLE } from './const.js';
 import { W_WEAPONS, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_RING, W_TOOL,
          WORN_ARMOR, WORN_CLOAK, WORN_HELMET, WORN_SHIELD, WORN_GLOVES, WORN_BOOTS,
          WORN_SHIRT, WORN_AMUL, WORN_BLINDF, LEFT_RING, RIGHT_RING,
@@ -94,7 +94,8 @@ const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 import { set_bknown } from './mklev.js';
 import { set_ustuck, rescham, restartcham } from './mon.js';
 import { sticks } from './dog.js';
-import { Can_fall_thru, on_level, has_ceiling } from './dungeon.js';
+import { Can_fall_thru } from './dungeon.js';
+import { on_level } from './dungeon.js';
 import { self_invis_message, make_confused, make_hallucinated } from './potion.js';
 import { set_mimic_blocking } from './sit.js';
 import { paranoid_query } from './paranoid.js';
@@ -170,11 +171,7 @@ import { UNCHANGING as UNCHANGING_PROP } from './const.js';
 /* C polyself.c poly_gender() — js/makemon.js:2112 is the ONE definition (do_wear.c
  * itself calls the same global function; not duplicating it here). */
 import { poly_gender } from './makemon.js';
-import { livelog_newform, set_uasmon, M1_CLING } from './polyself.js';
-function is_clinger(ptr) {
-    const mf1 = (ptr && ptr.mflags1 != null) ? (ptr.mflags1 >>> 0) : _hero_mflags1_dw();
-    return (mf1 & M1_CLING) !== 0;
-}
+import { livelog_newform, set_uasmon } from './polyself.js';
 import { dismount_steed as dismount_steed_fu } from './cmd.js';
 import { trycall } from './do.js';
 import { W_ARTI } from './const.js';
@@ -506,7 +503,6 @@ const c_that_ = 'that';
  * canwearobj()'s per-slot arms.  C compares `which != c_cloak` by POINTER
  * identity; every assignment to `which` here comes from these same consts, so
  * a JS string `!==` is equivalent. */
-const unknown_type = 'Unknown type of %s (%d)';
 const c_armor = 'armor', c_suit = 'suit', c_shirt = 'shirt', c_cloak = 'cloak',
       c_gloves = 'gloves', c_boots = 'boots', c_shield = 'shield',
       c_weapon = 'weapon', c_sword = 'sword', c_axe = 'axe';
@@ -648,10 +644,7 @@ export function takeoff_slot_noac(slot) {
 export async function Armor_off()  {
     const otmp = game.u ? game.u.uarm : null;
     const was_arti_light = !!otmp && !!otmp.lamplit && artifact_light(otmp);
-    const takeoff = ((game.context ||= {}).takeoff ||= {});
-    takeoff.mask = (takeoff.mask | 0) & ~W_ARM;
     const r = await takeoff_slot('uarm');
-    takeoff.cancelled_don = false;
     /* C do_wear.c:920-924: non-fatal light loss before dragon_armor_handling */
     if (was_arti_light && !artifact_light(otmp)) {
         end_burn(otmp, false);
@@ -679,8 +672,8 @@ export async function Armor_gone() {
 }
 export async function Shield_off() {
     // C do_wear.c:735
-    const takeoff = ((game.context ||= {}).takeoff ||= {});
-    takeoff.mask = (takeoff.mask | 0) & ~W_ARMS;
+    if (game.context?.takeoff)
+        game.context.takeoff.mask = (game.context.takeoff.mask | 0) & ~W_ARMS;
 
     // C do_wear.c:739-752
     const otmp = game.u?.uarms;
@@ -697,7 +690,7 @@ export async function Shield_off() {
         case SHIELD_OF_REFLECTION:
             break;
         default:
-            await equipment_impossible(unknown_type, c_shield, otmp.otyp);
+            await equipment_impossible('Unknown type of %s (%d)', 'shield', otmp.otyp);
             break;
         }
     }
@@ -723,20 +716,20 @@ export async function Helmet_off() {
         // C do_wear.c:536-540: undo only a completed donning bonus.
         u.abon ||= {};
         u.abon.a ||= [0, 0, 0, 0, 0, 0];
-        u.abon.a[A_CHA] = ((u.abon.a[A_CHA] | 0)
-            + (game.flags?.initrole === WIZARD_ROLE_IDX ? -1 : 1)) << 24 >> 24; /* schar */
+        u.abon.a[A_CHA] = (u.abon.a[A_CHA] | 0)
+            + (game.flags?.initrole === 12 ? -1 : 1);
         if (game.disp) game.disp.botl = 1;
     }
     if (otmp && (otmp.otyp | 0) === HELM_OF_BRILLIANCE
         && !cancelledDon)
         adj_abon(otmp, -(otmp.spe | 0));
-    if (otmp && (otmp.otyp | 0) === HELM_OF_OPPOSITE_ALIGNMENT_OTYP) {
+    if (otmp && (otmp.otyp | 0) === 99 /* HELM_OF_OPPOSITE_ALIGNMENT */) {
         // C do_wear.c:552-557, attrib.c:1325-1361: change alignment before
         // the message flushes status, and retouch before clearing the slot.
         const oldalign = u.ualign.type;
         u.ublessed = 0;
         if (game.disp) game.disp.botl = 1;
-        u.ualign.type = u.ualignbase[A_CURRENT];
+        u.ualign.type = u.ualignbase[0]; /* A_CURRENT */
         const hallu = u.uprops?.[HALLUC]?.intrinsic
             && !(u.uprops[HALLUC_RES]?.intrinsic || u.uprops[HALLUC_RES]?.extrinsic);
         await pline(`Your mind is ${hallu ? 'much of a muchness' : 'back in sync with your body'}.`);
@@ -756,7 +749,7 @@ export async function Helmet_off() {
         game.context.takeoff.cancelled_don = false;
     return result;
 }
-/* C do_wear.c:645-702 — remove gloves, then immediately test bare-handed
+/* C do_wear.c:645-696 — remove gloves, then immediately test bare-handed
  * wielded corpses after their protection is gone. */
 export async function Gloves_off() {
     const u = game.u;
@@ -768,20 +761,14 @@ export async function Gloves_off() {
     const oldprop = rec ? ((rec.extrinsic | 0) & ~W_ARMG) : 0;
     if (game.context?.takeoff)
         game.context.takeoff.mask = (game.context.takeoff.mask | 0) & ~W_ARMG;
-    if (otyp === LEATHER_GLOVES_OTYP) {
-        /* break */
-    } else if (otyp === GAUNTLETS_OF_FUMBLING_OTYP) {
-        if (!oldprop && !((rec?.intrinsic | 0) & ~PROP_TIMEOUT) && rec)
-            rec.intrinsic = rec.extrinsic = 0;
-    } else if (otyp === GAUNTLETS_OF_POWER_OTYP) {
+    if (otyp === GAUNTLETS_OF_FUMBLING_OTYP
+        && !oldprop && !((rec?.intrinsic | 0) & ~PROP_TIMEOUT) && rec)
+        rec.intrinsic = rec.extrinsic = 0;
+    else if (otyp === GAUNTLETS_OF_POWER_OTYP) {
         makeknown_otyp(otyp);
         if (game.disp) game.disp.botl = 1;
-    } else if (otyp === GAUNTLETS_OF_DEXTERITY) {
-        if (!cancelledDon)
-            adj_abon(otmp, -(otmp.spe | 0));
-    } else if (otmp && typeof otmp.otyp === 'number') {
-        await equipment_impossible('Unknown type of %s (%d)', c_gloves, otyp);
-    }
+    } else if (otyp === GAUNTLETS_OF_DEXTERITY && !cancelledDon)
+        adj_abon(otmp, -(otmp.spe | 0));
     const result = await takeoff_slot('uarmg');
     if (game.context?.takeoff)
         game.context.takeoff.cancelled_don = false;
@@ -794,8 +781,6 @@ export async function Gloves_off() {
     const voluntary = !game.context?.mon_moving && !otmp?.in_use;
     await wielding_corpse(u?.uwep, otmp, voluntary);
     await wielding_corpse(u?.uswapwep, otmp, voluntary);
-    if (game.flags?.cond_barehanded && game.disp)
-        game.disp.botl = 1;
     return result;
 }
 
@@ -819,7 +804,7 @@ export async function wielding_corpse(obj, how, voluntary) {
             ? gloves_simple_name(how)
             : petrify_simpleonames(how).replace('set of ', '')}`
         : 'resistance timing out';
-    await corpse_instapetrify(`${hbuf} while wielding ${petrify_killer_xname(obj)}`.slice(0, BUFSZ - 1)); /* Snprintf(kbuf, sizeof kbuf) */
+    await corpse_instapetrify(`${hbuf} while wielding ${petrify_killer_xname(obj)}`.slice(0, 255));
     if (!stone_resistant())
         await remove_worn_item(obj, false);
 }
@@ -857,17 +842,18 @@ export async function Boots_off() {
          * drops the hero into it unless levitating, flying, or ceiling-clinging. */
         if ((is_pool(u.ux, u.uy) || pooleffects_is_lava(u.ux, u.uy))
             && !Levitation() && !Flying() && !cancelled
-            && !(is_clinger(g.youmonst?.data) && has_ceiling(u.uz))
+            && !((_hero_mflags1_dw() & 0x10)
+                 && !(In_endgame(u.uz) && !Is_earthlevel(u.uz)))
             && !g.iflags?.in_lava_effects) {
             makeknown_otyp(otyp);
             await spoteffects(true);
         }
     } else if (otyp === FUMBLE_BOOTS_OTYP_DW) {
-        /* C do_wear.c:296-299 — removing fumble boots clears their timeout
+        /* C do_wear.c:319-321 — removing fumble boots clears their timeout
          * when no other untimed fumbling source remains. */
         const HFumbling = rec ? (rec.intrinsic | 0) : 0;
         if (!oldprop && !(HFumbling & ~PROP_TIMEOUT) && rec)
-            rec.intrinsic = rec.extrinsic = 0;
+            rec.intrinsic = HFumbling & ~PROP_TIMEOUT;
     } else if (otyp === SPEED_BOOTS_OTYP) {
         /* C do_wear.c:274-280 — after setworn clears the boots, reveal the
          * speed boots and report slowing only when no speed source remains. */
@@ -876,8 +862,21 @@ export async function Boots_off() {
             makeknown_otyp(otyp);
             await pline(`You feel yourself slow down${HFast ? ' a bit' : ''}.`);
         }
+    } else if (otyp === WATER_WALKING_BOOTS_OTYP_DW) {
+        /* C do_wear.c:280-291 — removing water walking boots while standing
+         * on a pool/lava square re-runs spoteffects (the hero sinks); the
+         * makeknown is discover_object(..., credit_hero) -> exercise(A_WIS). */
+        if ((is_pool(u.ux, u.uy) || pooleffects_is_lava(u.ux, u.uy))
+            && !Levitation() && !Flying()
+            && !((_hero_mflags1_dw() & 0x10) /* is_clinger */
+                 && !(In_endgame(u.uz) && !Is_earthlevel(u.uz))) /* has_ceiling */
+            && !cancelled
+            && !g.iflags?.in_lava_effects) {
+            makeknown_otyp(otyp);
+            await spoteffects(true);
+        }
     } else if (otyp === LEVITATION_BOOTS_OTYP_DW) {
-        const BLevFromOutside = (rec ? (rec.blocked | 0) : 0) & FROMOUTSIDE;
+        const BLevFromOutside = (rec ? (rec.blocked | 0) : 0) & 0x04000000;
         if (!oldprop && !(rec ? (rec.intrinsic | 0) : 0)
             && !BLevFromOutside && !cancelled) {
             if (!g.iflags?.in_lava_effects)
@@ -894,8 +893,8 @@ export async function Boots_off() {
 }
 export async function Shirt_off() {
     // C do_wear.c:780
-    const takeoff = ((game.context ||= {}).takeoff ||= {});
-    takeoff.mask = (takeoff.mask | 0) & ~W_ARMU;
+    if (game.context?.takeoff)
+        game.context.takeoff.mask = (game.context.takeoff.mask | 0) & ~W_ARMU;
 
     // C do_wear.c:784-790
     const otmp = game.u?.uarmu;
@@ -905,7 +904,7 @@ export async function Shirt_off() {
         case T_SHIRT:
             break;
         default:
-            await equipment_impossible(unknown_type, c_shirt, otmp.otyp);
+            await equipment_impossible('Unknown type of %s (%d)', 'shirt', otmp.otyp);
             break;
         }
     }
@@ -975,19 +974,8 @@ export async function Cloak_off() {
     if (propRec)
         propRec.extrinsic = (propRec.extrinsic | 0) & ~W_ARMC;
     await takeoff_slot('uarmc');
-    /* do_wear.c:392 switch (otyp) — the plain cloaks (orcish/dwarvish/
-     * protection/magic resistance/oilskin/robe/leather) break with no effect.
-     * Elven cloak (toggle_stealth), cloak of displacement, mummy wrapping
-     * (C do_wear.c:407-413), cloak of invisibility, and alchemy smock are
-     * implemented below. */
-    if (otyp === ORCISH_CLOAK_OTYP || otyp === DWARVISH_CLOAK_OTYP
-        || otyp === CLOAK_OF_PROTECTION_OTYP
-        || otyp === CLOAK_OF_MAGIC_RESISTANCE_OTYP
-        || otyp === OILSKIN_CLOAK_OTYP_DW || otyp === ROBE_OTYP_DW
-        || otyp === LEATHER_CLOAK_OTYP_DW) {
-        /* break */
-    } else if (otyp === CLOAK_OF_INVISIBILITY_OTYP) {
-        /* C do_wear.c:414-422 — CLOAK_OF_INVISIBILITY: "Suddenly you can see
+    if (otyp === CLOAK_OF_INVISIBILITY_OTYP) {
+        /* C do_wear.c:412-420 — CLOAK_OF_INVISIBILITY: "Suddenly you can see
          * yourself." fires only when the removal actually reveals the hero:
          * oldprop, HInvis (u.uprops[INVIS].intrinsic) and Blind all read after
          * setworn() cleared the cloak's extrinsic bit. */
@@ -1009,7 +997,7 @@ export async function Cloak_off() {
     } else if (otyp === CLOAK_OF_DISPLACEMENT_OTYP || otyp === 'CLOAK_OF_DISPLACEMENT')
         await toggle_displacement(otmp, oldprop, false);
     else if (otyp === MUMMY_WRAPPING_OTYP) {
-        /* C do_wear.c:407-413 — taking the wrapping off first resets Invisible;
+        /* C do_wear.c:385-391 — taking the wrapping off first resets Invisible;
          * if the hero is still invisible and not blind, say so. */
         if (_propOn(INVIS_PROP) && !_propOn(BLINDED_PROP)) {
             newsym(g.u.ux | 0, g.u.uy | 0);
@@ -1020,8 +1008,16 @@ export async function Cloak_off() {
         /* C do_wear.c:424-426 — the smock's second, hand-set property:
          * EAcid_resistance &= ~WORN_CLOAK. */
         _dw_set_extrinsic_mask(ACID_RES_PROP, W_ARMC, false);
-    } else if (otmp && typeof otyp === 'number') {
-        await equipment_impossible('Unknown type of %s (%d)', c_cloak, otyp);
+    } else if (otyp === CLOAK_OF_INVISIBILITY_OTYP) {
+        /* C do_wear.c:412-421 — removing the cloak of invisibility while no
+         * other source of invisibility or blindness is in play reveals the
+         * hero.  HInvis/Blind are read after setworn() cleared the cloak. */
+        if (!oldprop && !_propOn(INVIS_PROP) && !_propOn(BLINDED_PROP)) {
+            makeknown_otyp(otyp);
+            newsym(g.u.ux | 0, g.u.uy | 0);
+            await pline(`Suddenly you can ${_propOn(SEE_INVIS_PROP)
+                ? 'no longer see through yourself' : 'see yourself'}.`);
+        }
     }
     return 0;
 }
@@ -1158,17 +1154,15 @@ export async function Shield_on() {
     case LARGE_SHIELD:
     case SHIELD_OF_REFLECTION:
         break;
-    default: await equipment_impossible(unknown_type, c_shield, otyp);
+    default: await equipment_impossible('Unknown type of %s (%d)', 'shield', otyp);
     }
     return don_slot('uarms');
 }
 const FEDORA_OTYP = 92, CORNUTHAUM_OTYP = 93, DUNCE_CAP_OTYP = 94;
-const WIZARD_ROLE_IDX = 12; /* roles.js index; C roles[12] = Wiz */
 /* objects.h helmet order: 94 DUNCE_CAP, 95 DENTED_POT, 96 HELM_OF_BRILLIANCE,
  * 97 HELMET, 98 HELM_OF_CAUTION, 99 HELM_OF_OPPOSITE_ALIGNMENT, 100
  * HELM_OF_TELEPATHY (verified against OC_NAME indices). */
-const HELM_OF_TELEPATHY_OTYP = 100, HELM_OF_CAUTION_OTYP = 98,
-      HELM_OF_OPPOSITE_ALIGNMENT_OTYP = 99;
+const HELM_OF_TELEPATHY_OTYP = 100, HELM_OF_CAUTION_OTYP = 98;
 /* C attrib.c:1320 uchangealign(newalign, A_CG_HELM_ON) — the put-on arm only
  * (CONVERT/HELM_OFF are reached from pray.c and do_wear.c:556). */
 async function uchangealign_helm_on(newalign) {
@@ -1214,8 +1208,8 @@ export async function Helmet_on() {
         // C do_wear.c:454-460: role bonus is independent of enchantment.
         u.abon ||= {};
         u.abon.a ||= [0, 0, 0, 0, 0, 0];
-        u.abon.a[A_CHA] = ((u.abon.a[A_CHA] | 0)
-            + (game.flags?.initrole === WIZARD_ROLE_IDX ? 1 : -1)) << 24 >> 24; /* schar */
+        u.abon.a[A_CHA] = (u.abon.a[A_CHA] | 0)
+            + (game.flags?.initrole === 12 ? 1 : -1);
         if (game.disp) game.disp.botl = 1;
         makeknown_otyp(u.uarmh.otyp);
     }
@@ -1226,9 +1220,8 @@ export async function Helmet_on() {
         see_monsters();
     /* C do_wear.c:465-505 HELM_OF_OPPOSITE_ALIGNMENT (flips alignment first),
      * falling through to DUNCE_CAP (do_wear.c:480-505). */
-    if (u.uarmh && ((u.uarmh.otyp | 0) === DUNCE_CAP_OTYP
-        || (u.uarmh.otyp | 0) === HELM_OF_OPPOSITE_ALIGNMENT_OTYP)) {
-        if ((u.uarmh.otyp | 0) === HELM_OF_OPPOSITE_ALIGNMENT_OTYP) {
+    if (u.uarmh && ((u.uarmh.otyp | 0) === 94 || (u.uarmh.otyp | 0) === 99)) {
+        if ((u.uarmh.otyp | 0) === 99) {
             u.uarmh.known = 1;
             await uchangealign_helm_on((u.ualign.type !== 0)
                 ? -u.ualign.type
@@ -1238,11 +1231,11 @@ export async function Helmet_on() {
             if (_propOn(BLINDED_PROP))
                 await pline(`${Tobjnam(u.uarmh, 'vibrate')} for a moment.`);
             else
-                await pline(`${Tobjnam(u.uarmh, 'glow')} ${hcolor(NH_BLACK)} for a moment.`);
+                await pline(`${Tobjnam(u.uarmh, 'glow')} ${hcolor('black')} for a moment.`);
             await curse(u.uarmh);
             if (_propOn(BLINDED_PROP))
                 set_bknown(u.uarmh, 0);
-            else if ((game.flags?.initrole ?? -1) === _PM_CLERIC_ROLE) /* Role_if(PM_CLERIC) */
+            else if ((game.flags?.initrole ?? -1) === 6) /* Role_if(PM_CLERIC) */
                 set_bknown(u.uarmh, 1);
             else if (u.uarmh.bknown)
                 update_inventory();
@@ -1252,11 +1245,11 @@ export async function Helmet_on() {
             && !(game.u.uprops[HALLUC_RES]?.intrinsic || game.u.uprops[HALLUC_RES]?.extrinsic);
         if (hallu) {
             await pline('My brain hurts!');
-        } else if ((u.uarmh?.otyp | 0) !== DUNCE_CAP_OTYP) {
-            makeknown_otyp(HELM_OF_OPPOSITE_ALIGNMENT_OTYP); /* C do_wear.c:504 makeknown(HELM_OF_OPPOSITE_ALIGNMENT) */
+        } else if ((u.uarmh?.otyp | 0) !== 94) {
+            makeknown_otyp(99); /* C do_wear.c:504 makeknown(HELM_OF_OPPOSITE_ALIGNMENT) */
         } else {
             const di = C_ATTR_TO_DISP[A_INT] ?? A_INT;
-            const tot = (getAbase(u)[di] | 0) + ((u.abon?.a?.[di]) | 0) + ((u.atemp?.a?.[di]) | 0);
+            const tot = ((u.acurr?.a?.[di]) | 0) + ((u.abon?.a?.[di]) | 0) + ((u.atemp?.a?.[di]) | 0);
             await pline(`You feel ${acurr(u, A_INT) <= tot ? 'like sitting in a corner' : 'giddy'}.`);
         }
     }
@@ -1328,7 +1321,7 @@ export async function Boots_on() {
             /* C do_wear.c:236-249 — levitation boots make the hero float
              * immediately when no other source or blocker is active. */
             const HLev = rec ? (rec.intrinsic | 0) : 0;
-            const BLevFromOutside = (rec ? (rec.blocked | 0) : 0) & FROMOUTSIDE;
+            const BLevFromOutside = (rec ? (rec.blocked | 0) : 0) & 0x04000000;
             if (!oldprop && !HLev && !BLevFromOutside) {
                 otmp.known = 1;
                 if (g.disp) g.disp.botl = 1;
@@ -1355,11 +1348,7 @@ export async function Boots_on() {
             await equipment_impossible('Unknown type of boots (%d)', otyp);
             break;
     }
-    /* do_wear.c:254-257 — boots' +/- is evident because of the status-line AC. */
-    if (u.uarmf && !u.uarmf.known) {
-        u.uarmf.known = 1;
-        update_inventory();
-    }
+    /* do_wear.c:253-256 — boots' +/- is evident because of the status-line AC. */
     return don_slot('uarmf');
 }
 /* objects.h otyps for the cloak slot (OC_NAME row indices, cross-checked
@@ -1452,7 +1441,7 @@ export async function Shirt_on() {
     case HAWAIIAN_SHIRT:
     case T_SHIRT:
         break;
-    default: await equipment_impossible(unknown_type, c_shirt, otyp);
+    default: await equipment_impossible('Unknown type of %s (%d)', 'shirt', otyp);
     }
     return don_slot('uarmu');
 }
@@ -1473,7 +1462,7 @@ export async function Gloves_on() {
         case LEATHER_GLOVES_OTYP:
             break;
         case GAUNTLETS_OF_FUMBLING_OTYP:
-            /* C do_wear.c:584-586:
+            /* C do_wear.c:583-585:
              *   if (!oldprop && !(HFumbling & ~TIMEOUT))
              *       incr_itimeout(&HFumbling, rnd(20)); */
             if (!oldprop && !((rec ? (rec.intrinsic | 0) : 0) & ~PROP_TIMEOUT)) {
@@ -1936,10 +1925,9 @@ export async function do_takeoff() {
 }
 
 // C do_wear.c:3062 — consume precisely the queued '-' and preserve ECMD ownership.
-const KEY_MINUS_DW = '-'.charCodeAt(0);
 export async function remarm_swapwep() {
     const cq = cmdq_pop() || {typ: CMDQ_KEY, key: 0};
-    if (cq.typ !== CMDQ_KEY || cq.key !== KEY_MINUS_DW || !game.u.uswapwep)
+    if (cq.typ !== CMDQ_KEY || cq.key !== 45 || !game.u.uswapwep)
         return ECMD_FAIL;
     const oldbknown = game.u.uswapwep.bknown;
     reset_remarm();
@@ -2430,7 +2418,7 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
         }
         /* C do_wear.c:2228-2239: refuse an alignment-changing helm anywhere
          * in the quest, before retouching or beginning to don it. */
-        if (obj.otyp === HELM_OF_OPPOSITE_ALIGNMENT_OTYP
+        if (obj.otyp === 99 /* HELM_OF_OPPOSITE_ALIGNMENT */
             && g.qstart_level && g.qstart_level.dnum === u.uz?.dnum) {
             await You(u.ualignbase[A_CURRENT] === u.ualignbase[A_ORIGINAL]
                 ? 'narrowly avoid losing all chance at your goal.'
@@ -2487,23 +2475,6 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
                 }
             }
             while (!mask) {
-            /* C cmd.c:5497 yn_function(..., addcmdq=TRUE): a queued CMDQ_KEY
-             * (^A repeat, CQ_REPEAT) answers without prompting; any other
-             * queued entry clears CQ_CANNED and the answer is ESC. */
-            {
-                const cq = cmdq_pop();
-                if (cq) {
-                    if (cq.typ === CMDQ_KEY) {
-                        const qc = String.fromCharCode(cq.key & 255);
-                        if (qc === 'l' || qc === 'L') { mask = LEFT_RING_VAL; break; }
-                        if (qc === 'r' || qc === 'R') { mask = RIGHT_RING_VAL; break; }
-                        if (qc === '\0' || qc === '\x1b') return ECMD_OK;
-                        continue;
-                    }
-                    cmdq_clear(CQ_CANNED);
-                    return ECMD_OK;
-                }
-            }
             g._pending_message = promptText;
             /* C topl.c:421 custompline() files the prompt in gp.prevmsg (pline.c:282). */
             g._prevmsg = promptText + ' ';
@@ -2543,8 +2514,8 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
                 const c = String.fromCharCode(key);
                 /* rightleftchars "rl" is all-lowercase, so tty_yn_function
                  * folds the answer with lowc() before clean_up (topl.c:436). */
-                if (c === 'l' || c === 'L') { fileAnswered(108); cmdq_add_key(CQ_REPEAT, 108); mask = LEFT_RING_VAL; break; }
-                if (c === 'r' || c === 'R') { fileAnswered(114); cmdq_add_key(CQ_REPEAT, 114); mask = RIGHT_RING_VAL; break; }
+                if (c === 'l' || c === 'L') { fileAnswered(108); mask = LEFT_RING_VAL; break; }
+                if (c === 'r' || c === 'R') { fileAnswered(114); mask = RIGHT_RING_VAL; break; }
                 /* invalid key: loop and re-read (C do..while !mask). */
             }
             }
@@ -2849,6 +2820,7 @@ function ringDonameBody(otmp) {
 }
 async function on_msg(otmp) {
     const g = game;
+    const W_RING = 0x00060000; /* W_RINGL|W_RINGR */
     if ((otmp.owornmask | 0) & W_RING) {
         /* prinv -> xprname -> doname (do_wear.c:76-80): the real namer, so the BUC
          * word and article come from objnam.c, not a hand-scoped ring partial. */
@@ -2866,34 +2838,11 @@ async function on_msg(otmp) {
         return;
     }
     if ((otmp.owornmask | 0) & W_AMUL_C) {
-        /* prinv -> xprname(obj, NULL, invlet, TRUE, 0, 0) -> "<invlet> - " +
-         * doname(obj) + "." (objnam.c:1383-1386 appends " (being worn)" for
-         * AMULET_CLASS and just_an() at objnam.c:1687-1693 selects the article
-         * against the full formatted prefix including BUC). */
         const invlet = String.fromCharCode(otmp.invlet | 0);
         const line = `${invlet} - ${(await doname(otmp))}.`;
         /* C do_wear.c:80-85 -> prinv -> pline; move the live line with its boundaries and flush frames. */
         await pline(line);
         _topl_stash_result();
-        return;
-    }
-    /* C ref: do_wear.c:87-98 — the ARMOR (and verbose eyewear) arm:
-     *     if (flags.verbose) {
-     *         const char *otmp_name = xname(otmp);
-     *         if (otmp->otyp == TOWEL) Sprintf(how, " around your %s", body_part(HEAD));
-     *         You("are now wearing %s%s.",
-     *             obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name), how);
-     *     }
-     * Reached by accessory_or_armor_on's zero-delay branch (do_wear.c:2402
-     * `unmul(""); on_msg(obj);`) and by Blindf_on (do_wear.c:1501). With
-     * !flags.verbose, C's on_msg prints nothing for armor. RNG-free. */
-    /* C do_wear.c:81-82 — the second term of the prinv test:
-     *     || ((otmp->owornmask & W_TOOL) != 0L && !flags.verbose)
-     * Blindf_on reaches this through eyewear_on_msg (same test); kept here so
-     * on_msg itself carries every C arm. */
-    if (((otmp.owornmask | 0) & W_TOOL_C) && !(game.flags && game.flags.verbose)) {
-        const invlet = String.fromCharCode(otmp.invlet | 0);
-        await pline(`${invlet} - ${(await doname(otmp))}.`);
         return;
     }
     if (!(game.flags && game.flags.verbose))
@@ -2940,6 +2889,7 @@ function armorDonameBody(otmp) {
 
 async function Ring_off_or_gone(obj, gone) {
     const u = game.u;
+    const W_RING = 0x00060000; /* RIGHT|LEFT ring masks */
     const mask = (obj.owornmask | 0) & W_RING;
     game.context.takeoff ||= { mask: 0 };
     game.context.takeoff.mask &= ~mask;
@@ -2997,6 +2947,7 @@ async function Ring_off_or_gone(obj, gone) {
     }
     if ((obj.otyp | 0) === RIN_LEVITATION_OTYP) {
         const p = uprop_levitation_record();
+        const FROMOUTSIDE = 0x04000000;
         if (!((p.blocked | 0) & FROMOUTSIDE)) {
             await float_down(0, 0);
             if (!Levitation())
@@ -3090,11 +3041,14 @@ export async function Amulet_off() {
          * tail below (early_off_msg is NOT set for this case in C). */
         await setworn(null, W_AMUL_C);
         /* C do_wear.c:1152-1153 — clear the timeout bits only when no other
-         * source (ESleepy, FROMOUTSIDE bits) holds the property; HSleepy = 0L
-         * is avoided to keep FROMOUTSIDE. */
+         * source (ESleepy, FROMOUTSIDE bits) holds the property. */
         const sl = u.uprops && u.uprops[SLEEPY_DW];
         if (sl && !(sl.extrinsic | 0) && !((sl.intrinsic | 0) & ~TIMEOUT_DW))
             sl.intrinsic = (sl.intrinsic | 0) & ~TIMEOUT_DW;
+        /* do_wear.c:1151-1153 — HSleepy = 0L avoided to keep FROMOUTSIDE. */
+        const slp = u.uprops && u.uprops[SLEEPY_DW];
+        if (slp && !(slp.extrinsic | 0) && !((slp.intrinsic | 0) & ~PROP_TIMEOUT))
+            slp.intrinsic = (slp.intrinsic | 0) & ~PROP_TIMEOUT;
     } else if (otyp === AMULET_OF_MAGICAL_BREATHING_DW) {
         /* do_wear.c:1113-1132 */
         await setworn(null, W_AMUL_C);
@@ -3172,7 +3126,7 @@ export function adj_abon(otmp, delta) {
             u.abon = u.abon || {};
             u.abon.a = u.abon.a || [0, 0, 0, 0, 0, 0];
             const di = C_ATTR_TO_DISP[A_DEX] ?? A_DEX;
-            u.abon.a[di] = ((u.abon.a[di] | 0) + (delta | 0)) << 24 >> 24; /* schar */
+            u.abon.a[di] = ((u.abon.a[di] | 0) + (delta | 0)) | 0;
         }
         /* C ref: do_wear.c:2511 — SET_BOTL() fires whenever uac changes. */
         if (g.disp)
@@ -3187,8 +3141,8 @@ export function adj_abon(otmp, delta) {
             u.abon.a = u.abon.a || [0, 0, 0, 0, 0, 0];
             const intDi = C_ATTR_TO_DISP[A_INT] ?? A_INT;
             const wisDi = C_ATTR_TO_DISP[A_WIS] ?? A_WIS;
-            u.abon.a[intDi] = ((u.abon.a[intDi] | 0) + (delta | 0)) << 24 >> 24;
-            u.abon.a[wisDi] = ((u.abon.a[wisDi] | 0) + (delta | 0)) << 24 >> 24;
+            u.abon.a[intDi] = ((u.abon.a[intDi] | 0) + (delta | 0)) | 0;
+            u.abon.a[wisDi] = ((u.abon.a[wisDi] | 0) + (delta | 0)) | 0;
         }
         /* C ref: do_wear.c:2511 — SET_BOTL() fires whenever uac changes. */
         if (g.disp)
@@ -3286,14 +3240,6 @@ export function stuck_ring(ring, otyp) {
     return null;
 }
 
-/* C ref: do_wear.c:2687-2692 unchanger(void) — find worn item conferring Unchanging. */
-export function unchanger() {
-    const uamul = game.u?.uamul;
-    if (uamul && (uamul.otyp | 0) === AMULET_OF_UNCHANGING)
-        return uamul;
-    return null;
-}
-
 export function doffing(otmp) {
     const g = game;
     g.u = g.u || {};
@@ -3380,9 +3326,16 @@ function toggle_blindness_dw() {
     learn_unseen_invent();
 }
 
-/* C ref: do_wear.c:76-100 on_msg(otmp), reached from Blindf_on (do_wear.c:1501). */
 async function eyewear_on_msg(otmp) {
-    return on_msg(otmp);
+    if (!(game.flags && game.flags.verbose)) {
+        const invlet = String.fromCharCode(otmp.invlet | 0);
+        await pline(`${invlet} - ${(await doname(otmp))}.`);
+        return;
+    }
+    const name = xname(otmp);
+    const how = ((otmp.otyp | 0) === TOWEL_OTYP_DW)
+        ? ` around your ${body_part(HEAD_DW)}` : '';
+    await pline(`You are now wearing ${obj_is_pname(otmp) ? the(name) : an(name)}${how}.`);
 }
 
 async function eyewear_off_msg(otmp) {
@@ -3404,7 +3357,7 @@ export async function Blindf_on(otmp) {
     if (_Blind_dw() && !already_blind) {
         changed = true;
         if (game.flags && game.flags.verbose)
-            await You_cant('see any more.');
+            await pline("You can't see any more.");
         /* C do_wear.c:1474-1476: initialize ball/chain memory before redraw. */
         if (game.u?.uball) set_bc(0);
     } else if (already_blind && !_Blind_dw()) {
@@ -3414,7 +3367,7 @@ export async function Blindf_on(otmp) {
             await pline('For the first time in your life, you can see!');
             game.u.uroleplay.blind = false;
         } else
-            await You('can see!');
+            await pline('You can see!');
     }
     if (changed)
         toggle_blindness_dw();
@@ -3560,7 +3513,7 @@ function adjust_attrib_dw(obj, which, val) {
     const di = C_ATTR_TO_DISP[which] ?? which;
     if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
     if (!u.abon.a) u.abon.a = [0, 0, 0, 0, 0, 0];
-    u.abon.a[di] = ((u.abon.a[di] | 0) + (val | 0)) << 24 >> 24; /* u.abon.a is schar */
+    u.abon.a[di] = (u.abon.a[di] | 0) + (val | 0);
     const observable = oldAttrib !== acurr(u, which);
     if (observable || !extremeattr_dw(which))
         learnring(obj, observable);
@@ -3580,8 +3533,6 @@ export async function Ring_on(obj) {
     if (obj === u.uwep) await setuwep(null);
     else if (obj === u.uswapwep) await setuswapwep(null);
     else if (obj === u.uquiver) await setuqwep(null);
-    /* C do_wear.c:1256-1259 — only mask out W_RING when we don't have both
-     * left and right rings of the same type */
     if ((oldprop & W_RING) !== W_RING)
         oldprop &= ~W_RING;
     switch (otyp) {
@@ -3689,9 +3640,8 @@ export async function Amulet_on(obj) {
     const g = game, u = g.u || (g.u = {});
     await remove_worn_item(obj, false);
     await setworn(obj, W_AMUL_C);
-    /* C do_wear.c:1046-1054 — restful sleep changes the sleepy timeout when
-     * there is no existing timeout or the new randomized nap is shorter than
-     * the existing one. */
+    /* C do_wear.c:1046-1054 — restful sleep changes the sleepy timeout only
+     * when the new randomized nap is shorter than the existing one. */
     if ((obj.otyp | 0) === AMULET_OF_RESTFUL_SLEEP_DW) {
         if (!u.uprops) u.uprops = {};
         if (!u.uprops[SLEEPY_DW])
@@ -3925,13 +3875,13 @@ export function count_worn_armor() {
     return ret;
 }
 
-/* C ref: do_wear.c:2629-2653 — some_armor: pick a random piece of armor from a monster. */
+/* C ref: do_wear.c:2630-2655 — some_armor: pick a random piece of armor from a monster. */
 export function some_armor(victim) {
     const g = game;
     const u = g.u;
     const is_you = is_youmonst(victim);
 
-    // C do_wear.c:2633-2651: search only the victim's worn equipment via which_armor.
+    // C worn.c:1006-1035: search only the victim's worn equipment.
     function which_armor_mon(mon, mask) {
         return which_armor(mon, mask);
     }

@@ -8,12 +8,10 @@ import { Mgender } from './do_name.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { com_pager as quest_com_pager } from './questpgr.js';
-import { canseemon, canspotmon, Unaware, map_invisible, newsym, shieldeff, debugpline } from './display.js';
-import { debugcore } from './files.js';
-import { noit_Monnam } from './mhitm.js';
+import { canseemon, canspotmon, Unaware, map_invisible, newsym, shieldeff } from './display.js';
 import { pline, Norep } from './pline.js';
 import { You } from './eat.js';
-import { mon_nam, Monnam } from './uhitm.js';
+import { mon_nam, Monnam as Monnam_real } from './uhitm.js';
 import { nomul } from './allmain.js';
 import { is_waterwall } from './dbridge.js';
 /* mcast_lightning's leaves.  destroy_items and flashburn are exported from
@@ -29,7 +27,7 @@ import { the_unique_pm, permonstTemplate } from './makemon.js';
 import { pmname } from './do_name.js';
 import { mon_set_minvis } from './worn.js';
 import { mon_aligntyp } from './priest.js';
-import { wake_nearto, Soundeffect } from './mon.js';
+import { wake_nearto } from './mon.js';
 /* C mon.c:4596 healmon() — m_cure_self()'s heal. */
 import { healmon } from './mon.js';
 import { burnarmor } from './trap.js';
@@ -60,7 +58,7 @@ import { deadhero } from './end.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 import { rehumanize } from './polyself.js';
 /* C polyself.c:2129 body_part(part) = mbodypart(&gy.youmonst, part). */
-import { body_part, set_msg_xy, SetVoice } from './cmd.js';
+import { body_part, set_msg_xy } from './cmd.js';
 import { make_slimed } from './potion.js';
 
 // monattk.h attack-damage types used by castmu.
@@ -378,10 +376,8 @@ const KILLED_BY_MC = 1;               /* hack.h killer.format */
 // other than MCAST_HASTE_SELF ever reaches mcast_spell in the 15 records).
 export async function mcast_clone_wiz(mtmp) {
     const g = game, u = g.u || {};
-    if (!mtmp?.iswiz || (g.context?.no_of_wizards | 0) !== 1) {
-        impossible('bad wizard cloning?');
+    if (!mtmp?.iswiz || (g.context?.no_of_wizards | 0) !== 1)
         return;
-    }
     await pline('Double Trouble...');
     const clone = await makemon(PM_WIZARD_OF_YENDOR_MC, u.ux | 0, u.uy | 0, MM_NOWAIT);
     if (!clone) return;
@@ -411,8 +407,9 @@ export async function mcast_summon_mons(mtmp) {
     if (!count) {
         ; /* nothing was created? */
     } else if (mtmp.iswiz) {
-        SetVoice(mtmp, 0, 80, 0);
-        await verbalize('Destroy the thief, my pet%s!', count === 1 ? '' : 's');
+        /* C SetVoice/verbalize arm; the text channel has no voice metadata,
+         * but preserve the observable command and pluralization. */
+        pline(`"Destroy the thief, my pet${count === 1 ? '' : 's'}!"`);
     } else {
         const one = (count === 1);
         const mappear = one ? 'A monster appears' : 'Monsters appear';
@@ -445,14 +442,14 @@ export async function mcast_destroy_armor() {
     const u = game.u || {};
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
-        monstseesu(M_SEEN_MAGR);
+        monstseesu(M_SEEN_MAGR_MC);
         pline('A field of force surrounds you!');
     } else if (!(await destroy_arm())) {
         pline('Your skin itches.');
     } else {
         /* C's own comment: monsters only realize you aren't magic-protected
            if armor is actually destroyed */
-        monstunseesu(M_SEEN_MAGR);
+        monstunseesu(M_SEEN_MAGR_MC);
     }
 }
 export async function mcast_weaken_you(mtmp, dmg) {
@@ -565,15 +562,17 @@ export async function mcast_fire_pillar(mtmp, dmg) {
     const orig_dmg = dmg = d(8, 6);
     if (FireResistance()) {
         shieldeff(u.ux, u.uy);
-        monstseesu(M_SEEN_FIRE);
+        monstseesu(M_SEEN_FIRE_MC);
         dmg = 0;
     } else {
-        monstunseesu(M_SEEN_FIRE);
+        monstunseesu(M_SEEN_FIRE_MC);
     }
     if (HalfSpellDamage()) dmg = ((dmg + 1) / 2) | 0;
     await burn_away_slime();
     await burnarmor(game.youmonst || u);
-    await destroy_items(game.youmonst || true, AD_FIRE, orig_dmg);
+    await destroy_items(true, AD_FIRE, orig_dmg);
+    await ignite_items(game.invent || null);
+    await ignite_items(game.invent); /* mcastu.c:559 */
     await ignite_items(game.invent); /* C mcastu.c:559 ignite_items(gi.invent) */
     await mon_spell_hits_spot(mtmp, AD_FIRE, u.ux, u.uy);
     return dmg;
@@ -601,9 +600,10 @@ export async function mcast_lightning(mtmp, dmg) {
     }
     if (HalfSpellDamage())                                      /* C:587-588 */
         dmg = Math.trunc((dmg + 1) / 2);
-    /* C mcastu.c:589 (void) destroy_items(&gy.youmonst, AD_ELEC, orig_dmg);
-     * js/mhitu.js re-exports js/zap.js destroy_items(mon, dmgtyp, dmg_in). */
-    await destroy_items(game.youmonst || true, AD_ELEC, orig_dmg);
+    /* C:589 (void) destroy_items(&gy.youmonst, AD_ELEC, orig_dmg);
+     * js/zap.js's exported body takes `mon_is_hero` as its first argument
+     * (js/zap.js:1233 already calls it this way for the wand-break arm). */
+    await destroy_items(true, AD_ELEC, orig_dmg);
     /* C:594 — lightning might destroy iron bars if hero is on such a spot; done
      * BEFORE maybe blinding the hero via flashburn(). */
     await mon_spell_hits_spot(mtmp, AD_ELEC, u.ux, u.uy);
@@ -654,9 +654,10 @@ function Free_action_mc() {
     const p = game.u?.uprops?.[FREE_ACTION_MC];
     return !!(p && p.extrinsic);
 }
-/* C youprop.h:83-84 HConfusion = u.uprops[CONFUSION].intrinsic; Confusion = HConfusion. */
-function HConfusion_mc() { return (game.u?.uprops?.[CONFUSION_MC]?.intrinsic | 0); }
-function Confusion() { return propOn(CONFUSION_MC); }
+/* C youprop.h:83 HConfusion = u.uprops[CONFUSION].intrinsic. */
+function HConfusion_mc() {
+    return (game.u?.uprops?.[CONFUSION_MC]?.intrinsic | 0);
+}
 /* C youprop.h:399 Unaware — gm.multi < 0 && (unconscious() || is_fainted()).
  * js/display.js:6532 _disp_Unaware is the same body; copied rather than
  * imported because it is module-private there, and the two leaves it needs
@@ -824,7 +825,7 @@ export function mcast_paralyze(mtmp) {
 
     if (Antimagic() || Free_action_mc()) {
         shieldeff(u.ux, u.uy);
-        monstseesu(M_SEEN_MAGR);
+        monstseesu(M_SEEN_MAGR_MC);
         if ((game.multi | 0) >= 0)
             pline('You stiffen briefly.');
         dmg = 1; /* C's comment: to produce nomul(-1), not actual damage */
@@ -834,7 +835,7 @@ export function mcast_paralyze(mtmp) {
         dmg = 4 + (mtmp.m_lev | 0);
         if (HalfSpellDamage())
             dmg = ((dmg + 1) / 2) | 0;
-        monstunseesu(M_SEEN_MAGR);
+        monstunseesu(M_SEEN_MAGR_MC);
     }
     nomul(-dmg);
     game.multi_reason = 'paralyzed by a monster';
@@ -848,10 +849,10 @@ export function mcast_confuse_you(mtmp) {
 
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
-        monstseesu(M_SEEN_MAGR);
+        monstseesu(M_SEEN_MAGR_MC);
         You_feel_mc('momentarily dizzy.');
     } else {
-        const oldprop = !!Confusion();
+        const oldprop = !!HConfusion_mc();
         let dmg = mtmp.m_lev | 0;
 
         if (HalfSpellDamage())
@@ -861,7 +862,7 @@ export function mcast_confuse_you(mtmp) {
             You_feel_mc(`${oldprop ? 'trippier' : 'trippy'}!`);
         else
             You_feel_mc(`${oldprop ? 'more ' : ''}confused!`);
-        monstunseesu(M_SEEN_MAGR);
+        monstunseesu(M_SEEN_MAGR_MC);
     }
 }
 
@@ -871,10 +872,10 @@ export function mcast_confuse_you(mtmp) {
 export function mcast_open_wounds(dmg) {
     if (Antimagic()) {
         shieldeff(game.u.ux, game.u.uy);
-        monstseesu(M_SEEN_MAGR);
+        monstseesu(M_SEEN_MAGR_MC);
         dmg = ((dmg + 1) / 2) | 0;
     } else {
-        monstunseesu(M_SEEN_MAGR);
+        monstunseesu(M_SEEN_MAGR_MC);
     }
     if (dmg <= 5)
         pline('Your skin itches badly for a moment.');
@@ -894,7 +895,9 @@ export function mcast_open_wounds(dmg) {
 function impossible(_msg, ..._args) { }
 
 
-export { Monnam };
+export function Monnam(mtmp) {
+    return Monnam_real(mtmp);
+}
 
 // C ref: monst.h m_seenres() = (mon->seen_resistance & mask) != 0.
 function m_seenres(mtmp, mask) {
@@ -1154,9 +1157,6 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         return M_ATTK_MISS;
     }
 
-    if (debugcore('mcastu.c', true))
-        await debugpline('mcastu.c', 'castmu:%s,lvl:%i,spell:%i', noit_Monnam(mtmp), ml, spellnum);
-
     if (mattk.adtyp === AD_SPEL || mattk.adtyp === AD_CLRC) {
         /* monst->m_lev is unsigned (uchar), monst->mspec_used is int */
         mtmp.mspec_used = (mtmp.m_lev < 8) ? (10 - mtmp.m_lev) : 2;
@@ -1174,7 +1174,6 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
 
     nomul(0);
     if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) { /* fumbled attack */
-        Soundeffect(0 /* se_air_crackles */, 60);
         if (canseemon(mtmp) && !Deaf()) { /* mcastu.c:210 */
             set_msg_xy(mtmp.mx, mtmp.my);
             await pline_The('air crackles around ' + mon_nam(mtmp) + '.');
@@ -1347,7 +1346,7 @@ export function death_inflicted_by(outbuf, deathreason, mtmp) {
     let result = deathreason;
     if (mtmp) {
         let mptr = mtmp.data;
-        /* C mcastu.c:366 — champtr = ismnum(mtmp->cham) ? &mons[mtmp->cham] : mptr.
+        /* C mcastu.c:417 — champtr = ismnum(mtmp->cham) ? &mons[mtmp->cham] : mptr.
          * permonstTemplate(mndx) is the JS stand-in for &mons[mndx] (js/makemon.js). */
         let champtr = (ismnum(mtmp.cham)) ? permonstTemplate(mtmp.cham) : mptr;
         let realnm = pmname(champtr, Mgender(mtmp));
@@ -1359,7 +1358,7 @@ export function death_inflicted_by(outbuf, deathreason, mtmp) {
         result += Sprintf(" inflicted by %s%s",
                 the_unique_pm(mptr) ? "the " : "", realnm);
 
-        /* C mcastu.c:378 `champtr != mptr` compares two mons[] row pointers, which
+        /* C mcastu.c:429 `champtr != mptr` compares two mons[] row pointers, which
          * is an index comparison (distinct rows have distinct addresses).  A raw JS
          * `!==` here would be object identity and therefore ALWAYS true, since the
          * champtr branch above mints a fresh permonstTemplate object — printing a

@@ -73,7 +73,7 @@ const WOODEN_FLUTE = 247, MAGIC_FLUTE = 248, TOOLED_HORN = 249,
 
 /* C music.c:901-944 obj_to_instr(obj) */
 export function obj_to_instr(obj) {
-    let ret_instr = 124; // ins_no_instrument (sndprocs.h:96, after ins_seashore=123)
+    let ret_instr = 0; // ins_no_instrument
 
     if (!obj) return ret_instr;
     switch (obj.otyp | 0) {

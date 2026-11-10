@@ -1,5 +1,7 @@
 /* Lua 5.4.8 math migration, lmathlib.c algorithms; lobject.js notice. */
-import { LuaTable, LuaError, canonicalNaN, luaValues, toNumber, toInteger, luaInteger, MININTEGER, MAXINTEGER } from './lobject.js';
+import {luaArgError,luaCheckInteger,luaCheckNumber,luaTypeError} from '../lua-aux-error.js';
+import {prepareLibrary} from './llib.js';
+import { LuaTable,LuaUserdata, LuaError, canonicalNaN, luaValues, toNumber, toInteger, luaInteger, MININTEGER, MAXINTEGER } from './lobject.js';
 const u64 = value => BigInt.asUintN(64, value);
 export class RanState {
   constructor(first = 0n, second = 0n) { this.seed(first, second); }
@@ -32,8 +34,8 @@ export class RanState {
     return luaInteger((random & mask) + lower);
   }
 }
-export function openMath(vm, seed = 0n) {
-  const lib = new LuaTable(); const random = new RanState(seed, 0n);
+export function openMath(vm, seed = 0n,{publish=true}={}) {
+  const lib=prepareLibrary(vm,['abs','acos','asin','atan','ceil','cos','deg','exp','tointeger','floor','fmod','ult','log','max','min','modf','rad','sin','sqrt','tan','type','random','randomseed','pi','huge','maxinteger','mininteger']);try{const random = new RanState(seed, 0n);
   const number = value => { const n = toNumber(value); if (n === null) throw new LuaError('number expected'); return Number(n); };
   const rounded = (value, round) => { if (typeof value === 'bigint') return value; const result = round(number(value)); return toInteger(result) ?? result; };
   const domain=(result,...inputs)=>Number.isNaN(result)&&!inputs.some(Number.isNaN)?canonicalNaN():result;
@@ -57,15 +59,15 @@ export function openMath(vm, seed = 0n) {
     const n = number(value), integer = Math.trunc(n); return luaValues(toInteger(integer)??integer,n===integer?0:n-integer);
   });
   add('random', (...args) => random.random(args));
-  lib.rawset('randomseed', (first, second = 0n) => {
-    second ??= 0n;
-    // There is deliberately no host clock/entropy fallback. Callers must supply
-    // seeds explicitly, as the configured game does from NETHACK_SEED.
-    first = toInteger(first); second = toInteger(second);
-    if (first === null || second === null) throw new LuaError('explicit integer random seed required');
-    return random.seed(first, second);
-  });
+  const seedFunction=(...args)=>seedFunction.luaInvoke(args);
+  seedFunction.luaInvoke=args=>{
+    if(!args.length){const [first,second]=vm.randomSeed?.()??[BigInt(Math.floor(Date.now()/1000)),vm.pointerOf(vm.currentThread)];return random.seed(BigInt(first),BigInt(second));}
+    return random.seed(luaCheckInteger(vm,args[0],1),luaCheckInteger(vm,args[1]??0n,2));
+  };
+  lib.rawset('randomseed',seedFunction);
   for (const [name, value] of Object.entries({ pi: Math.PI, huge: Infinity, maxinteger: MAXINTEGER, mininteger: MININTEGER })) lib.rawset(name, value);
-  vm.setGlobal('math', lib);
-  return lib;
+  const table=lib.finish(['random','randomseed','pi','huge','maxinteger','mininteger']);
+  for(const name of ['pi','huge','maxinteger','mininteger'])table.rawset(name,lib.rawget(name));
+  const state=vm.heap.with(()=>new LuaUserdata(random,null,[],32));const unroot=vm.heap.addRoots(()=>state);try{vm.heap.checkpoint();for(const name of ['random','randomseed']){const fn=lib.rawget(name);fn.luaGcRoots=[state];table.rawset(name,fn);vm.heap.checkpoint();}}finally{unroot();}
+  if(publish)vm.setGlobal('math',table);return table;}finally{lib.release();}
 }

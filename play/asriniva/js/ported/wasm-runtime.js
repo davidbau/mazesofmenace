@@ -1,3 +1,80 @@
+import {callMkobj} from './mkobj-dispatch.js';
+import {callEat,initializeEat} from './eat-runtime.js';
+import {callObjnam,objnamState} from './objnam-runtime.js';
+import {callApply} from './apply-runtime.js';
+import {callRead} from './read-runtime.js';
+import {callInsight,initializeInsight} from './insight-runtime.js';
+import {callMakemon} from './makemon-runtime.js';
+import { callMhitu } from './mhitu-runtime.js';
+import {callArtifact} from './artifact-runtime.js';
+import {initializeDecl,callDecl} from './decl-runtime.js';
+import * as pray from './pray.js';
+import {createPrayEnvironment} from './pray-runtime.js';
+import {callDothrow} from './dothrow-runtime.js';
+import {createPagerBridge} from './pager-runtime.js';
+import * as muse from './muse.js';
+import {createMuseEnvironment} from './muse-runtime.js';
+import {callDungeon} from './dungeon-runtime.js';
+import {callTimeout} from './timeout-runtime.js';
+import {callSpell} from './spell-runtime.js';
+import * as detect from './detect.js';
+import {createDetectEnvironment} from './detect-runtime.js';
+import {createTeleportBridge} from './teleport-runtime.js';
+import {callMklev} from './mklev-runtime.js';
+import {callPolyself} from './polyself-runtime.js';
+import {callWizcmds} from './wizcmds-runtime.js';
+import {callEnd} from './end-runtime.js';
+import {callMkmaze} from './mkmaze-runtime.js';
+import {callDokick} from './dokick-runtime.js';
+import {callDig} from './dig-runtime.js';
+import {callMonmove} from './monmove-runtime.js';
+import {callPotion} from './potion-runtime.js';
+import {callVision,initializeVision} from './vision-runtime.js';
+import {callDo} from './do-runtime.js';
+import {callDoWear} from './do_wear-runtime.js';
+import {callRestore} from './restore-runtime.js';
+import {callNhlobj} from './nhlobj-runtime.js';
+import {callDoName,initializeDoName} from './do_name-runtime.js';
+import {callWindows} from './windows-runtime.js';
+import * as cfgfiles from './cfgfiles.js';
+import {createCfgfilesEnvironment} from './cfgfiles-runtime.js';
+import * as topten from './topten.js';
+import {createToptenEnvironment} from './topten-runtime.js';
+import * as dogmove from './dogmove.js';
+import {createDogmoveEnvironment} from './dogmove-runtime.js';
+import {createGlyphsBridge} from './glyphs-runtime.js';
+import {callEngrave} from './engrave-runtime.js';
+import {initializeRole,callRole} from './role-runtime.js';
+import {callMthrowu} from './mthrowu-runtime.js';
+import {callMhitm} from './mhitm-runtime.js';
+import * as getpos from './getpos.js';
+import {createGetposEnvironment} from './getpos-runtime.js';
+import {createAllmainBridge} from './allmain-runtime.js';
+import * as save from './save.js';
+import {createSaveEnvironment} from './save-runtime.js';
+import {callSounds} from './sounds-runtime.js';
+import * as vault from './vault.js';
+import {createVaultEnvironment} from './vault-runtime.js';
+import {createUInitBridge} from './u_init-runtime.js';
+import {callWeapon} from './weapon-runtime.js';
+import {callRegion} from './region-runtime.js';
+import {callDog} from './dog-runtime.js';
+import * as sfbase from './sfbase.js';
+import {createSfbaseEnvironment} from './sfbase-runtime.js';
+import * as attrib from './attrib.js';
+import {createAttribEnvironment} from './attrib-runtime.js';
+import {createPlineBridge} from './pline-runtime.js';
+import {callMail} from './mail-runtime.js';
+import {callQuestpgr} from './questpgr-runtime.js';
+import {callSymbols} from './symbols-runtime.js';
+import * as bones from './bones.js';
+import {createBonesEnvironment} from './bones-runtime.js';
+import * as explode from './explode.js';
+import {createExplodeEnvironment} from './explode-runtime.js';
+import {initializeEarlyarg,callEarlyarg} from './earlyarg-runtime.js';
+import {createReportBridge} from './report-runtime.js';
+import {callMkroom} from './mkroom-runtime.js';
+import {callSfstruct} from './sfstruct-runtime.js';
 // Temporary ABI bridge while the remaining translation units are C/Wasm.
 import * as isaac64 from '../isaac64.js';
 import * as nhmd4 from './nhmd4.js';
@@ -235,6 +312,39 @@ function configuredFields(services, pointer, fields, intSize) {
 }
 
 export function createPortedRuntime(layouts) {
+    const prayEnvironments = new WeakMap();
+    const museEnvironments = new WeakMap();
+    const pagerBridge = layouts.pager ? createPagerBridge(layouts.pager) : undefined;
+    const detectEnvironments = new WeakMap();
+    const teleportBridge = createTeleportBridge(layouts.teleport);
+    const cfgfilesEnvironments = new WeakMap();
+    const toptenEnvironments = new WeakMap();
+    const dogmoveEnvironments = new WeakMap();
+    const dogmoveArgumentTypes = {droppables:['monst'],cursed_object_at:['int','int'],dog_nutrition:['monst','obj'],dog_eat:['monst','obj','int','int','int'],dog_starve:['monst'],dog_hunger:['monst','edog'],dog_invent:['monst','edog','int'],dog_goal:['monst','edog','int','int','int'],find_targ:['monst','int','int','int'],find_friends:['monst','monst','int'],score_targ:['monst','monst'],best_target:['monst','int'],pet_ranged_attk:['monst','int'],dog_move:['monst','int'],could_reach_item:['monst','int','int'],can_reach_location:['monst','int','int','int','int'],wantdoor:['int','int','int'],finish_meating:['monst'],mnum_leashable:['int'],quickmimic:['monst']};
+    const callGlyphs = layouts.glyphs ? createGlyphsBridge(layouts.glyphs) : undefined;
+    const getposEnvironments = new WeakMap();
+    const callAllmain = layouts.allmain ? createAllmainBridge(layouts.allmain) : undefined;
+    const saveEnvironments = new WeakMap();
+    const saveArgumentTypes = {
+        dosave:[], dosave0:[], save_gamelog:['nh_file'], savegamestate:['nh_file'],
+        tricked_fileremoved:['nh_file','pointer'], savestateinlock:[],
+        savelev:['nh_file','int'], savelev_core:['nh_file','int'],
+        save_adjust_levelflags:[], savelevl:['nh_file'], save_bubbles:['nh_file','int'],
+        savecemetery:['nh_file','cell:cemetery'], savedamage:['nh_file'],
+        save_stairs:['nh_file'], save_bc:['nh_file'], saveobj:['nh_file','obj'],
+        saveobjchn:['nh_file','cell:obj'], savemon:['nh_file','monst'],
+        savemonchn:['nh_file','monst'], savetrapchn:['nh_file','trap'],
+        savefruitchn:['nh_file'], savelevchn:['nh_file'], store_plname_in_file:['nh_file'],
+        save_msghistory:['nh_file'], free_dungeons:[], freedynamicdata:[]
+    };
+    const vaultEnvironments = new WeakMap();
+    const callUInit = layouts.u_init ? createUInitBridge(layouts.u_init) : undefined;
+    const sfbaseEnvironments = new WeakMap();
+    const attribEnvironments = new WeakMap();
+    const bonesEnvironments = new WeakMap();
+    const explodeEnvironments = new WeakMap();
+    const callPline = layouts.pline ? createPlineBridge(layouts.pline) : undefined;
+    const reportBridge = layouts.report ? createReportBridge(layouts.report) : undefined;
     const nativeTerminal = createNativeTerminal();
     const nativeRegexServices = createNativeRegexLibc();
     const objectsStates = new WeakMap();
@@ -315,6 +425,333 @@ export function createPortedRuntime(layouts) {
             initializeDate(services, layouts.date, date.nomakedefs_initial);
             dateInitialized = true;
         },
+        explode(services, name, ...args) {
+            let environment = explodeEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createExplodeEnvironment(services, layouts.explode);
+                explodeEnvironments.set(services.moduleKey, environment);
+            }
+            if (name === 'explosionmask') args[0] = environment.monster(args[0]);
+            if (name === 'scatter') args[4] = environment.object(args[4]);
+            if (name === 'explode_oil') args[0] = environment.object(args[0]);
+            if (name === 'mon_explodes') {
+                args[0] = environment.monster(args[0]); args[1] = environment.attack(args[1]);
+            }
+            const result = withCEnvironment(environment, explode[name], ...args);
+            return result?.address ?? result ?? 0;
+        },
+        bones(services,name,...args) {
+            let environment = bonesEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment=createBonesEnvironment(services,layouts.bones,bones);
+                bonesEnvironments.set(services.moduleKey,environment);
+            }
+            const parameters={
+                no_bones_level:['level'],goodfruit:['int'],resetobjs:['object','boolean'],
+                sanitize_name:['pointer'],give_to_nearby_mon:['object','coordxy','coordxy'],
+                drop_upon_death:['monster','object','coordxy','coordxy'],fixuporacle:['monster'],
+                can_make_bones:[],remove_mon_from_bones:['monster'],savebones:['int','long','object'],
+                getbones:[],bones_include_name:['pointer'],set_ghostly_objlist:['object'],
+                fix_ghostly_obj:['object'],newebones:['monster'],free_ebones:['monster'],
+            };
+            const saved=services.stackSave();
+            try {
+                const converted=args.map((value,index)=>{
+                    const kind=parameters[name][index];
+                    return ['object','monster','level'].includes(kind)?environment[kind](value)
+                        :kind==='long'?BigInt.asIntN(64,BigInt(value)):Number(value);
+                });
+                const result=withCEnvironment(environment,bones[name],...converted);
+                return typeof result==='boolean'?Number(result):result?.address??result??0;
+            } finally { services.stackRestore(saved); }
+        },
+        initializeEarlyarg(services) {return initializeEarlyarg(services,layouts.earlyarg);},
+        earlyarg(services,name,...args) {return callEarlyarg(services,layouts.earlyarg,name,...args);},
+        report(services,name,...args) {
+            if (!reportBridge) throw new Error('Missing REPORT layout');
+            return reportBridge(services,name,...args);
+        },
+        vault(services, name, ...args) {
+            let environment = vaultEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createVaultEnvironment(services, layouts.vault);
+                vaultEnvironments.set(services.moduleKey, environment);
+            }
+            if (['newegd', 'free_egd', 'clear_fcorr', 'restfakecorr',
+                 'parkguard', 'grddead', 'in_fcorridor', 'uleftvault',
+                 'find_guard_dest', 'wallify_vault', 'gd_mv_monaway',
+                 'gd_pick_corridor_gold', 'gd_move_cleanup', 'gd_letknow',
+                 'gd_move'].includes(name))
+                args[0] = environment.monster(args[0]);
+            if (name === 'move_gold') args[0] = environment.object(args[0]);
+            if (name === 'vault_occupied') args[0] = environment.address(args[0]);
+            if (name === 'find_guard_dest') {
+                args[1] = environment.coordPointer(args[1]);
+                args[2] = environment.coordPointer(args[2]);
+            }
+            const result = withCEnvironment(environment, vault[name], ...args);
+            return result?.address ?? result ?? 0;
+        },
+        u_init(services,name,...args) {
+            if (!callUInit) throw new Error('Missing U_INIT layout');
+            return callUInit(services,name,...args);
+        },
+        save(services,name,...args) {
+            let environment = saveEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createSaveEnvironment(services, layouts.save);
+                saveEnvironments.set(services.moduleKey, environment);
+            }
+            const saved = services.stackSave();
+            try {
+                const converted = args.map((value, i) => {
+                    const type = saveArgumentTypes[name][i];
+                    if (type?.startsWith('cell:')) return environment.pointerCell(type.slice(5), value);
+                    if (type === 'int' || type === 'pointer') return Number(value);
+                    return environment.view(type, value);
+                });
+                return withCEnvironment(environment, save[name], ...converted);
+            } finally { services.stackRestore(saved); }
+        },
+        mhitm(services,name,...args) {return callMhitm(services,layouts.mhitm,name,...args);},
+        allmain(services,name,...args) {
+            if (!callAllmain) throw new Error('Missing ALLMAIN layout');
+            return callAllmain(services,name,...args);
+        },
+        getpos(services, name, ...args) {
+            let environment = getposEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createGetposEnvironment(services, layouts.getpos, getpos);
+                getposEnvironments.set(services.moduleKey, environment);
+            }
+            if (['getpos', 'getpos_menu'].includes(name))
+                args[0] = environment.coord(args[0]);
+            if (name === 'getpos_getvalids_selection')
+                args[0] = environment.selection(args[0]);
+            if (name === 'gather_locs') {
+                args[0] = environment.coordArrayPointer(args[0]);
+                args[1] = environment.intPointer(args[1]);
+            }
+            if (name === 'truncate_to_map') {
+                args[0] = environment.coordPointer(args[0]);
+                args[1] = environment.coordPointer(args[1]);
+            }
+            const result = withCEnvironment(environment, getpos[name], ...args);
+            return result?.address ?? result ?? 0;
+        },
+        callMthrowu(services,name,...args) {return callMthrowu(services,layouts.mthrowu,name,...args);},
+        initializeRole(services) {return initializeRole(services,layouts.role);},
+        role(services,name,...args) {return callRole(services,layouts.role,name,...args);},
+        polyself(services,name,...args) {return callPolyself(services,layouts.polyself,name,...args);},
+        wizcmds(services,name,...args) {return callWizcmds(services,layouts.wizcmds,name,...args);},
+        spell(services,name,...args) {return callSpell(services,layouts.spell,name,...args);},
+        timeout(services,name,...args){return callTimeout(services,layouts.timeout,name,...args);},
+        makemon(services,name,...args) {return callMakemon(services,layouts.makemon,name,...args);},
+        mhitu(services,name,...args) { return callMhitu(services, layouts.mhitu, name, ...args); } ,
+        artifact(services,name,...args) {return callArtifact(services,layouts.artifact,name,...args);},
+        initializeDecl(services) { return initializeDecl(services, layouts.decl); },
+        decl(services,name,...args) { return callDecl(services, layouts.decl, name, ...args); },
+        read(services,name,...args) {return callRead(services,layouts.read,name,...args);},
+        apply(services,name,...args) {return callApply(services,layouts.apply,name,...args);},
+        initializeEat(services){return initializeEat(services,layouts.eat);},
+        eat(services,name,...args){return callEat(services,layouts.eat,name,...args);},
+        objnam(services,name,...args){return callObjnam(services,layouts.objnam,name,...args);},
+        objnamState(services){return objnamState(services);},
+        mkobj(services,name,...args){return callMkobj(services,layouts.mkobj,name,...args);},
+        initializeInsight(services){return initializeInsight(services,layouts.insight);},
+        insight(services,name,...args){return callInsight(services,layouts.insight,name,...args);},
+        end(services,name,...args) {return callEnd(services,layouts.end,name,...args);},
+        callVision(services,name,...args) {return callVision(services,layouts.vision,name,...args);},
+        initializeVision(services) {return initializeVision(services,layouts.vision);},
+        callDo(services,name,...args) {return callDo(services,layouts.do,name,...args);},
+        callDoWear(services,name,...args) {return callDoWear(services,layouts.do_wear,name,...args);},
+        callRestore(services,name,...args) {return callRestore(services,layouts.restore,name,...args);},
+        nhlobj(services,name,...args) {return callNhlobj(services,layouts.nhlobj,name,...args);},
+        initializeDoName(services) {return initializeDoName(services);},
+        do_name(services,name,...args) {return callDoName(services,layouts.do_name,name,...args);},
+        engrave(services,name,...args) {return callEngrave(services,layouts.engrave,name,...args);},
+        glyphs(services,name,...args) {
+            if (!callGlyphs) throw new Error('Missing GLYPHS layout');
+            return callGlyphs(services,name,...args);
+        },
+        topten(services, name, ...args) {
+            let environment = toptenEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createToptenEnvironment(services, layouts.topten);
+                toptenEnvironments.set(services.moduleKey, environment);
+            }
+            if (name === 'formatkiller') args[0] = environment.address(args[0]);
+            if (name === 'observable_depth') args[0] = environment.level(args[0]);
+            if (['readentry', 'writeentry', 'writexlentry'].includes(name)) {
+                args[0] = environment.address(args[0]);
+                args[1] = environment.entry(args[1]);
+            }
+            if (name === 'discardexcess') args[0] = environment.address(args[0]);
+            if (name === 'free_ttlist') args[0] = environment.entry(args[0]);
+            if (['encode_extended_achievements', 'encode_extended_conducts',
+                 'add_achieveX'].includes(name))
+                args[0] = environment.address(args[0]);
+            if (name === 'outentry') args[1] = environment.entry(args[1]);
+            if (name === 'score_wanted') {
+                args[2] = environment.entry(args[2]);
+                args[4] = environment.stringArray(args[4]);
+            }
+            if (name === 'prscore') args[1] = environment.stringArray(args[1]);
+            if (name === 'tt_oname') args[0] = environment.object(args[0]);
+            if (name === 'tt_doppel') args[0] = environment.monster(args[0]);
+            const result = withCEnvironment(environment, topten[name], ...args);
+            return result?.address ?? result ?? 0;
+        },
+        windows(services,name,...args) {
+            if (!layouts.windows) throw new Error('Missing WINDOWS layout');
+            return callWindows(services,layouts.windows,name,...args);
+        },
+        cfgfiles(services,name,...args) {
+            if (!layouts.cfgfiles) throw new Error('Missing CFGFILES layout');
+            let env = cfgfilesEnvironments.get(services.moduleKey);
+            if (!env) {
+                env = createCfgfilesEnvironment(services,layouts.cfgfiles,cfgfiles);
+                cfgfilesEnvironments.set(services.moduleKey,env);
+            }
+            const saved = services.stackSave(), va = env.vaList;
+            try {
+                if (name === 'config_error_add') env.vaList = env.ptr(args[1]);
+                const result = withCEnvironment(env,cfgfiles[name],...args.map(env.ptr));
+                return ['get_configfile','get_default_configfile','fopen_config_file',
+                    'choose_random_part','is_config_section','find_optparam'].includes(name)
+                    ? BigInt(result ?? 0) : result;
+            } finally {
+                env.vaList = va;
+                services.stackRestore(saved);
+            }
+        },
+        cfgfilesPrivate(module,index) {
+            const env = cfgfilesEnvironments.get(module);
+            if (!env) throw new Error('CFGFILES observation before initialization');
+            return index >= 100 ? env.disregarded_config_lines[index-100]
+                : [env.ignore_errors_on_unmatched,env.ignore_statement_errors,
+                    env.configfile,env.default_configfile,env.config_error_data,env.config_error_msg][index];
+        },
+        mkmaze(services,name,...args) {return callMkmaze(services,name,...args);},
+        dokick(services,name,...args) {
+            if (!layouts.dokick) throw new Error('Missing DOKICK layout');
+            return callDokick(services,layouts.dokick,name,...args);
+        },
+        potion(services,name,...args) {
+            if (!layouts.potion) throw new Error('Missing POTION layout');
+            return callPotion(services,layouts.potion,name,...args);
+        },
+        monmove(services,name,...args) {
+            if (!layouts.monmove) throw new Error('Missing MONMOVE layout');
+            return callMonmove(services,layouts.monmove,name,...args);
+        },
+        dig(services,name,...args) {
+            if (!layouts.dig) throw new Error('Missing DIG layout');
+            return callDig(services,layouts.dig,name,...args);
+        },
+        detect(services,name,...args) {
+            if (!layouts.detect) throw new Error('Missing DETECT layout');
+            let env = detectEnvironments.get(services.moduleKey);
+            if (!env) {env = createDetectEnvironment(services,layouts.detect,detect);detectEnvironments.set(services.moduleKey,env);}
+            const frame = services.stackSave();
+            try {
+                const result = withCEnvironment(env,detect[name],...args.map(env.ptr));
+                return ['o_in','o_material','level_distance'].includes(name) ? BigInt(result ?? 0) : result;
+            } finally {services.stackRestore(frame);}
+        },
+        teleport(services,name,...args) {return teleportBridge(services,name,...args);},
+        pray(services,name,...args) {
+            if (!layouts.pray) throw new Error('Missing PRAY layout');
+            let env=prayEnvironments.get(services.moduleKey);
+            if (!env) {env=createPrayEnvironment(services,layouts.pray,pray);prayEnvironments.set(services.moduleKey,env);}
+            const frame=services.stackSave();
+            try {
+                const result=withCEnvironment(env,pray[name],...args.map(env.ptr));
+                return ['worst_cursed_item','a_gname','a_gname_at','u_gname','align_gname','halu_gname','align_gtitle'].includes(name) ? BigInt(result ?? 0) : result;
+            } finally {services.stackRestore(frame);}
+        },
+        muse(services,name,...args) {
+            if (!layouts.muse) throw new Error('Missing MUSE layout');
+            let env=museEnvironments.get(services.moduleKey);
+            if (!env) {env=createMuseEnvironment(services,layouts.muse,muse);museEnvironments.set(services.moduleKey,env);}
+            const frame=services.stackSave();
+            try {
+                const result=withCEnvironment(env,muse[name],...args.map(env.ptr));
+                return name === 'muse_newcham_mon' ? BigInt(result ?? 0) : result;
+            } finally {services.stackRestore(frame);}
+        },
+        dungeon(services,name,...args) {return callDungeon(services,name,...args);},
+        dothrow(services,name,...args) {return callDothrow(services,name,...args);},
+        pager(services,name,...args) {
+            if (!pagerBridge) throw new Error('Missing PAGER layout');
+            return pagerBridge(services,name,...args);
+        },
+        mklev(services,name,...args) {return callMklev(services,name,...args);},
+        dogmove(services,name,...args) {
+            let environment = dogmoveEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createDogmoveEnvironment(services, layouts.dogmove, dogmove);
+                dogmoveEnvironments.set(services.moduleKey, environment);
+            }
+            const saved = services.stackSave();
+            try {
+                const converted = args.map((value, i) => dogmoveArgumentTypes[name][i] === 'int'
+                    ? Number(value) : environment.view(dogmoveArgumentTypes[name][i], value));
+                const result = withCEnvironment(environment, dogmove[name], ...converted);
+                return ['droppables','find_targ','best_target'].includes(name) ? result?.address ?? 0 : result;
+            } finally { services.stackRestore(saved); }
+        },
+        sounds(services,name,...args) {return callSounds(services,layouts.sounds,name,...args);},
+        weapon(services,name,...args) {return callWeapon(services,layouts.weapon,name,...args);},
+        callRegion(services,name,...args) {return callRegion(services,layouts.region,name,...args);},
+        dog(services,name,...args) {return callDog(services,layouts.dog,name,...args);},
+        sfbase(services,name,...args) {
+            let environment = sfbaseEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createSfbaseEnvironment(services,layouts.sfbase);
+                sfbaseEnvironments.set(services.moduleKey,environment);
+            }
+            const saved = services.stackSave();
+            try {
+                const rawSize = name === 'sf_log' ? args[2] : null;
+                args = args.map(value => typeof value === 'bigint' ? Number(value) : value);
+                if (name.startsWith('sfo_') || name.startsWith('sfi_') || name === 'sf_log')
+                    args[0] = environment.nhfile(args[0]);
+                if (name === 'sfo_version_info' || name === 'sfi_version_info')
+                    args[1] = environment.version(args[1]);
+                if (name === 'sf_log') args[2] = BigInt.asUintN(64,rawSize);
+                return withCEnvironment(environment,sfbase[name],...args);
+            } finally { services.stackRestore(saved); }
+        },
+        initializeAttrib(services) {
+            let environment = attribEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createAttribEnvironment(services, layouts.attrib, attrib);
+                attribEnvironments.set(services.moduleKey, environment);
+            }
+            return environment;
+        },
+        attrib(services, name, ...args) {
+            let environment = attribEnvironments.get(services.moduleKey);
+            if (!environment) {
+                environment = createAttribEnvironment(services, layouts.attrib, attrib);
+                attribEnvironments.set(services.moduleKey, environment);
+            }
+            if (name === 'gainstr') args[0] = environment.object(args[0]);
+            if (['postadjabil', 'check_innate_abil', 'innately'].includes(name))
+                args[0] = environment.longPointer(args[0]);
+            const result = withCEnvironment(environment, attrib[name], ...args);
+            return result?.address ?? result ?? 0;
+        },
+        pline(services,name,...args) {
+            if (!callPline) throw new Error('Missing PLINE layout');
+            return callPline(services,name,...args);
+        },
+        mail(services,name,...args) {return callMail(services,layouts.mail,name,...args);},
+        questpgr(services,name,...args) {return callQuestpgr(services,layouts.questpgr,name,...args);},
+        callSymbols(services,name,...args) {return callSymbols(services,layouts.symbols,name,...args);},
+        mkroom(services,name,...args) {return callMkroom(services,layouts.mkroom,name,...args);},
+        callSfstruct(services,name,...args) {return callSfstruct(services,layouts.sfstruct,name,...args);},
         wield(services, name, ...args) {
             const environment = createWieldEnvironment(services, layouts.wield, wield);
             if (['setuwep', 'cant_wield_corpse', 'ready_weapon', 'setuqwep',

@@ -8,6 +8,7 @@ import { LuaVM } from './lvm.js';
 import { createLua } from './lua.js';
 import { parse } from './lparser.js';
 import { LuaTable, LuaUserdata, LuaLightUserdata, LuaThread, LuaError, isLuaString, luaStringBytes, appendLuaValues, luaValues, rawEqual, luaType, truth, toInteger, toNumber, numberToString, byteString } from './lobject.js';
+import {LuaMemoryError} from '../lua-debug.js';
 import { LUA_GCCOLLECT } from './lgc.js';
 export const LUA_OK = 0, LUA_ERRRUN = 2, LUA_ERRSYNTAX = 3, LUA_MULTRET = -1;
 export const LUA_REGISTRYINDEX = -1001000;
@@ -18,9 +19,9 @@ export const lua_upvalueindex = i => LUA_REGISTRYINDEX - i;
 export class LuaState {
   constructor({ libraries = false, userdataFactory = null, vmFactory = null, ...options } = {}) {
     this.vm = vmFactory ? vmFactory({...options,libraries,memoryReady:false}):libraries?createLua({...options,memoryReady:false}):new LuaVM({...options,memoryReady:false});
-    this.stack=luaValues(); this.upvalues = []; this.closed = false;
+    this.vm.cApiState=this;this.stack=luaValues(); this.upvalues = []; this.closed = false;
     this.userdataFactory = userdataFactory; this.callbackRoots = [];
-    try { this.registry = new LuaTable([[1n, this.vm.mainThread], [2n, this.vm.globals], ['_LOADED', new LuaTable()]]);
+    try { this.registry = this.vm.registry;
     this.vm.heap.adopt(this.registry); this.vm.heap.memoryTracker.ready = true; this.releaseRoots = this.vm.heap.addRoots(() => [this.registry, this.stack, this.upvalues, this.callbackRoots]); } catch (error) { this.vm.heap.close(); throw error; }
   }
   ensure() { if (this.closed) throw new LuaError('Lua state is closed'); }
@@ -46,7 +47,11 @@ export class LuaState {
     if (top < 0 || top > MAXSTACK) throw new LuaError('invalid stack top');
     while (this.stack.length < top) this.push(null); this.stack.length = top;
   }
-  lua_checkstack(extra) { return Number.isInteger(extra) && extra >= 0 && this.stack.length + extra <= MAXSTACK ? 1 : 0; }
+  lua_checkstack(extra) {
+    if(!Number.isInteger(extra)||extra<0||this.stack.length+extra>MAXSTACK)return 0;
+    const thread=this.vm.currentThread,frame=this.vm.heap.frameMetadata(thread),top=(frame?.kind==='C'?frame.func+1:1)+this.stack.length;
+    const success=this.vm.heap.checkStack(thread,top,extra,{safe:false,gc:false});if(success&&frame&&frame.top<top+extra)frame.top=top+extra;return Number(success);
+  }
   lua_pop(n) { this.lua_settop(-n - 1); }
   lua_pushvalue(index) { this.push(this.value(index)); }
   lua_copy(from, to) { this.replace(to, this.value(from)); }
@@ -56,7 +61,7 @@ export class LuaState {
     const size = this.stack.length - index;
     if (Math.abs(count) > size) throw new LuaError('invalid rotation count');
     const normalized = (count % size + size) % size;
-    if (normalized) this.stack.splice(index, 0, ...this.stack.splice(this.stack.length - normalized));
+    if(normalized){const reverse=(from,to)=>{while(from<to){const value=this.stack[from];this.stack[from++]=this.stack[to];this.stack[to--]=value;}};const middle=this.stack.length-normalized;reverse(index,middle-1);reverse(middle,this.stack.length-1);reverse(index,this.stack.length-1);}
   }
   lua_insert(index) { this.lua_rotate(index, 1); }
   lua_remove(index) { index = this.lua_absindex(index); if (index <= 0 || index > this.stack.length) throw new LuaError('invalid stack index'); this.stack.splice(index - 1, 1); }
@@ -87,20 +92,20 @@ export class LuaState {
   lua_tonumber(index) { return this.lua_tonumberx(index); }
   lua_tolstring(index, length = null) {
     let value = this.value(index);
-    if (luaType(value) === 'number') { value = numberToString(value); this.replace(index, value); }
+    if(luaType(value)==='number'){value=this.vm.heap.adopt(numberToString(value));this.replace(index,value);const frame=this.vm.heap.frameMetadata(this.vm.currentThread),top=(frame?.kind==='C'?frame.func+1:1)+this.stack.length;this.vm.heap.withStackTop(top,()=>this.vm.heap.checkpoint());}
     if (!isLuaString(value)) { if (length) length.value = 0; return null; }
     if (length) length.value = value.length; return luaStringBytes(value);
   }
   lua_tostring(index) { return this.lua_tolstring(index); }
   lua_touserdata(index) { const value = this.value(index); return value instanceof LuaUserdata||value instanceof LuaLightUserdata ? value.value : null; }
   lua_topointer(index) { const value=this.value(index);if(value instanceof LuaLightUserdata)return value.value; return typeof value === 'function' || value?.luaClosure || value instanceof LuaTable || value instanceof LuaUserdata || value instanceof LuaThread || isLuaString(value) ? value : null; }
-  lua_createtable(arraySize = 0, hashSize = 0) { this.push(new LuaTable([], { arraySize, hashSize }));this.vm.heap.checkpoint(); }
+  lua_createtable(arraySize = 0, hashSize = 0) { this.push(this.vm.heap.with(()=>new LuaTable([], { arraySize, hashSize })));this.vm.heap.checkpoint(); }
   lua_newtable() { this.lua_createtable(); }
   lua_pushglobaltable() { this.push(this.vm.globals); }
-  lua_getglobal(name) { const value = this.vm.get(this.vm.globals, name); this.push(value); return this.lua_type(-1); }
-  lua_setglobal(name) { this.vm.set(this.vm.globals, name, this.popOne()); }
-  lua_getfield(index, key) { const value = this.vm.get(this.value(index), key); this.push(value); return this.lua_type(-1); }
-  lua_setfield(index, key) { const table = this.value(index); this.vm.set(table, key, this.popOne()); }
+  lua_getglobal(name) { name=this.vm.heap.adopt(luaStringBytes(name).split('\0')[0]);const value = this.vm.get(this.vm.globals, name); this.push(value); return this.lua_type(-1); }
+  lua_setglobal(name) { name=this.vm.heap.adopt(luaStringBytes(name).split('\0')[0]);this.vm.set(this.vm.globals, name, this.popOne()); }
+  lua_getfield(index, key) { const table=this.value(index);key=this.vm.heap.adopt(luaStringBytes(key).split('\0')[0]);const value = this.vm.get(table, key); this.push(value); return this.lua_type(-1); }
+  lua_setfield(index, key) { const table=this.value(index);key=this.vm.heap.adopt(luaStringBytes(key).split('\0')[0]);this.vm.set(table,key,this.popOne()); }
   lua_geti(index, key) { const value = this.vm.get(this.value(index), BigInt(key)); this.push(value); return this.lua_type(-1); }
   lua_seti(index, key) { const table = this.value(index); this.vm.set(table, BigInt(key), this.popOne()); }
   lua_gettable(index) { const table = this.value(index); const value = this.vm.get(table, this.popOne()); this.push(value); return this.lua_type(-1); }
@@ -115,9 +120,10 @@ export class LuaState {
   lua_getmetatable(index) { const value = this.value(index); const mt=this.vm.metatableOf(value); if (!mt) return 0; this.push(mt); return 1; }
   lua_setmetatable(index){const value=this.value(index),mt=this.popOne();this.vm.setMetatableOf(value,mt);return 1;}
   lua_newuserdatauv(size, uservalueCount = 1) {
-    if (!Number.isInteger(size) || size < 0 || size > 10000000) throw new LuaError('invalid userdata size');
-    const allocation = this.userdataFactory ? this.userdataFactory(size, uservalueCount, this) : { value: new Uint8Array(size), release: null };
-    if (!allocation || !('value' in allocation)) throw new LuaError('userdata allocator failed');
+    if(!Number.isSafeInteger(size)||size<0)throw new LuaMemoryError();
+    if(!Number.isInteger(uservalueCount)||uservalueCount<0||uservalueCount>65535)throw new LuaError('invalid userdata uservalue count');
+    let allocation;try{allocation=this.userdataFactory?this.userdataFactory(size,uservalueCount,this):{value:new Uint8Array(size),release:null};}catch(error){if(error instanceof RangeError)throw new LuaMemoryError();throw error;}
+    if (!allocation || !('value' in allocation)) throw new LuaMemoryError();
     const data = allocation.value;
     this.push(this.vm.heap.with(() => new LuaUserdata(data, null, Array(uservalueCount).fill(null), size, allocation.release ?? null)));
     this.vm.heap.checkpoint();return data;
@@ -145,20 +151,22 @@ export class LuaState {
     if (nargs < 0 || this.stack.length < nargs + 1) throw new LuaError('invalid call arguments');
     const handler = handlerIndex === 0 ? null : this.value(handlerIndex);
     const start = this.stack.length - nargs - 1;
-    const [fn, ...args] = this.stack.splice(start);
+    const thread=this.vm.currentThread,frame=this.vm.heap.frameMetadata(thread),base=frame?.kind==='C'?frame.func+1:1,func=base+start;
+    const callStack={func,argumentTop:func+1+nargs};
+    const call=this.stack.splice(start),fn=call[0],args=luaValues();for(let i=1;i<call.length;i++)args.push(call[i]);
     try {
-      const values = protectedCall ? this.vm.run(this.vm.protectedCallG(fn,args,handler),{boundary:false}) : this.vm.call(fn,args);
+      const values = protectedCall ? this.vm.run(this.vm.protectedCallG(fn,args,handler,callStack),{boundary:false}) : this.vm.call(fn,args,callStack);
       if (nresults === LUA_MULTRET) for(const value of values)this.push(value);
       else for (let i = 0; i < nresults; i++) this.push(values[i] ?? null);
       return LUA_OK;
     } catch (error) {
       if (!protectedCall || !(error instanceof LuaError)) throw error;
-      error = this.vm.closeError(error); this.vm.lastError=error;let value=error.value; this.push(value); return error.status ?? LUA_ERRRUN;
+      error = this.vm.closeError(error); this.vm.lastError=error;let value=error.value; this.push(value);this.vm.heap.shrinkThread(this.vm.currentThread); return error.status ?? LUA_ERRRUN;
     }
   }
   lua_call(nargs, nresults) { this.invoke(nargs, nresults, false); }
   lua_pcall(nargs, nresults, handler = 0) { return this.invoke(nargs, nresults, true, handler); }
-  lua_error() { const error=new LuaError(this.value(-1));error.luaExplicit=true;throw error; }
+  lua_error() { const value=this.value(-1),error=isLuaString(value)&&luaStringBytes(value)==='not enough memory'?new LuaMemoryError():new LuaError(value);error.luaExplicit=true;throw error; }
   luaL_loadbuffer(source, size, name = 'chunk', mode = null) {
     source = source instanceof Uint8Array ? source.subarray(0,size) : luaStringBytes(source).slice(0,size);
     try {
@@ -169,7 +177,7 @@ export class LuaState {
         this.push(this.vm.loadBinary(typeof source === 'string' ? Uint8Array.from(source,c=>c.charCodeAt(0)) : source,name));
       } else this.push(this.vm.compile(source,name));
       return LUA_OK;
-    } catch(error) { if(!(error instanceof LuaError))throw error; this.push(error.value);return error.status??LUA_ERRSYNTAX; }
+    } catch(error) { if(!(error instanceof LuaError))throw error; this.push(error.value);this.vm.heap.shrinkThread(this.vm.currentThread);return error.status??LUA_ERRSYNTAX; }
   }
   luaL_loadstring(source) { return this.luaL_loadbuffer(source.split('\0')[0], source.split('\0')[0].length, source); }
   luaL_checktype(index, tag) { if (this.lua_type(index) !== tag) throw new LuaError(`${this.lua_typename(tag)} expected, got ${this.luaL_typename(index)}`); }
@@ -199,10 +207,13 @@ export class LuaState {
   }
   luaL_newlib(functions) { this.lua_newtable(); this.luaL_setfuncs(functions); }
   luaL_requiref(name, opener, global) {
-    const loaded = this.registry.rawget('_LOADED'); let module = loaded.rawget(name);
-    if (!truth(module)) { this.lua_pushcfunction(opener); this.lua_pushstring(name); this.lua_call(1, 1); module = this.value(-1); loaded.rawset(name, module); }
-    else this.push(module);
-    if (global) this.vm.setGlobal(name, module);
+    this.lua_getfield(LUA_REGISTRYINDEX,'_LOADED');
+    if(!(this.value(-1) instanceof LuaTable)){this.lua_pop(1);this.lua_newtable();this.lua_pushvalue(-1);this.lua_setfield(LUA_REGISTRYINDEX,'_LOADED');}
+    this.lua_getfield(-1,name);
+    if(!truth(this.value(-1))){this.lua_pop(1);this.lua_pushcfunction(opener);this.lua_pushstring(name);this.lua_call(1,1);this.lua_pushvalue(-1);this.lua_setfield(-3,name);}
+    this.lua_remove(-2);
+    if(global){this.lua_pushvalue(-1);this.lua_setglobal(name);}
+
   }
   unsupported(name) { throw new LuaError(`${name} requires unfinished Lua GC/coroutine/debug/allocator migration`); }
   lua_gc(operation=LUA_GCCOLLECT,...args){return this.vm.heap.control(operation,...args);}

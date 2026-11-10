@@ -1,26 +1,34 @@
 /* Retained Lua5.4.8 ldblib.c facilities. NetHack's original C DROPIF removes
- * debug/gethook/sethook; those process-I/O/hook-control entries are omitted.
+ * debug/gethook/sethook. Unpublished registration includes those names with
+ * throwing guards; the configured C filter removes them before exposure.
  * Lua notice: lua/lobject.js. Stack slots and closure cells remain live VM
  * objects: writes are immediately visible to executing bytecode. */
-import { LuaTable, LuaUserdata, LuaLightUserdata, LuaThread, LuaError, luaType, isLuaString, luaStringBytes, numberToString, toInteger } from './lua/lobject.js';
+import { LuaTable, LuaUserdata, LuaLightUserdata, LuaThread, LuaError, luaType, isLuaString, luaStringBytes, numberToString, toInteger, toNumber } from './lua/lobject.js';
+import { prepareLibrary } from './lua/llib.js';
+export const LUA_DEBUG_REGISTRATION = Object.freeze(['debug','getuservalue','gethook','getinfo','getlocal','getregistry','getmetatable','getupvalue','upvaluejoin','upvalueid','setuservalue','sethook','setlocal','setmetatable','setupvalue','traceback','setcstacklimit']);
 const isFunction = fn => typeof fn === 'function' || fn?.luaClosure || fn?.luaYieldable;
 const check = (valid, name, index, detail) => { if (!valid) throw new LuaError(`bad argument #${index} to '${name}' (${detail})`); };
-const integer = (value, name, index) => { const result = toInteger(value); check(result !== null, name, index, `number expected, got ${luaType(value)}`); return Number(BigInt.asIntN(32, result)); };
+const integer = (value, name, index) => { const result = toInteger(value); check(result !== null, name, index, toNumber(value)!==null?'number has no integer representation':`number expected, got ${value===undefined?'no value':luaType(value)}`); return Number(BigInt.asIntN(32, result)); };
 const string = (value, fallback, name, index) => {
   if (value === null || value === undefined) return fallback;
   if (isLuaString(value)) return luaStringBytes(value).split('\0')[0];
   if (typeof value === 'number' || typeof value === 'bigint') return numberToString(value);
   check(false, name, index, `string expected, got ${luaType(value)}`);
 };
-export function openDebugLibrary(vm, { registry = null } = {}) {
-  registry ??= vm.debugRegistry ?? new LuaTable([[1n, vm.mainThread], [2n, vm.globals]]);
-  vm.debugRegistry = registry; vm.heap.adopt(registry); vm.heap.addRoots(() => [registry]);
-  const library = new LuaTable(), cUpvalueIds = new WeakMap();
+export function installLuaDebugNames(vm, registry) {
+  if(vm.debug.nameRegistry===registry)return;
   const findName=(table,fn,depth)=>{if(!(table instanceof LuaTable)||!depth)return null;for(const[key,value]of table.values){if(!isLuaString(key))continue;const name=luaStringBytes(key);if(value===fn)return name;const child=findName(value,fn,depth-1);if(child!==null)return name+'.'+child;}return null;};
   const previousResolver=vm.debug.resolveGlobalName;
   vm.debug.resolveGlobalName=fn=>previousResolver?.(fn)??findName(registry.rawget('_LOADED'),fn,2)?.replace(/^_G\./,'')??findName(vm.globals,fn,2);
-
-  const add = (name, invoke) => { const call=args=>{try{return invoke(args);}catch(error){if(error instanceof LuaError&&isLuaString(error.value)&&luaStringBytes(error.value).startsWith('bad argument #')){const frame=vm.debug.thread(vm.currentThread).frames.at(-1),resolved=frame?.name??vm.debug.resolveGlobalName?.(frame?.fn)??name;const value=vm.debug.where(vm.currentThread,1)+luaStringBytes(error.value).replace("to '"+name+"'","to '"+resolved+"'");const wrapped=new LuaError(value);wrapped.luaExplicit=true;throw wrapped;}throw error;}};const fn=(...args)=>call(args);fn.luaInvoke=call;library.rawset(name,fn); };
+  vm.debug.nameRegistry=registry;
+}
+export function createDebugFunctions(vm, { registry = null } = {}) {
+  registry ??= vm.debugRegistry ?? vm.registry;
+  if (!(registry instanceof LuaTable)) throw new TypeError('Lua debug functions require the VM registry');
+  vm.debugRegistry = registry;
+  const functions = Object.create(null), cUpvalueIds = new WeakMap();
+  installLuaDebugNames(vm, registry);
+  const add = (name, invoke) => { const call=args=>{try{return invoke(args);}catch(error){if(error instanceof LuaError&&isLuaString(error.value)&&luaStringBytes(error.value).startsWith('bad argument #')){const frame=vm.debug.thread(vm.currentThread).frames.at(-1),resolved=frame?.name??vm.debug.resolveGlobalName?.(frame?.fn)??name;const value=vm.debug.where(vm.currentThread,1)+luaStringBytes(error.value).replace("to '"+name+"'","to '"+resolved+"'");const wrapped=new LuaError(value);wrapped.luaExplicit=true;throw wrapped;}throw error;}};const fn=(...args)=>call(args);fn.luaInvoke=call;functions[name]=fn; };
   const threadArgs = args => args[0] instanceof LuaThread ? { thread: args[0], offset: 1 } : { thread: vm.currentThread, offset: 0 };
   const activation = (args, name) => {
     const { thread, offset } = threadArgs(args), ar = {}, level = integer(args[offset], name, offset + 1);
@@ -47,7 +55,7 @@ export function openDebugLibrary(vm, { registry = null } = {}) {
   };
   add('getregistry', () => [registry]);
   add('getmetatable', args => { check(args.length > 0, 'getmetatable', 1, 'value expected'); return [vm.metatableOf(args[0])]; });
-  add('setmetatable', args => { const value = args[0] ?? null, mt = args[1] ?? null; check(mt === null || mt instanceof LuaTable, 'setmetatable', 2, `nil or table expected, got ${luaType(mt)}`); vm.setMetatableOf(value, mt); return [value]; });
+  add('setmetatable', args => { const value = args[0] ?? null, mt = args[1] ?? null; check(args.length>1&&(mt === null || mt instanceof LuaTable), 'setmetatable', 2, `nil or table expected, got ${args.length>1?luaType(mt):'no value'}`); vm.setMetatableOf(value, mt); return [value]; });
   add('getuservalue', args => { const n = args[1] == null ? 1 : integer(args[1], 'getuservalue', 2), value = args[0]; return value instanceof LuaUserdata && n > 0 && n <= value.uservalues.length ? [value.uservalues[n - 1] ?? null, true] : [null]; });
   add('setuservalue', args => {
     const value = args[0], n = args[2] == null ? 1 : integer(args[2], 'setuservalue', 3);
@@ -102,5 +110,17 @@ export function openDebugLibrary(vm, { registry = null } = {}) {
     const level = args[offset + 1] == null ? thread === vm.currentThread ? 1 : 0 : integer(args[offset + 1], 'traceback', offset + 2);
     return [vm.debug.traceback(thread, message === null ? null : luaStringBytes(message), level)];
   });
-  vm.setGlobal('debug', library); return library;
+  return functions;
+}
+
+export function openDebugLibrary(vm, { registry = null, publish = true, filtered = true } = {}) {
+  const library = prepareLibrary(vm, LUA_DEBUG_REGISTRATION);
+  try {
+    const functions = createDebugFunctions(vm, { registry });
+    for (const name of LUA_DEBUG_REGISTRATION) library.rawset(name, functions[name] ?? (() => { throw new LuaError(`debug.${name} is excluded by NetHack's configured sandbox`); }));
+    const table = library.finish();
+    if (filtered) for (const name of ['debug', 'gethook', 'sethook']) table.rawset(name, null);
+    if (publish) vm.setGlobal('debug', table);
+    return table;
+  } finally { library.release(); }
 }

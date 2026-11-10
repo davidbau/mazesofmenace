@@ -164,7 +164,7 @@ export async function remove_worn_item(obj, unchain_ball) {
         // C: if (obj == uskin) { impossible(...); skinback(TRUE); }
         if (obj === game.u.uskin) {
             impossible("Removing embedded scales?");
-            await skinback(true);
+            skinback(true);
         }
 
         // C: if (obj == uarm) Armor_off();

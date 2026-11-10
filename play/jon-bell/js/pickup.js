@@ -20,7 +20,7 @@ import { regcomp } from './posixregex.js';
 import { impossible } from './pline.js';
 import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
-import { _topl_stash_result, newsym, newsym_force, flush_screen, obj_to_glyph, mon_to_glyph, map_glyphinfo, menu_item_marker, force_more, topl_park_cursor, topl_force_break_now, capture_flushed_cells, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
+import { _topl_stash_result, newsym, newsym_force, flush_screen, obj_to_glyph, mon_to_glyph, map_glyphinfo, menu_item_marker, force_more, topl_park_cursor, topl_force_break_after, capture_flushed_cells, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
 import { pline, Norep, You_see, You, Your, You_cant } from './pline.js';
 import { pline_with_more, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { money_cnt } from './hack.js';
@@ -242,7 +242,8 @@ export async function fatal_corpse_mistake(obj, remotely) {
     if (data && poly_when_stoned(data) && await polymon(PM_STONE_GOLEM)) {
         // C pickup.c:291: display_nhwindow(WIN_MESSAGE, FALSE) calls more()
         // without flushing the map/status changes made after polymon's pline.
-        topl_force_break_now(false, capture_flushed_cells(), game._lastPaintedBotl);
+        topl_force_break_after(game._pending_message, false, null,
+            capture_flushed_cells(), game._lastPaintedBotl);
         await flush_screen(1);
         return false;
     }
@@ -1085,7 +1086,6 @@ async function _select_menu(items, how, paint = null) {
             continue;
         }
         if (k === 27) {
-            game._ttyDismissMore = 1; /* getline.c:245-247 */
             if (count) continue;
             for (const it of items) it.selected = false;
             return true; /* cancelled */

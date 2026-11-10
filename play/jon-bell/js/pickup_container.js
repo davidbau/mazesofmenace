@@ -473,7 +473,6 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
             if (pendingCount > 0x7fffffffffffffffn) pendingCount = 0n;
             continue;
         }
-        if (k === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
         if (k === 27 && pendingCount) { pendingCount = 0n; continue; }
         pendingCount = 0n;
         if (k === 27 /* ESC */) { chosen = 'q'; break; }
@@ -914,7 +913,6 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
             continue;
         }
         if (k === 27) { /* ESC cancels a count first, then the whole menu */
-            g._ttyDismissMore = 1; /* getline.c:245-247 */
             if (counting) {
                 count = 0;
                 counting = false;

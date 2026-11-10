@@ -157,7 +157,7 @@ import { is_were as is_were_real, new_were as new_were_real,
 import { you_were, you_unwere } from './were.js';
 /* The real canseemon — this file also declares a file-local
  * `canseemon() { return false; }` stub, which the older arms below still use. */
-import { canseemon, canseemon as canseemon_mu, tp_sensemon as tp_sensemon_mu, sensemon as sensemon_mu } from './display.js';
+import { canseemon as canseemon_mu, tp_sensemon as tp_sensemon_mu, sensemon as sensemon_mu } from './display.js';
 /* C vision.h:50-53 m_canseeu(m) — the real port lives in dochug.js. dochug.js
  * already imports mattacku etc. from this file, so this closes an existing
  * cycle; both sides only use the other's export inside a function body, never
@@ -309,7 +309,7 @@ import { weight as weight_mu } from './weight.js';
 import { calc_capacity } from './hack.js';
 import { obj_is_burning } from './light.js';
 import { is_flammable as is_flammable_mu } from './mklev.js';
-import { bhp_is_lava as bhp_is_lava_mu, thit_is_unicorn as is_unicorn } from './cmd.js';
+import { bhp_is_lava as bhp_is_lava_mu } from './cmd.js';
 import { rnl } from './rng.js';
 import { BLINDED, STUNNED, FUMBLING, A_INT, A_DEX, A_CON } from './const.js';
 /* prop ids for the youprop.h macro block above (const.js:2310-2361). */
@@ -350,8 +350,7 @@ function m_seenres(mon, mask) {
  * Stub helpers — side-effects not yet ported; no RNG inside these stubs.
  * ---------------------------------------------------------------------------
  */
-/* C mhitu.c: canseemon(mon) — imported directly from display.js (also aliased
- * as `canseemon_mu`). */
+function canseemon(mon) { return canseemon_mu(mon); }
 function couldsee(x, y) { return couldsee_mu(x, y); }
 function m_canseeu(mon) { return m_canseeu_dh(mon); }
 // C ref: allmain.c:755 stop_occupation() — interrupt the current occupation:
@@ -3808,9 +3807,6 @@ const distmin = distmin_mu;
 const poisoned = poisoned_u;
 const mondied = mondied_dm;
 const monkilled = monkilled_mu;
-const eyecount = eyecount_mu;
-const ammo_and_launcher = ammo_and_launcher_mu;
-const obj_sheds_light = obj_is_burning;
 
 export async function spitmm(mtmp, mattk, mtarg) {
     /* C mthrowu.c:1020-1032 — a cancelled spitter just rattles.  RNG-free. */
@@ -3990,7 +3986,7 @@ export async function thrwmu(mtmp) {
     if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^thrwmu_enter[id=${mtmp.m_id|0} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0}]`);
     const u = game.u || (game.u = {});
-    /* C mthrowu.c:1183-1189 — "Rearranged beginning so monsters can use
+    /* C mthrowu.c:1188-1192 — "Rearranged beginning so monsters can use
      * polearms not in a line". */
     if ((mtmp.weapon_check | 0) === MHU_NEED_WEAPON || !MON_WEP(mtmp)) {
         mtmp.weapon_check = MHU_NEED_RANGED_WEAPON;
@@ -3999,7 +3995,7 @@ export async function thrwmu(mtmp) {
             return;
     }
 
-    /* C mthrowu.c:1192-1194: otmp = select_rwep(mtmp); if (!otmp) return; */
+    /* C mthrowu.c:1195: otmp = select_rwep(mtmp); if (!otmp) return; */
     const otmp = await select_rwep(mtmp);
     if (!otmp)
         return;
@@ -4172,7 +4168,7 @@ export async function monshoot(mtmp, otmp, mwep) {
             onm = (await singular(otmp, xname));
             onm = obj_is_pname(otmp) ? the(onm) : an(onm);
         }
-        gm.m_shot.s = ammo_and_launcher(otmp, mwep) ? true : false;
+        gm.m_shot.s = ammo_and_launcher_mu(otmp, mwep) ? true : false;
         /* C:288 Strcpy(trgbuf, mtarg ? some_mon_nam(mtarg) : "") — the thrwmu
          * path always has mtarg == 0, and the monster-vs-monster caller
          * (thrwmm) is not wired to monshoot in this port. */
@@ -4955,7 +4951,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         await pline(`There's something sticky all over your ${mbodypart_mu(_hero_monst_mu(), FACE_MU)}.`);
                 } else if ((singleobj.otyp | 0) === BLINDING_VENOM_MU) {
                     let eyes = mbodypart_mu(_hero_monst_mu(), EYE_MU);
-                    if (eyecount(_hero_monst_mu()) !== 1)
+                    if (eyecount_mu(_hero_monst_mu()) !== 1)
                         eyes = makeplural(eyes);
                     /* venom in the eyes */
                     if (!Blind(game))
@@ -5196,7 +5192,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                     await pline((weight_mu(otmp) > 9) ? 'Splash!' : 'Plop!');
                 }
             }
-            if (obj_sheds_light(otmp)) game.vision_full_recalc = 1;
+            if (obj_is_burning(otmp)) game.vision_full_recalc = 1;
         }
     }
     /* C:959-960 */
@@ -5218,7 +5214,9 @@ const POTHIT_OTHER_THROW_MU = 3;
 /* C mthrowu.c:506-529: unicorns catch gems, but reject glass after identifying it. */
 async function ucatchgem(gem, mon) {
     const ptr = _hero_permonst_mu();
-    if (gem.otyp <= LAST_GLASS_GEM && is_unicorn(ptr)) {
+    // mondata.h:149 is_unicorn = S_UNICORN && likes_gems (M2_JEWELS).
+    if (gem.otyp <= LAST_GLASS_GEM && ptr && (ptr.mlet | 0) === 21
+        && ((ptr.mflags2 >>> 0) & 0x20000000)) {
         const gem_xname = await xname(gem);
         const mon_s_name = s_suffix(mon_nam_uh(mon));
         if (gem.otyp > LAST_REAL_GEM) {

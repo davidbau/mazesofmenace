@@ -1,8 +1,8 @@
 // windows.js — C ref: windows.c.
 import { putstr } from './cmd.js'; // relocate-fns
 import { cmdq_pop, doprev_message, pgetchar } from './cmd.js'; // relocate-fns
-import { CMDQ_KEY, COLNO, MAX_MSG_HISTORY } from './const.js'; // relocate-fns
-import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, tty_getlin_echo, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
+import { CMDQ_KEY, COLNO } from './const.js'; // relocate-fns
+import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, topl_park_cursor, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
@@ -47,7 +47,7 @@ export async function getlin(prompt) {
     };
     const placeCursor = () => {
         const d = g.nhDisplay;
-        if (d) tty_getlin_echo(d, prompt, buf);
+        if (d) topl_park_cursor(d, prompt + ' ' + buf);
     };
     if (g._topl_unacknowledged && g._resultMessage && !g._pending_message
         && !g._topl_win_stop && !g._topl_win_stop_armed) {
@@ -147,28 +147,22 @@ export async function getlin(prompt) {
             const pw = (g.iflags?.prevmsg_window || 's')[0];
             if (pw === 's' || (pw === 'c' && !doprev)) {
                 const hist = Array.isArray(g._msg_history) ? g._msg_history : [];
-                const _ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
-                const _floor = Math.max(0, hist.length - _ring + 1);
-                const _step = (i) => (i < 0 ? hist.length - 1
-                    : (i - 1 < _floor ? -1 : i - 1));
-                const _recall = (i) => tty_getlin_recall(i < 0 ? prompt + ' ' + buf : hist[i]);
-                let morc = !doprev ? await _recall(-1) : 0;
                 if (hist.length) {
-                    prevIdx = doprev ? _step(prevIdx) : hist.length - 1;
-                    while (morc === 16) {
-                        morc = await _recall(prevIdx);
-                        prevIdx = _step(prevIdx);
-                    }
+                    prevIdx = doprev ? (prevIdx - 1 + hist.length) % hist.length : hist.length - 1;
                     doprev = true;
-                    while (await _recall(prevIdx) === 16)
-                        prevIdx = _step(prevIdx);
+                    const text = hist[prevIdx];
+                    g._pending_message = text;
+                    g._topl_prompt_written = text;
+                    g._topl_history_recall = text;
+                    await flush_screen(1);
+                    const d = g.nhDisplay;
+                    if (d) topl_park_cursor(d, text);
                     continue;
                 }
             } else {
                 // getline.c:121-137: full/reversed history includes the live
                 // query, then restores the query and the existing input buffer.
                 await doprev_message(prompt + ' ' + buf);
-                g._getlin_echo_state = null; /* getline.c:126 clear_nhwindow */
                 renderPrompt();
                 await flush_screen(1);
                 placeCursor();
@@ -179,7 +173,6 @@ export async function getlin(prompt) {
         if (keyCode === 27 /* ESC */) {
             if (buf.length > 0) {
                 buf = '';
-                g._getlin_echo_state = null; /* getline.c:88 clear_nhwindow */
                 renderPrompt();
                 await flush_screen(1);
                 placeCursor();
@@ -233,7 +226,6 @@ export async function getlin(prompt) {
     }
     return buf;
     } finally {
-        g._getlin_echo_state = null;
         g._topl_suppress_history = _saved_suppress;
         g._bot_disabled = _saved_bot_disabled;
         /* C getline.c:319 — the read loop is over; the topline stops being a

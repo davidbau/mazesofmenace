@@ -9,7 +9,7 @@ import { formatFloatMagnitude, floatNegative } from './c-float-format.js';
 // compare named errors across native platforms rather than assuming host IDs.
 export const C_ERRNO = Object.freeze({ EINVAL: 28, ERANGE: 68 });
 
-export function createCStdlib(memory) {
+export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
     const api = {
         errno: 0,
         malloc: n => memory.malloc(n), calloc: (n, size) => memory.calloc(n, size),
@@ -196,8 +196,8 @@ export function createCStdlib(memory) {
                 if (length && length !== 'l') throw new RangeError('Long-double formatting is not supported');
                 const number = Number(value);
                 floating = true; finite = Number.isFinite(number);
-                prefix = floatNegative(number) ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
-                body = formatFloatMagnitude(number, conversion, precision ?? null, flags.includes('#'));
+                prefix = floatPolicy==='darwin'&&Number.isNaN(number)?'':floatNegative(number,floatPolicy) ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
+                body = formatFloatMagnitude(number, conversion, precision ?? null, flags.includes('#'),floatPolicy);
                 if (conversion.toLowerCase() === 'a' && finite) prefix += '0x';
                 if (/[AEFG]/.test(conversion)) { body = body.toUpperCase(); prefix = prefix.toUpperCase(); }
             } else {

@@ -8,7 +8,7 @@ import { unpunish as unpunish_invent } from './read.js';
 import { canspotmon, flush_pending_messages, force_more, newsym, retouch_equipment, see_monsters, shieldeff as shieldeff_gz } from './display.js';
 import { You_feel, You_hear, livelog_printf, pline } from './pline.js';
 import { dropy, heal_legs } from './do.js';
-import { Amulet_off, You, bimanual, disintegrate_arm as disintegrate_arm_gz, encumber_msg, stuck_ring, unchanger, xname, yname } from './do_wear.js';
+import { Amulet_off, You, bimanual, disintegrate_arm as disintegrate_arm_gz, encumber_msg, stuck_ring, xname, yname } from './do_wear.js';
 import { losehp } from './hack.js';
 import { floorfood, init_uhunger } from './eat.js';
 import { feel_cockatrice } from './invent.js';
@@ -737,7 +737,7 @@ const RIN_LEVITATION = 183;
 
 const AMULET_OF_STRANGULATION = 203;
 
-const AMULET_OF_UNCHANGING = 207;
+const AMULET_OF_UNCHANGING_PRAY = 207;
 
 const HELM_OF_OPPOSITE_ALIGNMENT = 99; /* objects.h */
 const POTION_CLASS = 8; /* objclass.h */
@@ -945,7 +945,8 @@ function _worst_cursed_item() {
 
 /* C do_wear.c:2687 — the worn source of Unchanging, also used by prayer. */
 function _unchanger() {
-    return unchanger();
+    const amulet = game.u.uamul;
+    return amulet?.otyp === AMULET_OF_UNCHANGING_PRAY ? amulet : null;
 }
 
 /* C ref: pray.c:343-366 fix_curse_trouble(otmp, what). */
@@ -1496,6 +1497,11 @@ async function _gods_upset(gAlign) {
     await _angrygods(gAlign);
 }
 
+/* C mkobj.c:1746-1765 bless(), including light and timer updates. */
+async function _prayer_bless(obj) {
+    return await bless_obj(obj);
+}
+
 /* C pray.c:787-801 — a gift may be swallowed, unseen, or below levitation. */
 async function _at_your_feet(str) {
     const u = game.u;
@@ -1564,7 +1570,7 @@ async function _gcrownu() {
     if (MKOBJ_OC_CLASS[classGift] === OCLASS_SPBOOK) {
         obj = await _fl_mksobj(classGift, true, false);
         const bbuf = actualoname(obj);
-        await bless_obj(obj);
+        await _prayer_bless(obj);
         obj.bknown = 1;
         observe_object(obj);
         await _at_your_feet(upstart(ansimpleoname(obj)));
@@ -1633,7 +1639,7 @@ async function _gcrownu() {
         break;
     }
     if (ok_wep(obj)) {
-        await bless_obj(obj);
+        await _prayer_bless(obj);
         obj.oeroded = obj.oeroded2 = 0;
         obj.oerodeproof = true;
         obj.bknown = obj.rknown = 1;
@@ -1679,7 +1685,7 @@ async function _give_prayer_spell() {
     } else {
         observe_object(obj);
         if (obj.otyp === SPE_BLANK_PAPER || !rn2(100)) makeknown(obj.otyp);
-        await bless_obj(obj);
+        await _prayer_bless(obj);
         await _at_your_feet(upstart(ansimpleoname(obj)));
         place_object(obj, u.ux, u.uy);
         newsym(u.ux, u.uy);
@@ -2010,7 +2016,7 @@ async function _pleased(gAlign) {
                     } else {
                         await _You_feel(`the blessing of ${_align_gname(u.ualign.type)} over ${yname(wep)}.`);
                     }
-                    await bless_obj(wep);
+                    await _prayer_bless(wep);
                     wep.bknown = 1;
                     repair = '';
                 }

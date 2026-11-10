@@ -1,5 +1,5 @@
 // artifact.js — C ref: artifact.c.
-import { ART_NONARTIFACT, arti_cary_adtyp, arti_cspfx, arti_defn_adtyp, arti_inv_prop, arti_spfx, exercise, get_artifact, spec_m2, LUCKSTONE, SPFX_LUCK } from './attrib.js';
+import { ART_NONARTIFACT, arti_cary_adtyp, arti_cspfx, arti_defn_adtyp, arti_inv_prop, arti_spfx, exercise, get_artifact, spec_ability, spec_m2, LUCKSTONE, SPFX_LUCK } from './attrib.js';
 import { AD_COLD_ART, AD_DISN_ART, AD_DRLI_ART, AD_DRST_ART, AD_ELEC_ART, AD_FIRE_ART, AD_MAGM_ART, ART_SUNSWORD, BLND_RES_ART, CRYSTAL_BALL_OTYP, DEADMONSTER, ENERGY_REGENERATION_ART, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HALF_PHDAM_ART, HALF_SPDAM_ART, LAST_PROP_ART, MS_NEMESIS, OTYP_ARROW, PROTECTION_ART, REGENERATION_ART, Role_if, SPFX_EREGEN_ART, SPFX_ESP_ART, SPFX_HALRES_ART, SPFX_HPHDAM_ART, SPFX_HSPDAM_ART, SPFX_PROTECT_ART, SPFX_REFLECT_ART, SPFX_REGEN_ART, SPFX_SEARCH_ART, SPFX_STLTH_ART, SPFX_TCTRL_ART, SPFX_WARN_ART, SPFX_XRAY_ART, W_WEP_C, Your, _Blind_cmd, _IA_BELL_OF_OPENING_OTYP, _You_feel, _hero_Blind, _is_demon, _ld_carried, _retouch_ag, _retouch_dmg, _uprop_active, do_blinding_ray, enlightenment_menu, getObjFromGetobj, invocation_pos, ledger_no_cmd, level_tele, spelleffects, tty_menu_pick_one_ext, untrap_at, use_crystal_ball, verbalize } from './cmd.js';
 import { ANTIMAGIC, A_CON, BLINDED, COLD_RES, CONFLICT, DISINT_RES, DRAIN_RES, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FIRE_RES, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, HALLUC, INVIS, I_SPECIAL, In_endgame, In_quest, KILLED_BY, LEVITATION, MAGICENLIGHTENMENT, MIGR_RANDOM, POISON_RES, REFLECTING, SEARCHING, SHOCK_RES, SICK, SICK_ALL, SLIMED, STEALTH, TELEPAT, TELEPORT_CONTROL, TIMEOUT, Upolyd, WARNING, WARN_OF_MON, W_ART, W_ARTI as W_ARTI_FW, isok, nothing_seems_to_happen } from './const.js';
 import * as _PROPIDS from './const.js';
@@ -675,15 +675,6 @@ export async function doinvoke() {
     }
 
     return await arti_invoke(obj);
-}
-
-/* C artifact.c:515-522 spec_ability(struct obj *otmp, unsigned long abil)
- * Every spfx value is < 2^31, so JS's signed 32-bit `&` is exact here. */
-export function spec_ability(otmp, abil) {
-    const arti = get_artifact(otmp);
-
-    return (arti !== ART_NONARTIFACT
-            && (arti_spfx(arti) & abil) !== 0);
 }
 
 /* C artifact.c:525-533 confers_luck(struct obj *obj) */

@@ -63,8 +63,8 @@ import { hideunder } from './mon.js';
 import { reset_utrap } from './trap.js';
 import { switch_terrain } from './cmd.js';
 /* C mon.c:4056 mnearto -> goodpos(newx, newy, mtmp, 0) — the FULL goodpos
- * (js/trap.js goodpos), not this file's goodpos_full, which enexto_core
- * uses for its candidate filter. */
+ * (js/trap.js:1131), not this file's goodpos_simple/goodpos_full pair, which
+ * enexto_core uses for its candidate filter. */
 import { goodpos as goodpos_tp } from './trap.js';
 import { mon_nam } from './uhitm.js';
 import { m_in_air, permonstTemplate, Inhell } from './makemon.js';
@@ -99,7 +99,7 @@ import { find_objowner, costly_spot, inhishop, onshopbill, make_angry_shk, stole
 import { dist2, distmin } from './hacklib.js';
 import { depth } from './dungeon.js';
 import { within_bounded_area } from './rect.js';
-import { in_out_region, update_player_regions, update_monster_region } from './region.js';
+import { in_out_region, update_player_regions, update_monster_region as update_monster_region_real } from './region.js';
 import { PM_ANGEL, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_MINOTAUR, PM_WIZARD_OF_YENDOR } from './pm.generated.js';
 import { TELEPORT_CONTROL, STUNNED, TT_BURIEDBALL, TIMEOUT } from './const.js';
 /* C ref: teleport.c:424-434 teleok's trap exceptions (rm.h/trap.h predicates). */
@@ -229,6 +229,24 @@ function mon_at(x, y) {
      * they are not fmon entries, so look them up separately. */
     return worm_seg_at(x, y);
 }
+/* C ref: teleport.c:86-185 goodpos (simplified for enexto_core / monster placement).
+ * Checks used with NO_MM_FLAGS / GP_CHECKSCARY for new monster placement:
+ *   isok, !u_at (allow_u=false, mtmp is not youmonst/ustuck/usteed),
+ *   MON_AT(x,y) — another monster occupies this square,
+ *   accessible = ACCESSIBLE(typ) && !closed_door,
+ *   sobj_at(BOULDER,x,y) — C 174-176, see below.  Lava/water/worm/onscary
+ *   omitted — starting pet is a normal ground-dwelling creature.
+ *
+ * The header used to list "boulder" among the OMITTED checks.  It is not
+ * omissible: C's enexto_core never reaches goodpos with a null mdat (it
+ * substitutes `&mons[u.umonster]` for one, teleport.c:236-240), so C's
+ * boulder line always evaluates, and `throws_rocks()` is false for every
+ * creature any bare enexto_core() caller in this port places.  Omitting it
+ * let a monster be placed ON a boulder where C walks on to the next
+ * candidate of the same bit-identical collect_coords shuffle. */
+function goodpos_simple(x, y) {
+    return goodpos_full(x, y, null, 0);
+}
 export function enexto_core(xx, yy, mdat, entflags) {
     let fakemon;
     if (mdat && mdat.data) {
@@ -314,8 +332,12 @@ export function teleok(x, y, trapok) {
             return false;
     } else if (!(passes_walls(mdat) && may_passwall(x, y))
                && !(amorphous(mdat) && closed_door_local(x, y))) {
-        /* C monmove.c:2188-2193 accessible() uses SURFACE_AT for drawbridges. */
-        if (!accessible_local(x, y))
+        /* accessible(x,y): ACCESSIBLE(typ) && !closed_door(x,y) */
+        const loc = game.level?.at(x, y);
+        if (!loc) return false;
+        const typ = loc.typ | 0;
+        if (!ACCESSIBLE(typ)
+            || (typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)) !== 0))
             return false;
         if (sobj_at(BOULDER, x, y) && !throws_rocks(mdat)) return false;
     }
@@ -1221,7 +1243,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     mon_track_clear(mtmp);
     place_monster_local(mtmp, x, y); /* put monster down */
-    update_monster_region(mtmp);
+    update_monster_region_local(mtmp);
 
     if (mtmp.wormno) /* now put down tail */
         place_worm_tail_randomly_local(mtmp, x, y);
@@ -1347,6 +1369,13 @@ function remove_monster_local(x, y) {
     mtmp._mapRemoved = true;
 }
 
+/* C ref: region.c:597-610 update_monster_region — adds/removes the monster
+ * from every region it now does/doesn't occupy.  The complete implementation
+ * already lives in region.js; this caller used to discard it behind a local
+ * no-op, which made the teleport path wrong as soon as a region is active. */
+function update_monster_region_local(mtmp) {
+    return update_monster_region_real(mtmp);
+}
 
 function place_worm_tail_randomly_local(mdef, fx, fy) { return place_worm_tail_randomly_real(mdef, fx, fy); }
 
@@ -1511,29 +1540,39 @@ function Is_waterlevel_local() {
     return !!uz && !!wl && uz.dnum === wl.dnum && uz.dlevel === wl.dlevel;
 }
 
+function onscary_local(x, y, mtmp) {
+    const auditory_scare = (x === 0 && y === 0);
+    const magical_scare = !auditory_scare;
+    const mdat = mtmp.data;
+
+    if (mtmp.iswiz || is_lminion_local(mtmp) || (mdat.pmidx | 0) === PM_ANGEL
+        || is_rider(mdat))
+        return false;
+
+    if (magical_scare && ((mdat.mlet | 0) === S_HUMAN || unique_corpstat_local(mdat)))
+        return false;
+
+    if ((mtmp.isshk && inhishop(mtmp)) || (mtmp.ispriest && inhistemple_local(mtmp)))
+        return false;
+
+    if (auditory_scare) return true;
+
+    const lev = game.level?.at(x, y);
+    if (lev && IS_ALTAR(lev.typ) && ((mdat.mlet | 0) === S_VAMPIRE))
+        return true;
+
+    if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
+
+    return false;
+}
 function inhistemple_local(mtmp) { return inhistemple_real(mtmp); }
 
 /* C ref: mondata.h:46 haseyes(ptr) = (ptr->mflags1 & M1_NOEYES) == 0 */
 function haseyes(mdat) { return ((mdat.mflags1 | 0) & M1_NOEYES) === 0; }
 
-/* C ref: teleport.c:50-76 goodpos_onscary(x, y, mptr) — the permonst-only
- * approximation of onscary(), used by goodpos() for the m_id == 0 case
- * (fake monster structs from makemon/mplayer, i.e. "is this square scary
- * to *this monster type*" with no individual monster to consult).
- *
- * `mptr == &mons[PM_MINOTAUR]` is a permonst POINTER identity test in C;
- * ported as a pmidx comparison, the same convention this file already uses
- * for likes_lava_local() — mons[] rows arrive here as reconstructed
- * permonst templates, so JS reference equality would never fire.
- *
- * C's own teleport.c:57 remark about simplifying onscary() describes C's
- * goodpos_onscary itself, not a port gap; this body matches C 52-76 line for line.
- * sengr_at("Elbereth", x, y, TRUE) is the js/engrave.js port (HEADSTONE named
- * there), called directly. */
 /* C teleport.c:52-76 goodpos_onscary(x, y, mptr) — faithful port */
 export function goodpos_onscary(x, y, mptr) {
-    /* C teleport.c:57 (C's own remark, ported verbatim below): unlike
-       onscary(), this permonst-only test has no Angel/lawful-minion arm. */
+    /* onscary() checks Angels and lawful minions; this oversimplifies (C teleport.c:57) */
     const mlet = mptr.mlet | 0;
     if (mlet === S_HUMAN || mlet === S_ANGEL
         || is_rider(mptr) || unique_corpstat_local(mptr))
@@ -1557,9 +1596,10 @@ export function goodpos_onscary(x, y, mptr) {
     return !!sengr_at("Elbereth", x, y, true);
 }
 
-/* C ref: teleport.c:85-185 goodpos(x,y,mtmp,gpflags) — full port, used by
- * enexto_core()/rloc_pos_ok()/rloc().  teleok() above inlines the
- * goodpos(x, y, &gy.youmonst, 0) case for the hero. */
+/* C ref: teleport.c:85-185 goodpos(x,y,mtmp,gpflags) — full port (the
+ * existing goodpos_simple()/teleok() above are pre-existing, narrower
+ * helpers for enexto_core()/the hero-teleport-destination case and are
+ * left untouched; this is the general form rloc_pos_ok()/rloc() need). */
 function goodpos_full(x, y, mtmp, gpflags) {
     let mdat = null;
     const ignorewater = (gpflags & MM_IGNOREWATER) !== 0;
