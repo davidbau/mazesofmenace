@@ -70,7 +70,7 @@ import { hcolor, hliquid, You } from './mhitm.js';
 const PM_AMOROUS_DEMON_DK = 290;
 import { m_at, do_attack, overexertion } from './uhitm.js';
 import { MONS_CWT, wipe_engr_at, place_object, makemon, mkgold } from './mklev.js';
-import { maybe_unhide_at, wake_nearto } from './mon.js';
+import { maybe_unhide_at, wake_nearto, wake_nearby } from './mon.js';
 import { stackobj } from './sp_lev.js';
 import { poly_gender } from './makemon.js';
 import { book_disappears as spell_book_disappears } from './spell.js';
@@ -1776,10 +1776,7 @@ export async function dokick_resolve() {
          * now (js/mhitm.js yelp, js/dog.js m_unleash). */
     }
     /* C dokick.c:1383 — wake_nearby(FALSE), before the engraving is wiped. */
-    {
-        const u = game.u || {};
-        wake_nearto(u.ux | 0, u.uy | 0, (u.ulevel | 0) * 20);
-    }
+    wake_nearby(false);
     u_wipe_engr(2);
     if (!isokTarget) {
         await kick_ouch(x, y, "");

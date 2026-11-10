@@ -1,6 +1,6 @@
 import { encumber_msg } from './weight.js';
 import { object_runtime_rest_snapshot } from './o_init.js';
-import { bubbles_rest_snapshot, bubbles_copy_snapshot } from './mkmaze.js';
+import { bubbles_rest_snapshot, bubbles_copy_snapshot, mazexy } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { worms_rest_snapshot } from './worm.js';
 import { role_init } from './roles.js';
@@ -22,7 +22,9 @@ import { setuwep } from './wield.js';
 import { rnd } from './rng.js';
 import { obj_no_longer_held } from './do.js';
 import { rest_engravings, _gm_migrating } from './mklev.js';
-import { In_hell } from './dungeon.js';
+import { In_hell, Is_branchlev, on_level, assign_level, ledger_no } from './dungeon.js';
+import { stairway_add } from './stairs.js';
+import { deltrap } from './trap.js';
 import { restore_cham, hide_monst, hideunder } from './mon.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
@@ -37,7 +39,7 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS } from './const.js';
+import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, STAIRS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
 import { set_residency } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
@@ -65,6 +67,27 @@ function find_lev_obj_clear_no_charge(level) {
     }
 }
 
+function restobjchn_clear_bypass(ochain) {
+    for (let otmp = ochain; otmp; otmp = otmp.nobj) {
+        if (otmp.bypass)
+            otmp.bypass = 0;
+        if (otmp.cobj)
+            restobjchn_clear_bypass(otmp.cobj);
+    }
+}
+
+/* C restore.c:281-282 for one level's whole read: getlev() reads fobj
+ * (:1166), level.buriedobjlist (:1172) and gb.billobjs (:1173) through
+ * restobjchn, and restmonchn's restmon() reads each monster's minvent (:421)
+ * through it as well. */
+function restobjchn_clear_level_bypass(fmon, fobj, buried, billobjs) {
+    restobjchn_clear_bypass(fobj);
+    restobjchn_clear_bypass(buried);
+    restobjchn_clear_bypass(billobjs);
+    for (let mtmp = fmon; mtmp; mtmp = mtmp.nmon)
+        restobjchn_clear_bypass(mtmp.minvent);
+}
+
 /* C restore.c:167-178 restdamage(): each record read is PREPENDED to
  * svl.level.damagelist while savedamage() wrote the list head -> tail, so
  * every level read reverses the pending shop-repair chain (which damage a
@@ -85,9 +108,12 @@ function rest_trapchn_reverse(head) {
     return prev;
 }
 
-function restdamage_reverse(level) {
+function restdamage_reverse(level, shift = 0) {
     let prev = null, cur = level?.damagelist || null;
     while (cur) {
+        /* C restore.c:172-173 — ghostly: when += (moves - omoves). */
+        if (shift)
+            cur.when = (cur.when | 0) + shift;
         const nxt = cur.next;
         cur.next = prev;
         prev = cur;
@@ -159,7 +185,8 @@ export async function getlev(lev) {
         subrooms[i].roomnoidx = MAXNROFROOMS + 1 + i;
         g.level.rooms[MAXNROFROOMS + 1 + i] = subrooms[i];
     }
-    restdamage_reverse(g.level);
+    restdamage_reverse(g.level, g.program_state?.reading_bonesfile
+        ? (g.moves | 0) - (snap.omoves | 0) : 0);
     find_lev_obj_clear_no_charge(g.level);
     {
         let prev = null, cur = snap.stairs;
@@ -183,6 +210,11 @@ export async function getlev(lev) {
     rest_edog_times(g.fmon, (g.moves | 0) - (snap.omoves | 0));
     g.fobj = snap.fobj;
     g.billobjs = snap.billobjs ?? null;
+    /* C restore.c:281-282 — every chain this read brings back (fobj :1166,
+     * buriedobjlist :1172, billobjs :1173, each monster's minvent :421) has
+     * its objects' bypass bit cleared by restobjchn(). */
+    restobjchn_clear_level_bypass(g.fmon, g.fobj, g.level?.buriedobjlist,
+                                  g.billobjs);
     g.ftrap = snap.ftrap = rest_trapchn_reverse(snap.ftrap);
     g.updest = snap.updest;
     g.dndest = snap.dndest;
@@ -280,6 +312,66 @@ export async function getlev(lev) {
     // C restores bubbles after level contents and prepends exclusions.
     await bubbles_rest_snapshot(snap.bubbles);
     g.exclusion_zones = (snap.exclusion_zones ?? []).slice().reverse();
+
+    /* C restore.c:1230-1291 — a bones level's stairs and portals are the dead
+     * hero's; re-aim them at this game's dungeon. */
+    if (ghostly) {
+        let stway = g.stairs;
+        while (stway) {
+            if (!stway.isladder && !stway.up
+                && stway.tolev.dnum === u.uz.dnum)
+                break;
+            stway = stway.next;
+        }
+
+        const medusa = g.medusa_level, stronghold = g.stronghold_level;
+        if (medusa && stronghold && lev > ledger_no(medusa)
+            && lev < ledger_no(stronghold) && !stway) {
+            const cc = {};
+            const dest = { dnum: u.uz.dnum, dlevel: u.uz.dlevel + 1 };
+            mazexy(cc);
+            stairway_add(cc.x, cc.y, false, false, dest);
+            g.level.at(cc.x, cc.y).typ = STAIRS;
+        }
+
+        const br = Is_branchlev(u.uz);
+        if (br && u.uz.dlevel === 1) {
+            const ltmp = on_level(u.uz, br.end1) ? { ...br.end2 } : { ...br.end1 };
+            switch (br.type) {
+            case BR_STAIR:
+            case BR_NO_END1:
+            case BR_NO_END2:
+                stway = g.stairs;
+                while (stway) {
+                    if (stway.tolev.dnum !== u.uz.dnum)
+                        break;
+                    stway = stway.next;
+                }
+                if (stway)
+                    assign_level(stway.tolev, ltmp);
+                break;
+            case BR_PORTAL: { /* max of 1 portal per level */
+                let trap;
+                for (trap = g.ftrap; trap; trap = trap.ntrap)
+                    if (trap.ttyp === MAGIC_PORTAL)
+                        break;
+                if (!trap)
+                    throw new Error('getlev: need portal but none found');
+                trap.dst = trap.dst || {};
+                assign_level(trap.dst, ltmp);
+                break;
+            }
+            }
+        } else if (!br) {
+            /* Remove any dangling portals. */
+            let ttmp;
+            for (let trap = g.ftrap; trap; trap = ttmp) {
+                ttmp = trap.ntrap;
+                if (trap.ttyp === MAGIC_PORTAL)
+                    deltrap(trap);
+            }
+        }
+    }
 }
 
 /* const.js FULL_MOON / NEW_MOON — same spelling as js/allmain.js:51-52, which
@@ -468,6 +560,20 @@ export async function dorecover(save) {
     delete g._base_topline;
     await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
     await restgamestate(save.state);
+    /* C restore.c:281-282 on dorecover's reads: restgamestate() brings back
+     * invent (:657), the loose ball & chain (:660) and migrating_objs (:671)
+     * through restobjchn, and the current level's chains come back through
+     * its getlev()s (:811, :898) — every one clears the bypass bit. */
+    restobjchn_clear_bypass(g.invent);
+    restobjchn_clear_bypass(g.migrating_objs);
+    restobjchn_clear_bypass(g.u?.uball);
+    restobjchn_clear_bypass(g.u?.uchain);
+    restobjchn_clear_level_bypass(g.fmon, g.fobj, g.level?.buriedobjlist,
+                                  g.billobjs);
+    /* C restore.c:672 — restgamestate()'s migrating_mons restmonchn() reads
+     * each migrating monster's minvent through restobjchn (:421) as well. */
+    for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
+        restobjchn_clear_bypass(mtmp.minvent);
     restore_timer_order(); /* C restore.c:811,813,898 insert_timer order */
     /* restore_msghistory -> topl.c:701-702: a standing TOPLINE_NEED_MORE becomes
      * NON_EMPTY, so docrt's cls() does not page it; it is only remembered. */
@@ -516,6 +622,10 @@ export async function dorecover(save) {
             const reg = snap.regions.regions[i];
             if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - aged);
         }
+        /* that getlev()'s restobjchn reads (restore.c:281-282) clear this
+         * snapshot's bypass bits before restlevelfile() writes it back */
+        restobjchn_clear_level_bypass(snap.fmon, snap.fobj,
+                                      snap.level?.buriedobjlist, snap.billobjs);
         /* the same read's restmon() re-bases each pet's edog times */
         rest_edog_times(snap.fmon, aged);
         snap.omoves = g.moves | 0;

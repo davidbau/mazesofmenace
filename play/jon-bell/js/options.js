@@ -28,7 +28,7 @@ import { config_error_add } from './cfgfiles.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { sym_val_real, apply_pending_s_utf8 } from './symbols.js';
-import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
+import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
 import { add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './windows.js';
@@ -471,17 +471,27 @@ function* rc_fgets_lines(rc) {
 function* rc_logical_lines(rc) {
     const errors = () => (game._config_errors || []).filter(m => typeof m === 'string').length;
     const initialErrors = errors();
-    let chosen = null, current = null, buf = null;
+    const secure = config_error_secure();
+    let chosen = null, current = null, buf = null, line_num = 0;
+    try {
     for (let line of rc_fgets_lines(rc)) {
-        if (errors() > initialErrors) return; // config_error_nextline(), secure rc
+        if (secure && errors() > initialErrors) return; // config_error_nextline(), secure rc
         const more = line.endsWith('\\');
         if (more) line = line.slice(0, -1);
-        line = line.replace(/[ \t\r]+$/, '');
+        // C cfgfiles.c:1720-1728: ep stays on the removed backslash's NUL,
+        // so the whitespace loop does not run for a continued line.
+        else line = line.replace(/[ \t\r]+$/, '');
         if (game.config_error_data && !config_error_nextline(line)) return;
+        game._rc_errctx = { line_num: ++line_num, origline: line.slice(0, 1023) };
         const ep = line.replace(/^[ \t]+/, '');
         const ignore = !ep || ep[0] === '#';
         const old = buf !== null;
-        if (!ignore) buf = old ? buf + ' ' + ep : ep;
+        if (!ignore) {
+            buf = old ? buf + ' ' + ep : ep;
+            // C cfgfiles.c:1760-1762 bounds each merged line, before CHOOSE
+            // or the statement parser sees it (including OPTIONS' origbuf).
+            buf = buf.slice(0, CNF_INBUFSZ - 1);
+        }
         if (more || (ignore && !old)) continue;
         const b = buf;
         buf = null;
@@ -515,6 +525,9 @@ function* rc_logical_lines(rc) {
             continue;
         }
         yield b;
+    }
+    } finally {
+        game._rc_errctx = null;
     }
 }
 
@@ -656,7 +669,21 @@ export const BURDENTYPE = burdentype;
 
 // C options.c:884/1789/3519/3601 and parse_role_opt(:7905). Only the rc-file phase enters
 // parseNethackrc; saved values here preserve that phase's duplicate/filter
-// semantics. Configuration-file export and C string ownership are separate.
+// semantics. Keep the strings until freedynamicdata(), as C does.
+const roleoptNames = ['role', 'race', 'gender', 'alignment'];
+// C options.c:776-782: discard only the requested option/phase's string.
+function unsaveoptstr(optidx, ophase) {
+    const name = option_state().allopt[optidx]?.name;
+    const i = Math.max(0, roleoptNames.indexOf(name)); // opt2roleopt's default is role.
+    const vals = game.roleoptvals?.[i];
+    if (vals?.[ophase] != null) vals[ophase] = null;
+}
+// C options.c:787-794; global.h:592-600 has seven phases, including phase_not_set.
+export function freeroleoptvals() {
+    for (const name of roleoptNames)
+        for (let phase = 0; phase < 7; ++phase)
+            unsaveoptstr(option_state().allopt.findIndex(row => row.name === name), phase);
+}
 function optfn_role_facet(result, opts, op, negated, state, facet = 'align') {
     const fullname = facet === 'align' ? 'alignment' : facet;
     const mask = { role: 0, race: 0x0ff8, gender: 0xf000, align: 7 }[facet];
@@ -737,8 +764,14 @@ export function parseNethackrc(rc) {
     roleGlobals.rfilter.roles.fill(false);
     roleGlobals.rfilter.mask = 0;
     game.rc_rolefilter = roleGlobals.rfilter;
-    const alignmentState = { saved: null, duplicate: false };
-    const facetStates = { role: {}, race: {}, gender: {} };
+    const vals = (game.roleoptvals ||= Array.from({ length: 4 }, () => Array(7).fill(null)));
+    // C options.c:758-771: this parser handles rc_file_opt (phase 3).
+    const facetStates = Object.fromEntries(['role', 'race', 'gender', 'align'].map((facet, i) => [facet, {
+        get saved() { return vals[i][3]; },
+        set saved(value) { vals[i][3] = value; },
+        duplicate: false,
+    }]));
+    const alignmentState = facetStates.align;
     const compoundSeen = new Set();
     const compoundDuplicate = (name, alias = '') => {
         if (compoundSeen.has(name))
@@ -765,7 +798,8 @@ export function parseNethackrc(rc) {
     const bool_dup_seen = new Set();
     const cfgerr_base = (game._config_errors || []).filter(m => typeof m === 'string').length;
     for (const rawLine of rc_logical_lines(rc)) {
-        if ((game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
+        if (config_error_secure()
+            && (game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
             break;
         const line = config_statement(rawLine, result);
         if (!line || line.startsWith('#'))
@@ -959,7 +993,7 @@ export function parseNethackrc(rc) {
                 continue;
             }
             // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
-            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window', 'menu_headings'].includes(r.name)
+            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window', 'menu_headings'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
             if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
             // C options.c:2559 optfn_name -> string_for_opt(:6665): a
@@ -1175,6 +1209,22 @@ export function parseNethackrc(rc) {
                 && !menunegated && (menusep < 0 || !menuopts.slice(menusep + 1))) {
                 config_error_add("Missing parameter for '%s'", menuopts);
                 config_error_add("'%s' requires a value; defaulting to %d", 'versinfo', 1);
+                continue;
+            }
+            if (menuname.length >= 4 && 'versinfo'.startsWith(menuname)) {
+                // options.c:4504-4510: reject invalid bitmasks without storing them.
+                const val = parseInt(menuopts.slice(menusep + 1), 10) || 0;
+                if (menunegated)
+                    config_error_add('The versinfo option may not both have a value and be negated.');
+                else if (!val || (val & ~7) !== 0)
+                    config_error_add("'versinfo' must be one of 1, 2, 4, or the sum of two or all three of those");
+                else result.flags.versinfo = val;
+                continue;
+            }
+            if (menuname.length >= 4 && 'petattr'.startsWith(menuname) && (menunegated || !menuval)) {
+                config_error_add(menunegated ? 'The petattr option may not both have a value and be negated.'
+                    : "Missing parameter for '%s'", menuopts);
+                if (!menunegated) result.iflags.wc_hilite_pet = (result.iflags.wc2_petattr ?? 7) !== 0;
                 continue;
             }
             if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)
@@ -1684,13 +1734,13 @@ export function parseNethackrc(rc) {
                             result.iflags.wc_mouse_support = mode;
                     }
                 }
-                else if (key === 'petattr') {
+                else if (key.length >= 4 && 'petattr'.startsWith(key)) {
                     const PETATTRS = { none: 0, normal: 0, bold: 1, dim: 2, italic: 3,
                                        underline: 4, uline: 4, blink: 5, inverse: 7, reverse: 7 };
                     const lv = (val || '').toLowerCase().replace(/[ _-]/g, ''); // C coloratt.c:374-382 fuzzymatch
                     const itmp = negated ? 0
                         : Object.hasOwn(PETATTRS, lv) ? PETATTRS[lv] : -1;
-                    if (itmp === -1) config_error_add("Unknown %s parameter '%s'", key, stripped);
+                    if (itmp === -1) config_error_add("Unknown %s parameter '%s'", 'petattr', stripped);
                     if (itmp !== -1) {
                         result.iflags.wc2_petattr = itmp;
                         result.iflags.wc_hilite_pet = itmp !== 0;
@@ -2242,7 +2292,7 @@ export function fruitadd(str, replace_fruit, user_specified) {
     } else {
         /* C options.c:8258-8262: copynchars(altname, str, …); sanitize_name(altname);
          * flags.made_fruit = TRUE. */
-        altname = sanitize_name(name);
+        altname = sanitize_name(name.split(/[\0\n]/, 1)[0].slice(0, PL_FSIZ - 1));
         if (!g.flags) g.flags = {};
         g.flags.made_fruit = true;
     }
@@ -2324,13 +2374,30 @@ export function optfn_fruit_set(op) {
 
 
 function store_status_hilite(op) {
-    /* C botl.c:2610-2644: without a slash, fldnum stays zero and
-     * parse_status_hl1() succeeds without calling parse_status_hl2(). */
-    if (!op.includes('/')) return;
-    if (status_fieldname(op.split('/')[0]) === 'condition')
-        (game.status_condition_hilites ||= []).push(op);
-    else
-        push_status_field_hilite(op);
+    /* C botl.c:2605-2639 parse_status_hl1(): a space ends one rule and starts
+     * the next ("hitpoints/always/red&bold condition/blind/blue"), except in
+     * a title's second field; a token without a slash (fldnum 0) is
+     * dropped without calling parse_status_hl2(). */
+    let tok = '', fldnum = 0;
+    const flush = () => {
+        if (fldnum >= 1) {
+            if (status_fieldname(tok.split('/')[0]) === 'condition')
+                (game.status_condition_hilites ||= []).push(tok);
+            else
+                push_status_field_hilite(tok);
+        }
+        tok = ''; fldnum = 0;
+    };
+    for (const c of op) {
+        if (c === ' ') {
+            if (fldnum === 1 && tok.split('/')[0].toLowerCase() === 'title') { tok += c; continue; }
+            flush();
+        } else {
+            if (c === '/') fldnum++;
+            tok += c;
+        }
+    }
+    flush();
 }
 /* C botl.c:2846-2856 parse_status_hl2(): "characteristics" is parsed again
  * once per field from BL_STR through BL_CH, each with its own rule chain. */
@@ -2359,6 +2426,9 @@ export function optfn_hilite_status_set(op) {
         return null;
     }
     store_status_hilite(op);
+    /* botl.c:3099 status_hilite_add_threshold() runs no reset_status_hilites():
+     * the tty keeps each field's delivered colour until its value changes. */
+    game._statusRulesPending = true;
     if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
     return null;
 }
@@ -3164,6 +3234,7 @@ export async function doset_simple() {
             if (count !== 0) { counting = true; reset_count = false; }
             continue;
         }
+        if (key === 27 /* ESC */) g._ttyDismissMore = 1; /* getline.c:245-247 */
         if (key === 27 /* ESC */ && counting) continue;
         if (key === 27 /* ESC */) break;
         if (key === 10 || key === 13 /* Enter: exit */) break;
@@ -3615,16 +3686,23 @@ export async function handler_menu_colors(preserveStatus = false) {
             if (count > 0) {
                 for (let k = 0; k < count; k++) game.menu_colorings.splice(picks[k] - 1 - k, 1);
             }
-            if (count < 0) break;
+            if (count < 0) return optn_ok;
             continue;
         }
         game._status_blanked = !preserveStatus;
-        const mcbuf = mungspaces(await getlin('What new menucolor pattern?'));
+        const mcbuf = await getlin('What new menucolor pattern?');
         game._status_blanked = false;
         if (mcbuf[0] === '\x1b') break;
         if (!mcbuf) continue;
         let re;
-        try { re = regcomp(mcbuf); } catch (e) { continue; }
+        try { re = regcomp(mcbuf); } catch (e) {
+            game._statusBlankAfterDocrt = false;
+            game.disp.botlx = 1;
+            await flush_screen(1);
+            await force_more(`MENUCOLORS regex: ${regex_error_desc(e)}.`);
+            preserveStatus = true;
+            continue;
+        }
         const mcclr = await query_color(null, 8, true);
         if (mcclr === -1) continue;
         const mcattr = await query_attr_one(null, 0, true);
@@ -3635,6 +3713,7 @@ export async function handler_menu_colors(preserveStatus = false) {
     }
     /* C options.c:6417-6424 */
     if (game.iflags?.use_menu_color && game.iflags?.perm_invent) update_inventory();
+    return optn_ok;
 }
 
 /* C options.c:4067-4098 optfn_statuslines(do_set); returns the error texts
@@ -4497,12 +4576,11 @@ export async function doset() {
                         }
                         if (message) {
                             /* cfgfiles.c:1557-1563 config_erradd: pline + wait_synch
-                             * per error; getline.c leaves bot() disabled, so the
-                             * status rows stay blank. */
-                            g._status_blanked = true;
+                             * per error.  pline's flush_screen repaints the status
+                             * rows; tty_wait_synch (wintty.c:3624) only displays
+                             * WIN_MAP — no --More-- unless a later pline needs the
+                             * topline (the "Missing parameter" + "invalid" pair). */
                             for (const m of message) await pline('%s', m);
-                            g._status_blanked = false;
-                            statusRefreshed = false;
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'boulder') {
                         needVisuals = (await optfn_boulder_set(mungspaces(abuf))) || needVisuals;
@@ -5194,6 +5272,7 @@ export async function ask_do_tutorial() {
             if (!explicit && keyCode === 27) {
                 /* C ref: wintty.c:1602-1613 — cancel, unless a count is live,
                  * in which case ESC only stops the count. */
+                g._ttyDismissMore = 1; /* getline.c:245-247 — dmore's xwaitforspace */
                 if (!counting) { n = -1; finished = true; }
                 continue;
             }

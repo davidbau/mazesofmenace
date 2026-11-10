@@ -16,7 +16,6 @@ import { attacktype, big_to_little } from './mondata.js'; // relocate-fns
 import { rnd } from './rng.js'; // relocate-fns
 import { monster_census, msummon } from './sit.js'; // relocate-fns
 import { enexto_out } from './teleport.js'; // relocate-fns
-import { m_carrying } from './mthrowu.js'; // relocate-fns
 import { SetVoice } from './cmd.js';
 
 /* C questpgr.c:624 com_pager() directly imported from ./questpgr.js */
@@ -105,6 +104,8 @@ const random_malediction = [
 const AMULET_OF_YENDOR = 213;
 
 function uhaveAmulet() {
+    if (game.u?.uhave?.amulet)
+        return true;
     for (let otmp = game.invent; otmp; otmp = otmp.nobj)
         if ((otmp.otyp | 0) === AMULET_OF_YENDOR)
             return true;
@@ -388,12 +389,8 @@ const NEUTRAL_NC = 2;
 /* C ref: wizard.c:105-114 mon_has_amulet(mtmp) */
 export function mon_has_amulet(mtmp) {
     for (let otmp = mtmp?.minvent; otmp; otmp = otmp.nobj) {
-        if ((otmp.otyp | 0) === AMULET_OF_YENDOR_MH)
+        if ((otmp.otyp | 0) === AMULET_OF_YENDOR)
             return 1;
     }
     return 0;
 }
-
-/* objects.h AMULET() AMULET_OF_YENDOR.  (This file's other copy is declared
- * far below at :3252 inside a different scope; one constant per scope.) */
-const AMULET_OF_YENDOR_MH = 213;

@@ -1,7 +1,7 @@
 // windows.js — C ref: windows.c.
 import { putstr } from './cmd.js'; // relocate-fns
 import { cmdq_pop, doprev_message, pgetchar } from './cmd.js'; // relocate-fns
-import { CMDQ_KEY, COLNO } from './const.js'; // relocate-fns
+import { CMDQ_KEY, COLNO, MAX_MSG_HISTORY } from './const.js'; // relocate-fns
 import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, tty_getlin_echo, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
@@ -147,16 +147,21 @@ export async function getlin(prompt) {
             const pw = (g.iflags?.prevmsg_window || 's')[0];
             if (pw === 's' || (pw === 'c' && !doprev)) {
                 const hist = Array.isArray(g._msg_history) ? g._msg_history : [];
-                let morc = !doprev ? await tty_getlin_recall(prompt + ' ' + buf) : 0;
+                const _ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
+                const _floor = Math.max(0, hist.length - _ring + 1);
+                const _step = (i) => (i < 0 ? hist.length - 1
+                    : (i - 1 < _floor ? -1 : i - 1));
+                const _recall = (i) => tty_getlin_recall(i < 0 ? prompt + ' ' + buf : hist[i]);
+                let morc = !doprev ? await _recall(-1) : 0;
                 if (hist.length) {
-                    prevIdx = doprev ? (prevIdx - 1 + hist.length) % hist.length : hist.length - 1;
+                    prevIdx = doprev ? _step(prevIdx) : hist.length - 1;
                     while (morc === 16) {
-                        morc = await tty_getlin_recall(hist[prevIdx]);
-                        prevIdx = (prevIdx - 1 + hist.length) % hist.length;
+                        morc = await _recall(prevIdx);
+                        prevIdx = _step(prevIdx);
                     }
                     doprev = true;
-                    while (await tty_getlin_recall(hist[prevIdx]) === 16)
-                        prevIdx = (prevIdx - 1 + hist.length) % hist.length;
+                    while (await _recall(prevIdx) === 16)
+                        prevIdx = _step(prevIdx);
                     continue;
                 }
             } else {

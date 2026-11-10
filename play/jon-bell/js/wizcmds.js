@@ -1965,11 +1965,24 @@ export async function wiz_migrate_mons() {
         await pline("Can't get there from here.");
     }
     if (!inbuf || inbuf[0] === '\x1b') return ECMD_OK;
-    const count = parseInt(inbuf, 10) || 0;
+    /* C atoi() = (int) strtol(): a 64-bit long that saturates on
+       overflow, then truncated to int (so "4294967297" is 1). */
+    const m = /^[ \t\n\v\f\r]*([+-]?\d+)/.exec(inbuf);
+    let lval = m ? BigInt(m[1]) : 0n;
+    if (lval > 0x7fffffffffffffffn) lval = 0x7fffffffffffffffn;
+    else if (lval < -0x8000000000000000n) lval = -0x8000000000000000n;
+    let mcount = Number(BigInt.asIntN(32, lval));
+    let use_random_mon = true;
+    if (mcount < 0) {
+        use_random_mon = false;
+        mcount = Math.imul(mcount, -1); /* INT_MIN stays INT_MIN */
+    }
+    if (mcount < 1) mcount = 0;
+    else if (mcount > (COLNO - 1) * ROWNO) mcount = (COLNO - 1) * ROWNO;
     const mongen_saved = g.iflags.debug_mongen;
     g.iflags.debug_mongen = false;
-    for (let n = Math.min(Math.abs(count), (COLNO - 1) * ROWNO); n > 0; --n) {
-        const mon = count < 0 ? g.fmon : await makemon(rndmonst(), 0, 0, MM_NOMSG);
+    for (; mcount > 0; --mcount) {
+        const mon = !use_random_mon ? g.fmon : await makemon(rndmonst(), 0, 0, MM_NOMSG);
         if (mon) await migrate_to_level(mon,
             tolevel.dlevel + g.dungeons[tolevel.dnum].ledger_start, MIGR_RANDOM, null);
     }

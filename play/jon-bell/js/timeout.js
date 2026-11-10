@@ -25,10 +25,10 @@ import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
 import { m_monnam, a_monnam } from './mhitm.js';
 import { locomotion, big_to_little, little_to_big } from './mondata.js';
-import { makeplural, an, xname, the } from './objnam.js';
+import { makeplural, an, xname, the, simpleonames, doname } from './objnam.js';
 import { newsym, canseemon, Deaf, impossible_sync } from './display.js';
 import { You_see } from './pline.js';
-import { figurine_location_checks, useup, useupall, obj_extract_self_general, verbalize, Yname2 } from './cmd.js';
+import { figurine_location_checks, useup, useupall, obj_extract_self_general, verbalize, Yname2, set_msg_xy } from './cmd.js';
 import { obfree } from './dokick.js';
 import { is_ice } from './dbridge.js';
 import { m_at, setmnotwielded } from './uhitm.js';
@@ -178,6 +178,7 @@ async function fig_transform_timer(arg, timeout) {
     let redraw = false;
     const mtmp = await make_familiar(figurine, cc.x, cc.y, true);
     if (mtmp) {
+        const mshelter = game.level?.levelObjects?.[mtmp.mx]?.[mtmp.my] ?? null;
         let suppress_see = false, and_vanish = '';
         const monnambuf = an(m_monnam(mtmp));
         const seeInv = game.u?.uprops?.[SEE_INVIS];
@@ -186,7 +187,9 @@ async function fig_transform_timer(arg, timeout) {
             || ((mtmp.data.mlet | 0) === S_MIMIC && (mtmp.m_ap_type | 0) !== 0))
             suppress_see = true;
         if (mtmp.mundetected) {
-            if ((mtmp.data.mlet | 0) === S_MIMIC || (mtmp.data.mlet | 0) === S_EEL)
+            if (((mtmp.data.mflags1 | 0) & 0x00000080 /* M1_CONCEAL: hides_under */) && mshelter)
+                and_vanish = ` and ${locomotion(mtmp.data, 'crawl')} under ${await doname(mshelter)}`;
+            else if ((mtmp.data.mlet | 0) === S_MIMIC || (mtmp.data.mlet | 0) === S_EEL)
                 suppress_see = true;
             else
                 and_vanish = ' and vanish';
@@ -200,6 +203,7 @@ async function fig_transform_timer(arg, timeout) {
             break;
         case OBJ_FLOOR:
             if (cansee_spot && !silent) {
+                set_msg_xy(cc.x, cc.y);
                 if (suppress_see)
                     await pline(`${an(xname(figurine))} suddenly vanishes!`);
                 else
@@ -480,8 +484,13 @@ async function burn_object(arg, timeout) {
 /* C mkobj.c:1501-1647 shrink_glob(). */
 async function shrink_glob_timer(arg, timeout) {
     const obj = arg?.a_obj;
-    if (!obj || !obj.globby)
+    if (!obj)
         return;
+    if (!obj.globby) {
+        /* C mkobj.c:1516 */
+        await impossible('shrink_glob for non-glob [%d: %s]?', obj.otyp, simpleonames(obj));
+        return;
+    }
 
     let outer = obj;
     while ((outer.where | 0) === OBJ_CONTAINED && outer.ocontainer)
@@ -893,12 +902,11 @@ function Sfi_fe(nhfp, curr, name) { return curr; }
  * an uninitialised binding.
  * The expiration time must reach callbacks such as burn_object: it determines
  * whether to show a warning or silently catch up after time spent away. */
-/* C ref: do.c:2236-2296 revive_mon(). The is_displacer rloc arm (2257-2274)
- * is not ported here. */
+/* C ref: do.c:2248-2295 revive_mon(). */
 async function revive_mon(arg) {
     const body = arg?.a_obj;
     if (!body) return;
-    /* C do.c:2247-2262: a displacer's corpse bumps the monster on its square
+    /* C do.c:2258-2274: a displacer's corpse bumps the monster on its square
      * away with rloc() before reviving. */
     const mptr = permonstTemplate(body.corpsenm | 0);
     const M3_DISPLACES = 0x0400;
@@ -926,7 +934,7 @@ async function revive_mon(arg) {
             when = rider_revival_time(body, true);
         } else { /* rot this corpse away */
             if (!obj_has_timer(body, ROT_CORPSE))
-                await pline(`You feel ${rider ? 'much ' : ''}less hassled.`);
+                await You_feel(`${rider ? 'much ' : ''}less hassled.`); // C do.c:2286
             action = ROT_CORPSE;
             when = d(5, 50) - ((game.moves | 0) - (body.age | 0));
             if (when < 1) when = 1;
@@ -936,12 +944,12 @@ async function revive_mon(arg) {
     }
 }
 
-/* C ref: do.c:2297-2315 zombify_mon(). */
+/* C ref: do.c:2297-2316 zombify_mon(). */
 async function zombify_mon(arg, timeout) {
     const body = arg?.a_obj;
     if (!body) return;
     const zmon = zombie_form(permonstTemplate(body.corpsenm | 0));
-    if (zmon !== -1 && !(((game.mvitals?.[zmon]?.mvflags) | 0) & G_GENOD)) {
+    if (zmon !== NON_PM && !(((game.mvitals?.[zmon]?.mvflags) | 0) & G_GENOD)) {
         if (body.oextra) {
             body.oextra.omid = 0;
             if ('oextra_omid' in body) body.oextra_omid = 0;

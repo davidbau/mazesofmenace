@@ -871,6 +871,7 @@ async function _identify_objlist_menu_body(promptText) {
             continue;
         }
         /* C: ESC while counting only stops the count. */
+        if (kc === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
         if (kc === 27 && counting) continue;
         if (kc === 27 /* ESC */) { escaped = true; break; }
         /* RETURN / ENTER finishes the menu with current selections. */

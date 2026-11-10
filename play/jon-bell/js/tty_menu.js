@@ -327,6 +327,10 @@ export class TtyMenu {
                 }
             }
 
+            /* getline.c:245-247: menu dmore() reads through xwaitforspace, so
+             * ESC sets ttyDisplay->dismiss_more even when it only stops a
+             * count (wintty.c:1604-1610). */
+            if (key === 27) game._ttyDismissMore = 1;
             /* C wintty.c:1556-1562: a current-page item selector is an EXPLICIT
              * choice even when it is a digit (menu_objsyms uses '0'..'5'). */
             if (morc >= '0' && morc <= '9'

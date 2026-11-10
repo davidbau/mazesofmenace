@@ -19,7 +19,7 @@ import { invalidateTerrainStatus } from './terrain-status.js'; // relocate-fns
 import { recalc_mapseen_rooms } from './cmd.js'; // relocate-fns
 import { DRAWBRIDGE_UP, M_AP_FURNITURE, M_AP_TYPMASK } from './const.js'; // relocate-fns
 import { db_under_typ } from './dbridge.js'; // relocate-fns
-import { _m_at, canseemon } from './display.js';
+import { _m_at, canseemon, impossible_sync } from './display.js';
 import { cmap_to_type } from './mkroom.js'; // relocate-fns
 import { insertBranch } from './dungeon_rng.js'; // relocate-fns
 export { surface } from './cmd.js'; // relocate-fns
@@ -82,7 +82,7 @@ export function builds_up(lev) {
         if (br.end2 && on_level(lev, br.end2))
             return !!br.end1_up;
     }
-    /* C: impossible("builds_up: can't find branch for dungeon %d"); return FALSE */
+    impossible_sync("builds_up: can't find branch for dungeon %d", lev.dnum | 0);
     return false;
 }
 
@@ -445,7 +445,7 @@ export async function u_on_newpos(x, y) {
 export async function u_on_rndspot(upflag) {
     const up = (upflag & 1);
     if (upflag & 2) {
-        /* C dungeon.c:1603-1610 — when leaving the Wizard's Tower, keep the
+        /* C dungeon.c:1614-1622 — when leaving the Wizard's Tower, keep the
          * hero inside its exclusion rectangle if the destination is another
          * tower level.  Both directions use dndest's exclusion region. */
         const uz = game.u?.uz;
@@ -706,8 +706,7 @@ export function shop_string(rtype) {
 const LOADER_READY = new Set(['tut-1', 'tut-2', 'Arc-strt', 'Hea-strt', 'Tou-strt', 'Tou-loca', 'Tou-goal', 'Sam-strt', 'Bar-strt', 'Val-strt', 'Kni-strt', 'Kni-goal', 'Pri-strt', 'Pri-loca', 'Pri-goal', 'Bar-loca', 'knox', 'fire', 'air', 'oracle', 'valley', 'bigrm', 'castle', 'sanctum', 'asmodeus', 'juiblex', 'baalz', 'fakewiz1', 'fakewiz2', 'wizard1', 'wizard3', 'wizard2', 'orcus', 'minetn', 'minend', 'soko1', 'soko2', 'soko3', 'soko4', 'tower1', 'tower2', 'tower3', 'medusa', 'Wiz-strt', 'Wiz-loca', 'Arc-loca', 'Arc-goal', 'Bar-goal', 'Wiz-goal', 'Cav-goal', 'Cav-loca', 'Cav-strt', 'Hea-goal', 'Hea-loca', 'Kni-loca', 'Mon-goal', 'Mon-loca', 'Mon-strt', 'Ran-goal', 'Ran-loca', 'Ran-strt', 'Rog-goal', 'Rog-loca', 'Rog-strt', 'Sam-goal', 'Sam-loca', 'Val-loca', 'Val-goal', 'astral', 'earth', 'water']);
 
 export function Is_special(uz) {
-    const sl = sp_levchn_lookup(uz);
-    return (sl && LOADER_READY.has(sl.proto)) ? sl : null;
+    return sp_levchn_lookup(uz);
 }
 
 /* C dungeon.c:1648-1653 — Can_dig_down(lev).  Invocation_lev(lev) is

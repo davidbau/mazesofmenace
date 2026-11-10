@@ -9,7 +9,7 @@ import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, toggle_bl
 import { explode, explode_oil } from './explode.js';
 import { spoteffects } from './hack.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, cmdq_pop, cmdq_clear, useup } from './cmd.js';
+import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, cmdq_pop, cmdq_clear, useup, SetVoice } from './cmd.js';
 import { discover_artifact } from './artifact.js';
 import { CQ_CANNED, ECMD_FAIL, SHOPBASE, CMDQ_KEY, CMDQ_USER_INPUT } from './const.js';
 import { EXPL_FIERY } from './const.js';
@@ -37,7 +37,9 @@ import { _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
 import { key2txt, mime_action, pair_of, readchar } from './cmd.js';
-import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
+import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ, pager_boulder_symbol, pager_showsyms } from './display.js';
+import { def_oc_syms_chars } from './drawing.js';
+import { SchroedingersBox } from './pickup_container.js';
 import { map_monst } from './detect.js';
 import { unconstrain_map, map_redisplay } from './detect.js';
 /* make_hallucinated()'s "changed" block (potion.c:415-433). */
@@ -77,7 +79,7 @@ import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE, FOOT } from './const.js';
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
-import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, killed, is_youmonst } from './mhitm.js';
+import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, slept_monst, killed, is_youmonst } from './mhitm.js';
 import { stagger, Resists_Elem, mon_hates_blessings, defended } from './mondata.js';
 import { float_vs_flight } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
@@ -94,6 +96,7 @@ import { gloves_simple_name } from './objnam.js';
 /* obj.h / objclass.h predicate data for potion_dip's tail (see the block at
  * the bottom of this file).  Same tables js/uhitm.js and js/lock.js read. */
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 
 import { getObjName, discover_object, observe_object, objdescr_is } from './o_init.js';
 import './lock.js';
@@ -121,7 +124,7 @@ import { NOTELL, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, has_mgivenname,
 import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
          PM_GREMLIN, PM_IRON_GOLEM, PM_PESTILENCE,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { paralyze_monst, slept_monst } from './dogmove.js';
+import { paralyze_monst } from './dogmove.js';
 import { polyself } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
 import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,
@@ -726,7 +729,7 @@ async function ghost_from_bottle() {
                 + (_potion_Hallucination() ? rndmonnam(null) : 'ghost')
                 + ' emerges!');
     /* C potion.c:496 `if (flags.verbose) You("are frightened to death, ...")` */
-    if (g.flags?.verbose !== false)
+    if (g.flags?.verbose)
         await pline('You are frightened to death, and unable to move.');
     nomul(-3);
     g.multi_reason = 'being frightened to death';
@@ -780,6 +783,7 @@ export async function djinni_from_bottle(obj) {
     else if (obj.cursed)
         chance = (chance === 0) ? rn2(4) : 4;
     /* 0,1,2,3,4:  b=80%,5,5,5,5; nc=20%,20,20,20,20; c=5%,5,5,5,80 */
+    SetVoice(mtmp, 0, 80, 0); // C potion.c:2840
     switch (chance) {
     case 0:
         await _verbalize_potion('I am in your debt.  I will grant one wish!');
@@ -1407,7 +1411,7 @@ export async function dodrink() {
              * bcsign=0, d(4,4) draws 1 rng call. */
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             await pline('You feel better.');
-            healup(8 + d(4 + 2 * bcsign, 4), !otmp.cursed ? 1 : 0,
+            await healup(8 + d(4 + 2 * bcsign, 4), !otmp.cursed ? 1 : 0,
                    !!otmp.blessed, !otmp.cursed);
             exercise(A_CON, true);
             /* dopotion tail: peffects returns -1 → useup + identify */
@@ -1422,7 +1426,7 @@ export async function dodrink() {
             /* C potion.c:1145-1165 peffect_full_healing */
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             await pline('You feel completely healed.');
-            healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
+            await healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
             /* Restore one lost level if blessed */
             if (otmp.blessed && u.ulevel < u.ulevelmax) {
                 u.ulevelmax -= 1;
@@ -2300,7 +2304,7 @@ function makeknown(otyp) {
 }
 const SICK_ALL = 3;
 
-export function healup(nhp, nxtra, curesick, cureblind) {
+export async function healup(nhp, nxtra, curesick, cureblind) {
     const g = game;
     const u = g.u;
     if (nhp && g.disp && !((g.disp.botl | 0) || (g.disp.botlx | 0))
@@ -2325,11 +2329,13 @@ export function healup(nhp, nxtra, curesick, cureblind) {
     if (cureblind) {
         u.ucreamed = 0;
         make_blinded(0, true);
-        make_deaf(0, true);
+        // C make_blinded() waits for MSGTYP_STOP before the next cure.
+        if (g._blockingPline) await g._blockingPline;
+        await make_deaf(0, true);
     }
     if (curesick) {
-        make_vomiting(0, true);
-        make_sick(0, null, true, SICK_ALL);
+        await make_vomiting(0, true);
+        await make_sick(0, null, true, SICK_ALL);
     }
     if (g.disp)
         g.disp.botl = 1;
@@ -2603,7 +2609,8 @@ export async function impact_arti_light(obj, worsen, seeit) {
 /* C ref: potion.c:2419 dip_potion_explosion — does the dipped potion explode? */
 async function _dip_potion_explosion(obj, dmg) {
     const u = game.u;
-    const cloakSmock = u.uarmc?.otyp === 144; // objects.h: ALCHEMY_SMOCK
+    const ALCHEMY_SMOCK = 144; // C objects.h
+    const cloakSmock = u.uarmc?.otyp === ALCHEMY_SMOCK;
     if (obj.cursed || obj.otyp === POT_ACID
         || (obj.otyp === POT_OIL && obj.lamplit)
         || !rn2(cloakSmock ? 30 : 10)) {
@@ -3154,7 +3161,9 @@ export async function polymorph_sink() {
         break;
     }
     case 3:
-        sym = 'grave'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null); break;
+        sym = 'room'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null);
+        if (loc.typ === GRAVE) sym = 'grave'; /* C do.c:444-445 */
+        break;
     }
     if (loc.typ !== ROOM) await pline(`The sink transforms into ${an(sym)}!`);
     else await pline('The sink vanishes.');
@@ -3174,8 +3183,6 @@ export async function dodip() {
     const at_sink = loc ? IS_SINK(here) : false;
     const menu_requested = !!g.iflags?.menu_requested;
     const at_here = (!menu_requested && (at_pool || at_fountain || at_sink));
-    /* C potion.c:2288 drink_ok_extra = 0 — reset before the first getobj. */
-    drink_ok_extra = 0;
 
     const obj = await getObjFromGetobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
     if (!obj) { g.context.move = 0; return ECMD_CANCEL; }
@@ -3706,7 +3713,7 @@ export async function potionbreathe(obj) {
             cureblind = true;
         if (cureblind) {
             make_blinded(0, !u.ucreamed);
-            make_deaf(0, true);
+            await make_deaf(0, true);
         }
         exercise(4, true);
         break;
@@ -4184,9 +4191,43 @@ function _observe_recursively_det(obj) {
             _observe_recursively_det(o);
     }
 }
-function _check_map_spot_alldetect(x, y) {
+/* C ref: detect.c:214-227 o_in(obj, oclass) */
+function _o_in_det(obj, oclass) {
+    if (!oclass) return null;
+    if ((obj.oclass | 0) === oclass) return obj;
+    if (Has_contents(obj) && !SchroedingersBox(obj)) {
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+            if ((otmp.oclass | 0) === oclass) return otmp;
+            if (Has_contents(otmp)) {
+                const temp = _o_in_det(otmp, oclass);
+                if (temp) return temp;
+            }
+        }
+    }
+    return null;
+}
+/* C ref: detect.c:260-306 check_map_spot(x, y, oclass, material) — handles
+ * both ALL_CLASSES (!oclass) and class-specific detection. */
+function _check_map_spot_alldetect(x, y, oclass = 0) {
     const g = game;
     const loc = g.level && g.level.at ? g.level.at(x, y) : null;
+    if (oclass) {
+        const rg = loc && loc.remembered_glyph;
+        if (!rg || rg.cls !== GLYPHCLS_OBJ)
+            return false;
+        if (Number.isInteger(rg.otyp) ? (MKOBJ_OC_CLASS[rg.otyp] | 0) !== oclass
+            : rg.ch !== def_oc_syms_chars[oclass])
+            return false;
+        for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
+            if (_o_in_det(otmp, oclass))
+                return false;
+        const mtmp = m_at(x, y);
+        if (mtmp)
+            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+                if (_o_in_det(otmp, oclass))
+                    return false;
+        return true;
+    }
     if (!loc || loc.disp_cls !== GLYPHCLS_OBJ)
         return false;
     const hasFloorObj = !!(g.level && g.level.levelObjects
@@ -4196,12 +4237,12 @@ function _check_map_spot_alldetect(x, y) {
     const mtmp = m_at(x, y);
     return !(mtmp && mtmp.minvent);
 }
-/* C ref: detect.c:311-330 clear_stale_map(ALL_CLASSES, 0). RNG-free. */
-function _clear_stale_map_alldetect() {
+/* C ref: detect.c:311-330 clear_stale_map(!class ? ALL_CLASSES : class, 0). RNG-free. */
+function _clear_stale_map_alldetect(oclass = 0) {
     let change_made = false;
     for (let zx = 1; zx < COLNO; zx++) {
         for (let zy = 0; zy < ROWNO; zy++) {
-            if (_check_map_spot_alldetect(zx, zy)) {
+            if (_check_map_spot_alldetect(zx, zy, oclass)) {
                 unmap_object(zx, zy);
                 change_made = true;
             }
@@ -4211,20 +4252,15 @@ function _clear_stale_map_alldetect() {
 }
 /* C ref: detect.c:35-36 (flag.h) TER_OBJ 0x04 — see TER_MON/TER_DETECT above. */
 const TER_OBJ = 0x04;
+const ROCK_CLASS_DET = 14, SCROLL_CLASS_DET = 9;
+const _DET_OC_NAMES = [null, 'illegal objects', 'weapons', 'armor', 'rings', 'amulets',
+    'tools', 'food', 'potions', 'scrolls', 'spellbooks', 'wands', 'coins', 'rocks',
+    'large stones', 'iron balls', 'chains', 'venoms'];
 /* C objects.h GOLD_PIECE otyp — same value js/makemon.js:1404's local
  * GOLD_PIECE_OTYP carries (MKOBJ_SVB_BASES[COIN_CLASS]=438); this file's own
  * name to avoid importing a non-exported local from another module. */
 const GOLD_PIECE_OTYP_DET = 438;
 /* C ref: detect.c:603-788 object_detect(detector, class).
- *
- * Used by potions, scrolls, spells and crystal balls; the only LIVE caller in
- * this port is peffect_object_detection below, which always passes class=0.
- * With class===0 (and therefore boulder===0, since def_oc_syms[0] is never
- * the boulder symbol), every `(!class && !boulder) || o_in(obj, class) ||
- * o_in(obj, boulder)` guard in C takes its short-circuit TRUE half
- * unconditionally — o_in() and the boulder-symbol special case are NEVER
- * exercised on this path and are not ported; a future class!=0 caller needs
- * them ported first (throws below rather than silently mis-scoping).
  *
  * Returns 1 ("nothing detected"), 0 ("something detected").
  * RNG: rnd(10) once per monster whose minvent contains gold (the mapping
@@ -4240,26 +4276,38 @@ async function object_detect(detector, oclass) {
          * (after impossible()) and continues into normal detection. */
         oclass = 0;
     }
-    if (oclass) {
-        const { _cb_object_detect_class } = await import('./cmd.js');
-        return _cb_object_detect_class(oclass);
-    }
     const is_cursed = !!(detector && detector.cursed);
     const do_dknown = !!(detector
         && (detector.oclass === POTION_CLASS || detector.oclass === SPBOOK_CLASS)
         && detector.blessed);
     let ct = 0, ctu = 0;
+    let otmp = null;
+
+    /* C detect.c:628-637: boulder symbol check and stuff string */
+    const sym = oclass ? def_oc_syms_chars[oclass] : 0;
+    const bouldersym = g.symbolOverrides?.S_boulder ? pager_boulder_symbol()
+        : String.fromCharCode(pager_showsyms()?.[192 /* SYM_OFF_X + SYM_BOULDER */] || 96);
+    const boulder = (sym && sym === bouldersym) ? ROCK_CLASS_DET : 0;
+    const confused = ((u.uprops?.[CONFUSION]?.intrinsic | 0) || (u.uprops?.[CONFUSION]?.extrinsic | 0)) !== 0;
+    let stuff = (_hallucination() || (confused && oclass === SCROLL_CLASS_DET))
+        ? 'something' : (oclass ? _DET_OC_NAMES[oclass] : 'objects');
+    if (boulder && oclass !== ROCK_CLASS_DET)
+        stuff += ' and/or large stones';
 
     if (do_dknown) {
         for (let o = g.invent; o; o = o.nobj)
             _observe_recursively_det(o);
     }
     for (let o = g.fobj; o; o = o.nobj) {
-        if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder)) {
+            if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        }
         if (do_dknown) _observe_recursively_det(o);
     }
     for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
-        if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        if (!oclass || _o_in_det(o, oclass)) {
+            if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        }
         if (do_dknown) _observe_recursively_det(o);
     }
 
@@ -4272,20 +4320,22 @@ async function object_detect(detector, oclass) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
         for (let o = mtmp.minvent; o; o = o.nobj) {
-            ct++;
+            if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder))
+                ct++;
             if (do_dknown) _observe_recursively_det(o);
         }
         /* C detect.c:668-676 — the `break` exits the OUTER mtmp loop the
          * instant ANY monster is a cursed-detector mimic-of-object or
          * carries gold.  Ported as-is (Cardinal Rule 1: port the bug). */
-        if ((is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT) || findgold(mtmp.minvent)) {
+        if ((is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT
+             && (!oclass || oclass === (MKOBJ_OC_CLASS[mtmp.mappearance | 0] | 0)))
+            || (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS))) {
             ct++;
             break;
         }
     }
 
-    const stale = _clear_stale_map_alldetect();
-    const stuff = _hallucination() ? 'something' : 'objects';
+    const stale = _clear_stale_map_alldetect(oclass);
     if (!stale && !ct) {
         if (!ctu) {
             if (detector)
@@ -4300,32 +4350,55 @@ async function object_detect(detector, oclass) {
         await force_more(g._pending_message);
     await cls();
     unconstrain_map();
-    for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj)
-        map_object(o, 1);
+    for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
+        if (!oclass || (otmp = _o_in_det(o, oclass)) !== null) {
+            if (oclass) {
+                if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
+                map_object(otmp, 1);
+            } else {
+                map_object(o, 1);
+            }
+        }
+    }
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
-            const o = g.level && g.level.levelObjects
-                && g.level.levelObjects[x] && g.level.levelObjects[x][y];
-            if (o) map_object(o, 1);
+            for (let o = g.level?.levelObjects?.[x]?.[y]; o; o = o.nexthere) {
+                if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
+                    || (otmp = _o_in_det(o, boulder)) !== null) {
+                    if (oclass || boulder) {
+                        if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
+                        map_object(otmp, 1);
+                    } else {
+                        map_object(o, 1);
+                    }
+                    break;
+                }
+            }
         }
     }
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
-        if (mtmp.minvent) {
-            const otmp = mtmp.minvent;
-            otmp.ox = mtmp.mx;
-            otmp.oy = mtmp.my;
-            map_object(otmp, 1);
+        for (let o = mtmp.minvent; o; o = o.nobj) {
+            if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
+                || (otmp = _o_in_det(o, boulder)) !== null) {
+                if (!oclass && !boulder)
+                    otmp = o;
+                otmp.ox = mtmp.mx;
+                otmp.oy = mtmp.my;
+                map_object(otmp, 1);
+                break;
+            }
         }
-        if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+        if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT
+            && (!oclass || oclass === (MKOBJ_OC_CLASS[mtmp.mappearance | 0] | 0))) {
             /* set_mimic_sym() (js/mklev.js) stores the disguise species flat on
              * the monster, not in mextra; has_mcorpsenm() is MCORPSENM != NON_PM. */
             const mcn = (MCORPSENM(mtmp) !== NON_PM) ? MCORPSENM(mtmp) : (mtmp.mcorpsenm ?? NON_PM);
             const corpsenm = (mcn !== NON_PM) ? mcn : PM_TENGU;
             map_object({ otyp: mtmp.mappearance | 0, quan: 1,
                           ox: mtmp.mx, oy: mtmp.my, corpsenm }, 1);
-        } else if (findgold(mtmp.minvent)) {
+        } else if (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS)) {
             map_object({ otyp: GOLD_PIECE_OTYP_DET, oclass: COIN_CLASS,
                           quan: rnd(10), ox: mtmp.mx, oy: mtmp.my }, 1);
         }
@@ -4581,14 +4654,14 @@ async function peffect_gain_level(otmp) {
 }
 async function peffect_healing(otmp) {
     await pline('You feel better.');
-    healup(8 + d(4 + 2 * ((otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0)), 4), !otmp.cursed ? 1 : 0,
+    await healup(8 + d(4 + 2 * ((otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0)), 4), !otmp.cursed ? 1 : 0,
            !!otmp.blessed, !otmp.cursed);
     exercise(A_CON, true);
 }
 async function peffect_extra_healing(otmp) {
     const u = game.u;
     await pline('You feel much better.');
-    healup(16 + d(4 + 2 * bcsign(otmp), 8),
+    await healup(16 + d(4 + 2 * bcsign(otmp), 8),
            otmp.blessed ? 5 : !otmp.cursed ? 2 : 0, !otmp.cursed, true);
     await make_hallucinated(0, true, 0);
     /* C constants: exercise()/acurr() in js/attrib.js take A_STR=0..A_CHA=5,
@@ -4611,7 +4684,7 @@ async function peffect_full_healing(otmp) {
     const u = game.u;
     await pline('You feel completely healed.');
     const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-    healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
+    await healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
     /* Restore one lost level if blessed */
     if (otmp.blessed && u.ulevel < u.ulevelmax) {
         /* when multiple levels have been lost, drinking
