@@ -1,0 +1,30 @@
+// Compiler-bound storage/header transport for unchanged GLYPHS policies.
+import abi from './glyph-abi.json' with {type:'json'};
+import {glyphHeaders} from './glyph-header-functions.js';
+import publicFunctions from './public-functions.json' with {type:'json'};
+import * as glyphs from '../ported/glyphs.js';
+import {monsdump} from '../ported/earlyarg.js';
+import {createGlyphsBridge} from '../ported/glyphs-runtime.js';
+export function enableGlyphs(environment,layouts){
+ const {services,ctypes,memory,functions}=environment,L=layouts.glyphs;
+ const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args.map(v=>v?.address??v)):undefined});
+ for(const n of ['gs','objects','mons','obj_descr','gc','iflags'])Object.defineProperty(local,n,{value:undefined,writable:true,configurable:true});
+ const finds=environment.allocateGlobal('glyphs.finds',L.findSize*3),dump=environment.allocateGlobal('monsdump',monsdump.length*ctypes.size('struct enum_dump'));
+ for(const[i,row]of monsdump.entries()){const value=typeof row.val==='string'?layouts.earlyarg[row.val]:row.val;if(!Number.isInteger(value))throw new Error('Unknown original monster enumeration');const p=dump+i*ctypes.size('struct enum_dump');ctypes.setField('struct enum_dump',p,'val','int',value);ctypes.setField('struct enum_dump',p,'nm','const char *',services.literal(row.nm));}
+ const location=(type,p,path)=>{const parts=path.split('.');for(const key of parts.slice(0,-1)){const f=ctypes.locate(type,p,key);p=f.at;type=f.field.record??f.field.ctype.replace(new RegExp(' '+key+'$'),'');}const key=parts.at(-1),f=ctypes.locate(type,p,key);return{type,p,key,f:f.field,at:f.at,scalar:f.field.ctype.replace(new RegExp(' '+key+'$'),'')};};
+ function global(i,value){const path=abi.globals[i];if(!path)throw new Error('Unknown GLYPHS global');const [root,...keys]=path.split('.'),type=root==='gs'?'struct instance_globals_s':root==='gc'?'struct instance_globals_c':'struct instance_flags',f=location(type,environment.requireGlobal(root),keys.join('.'));return value===undefined?ctypes.getField(f.type,f.p,f.key,f.scalar):ctypes.setField(f.type,f.p,f.key,f.scalar,value);}
+ function field(k,i,p,value){const f=abi.fields[k]?.fields[i];if(!f)throw new Error('Unknown GLYPHS field');const at=environment.address(p)+f.offset,kind=(f.pointer||!f.signed?'Uint':'Int')+(f.size*8),method=(f.size===8?'Big':'')+kind;
+  if(value===undefined)return BigInt(memory.view['get'+method](at,true));const v=BigInt(value?.address??value??0);memory.view['set'+method](at,f.size===8?BigInt.asUintN(64,v):Number(f.signed?BigInt.asIntN(f.size*8,v):BigInt.asUintN(f.size*8,v)),true);
+ }
+ function element(k,i,j){switch(k){case 0:return environment.requireGlobal('glyphmap')+i*ctypes.size('glyph_map');case 1:return ctypes.locate('struct instance_globals_s',environment.requireGlobal('gs'),'sym_customizations').at+(i*L.custom_count+j)*ctypes.size('struct symset_customization');case 2:return ctypes.locate('struct instance_globals_s',environment.requireGlobal('gs'),'symset').at+i*ctypes.size('struct symsetentry');case 3:return environment.requireGlobal('objects')+i*ctypes.size('struct objclass');case 4:return environment.requireGlobal('loadsyms')+i*ctypes.size('struct symparse');case 5:return dump+i*ctypes.size('struct enum_dump');case 6:return environment.requireGlobal('obj_descr')+i*ctypes.size('struct objdescr');case 7:return environment.requireGlobal('mons')+i*ctypes.size('struct permonst');default:throw new Error('Unknown GLYPHS element');}}
+ const bridge=createGlyphsBridge(L),call=(name,...args)=>bridge(local,name,...args),text=v=>typeof v==='string'?services.literal(v):environment.address(v);
+ Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,get:(k,i,p)=>field(k,i,p),set:(k,i,p,v)=>field(k,i,p,v),global:i=>global(i),setGlobal:(i,v)=>global(i,v),element,header:(i,g)=>{if(!glyphHeaders[i])throw new Error('Unknown glyph header');return glyphHeaders[i](Number(g)|0);},findBacking:i=>{if(i<0||i>2)throw new Error('Unknown glyph find storage');return finds+i*L.findSize;},callbackAddress:()=>environment.functionPointer('glyphs::to_custom_symset_entry_callback','vip',(g,f)=>call('to_custom_symset_entry_callback',g,f)),callback:(fn,g,f)=>functions.indirect(fn,'vip',g,environment.address(f)),
+  alloc:n=>environment.alloc('alloc',Number(n)),dupstr:v=>environment.alloc('dupstr',text(v)),free:p=>services.free(environment.address(p)),memcpy:(a,b,n)=>services.memcpy(environment.address(a),environment.address(b),n),memset:(a,v,n)=>services.memset(environment.address(a),v,n),strcmpi:(a,b)=>services.strncmpi(text(a),text(b),-1),
+  assert:ok=>{if(!ok)environment.resolve('__assert_fail')(services.literal('idx >= 0 && idx < NUM_GRAPHICS'),services.literal('glyphs.c'),66,services.literal('to_custom_symset_entry_callback'));},panic:msg=>environment.resolve('panic')('%s',text(msg)),config_error_add:msg=>environment.resolve('config_error_add')('%s',text(msg)),
+  format:(fn,line,out,size,fmt,a,b)=>environment.resolve('nh_snprintf')(text(fn),line,environment.address(out),size,text(fmt),text(a),text(b)),formatInt:(fn,line,out,size,fmt,a,b)=>environment.resolve('nh_snprintf')(text(fn),line,environment.address(out),size,text(fmt),text(a),Number(b)|0),Fprintf:(fp,fmt,g,id)=>services.fprintf(environment.address(fp),text(fmt),g,text(id)),
+ });
+ for(const name of ['strcmp','strcpy','strcat'])local[name]=(a,b)=>services[name](text(a),text(b));
+ const names=Object.keys(glyphs).filter(name=>typeof glyphs[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
+ environment.register('glyphs',Object.fromEntries(names.map(name=>[name,(...args)=>{const result=call(name,...args);return typeof result==='boolean'?Number(result):result?.address??result??0;}])));
+ return {services:local,finds,dump,call,limitation:'GLYPHS integration in progress; private cache/header/parser and startup require original-C verification.'};
+}

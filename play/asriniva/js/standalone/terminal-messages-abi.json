@@ -1,0 +1,46 @@
+{
+  "globals": {
+    "wins": "struct WinDesc *[20]",
+    "WIN_MESSAGE": "int",
+    "iflags": "struct instance_flags",
+    "ttyDisplay": "struct DisplayDesc *",
+    "windowprocs": "struct window_procs",
+    "gt": "struct instance_globals_t",
+    "morc": "char",
+    "program_state": "struct sinfo",
+    "BASE_WINDOW": "int",
+    "flags": "struct flag",
+    "defmorestr": "char[]",
+    "yn_number": "long",
+    "quitchars": "char[]",
+    "erase_char": "char",
+    "gs": "struct instance_globals_s"
+  },
+  "persistent": [
+    {
+      "name": "snapshot_mesgs",
+      "type": "char **",
+      "index": 0
+    },
+    {
+      "name": "nxtidx",
+      "type": "int",
+      "index": 1
+    },
+    {
+      "name": "initd",
+      "type": "signed char",
+      "index": 2
+    }
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-terminal-messages-abi.py": "7e98f115f156ced2da071a5f74090da7bc975932bb85ac068ec965cace6bdc4a",
+    "js/ported/topl-runtime.js": "c18f78b56dc60adbb2d0dbe8166080d2fed3eb81442402613a24a0f26b2a3dfe",
+    "nethack-c/wasm/tu-fragments/topl-support.inc": "e17430e222cdd8931545de79fed0a6e58f78840fe010d9b339fa548205a064ef",
+    "js/ported/topl.js": "fa561e5c18c09aab6db995c6507c0d68b5aca6380968c0cdff774bc60bbc2720",
+    "nethack-c/wasm/tu-libraries/topl.js": "9333b116a31049ccba3d03035afc296a82e0c0dc5e32ecf9a0617c6552930976",
+    "scripts/tu-topl-layout.h": "bedaed7d470817325a8b5d4f8ce2ff81fd05f336b01b9bbf2123c966eadad9b4",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
+  }
+}

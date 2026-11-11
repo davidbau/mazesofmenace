@@ -1,0 +1,26 @@
+{
+  "SIG_DFL": "0",
+  "SIG_IGN": "18446744073709551614",
+  "SIG_ERR": "18446744073709551615",
+  "actionSize": 152,
+  "handler": 0,
+  "mask": 8,
+  "maskSize": 128,
+  "flags": 136,
+  "restorer": 144,
+  "signalCount": 65,
+  "SA_RESTART": 268435456,
+  "EINVAL": 28,
+  "glyphCount": 9624,
+  "glyphSize": 32,
+  "SIGINT": 2,
+  "sourceSha256": {
+    "scripts/export-standalone-display-abi.mjs": "e7b92843fe642ef5d230dc98497c05f403f90505d57a8a116677bea74a89fa4a",
+    "js/ported/windows.js": "323ae84da525bd76208b340c3ef4325afde505c85ff97b59eff4d73288da6c06",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+  },
+  "referenceArtifactSha256": {
+    "reference.mjs": "b0deb4cc2a72050a12c2c27aa5a53951194bed0d662dac8cd9416187539ee340",
+    "reference.wasm": "341024c5094efeb5d563827a1200f6c838337ecdab2a503d50dae28d1cd2314f"
+  }
+}

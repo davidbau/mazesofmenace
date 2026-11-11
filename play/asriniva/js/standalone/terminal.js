@@ -31,12 +31,12 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
         staticBuffer:i=>{if(!buffers[i])throw new Error('Unknown terminal static');return buffers[i];},
         functionPointer:i=>{
             const name=metadata.functions[i],signature=metadata.signatures[name];if(!name||!signature)throw new Error('Missing terminal callback ABI');
-            if(!callbackIds.has(name))callbackIds.set(name,functions.functionPointer((...args)=>environment.call('termcap',name,...args),signature));
+            if(!callbackIds.has(name))callbackIds.set(name,environment.functionPointer(name,signature,(...args)=>environment.call('termcap',name,...args)));
             return callbackIds.get(name);
         },
         foreignFunctionPointer:i=>{
             const name=metadata.foreignCallbacks[i];if(name!=='tty_utf8graphics_fixup')throw new Error('Unknown terminal foreign callback');
-            if(!callbackIds.has(name))callbackIds.set(name,functions.functionPointer((...args)=>environment.resolve(name)(...args),'v'));
+            if(!callbackIds.has(name))callbackIds.set(name,environment.functionPointer(name,'v'));
             return callbackIds.get(name);
         },
         getenv:name=>environment.services.nh_getenv(typeof name==='string'?name:memory.readString(cptr(name))),

@@ -1,0 +1,94 @@
+{
+  "weapon": {
+    "globals": [
+      "u",
+      "objects",
+      "obj_descr",
+      "mons",
+      "gy",
+      "gp",
+      "gu",
+      "gi",
+      "iflags",
+      "svc",
+      "cg",
+      "flags",
+      "gv",
+      "genders",
+      "def_oc_syms"
+    ]
+  },
+  "worn": {
+    "globals": [
+      "u",
+      "objects",
+      "mons",
+      "gy",
+      "gi",
+      "gu",
+      "flags",
+      "iflags",
+      "disp",
+      "svc",
+      "svl",
+      "gm",
+      "gb",
+      "go",
+      "genders",
+      "gv"
+    ],
+    "equipment": [
+      "uarm",
+      "uarmc",
+      "uarmh",
+      "uarms",
+      "uarmg",
+      "uarmf",
+      "uarmu",
+      "uleft",
+      "uright",
+      "uwep",
+      "uswapwep",
+      "uquiver",
+      "uamul",
+      "ublindf",
+      "uball",
+      "uchain",
+      "uskin"
+    ]
+  },
+  "wield": {
+    "globals": [
+      "u",
+      "objects",
+      "mons",
+      "gy",
+      "gu",
+      "flags",
+      "disp",
+      "gi",
+      "gm",
+      "svc",
+      "condtests"
+    ],
+    "equipment": [
+      "uwep",
+      "uswapwep",
+      "uquiver",
+      "uarmg",
+      "uarms"
+    ]
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-equipment-abi.py": "e06f2e9f06bd89c34b70f4b0144c5c80f15ee73cc82763950ae20c6599fd78d3",
+    "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
+    "nethack-c/wasm/tu-weapon-support.inc": "30c6ed5f7a06c4fa75707642626efd5a03153f8c80f113d202d155086358f60e",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/ported/weapon.js": "edd0319a89e6fcecd69f5f6962f812e5aa5ad7f71a8eeda11bee98fe13b47edd",
+    "js/ported/weapon-runtime.js": "a7fa7b16ded8ddccbf84be84529dd7e46dff6a66f43b851fd99550e554b9dd73",
+    "js/ported/worn.js": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
+    "js/ported/worn-runtime.js": "d397cf6428b52a80843d74a95e90154b5b704cea2d50196ef4d89954b2ebbe41",
+    "js/ported/wield.js": "7c4052a40ad20eec5b6a5918597dc800165cb77694472e7aa0b8aed112f54583",
+    "js/ported/wield-runtime.js": "c25ec34234202712beec185d825f867aa4a7340edd1495f7bece592ad6f05cf1"
+  }
+}

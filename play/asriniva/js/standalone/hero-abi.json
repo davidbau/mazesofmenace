@@ -1,0 +1,2207 @@
+{
+  "polyself": {
+    "schema": {
+      "d_level": {
+        "ctype": "struct d_level",
+        "fields": [
+          {
+            "name": "dnum",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "xint16",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "dlevel",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "xint16",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "RoleName": {
+        "ctype": "struct RoleName",
+        "fields": [
+          {
+            "name": "m",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "f",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "vptrs": {
+        "ctype": "union vptrs",
+        "fields": [
+          {
+            "name": "v_nexthere",
+            "d": {
+              "p": "obj"
+            },
+            "ctype": "struct obj *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "flag": {
+        "ctype": "struct flag",
+        "fields": [
+          {
+            "name": "confirm",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "debug",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "female",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "safe_dog",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "verbose",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "trap": {
+        "ctype": "struct trap",
+        "fields": [
+          {
+            "name": "ttyp",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "madeby_u",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          }
+        ]
+      },
+      "window_procs": {
+        "ctype": "struct window_procs",
+        "fields": [
+          {
+            "name": "wincap2",
+            "d": {
+              "t": "u64"
+            },
+            "ctype": "unsigned long",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "attribs": {
+        "ctype": "struct attribs",
+        "fields": [
+          {
+            "name": "a",
+            "d": {
+              "a": [
+                6
+              ],
+              "e": {
+                "t": "i8"
+              }
+            },
+            "ctype": "schar[6]",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "obj": {
+        "ctype": "struct obj",
+        "fields": [
+          {
+            "name": "nobj",
+            "d": {
+              "p": "obj"
+            },
+            "ctype": "struct obj *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "v",
+            "d": {
+              "s": "vptrs"
+            },
+            "ctype": "union vptrs",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "otyp",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "quan",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "spe",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "schar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "oclass",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "char",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "lamplit",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "in_use",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "corpsenm",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "owornmask",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "objclass": {
+        "ctype": "struct objclass",
+        "fields": [
+          {
+            "name": "oc_material",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "oc_subtyp",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "schar",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "attack": {
+        "ctype": "struct attack",
+        "fields": [
+          {
+            "name": "aatyp",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "adtyp",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "damn",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "damd",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "permonst": {
+        "ctype": "struct permonst",
+        "fields": [
+          {
+            "name": "mlet",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "char",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mlevel",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "schar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "geno",
+            "d": {
+              "t": "u16"
+            },
+            "ctype": "unsigned short",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mattk",
+            "d": {
+              "a": [
+                6
+              ],
+              "e": {
+                "s": "attack"
+              }
+            },
+            "ctype": "struct attack[6]",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "msound",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "msize",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mresists",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mflags1",
+            "d": {
+              "t": "u64"
+            },
+            "ctype": "unsigned long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mflags2",
+            "d": {
+              "t": "u64"
+            },
+            "ctype": "unsigned long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mflags3",
+            "d": {
+              "t": "u16"
+            },
+            "ctype": "unsigned short",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "warntype_info": {
+        "ctype": "struct warntype_info",
+        "fields": [
+          {
+            "name": "polyd",
+            "d": {
+              "t": "u64"
+            },
+            "ctype": "unsigned long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "species",
+            "d": {
+              "p": "permonst"
+            },
+            "ctype": "struct permonst *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "speciesidx",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "prop": {
+        "ctype": "struct prop",
+        "fields": [
+          {
+            "name": "extrinsic",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "blocked",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "intrinsic",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "monst": {
+        "ctype": "struct monst",
+        "fields": [
+          {
+            "name": "nmon",
+            "d": {
+              "p": "monst"
+            },
+            "ctype": "struct monst *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "data",
+            "d": {
+              "p": "permonst"
+            },
+            "ctype": "struct permonst *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "m_id",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mnum",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "cham",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "m_lev",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mx",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "coordxy",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "my",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "coordxy",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mhp",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mappearance",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "m_ap_type",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mtame",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "schar",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "minvis",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mcan",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mcansee",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "msleeping",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mstun",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mcanmove",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mconf",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mpeaceful",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "minvent",
+            "d": {
+              "p": "obj"
+            },
+            "ctype": "struct obj *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "display_hints": {
+        "ctype": "struct display_hints",
+        "fields": [
+          {
+            "name": "botl",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "context_info": {
+        "ctype": "struct context_info",
+        "fields": [
+          {
+            "name": "warntype",
+            "d": {
+              "s": "warntype_info"
+            },
+            "ctype": "struct warntype_info",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "rm": {
+        "ctype": "struct rm",
+        "fields": [
+          {
+            "name": "typ",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "schar",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "u_conduct": {
+        "ctype": "struct u_conduct",
+        "fields": [
+          {
+            "name": "polyselfs",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "c_common_strings": {
+        "ctype": "struct c_common_strings",
+        "fields": [
+          {
+            "name": "c_thats_enough_tries",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *const",
+            "bit": false,
+            "const": true
+          },
+          {
+            "name": "c_shudder_for_moment",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *const",
+            "bit": false,
+            "const": true
+          },
+          {
+            "name": "c_Never_mind",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *const",
+            "bit": false,
+            "const": true
+          },
+          {
+            "name": "c_the_your",
+            "d": {
+              "a": [
+                2
+              ],
+              "e": {
+                "p": ""
+              }
+            },
+            "ctype": "const char *const[2]",
+            "bit": false,
+            "const": true
+          }
+        ]
+      },
+      "Role": {
+        "ctype": "struct Role",
+        "fields": [
+          {
+            "name": "name",
+            "d": {
+              "s": "RoleName"
+            },
+            "ctype": "struct RoleName",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mnum",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "dgn_topology": {
+        "ctype": "struct dgn_topology",
+        "fields": [
+          {
+            "name": "d_water_level",
+            "d": {
+              "s": "d_level"
+            },
+            "ctype": "d_level",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "d_air_level",
+            "d": {
+              "s": "d_level"
+            },
+            "ctype": "d_level",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "d_astral_level",
+            "d": {
+              "s": "d_level"
+            },
+            "ctype": "d_level",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "Race": {
+        "ctype": "struct Race",
+        "fields": [
+          {
+            "name": "noun",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "adj",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "individual",
+            "d": {
+              "s": "RoleName"
+            },
+            "ctype": "struct RoleName",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mnum",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "selfmask",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "attrmax",
+            "d": {
+              "a": [
+                6
+              ],
+              "e": {
+                "t": "i16"
+              }
+            },
+            "ctype": "xint16[6]",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "Gender": {
+        "ctype": "struct Gender",
+        "fields": [
+          {
+            "name": "adj",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_i": {
+        "ctype": "struct instance_globals_i",
+        "fields": [
+          {
+            "name": "invent",
+            "d": {
+              "p": "obj"
+            },
+            "ctype": "struct obj *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "you": {
+        "ctype": "struct you",
+        "fields": [
+          {
+            "name": "ux",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "coordxy",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uy",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "coordxy",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "dx",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "dy",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "dz",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uz",
+            "d": {
+              "s": "d_level"
+            },
+            "ctype": "d_level",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "ulevel",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "ulevelmax",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "utrap",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "utraptype",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uhunger",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uprops",
+            "d": {
+              "a": [
+                69
+              ],
+              "e": {
+                "s": "prop"
+              }
+            },
+            "ctype": "struct prop[69]",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "umonster",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "umonnum",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mh",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mhmax",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mtimedone",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "macurr",
+            "d": {
+              "s": "attribs"
+            },
+            "ctype": "struct attribs",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mamax",
+            "d": {
+              "s": "attribs"
+            },
+            "ctype": "struct attribs",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "ulycn",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uswallow",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "uinwater",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "uundetected",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "mfemale",
+            "d": {
+              "t": "u32"
+            },
+            "ctype": "unsigned int",
+            "bit": true,
+            "const": false
+          },
+          {
+            "name": "uconduct",
+            "d": {
+              "s": "u_conduct"
+            },
+            "ctype": "struct u_conduct",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "acurr",
+            "d": {
+              "s": "attribs"
+            },
+            "ctype": "struct attribs",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "amax",
+            "d": {
+              "s": "attribs"
+            },
+            "ctype": "struct attribs",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uhp",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uhpmax",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uen",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uenmax",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uhpinc",
+            "d": {
+              "a": [
+                30
+              ],
+              "e": {
+                "t": "i16"
+              }
+            },
+            "ctype": "xint16[30]",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "ueninc",
+            "d": {
+              "a": [
+                30
+              ],
+              "e": {
+                "t": "i16"
+              }
+            },
+            "ctype": "xint16[30]",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "uexp",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "ustuck",
+            "d": {
+              "p": "monst"
+            },
+            "ctype": "struct monst *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "usteed",
+            "d": {
+              "p": "monst"
+            },
+            "ctype": "struct monst *",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "twoweap",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "mcham",
+            "d": {
+              "t": "i16"
+            },
+            "ctype": "short",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_m": {
+        "ctype": "struct instance_globals_m",
+        "fields": [
+          {
+            "name": "multi",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "cmdcount_nht",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "multi_reason",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "dlevel_t": {
+        "ctype": "dlevel_t",
+        "fields": [
+          {
+            "name": "locations",
+            "d": {
+              "a": [
+                80,
+                21
+              ],
+              "e": {
+                "s": "rm"
+              }
+            },
+            "ctype": "struct rm[80][21]",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "objects",
+            "d": {
+              "a": [
+                80,
+                21
+              ],
+              "e": {
+                "p": "obj"
+              }
+            },
+            "ctype": "struct obj *[80][21]",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "monlist",
+            "d": {
+              "p": "monst"
+            },
+            "ctype": "struct monst *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_n": {
+        "ctype": "struct instance_globals_n",
+        "fields": [
+          {
+            "name": "nomovemsg",
+            "d": {
+              "p": ""
+            },
+            "ctype": "const char *",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "kinfo": {
+        "ctype": "struct kinfo",
+        "fields": [
+          {
+            "name": "format",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "name",
+            "d": {
+              "a": [
+                256
+              ],
+              "e": {
+                "t": "i8"
+              }
+            },
+            "ctype": "char[256]",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "mvitals": {
+        "ctype": "struct mvitals",
+        "fields": [
+          {
+            "name": "mvflags",
+            "d": {
+              "t": "u8"
+            },
+            "ctype": "uchar",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_s": {
+        "ctype": "struct instance_globals_s",
+        "fields": [
+          {
+            "name": "sex_change_ok",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "sinfo": {
+        "ctype": "struct sinfo",
+        "fields": [
+          {
+            "name": "restoring",
+            "d": {
+              "t": "i32"
+            },
+            "ctype": "int",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_u": {
+        "ctype": "struct instance_globals_u",
+        "fields": [
+          {
+            "name": "urole",
+            "d": {
+              "s": "Role"
+            },
+            "ctype": "struct Role",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "urace",
+            "d": {
+              "s": "Race"
+            },
+            "ctype": "struct Race",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_v": {
+        "ctype": "struct instance_globals_v",
+        "fields": [
+          {
+            "name": "viz_array",
+            "d": {
+              "p": ""
+            },
+            "ctype": "seenV **",
+            "bit": false,
+            "const": false
+          },
+          {
+            "name": "vision_full_recalc",
+            "d": {
+              "t": "i8"
+            },
+            "ctype": "boolean",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_w": {
+        "ctype": "struct instance_globals_w",
+        "fields": [
+          {
+            "name": "were_changes",
+            "d": {
+              "t": "i64"
+            },
+            "ctype": "long",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_y": {
+        "ctype": "struct instance_globals_y",
+        "fields": [
+          {
+            "name": "youmonst",
+            "d": {
+              "s": "monst"
+            },
+            "ctype": "struct monst",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_saved_c": {
+        "ctype": "struct instance_globals_saved_c",
+        "fields": [
+          {
+            "name": "context",
+            "d": {
+              "s": "context_info"
+            },
+            "ctype": "struct context_info",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_saved_d": {
+        "ctype": "struct instance_globals_saved_d",
+        "fields": [
+          {
+            "name": "dungeon_topology",
+            "d": {
+              "s": "dgn_topology"
+            },
+            "ctype": "struct dgn_topology",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_saved_k": {
+        "ctype": "struct instance_globals_saved_k",
+        "fields": [
+          {
+            "name": "killer",
+            "d": {
+              "s": "kinfo"
+            },
+            "ctype": "struct kinfo",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_saved_l": {
+        "ctype": "struct instance_globals_saved_l",
+        "fields": [
+          {
+            "name": "level",
+            "d": {
+              "s": "dlevel_t"
+            },
+            "ctype": "dlevel_t",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_saved_m": {
+        "ctype": "struct instance_globals_saved_m",
+        "fields": [
+          {
+            "name": "mvitals",
+            "d": {
+              "a": [
+                383
+              ],
+              "e": {
+                "s": "mvitals"
+              }
+            },
+            "ctype": "struct mvitals[383]",
+            "bit": false,
+            "const": false
+          }
+        ]
+      },
+      "instance_globals_saved_p": {
+        "ctype": "struct instance_globals_saved_p",
+        "fields": [
+          {
+            "name": "pl_character",
+            "d": {
+              "a": [
+                32
+              ],
+              "e": {
+                "t": "i8"
+              }
+            },
+            "ctype": "char[32]",
+            "bit": false,
+            "const": false
+          }
+        ]
+      }
+    },
+    "globals": [
+      {
+        "name": "mons",
+        "d": {
+          "a": [
+            384
+          ],
+          "e": {
+            "s": "permonst"
+          }
+        }
+      },
+      {
+        "name": "u",
+        "d": {
+          "s": "you"
+        }
+      },
+      {
+        "name": "gy",
+        "d": {
+          "s": "instance_globals_y"
+        }
+      },
+      {
+        "name": "uwep",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "gu",
+        "d": {
+          "s": "instance_globals_u"
+        }
+      },
+      {
+        "name": "program_state",
+        "d": {
+          "s": "sinfo"
+        }
+      },
+      {
+        "name": "windowprocs",
+        "d": {
+          "s": "window_procs"
+        }
+      },
+      {
+        "name": "gw",
+        "d": {
+          "s": "instance_globals_w"
+        }
+      },
+      {
+        "name": "disp",
+        "d": {
+          "s": "display_hints"
+        }
+      },
+      {
+        "name": "uamul",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "flags",
+        "d": {
+          "s": "flag"
+        }
+      },
+      {
+        "name": "gm",
+        "d": {
+          "s": "instance_globals_m"
+        }
+      },
+      {
+        "name": "svk",
+        "d": {
+          "s": "instance_globals_saved_k"
+        }
+      },
+      {
+        "name": "svp",
+        "d": {
+          "s": "instance_globals_saved_p"
+        }
+      },
+      {
+        "name": "genders",
+        "d": {
+          "a": [
+            0
+          ],
+          "e": {
+            "s": "Gender"
+          }
+        }
+      },
+      {
+        "name": "gs",
+        "d": {
+          "s": "instance_globals_s"
+        }
+      },
+      {
+        "name": "uarmg",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "uarm",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "c_common_strings",
+        "d": {
+          "s": "c_common_strings"
+        }
+      },
+      {
+        "name": "svm",
+        "d": {
+          "s": "instance_globals_saved_m"
+        }
+      },
+      {
+        "name": "uskin",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "ynchars",
+        "d": {
+          "a": [
+            0
+          ],
+          "e": {
+            "t": "i8"
+          }
+        }
+      },
+      {
+        "name": "svd",
+        "d": {
+          "s": "instance_globals_saved_d"
+        }
+      },
+      {
+        "name": "uball",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "gv",
+        "d": {
+          "s": "instance_globals_v"
+        }
+      },
+      {
+        "name": "gi",
+        "d": {
+          "s": "instance_globals_i"
+        }
+      },
+      {
+        "name": "uarmc",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "uarmu",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "uarmh",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "objects",
+        "d": {
+          "a": [
+            482
+          ],
+          "e": {
+            "s": "objclass"
+          }
+        }
+      },
+      {
+        "name": "uarms",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "uarmf",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "ublindf",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "uswapwep",
+        "d": {
+          "p": "obj"
+        }
+      },
+      {
+        "name": "svl",
+        "d": {
+          "s": "instance_globals_saved_l"
+        }
+      },
+      {
+        "name": "gn",
+        "d": {
+          "s": "instance_globals_n"
+        }
+      },
+      {
+        "name": "svc",
+        "d": {
+          "s": "instance_globals_saved_c"
+        }
+      }
+    ]
+  },
+  "u_init": {
+    "fields": {
+      "obj": [
+        "otyp",
+        "oclass",
+        "quan",
+        "spe",
+        "known",
+        "dknown",
+        "bknown",
+        "rknown",
+        "cknown",
+        "lknown",
+        "otrapped",
+        "cursed",
+        "opoisoned",
+        "blessed",
+        "owt",
+        "nobj"
+      ],
+      "objclass": [
+        "oc_skill",
+        "oc_class",
+        "oc_magic",
+        "oc_level",
+        "oc_uses_known",
+        "oc_charged",
+        "oc_name_idx",
+        "oc_descr_idx"
+      ],
+      "you": [
+        "weapon_slots",
+        "umoney0",
+        "ustuck",
+        "umoved",
+        "umortality",
+        "ugrave_arise",
+        "umonnum",
+        "umonster",
+        "ulycn",
+        "ulevel",
+        "uhp",
+        "uhpmax",
+        "uhppeak",
+        "uen",
+        "uenmax",
+        "uenpeak",
+        "uspellprot",
+        "ulevelmax",
+        "ublesscnt",
+        "nv_range",
+        "xray_range",
+        "unblind_telepat_range",
+        "uhandedness"
+      ],
+      "roleplay": [
+        "blind",
+        "nudist",
+        "deaf",
+        "pauper",
+        "reroll",
+        "reserved1",
+        "reserved2",
+        "reserved3",
+        "numbones",
+        "numrerolls"
+      ],
+      "level": [
+        "dnum",
+        "dlevel"
+      ],
+      "weaponskill": [
+        "skill",
+        "advance"
+      ],
+      "skill": [
+        "skill",
+        "skmax"
+      ],
+      "align": [
+        "type"
+      ],
+      "flags": [
+        "female",
+        "initgend",
+        "beginner",
+        "initalign"
+      ],
+      "gn": [
+        "nocreate",
+        "nocreate2",
+        "nocreate3",
+        "nocreate4"
+      ],
+      "gu": [
+        "urole.mnum",
+        "urace.mnum"
+      ],
+      "gl": [
+        "lastinvnr"
+      ],
+      "svm": [
+        "moves"
+      ],
+      "globals": [
+        "ubirthday",
+        "discover"
+      ],
+      "trobj": [
+        "trotyp",
+        "trspe",
+        "trclass",
+        "trquan_min",
+        "trquan_max",
+        "trbless"
+      ],
+      "invsub": [
+        "race_pm",
+        "item_otyp",
+        "subs_otyp"
+      ]
+    },
+    "tables": [
+      {
+        "name": "Archeologist",
+        "typ": "trobj"
+      },
+      {
+        "name": "Barbarian_0",
+        "typ": "trobj"
+      },
+      {
+        "name": "Barbarian_1",
+        "typ": "trobj"
+      },
+      {
+        "name": "Cave_man",
+        "typ": "trobj"
+      },
+      {
+        "name": "Healer",
+        "typ": "trobj"
+      },
+      {
+        "name": "Knight",
+        "typ": "trobj"
+      },
+      {
+        "name": "Monk",
+        "typ": "trobj"
+      },
+      {
+        "name": "Priest",
+        "typ": "trobj"
+      },
+      {
+        "name": "Ranger",
+        "typ": "trobj"
+      },
+      {
+        "name": "Rogue",
+        "typ": "trobj"
+      },
+      {
+        "name": "Samurai",
+        "typ": "trobj"
+      },
+      {
+        "name": "Tourist",
+        "typ": "trobj"
+      },
+      {
+        "name": "Valkyrie",
+        "typ": "trobj"
+      },
+      {
+        "name": "Wizard",
+        "typ": "trobj"
+      },
+      {
+        "name": "Healing_book",
+        "typ": "trobj"
+      },
+      {
+        "name": "Protection_book",
+        "typ": "trobj"
+      },
+      {
+        "name": "Confuse_monster_book",
+        "typ": "trobj"
+      },
+      {
+        "name": "Tinopener",
+        "typ": "trobj"
+      },
+      {
+        "name": "Magicmarker",
+        "typ": "trobj"
+      },
+      {
+        "name": "Lamp",
+        "typ": "trobj"
+      },
+      {
+        "name": "Blindfold",
+        "typ": "trobj"
+      },
+      {
+        "name": "Xtra_food",
+        "typ": "trobj"
+      },
+      {
+        "name": "Leash",
+        "typ": "trobj"
+      },
+      {
+        "name": "Towel",
+        "typ": "trobj"
+      },
+      {
+        "name": "Wishing",
+        "typ": "trobj"
+      },
+      {
+        "name": "Money",
+        "typ": "trobj"
+      },
+      {
+        "name": "inv_subs",
+        "typ": "inv_sub"
+      },
+      {
+        "name": "Skill_A",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_B",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_C",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_H",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_K",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_Mon",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_P",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_R",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_Ran",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_S",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_T",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_V",
+        "typ": "def_skill"
+      },
+      {
+        "name": "Skill_W",
+        "typ": "def_skill"
+      }
+    ]
+  },
+  "records": {
+    "trobj": {
+      "size": 8,
+      "fields": {
+        "trotyp": {
+          "offset": 0,
+          "ctype": "short trotyp"
+        },
+        "trspe": {
+          "offset": 2,
+          "ctype": "signed char trspe"
+        },
+        "trclass": {
+          "offset": 3,
+          "ctype": "char trclass"
+        },
+        "trquan_min": {
+          "offset": 4,
+          "ctype": "char trquan_min"
+        },
+        "trquan_max": {
+          "offset": 5,
+          "ctype": "char trquan_max"
+        },
+        "trbless": {
+          "offset": 6,
+          "ctype": "char trbless"
+        }
+      }
+    },
+    "inv_sub": {
+      "size": 6,
+      "fields": {
+        "race_pm": {
+          "offset": 0,
+          "ctype": "short race_pm"
+        },
+        "item_otyp": {
+          "offset": 2,
+          "ctype": "short item_otyp"
+        },
+        "subs_otyp": {
+          "offset": 4,
+          "ctype": "short subs_otyp"
+        }
+      }
+    }
+  },
+  "sourceSha256": {
+    "js/ported/polyself-runtime.js": "572478f04a63318b15a3839e10d5da6df1f163eeeb227dc440937ef16839f30d",
+    "js/ported/u_init-runtime.js": "b6c47e0c75e7e1efe8d7ac9de848f12284fa1647a46abd7cbe4bbdd9455e8c42",
+    "scripts/export-standalone-hero-abi.mjs": "2127703a403b6822676f0322e6c7d0edb0f9362de6ec6dfcd1c93cbfea37e50b",
+    "scripts/tu-u_init-layout.h": "49854841c5e07c15768340169065f2c068780b46da69e1e7f71b2d3f655ad6e4",
+    "js/ported/attrib-runtime.js": "06b6c52c695fe31b1e89ed1760e364dd6a1f0c4060b0199f0777d7b040e4721e"
+  },
+  "measurementArtifactSha256": {
+    "reference.mjs": "fb43b8aeede92af807d8267a3f00b193e4efbd57ce5374325af92c645a2feeae",
+    "reference.wasm": "d2c160cdc63e0f650735aa2626abbef38d228c5baffd4e683fb354178f388f5a"
+  }
+}

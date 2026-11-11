@@ -1,0 +1,2237 @@
+{
+  "weapon": {
+    "snprintf": [
+      {
+        "id": 0,
+        "name": "Snprintf",
+        "actual": "nh_snprintf",
+        "fn": "add_skills_to_menu",
+        "line": 1282,
+        "types": [
+          "char *",
+          "unsigned long",
+          "const char *",
+          "const char *",
+          "int",
+          "const char *",
+          "const char *",
+          "int",
+          "int"
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Snprintf",
+        "actual": "nh_snprintf",
+        "fn": "add_skills_to_menu",
+        "line": 1287,
+        "types": [
+          "char *",
+          "unsigned long",
+          "const char *",
+          "const char *",
+          "const char *",
+          "const char *",
+          "int",
+          "int"
+        ]
+      },
+      {
+        "id": 2,
+        "name": "Snprintf",
+        "actual": "nh_snprintf",
+        "fn": "add_skills_to_menu",
+        "line": 1292,
+        "types": [
+          "char *",
+          "unsigned long",
+          "const char *",
+          "const char *",
+          "int",
+          "const char *",
+          "const char *"
+        ]
+      },
+      {
+        "id": 3,
+        "name": "Snprintf",
+        "actual": "nh_snprintf",
+        "fn": "add_skills_to_menu",
+        "line": 1296,
+        "types": [
+          "char *",
+          "unsigned long",
+          "const char *",
+          "const char *",
+          "const char *",
+          "const char *"
+        ]
+      }
+    ],
+    "strlen": {
+      "fn": "add_skills_to_menu",
+      "line": 1241
+    }
+  },
+  "worn": {
+    "snprintf": {
+      "name": "Snprintf",
+      "actual": "nh_snprintf",
+      "fn": "m_dowear_type",
+      "line": 932,
+      "types": [
+        "char *",
+        "unsigned long",
+        "const char *",
+        "const char *"
+      ]
+    }
+  },
+  "armorSites": [
+    {
+      "id": 0,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "off_msg",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 71,
+      "fixed": 1
+    },
+    {
+      "id": 1,
+      "shape": 1,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "on_msg",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 95,
+      "fixed": 2
+    },
+    {
+      "id": 2,
+      "shape": 2,
+      "name": "You",
+      "actual": "You",
+      "fn": "on_msg",
+      "types": [
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 96,
+      "fixed": 1
+    },
+    {
+      "id": 3,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "toggle_stealth",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 125,
+      "fixed": 1
+    },
+    {
+      "id": 4,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "toggle_stealth",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 127,
+      "fixed": 1
+    },
+    {
+      "id": 5,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "toggle_stealth",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 129,
+      "fixed": 1
+    },
+    {
+      "id": 6,
+      "shape": 2,
+      "name": "You",
+      "actual": "You",
+      "fn": "toggle_stealth",
+      "types": [
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 133,
+      "fixed": 1
+    },
+    {
+      "id": 7,
+      "shape": 4,
+      "name": "You_feel",
+      "actual": "You_feel",
+      "fn": "toggle_displacement",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 175,
+      "fixed": 1
+    },
+    {
+      "id": 8,
+      "shape": 4,
+      "name": "You_feel",
+      "actual": "You_feel",
+      "fn": "Boots_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 224,
+      "fixed": 1
+    },
+    {
+      "id": 9,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Boots_on",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 251,
+      "fixed": 1
+    },
+    {
+      "id": 10,
+      "shape": 4,
+      "name": "You_feel",
+      "actual": "You_feel",
+      "fn": "Boots_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 277,
+      "fixed": 1
+    },
+    {
+      "id": 11,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Boots_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 319,
+      "fixed": 1
+    },
+    {
+      "id": 12,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "Cloak_on",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 351,
+      "fixed": 1
+    },
+    {
+      "id": 13,
+      "shape": 7,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Cloak_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 361,
+      "fixed": 1
+    },
+    {
+      "id": 14,
+      "shape": 7,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Cloak_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 366,
+      "fixed": 1
+    },
+    {
+      "id": 15,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Cloak_on",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 373,
+      "fixed": 1
+    },
+    {
+      "id": 16,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "Cloak_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 410,
+      "fixed": 1
+    },
+    {
+      "id": 17,
+      "shape": 8,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Cloak_off",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 418,
+      "fixed": 1
+    },
+    {
+      "id": 18,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Cloak_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 428,
+      "fixed": 1
+    },
+    {
+      "id": 19,
+      "shape": 7,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Helmet_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 478,
+      "fixed": 1
+    },
+    {
+      "id": 20,
+      "shape": 9,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Helmet_on",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 480,
+      "fixed": 1
+    },
+    {
+      "id": 21,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Helmet_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 494,
+      "fixed": 1
+    },
+    {
+      "id": 22,
+      "shape": 4,
+      "name": "You_feel",
+      "actual": "You_feel",
+      "fn": "Helmet_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 496,
+      "fixed": 1
+    },
+    {
+      "id": 23,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Helmet_on",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 507,
+      "fixed": 1
+    },
+    {
+      "id": 24,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Helmet_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 559,
+      "fixed": 1
+    },
+    {
+      "id": 25,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Gloves_on",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 596,
+      "fixed": 1
+    },
+    {
+      "id": 26,
+      "shape": 11,
+      "name": "You",
+      "actual": "You",
+      "fn": "wielding_corpse",
+      "types": [
+        "const char *",
+        "char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 623,
+      "fixed": 1
+    },
+    {
+      "id": 27,
+      "shape": 12,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "wielding_corpse",
+      "types": [
+        "char *",
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 630,
+      "fixed": 2
+    },
+    {
+      "id": 28,
+      "shape": 13,
+      "name": "Snprintf",
+      "actual": "nh_snprintf",
+      "fn": "wielding_corpse",
+      "types": [
+        "const char *",
+        "int",
+        "char *",
+        "unsigned long",
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 2,
+      "line": 635,
+      "fixed": 5
+    },
+    {
+      "id": 29,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Gloves_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 671,
+      "fixed": 1
+    },
+    {
+      "id": 30,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Shield_on",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 723,
+      "fixed": 1
+    },
+    {
+      "id": 31,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Shield_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 751,
+      "fixed": 1
+    },
+    {
+      "id": 32,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Shirt_on",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 768,
+      "fixed": 1
+    },
+    {
+      "id": 33,
+      "shape": 5,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Shirt_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 789,
+      "fixed": 1
+    },
+    {
+      "id": 34,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "dragon_armor_handling",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 821,
+      "fixed": 1
+    },
+    {
+      "id": 35,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "dragon_armor_handling",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 826,
+      "fixed": 1
+    },
+    {
+      "id": 36,
+      "shape": 14,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Armor_on",
+      "types": [
+        "const char *",
+        "char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 901,
+      "fixed": 1
+    },
+    {
+      "id": 37,
+      "shape": 7,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Armor_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 925,
+      "fixed": 1
+    },
+    {
+      "id": 38,
+      "shape": 7,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Armor_gone",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 955,
+      "fixed": 1
+    },
+    {
+      "id": 39,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 990,
+      "fixed": 1
+    },
+    {
+      "id": 40,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1020,
+      "fixed": 1
+    },
+    {
+      "id": 41,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1025,
+      "fixed": 1
+    },
+    {
+      "id": 42,
+      "shape": 15,
+      "name": "pline_The",
+      "actual": "pline_The",
+      "fn": "Amulet_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1030,
+      "fixed": 1
+    },
+    {
+      "id": 43,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Amulet_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1044,
+      "fixed": 1
+    },
+    {
+      "id": 44,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1073,
+      "fixed": 1
+    },
+    {
+      "id": 45,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_off",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1122,
+      "fixed": 1
+    },
+    {
+      "id": 46,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1130,
+      "fixed": 1
+    },
+    {
+      "id": 47,
+      "shape": 16,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "Amulet_off",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1143,
+      "fixed": 1
+    },
+    {
+      "id": 48,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1145,
+      "fixed": 1
+    },
+    {
+      "id": 49,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "Amulet_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1167,
+      "fixed": 1
+    },
+    {
+      "id": 50,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Ring_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1295,
+      "fixed": 1
+    },
+    {
+      "id": 51,
+      "shape": 17,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Ring_off_or_gone",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1354,
+      "fixed": 1
+    },
+    {
+      "id": 52,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Ring_off_or_gone",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1394,
+      "fixed": 1
+    },
+    {
+      "id": 53,
+      "shape": 18,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "Ring_off_or_gone",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1401,
+      "fixed": 1
+    },
+    {
+      "id": 54,
+      "shape": 19,
+      "name": "You_cant",
+      "actual": "You_cant",
+      "fn": "Blindf_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1473,
+      "fixed": 1
+    },
+    {
+      "id": 55,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "Blindf_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1484,
+      "fixed": 1
+    },
+    {
+      "id": 56,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Blindf_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1487,
+      "fixed": 1
+    },
+    {
+      "id": 57,
+      "shape": 17,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "Blindf_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1503,
+      "fixed": 1
+    },
+    {
+      "id": 58,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Blindf_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1516,
+      "fixed": 1
+    },
+    {
+      "id": 59,
+      "shape": 19,
+      "name": "You_cant",
+      "actual": "You_cant",
+      "fn": "Blindf_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1520,
+      "fixed": 1
+    },
+    {
+      "id": 60,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "Blindf_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1528,
+      "fixed": 1
+    },
+    {
+      "id": 61,
+      "shape": 20,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "stop_donning",
+      "types": [
+        "char *",
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1711,
+      "fixed": 2
+    },
+    {
+      "id": 62,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "armor_or_accessory_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1774,
+      "fixed": 1
+    },
+    {
+      "id": 63,
+      "shape": 21,
+      "name": "Snprintf",
+      "actual": "nh_snprintf",
+      "fn": "armor_or_accessory_off",
+      "types": [
+        "const char *",
+        "int",
+        "char *",
+        "unsigned long",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 2,
+      "line": 1791,
+      "fixed": 5
+    },
+    {
+      "id": 64,
+      "shape": 22,
+      "name": "You_cant",
+      "actual": "You_cant",
+      "fn": "armor_or_accessory_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1796,
+      "fixed": 1
+    },
+    {
+      "id": 65,
+      "shape": 23,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "armor_or_accessory_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1823,
+      "fixed": 1
+    },
+    {
+      "id": 66,
+      "shape": 24,
+      "name": "pline_The",
+      "actual": "pline_The",
+      "fn": "dotakeoff",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1841,
+      "fixed": 1
+    },
+    {
+      "id": 67,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "dotakeoff",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1846,
+      "fixed": 1
+    },
+    {
+      "id": 68,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "doremring",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1880,
+      "fixed": 1
+    },
+    {
+      "id": 69,
+      "shape": 17,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "cursed",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1896,
+      "fixed": 1
+    },
+    {
+      "id": 70,
+      "shape": 8,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "cursed",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 1909,
+      "fixed": 1
+    },
+    {
+      "id": 71,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "cursed",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 1912,
+      "fixed": 1
+    },
+    {
+      "id": 72,
+      "shape": 25,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "armoroff",
+      "types": [
+        "const char *",
+        "int",
+        "int",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 1963,
+      "fixed": 1
+    },
+    {
+      "id": 73,
+      "shape": 26,
+      "name": "Snprintf",
+      "actual": "nh_snprintf",
+      "fn": "armoroff",
+      "types": [
+        "const char *",
+        "int",
+        "char *",
+        "unsigned long",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 2,
+      "line": 1969,
+      "fixed": 5
+    },
+    {
+      "id": 74,
+      "shape": 27,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "armoroff",
+      "types": [
+        "const char *",
+        "int",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 1998,
+      "fixed": 1
+    },
+    {
+      "id": 75,
+      "shape": 28,
+      "name": "You",
+      "actual": "You",
+      "fn": "already_wearing",
+      "types": [
+        "const char *",
+        "const char *",
+        "int"
+      ],
+      "prefix": 0,
+      "line": 2013,
+      "fixed": 1
+    },
+    {
+      "id": 76,
+      "shape": 29,
+      "name": "You_cant",
+      "actual": "You_cant",
+      "fn": "already_wearing2",
+      "types": [
+        "const char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2019,
+      "fixed": 1
+    },
+    {
+      "id": 77,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2039,
+      "fixed": 1
+    },
+    {
+      "id": 78,
+      "shape": 30,
+      "name": "pline_The",
+      "actual": "pline_The",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2055,
+      "fixed": 1
+    },
+    {
+      "id": 79,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2065,
+      "fixed": 1
+    },
+    {
+      "id": 80,
+      "shape": 31,
+      "name": "pline_The",
+      "actual": "pline_The",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2078,
+      "fixed": 1
+    },
+    {
+      "id": 81,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2091,
+      "fixed": 1
+    },
+    {
+      "id": 82,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2098,
+      "fixed": 1
+    },
+    {
+      "id": 83,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2109,
+      "fixed": 1
+    },
+    {
+      "id": 84,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2117,
+      "fixed": 1
+    },
+    {
+      "id": 85,
+      "shape": 16,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2125,
+      "fixed": 1
+    },
+    {
+      "id": 86,
+      "shape": 32,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2128,
+      "fixed": 1
+    },
+    {
+      "id": 87,
+      "shape": 16,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2132,
+      "fixed": 1
+    },
+    {
+      "id": 88,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2145,
+      "fixed": 1
+    },
+    {
+      "id": 89,
+      "shape": 33,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2152,
+      "fixed": 1
+    },
+    {
+      "id": 90,
+      "shape": 34,
+      "name": "You_cant",
+      "actual": "You_cant",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2164,
+      "fixed": 1
+    },
+    {
+      "id": 91,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "canwearobj",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2181,
+      "fixed": 1
+    },
+    {
+      "id": 92,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2231,
+      "fixed": 1
+    },
+    {
+      "id": 93,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2233,
+      "fixed": 1
+    },
+    {
+      "id": 94,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2255,
+      "fixed": 1
+    },
+    {
+      "id": 95,
+      "shape": 35,
+      "name": "There",
+      "actual": "There",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2259,
+      "fixed": 1
+    },
+    {
+      "id": 96,
+      "shape": 12,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "char *",
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2270,
+      "fixed": 2
+    },
+    {
+      "id": 97,
+      "shape": 16,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2290,
+      "fixed": 1
+    },
+    {
+      "id": 98,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2298,
+      "fixed": 1
+    },
+    {
+      "id": 99,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2312,
+      "fixed": 1
+    },
+    {
+      "id": 100,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2325,
+      "fixed": 1
+    },
+    {
+      "id": 101,
+      "shape": 16,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2331,
+      "fixed": 1
+    },
+    {
+      "id": 102,
+      "shape": 19,
+      "name": "You_cant",
+      "actual": "You_cant",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2350,
+      "fixed": 1
+    },
+    {
+      "id": 103,
+      "shape": 36,
+      "name": "panic",
+      "actual": "panic",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "long"
+      ],
+      "prefix": 0,
+      "line": 2393,
+      "fixed": 1
+    },
+    {
+      "id": 104,
+      "shape": 23,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "accessory_or_armor_on",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2423,
+      "fixed": 1
+    },
+    {
+      "id": 105,
+      "shape": 10,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "dowear",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2439,
+      "fixed": 1
+    },
+    {
+      "id": 106,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "dowear",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2445,
+      "fixed": 1
+    },
+    {
+      "id": 107,
+      "shape": 37,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "doputon",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2461,
+      "fixed": 1
+    },
+    {
+      "id": 108,
+      "shape": 32,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "glibr",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2549,
+      "fixed": 1
+    },
+    {
+      "id": 109,
+      "shape": 38,
+      "name": "Your",
+      "actual": "Your",
+      "fn": "glibr",
+      "types": [
+        "const char *",
+        "const char *",
+        "char *",
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2580,
+      "fixed": 1
+    },
+    {
+      "id": 110,
+      "shape": 39,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "glibr",
+      "types": [
+        "const char *",
+        "char *",
+        "char *",
+        "const char *",
+        "char *",
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2616,
+      "fixed": 1
+    },
+    {
+      "id": 111,
+      "shape": 17,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "stuck_ring",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2660,
+      "fixed": 1
+    },
+    {
+      "id": 112,
+      "shape": 15,
+      "name": "pline_The",
+      "actual": "pline_The",
+      "fn": "select_off",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2710,
+      "fixed": 1
+    },
+    {
+      "id": 113,
+      "shape": 1,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "select_off",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2716,
+      "fixed": 2
+    },
+    {
+      "id": 114,
+      "shape": 12,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "select_off",
+      "types": [
+        "char *",
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2719,
+      "fixed": 2
+    },
+    {
+      "id": 115,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2724,
+      "fixed": 1
+    },
+    {
+      "id": 116,
+      "shape": 40,
+      "name": "You",
+      "actual": "You",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2732,
+      "fixed": 1
+    },
+    {
+      "id": 117,
+      "shape": 9,
+      "name": "pline",
+      "actual": "pline",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2737,
+      "fixed": 1
+    },
+    {
+      "id": 118,
+      "shape": 30,
+      "name": "pline_The",
+      "actual": "pline_The",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2748,
+      "fixed": 1
+    },
+    {
+      "id": 119,
+      "shape": 41,
+      "name": "You",
+      "actual": "You",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2752,
+      "fixed": 1
+    },
+    {
+      "id": 120,
+      "shape": 1,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "select_off",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2761,
+      "fixed": 2
+    },
+    {
+      "id": 121,
+      "shape": 1,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "select_off",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2764,
+      "fixed": 2
+    },
+    {
+      "id": 122,
+      "shape": 1,
+      "name": "Sprintf",
+      "actual": "sprintf",
+      "fn": "select_off",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2767,
+      "fixed": 2
+    },
+    {
+      "id": 123,
+      "shape": 2,
+      "name": "You",
+      "actual": "You",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2774,
+      "fixed": 1
+    },
+    {
+      "id": 124,
+      "shape": 23,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "select_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2818,
+      "fixed": 1
+    },
+    {
+      "id": 125,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "do_takeoff",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2835,
+      "fixed": 1
+    },
+    {
+      "id": 126,
+      "shape": 6,
+      "name": "You",
+      "actual": "You",
+      "fn": "do_takeoff",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2837,
+      "fixed": 1
+    },
+    {
+      "id": 127,
+      "shape": 2,
+      "name": "You",
+      "actual": "You",
+      "fn": "do_takeoff",
+      "types": [
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2841,
+      "fixed": 1
+    },
+    {
+      "id": 128,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "do_takeoff",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 2846,
+      "fixed": 1
+    },
+    {
+      "id": 129,
+      "shape": 42,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "do_takeoff",
+      "types": [
+        "const char *",
+        "long"
+      ],
+      "prefix": 0,
+      "line": 2891,
+      "fixed": 1
+    },
+    {
+      "id": 130,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "take_off",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 2927,
+      "fixed": 1
+    },
+    {
+      "id": 131,
+      "shape": 42,
+      "name": "impossible",
+      "actual": "impossible",
+      "fn": "take_off",
+      "types": [
+        "const char *",
+        "long"
+      ],
+      "prefix": 0,
+      "line": 2971,
+      "fixed": 1
+    },
+    {
+      "id": 132,
+      "shape": 43,
+      "name": "Snprintf",
+      "actual": "nh_snprintf",
+      "fn": "better_not_take_that_off",
+      "types": [
+        "const char *",
+        "int",
+        "char *",
+        "unsigned long",
+        "const char *",
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 2,
+      "line": 3004,
+      "fixed": 5
+    },
+    {
+      "id": 133,
+      "shape": 0,
+      "name": "You",
+      "actual": "You",
+      "fn": "doddoremarm",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 3027,
+      "fixed": 1
+    },
+    {
+      "id": 134,
+      "shape": 3,
+      "name": "You",
+      "actual": "You",
+      "fn": "doddoremarm",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3032,
+      "fixed": 1
+    },
+    {
+      "id": 135,
+      "shape": 44,
+      "name": "There",
+      "actual": "There",
+      "fn": "menu_remarm",
+      "types": [
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3135,
+      "fixed": 1
+    },
+    {
+      "id": 136,
+      "shape": 45,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3215,
+      "fixed": 1
+    },
+    {
+      "id": 137,
+      "shape": 46,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *",
+        "char *",
+        "char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3226,
+      "fixed": 1
+    },
+    {
+      "id": 138,
+      "shape": 45,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3232,
+      "fixed": 1
+    },
+    {
+      "id": 139,
+      "shape": 45,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3235,
+      "fixed": 1
+    },
+    {
+      "id": 140,
+      "shape": 45,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3238,
+      "fixed": 1
+    },
+    {
+      "id": 141,
+      "shape": 45,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3241,
+      "fixed": 1
+    },
+    {
+      "id": 142,
+      "shape": 45,
+      "name": "urgent_pline",
+      "actual": "urgent_pline",
+      "fn": "disintegrate_arm",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "prefix": 0,
+      "line": 3243,
+      "fixed": 1
+    },
+    {
+      "id": 143,
+      "shape": 47,
+      "name": "You",
+      "actual": "You",
+      "fn": "inaccessible_equipment",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 3361,
+      "fixed": 1
+    },
+    {
+      "id": 144,
+      "shape": 47,
+      "name": "You",
+      "actual": "You",
+      "fn": "inaccessible_equipment",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 3384,
+      "fixed": 1
+    },
+    {
+      "id": 145,
+      "shape": 47,
+      "name": "You",
+      "actual": "You",
+      "fn": "inaccessible_equipment",
+      "types": [
+        "const char *",
+        "char *",
+        "const char *",
+        "char *"
+      ],
+      "prefix": 0,
+      "line": 3392,
+      "fixed": 1
+    }
+  ],
+  "messages": {
+    "weapon": [
+      "pline",
+      "You",
+      "Your",
+      "You_feel",
+      "pline_mon",
+      "impossible",
+      "panic"
+    ],
+    "worn": [
+      "impossible",
+      "pline",
+      "pline_mon",
+      "You",
+      "You_hear"
+    ],
+    "wield": [
+      "pline",
+      "You",
+      "Your",
+      "You_cant"
+    ]
+  },
+  "armorPlain": {
+    "name": "pline1",
+    "actual": "pline",
+    "format": "%s"
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-equipment-format-abi.py": "e71c5208f22a6147dc8b531ec6c1600c256ed22cb86cc606451be713eab693c5",
+    "nethack-c/wasm/tu-libraries/weapon.js": "0303766572429519079a031676ff80f2b41f399614320d88aaaaf4edbae723a1",
+    "nethack-c/wasm/tu-libraries/worn.js": "9887555ed959b09741bf9e2e9a471d7f63e7eee44d57b8071ab460ce8109097d",
+    "nethack-c/wasm/tu-libraries/wield.js": "0aff7987e96c7279c83c87acd24cf09dba2a747c006584f9d1973a35a5d4febf",
+    "nethack-c/wasm/tu-libraries/do_wear.js": "10948301f472ecb26f96d72b95e3afdb8912d364ab012f5a0913f47ff08fb33e",
+    "nethack-c/wasm/tu-weapon-support.inc": "30c6ed5f7a06c4fa75707642626efd5a03153f8c80f113d202d155086358f60e",
+    "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
+    "nethack-c/wasm/tu-do_wear-varargs.inc": "0bbc44b0dfda5e996fceb82eb2ce24c71188db05cb5b83d0a492df3480866684",
+    "scripts/write-tu-source-metadata.py": "d05e33ba5b44e6564e59f30dc2f9baaf7483d416e80917b41ce7c6c5b70f97d1",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/ported/weapon.js": "edd0319a89e6fcecd69f5f6962f812e5aa5ad7f71a8eeda11bee98fe13b47edd",
+    "js/ported/worn.js": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
+    "js/ported/wield.js": "7c4052a40ad20eec5b6a5918597dc800165cb77694472e7aa0b8aed112f54583",
+    "js/ported/do_wear.js": "7d8a9f25550c8763507ff501ba6fd6f9fd443f07e5eb3818801b9169b9917785",
+    "js/ported/hacklib.js": "308c32f2c959a8aadcb816d333ea5faf2aad90c9325523ae6a5551bd9d4963e3",
+    "js/ported/strutil.js": "06ec150305c339f2bb3fe574eaa4878b9b3b4f049c66541a390ac17add33a57f"
+  },
+  "referenceHeaderSha256": {
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/src/weapon.c": "75769f6a3113224ea20414f75fc8b1159b6712bc7154905443e4fc1a4912bc2d",
+    ".cache/wasm64-build/tree/src/worn.c": "0414baea25644ea52cc7b628dff4ab1a533eada1523405eaabe7d7555bc3d4cf",
+    ".cache/wasm64-build/tree/src/wield.c": "dccf8af84cf299ac659ab07ee6c106d9c8f9726d1fca1360a4df81d576adbd4c",
+    ".cache/wasm64-build/tree/src/do_wear.c": "cf33ad9f5b18bcdfffd09d4e99867590802735a9ae2d34b9eb2b64880fa459c7",
+    ".cache/wasm64-build/tree/src/hacklib.c": "78e81aedddb93a6bc8d966f3f586e689ae05c335d34dba36af6abb95700d5ec4",
+    ".cache/wasm64-build/tree/src/strutil.c": "7a9d406919c3711b8ec3ee9fb8618b2af8f546b6d6d2a192a5962a2de313ce1e"
+  }
+}

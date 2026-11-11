@@ -1,5 +1,6 @@
 // Existing address-based adapters on standalone storage, with real JS symbol
 // resolution. Missing game functions remain explicit link errors, never stubs.
+import publicFunctions from './public-functions.json' with {type:'json'};
 import metadata from './address-ports.json' with {type:'json'};
 import * as mklev from '../ported/mklev.js';
 import {callMklev} from '../ported/mklev-runtime.js';
@@ -30,11 +31,11 @@ import {callSpLev} from '../ported/sp_lev-runtime.js';
 import {withCEnvironment} from '../ported/c-runtime.js';
 const ports={mklev:[mklev,callMklev],mkmaze:[mkmaze,callMkmaze],pickup:[pickup,callPickup],shk:[shk,callShk],invent:[invent,callInvent],dothrow:[dothrow,callDothrow],display:[display,callDisplay],dungeon:[dungeon,callDungeon],
     mkobj:[mkobj,createMkobjEnvironment,'factory'],muse:[muse,createMuseEnvironment,'factory'],pray:[pray,createPrayEnvironment,'factory'],detect:[detect,createDetectEnvironment,'factory'],sp_lev:[spLev,(s,l,n,...a)=>callSpLev(s,l,spLev,n,...a),'layout']};
-export function enableAddressPort(environment,name,{only}={}) {
-    const definition=metadata.ports[name],pair=ports[name];if(!definition||!pair)throw new Error('Unsupported address adapter '+name);
-    const {schema,layout}=definition,{services,ctypes,transport}=environment;
+export function enableAddressPort(environment,name,{only,definition:providedDefinition,adapter:providedAdapter,ctypes:providedTypes,backingAddresses={}}={}) {
+    const definition=providedDefinition??metadata.ports[name],pair=providedAdapter??ports[name];if(!definition||!pair)throw new Error('Unsupported address adapter '+name);
+    const {schema,layout}=definition,{services,transport}=environment,ctypes=providedTypes??environment.ctypes;
     const namespace=pair[0],bridge=pair[1],local=Object.create(services),records=Object.keys(schema.schema);
-    const backings=(schema.statics??schema.backings??[]).map(row=>environment.allocateGlobal(name+'.'+row.name,ctypes.size(row.type)));
+    const backings=(schema.statics??schema.backings??[]).map(row=>Object.hasOwn(backingAddresses,row.name)?environment.address(backingAddresses[row.name]):environment.allocateGlobal(name+'.'+row.name,ctypes.size(row.type)));
     if(['muse','pray'].includes(name))backings.push(environment.allocateGlobal(name+'.localStrings',Math.max(1,...schema.localStatics.map(r=>r.offset+r.bytes))));
     if(name==='detect')backings.push(environment.allocateGlobal('detect.dummytrap',ctypes.size('struct trap')));
     const keys=schema.layoutKeys?Object.fromEntries(schema.layoutKeys.map((key,i)=>[key,BigInt(layout[i])])):layout;
@@ -69,11 +70,11 @@ export function enableAddressPort(environment,name,{only}={}) {
     const pointerIds=new Map();
     const pointer=fn=>{
         if(pointerIds.has(fn))return pointerIds.get(fn);
-        const prototype=schema.functionPointers?.[fn],info=schema.dependencies?.[fn],sig=prototype?prototypeSignature(prototype):info?signature(info.ret,info.params.map(p=>p.canonical??p.type)):({mkroom_cmp:'ipp'})[fn];
+        const prototype=schema.functionPointers?.[fn]??publicFunctions.functions[fn],info=schema.dependencies?.[fn],sig=prototype?prototypeSignature(prototype):info?signature(info.ret,info.params.map(p=>p.canonical??p.type)):({mkroom_cmp:'ipp',rn2_on_display_rng:'ii'})[fn];
         // Owned comparator signatures are checked by the indirect-call adapter;
         // non-comparator owned callback types need an explicit schema entry.
         if(!sig)throw new Error('Missing callback signature '+name+'.'+fn);
-        const id=environment.functions.functionPointer((...args)=>resolve(fn)(...args),sig);pointerIds.set(fn,id);return id;
+        const owned=schema.ownedFunctionPointers?.includes(fn)||typeof namespace[fn]==='function',id=environment.functionPointer(owned&&!Object.hasOwn(publicFunctions.functions,fn)?name+'::'+fn:fn,sig,owned?((...args)=>bind(fn)(...args)):undefined);pointerIds.set(fn,id);return id;
     };
     local.ownedFunctionPointer=i=>pointer(schema.ownedFunctionPointers[i]);
     local.nativeFunctionPointer=i=>pointer(schema.nativeFunctionPointers[i]);
@@ -85,7 +86,7 @@ export function enableAddressPort(environment,name,{only}={}) {
     for(const row of schema.callbackCalls??[])local['indirect'+row.site]=(fn,...args)=>environment.functions.indirect(fn,signature(row.ret,row.types),...args);
     for(const row of schema.callbacks??[])local['cb'+row.site]=(fn,...args)=>environment.functions.indirect(fn,signature(ctypes.canonical(row.ret),row.types.map(ctypes.canonical)),...args);
     for(const [fn,info]of Object.entries(schema.dependencies??{}))local[fn]=(...args)=>{
-        const value=resolve(fn)(...args);return info.ret.includes('*')?(typeof value==='string'?services.literal(value):environment.address(value)):value;
+        const value=resolve(fn)(...args),ret=ctypes.canonical(info.ret);if(ret.includes('*'))return typeof value==='string'?services.literal(value):environment.address(value);if(['long','unsigned long','long long','unsigned long long'].includes(ret))return BigInt[ret.startsWith('unsigned')?'asUintN':'asIntN'](64,BigInt(value));return value;
     };
     let factoryEnvironment;
     if(only)for(const key of only)if(typeof namespace[key]!=='function')throw new Error('Unknown address adapter export '+name+'.'+key);
@@ -96,6 +97,7 @@ export function enableAddressPort(environment,name,{only}={}) {
     };
     const wrappers=Object.fromEntries(Object.entries(namespace).filter(([key,fn])=>typeof fn==='function'&&(!only||only.includes(key))&&!/StaticInitializers$/.test(key)&&(!schema.functionTypes||Object.hasOwn(schema.functionTypes,key))).map(([key])=>[key,bind(key)]));
     environment.register(name,wrappers,local);
+    environment.deferFunctions(name,Object.fromEntries(Object.keys(publicFunctions.functions).filter(fn=>typeof namespace[fn]==='function'&&!Object.hasOwn(wrappers,fn)).map(fn=>[fn,bind(fn)])));
     return{
         services:local,layout:keys,
         expose:names=>{for(const key of names)if(typeof namespace[key]!=='function')throw new Error('Unknown '+name+' export '+key);environment.extend(name,Object.fromEntries(names.map(key=>[key,bind(key)])));},

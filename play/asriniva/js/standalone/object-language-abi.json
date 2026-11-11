@@ -1,0 +1,192 @@
+{
+  "globals": [
+    "objects",
+    "obj_descr",
+    "gu",
+    "program_state",
+    "iflags",
+    "u",
+    "gv",
+    "gd",
+    "svp",
+    "gf",
+    "gx",
+    "flags",
+    "mons",
+    "cg",
+    "gm",
+    "uskin",
+    "uarmg",
+    "svm",
+    "genders",
+    "uwep",
+    "gw",
+    "vowels",
+    "svb",
+    "svl",
+    "hands_obj",
+    "svd",
+    "svc",
+    "disp",
+    "ynchars",
+    "c_common_strings"
+  ],
+  "bits": [
+    [
+      "struct objclass",
+      "oc_name_known"
+    ],
+    [
+      "struct objclass",
+      "oc_material"
+    ],
+    [
+      "struct objclass",
+      "oc_unique"
+    ],
+    [
+      "struct objclass",
+      "oc_uses_known"
+    ],
+    [
+      "struct objclass",
+      "oc_magic"
+    ],
+    [
+      "struct objclass",
+      "oc_charged"
+    ],
+    [
+      "struct objclass",
+      "oc_big"
+    ],
+    [
+      "struct objclass",
+      "oc_nowish"
+    ],
+    [
+      "struct objclass",
+      "oc_merge"
+    ],
+    [
+      "struct obj",
+      "known"
+    ],
+    [
+      "struct obj",
+      "bknown"
+    ],
+    [
+      "struct obj",
+      "dknown"
+    ],
+    [
+      "struct obj",
+      "otrapped"
+    ],
+    [
+      "struct obj",
+      "globby"
+    ],
+    [
+      "struct obj",
+      "oeroded"
+    ],
+    [
+      "struct obj",
+      "blessed"
+    ],
+    [
+      "struct obj",
+      "cursed"
+    ],
+    [
+      "struct obj",
+      "rknown"
+    ],
+    [
+      "struct obj",
+      "oeroded2"
+    ],
+    [
+      "struct obj",
+      "oerodeproof"
+    ],
+    [
+      "struct obj",
+      "cknown"
+    ],
+    [
+      "struct obj",
+      "lknown"
+    ],
+    [
+      "struct obj",
+      "tknown"
+    ],
+    [
+      "struct obj",
+      "obroken"
+    ],
+    [
+      "struct obj",
+      "olocked"
+    ],
+    [
+      "struct obj",
+      "greased"
+    ],
+    [
+      "struct obj",
+      "lamplit"
+    ],
+    [
+      "struct obj",
+      "recharged"
+    ],
+    [
+      "struct obj",
+      "unpaid"
+    ],
+    [
+      "struct obj",
+      "no_charge"
+    ],
+    [
+      "struct you",
+      "uhandedness"
+    ],
+    [
+      "struct you",
+      "uinwater"
+    ],
+    [
+      "struct rm",
+      "flags"
+    ],
+    [
+      "struct rm",
+      "horizontal"
+    ],
+    [
+      "struct trap",
+      "ttyp"
+    ]
+  ],
+  "staticBuffers": {
+    "paydoname.and_contents": 18,
+    "singplur_compound.compound_start": 3,
+    "wishymatch.detect_SP": 8,
+    "wishymatch.SP_detection": 11,
+    "gloves_simple_name.gauntlets": 10,
+    "boots_simple_name.shoes": 6
+  },
+  "sourceSha256": {
+    "nethack-c/wasm/tu-libraries/objnam.js": "25bc822ec86953d00719b253e334c8db45f346ff945205a0953af9902f4adf0e",
+    "scripts/export-standalone-object-language-abi.py": "202fd8864f24a7c513f06442b9d17e6112b9190a6ee24a5d454c085b9fa50838",
+    "js/ported/objnam-runtime.js": "5e70f51aed8aba366ea67976e5cc13175e95e52aad0cf3e979be60e5be4b1dc0",
+    "js/ported/objnam.js": "deca0132d61a0dca7a72455c3d2e8fd7231ed5271f9c1cb46e0c761551aecd2a",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "nethack-c/wasm/tu-objnam-support.inc": "e1392608f68a679fe1374e334a4d5bb2742f93f6c20140ea0f74680a5f2c3032"
+  }
+}

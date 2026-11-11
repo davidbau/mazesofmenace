@@ -2061,7 +2061,7 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
      * changed twice between flushes puts just the last glyph on the terminal.
      * Remember the cell as the terminal held it at the last flush. */
     if (loc.disp_flush_epoch !== _flush_epoch) {
-        loc.disp_flushed_cell = _buffered_capture_cell(loc);
+        loc.disp_flushed_cell = _buffered_capture_cell(loc, x, y);
         loc.disp_flush_epoch = _flush_epoch;
     }
     loc.disp_glyph_color = color;
@@ -2074,14 +2074,17 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
      * from the cmap glyph and active symbols. #terrain's back_to_glyph
      * reconstruction retains the cmap even when it has no baked attribute.
      * wintty.c:3930-3936 paints these flags with ATR_INVERSE. */
+    let framed = false;
     if (cls === GLYPHCLS_CMAP && !attr)
         attr = _bw_terrain_hilite(cmap ?? _default_cmap_at(loc, ch, color));
     /* C wintty.c:3923-3926: with use_color, a cell with a frame colour
      * (getpos's valid-position background, getpos.c:57) skips the whole
      * MG_PET/MG_OBJPILE/MG_DETECT/MG_BW_* attribute chain. */
     if (game.iflags?.use_color !== false
-        && game._getpos_frame_sel?.has(y * COLNO + x))
+        && game._getpos_frame_sel?.has(y * COLNO + x)) {
         attr = 0;
+        framed = true;
+    }
     /* C display.c:2594-2655 map_glyphinfo: only the hero's colour is tweaked on the fly;
      * every other glyph's colour was fixed by the last reset_glyphmap(), so a use_color
      * toggle leaves buffered/redrawn non-hero cells coloured until the option walk
@@ -2263,6 +2266,7 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
+    loc.disp_framed = framed;
     loc.disp_cls = cls;
     loc.disp_unmapped = undefined; // painted on this level; see goto_level's gbuf carry
     // C's gbuf retains glyph identity even when colors are disabled.
@@ -4312,7 +4316,7 @@ function _capture_painted_cells() {
             if (!row || row.version !== paint.versions[y]) {
                 row = { version: paint.versions[y], entries: [] };
                 for (let x = 1; x < COLNO; x++) {
-                    const cell = _buffered_capture_cell(lvl.at(x, y));
+                    const cell = _buffered_capture_cell(lvl.at(x, y), x, y);
                     // This glyph needs history even before the first render.
                     if (cell.ch === ROGUE_HERO_CH) {
                         row.entries.push([x, _EMPTY_CAPTURE_CELL]);
@@ -4334,7 +4338,7 @@ function _capture_painted_cells() {
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = lvl.at(x, y);
-            let cell = _buffered_capture_cell(loc);
+            let cell = _buffered_capture_cell(loc, x, y);
             /* A control-byte hero (RogueEpyx S_human) paints nothing: the
              * terminal keeps what it held there.  Resolve that NOW — _epyxPhys
              * keeps changing as later flushes repaint, and a paged frame
@@ -5063,17 +5067,21 @@ export function invalidate_map_row(y) {
     const cache = game.level && _MAP_PAINT_CACHE.get(game.level);
     if (cache) cache.versions[y]++;
 }
-function _buffered_capture_cell(loc) {
+function _buffered_capture_cell(loc, x, y) {
     if (!loc) return _EMPTY_CAPTURE_CELL;
     if (loc.disp_capture_cell != null) return loc.disp_capture_cell;
     const ch = loc.disp_ch ?? ' ';
     const color = loc.disp_color ?? NO_COLOR;
     const dec = !!loc.disp_decgfx;
+    /* The pet attr is the one map_glyphinfo baked into gbuf at draw time
+     * (display.c); a hilite_pet/petattr toggle only reaches the map at the
+     * deferred docrt (options.c:5300-5311), so never re-derive it here. */
     let attr = loc.disp_attr | 0;
-    if (loc.disp_mon_kind === 'pet' && game.iflags?.wc_hilite_pet) {
-        const pa = (game.iflags?.wc2_petattr | 0) || 7;
-        attr = pa === 7 ? 1 : pa === 1 ? 2 : pa === 4 ? 4 : 0;
-    }
+    /* C wintty.c:3923-3936: a targeting frame colour takes precedence over
+     * pet highlighting and every inverse attribute. */
+    if (game.iflags?.use_color !== false
+        && game._getpos_frame_sel?.has(y * COLNO + x))
+        attr = 0;
     const prev = loc[_CAPTURE_CELL_CACHE];
     if (prev && prev.ch === ch && prev.color === color
         && prev.dec === dec && prev.attr === attr) return prev;
@@ -5198,7 +5206,7 @@ export function docorner_blank_utf8_captures(xmin, ymax) {
             game._epyxPhys?.delete(y * COLNO + x);
             /* row_refresh prints this part of gbuf even without a flush. */
             if (loc) {
-                loc.disp_flushed_cell = _buffered_capture_cell(loc);
+                loc.disp_flushed_cell = _buffered_capture_cell(loc, x, y);
                 loc.disp_flush_epoch = _flush_epoch;
             }
         }
@@ -5215,7 +5223,7 @@ function _snapCellAt(x, y) {
         return { ch: ' ', color: NO_COLOR, dec: false, attr: 0 };
     }
     const loc = game.level?.at(x, y);
-    const cell = _buffered_capture_cell(loc);
+    const cell = _buffered_capture_cell(loc, x, y);
     /* C wintty.c:3740-3783 g_putch writes control bytes without painting a
      * glyph. Track physical cells before the first such write too: RogueEpyx
      * S_coin (\x0f), like S_human (\x01), preserves whatever was painted
@@ -6854,9 +6862,6 @@ function _status_condition_hilites(row) {
     const fields = _status_field_hilites(row);
     // C wintty.c:5080-5097,5213-5234: zero disables conditions and fields.
     if (!game.iflags?.hilite_delta) return cells;
-    /* botl.c:4574: hilite_delta raised without update_all; the grid paint keeps
-     * the uncoloured fields as delivered, like _hilite_status_wrap. */
-    if (game._statusHiliteHeld) return cells;
     /* wintty.c:5080-5083,4908-4950 condcolor()/condattr(): the colour is the
      * LOWEST colour index whose gc.cond_hilites[] mask holds the condition;
      * attributes are the union over every attribute slot holding it. */
@@ -11291,6 +11296,7 @@ function _apply_getpos_frame_pending() {
             const loc = game.level?.at(k % COLNO, Math.trunc(k / COLNO));
             if (loc && game.iflags?.use_color !== false) {
                 loc.disp_attr = 0;
+                loc.disp_framed = true;
                 invalidate_map_row(Math.trunc(k / COLNO));
             }
         }
@@ -12971,7 +12977,7 @@ function _last_changed_gnew_cursor() {
         for (let x = COLNO - 1; x >= 1; x--) {
             const loc = lev.at(x, y);
             if (!loc || loc.disp_flush_epoch !== _flush_epoch) continue;
-            const a = loc.disp_flushed_cell, b = _buffered_capture_cell(loc);
+            const a = loc.disp_flushed_cell, b = _buffered_capture_cell(loc, x, y);
             if (!a || loc.disp_gnew_epoch === _flush_epoch || a.ch !== b.ch || a.color !== b.color
                 || !!a.dec !== !!b.dec || (a.attr | 0) !== (b.attr | 0))
                 return [x, y + 1];

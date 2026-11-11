@@ -1,0 +1,436 @@
+{
+  "schema": {
+    "obj": [
+      "struct obj",
+      {
+        "cobj": "ptr:obj",
+        "corpsenm": "Int32",
+        "nexthere": "ptr:obj",
+        "nobj": "ptr:obj",
+        "o_id": "Uint32",
+        "oartifact": "Int8",
+        "oclass": "Int8",
+        "otyp": "Int16",
+        "ox": "Int16",
+        "oy": "Int16",
+        "quan": "BigInt64",
+        "where": "Int8"
+      }
+    ],
+    "mon": [
+      "struct monst",
+      {
+        "cham": "Int16",
+        "data": "ptr:pm",
+        "m_ap_type": "Uint8",
+        "m_lev": "Uint8",
+        "mappearance": "Uint32",
+        "meating": "Int32",
+        "mextra": "ptr:mextra",
+        "mgoal": "nested:coord",
+        "mhp": "Int32",
+        "mhpmax": "Int32",
+        "minvent": "ptr:obj",
+        "movement": "Int16",
+        "mspec_used": "Int32",
+        "mstate": "BigInt64",
+        "mstrategy": "BigUint64",
+        "mtame": "Int8",
+        "mtrack": "array:coord:4",
+        "mux": "Int16",
+        "muy": "Int16",
+        "mw": "ptr:obj",
+        "mx": "Int16",
+        "my": "Int16",
+        "nmon": "ptr:mon",
+        "weapon_check": "Int16"
+      }
+    ],
+    "pm": [
+      "struct permonst",
+      {
+        "geno": "Uint16",
+        "mattk": "array:attack:6",
+        "mflags1": "BigUint64",
+        "mflags2": "BigUint64",
+        "mflags3": "Uint16",
+        "mlet": "Int8",
+        "mlevel": "Int8",
+        "mmove": "Int8",
+        "msize": "Uint8",
+        "msound": "Uint8",
+        "pmidx": "Int32"
+      }
+    ],
+    "attack": [
+      "struct attack",
+      {
+        "aatyp": "Uint8",
+        "adtyp": "Uint8",
+        "damd": "Uint8",
+        "damn": "Uint8"
+      }
+    ],
+    "you": [
+      "struct you",
+      {
+        "dx": "Int32",
+        "dy": "Int32",
+        "mh": "Int32",
+        "uhp": "Int32",
+        "umonnum": "Int32",
+        "umonster": "Int32",
+        "uprops": "array:prop:69",
+        "uroleplay": "nested:roleplay",
+        "ustuck": "ptr:mon",
+        "ux": "Int16",
+        "ux0": "Int16",
+        "uy": "Int16",
+        "uy0": "Int16",
+        "uz": "nested:level"
+      }
+    ],
+    "level": [
+      "struct d_level",
+      {
+        "dlevel": "Int16",
+        "dnum": "Int16"
+      }
+    ],
+    "coord": [
+      "struct nhcoord",
+      {
+        "x": "Int16",
+        "y": "Int16"
+      }
+    ],
+    "prop": [
+      "struct prop",
+      {
+        "blocked": "BigInt64",
+        "extrinsic": "BigInt64",
+        "intrinsic": "BigInt64"
+      }
+    ],
+    "mfp": [
+      "struct mfndposdata",
+      {
+        "cnt": "Int32",
+        "info": "array:BigInt64:9",
+        "poss": "array:coord:9"
+      }
+    ],
+    "a11y": [
+      "struct accessibility_data",
+      {
+        "mon_movement": "Int8"
+      }
+    ],
+    "context": [
+      "struct context_info",
+      {
+        "achieveo": "nested:achieve",
+        "digging": "nested:digging"
+      }
+    ],
+    "digging": [
+      "struct dig_info",
+      {
+        "pos": "nested:coord"
+      }
+    ],
+    "achieve": [
+      "struct achievement_tracking",
+      {
+        "mines_prize_oid": "Uint32",
+        "soko_prize_oid": "Uint32"
+      }
+    ],
+    "rm": [
+      "struct rm",
+      {
+        "typ": "Int8"
+      }
+    ],
+    "cls": [
+      "struct objclass",
+      {
+        "oc_skill": "Int8",
+        "oc_subtyp": "Int8"
+      }
+    ],
+    "trap": [
+      "struct trap",
+      {}
+    ],
+    "edog": [
+      "struct edog",
+      {
+        "hungrytime": "BigInt64"
+      }
+    ],
+    "mextra": [
+      "struct mextra",
+      {
+        "edog": "ptr:edog"
+      }
+    ],
+    "engr": [
+      "struct engr",
+      {}
+    ],
+    "stair": [
+      "struct stairway",
+      {
+        "sx": "Int16",
+        "sy": "Int16",
+        "up": "Int8"
+      }
+    ],
+    "arw": [
+      "struct throw_and_return_weapon",
+      {
+        "range": "Int32"
+      }
+    ],
+    "gender": [
+      "struct Gender",
+      {
+        "his": "ptr:raw"
+      }
+    ],
+    "vital": [
+      "struct mvitals",
+      {
+        "mvflags": "Uint8"
+      }
+    ],
+    "flags": [
+      "struct flag",
+      {
+        "verbose": "Int8"
+      }
+    ],
+    "levelFlags": [
+      "struct levelflags",
+      {}
+    ],
+    "svm": [
+      "struct instance_globals_saved_m",
+      {
+        "moves": "BigInt64",
+        "mvitals": "array:vital:383"
+      }
+    ],
+    "svl": [
+      "struct instance_globals_saved_l",
+      {
+        "level": "nested:dlevel"
+      }
+    ],
+    "svc": [
+      "struct instance_globals_saved_c",
+      {
+        "context": "nested:context"
+      }
+    ],
+    "svd": [
+      "struct instance_globals_saved_d",
+      {
+        "dungeon_topology": "nested:topology"
+      }
+    ],
+    "topology": [
+      "struct dgn_topology",
+      {
+        "d_astral_level": "nested:level",
+        "d_rogue_level": "nested:level"
+      }
+    ],
+    "gm": [
+      "struct instance_globals_m",
+      {
+        "multi": "BigInt64"
+      }
+    ],
+    "go": [
+      "struct instance_globals_o",
+      {
+        "occupation": "callback"
+      }
+    ],
+    "gn": [
+      "struct instance_globals_n",
+      {
+        "notonhead": "Int8"
+      }
+    ],
+    "gv": [
+      "struct instance_globals_v",
+      {
+        "viz_array": "ptr:raw"
+      }
+    ],
+    "gy": [
+      "struct instance_globals_y",
+      {
+        "youmonst": "nested:mon"
+      }
+    ],
+    "gi": [
+      "struct instance_globals_i",
+      {
+        "invent": "ptr:obj"
+      }
+    ],
+    "gk": [
+      "struct instance_globals_k",
+      {
+        "kickedloc": "nested:coord"
+      }
+    ],
+    "gb": [
+      "struct instance_globals_b",
+      {
+        "bhitpos": "nested:coord"
+      }
+    ],
+    "roleplay": [
+      "struct u_roleplay",
+      {
+        "deaf": "Int8"
+      }
+    ],
+    "dlevel": [
+      "__typeof__(svl.level)",
+      {
+        "flags": "nested:levelFlags",
+        "locations": "array:rm:80,21",
+        "monlist": "ptr:mon",
+        "monsters": "array:ptr:mon:80,21",
+        "objects": "array:ptr:obj:80,21"
+      }
+    ]
+  },
+  "bits": {
+    "obj": [
+      "blessed",
+      "cursed",
+      "lamplit",
+      "no_charge",
+      "unpaid"
+    ],
+    "mon": [
+      "isgd",
+      "isminion",
+      "ispriest",
+      "isshk",
+      "iswiz",
+      "mblinded",
+      "mcan",
+      "mcanmove",
+      "mcansee",
+      "mconf",
+      "mflee",
+      "mfleetim",
+      "mfrozen",
+      "minvis",
+      "mpeaceful",
+      "msleeping",
+      "mspotted",
+      "mstun",
+      "mtrapped",
+      "mundetected",
+      "perminvis",
+      "wormno"
+    ],
+    "pm": [],
+    "attack": [],
+    "you": [
+      "uinvulnerable",
+      "uinwater",
+      "uswallow",
+      "uundetected"
+    ],
+    "level": [],
+    "coord": [],
+    "prop": [],
+    "mfp": [],
+    "a11y": [],
+    "context": [],
+    "digging": [],
+    "achieve": [],
+    "rm": [
+      "edge",
+      "flags",
+      "lit"
+    ],
+    "cls": [
+      "oc_material"
+    ],
+    "trap": [
+      "tseen",
+      "ttyp"
+    ],
+    "edog": [],
+    "mextra": [],
+    "engr": [
+      "guardobjects"
+    ],
+    "stair": [],
+    "arw": [],
+    "gender": [],
+    "vital": [],
+    "flags": [],
+    "levelFlags": [
+      "arboreal",
+      "shortsighted",
+      "sokoban_rules"
+    ],
+    "svm": [],
+    "svl": [],
+    "svc": [],
+    "svd": [],
+    "topology": [],
+    "gm": [],
+    "go": [],
+    "gn": [],
+    "gv": [],
+    "gy": [],
+    "gi": [],
+    "gk": [],
+    "gb": [],
+    "roleplay": [],
+    "dlevel": []
+  },
+  "globals": [
+    "u",
+    "svc",
+    "svm",
+    "svl",
+    "gy",
+    "gv",
+    "gm",
+    "go",
+    "gn",
+    "gi",
+    "gb",
+    "gk",
+    "svd",
+    "flags",
+    "a11y",
+    "mons",
+    "objects",
+    "genders",
+    "xdir",
+    "ydir",
+    "dirs_ord"
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-monmove-abi.py": "f459c969a4423d5931cc3627a781f84517d857e057d5d728b226bcabc9502913",
+    "js/ported/monmove-runtime.js": "4248f7e934e189861ebf44fe565c1fff627470bfcfee9d73f3170ea0e7843001",
+    "nethack-c/wasm/tu-monmove-support.inc": "7f2865bd51620be0b1c74a37589bfaa830eb94aea195f40ce722fafcc4c22a1b",
+    "js/ported/monmove.js": "5de0a2637789797e687065ef7ebeccc336d80e3e2aa0292a55a626b83ed32f01",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+  }
+}

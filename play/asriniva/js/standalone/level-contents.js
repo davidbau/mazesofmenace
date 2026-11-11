@@ -1,0 +1,41 @@
+// Next level-generation owners on shared storage; source policies unchanged.
+import {callRegion} from '../ported/region-runtime.js';
+import {unearth_objs} from '../ported/dig.js';
+import {make_grave,random_engraving,rubouts} from '../ported/engrave.js';
+import {enableRandomText} from './random-text.js';
+import {enableVision} from './vision.js';
+import abi from './trap-abi.json' with {type:'json'};
+import * as trap from '../ported/trap.js';
+import {invocation_pos,in_rooms} from '../ported/hack.js';
+import {callTrap} from '../ported/trap-runtime.js';
+import {has_dnstairs,has_upstairs,inside_room,somex,somey,somexy,somexyspace,save_rooms} from '../ported/mkroom.js';
+import {enableSchemaPort} from './schema-port.js';
+export function enableLevelContents(environment,layouts,creation){
+ if(!environment.hasFunction('m_dowear'))environment.enableMonsterInventory(layouts);
+ const randomText=enableRandomText(environment,layouts),engraving=environment.start('world-engravings').environment;
+ engraving.get_rnd_text=(name,out,rng,pad)=>{if(rng!==engraving.rn2)throw new Error('Unexpected engraving RNG callback');return environment.resolve('get_rnd_text')(name,out,environment.functionPointer('rn2','ii'),pad);};
+ const text=p=>typeof p==='string'?environment.services.literal(p):environment.address(p);
+ engraving.rubouts=rubouts.map(row=>({...row,wipeto:environment.services.literal(row.wipeto)}));
+ engraving.strlen=p=>BigInt(environment.memory.strlen(text(p)));engraving.strchr=(p,ch)=>environment.services.strchr(text(p),ch);
+ engraving.loadChar=p=>environment.transport.read('Int8',text(p));engraving.storeChar=(p,v)=>environment.transport.write('Int8',environment.address(p),v);
+ engraving.rn2=(n,line,caller)=>{if(environment.services.rng_log_enabled())environment.services.rng_log_set_caller(environment.services.literal('engrave.c'),line,environment.services.literal(caller));return environment.services.rn2(n);};
+ environment.extend('world-engravings',{make_grave,random_engraving});
+ const vision=enableVision(environment,layouts);
+ const regions=environment.start('region-reset').environment;environment.extend('region-reset',{visible_region_at:(...args)=>callRegion(regions,layouts.region,'visible_region_at',...args)});
+ const digging=creation.context(layouts.dig);environment.register('level-unearthing',{unearth_objs},digging);
+ const position=creation.context(layouts.hack);Object.defineProperty(position,'svi',{value:creation.views.record('struct instance_globals_saved_i',environment.requireGlobal('svi'))});position.Invocation_lev=lev=>environment.resolve('Invocation_lev')(environment.address(lev));Object.defineProperty(position,'svr',{value:creation.views.record('struct instance_globals_saved_r',environment.requireGlobal('svr'))});
+ position.in_rooms_buf=environment.allocateGlobal('hack.in_rooms.buf',5);position.charPointer=p=>typeof p==='string'?environment.services.literal(p):environment.address(p);
+ Object.defineProperty(position,'HEAP8',{get:()=>environment.services.signedHeap()});
+ const numeric=k=>typeof k==='string'&&/^-?\d+$/.test(k),cell=(x,y)=>new Proxy(creation.environment.levl[x][y],{get:(o,k,r)=>numeric(k)?creation.views.advance(o,Number(k)):Reflect.get(o,k,r)});
+ Object.defineProperty(position,'levl',{value:new Proxy({}, {get:(_,x)=>new Proxy({}, {get:(_,y)=>cell(Number(x),Number(y))})})});
+ environment.register('level-invocation',{invocation_pos,in_rooms},position);
+ const traps=enableSchemaPort(environment,'trap',trap,trap.trapSchema,abi.layout,callTrap,['maketrap','t_at']);
+ const room=creation.context(layouts.mkroom),{views}=creation;
+ for(const [name,type]of [['gs','struct instance_globals_s'],['svr','struct instance_globals_saved_r']])Object.defineProperty(room,name,{value:views.record(type,environment.requireGlobal(name))});
+ Object.assign(room,{bool:v=>Number(Boolean(v)),IS_WALL:t=>Boolean(t&&t<=layouts.mkroom.DBWALL),roomDifference:(a,b)=>BigInt(environment.address(a)-environment.address(b))/BigInt(environment.ctypes.size('struct mkroom'))});
+ room.nroomRef=()=>({address:environment.ctypes.locate('struct instance_globals_saved_n',environment.requireGlobal('svn'),'nroom').at});
+ for(const type of ['int','mkroom'])room['Sfo_'+type]=(fp,p,tag)=>environment.resolve('sfo_'+type)(environment.address(fp),environment.address(p),typeof tag==='string'?environment.services.literal(tag):environment.address(tag));
+ for(const kind of ['rn1','rn2','rnd'])room[kind]=(...args)=>{const count=kind==='rn1'?2:1,[line,caller]=args.slice(count);if(environment.services.rng_log_enabled())environment.services.rng_log_set_caller(environment.services.literal('mkroom.c'),line,environment.services.literal(caller));return kind==='rn1'?environment.transport.int(environment.services.rn2(environment.transport.int(args[0]))+environment.transport.int(args[1])):environment.services[kind](...args.slice(0,count));};
+ environment.register('room-queries',{has_dnstairs,has_upstairs,inside_room,somex,somey,somexy,somexyspace,save_rooms},room,{prepareArgs:(name,args)=>{if(name==='save_rooms'){args[0]=environment.address(args[0]);return args;}args[0]=views.record('struct mkroom',args[0]);if(['somexy','somexyspace'].includes(name))args[1]=views.record('coord',args[1]);return args;}});
+ return {traps,room,vision,randomText,limitation:'Trap and room dependency integration in progress; complete level generation and full-game recording are not accepted.'};
+}

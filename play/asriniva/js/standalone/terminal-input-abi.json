@@ -1,0 +1,25 @@
+{
+  "globals": [
+    "wins",
+    "ttyDisplay",
+    "iflags",
+    "gt",
+    "gi",
+    "program_state"
+  ],
+  "scalars": [
+    "morc",
+    "erase_char",
+    "kill_char"
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-terminal-input-abi.py": "1b76325d19cd4e705e87f5a5737b2c091c0e3bdb4ec17132a9e68fa72c72fda1",
+    "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
+    "nethack-c/wasm/tu-libraries/getline.js": "ea621dccc03a29507a9a30dd1d51809846be7caa5dc2790ebfd71127b1d48344",
+    "scripts/tu-getline-layout.h": "78563fb6288f946654302dc156662fe4bb57c912ce03460786e8ed4b98dd8281",
+    "js/ported/getline.js": "c747cd91b2a42e97af866dcd79e6f2299d0ecdb7ee9582c649d1c36319aad33d",
+    "js/ported/getline-runtime.js": "1e5abc25d9c12d7330f67a60413cba8134dbe38d3ef310571fe5622689adb383",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
+  }
+}

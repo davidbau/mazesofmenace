@@ -892,7 +892,18 @@
     "teleport_termcap_test_emit256": "vi",
     "term_start_extracolor": "vii",
     "term_end_extracolor": "v",
-    "teleport_termcap_callback_tty_decgraphics_termcap_fixup": "v"
+    "teleport_termcap_callback_tty_decgraphics_termcap_fixup": "v",
+    "tty_decgraphics_termcap_fixup": "v",
+    "nomux_markers_enabled": "i",
+    "nomux_emit_marker": "vp",
+    "nomux_sgr_fg": "ii",
+    "nomux_raw_putch": "vi",
+    "init_hilite": "v",
+    "kill_hilite": "v",
+    "s_atr2str": "pi",
+    "e_atr2str": "pi",
+    "emit24bit": "vj",
+    "emit256": "vi"
   },
   "typeAliases": {
     "TELEPORT_TERMCAP_TI_MAP_TYPE": "struct teleport_termcap_ti_map_entry"
@@ -906,6 +917,7 @@
     128
   ],
   "sourceSha256": {
+    "scripts/export-standalone-terminal.py": "691e80e4f3947a4c7ac5443629b2c0cef9c6659c2176b82c3127650d995d87f7",
     "js/ported/termcap-runtime.js": "74ccdf315d0d414a22885a636806e9ec571b195623d7b980883fd8f99d31689e",
     "nethack-c/wasm/tu-libraries/termcap.js": "be0bb1b55051f6171b45548582d2172a1cd14ccb2227978e39ff6df5efa354c2",
     "nethack-c/wasm/tu-fragments/termcap-support.c": "f514178bc577bcf9220dd0a6afd59a14caabdb060fda2f3322e923e158158d22",

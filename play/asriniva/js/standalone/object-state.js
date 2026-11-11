@@ -40,11 +40,12 @@ export function enableObjectState(environment,layouts) {
     for(const direction of ['sfo','sfi'])for(const kind of ['int','short','objclass','unsigned','char'])
         local[(direction==='sfo'?'Sfo_':'Sfi_')+kind]=(...args)=>services[direction+'_'+kind](...args);
     const adapter=createOInitEnvironment(local,layouts.o_init,policy);
-    const names=['setgemprobs','randomize_gem_colors','shuffle','init_objects','init_oclass_probs','obj_shuffle_range','shuffle_all','objdescr_is','oinit','savenames','restnames'];
+    const names=['setgemprobs','randomize_gem_colors','shuffle','init_objects','init_oclass_probs','obj_shuffle_range','shuffle_all','objdescr_is','oinit','savenames','restnames','discover_object','observe_object'];
     const namespace=Object.fromEntries(names.map(name=>[name,policy[name]]));
     namespace.objdescr_is=(...args)=>Number(policy.objdescr_is(...args));
     environment.register('object-state',namespace,adapter,{prepareArgs:(name,args)=>{
         if(name==='setgemprobs')args[0]=adapter.level(args[0]);
+        if(name==='observe_object')args[0]=adapter.object(args[0]);
         if(name==='objdescr_is')args[0]=adapter.object(args[0]);
         if(['savenames','restnames'].includes(name))args[0]=adapter.nhfile(args[0]);
         if(name==='obj_shuffle_range'){args[1]=adapter.intPointer(args[1]);args[2]=adapter.intPointer(args[2]);}

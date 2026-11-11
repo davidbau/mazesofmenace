@@ -1,0 +1,36 @@
+{
+  "globals": [
+    "gu",
+    "gn",
+    "gi",
+    "svl",
+    "gm",
+    "svq",
+    "gc",
+    "svp",
+    "svd",
+    "u",
+    "flags",
+    "program_state",
+    "genders",
+    "mons",
+    "svm",
+    "gl"
+  ],
+  "questBits": [
+    "godgend",
+    "ldrgend",
+    "nemgend"
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-quest-pager-abi.py": "3097c4a30fad65ae8e83a63946d9015b73317b8c985349d2c4812bf3f931b20f",
+    "nethack-c/wasm/tu-questpgr-support.inc": "7a6edbc0b1b35904acab23dc7ae3020659bd0a333ed57a6a38dde629b05e4631",
+    "nethack-c/wasm/tu-libraries/questpgr.js": "a4c0e517d9d73baba9c8c66ce606368395e8a5ea1b0903b56bb21fbe659ccb4c",
+    "scripts/tu-questpgr-layout.h": "c5d8e92362f3d9d6ea6a1a2f3b352a160f61a3760897dd0da48fdafa428c1e9d",
+    "js/ported/questpgr.js": "8163cbd139330d38077f7897b2611920a82d544cbe95d7b38e47fd9132d3cbbf",
+    "js/ported/questpgr-runtime.js": "ed2500551bf0f2649459f581e7a8cff724901df03415a4d94559c44170fd9814",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52"
+  }
+}

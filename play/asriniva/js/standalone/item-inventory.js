@@ -43,7 +43,7 @@ export function enableItemInventory(environment,layouts) {
     legacy.artiexist=views.array('struct arti_info',environment.allocateGlobal('artiexist',34*ctypes.size('struct arti_info')),34);
     legacy.sizes={artilist:35*ctypes.size('struct artifact')};legacy.state={initialized:false};
     artifact.initializeArtifactData(legacy);
-    environment.register('artifact-properties',Object.fromEntries(['is_art','get_artifact','spec_ability','confers_luck','permapoisoned','nartifact_exist'].map(k=>[k,artifact[k]])),legacy,{prepareArgs:(fn,args)=>{if(fn!=='nartifact_exist')args[0]=object(args[0]);return args;}});
+    environment.register('artifact-properties',Object.fromEntries(['is_art','get_artifact','spec_ability','confers_luck','permapoisoned','nartifact_exist'].map(k=>[k,artifact[k]])),legacy,{prepareArgs:(fn,args)=>{if(!['nartifact_exist','exist_artifact'].includes(fn))args[0]=object(args[0]);return args;}});
     environment.register('object-selection',{erosion_matters,rnd_class},legacy);
     environment.register('object-safe-name',{safe_oname},legacy,{prepareArgs:(_fn,args)=>[object(args[0])]});
     environment.register('inventory-luck',{stone_luck,set_moreluck},legacy);

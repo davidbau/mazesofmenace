@@ -1,0 +1,3360 @@
+{
+  "windows": {
+    "fields": {
+      "procs": [
+        "name",
+        "wp_id",
+        "wincap",
+        "wincap2",
+        "has_color",
+        "win_init_nhwindows",
+        "win_player_selection",
+        "win_askname",
+        "win_get_nh_event",
+        "win_exit_nhwindows",
+        "win_suspend_nhwindows",
+        "win_resume_nhwindows",
+        "win_create_nhwindow",
+        "win_clear_nhwindow",
+        "win_display_nhwindow",
+        "win_destroy_nhwindow",
+        "win_curs",
+        "win_putstr",
+        "win_putmixed",
+        "win_display_file",
+        "win_start_menu",
+        "win_add_menu",
+        "win_end_menu",
+        "win_select_menu",
+        "win_message_menu",
+        "win_mark_synch",
+        "win_wait_synch",
+        "win_cliparound",
+        "win_print_glyph",
+        "win_raw_print",
+        "win_raw_print_bold",
+        "win_nhgetch",
+        "win_nh_poskey",
+        "win_nhbell",
+        "win_doprev_message",
+        "win_yn_function",
+        "win_getlin",
+        "win_get_ext_cmd",
+        "win_number_pad",
+        "win_delay_output",
+        "win_outrip",
+        "win_preference_update",
+        "win_getmsghistory",
+        "win_putmsghistory",
+        "win_status_init",
+        "win_status_finish",
+        "win_status_enablefield",
+        "win_status_update",
+        "win_can_suspend",
+        "win_update_inventory",
+        "win_ctrl_nhwindow"
+      ],
+      "choice": [
+        "procs",
+        "ini_routine"
+      ],
+      "glyph": [
+        "glyph",
+        "ttychar",
+        "framecolor",
+        "gm.glyphflags",
+        "gm.sym.color",
+        "gm.sym.symidx",
+        "gm.customcolor",
+        "gm.color256idx",
+        "gm.tileidx",
+        "gm.u"
+      ],
+      "any": [
+        "a_int"
+      ],
+      "menu": [
+        "item.a_int",
+        "count",
+        "itemflags"
+      ],
+      "request": [
+        "tocore.tocore_flags",
+        "tocore.active",
+        "tocore.use_update_inventory",
+        "tocore.maxslot",
+        "tocore.needrows",
+        "tocore.needcols",
+        "tocore.haverows",
+        "tocore.havecols",
+        "fromcore.core_request",
+        "fromcore.invmode",
+        "fromcore.menu_promptstyle.color",
+        "fromcore.menu_promptstyle.attr"
+      ],
+      "style": [
+        "color",
+        "attr"
+      ],
+      "cmdq": [
+        "typ",
+        "key"
+      ],
+      "menucolor": [
+        "match",
+        "color",
+        "attr",
+        "next"
+      ],
+      "class": [
+        "sym",
+        "name",
+        "explain"
+      ]
+    },
+    "ptrs": {
+      "procs.name": "pointer",
+      "choice.procs": "procs",
+      "choice.ini_routine": "callback",
+      "glyph.gm.u": "pointer",
+      "menucolor.match": "pointer",
+      "menucolor.next": "menucolor",
+      "class.name": "pointer",
+      "class.explain": "pointer",
+      "procs.win_init_nhwindows": "callback",
+      "procs.win_player_selection": "callback",
+      "procs.win_askname": "callback",
+      "procs.win_get_nh_event": "callback",
+      "procs.win_exit_nhwindows": "callback",
+      "procs.win_suspend_nhwindows": "callback",
+      "procs.win_resume_nhwindows": "callback",
+      "procs.win_create_nhwindow": "callback",
+      "procs.win_clear_nhwindow": "callback",
+      "procs.win_display_nhwindow": "callback",
+      "procs.win_destroy_nhwindow": "callback",
+      "procs.win_curs": "callback",
+      "procs.win_putstr": "callback",
+      "procs.win_putmixed": "callback",
+      "procs.win_display_file": "callback",
+      "procs.win_start_menu": "callback",
+      "procs.win_add_menu": "callback",
+      "procs.win_end_menu": "callback",
+      "procs.win_select_menu": "callback",
+      "procs.win_message_menu": "callback",
+      "procs.win_mark_synch": "callback",
+      "procs.win_wait_synch": "callback",
+      "procs.win_cliparound": "callback",
+      "procs.win_print_glyph": "callback",
+      "procs.win_raw_print": "callback",
+      "procs.win_raw_print_bold": "callback",
+      "procs.win_nhgetch": "callback",
+      "procs.win_nh_poskey": "callback",
+      "procs.win_nhbell": "callback",
+      "procs.win_doprev_message": "callback",
+      "procs.win_yn_function": "callback",
+      "procs.win_getlin": "callback",
+      "procs.win_get_ext_cmd": "callback",
+      "procs.win_number_pad": "callback",
+      "procs.win_delay_output": "callback",
+      "procs.win_outrip": "callback",
+      "procs.win_preference_update": "callback",
+      "procs.win_getmsghistory": "callback",
+      "procs.win_putmsghistory": "callback",
+      "procs.win_status_init": "callback",
+      "procs.win_status_finish": "callback",
+      "procs.win_status_enablefield": "callback",
+      "procs.win_status_update": "callback",
+      "procs.win_can_suspend": "callback",
+      "procs.win_update_inventory": "callback",
+      "procs.win_ctrl_nhwindow": "callback"
+    },
+    "longs": [
+      "procs.wincap",
+      "procs.wincap2",
+      "menu.count",
+      "request.tocore.tocore_flags"
+    ],
+    "ulongs": [
+      "procs.wincap",
+      "procs.wincap2"
+    ],
+    "globalfields": [
+      "iflags.raw_printed",
+      "iflags.altmeta",
+      "iflags.window_inited",
+      "iflags.in_dumplog",
+      "iflags.use_color",
+      "iflags.use_menu_color",
+      "iflags.menu_headings.attr",
+      "iflags.menu_headings.color",
+      "program_state.gameover",
+      "program_state.in_getlin",
+      "gb.bot_disabled",
+      "go.opt_need_promptstyle",
+      "flags.pickup",
+      "gl.last_winchoice",
+      "gm.menu_colorings",
+      "svc.context.rndencode",
+      "WIN_STATUS",
+      "iflags.menuinvertmode"
+    ],
+    "names": [
+      "genl_can_suspend_no",
+      "genl_can_suspend_yes",
+      "def_raw_print",
+      "def_wait_synch",
+      "check_tty_wincap",
+      "check_tty_wincap2",
+      "win_choices_find",
+      "choose_windows",
+      "genl_message_menu",
+      "genl_preference_update",
+      "genl_getmsghistory",
+      "genl_putmsghistory",
+      "nhwindows_hangup",
+      "hup_exit_nhwindows",
+      "hup_nhgetch",
+      "hup_yn_function",
+      "hup_nh_poskey",
+      "hup_getlin",
+      "hup_init_nhwindows",
+      "hup_create_nhwindow",
+      "hup_select_menu",
+      "hup_add_menu",
+      "hup_end_menu",
+      "hup_putstr",
+      "hup_print_glyph",
+      "hup_outrip",
+      "hup_curs",
+      "hup_display_nhwindow",
+      "hup_display_file",
+      "hup_cliparound",
+      "hup_status_update",
+      "hup_int_ndecl",
+      "hup_void_ndecl",
+      "hup_void_fdecl_int",
+      "hup_void_fdecl_winid",
+      "hup_void_fdecl_winid_ulong",
+      "hup_void_fdecl_constchar_p",
+      "hup_ctrl_nhwindow",
+      "genl_status_init",
+      "genl_status_finish",
+      "genl_status_enablefield",
+      "genl_status_update",
+      "dump_open_log",
+      "dump_close_log",
+      "dump_forward_putstr",
+      "dump_putstr",
+      "dump_create_nhwindow",
+      "dump_clear_nhwindow",
+      "dump_display_nhwindow",
+      "dump_destroy_nhwindow",
+      "dump_start_menu",
+      "dump_add_menu",
+      "dump_end_menu",
+      "dump_select_menu",
+      "dump_redirect",
+      "has_color",
+      "glyph2ttychar",
+      "glyph2symidx",
+      "encglyph",
+      "decode_glyph",
+      "decode_mixed",
+      "genl_putmixed",
+      "genl_display_file",
+      "menuitem_invert_test",
+      "mixed_to_glyphinfo",
+      "choose_classes_menu",
+      "adjust_menu_promptstyle",
+      "add_menu",
+      "add_menu_heading",
+      "add_menu_str",
+      "get_menu_coloring",
+      "select_menu",
+      "getlin"
+    ],
+    "callbacks": {
+      "win_init_nhwindows": "void (*)(int *, char **)",
+      "win_player_selection": "void (*)(void)",
+      "win_askname": "void (*)(void)",
+      "win_get_nh_event": "void (*)(void)",
+      "win_exit_nhwindows": "void (*)(const char *)",
+      "win_suspend_nhwindows": "void (*)(const char *)",
+      "win_resume_nhwindows": "void (*)(void)",
+      "win_create_nhwindow": "winid (*)(int)",
+      "win_clear_nhwindow": "void (*)(winid)",
+      "win_display_nhwindow": "void (*)(winid, boolean)",
+      "win_destroy_nhwindow": "void (*)(winid)",
+      "win_curs": "void (*)(winid, int, int)",
+      "win_putstr": "void (*)(winid, int, const char *)",
+      "win_putmixed": "void (*)(winid, int, const char *)",
+      "win_display_file": "void (*)(const char *, boolean)",
+      "win_start_menu": "void (*)(winid, unsigned long)",
+      "win_add_menu": "void (*)(winid, const glyph_info *, const union any *, char, char, int, int, const char *, unsigned int)",
+      "win_end_menu": "void (*)(winid, const char *)",
+      "win_select_menu": "int (*)(winid, int, struct mi **)",
+      "win_message_menu": "char (*)(char, int, const char *)",
+      "win_mark_synch": "void (*)(void)",
+      "win_wait_synch": "void (*)(void)",
+      "win_cliparound": "void (*)(int, int)",
+      "win_print_glyph": "void (*)(winid, coordxy, coordxy, const glyph_info *, const glyph_info *)",
+      "win_raw_print": "void (*)(const char *)",
+      "win_raw_print_bold": "void (*)(const char *)",
+      "win_nhgetch": "int (*)(void)",
+      "win_nh_poskey": "int (*)(coordxy *, coordxy *, int *)",
+      "win_nhbell": "void (*)(void)",
+      "win_doprev_message": "int (*)(void)",
+      "win_yn_function": "char (*)(const char *, const char *, char)",
+      "win_getlin": "void (*)(const char *, char *)",
+      "win_get_ext_cmd": "int (*)(void)",
+      "win_number_pad": "void (*)(int)",
+      "win_delay_output": "void (*)(void)",
+      "win_outrip": "void (*)(winid, int, time_t)",
+      "win_preference_update": "void (*)(const char *)",
+      "win_getmsghistory": "char *(*)(boolean)",
+      "win_putmsghistory": "void (*)(const char *, boolean)",
+      "win_status_init": "void (*)(void)",
+      "win_status_finish": "void (*)(void)",
+      "win_status_enablefield": "void (*)(int, const char *, const char *, boolean)",
+      "win_status_update": "void (*)(int, genericptr_t, int, int, int, unsigned long *)",
+      "win_can_suspend": "boolean (*)(void)",
+      "win_update_inventory": "void (*)(int)",
+      "win_ctrl_nhwindow": "win_request_info *(*)(winid, int, win_request_info *)"
+    }
+  },
+  "wintty": {
+    "schema": {
+      "records": {
+        "struct sinfo": {
+          "resize_pending": {
+            "type": "volatile int",
+            "bit": false
+          },
+          "getting_char": {
+            "type": "volatile int",
+            "bit": false
+          },
+          "done_hup": {
+            "type": "volatile int",
+            "bit": false
+          },
+          "in_role_selection": {
+            "type": "int",
+            "bit": false
+          },
+          "gameover": {
+            "type": "int",
+            "bit": false
+          }
+        },
+        "struct instance_globals_t": {
+          "tc_gbl_data": {
+            "type": "struct tc_gbl_data",
+            "bit": false
+          },
+          "toplines": {
+            "type": "char[300]",
+            "bit": false
+          }
+        },
+        "struct tc_gbl_data": {
+          "tc_LI": {
+            "type": "int",
+            "bit": false
+          },
+          "tc_CO": {
+            "type": "int",
+            "bit": false
+          }
+        },
+        "struct DisplayDesc": {
+          "rows": {
+            "type": "short",
+            "bit": false
+          },
+          "cols": {
+            "type": "short",
+            "bit": false
+          },
+          "toplin": {
+            "type": "int",
+            "bit": false
+          },
+          "topl_utf8": {
+            "type": "int",
+            "bit": false
+          },
+          "curx": {
+            "type": "short",
+            "bit": false
+          },
+          "cury": {
+            "type": "short",
+            "bit": false
+          },
+          "inmore": {
+            "type": "int",
+            "bit": false
+          },
+          "inread": {
+            "type": "int",
+            "bit": false
+          },
+          "intr": {
+            "type": "int",
+            "bit": false
+          },
+          "dismiss_more": {
+            "type": "char",
+            "bit": false
+          },
+          "color": {
+            "type": "uint32",
+            "bit": false
+          },
+          "attrs": {
+            "type": "int",
+            "bit": false
+          },
+          "mixed": {
+            "type": "int",
+            "bit": false
+          },
+          "lastwin": {
+            "type": "winid",
+            "bit": false
+          },
+          "rawprint": {
+            "type": "int",
+            "bit": false
+          },
+          "colorflags": {
+            "type": "uint32",
+            "bit": false
+          },
+          "framecolor": {
+            "type": "uint32",
+            "bit": false
+          }
+        },
+        "struct WinDesc": {
+          "rows": {
+            "type": "long",
+            "bit": false
+          },
+          "cols": {
+            "type": "long",
+            "bit": false
+          },
+          "active": {
+            "type": "boolean",
+            "bit": false
+          },
+          "cury": {
+            "type": "long",
+            "bit": false
+          },
+          "type": {
+            "type": "xint16",
+            "bit": false
+          },
+          "flags": {
+            "type": "int",
+            "bit": false
+          },
+          "curx": {
+            "type": "long",
+            "bit": false
+          },
+          "morestr": {
+            "type": "char *",
+            "bit": false
+          },
+          "mlist": {
+            "type": "tty_menu_item *",
+            "bit": false
+          },
+          "plist": {
+            "type": "tty_menu_item **",
+            "bit": false
+          },
+          "npages": {
+            "type": "long",
+            "bit": false
+          },
+          "plist_size": {
+            "type": "long",
+            "bit": false
+          },
+          "nitems": {
+            "type": "long",
+            "bit": false
+          },
+          "how": {
+            "type": "short",
+            "bit": false
+          },
+          "mbehavior": {
+            "type": "unsigned long",
+            "bit": false
+          },
+          "offx": {
+            "type": "short",
+            "bit": false
+          },
+          "offy": {
+            "type": "short",
+            "bit": false
+          },
+          "maxrow": {
+            "type": "long",
+            "bit": false
+          },
+          "maxcol": {
+            "type": "long",
+            "bit": false
+          },
+          "data": {
+            "type": "char **",
+            "bit": false
+          },
+          "datlen": {
+            "type": "short *",
+            "bit": false
+          }
+        },
+        "struct instance_flags": {
+          "window_inited": {
+            "type": "boolean",
+            "bit": false
+          },
+          "wc2_statuslines": {
+            "type": "int",
+            "bit": false
+          },
+          "wc2_selectsaved": {
+            "type": "boolean",
+            "bit": false
+          },
+          "renameinprogress": {
+            "type": "boolean",
+            "bit": false
+          },
+          "renameallowed": {
+            "type": "boolean",
+            "bit": false
+          },
+          "cbreak": {
+            "type": "boolean",
+            "bit": false
+          },
+          "raw_printed": {
+            "type": "int",
+            "bit": false
+          },
+          "msg_history": {
+            "type": "unsigned int",
+            "bit": false
+          },
+          "menuobjsyms": {
+            "type": "int",
+            "bit": false
+          },
+          "use_menu_glyphs": {
+            "type": "boolean",
+            "bit": false
+          },
+          "menu_overlay": {
+            "type": "boolean",
+            "bit": false
+          },
+          "last_msg": {
+            "type": "int",
+            "bit": false
+          },
+          "wc_eight_bit_input": {
+            "type": "boolean",
+            "bit": false
+          },
+          "wc_color": {
+            "type": "boolean",
+            "bit": false
+          },
+          "colorcount": {
+            "type": "uint32_t",
+            "bit": false
+          },
+          "wc_hilite_pet": {
+            "type": "boolean",
+            "bit": false
+          },
+          "wc2_petattr": {
+            "type": "int",
+            "bit": false
+          },
+          "hilite_pile": {
+            "type": "boolean",
+            "bit": false
+          },
+          "wizmgender": {
+            "type": "boolean",
+            "bit": false
+          },
+          "wc_inverse": {
+            "type": "boolean",
+            "bit": false
+          },
+          "debug_fuzzer": {
+            "type": "xint8",
+            "bit": false
+          },
+          "term_gone": {
+            "type": "boolean",
+            "bit": false
+          },
+          "wc2_hitpointbar": {
+            "type": "boolean",
+            "bit": false
+          },
+          "hilite_delta": {
+            "type": "long",
+            "bit": false
+          }
+        },
+        "struct instance_globals_g": {
+          "getposx": {
+            "type": "coordxy",
+            "bit": false
+          },
+          "getposy": {
+            "type": "coordxy",
+            "bit": false
+          }
+        },
+        "struct you": {
+          "ux": {
+            "type": "coordxy",
+            "bit": false
+          },
+          "uy": {
+            "type": "coordxy",
+            "bit": false
+          }
+        },
+        "struct window_procs": {
+          "wincap2": {
+            "type": "unsigned long",
+            "bit": false
+          },
+          "name": {
+            "type": "const char *",
+            "bit": false
+          },
+          "wp_id": {
+            "type": "enum wp_ids",
+            "bit": false
+          },
+          "wincap": {
+            "type": "unsigned long",
+            "bit": false
+          },
+          "has_color": {
+            "type": "boolean[16]",
+            "bit": false
+          },
+          "win_init_nhwindows": {
+            "type": "void (*)(int *, char **)",
+            "bit": false
+          },
+          "win_player_selection": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_askname": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_get_nh_event": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_exit_nhwindows": {
+            "type": "void (*)(const char *)",
+            "bit": false
+          },
+          "win_suspend_nhwindows": {
+            "type": "void (*)(const char *)",
+            "bit": false
+          },
+          "win_resume_nhwindows": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_create_nhwindow": {
+            "type": "winid (*)(int)",
+            "bit": false
+          },
+          "win_clear_nhwindow": {
+            "type": "void (*)(winid)",
+            "bit": false
+          },
+          "win_display_nhwindow": {
+            "type": "void (*)(winid, boolean)",
+            "bit": false
+          },
+          "win_destroy_nhwindow": {
+            "type": "void (*)(winid)",
+            "bit": false
+          },
+          "win_curs": {
+            "type": "void (*)(winid, int, int)",
+            "bit": false
+          },
+          "win_putstr": {
+            "type": "void (*)(winid, int, const char *)",
+            "bit": false
+          },
+          "win_putmixed": {
+            "type": "void (*)(winid, int, const char *)",
+            "bit": false
+          },
+          "win_display_file": {
+            "type": "void (*)(const char *, boolean)",
+            "bit": false
+          },
+          "win_start_menu": {
+            "type": "void (*)(winid, unsigned long)",
+            "bit": false
+          },
+          "win_add_menu": {
+            "type": "void (*)(winid, const glyph_info *, const union any *, char, char, int, int, const char *, unsigned int)",
+            "bit": false
+          },
+          "win_end_menu": {
+            "type": "void (*)(winid, const char *)",
+            "bit": false
+          },
+          "win_select_menu": {
+            "type": "int (*)(winid, int, struct mi **)",
+            "bit": false
+          },
+          "win_message_menu": {
+            "type": "char (*)(char, int, const char *)",
+            "bit": false
+          },
+          "win_mark_synch": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_wait_synch": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_cliparound": {
+            "type": "void (*)(int, int)",
+            "bit": false
+          },
+          "win_print_glyph": {
+            "type": "void (*)(winid, coordxy, coordxy, const glyph_info *, const glyph_info *)",
+            "bit": false
+          },
+          "win_raw_print": {
+            "type": "void (*)(const char *)",
+            "bit": false
+          },
+          "win_raw_print_bold": {
+            "type": "void (*)(const char *)",
+            "bit": false
+          },
+          "win_nhgetch": {
+            "type": "int (*)(void)",
+            "bit": false
+          },
+          "win_nh_poskey": {
+            "type": "int (*)(coordxy *, coordxy *, int *)",
+            "bit": false
+          },
+          "win_nhbell": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_doprev_message": {
+            "type": "int (*)(void)",
+            "bit": false
+          },
+          "win_yn_function": {
+            "type": "char (*)(const char *, const char *, char)",
+            "bit": false
+          },
+          "win_getlin": {
+            "type": "void (*)(const char *, char *)",
+            "bit": false
+          },
+          "win_get_ext_cmd": {
+            "type": "int (*)(void)",
+            "bit": false
+          },
+          "win_number_pad": {
+            "type": "void (*)(int)",
+            "bit": false
+          },
+          "win_delay_output": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_outrip": {
+            "type": "void (*)(winid, int, time_t)",
+            "bit": false
+          },
+          "win_preference_update": {
+            "type": "void (*)(const char *)",
+            "bit": false
+          },
+          "win_getmsghistory": {
+            "type": "char *(*)(boolean)",
+            "bit": false
+          },
+          "win_putmsghistory": {
+            "type": "void (*)(const char *, boolean)",
+            "bit": false
+          },
+          "win_status_init": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_status_finish": {
+            "type": "void (*)(void)",
+            "bit": false
+          },
+          "win_status_enablefield": {
+            "type": "void (*)(int, const char *, const char *, boolean)",
+            "bit": false
+          },
+          "win_status_update": {
+            "type": "void (*)(int, genericptr_t, int, int, int, unsigned long *)",
+            "bit": false
+          },
+          "win_can_suspend": {
+            "type": "boolean (*)(void)",
+            "bit": false
+          },
+          "win_update_inventory": {
+            "type": "void (*)(int)",
+            "bit": false
+          },
+          "win_ctrl_nhwindow": {
+            "type": "win_request_info *(*)(winid, int, win_request_info *)",
+            "bit": false
+          }
+        },
+        "struct instance_globals_saved_p": {
+          "plname": {
+            "type": "char[32]",
+            "bit": false
+          }
+        },
+        "struct flag": {
+          "standout": {
+            "type": "boolean",
+            "bit": false
+          },
+          "debug": {
+            "type": "boolean",
+            "bit": false
+          }
+        },
+        "struct tty_mi": {
+          "next": {
+            "type": "struct tty_mi *",
+            "bit": false
+          },
+          "str": {
+            "type": "char *",
+            "bit": false
+          },
+          "selected": {
+            "type": "boolean",
+            "bit": false
+          },
+          "count": {
+            "type": "long",
+            "bit": false
+          },
+          "attr": {
+            "type": "int",
+            "bit": false
+          },
+          "color": {
+            "type": "int",
+            "bit": false
+          },
+          "identifier": {
+            "type": "anything",
+            "bit": false
+          },
+          "itemflags": {
+            "type": "unsigned int",
+            "bit": false
+          },
+          "gselector": {
+            "type": "char",
+            "bit": false
+          },
+          "selector": {
+            "type": "char",
+            "bit": false
+          },
+          "glyphinfo": {
+            "type": "glyph_info",
+            "bit": false
+          }
+        },
+        "struct display_hints": {
+          "botlx": {
+            "type": "boolean",
+            "bit": false
+          }
+        },
+        "union any": {
+          "a_void": {
+            "type": "genericptr_t",
+            "bit": false
+          }
+        },
+        "struct glyphinfo": {
+          "glyph": {
+            "type": "int",
+            "bit": false
+          },
+          "gm": {
+            "type": "glyph_map",
+            "bit": false
+          },
+          "ttychar": {
+            "type": "int",
+            "bit": false
+          },
+          "framecolor": {
+            "type": "uint32",
+            "bit": false
+          }
+        },
+        "struct glyph_map_entry": {
+          "sym": {
+            "type": "struct classic_representation",
+            "bit": false
+          },
+          "glyphflags": {
+            "type": "unsigned int",
+            "bit": false
+          },
+          "customcolor": {
+            "type": "uint32",
+            "bit": false
+          },
+          "color256idx": {
+            "type": "uint16",
+            "bit": false
+          },
+          "u": {
+            "type": "struct unicode_representation *",
+            "bit": false
+          }
+        },
+        "struct classic_representation": {
+          "color": {
+            "type": "int",
+            "bit": false
+          }
+        },
+        "struct instance_globals_m": {
+          "mapped_menu_cmds": {
+            "type": "char[33]",
+            "bit": false
+          }
+        },
+        "struct instance_globals_s": {
+          "symset": {
+            "type": "struct symsetentry[2]",
+            "bit": false
+          }
+        },
+        "struct instance_globals_c": {
+          "currentgraphics": {
+            "type": "int",
+            "bit": false
+          }
+        },
+        "struct symsetentry": {
+          "handling": {
+            "type": "enum symset_handling_types",
+            "bit": false
+          }
+        },
+        "struct tc_lcl_data": {
+          "tc_ND": {
+            "type": "char *",
+            "bit": false
+          },
+          "tc_CM": {
+            "type": "char *",
+            "bit": false
+          },
+          "tc_CD": {
+            "type": "char *",
+            "bit": false
+          },
+          "tc_ul_hack": {
+            "type": "boolean",
+            "bit": false
+          }
+        },
+        "struct const_globals": {
+          "zeroany": {
+            "type": "const anything",
+            "bit": false
+          }
+        },
+        "struct color_and_attr": {
+          "attr": {
+            "type": "int",
+            "bit": false
+          },
+          "color": {
+            "type": "int",
+            "bit": false
+          }
+        },
+        "struct mi": {
+          "item": {
+            "type": "anything",
+            "bit": false
+          },
+          "count": {
+            "type": "long",
+            "bit": false
+          }
+        },
+        "struct win_request_info_t": {
+          "fromcore": {
+            "type": "struct from_core",
+            "bit": false
+          }
+        },
+        "struct from_core": {
+          "menu_promptstyle": {
+            "type": "color_attr",
+            "bit": false
+          }
+        },
+        "struct unicode_representation": {
+          "utf8str": {
+            "type": "uint8 *",
+            "bit": false
+          }
+        },
+        "struct tty_status_fields": {
+          "idx": {
+            "type": "int",
+            "bit": false
+          },
+          "color": {
+            "type": "int",
+            "bit": false
+          },
+          "attr": {
+            "type": "int",
+            "bit": false
+          },
+          "x": {
+            "type": "int",
+            "bit": false
+          },
+          "y": {
+            "type": "int",
+            "bit": false
+          },
+          "valid": {
+            "type": "boolean",
+            "bit": false
+          },
+          "dirty": {
+            "type": "boolean",
+            "bit": false
+          },
+          "redraw": {
+            "type": "boolean",
+            "bit": false
+          },
+          "sanitycheck": {
+            "type": "boolean",
+            "bit": false
+          },
+          "lth": {
+            "type": "size_t",
+            "bit": false
+          }
+        },
+        "struct conditions_t": {
+          "mask": {
+            "type": "long",
+            "bit": false
+          },
+          "text": {
+            "type": "const char *[3]",
+            "bit": false
+          }
+        }
+      },
+      "globals": {
+        "program_state": "struct sinfo",
+        "gt": "struct instance_globals_t",
+        "resize_mesg": "volatile int",
+        "ttyDisplay": "struct DisplayDesc *",
+        "wins": "struct WinDesc *[20]",
+        "BASE_WINDOW": "winid",
+        "iflags": "struct instance_flags",
+        "WIN_MAP": "winid",
+        "gg": "struct instance_globals_g",
+        "u": "struct you",
+        "WIN_STATUS": "winid",
+        "WIN_MESSAGE": "winid",
+        "clipping": "boolean",
+        "clipx": "int",
+        "clipy": "int",
+        "stdout": "FILE *const",
+        "obuf": "char[1024]",
+        "tty_procs": "struct window_procs",
+        "svp": "struct instance_globals_saved_p",
+        "morc": "char",
+        "flags": "struct flag",
+        "WIN_INVEN": "winid",
+        "winpanicstr": "const char[22]",
+        "erasing_tty_screen": "volatile int",
+        "disp": "struct display_hints",
+        "defmorestr": "char[9]",
+        "gm": "struct instance_globals_m",
+        "default_menu_cmds": "const char[12]",
+        "quitchars": "const char[]",
+        "gs": "struct instance_globals_s",
+        "gc": "struct instance_globals_c",
+        "tc_lcl_data": "struct tc_lcl_data",
+        "cg": "const struct const_globals",
+        "nul_glyphinfo": "const glyph_info",
+        "tty_menu_promptstyle": "color_attr",
+        "GFlag": "boolean",
+        "HE_resets_AS": "boolean",
+        "clipxmax": "int",
+        "clipymax": "int",
+        "calling_from_update_inventory": "boolean",
+        "stdin": "FILE *const",
+        "windowprocs": "volatile struct window_procs",
+        "fieldorder": "const enum statusfields (*)[19]",
+        "twolineorder": "const enum statusfields[3][19]",
+        "threelineorder": "const enum statusfields[3][19]",
+        "tty_status": "struct tty_status_fields[2][27]",
+        "tty_condition_bits": "long",
+        "hpbar_percent": "int",
+        "hpbar_crit_hp": "int",
+        "status_activefields": "boolean[27]",
+        "truncation_expected": "boolean",
+        "tty_colormasks": "unsigned long *",
+        "status_fieldfmt": "const char *[27]",
+        "status_vals": "char *[27]",
+        "dlvl_shrinklvl": "int",
+        "enc_shrinklvl": "int",
+        "enclev": "int",
+        "cond_shrinklvl": "int",
+        "windowdata_init": "boolean",
+        "do_field_opt": "int",
+        "conditions": "const struct conditions_t[30]",
+        "encvals": "const char *const[3][6]",
+        "cond_idx": "int[30]",
+        "finalx": "int[3][2]"
+      },
+      "aliases": {
+        "__int128_t": "__int128",
+        "__uint128_t": "unsigned __int128",
+        "__NSConstantString": "struct __NSConstantString_tag",
+        "__externref_t": "__externref_t",
+        "__builtin_va_list": "void *",
+        "uintptr_t": "unsigned long",
+        "intptr_t": "long",
+        "int8_t": "signed char",
+        "int16_t": "short",
+        "int32_t": "int",
+        "int64_t": "long long",
+        "intmax_t": "long long",
+        "uint8_t": "unsigned char",
+        "uint16_t": "unsigned short",
+        "uint32_t": "unsigned int",
+        "uint64_t": "unsigned long long",
+        "uintmax_t": "unsigned long long",
+        "int_fast8_t": "signed char",
+        "int_fast64_t": "long long",
+        "int_least8_t": "signed char",
+        "int_least16_t": "short",
+        "int_least32_t": "int",
+        "int_least64_t": "long long",
+        "uint_fast8_t": "unsigned char",
+        "uint_fast64_t": "unsigned long long",
+        "uint_least8_t": "unsigned char",
+        "uint_least16_t": "unsigned short",
+        "uint_least32_t": "unsigned int",
+        "uint_least64_t": "unsigned long long",
+        "int_fast16_t": "int",
+        "int_fast32_t": "int",
+        "uint_fast16_t": "unsigned int",
+        "uint_fast32_t": "unsigned int",
+        "pid_t": "int",
+        "cc_t": "unsigned char",
+        "speed_t": "unsigned int",
+        "tcflag_t": "unsigned int",
+        "time_t": "long long",
+        "pthread_attr_t": "pthread_attr_t",
+        "size_t": "unsigned long",
+        "clock_t": "int",
+        "uid_t": "unsigned int",
+        "pthread_t": "struct __pthread *",
+        "sigset_t": "struct __sigset_t",
+        "stack_t": "struct sigaltstack",
+        "greg_t": "int",
+        "gregset_t": "int[19]",
+        "fpregset_t": "struct _fpstate *",
+        "mcontext_t": "mcontext_t",
+        "ucontext_t": "struct __ucontext",
+        "siginfo_t": "siginfo_t",
+        "sig_t": "void (*)(int)",
+        "sig_atomic_t": "int",
+        "ptrdiff_t": "long",
+        "wchar_t": "int",
+        "max_align_t": "max_align_t",
+        "__wasi_size_t": "unsigned long",
+        "__wasi_filesize_t": "unsigned long long",
+        "__wasi_timestamp_t": "unsigned long long",
+        "__wasi_clockid_t": "unsigned int",
+        "__wasi_errno_t": "unsigned short",
+        "__wasi_rights_t": "unsigned long long",
+        "__wasi_fd_t": "unsigned int",
+        "__wasi_iovec_t": "struct __wasi_iovec_t",
+        "__wasi_ciovec_t": "struct __wasi_ciovec_t",
+        "__wasi_filedelta_t": "long long",
+        "__wasi_whence_t": "unsigned char",
+        "__wasi_dircookie_t": "unsigned long long",
+        "__wasi_dirnamlen_t": "unsigned int",
+        "__wasi_inode_t": "unsigned long long",
+        "__wasi_filetype_t": "unsigned char",
+        "__wasi_dirent_t": "struct __wasi_dirent_t",
+        "__wasi_advice_t": "unsigned char",
+        "__wasi_fdflags_t": "unsigned short",
+        "__wasi_fdstat_t": "struct __wasi_fdstat_t",
+        "__wasi_device_t": "unsigned long long",
+        "__wasi_fstflags_t": "unsigned short",
+        "__wasi_lookupflags_t": "unsigned int",
+        "__wasi_oflags_t": "unsigned short",
+        "__wasi_linkcount_t": "unsigned long long",
+        "__wasi_filestat_t": "struct __wasi_filestat_t",
+        "__wasi_userdata_t": "unsigned long long",
+        "__wasi_eventtype_t": "unsigned char",
+        "__wasi_eventrwflags_t": "unsigned short",
+        "__wasi_event_fd_readwrite_t": "struct __wasi_event_fd_readwrite_t",
+        "__wasi_event_u_t": "union __wasi_event_u_t",
+        "__wasi_event_t": "struct __wasi_event_t",
+        "__wasi_subclockflags_t": "unsigned short",
+        "__wasi_subscription_clock_t": "struct __wasi_subscription_clock_t",
+        "__wasi_subscription_fd_readwrite_t": "struct __wasi_subscription_fd_readwrite_t",
+        "__wasi_subscription_u_t": "union __wasi_subscription_u_t",
+        "__wasi_subscription_t": "struct __wasi_subscription_t",
+        "__wasi_exitcode_t": "unsigned int",
+        "__wasi_signal_t": "unsigned char",
+        "__wasi_riflags_t": "unsigned short",
+        "__wasi_roflags_t": "unsigned short",
+        "__wasi_siflags_t": "unsigned short",
+        "__wasi_sdflags_t": "unsigned char",
+        "__wasi_preopentype_t": "unsigned char",
+        "__wasi_prestat_dir_t": "struct __wasi_prestat_dir_t",
+        "__wasi_prestat_u_t": "union __wasi_prestat_u_t",
+        "__wasi_prestat_t": "struct __wasi_prestat_t",
+        "ssize_t": "long",
+        "off_t": "long long",
+        "gid_t": "unsigned int",
+        "useconds_t": "unsigned int",
+        "regoff_t": "long",
+        "regex_t": "struct re_pattern_buffer",
+        "regmatch_t": "regmatch_t",
+        "teleport_native_regex_t": "teleport_native_regex_t",
+        "genericptr_t": "void *",
+        "schar": "signed char",
+        "uchar": "unsigned char",
+        "va_list": "void *",
+        "__isoc_va_list": "void *",
+        "FILE": "struct _IO_FILE",
+        "fpos_t": "union _G_fpos64_t",
+        "div_t": "div_t",
+        "ldiv_t": "ldiv_t",
+        "lldiv_t": "lldiv_t",
+        "locale_t": "struct __locale_struct *",
+        "__gnuc_va_list": "void *",
+        "timer_t": "void *",
+        "clockid_t": "int",
+        "imaxdiv_t": "imaxdiv_t",
+        "int8": "signed char",
+        "uint8": "unsigned char",
+        "int16": "short",
+        "uint16": "unsigned short",
+        "int32": "int",
+        "uint32": "unsigned int",
+        "int64": "long long",
+        "uint64": "unsigned long long",
+        "ushort": "unsigned short",
+        "uint": "unsigned int",
+        "ulong": "unsigned long",
+        "xint8": "signed char",
+        "coordxy": "short",
+        "xint16": "short",
+        "boolean": "signed char",
+        "seenV": "unsigned char",
+        "readLenType": "unsigned int",
+        "nhsym": "unsigned char",
+        "coord": "struct nhcoord",
+        "id_t": "unsigned int",
+        "idtype_t": "idtype_t",
+        "suseconds_t": "int",
+        "fd_mask": "unsigned long",
+        "fd_set": "fd_set",
+        "rlim_t": "unsigned long long",
+        "enum nhcolortype": "int",
+        "color_attr": "struct color_and_attr",
+        "nhl_sandbox_info": "struct nhl_sandbox_info",
+        "enum NHL_pcall_action": "int",
+        "NHL_pcall_action": "enum NHL_pcall_action",
+        "enum optchoice": "int",
+        "enum optset_restrictions": "int",
+        "enum option_phases": "int",
+        "enum OptType": "int",
+        "enum Y_N": "int",
+        "enum Off_On": "int",
+        "enum OptSection": "int",
+        "enum menu_terminology_preference": "int",
+        "enum opt": "int",
+        "aligntyp": "signed char",
+        "align": "struct align",
+        "enum uchangealign_reasons": "int",
+        "enum weight_constants": "int",
+        "d_level": "struct d_level",
+        "d_flags": "struct d_flags",
+        "s_level": "struct s_level",
+        "enum level_region_types": "int",
+        "dest_area": "struct dest_area",
+        "exclusion_zone": "struct exclusion_zone",
+        "dungeon": "struct dungeon",
+        "branch": "struct branch",
+        "mapseen": "struct mapseen",
+        "stairway": "struct stairway",
+        "enum obj_material_types": "int",
+        "enum obj_armor_types": "int",
+        "enum objclass_defchars": "int",
+        "enum objclass_classes": "int",
+        "enum objclass_syms": "int",
+        "enum objects_nums": "int",
+        "enum misc_object_nums": "int",
+        "winid": "int",
+        "anything": "union any",
+        "enum any_types": "int",
+        "menu_item": "struct mi",
+        "glyph_map": "struct glyph_map_entry",
+        "glyph_info": "struct glyphinfo",
+        "enum perm_invent_toggles": "int",
+        "enum inv_mode_bits": "int",
+        "enum inv_modes": "int",
+        "enum to_core_flags": "int",
+        "enum from_core_requests": "int",
+        "win_request_info": "struct win_request_info_t",
+        "enum win_display_modes": "int",
+        "enum getloc_filters": "int",
+        "enum windowcolors_windows": "int",
+        "enum debug_fuzzer_states": "int",
+        "enum plnmsg_types": "int",
+        "enum runmode_types": "int",
+        "enum gloctypes": "int",
+        "NhRect": "struct nhrect",
+        "enum mon_defchars": "int",
+        "enum mon_syms": "int",
+        "enum cmap_symbols": "int",
+        "enum symset_handling_types": "int",
+        "enum symparse_range": "int",
+        "enum misc_symbols": "int",
+        "enum graphics_sets": "int",
+        "enum do_customizations": "int",
+        "enum customization_types": "int",
+        "enum trap_types": "int",
+        "enum trap_result": "int",
+        "enum trap_immunities": "int",
+        "enum prop_types": "int",
+        "enum monnums": "int",
+        "enum ms_sounds": "int",
+        "enum mgender": "int",
+        "enum ls_sources": "int",
+        "enum zap_colors": "int",
+        "enum altar_colors": "int",
+        "enum explosion_types": "int",
+        "enum expl_types": "int",
+        "enum explode_colors": "int",
+        "enum altar_types": "int",
+        "enum level_walls": "int",
+        "enum glyphmap_change_triggers": "int",
+        "enum glyph_offsets": "int",
+        "enum docrt_flags_bits": "int",
+        "gbuf_entry": "gbuf_entry",
+        "enum statusfields": "int",
+        "enum relationships": "int",
+        "enum blconditions": "int",
+        "enum hlattribs": "int",
+        "enum nh_tips": "int",
+        "enum engraving_texts": "int",
+        "enum roomtype_types": "int",
+        "callback_proc": "boolean (*)(genericptr_t, genericptr_t)",
+        "NhRegion": "NhRegion",
+        "enum levl_typ_types": "int",
+        "dlevel_t": "dlevel_t",
+        "select_iter_func": "void (*)(coordxy, coordxy, void *)",
+        "enum soundlib_ids": "int",
+        "enum instruments": "int",
+        "enum sound_effect_entries": "int",
+        "enum ambience_actions": "int",
+        "enum ambiences": "int",
+        "enum voice_moreinfo": "int",
+        "enum achievements_arg2": "int",
+        "enum findsound_approaches": "int",
+        "enum sound_file_flags": "int",
+        "enum spellknowledge": "int",
+        "timeout_proc": "void (*)(union any *, long)",
+        "enum timer_type": "int",
+        "enum timeout_types": "int",
+        "timer_element": "struct fe",
+        "enum wp_ids": "int",
+        "enum attrib_types": "int",
+        "enum dogfood_types": "int",
+        "enum wpn_chk_flags": "int",
+        "enum m_ap_types": "int",
+        "enum m_seen_resistance": "int",
+        "enum p_skills": "int",
+        "enum skill_levels": "int",
+        "enum achivements": "int",
+        "enum utraptypes": "int",
+        "enum utotypes": "int",
+        "Str_or_Len": "union str_or_len",
+        "enum artifacts_nums": "int",
+        "enum misc_arti_nums": "int",
+        "enum bcargs": "int",
+        "enum bhit_call_types": "int",
+        "enum bodypart_types": "int",
+        "enum bubble_contains_types": "int",
+        "enum cmdq_cmdtypes": "int",
+        "cmdcount_nht": "long",
+        "enum nh_keyfunc": "int",
+        "enum cost_alteration_types": "int",
+        "enum unpaid_cost_flags": "int",
+        "enum digcheck_result": "int",
+        "enum dismount_types": "int",
+        "enum lua_theme_group": "int",
+        "enum earlyarg": "int",
+        "enum encumbrance_types": "int",
+        "enum game_end_types": "int",
+        "enum getobj_callback_returns": "int",
+        "enum getpos_retval": "int",
+        "enum hmon_atkmode_types": "int",
+        "enum hunger_state_types": "int",
+        "enum inventory_counts": "int",
+        "light_source": "struct ls_t",
+        "enum movemodes": "int",
+        "enum movementdirs": "int",
+        "enum nhcore_calls": "int",
+        "enum nhcb_calls": "int",
+        "enum polyself_flags": "int",
+        "enum restore_stages": "int",
+        "enum InputState": "int",
+        "Loot": "struct sortloot_item",
+        "strbuf_t": "struct strbuf",
+        "enum stoning_checks": "int",
+        "lev_region": "lev_region",
+        "enum vanq_order_modes": "int",
+        "enum saveformats": "int",
+        "NHFILE": "struct nh_file",
+        "mmflags_nht": "unsigned int",
+        "lua_State": "struct lua_State",
+        "lua_Number": "double",
+        "lua_Integer": "long long",
+        "lua_Unsigned": "unsigned long long",
+        "lua_KContext": "long",
+        "lua_CFunction": "int (*)(lua_State *)",
+        "lua_KFunction": "int (*)(lua_State *, int, lua_KContext)",
+        "lua_Reader": "const char *(*)(lua_State *, void *, size_t *)",
+        "lua_Writer": "int (*)(lua_State *, const void *, size_t, void *)",
+        "lua_Alloc": "void *(*)(void *, void *, size_t, size_t)",
+        "lua_WarnFunction": "void (*)(void *, const char *, int)",
+        "lua_Debug": "struct lua_Debug",
+        "lua_Hook": "void (*)(lua_State *, lua_Debug *)",
+        "luaL_Buffer": "struct luaL_Buffer",
+        "luaL_Reg": "struct luaL_Reg",
+        "luaL_Stream": "struct luaL_Stream",
+        "enum invoke_prop_types": "int",
+        "nomux_cell": "nomux_cell",
+        "tty_menu_item": "struct tty_mi",
+        "chtype": "unsigned int",
+        "mmask_t": "unsigned int",
+        "NCURSES_BOOL": "unsigned char",
+        "SCREEN": "struct screen",
+        "WINDOW": "struct _win_st",
+        "attr_t": "unsigned int",
+        "cchar_t": "cchar_t",
+        "NCURSES_OUTC": "int (*)(int)",
+        "NCURSES_WINDOW_CB": "int (*)(WINDOW *, void *)",
+        "NCURSES_SCREEN_CB": "int (*)(SCREEN *, void *)",
+        "NCURSES_OUTC_sp": "int (*)(SCREEN *, int)",
+        "MEVENT": "MEVENT",
+        "TERMTYPE": "struct termtype",
+        "TERMINAL": "struct term"
+      },
+      "sizeof": {
+        "FILE *": "sizeof_1",
+        "anything": "sizeof_2",
+        "boolean": "sizeof_3",
+        "char": "sizeof_4",
+        "char *": "sizeof_5",
+        "char **": "sizeof_6",
+        "char[128]": "sizeof_7",
+        "char[256]": "sizeof_8",
+        "char[258]": "sizeof_9",
+        "char[260]": "sizeof_10",
+        "char[31]": "sizeof_11",
+        "char[32]": "sizeof_12",
+        "char[40]": "sizeof_13",
+        "const char *": "sizeof_14",
+        "const char[14]": "sizeof_15",
+        "const struct conditions_t": "sizeof_16",
+        "const struct conditions_t[30]": "sizeof_17",
+        "glyph_info": "sizeof_18",
+        "int": "sizeof_19",
+        "int[128]": "sizeof_20",
+        "int[3]": "sizeof_21",
+        "long": "sizeof_22",
+        "long *": "sizeof_23",
+        "menu_item": "sizeof_24",
+        "menu_item *": "sizeof_25",
+        "short": "sizeof_26",
+        "struct DisplayDesc": "sizeof_27",
+        "struct WinDesc": "sizeof_28",
+        "struct WinDesc *": "sizeof_29",
+        "struct classic_representation": "sizeof_30",
+        "struct color_and_attr": "sizeof_31",
+        "struct conditions_t": "sizeof_32",
+        "struct const_globals": "sizeof_33",
+        "struct display_hints": "sizeof_34",
+        "struct flag": "sizeof_35",
+        "struct from_core": "sizeof_36",
+        "struct glyph_map_entry": "sizeof_37",
+        "struct glyphinfo": "sizeof_38",
+        "struct instance_flags": "sizeof_39",
+        "struct instance_globals_c": "sizeof_40",
+        "struct instance_globals_g": "sizeof_41",
+        "struct instance_globals_m": "sizeof_42",
+        "struct instance_globals_s": "sizeof_43",
+        "struct instance_globals_saved_p": "sizeof_44",
+        "struct instance_globals_t": "sizeof_45",
+        "struct mi": "sizeof_46",
+        "struct sinfo": "sizeof_47",
+        "struct symsetentry": "sizeof_48",
+        "struct tc_gbl_data": "sizeof_49",
+        "struct tc_lcl_data": "sizeof_50",
+        "struct tty_mi": "sizeof_51",
+        "struct tty_status_fields": "sizeof_52",
+        "struct unicode_representation": "sizeof_53",
+        "struct win_request_info_t": "sizeof_54",
+        "struct window_procs": "sizeof_55",
+        "struct you": "sizeof_56",
+        "tty_menu_item": "sizeof_57",
+        "tty_menu_item *": "sizeof_58",
+        "uint32": "sizeof_59",
+        "uint8": "sizeof_60",
+        "union any": "sizeof_61",
+        "unsigned int": "sizeof_62",
+        "unsigned long": "sizeof_63",
+        "win_request_info": "sizeof_64",
+        "winid": "sizeof_65"
+      },
+      "fieldAliases": {
+        "struct instance_flags": {
+          "eight_bit_tty": "wc_eight_bit_input",
+          "use_color": "wc_color",
+          "hilite_pet": "wc_hilite_pet",
+          "use_inverse": "wc_inverse"
+        }
+      }
+    },
+    "nativeReturns": {
+      "addtopl": "void",
+      "alloc": "long *",
+      "backsp": "void",
+      "bot": "void",
+      "cl_end": "void",
+      "cl_eos": "void",
+      "clearlocks": "void",
+      "cmov": "void",
+      "copyright_banner_line": "const char *",
+      "critically_low_hp": "boolean",
+      "debugcore": "boolean",
+      "decode_mixed": "char *",
+      "docrt": "void",
+      "docrt_flags": "void",
+      "dupstr": "char *",
+      "eos": "char *",
+      "flush_screen": "void",
+      "free_pickinv_cache": "void",
+      "genl_player_setup": "int",
+      "genl_preference_update": "void",
+      "genl_status_enablefield": "void",
+      "genl_status_finish": "void",
+      "genl_status_init": "void",
+      "gettty": "void",
+      "getwindowsz": "void",
+      "graph_off": "void",
+      "graph_on": "void",
+      "home": "void",
+      "impossible": "void",
+      "map_menu_cmd": "char",
+      "menuitem_invert_test": "boolean",
+      "mixed_to_utf8": "char *",
+      "more": "void",
+      "nh_terminate": "void",
+      "nhassert_failed": "void",
+      "nocmov": "void",
+      "nomux_capture_write_input_boundary": "void",
+      "nomux_putch": "void",
+      "nomux_raw_emit": "void",
+      "panic": "void",
+      "paniclog": "void",
+      "pline": "void",
+      "pmatchi": "boolean",
+      "randomkey": "char",
+      "redraw_map": "void",
+      "remember_topl": "void",
+      "repad_with_dashes": "void",
+      "restore_menu": "int",
+      "row_refresh": "void",
+      "set_wc2_option_mod_status": "void",
+      "setftty": "void",
+      "settty": "void",
+      "show_topl": "void",
+      "standoutbeg": "void",
+      "standoutend": "void",
+      "stat_cap_indx": "int",
+      "status_initialize": "void",
+      "tabexpand": "char *",
+      "teleport_getch": "int",
+      "term_attr_fixup": "int",
+      "term_clear_screen": "void",
+      "term_curs_set": "void",
+      "term_end_attr": "void",
+      "term_end_color": "void",
+      "term_end_extracolor": "void",
+      "term_end_raw_bold": "void",
+      "term_shutdown": "void",
+      "term_start_attr": "void",
+      "term_start_bgcolor": "void",
+      "term_start_color": "void",
+      "term_start_extracolor": "void",
+      "term_start_raw_bold": "void",
+      "term_startup": "void",
+      "tty_doprev_message": "int",
+      "tty_getlin": "void",
+      "tty_nhbell": "void",
+      "update_topl": "void",
+      "xputs": "void",
+      "xwaitforspace": "void"
+    },
+    "dataTypes": {
+      "tty_procs": "struct window_procs",
+      "winpanicstr": "const char[22]",
+      "defmorestr": "char[9]",
+      "clipping": "boolean",
+      "clipx": "int",
+      "clipxmax": "int",
+      "clipy": "int",
+      "clipymax": "int",
+      "GFlag": "boolean",
+      "calling_from_update_inventory": "boolean",
+      "default_menu_cmds": "const char[12]",
+      "resize_mesg": "volatile int",
+      "tty_menu_promptstyle": "color_attr",
+      "encvals": "const char *const[3][6]",
+      "twolineorder": "const enum statusfields[3][19]",
+      "threelineorder": "const enum statusfields[3][19]",
+      "windowdata_init": "boolean",
+      "cond_shrinklvl": "int",
+      "enclev": "int",
+      "enc_shrinklvl": "int",
+      "dlvl_shrinklvl": "int",
+      "truncation_expected": "boolean",
+      "do_field_opt": "int"
+    },
+    "zeroStorage": {
+      "BASE_WINDOW": "winid",
+      "wins": "struct WinDesc *[20]",
+      "ttyDisplay": "struct DisplayDesc *",
+      "erasing_tty_screen": "volatile int",
+      "obuf": "char[1024]",
+      "HE_resets_AS": "boolean",
+      "tty_colormasks": "unsigned long *",
+      "tty_condition_bits": "long",
+      "tty_status": "struct tty_status_fields[2][27]",
+      "hpbar_percent": "int",
+      "hpbar_crit_hp": "int",
+      "fieldorder": "const enum statusfields (*)[19]",
+      "finalx": "int[3][2]"
+    }
+  },
+  "callbacks": {
+    "windows": {
+      "genl_can_suspend_no": {
+        "result": "boolean",
+        "parameters": []
+      },
+      "genl_can_suspend_yes": {
+        "result": "boolean",
+        "parameters": []
+      },
+      "def_raw_print": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "def_wait_synch": {
+        "result": "void",
+        "parameters": []
+      },
+      "check_tty_wincap": {
+        "result": "boolean",
+        "parameters": [
+          "unsigned long"
+        ]
+      },
+      "check_tty_wincap2": {
+        "result": "boolean",
+        "parameters": [
+          "unsigned long"
+        ]
+      },
+      "win_choices_find": {
+        "result": "struct win_choices *",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "choose_windows": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "genl_message_menu": {
+        "result": "char",
+        "parameters": [
+          "char",
+          "int",
+          "const char *"
+        ]
+      },
+      "genl_preference_update": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "genl_getmsghistory": {
+        "result": "char *",
+        "parameters": [
+          "boolean"
+        ]
+      },
+      "genl_putmsghistory": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "boolean"
+        ]
+      },
+      "nhwindows_hangup": {
+        "result": "void",
+        "parameters": []
+      },
+      "hup_exit_nhwindows": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "hup_nhgetch": {
+        "result": "int",
+        "parameters": []
+      },
+      "hup_yn_function": {
+        "result": "char",
+        "parameters": [
+          "const char *",
+          "const char *",
+          "char"
+        ]
+      },
+      "hup_nh_poskey": {
+        "result": "int",
+        "parameters": [
+          "coordxy *",
+          "coordxy *",
+          "int *"
+        ]
+      },
+      "hup_getlin": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "char *"
+        ]
+      },
+      "hup_init_nhwindows": {
+        "result": "void",
+        "parameters": [
+          "int *",
+          "char **"
+        ]
+      },
+      "hup_create_nhwindow": {
+        "result": "winid",
+        "parameters": [
+          "int"
+        ]
+      },
+      "hup_select_menu": {
+        "result": "int",
+        "parameters": [
+          "winid",
+          "int",
+          "struct mi **"
+        ]
+      },
+      "hup_add_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const glyph_info *",
+          "const anything *",
+          "char",
+          "char",
+          "int",
+          "int",
+          "const char *",
+          "unsigned int"
+        ]
+      },
+      "hup_end_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const char *"
+        ]
+      },
+      "hup_putstr": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "const char *"
+        ]
+      },
+      "hup_print_glyph": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "coordxy",
+          "coordxy",
+          "const glyph_info *",
+          "const glyph_info *"
+        ]
+      },
+      "hup_outrip": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "time_t"
+        ]
+      },
+      "hup_curs": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "int"
+        ]
+      },
+      "hup_display_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "boolean"
+        ]
+      },
+      "hup_display_file": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "boolean"
+        ]
+      },
+      "hup_cliparound": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "int"
+        ]
+      },
+      "hup_status_update": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "genericptr_t",
+          "int",
+          "int",
+          "int",
+          "unsigned long *"
+        ]
+      },
+      "hup_int_ndecl": {
+        "result": "int",
+        "parameters": []
+      },
+      "hup_void_ndecl": {
+        "result": "void",
+        "parameters": []
+      },
+      "hup_void_fdecl_int": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "hup_void_fdecl_winid": {
+        "result": "void",
+        "parameters": [
+          "winid"
+        ]
+      },
+      "hup_void_fdecl_winid_ulong": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "unsigned long"
+        ]
+      },
+      "hup_void_fdecl_constchar_p": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "hup_ctrl_nhwindow": {
+        "result": "win_request_info *",
+        "parameters": [
+          "winid",
+          "int",
+          "win_request_info *"
+        ]
+      },
+      "genl_status_init": {
+        "result": "void",
+        "parameters": []
+      },
+      "genl_status_finish": {
+        "result": "void",
+        "parameters": []
+      },
+      "genl_status_enablefield": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "const char *",
+          "const char *",
+          "boolean"
+        ]
+      },
+      "genl_status_update": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "genericptr_t",
+          "int",
+          "int",
+          "int",
+          "unsigned long *"
+        ]
+      },
+      "dump_open_log": {
+        "result": "void",
+        "parameters": [
+          "time_t"
+        ]
+      },
+      "dump_close_log": {
+        "result": "void",
+        "parameters": []
+      },
+      "dump_forward_putstr": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "const char *",
+          "int"
+        ]
+      },
+      "dump_putstr": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "const char *"
+        ]
+      },
+      "dump_create_nhwindow": {
+        "result": "winid",
+        "parameters": [
+          "int"
+        ]
+      },
+      "dump_clear_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid"
+        ]
+      },
+      "dump_display_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "boolean"
+        ]
+      },
+      "dump_destroy_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid"
+        ]
+      },
+      "dump_start_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "unsigned long"
+        ]
+      },
+      "dump_add_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const glyph_info *",
+          "const anything *",
+          "char",
+          "char",
+          "int",
+          "int",
+          "const char *",
+          "unsigned int"
+        ]
+      },
+      "dump_end_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const char *"
+        ]
+      },
+      "dump_select_menu": {
+        "result": "int",
+        "parameters": [
+          "winid",
+          "int",
+          "menu_item **"
+        ]
+      },
+      "dump_redirect": {
+        "result": "void",
+        "parameters": [
+          "boolean"
+        ]
+      },
+      "has_color": {
+        "result": "int",
+        "parameters": [
+          "int"
+        ]
+      },
+      "glyph2ttychar": {
+        "result": "int",
+        "parameters": [
+          "int"
+        ]
+      },
+      "glyph2symidx": {
+        "result": "int",
+        "parameters": [
+          "int"
+        ]
+      },
+      "encglyph": {
+        "result": "char *",
+        "parameters": [
+          "int"
+        ]
+      },
+      "decode_glyph": {
+        "result": "int",
+        "parameters": [
+          "const char *",
+          "int *"
+        ]
+      },
+      "decode_mixed": {
+        "result": "char *",
+        "parameters": [
+          "char *",
+          "const char *"
+        ]
+      },
+      "genl_putmixed": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "const char *"
+        ]
+      },
+      "genl_display_file": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "boolean"
+        ]
+      },
+      "menuitem_invert_test": {
+        "result": "boolean",
+        "parameters": [
+          "int",
+          "unsigned int",
+          "boolean"
+        ]
+      },
+      "mixed_to_glyphinfo": {
+        "result": "const char *",
+        "parameters": [
+          "const char *",
+          "glyph_info *"
+        ]
+      },
+      "choose_classes_menu": {
+        "result": "int",
+        "parameters": [
+          "const char *",
+          "int",
+          "boolean",
+          "char *",
+          "char *"
+        ]
+      },
+      "adjust_menu_promptstyle": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "color_attr *"
+        ]
+      },
+      "add_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const glyph_info *",
+          "const anything *",
+          "char",
+          "char",
+          "int",
+          "int",
+          "const char *",
+          "unsigned int"
+        ]
+      },
+      "add_menu_heading": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const char *"
+        ]
+      },
+      "add_menu_str": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const char *"
+        ]
+      },
+      "get_menu_coloring": {
+        "result": "boolean",
+        "parameters": [
+          "const char *",
+          "int *",
+          "int *"
+        ]
+      },
+      "select_menu": {
+        "result": "int",
+        "parameters": [
+          "winid",
+          "int",
+          "menu_item **"
+        ]
+      },
+      "getlin": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "char *"
+        ]
+      }
+    },
+    "wintty": {
+      "bail": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "winch_handler": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "resize_tty": {
+        "result": "void",
+        "parameters": []
+      },
+      "newclipping": {
+        "result": "void",
+        "parameters": [
+          "coordxy",
+          "coordxy"
+        ]
+      },
+      "new_status_window": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_init_nhwindows": {
+        "result": "void",
+        "parameters": [
+          "int *",
+          "char **"
+        ]
+      },
+      "tty_preference_update": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "tty_player_selection": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_askname": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_get_nh_event": {
+        "result": "void",
+        "parameters": []
+      },
+      "getret": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_suspend_nhwindows": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "tty_resume_nhwindows": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_exit_nhwindows": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "tty_create_nhwindow": {
+        "result": "winid",
+        "parameters": [
+          "int"
+        ]
+      },
+      "erase_menu_or_text": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "struct WinDesc *",
+          "boolean"
+        ]
+      },
+      "free_window_info": {
+        "result": "void",
+        "parameters": [
+          "struct WinDesc *",
+          "boolean"
+        ]
+      },
+      "tty_clear_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid"
+        ]
+      },
+      "toggle_menu_curr": {
+        "result": "boolean",
+        "parameters": [
+          "winid",
+          "tty_menu_item *",
+          "int",
+          "boolean",
+          "boolean",
+          "long"
+        ]
+      },
+      "dmore": {
+        "result": "void",
+        "parameters": [
+          "struct WinDesc *",
+          "const char *"
+        ]
+      },
+      "set_item_state": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "tty_menu_item *"
+        ]
+      },
+      "set_all_on_page": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "tty_menu_item *",
+          "tty_menu_item *"
+        ]
+      },
+      "unset_all_on_page": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "tty_menu_item *",
+          "tty_menu_item *"
+        ]
+      },
+      "invert_all_on_page": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "tty_menu_item *",
+          "tty_menu_item *",
+          "char",
+          "long"
+        ]
+      },
+      "invert_all": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "tty_menu_item *",
+          "tty_menu_item *",
+          "char",
+          "long"
+        ]
+      },
+      "toggle_menu_attr": {
+        "result": "void",
+        "parameters": [
+          "boolean",
+          "int",
+          "int"
+        ]
+      },
+      "process_menu_window": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "struct WinDesc *"
+        ]
+      },
+      "process_text_window": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "struct WinDesc *"
+        ]
+      },
+      "tty_display_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "boolean"
+        ]
+      },
+      "tty_dismiss_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid"
+        ]
+      },
+      "tty_destroy_nhwindow": {
+        "result": "void",
+        "parameters": [
+          "winid"
+        ]
+      },
+      "erase_tty_screen": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_curs": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "int"
+        ]
+      },
+      "compress_str": {
+        "result": "const char *",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "tty_putstr": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "const char *"
+        ]
+      },
+      "tty_display_file": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "boolean"
+        ]
+      },
+      "tty_start_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "unsigned long"
+        ]
+      },
+      "tty_add_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const glyph_info *",
+          "const anything *",
+          "char",
+          "char",
+          "int",
+          "int",
+          "const char *",
+          "unsigned int"
+        ]
+      },
+      "reverse": {
+        "result": "tty_menu_item *",
+        "parameters": [
+          "tty_menu_item *"
+        ]
+      },
+      "tty_end_menu": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "const char *"
+        ]
+      },
+      "tty_select_menu": {
+        "result": "int",
+        "parameters": [
+          "winid",
+          "int",
+          "menu_item **"
+        ]
+      },
+      "tty_message_menu": {
+        "result": "char",
+        "parameters": [
+          "char",
+          "int",
+          "const char *"
+        ]
+      },
+      "tty_ctrl_nhwindow": {
+        "result": "win_request_info *",
+        "parameters": [
+          "winid",
+          "int",
+          "win_request_info *"
+        ]
+      },
+      "tty_update_inventory": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "tty_mark_synch": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_wait_synch": {
+        "result": "void",
+        "parameters": []
+      },
+      "docorner": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "int",
+          "int"
+        ]
+      },
+      "end_glyphout": {
+        "result": "void",
+        "parameters": []
+      },
+      "g_putch": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "g_pututf8": {
+        "result": "void",
+        "parameters": [
+          "uint8 *"
+        ]
+      },
+      "setclipped": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_cliparound": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "int"
+        ]
+      },
+      "tty_print_glyph": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "coordxy",
+          "coordxy",
+          "const glyph_info *",
+          "const glyph_info *"
+        ]
+      },
+      "tty_raw_print": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "tty_raw_print_bold": {
+        "result": "void",
+        "parameters": [
+          "const char *"
+        ]
+      },
+      "tty_nhgetch": {
+        "result": "int",
+        "parameters": []
+      },
+      "tty_nh_poskey": {
+        "result": "int",
+        "parameters": [
+          "coordxy *",
+          "coordxy *",
+          "int *"
+        ]
+      },
+      "win_tty_init": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "tty_putmixed": {
+        "result": "void",
+        "parameters": [
+          "winid",
+          "int",
+          "const char *"
+        ]
+      },
+      "tty_status_init": {
+        "result": "void",
+        "parameters": []
+      },
+      "tty_status_enablefield": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "const char *",
+          "const char *",
+          "boolean"
+        ]
+      },
+      "tty_status_update": {
+        "result": "void",
+        "parameters": [
+          "int",
+          "genericptr_t",
+          "int",
+          "int",
+          "int",
+          "unsigned long *"
+        ]
+      },
+      "make_things_fit": {
+        "result": "int",
+        "parameters": [
+          "boolean"
+        ]
+      },
+      "check_fields": {
+        "result": "boolean",
+        "parameters": [
+          "boolean",
+          "int *"
+        ]
+      },
+      "tty_putstatusfield": {
+        "result": "void",
+        "parameters": [
+          "const char *",
+          "int",
+          "int"
+        ]
+      },
+      "set_condition_length": {
+        "result": "void",
+        "parameters": []
+      },
+      "shrink_enc": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "shrink_dlvl": {
+        "result": "void",
+        "parameters": [
+          "int"
+        ]
+      },
+      "check_windowdata": {
+        "result": "boolean",
+        "parameters": []
+      },
+      "condcolor": {
+        "result": "int",
+        "parameters": [
+          "long",
+          "unsigned long *"
+        ]
+      },
+      "condattr": {
+        "result": "int",
+        "parameters": [
+          "long",
+          "unsigned long *"
+        ]
+      },
+      "render_status": {
+        "result": "void",
+        "parameters": []
+      }
+    }
+  },
+  "enums": {
+    "enum InputState": {
+      "size": 4,
+      "signed": false
+    },
+    "enum NHL_pcall_action": {
+      "size": 4,
+      "signed": false
+    },
+    "enum Off_On": {
+      "size": 4,
+      "signed": false
+    },
+    "enum OptSection": {
+      "size": 4,
+      "signed": false
+    },
+    "enum OptType": {
+      "size": 4,
+      "signed": false
+    },
+    "enum Y_N": {
+      "size": 4,
+      "signed": false
+    },
+    "enum achievements_arg2": {
+      "size": 4,
+      "signed": false
+    },
+    "enum achivements": {
+      "size": 4,
+      "signed": false
+    },
+    "enum altar_colors": {
+      "size": 4,
+      "signed": false
+    },
+    "enum altar_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum ambience_actions": {
+      "size": 4,
+      "signed": false
+    },
+    "enum ambiences": {
+      "size": 4,
+      "signed": false
+    },
+    "enum any_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum artifacts_nums": {
+      "size": 4,
+      "signed": false
+    },
+    "enum attrib_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum bcargs": {
+      "size": 4,
+      "signed": true
+    },
+    "enum bhit_call_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum blconditions": {
+      "size": 4,
+      "signed": false
+    },
+    "enum bodypart_types": {
+      "size": 4,
+      "signed": true
+    },
+    "enum bubble_contains_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum cmap_symbols": {
+      "size": 4,
+      "signed": false
+    },
+    "enum cmdq_cmdtypes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum cost_alteration_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum customization_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum debug_fuzzer_states": {
+      "size": 4,
+      "signed": false
+    },
+    "enum digcheck_result": {
+      "size": 4,
+      "signed": false
+    },
+    "enum dismount_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum do_customizations": {
+      "size": 4,
+      "signed": false
+    },
+    "enum docrt_flags_bits": {
+      "size": 4,
+      "signed": false
+    },
+    "enum dogfood_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum earlyarg": {
+      "size": 4,
+      "signed": false
+    },
+    "enum encumbrance_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum engraving_texts": {
+      "size": 4,
+      "signed": false
+    },
+    "enum expl_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum explode_colors": {
+      "size": 4,
+      "signed": false
+    },
+    "enum explosion_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum findsound_approaches": {
+      "size": 4,
+      "signed": false
+    },
+    "enum from_core_requests": {
+      "size": 4,
+      "signed": false
+    },
+    "enum game_end_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum getloc_filters": {
+      "size": 4,
+      "signed": false
+    },
+    "enum getobj_callback_returns": {
+      "size": 4,
+      "signed": true
+    },
+    "enum getpos_retval": {
+      "size": 4,
+      "signed": false
+    },
+    "enum gloctypes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum glyph_offsets": {
+      "size": 4,
+      "signed": false
+    },
+    "enum glyphmap_change_triggers": {
+      "size": 4,
+      "signed": false
+    },
+    "enum graphics_sets": {
+      "size": 4,
+      "signed": false
+    },
+    "enum hlattribs": {
+      "size": 4,
+      "signed": false
+    },
+    "enum hmon_atkmode_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum hunger_state_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum instruments": {
+      "size": 4,
+      "signed": false
+    },
+    "enum inv_mode_bits": {
+      "size": 4,
+      "signed": false
+    },
+    "enum inv_modes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum inventory_counts": {
+      "size": 4,
+      "signed": false
+    },
+    "enum invoke_prop_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum level_region_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum level_walls": {
+      "size": 4,
+      "signed": false
+    },
+    "enum levl_typ_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum ls_sources": {
+      "size": 4,
+      "signed": false
+    },
+    "enum lua_theme_group": {
+      "size": 4,
+      "signed": false
+    },
+    "enum m_ap_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum m_seen_resistance": {
+      "size": 4,
+      "signed": false
+    },
+    "enum menu_terminology_preference": {
+      "size": 4,
+      "signed": false
+    },
+    "enum mgender": {
+      "size": 4,
+      "signed": false
+    },
+    "enum misc_arti_nums": {
+      "size": 4,
+      "signed": false
+    },
+    "enum misc_object_nums": {
+      "size": 4,
+      "signed": false
+    },
+    "enum misc_symbols": {
+      "size": 4,
+      "signed": false
+    },
+    "enum mon_defchars": {
+      "size": 4,
+      "signed": false
+    },
+    "enum mon_syms": {
+      "size": 4,
+      "signed": false
+    },
+    "enum monnums": {
+      "size": 4,
+      "signed": true
+    },
+    "enum movementdirs": {
+      "size": 4,
+      "signed": true
+    },
+    "enum movemodes": {
+      "size": 4,
+      "signed": true
+    },
+    "enum ms_sounds": {
+      "size": 4,
+      "signed": false
+    },
+    "enum nh_keyfunc": {
+      "size": 4,
+      "signed": false
+    },
+    "enum nh_tips": {
+      "size": 4,
+      "signed": false
+    },
+    "enum nhcb_calls": {
+      "size": 4,
+      "signed": false
+    },
+    "enum nhcolortype": {
+      "size": 4,
+      "signed": false
+    },
+    "enum nhcore_calls": {
+      "size": 4,
+      "signed": false
+    },
+    "enum obj_armor_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum obj_material_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum objclass_classes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum objclass_defchars": {
+      "size": 4,
+      "signed": false
+    },
+    "enum objclass_syms": {
+      "size": 4,
+      "signed": false
+    },
+    "enum objects_nums": {
+      "size": 4,
+      "signed": false
+    },
+    "enum opt": {
+      "size": 4,
+      "signed": true
+    },
+    "enum optchoice": {
+      "size": 4,
+      "signed": false
+    },
+    "enum option_phases": {
+      "size": 4,
+      "signed": false
+    },
+    "enum optset_restrictions": {
+      "size": 4,
+      "signed": false
+    },
+    "enum p_skills": {
+      "size": 4,
+      "signed": false
+    },
+    "enum perm_invent_toggles": {
+      "size": 4,
+      "signed": true
+    },
+    "enum plnmsg_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum polyself_flags": {
+      "size": 4,
+      "signed": false
+    },
+    "enum prop_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum relationships": {
+      "size": 4,
+      "signed": true
+    },
+    "enum restore_stages": {
+      "size": 4,
+      "signed": false
+    },
+    "enum roomtype_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum runmode_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum saveformats": {
+      "size": 4,
+      "signed": false
+    },
+    "enum skill_levels": {
+      "size": 4,
+      "signed": false
+    },
+    "enum sound_effect_entries": {
+      "size": 4,
+      "signed": false
+    },
+    "enum sound_file_flags": {
+      "size": 4,
+      "signed": false
+    },
+    "enum soundlib_ids": {
+      "size": 4,
+      "signed": false
+    },
+    "enum spellknowledge": {
+      "size": 4,
+      "signed": true
+    },
+    "enum statusfields": {
+      "size": 4,
+      "signed": true
+    },
+    "enum stoning_checks": {
+      "size": 4,
+      "signed": false
+    },
+    "enum symparse_range": {
+      "size": 4,
+      "signed": false
+    },
+    "enum symset_handling_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum timeout_types": {
+      "size": 4,
+      "signed": false
+    },
+    "enum timer_type": {
+      "size": 4,
+      "signed": false
+    },
+    "enum to_core_flags": {
+      "size": 4,
+      "signed": false
+    },
+    "enum trap_immunities": {
+      "size": 4,
+      "signed": false
+    },
+    "enum trap_result": {
+      "size": 4,
+      "signed": false
+    },
+    "enum trap_types": {
+      "size": 4,
+      "signed": true
+    },
+    "enum uchangealign_reasons": {
+      "size": 4,
+      "signed": false
+    },
+    "enum unpaid_cost_flags": {
+      "size": 4,
+      "signed": false
+    },
+    "enum utotypes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum utraptypes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum vanq_order_modes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum voice_moreinfo": {
+      "size": 4,
+      "signed": false
+    },
+    "enum weight_constants": {
+      "size": 4,
+      "signed": false
+    },
+    "enum win_display_modes": {
+      "size": 4,
+      "signed": false
+    },
+    "enum windowcolors_windows": {
+      "size": 4,
+      "signed": false
+    },
+    "enum wp_ids": {
+      "size": 4,
+      "signed": false
+    },
+    "enum wpn_chk_flags": {
+      "size": 4,
+      "signed": false
+    },
+    "enum zap_colors": {
+      "size": 4,
+      "signed": false
+    }
+  },
+  "records": {
+    "win_choices": {
+      "size": 16,
+      "alignment": 8,
+      "fields": {
+        "procs": {
+          "offset": 0,
+          "ctype": "struct window_procs * procs"
+        },
+        "ini_routine": {
+          "offset": 8,
+          "ctype": "void (*)(int) ini_routine"
+        }
+      }
+    }
+  },
+  "sourceSha256": {
+    "js/ported/windows-runtime.js": "72285746357e70a161b365fdd2c687bb6cbfd3a834a00dbe45f0b700df9f6251",
+    "js/ported/wintty-runtime.js": "25acdb90e67d59092f9ec03fca4de84c2154184373a0d6d3c4d32169138fcdb8",
+    "scripts/export-standalone-window-abi.py": "cb25c220934930565ff08f2e13e6b62838aa7cf76952d808f689ae9d05304bc6",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "nethack-c/wasm/tu-fragments/windows-support.c": "e76baaa87b94b71fd71581e47c3f2df34f8ae5b9b23ad6a197a57a4a0496b525",
+    "nethack-c/wasm/tu-wintty-support.inc": "fb57cafd4b436e5c9c481b0f4d8487e5466191509fc20bdbff72e44432a47ec2"
+  },
+  "referenceHeaderSha256": {
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/assert.h": "477f9fcf67e8eccb59dea935f0dc7abd40829f8d61a3e73e4151ff6a18ef25f9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/alltypes.h": "3ff1707efd8cba950d5604298884372be259d614600fa2dfc21d8a66010cc60c",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/limits.h": "b9358162a3bdf8a203cc3e24195fe3a0b3f27ec58669a596cbba96ba0c855e70",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/posix.h": "1518ec6b108557044f70590eeabfb55f419360d2bc93e503f7d24efaf0b8bded",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/resource.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/signal.h": "efc3603f0b1d17a4802c1b5ff7f38d763b85e40eb8bfc8d3eceb212a305abc55",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/stdint.h": "0211357ac8bc3e08fae6703be5502e3cd917b4c02d6b51ac5f22a2473b0a2b03",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/termios.h": "9d2247d093e9ed7b6dd2c4305f500987d0bbb8a5b1c4df10d51154d2e41d133a",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/ctype.h": "0bf45ee657538bf2033a9a17f286f5a4cbcba22a19667deb28d43ac8952c6d30",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/features.h": "078acf7161200b03710cdf93f039f6dbfed993ec619f16ea902a41871c228603",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/inttypes.h": "68064c64ec3303bd27ee6ff514b945bcf910b82c3d63c5ddd6c351a836d78543",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/limits.h": "54d66aac63111f27a6b6584ee91711ecdcfbb26b730ab0cf744d8a05503b27c7",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/signal.h": "18a55cd40db16c4ee993521d53f288e1a4537b9ccb31ab43c35c9a1e2a24f947",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdarg.h": "20b903cf4ddd7e0244e0bee6e615e24e1921bab2f0986957fe4f7869c608890a",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdbool.h": "5cd1f701b5e927e4e39bcc69f4b7e437a98c8821168e69171c626502a6fc13d9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stddef.h": "b1e3361a23c44b7d7e9b5911b5d87fe822f172192c2bae816f14e64431ff701b",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdint.h": "b6e77f1611e56cf499233172cab8bc09c0f7d937f3daa5ad552e1712fc6663e5",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdio.h": "14d89974ef0227b6ea8f000ef93a283efcdc8c852b511c00a9850b5b0a1689b9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdlib.h": "8f732c241f6d2f0a56dbaeb98ea044d5c2aec8e78fb5e734bb67c910cb954632",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/string.h": "75aabfb7b9dc14788dcb2a89bf21b371eeb2b29eb4af6b8374f1ffd682447ccf",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/strings.h": "b8fde0a141ac481de1f88abafbf5678ddfd8d89b309e3253adea1fa0ecb8d9e4",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/resource.h": "72450db0aa279bc66100654c177e1d16475a52cc32848156f1c6cff44a3fc836",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/select.h": "cda463ae12b5b189bea17a69b403d6f53949f013d926d92fb325be11f95db3ae",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/time.h": "2199cd4c44b3ebc8a18ca2ff146983e43b8747cc4ed2b4c2f71b583895b4e3cb",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/wait.h": "acde94b89d03174f7ae945e3fe671f5fefc3beb815c99cbff0b596958377d36f",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/termios.h": "09b969e2fc65d080cd77a889cc728fa464de38a1edabbed145d9cbf1d567da51",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/time.h": "57b4e7a312305ca8adf5822408a0fc6cf3ebafb278a2d96936f55a8d2af8e880",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/unistd.h": "7167ff608601a519c99c9beba65f956d4d4d6911def339513b1f235bbd5ee49f",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/wasi/api.h": "5d877115f5a45c8765f4c31bf58499e2582446995feea4aaac00517ea881b940",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg___gnuc_va_list.h": "feca975bfdfb254d17458a8e3d51f8ad6d9bdc9fd6287727f0f8b2fb81fcb0b0",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg___va_copy.h": "f0a8d3c963338173f2d57b2cbc209dde38c90536107b15eb0cf78166d4caee1f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_header_macro.h": "7b3fbcc442af2508f36bb2dc98d9ad2b8a1f5c0f5333394fb2159c8bd5ecd5b8",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_arg.h": "274c75a1db86f649439aa3bcc1dead4170725e6f803925c3fc38a2e93307afdc",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_copy.h": "bb195f56cb08d4cee6a60bd9f62f34466e8ac4f89f6fed043b044cb2f7ead010",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_list.h": "81c3055f7033e26e7f53705653bc9d69b5202f25c2692e03b3a4f77ff44a7d76",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_header_macro.h": "4cf46e8fbb809df048eecbbd63686fa741da27afa8db4245bd1f61c1fb1611dc",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_max_align_t.h": "3c1e4de47f4f06b35e2c5890d670052e84f716760505ff51b022fc8b21a9400f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_null.h": "b1d71b08563ab3d2c22a1e4f8ddf4d9a1111c89e9404b859a45c307e8ebc6c69",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_offsetof.h": "e5f0f4ff8ff5fc6a1cc8b535f5065f1728eadd2bf1e1401f021f803ec7b4222f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_ptrdiff_t.h": "b4178a57f3711b7013cba747a72a2f178c29fa9364e77d75b2159754072ced43",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_size_t.h": "d86ddc0238da09b385846ebef814ffc50a44e40cf85d4e3793f485952b7e73ad",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_wchar_t.h": "1900d4998aef3698b06399ed686db0c21e26509b08638a25734fb97ae89b1001",
+    ".cache/emsdk/upstream/lib/clang/21/include/inttypes.h": "eb8a7b2e17d57e9321043282bf0267fedd2ca58aadb11b04929ddbf8100fc3bc",
+    ".cache/emsdk/upstream/lib/clang/21/include/limits.h": "6b59cc1b6f86c901bf41ce942b8434530e852eb16e79e6e9287f89441f71efca",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdbool.h": "48655faf4ebd4ca0af26a1ee8e3e16f8dc68385c9cd550ffb3629320681305b3",
+    ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/ncurses-wasm64-build/include/curses.h": "a2d32dcf9eb6b630cd3d9e14161ff2c378c922c1282e342b70e49fedee5db82c",
+    ".cache/ncurses-wasm64-build/include/ncurses_dll.h": "8ce112a66482f18fa5e0378b46a4f028b21a80f8e6c43815c562ad0d6b7ed727",
+    ".cache/ncurses-wasm64-build/include/term.h": "bb3cc663684daf037a3d179f07a547e1c3a7b31f8520c19f000c992f4dbf63bc",
+    ".cache/ncurses-wasm64-build/include/unctrl.h": "33d97eb149fae7822e266b99aba1f1652b29b09aa8d934cf399cab59aa720e7a",
+    ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
+    ".cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
+    ".cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",
+    ".cache/wasm64-build/tree/include/attrib.h": "f20418d80bc2983e3d9af6cc9a02d30f57aa6b54116691a8e4ebebd425de757d",
+    ".cache/wasm64-build/tree/include/botl.h": "c26c637bcb8b2615e82fbc0804175cd8c87f63a3caf35c742e0a6fa410a31009",
+    ".cache/wasm64-build/tree/include/color.h": "f7ab4cdf5113898bf58ba85217f5d693b8564c232ff706ee894fdf070a3a105b",
+    ".cache/wasm64-build/tree/include/config.h": "5585d9c88d7ea21a9a78b45616cc31ae4ea680cb7b34026f70f92b91288a499f",
+    ".cache/wasm64-build/tree/include/config1.h": "b9e97cefc8fcfe4f36a1145ebfb655099f2afd2591227fa5f93b3f4dc0071042",
+    ".cache/wasm64-build/tree/include/context.h": "e1303b7309e556c65e41ec120b704079da6a0c9ef73a08745663f7b923ad7eef",
+    ".cache/wasm64-build/tree/include/coord.h": "f8788b777ea0fc8e4f5df40ce7b9add1a255c5846bdd1393518f7ea14ef6e3d2",
+    ".cache/wasm64-build/tree/include/cstd.h": "ef5e61d5eb7d1a5194c4a4544745a45893ccbea4c1cf083792235f562e173fc2",
+    ".cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470",
+    ".cache/wasm64-build/tree/include/defsym.h": "009ae2e8921fa4c376fe0ae3b4a42407421274fc15d1a8834c6ae519dad82f87",
+    ".cache/wasm64-build/tree/include/display.h": "36e9f838d3298d047e0605abcf2deb627eb79c18aa72f770d5289c34f3692b4c",
+    ".cache/wasm64-build/tree/include/dlb.h": "5fd4e1563e5836cb707b691fe2d197e8d1619fc1d1ab8d77c0002a443049f7e9",
+    ".cache/wasm64-build/tree/include/dungeon.h": "e48eaafdb22fc82121de702086c40c3245d6aeb9fe5556712ee1e2f18744a308",
+    ".cache/wasm64-build/tree/include/engrave.h": "1c5617162ea649a0305df8d997b7a1075b35c9b3b97311cdfeebbd60bb9c482e",
+    ".cache/wasm64-build/tree/include/extern.h": "385f7478000f79ff137f2b6be533eef7b518b47a00b0d8c7e35ea52c877dec2e",
+    ".cache/wasm64-build/tree/include/flag.h": "bb28a3f835f3b38119f95311d76b535ef5053f3fffa42372d9f7b1c4c917806f",
+    ".cache/wasm64-build/tree/include/fnamesiz.h": "bd41c47c66e4213835bc1f052d831f8643bc7e7cb9aae0effb27f41edf1b5c35",
+    ".cache/wasm64-build/tree/include/global.h": "8ff55a3c6ee5cc18d00f1982146080d81e9e3dc9e369ab1ffc79890c07b8a8d0",
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/include/hacklib.h": "d9bf2b0ae2003c0611d2b9a351fdbbb30d58def2ecccc1235d4ed1e7b52e3c53",
+    ".cache/wasm64-build/tree/include/integer.h": "e88805c10f195e6de63b8c5cb46049f466ef040de9987a6ab61c36ef977f515a",
+    ".cache/wasm64-build/tree/include/lint.h": "bb08d5658f43c87c2b5129a33cb4e3264693e68d3cd654c67a5ecd757c98adcc",
+    ".cache/wasm64-build/tree/include/mextra.h": "e78bdfa21d4fd7718f1a25ed8f1ef466c96c2bd49f2069af7d1ab346148a1229",
+    ".cache/wasm64-build/tree/include/mfndpos.h": "4711c0e5c67ae88a6a28c776bc542d0d06452d742456964b77913e896b5f56f5",
+    ".cache/wasm64-build/tree/include/mkroom.h": "7baf848feb30c94c196e6bee2ee7f0a83822ad92042dd855b74d212fde514f5a",
+    ".cache/wasm64-build/tree/include/monattk.h": "00c2283c2687f2dd5fa8a3088623cd621822289018c0072db9cad5a2a94883ba",
+    ".cache/wasm64-build/tree/include/mondata.h": "6f1ca3db69a5cfbe425859fe1c7decfa1da1fdac45af9d8a84be5f0f8c9c21f2",
+    ".cache/wasm64-build/tree/include/monflag.h": "89e4ef1dc1cd46fa8d81ff833351934c666420abdf902286bdacdca0bb171d88",
+    ".cache/wasm64-build/tree/include/monst.h": "08e9e2251ac5c3beedb8700dd56287f9f397b506851ceb44a37e41b6d80067a6",
+    ".cache/wasm64-build/tree/include/monsters.h": "c63db922770c96a9956d221f364ba4368a9f81f81c8d64ed28251a0506d4a906",
+    ".cache/wasm64-build/tree/include/nhlua.h": "48553ca9ab16ac2928479cabdf51d7f090fc38e1641dd5d97d819f612c6d87d9",
+    ".cache/wasm64-build/tree/include/nhregex.h": "a2936fd291537090773d861c083c3574c7a0a798c688e87dedb4405f73de653f",
+    ".cache/wasm64-build/tree/include/obj.h": "a4d1b994c5acd6fe04d411485d84491553d6df02dfbd7480181a15a7a05456e2",
+    ".cache/wasm64-build/tree/include/objclass.h": "101f92e0024e4404033845fb15171f8ed4b79374907a6a172b4eb7b026e1eb52",
+    ".cache/wasm64-build/tree/include/objects.h": "eb573ca76f7afe35d6420b958333fbb3c44911415df4e0034e6367456e2913cb",
+    ".cache/wasm64-build/tree/include/optlist.h": "23dafb109132dd63bbfe704b39fac8cccaaeee31a0dbd895c7ba928bd92af9b8",
+    ".cache/wasm64-build/tree/include/patchlevel.h": "4389b12b496c9611fb392ee509d0ebaad2f10449ff3ef697f1ad416a207b0a97",
+    ".cache/wasm64-build/tree/include/permonst.h": "bcdb24d041e3df909cf483efb576fa7fc5e18debf03d11e8e43c1aa87c655bf4",
+    ".cache/wasm64-build/tree/include/prop.h": "682e85c7ab20c1dc7b30115b2a3e850d564cc2ed341edfa782fec9d0dfea0761",
+    ".cache/wasm64-build/tree/include/quest.h": "87b6649d82b6fd4a24d004fcd48c1d9650345e719cf8dc196ae6c99b483e2a5a",
+    ".cache/wasm64-build/tree/include/rect.h": "dee168e068baa3aa15748725752d07659f8cb4e471116f7fab4acf080dc69f90",
+    ".cache/wasm64-build/tree/include/region.h": "adc4682b6a15213f71f3bb534b8705c4385153ca9db7512c118474b0fb4f1191",
+    ".cache/wasm64-build/tree/include/rm.h": "da2ae88d704a358474c6986a3f4763e62053b96a6e60a475879029e658996af7",
+    ".cache/wasm64-build/tree/include/savefile.h": "6847e12dca1eb25b38baa69f6227554669f8a64f5966a1879a5cf2b23732749e",
+    ".cache/wasm64-build/tree/include/seffects.h": "f64099054ab366a1eaccd58901a98cef49a84c1f047c5923de20b4432654de02",
+    ".cache/wasm64-build/tree/include/selvar.h": "49b8be43b8bfd7b4f18cb59d1179e8ad28a708a06c0fbc985c65b365ab9a3acf",
+    ".cache/wasm64-build/tree/include/skills.h": "d67ac10770b8aff667c163e93020b8974e53f12eede903f10bf026d351b2c238",
+    ".cache/wasm64-build/tree/include/sndprocs.h": "4d105334e499c3fb4af00fcd1acf48802a8db5ccf799bd31bfafc2afaa286654",
+    ".cache/wasm64-build/tree/include/spell.h": "dc1e454c0214ea1cc20f4ea1e19cd4447a5ca9533610769fafe8cdd60206b37f",
+    ".cache/wasm64-build/tree/include/stairs.h": "fe016a6ef8194099d504bbf48f58e1e3c6a923413a07c28377409cacc1e2b42b",
+    ".cache/wasm64-build/tree/include/sym.h": "cea14c200c9f1e90ebe890804b46af7005c889d90917cb0608ad6058614e3db4",
+    ".cache/wasm64-build/tree/include/sys.h": "e193f46309925a4b14394a503b3e9a7bc19e5745bb539137ca10ec0898e3951b",
+    ".cache/wasm64-build/tree/include/tcap.h": "eeb713779ef8a1483efbea0427cf4eb7549365d2bc1b010107912d982a1e235d",
+    ".cache/wasm64-build/tree/include/timeout.h": "5f76ff41cc5435cc8a3e30b28f51c6adbfe42e2bf4a0354ba0a9f850a5ce515a",
+    ".cache/wasm64-build/tree/include/tradstdc.h": "a1246d1acdf317c36990946e1d8bde33f63e3ba779ed5696a4ee03c7ac4f4401",
+    ".cache/wasm64-build/tree/include/trap.h": "469afec3e29d7aec1aa8efd407ad23d24ef069010820082b5596537b9290eb6b",
+    ".cache/wasm64-build/tree/include/unixconf.h": "0cbf3370472b030e8583e922e05e8e055738896954cbbdc1e1e18d0938559723",
+    ".cache/wasm64-build/tree/include/vision.h": "415b7e5751194cb7de57c192103d396a2971400e603fd62bf56330304014ac13",
+    ".cache/wasm64-build/tree/include/warnings.h": "ccf0c3e66bb442b0d8c05844103065fccf3fa7a894bba007425258e1d089f981",
+    ".cache/wasm64-build/tree/include/weight.h": "ac168750ddcde6c592ccbeaaf44c59921cc1f73ed36d269f20364b0e08b91cd1",
+    ".cache/wasm64-build/tree/include/winprocs.h": "eebf4dbb4149d3a153a1dc815795baabe33a59d13362e00089d21ee9ce89983c",
+    ".cache/wasm64-build/tree/include/wintty.h": "96898d81147193d8d3785756011ae13f40967cbe947bf5fe35f3f2f4e6f15f89",
+    ".cache/wasm64-build/tree/include/wintype.h": "e5bfd60534831210bdace1ba6eaef62f65d16dab8d8ac0fcddadebd000d53698",
+    ".cache/wasm64-build/tree/include/you.h": "d19cfa0233582f1ad550b9dfc788f26166f3ff21225e3d8a0cd43b6de2094289",
+    ".cache/wasm64-build/tree/include/youprop.h": "9c4e25bc385c405226085ae3526dc165bd9397ce922b8a18a46f67de21683a2f",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lauxlib.h": "2d9e18e577a6062646268e7f7228264c28bd9b972c186e1af81b8357179c0ab4",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lua.h": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
+    ".cache/wasm64-build/tree/src/windows.c": "d731d0edab36e7331987fa2ab6c751a91cec3d0de4edddb52ec27a40d03711df",
+    ".cache/wasm64-build/tree/win/tty/wintty.c": "a4ddd08ae37f3f85b2b0b2420b5032f2c5eef2ab890b0fe16dee4c8e35a6a018"
+  }
+}

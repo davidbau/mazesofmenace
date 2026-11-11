@@ -1,0 +1,157 @@
+{
+  "fields": [
+    [
+      "gs.saved_pline_index",
+      "Uint32"
+    ],
+    [
+      "gs.saved_plines",
+      "array"
+    ],
+    [
+      "iflags.debug_prevent_pline",
+      "Int8"
+    ],
+    [
+      "gp.pline_flags",
+      "Uint32"
+    ],
+    [
+      "windowprocs.wincap2",
+      "BigUint64"
+    ],
+    [
+      "WIN_MESSAGE",
+      "Int32"
+    ],
+    [
+      "a11y.msg_loc",
+      "coord"
+    ],
+    [
+      "u.ux",
+      "Int16"
+    ],
+    [
+      "u.uy",
+      "Int16"
+    ],
+    [
+      "program_state.done_hup",
+      "Int32"
+    ],
+    [
+      "program_state.wizkit_wishing",
+      "Int32"
+    ],
+    [
+      "a11y.accessiblemsg",
+      "Int8"
+    ],
+    [
+      "iflags.getpos_coords",
+      "Int32"
+    ],
+    [
+      "iflags.window_inited",
+      "Int8"
+    ],
+    [
+      "iflags.last_msg",
+      "Int32"
+    ],
+    [
+      "gp.prevmsg",
+      "bytes"
+    ],
+    [
+      "gv.vision_full_recalc",
+      "Int8"
+    ],
+    [
+      "gy.you_buf",
+      "pointer"
+    ],
+    [
+      "gy.you_buf_siz",
+      "Int32"
+    ],
+    [
+      "gg.gamelog",
+      "gamelog"
+    ],
+    [
+      "svm.moves",
+      "BigInt64"
+    ],
+    [
+      "program_state.beyond_savefile_load",
+      "Int32"
+    ],
+    [
+      "ge.early_raw_messages",
+      "Int32"
+    ],
+    [
+      "program_state.in_impossible",
+      "Int32"
+    ],
+    [
+      "iflags.debug_fuzzer",
+      "Int8"
+    ],
+    [
+      "program_state.in_sanity_check",
+      "Int32"
+    ],
+    [
+      "program_state.something_worth_saving",
+      "Int32"
+    ],
+    [
+      "sysopt.support",
+      "pointer"
+    ],
+    [
+      "sysopt.crashreporturl",
+      "pointer"
+    ],
+    [
+      "sysopt.msghandler",
+      "pointer"
+    ],
+    [
+      "flags.acoustics",
+      "Int8"
+    ],
+    [
+      "gy.youmonst",
+      "monster"
+    ],
+    [
+      "ynchars",
+      "bytes"
+    ]
+  ],
+  "initialState": {
+    "in_pline": 0,
+    "use_pline_handler": 1
+  },
+  "devteamEmail": "devteam@nethack.org",
+  "sourceSha256": {
+    "scripts/export-standalone-messages-abi.py": "8b993726da8ead668979e5d05bc0f88b138738f7d3082e6c3bd9806f7430c690",
+    "js/ported/pline-runtime.js": "936d24a971f92e8b1351c0c63b5aa3a078236c51c51c1c0e26f6455421d3d5c6",
+    "nethack-c/wasm/tu-fragments/pline-support.c": "1ee00727dfcb5dd54c3b03a38105df25d6bca4272ecf141dcb833f4a5483dca4",
+    "js/ported/pline.js": "897aa9c1cf207d6de4a3703d1f0d94d3c97f4c7c65b0733637e0a9947db7e9d7",
+    "nethack-c/wasm/tu-libraries/pline.js": "8c906b24eb33ef80f4ab6c3e62f5d6aaa4358db331bb720e364fc18d9e11a587",
+    "scripts/tu-pline-layout.h": "62a23d2bbe2241e99f6dd082b53d04a69fdd0cc35cb681b386a6c4ab414abe37",
+    "nethack-c/wasm/tu-fragments/pline-source-data.h": "77442d6c314cf717cc9bdf8310f65b3d71d51b6a0a3004b82852d5a0b49453b3",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52"
+  },
+  "referenceHeaderSha256": {
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/include/youprop.h": "9c4e25bc385c405226085ae3526dc165bd9397ce922b8a18a46f67de21683a2f"
+  }
+}

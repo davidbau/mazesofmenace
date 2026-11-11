@@ -4,9 +4,17 @@ import {createSfbaseEnvironment} from '../ported/sfbase-runtime.js';
 import * as sfstruct from '../ported/sfstruct.js';
 import {initializeSfstruct} from '../ported/sfstruct-runtime.js';
 import {address} from './memory-services.js';
+import {moves_to_relative_time,relative_time_to_moves,rest_adjust_levelflags} from '../ported/restore.js';
 export function enableSerialization(environment,layouts) {
     const {services,memory,functions}=environment,L=layouts.sfbase,S=layouts.sfstruct;
     if(typeof services.fwrite!=='function'||!services.program_state)throw new Error('Enable stdio and DECL before serialization');
+    const movesAt=environment.ctypes.locate('struct instance_globals_saved_m',environment.requireGlobal('svm'),'moves').at,time=Object.create(services);
+    Object.defineProperty(time,'svm',{value:Object.defineProperty({},'moves',{get:()=>environment.ctypes.load('long',movesAt)})});
+    const levelAt=environment.ctypes.locate('struct instance_globals_saved_l',environment.requireGlobal('svl'),'level').at,flags={address:environment.ctypes.locate('dlevel_t',levelAt,'flags').at};
+    Object.defineProperty(time,'svl',{value:{level:{flags}}});
+    time.longPointer=p=>{const at=address(p);return Object.defineProperty({address:at},'value',{get:()=>environment.ctypes.load('long',at),set:value=>environment.ctypes.store('long',at,value)});};
+    time.addressOf=(owner,key)=>{if(owner!==flags||key!=='stasis_until')throw new Error('Unknown RESTORE timestamp field');return environment.ctypes.locate('struct levelflags',flags.address,key).at;};
+    environment.register('restore-timestamps',{moves_to_relative_time,relative_time_to_moves,rest_adjust_levelflags},time,{prepareArgs:(name,args)=>{if(name!=='rest_adjust_levelflags')args[0]=time.longPointer(args[0]);return args;}});
     const names=['sfoprocs','sfiprocs','sfoflprocs','sfiflprocs','zerosfoprocs','zerosfiprocs','zerosfoflprocs','zerosfiflprocs','historical_sfo_procs','historical_sfi_procs'];
     const tables=names.map((name,i)=>environment.allocateGlobal(name,(i<4?L.NUM_SAVEFORMATS:1)*(i===2||i===3||i===6||i===7?L.fieldlevelSize:L.structlevelSize)));
     const bufferNames=Object.keys(L).filter(k=>k.startsWith('buffer_')).map(k=>k.slice(7));

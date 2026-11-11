@@ -3,6 +3,8 @@
 import {address} from './memory-services.js';
 import {muslQsort} from './qsort.js';
 export function createStandaloneLibc(memory,libc,transport,functions) {
+    const errnoAt=memory.calloc(1,4);memory.view.setInt32(errnoAt,Number(libc.errno),true);
+    Object.defineProperty(libc,'errno',{get:()=>memory.view.getInt32(errnoAt,true),set:v=>memory.view.setInt32(errnoAt,Number(v),true),enumerable:true,configurable:true});
     const text=v=>typeof v==='string'?v:memory.readString(address(v));
     function sscanf(input,format,...outputs) {
         input=text(input);format=text(format);let at=0,out=0,assigned=0,converted=0;
@@ -49,6 +51,9 @@ export function createStandaloneLibc(memory,libc,transport,functions) {
         return assigned;
     }
     return {
+        // Match the configured SDK single-process syscall profile.
+        getpid:()=>42,
+        __errno_location:()=>errnoAt,
         sscanf,
         qsort:(base,n,size,cmp)=>muslQsort(memory,address(base),n,size,(a,b)=>typeof cmp==='function'?cmp(a,b):functions.indirect(cmp,'ipp',a,b)),
         vsnprintf:(out,n,format,args)=>{if(!Array.isArray(args))throw new TypeError('Standalone varargs require a value packet');return libc.snprintf(address(out),Number(n),format,...args);},

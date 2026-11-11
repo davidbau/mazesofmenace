@@ -35,13 +35,51 @@ import {enableTerminal} from './terminal.js';
 import {enableObjectState} from './object-state.js';
 import {enableObjectRecords} from './object-records.js';
 import {enableItemInventory} from './item-inventory.js';
+import {enableTimers} from './timers.js';
+import {enableMonsterSelection} from './monster-selection.js';
+import {enableItemNaming} from './item-naming.js';
+import {enableMonsterCreation} from './monster-creation.js';
+import {enableMonsterInventory} from './monster-inventory.js';
+import {enableWorldPosition} from './world-position.js';
+import {createEnvironmentInputs} from './environment-inputs.js';
+import {enableLuaSandbox} from './lua-sandbox.js';
+import {enableMonsterLifecycle} from './monster-lifecycle.js';
+import {enableMonsterMovement} from './monster-movement.js';
+import {enableConfiguration} from './configuration.js';
+import {enableFiles} from './files.js';
+import {enableCommands} from './commands.js';
+import {enableGlyphs} from './glyphs.js';
+import {enableSymbols} from './symbols.js';
+import {enablePets} from './pets.js';
+import {enableMovement} from './movement.js';
+import {enableGameWindows} from './game-windows.js';
+import {enableStatus} from './status.js';
+import {enableOptions} from './options.js';
+import {enableVersionInfo} from './version-info.js';
+import {enableWindowSystem} from './window-system.js';
+import {enableLevelContents} from './level-contents.js';
+import {enableLevelStartup} from './level-startup.js';
+import {enableDisplayStartup} from './display-startup.js';
+import {enableHeroStartup} from './hero-startup.js';
+import {enableHeroEquipment} from './hero-equipment.js';
+import {enableQuestPager} from './quest-pager.js';
+import {enableDoLifecycle} from './do-lifecycle.js';
+import {enableTerminalInput} from './terminal-input.js';
+import {enableSaveLifecycle} from './save-lifecycle.js';
+import {enableTerminalMessages} from './terminal-messages.js';
+import {enableMessages} from './messages.js';
+import {enableRuntimeInfo} from './runtime-info.js';
+import {enableTurnLoop} from './turn-loop.js';
+import {enableGameStartup} from './game-startup.js';
 
 export function createStandaloneEnvironment(options={}) {
     const base=createJsRuntime(options),{memory}=base;
     const transport=createMemoryServices(memory),functions=createFunctions();
     const bitfields=createBitfields(memory,records);
     const ctypes=createCTypes(memory,records,bitfields);
+    const inputs=createEnvironmentInputs(base,options.environment);
     const services=Object.create(base.services);
+    services.getenv=inputs.getenv;
     Object.defineProperties(services,Object.getOwnPropertyDescriptors(transport));
     Object.assign(services,functions);
     const ENV={...options.environment},diagnostics=[];
@@ -53,7 +91,23 @@ export function createStandaloneEnvironment(options={}) {
         callComparator:(fn,a,b)=>typeof fn==='function'?fn(a,b):functions.indirect(fn,'ipp',a,b),
     });
     const modules=new Map(),owners=new Map(),globals=new Map(),states=new Map();
-    const addressAdapters=new Map();
+    const deferredFunctions=new Map(),symbolPointers=new Map();
+    const addressAdapters=new Map();let itemInventory,monsterSelection,monsterCreation,heroStartup;
+    function functionPointer(name,signature,invoke) {
+        const previous=symbolPointers.get(name);
+        if(previous){if(previous.signature!==signature)throw new Error('Conflicting C function prototype '+name);return previous.id;}
+        const id=functions.functionPointer(invoke??((...args)=>environment.resolve(name)(...args)),signature);
+        symbolPointers.set(name,{id,signature});return id;
+    }
+    function deferFunctions(module,namespace){for(const [name,callback]of Object.entries(namespace)){const candidates=deferredFunctions.get(name)??new Map();candidates.set(module,callback);deferredFunctions.set(name,candidates);}}
+    function resolve(name){
+        if(!owners.has(name)){
+            const candidates=deferredFunctions.get(name);
+            if(candidates?.size>1)throw new Error('Ambiguous standalone public symbol '+name);
+            if(candidates?.size===1){const [module,callback]=candidates.entries().next().value;extend(module,{[name]:callback});}
+        }
+        const owner=owners.get(name);if(!owner)throw new Error('Unresolved standalone function '+name);return (...args)=>call(owner,name,...args);
+    }
     function extend(name,namespace) {
         const entry=modules.get(name);if(!entry)throw new Error('Unknown standalone module '+name);
         const exports=Object.entries(namespace);
@@ -171,14 +225,14 @@ export function createStandaloneEnvironment(options={}) {
         if(stdio)throw new Error('Standalone stdio already enabled');
         stdio=createStdio(memory,base.filesystem,base.libc,options);Object.assign(services,stdio);return stdio;
     }
-    function enableRnd(layout,{seed=0n,displaySeed=seed,luck=()=>services.u?.uluck??0,level=()=>services.u?.ulevel??1,strongSeed=()=>1,randomSeed}={}) {
+    function enableRnd(layout,{seed=0n,displaySeed=seed,luck=()=>services.u?.uluck??0,level=()=>services.u?.ulevel??1,strongSeed=()=>services.has_strong_rngseed??decl.has_strong_rngseed,randomSeed}={}) {
         if(!stdio)throw new Error('Enable standalone stdio before rnd');
-        const core=functions.functionPointer(n=>call('rnd','rn2',n),'ii'),display=functions.functionPointer(n=>call('rnd','rn2_on_display_rng',n),'ii');
+        const core=functionPointer('rn2','ii'),display=functionPointer('rn2_on_display_rng','ii');
         const local=Object.create(services);
         Object.assign(local,{coreFunction:()=>Number(core),displayFunction:()=>Number(display),luck,level,strongSeed,
             fopen:services.fopen,setvbuf:services.setvbuf,fputc:services.fputc,
             fprintf:(file,format,...args)=>services.fprintf(file,format,...args.map(v=>v instanceof Uint8Array?String.fromCharCode(...v.subarray(0,v.indexOf(0)<0?v.length:v.indexOf(0))):v)),
-            sys_random_seed:randomSeed??(()=>{throw new Error('An explicit randomSeed source is required for init_random/reseed_random');}),
+            sys_random_seed:randomSeed??(()=>environment.resolve('sys_random_seed')()),
             sgn:n=>Math.sign(n),getenv:name=>base.services.nh_getenv(name),panicBadRng:()=>{throw new CPanic('Bad RNG function');},
             impossible:(format,...args)=>{throw new Error(base.libc.format(format,...args));},
             snprintf:(buffer,n,format,...args)=>{const value=base.libc.format(format,...args),bytes=Uint8Array.from(value.slice(0,Number(n)-1),c=>c.charCodeAt(0));buffer.set(bytes);buffer[bytes.length]=0;return value.length;},
@@ -231,8 +285,8 @@ export function createStandaloneEnvironment(options={}) {
         services.tgetent=(_buffer,name)=>runtime.tgetent(services,name);
         return runtime;
     }
-    const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,extend,start,call,allocateGlobal,requireGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
-        setEnvironment:(name,value)=>{base.setEnvironment(name,value);if(value===null||value===undefined)delete ENV[name];else ENV[name]=String(value);},
+    const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,extend,deferFunctions,start,call,functionPointer,allocateGlobal,requireGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
+        setEnvironment:(name,value)=>{inputs.setEnvironment(name,value);if(value===null||value===undefined)delete ENV[name];else ENV[name]=String(value);},
         captureFiles:baseline=>captureGameFiles(base.filesystem,baseline,shouldPersistGameFile),
         restoreFiles:state=>restoreGameFiles(base.filesystem,state),
         fileBaseline:()=>filesUnder(base.filesystem,'/nethack'),
@@ -240,12 +294,34 @@ export function createStandaloneEnvironment(options={}) {
         exposeAddressPort:(name,names)=>{const adapter=addressAdapters.get(name);if(!adapter)throw new Error('Address adapter not enabled: '+name);return adapter.expose(names);},
         enableObjectState:layouts=>enableObjectState(environment,layouts),
         enableObjectRecords:layouts=>enableObjectRecords(environment,layouts),
-        enableItemInventory:layouts=>enableItemInventory(environment,layouts),
+        enableItemInventory:layouts=>itemInventory=enableItemInventory(environment,layouts),
+        enableItemNaming:layouts=>{if(!itemInventory)throw new Error('Item naming requires item inventory');return enableItemNaming(environment,layouts,itemInventory);},
+        enableTimers:layouts=>enableTimers(environment,layouts),
+        enableMonsterSelection:layouts=>monsterSelection=enableMonsterSelection(environment,layouts),
+        enableMonsterCreation:layouts=>{if(!monsterSelection)throw new Error('Monster creation requires species selection');return monsterCreation=enableMonsterCreation(environment,layouts,monsterSelection);},
+        enableMonsterInventory:layouts=>{if(!monsterCreation)throw new Error('Monster inventory requires monster creation');return enableMonsterInventory(environment,layouts,monsterCreation);},
+        enableWorldPosition:layouts=>{if(!monsterCreation)throw new Error('World positioning requires monster creation');return enableWorldPosition(environment,layouts,monsterCreation);},
+        enableWindowSystem:layouts=>enableWindowSystem(environment,layouts),enableVersionInfo:layouts=>enableVersionInfo(environment,layouts),enableOptions:layouts=>enableOptions(environment,layouts),enableStatus:layouts=>enableStatus(environment,layouts),enableGameWindows:layouts=>enableGameWindows(environment,layouts),enableMovement:layouts=>enableMovement(environment,layouts),enableConfiguration:layouts=>enableConfiguration(environment,layouts),enableFiles:layouts=>enableFiles(environment,layouts),enableCommands:layouts=>enableCommands(environment,layouts),enableGlyphs:layouts=>enableGlyphs(environment,layouts),enableSymbols:layouts=>enableSymbols(environment,layouts),enablePets:layouts=>enablePets(environment,layouts),enableMonsterMovement:layouts=>enableMonsterMovement(environment,layouts),enableMonsterLifecycle:layouts=>enableMonsterLifecycle(environment,layouts),
+        enableLevelContents:layouts=>{if(!monsterCreation)throw new Error('Level contents requires monster services');return enableLevelContents(environment,layouts,monsterCreation);},
+        enableLevelStartup:layouts=>{if(!monsterCreation)throw new Error('Level startup requires monster services');return enableLevelStartup(environment,layouts,monsterCreation);},
+        enableDisplayStartup:layouts=>{if(!monsterCreation)throw new Error('Display startup requires monster services');return enableDisplayStartup(environment,layouts,monsterCreation);},
+        enableHeroStartup:layouts=>{if(!monsterCreation||!itemInventory)throw new Error('Hero startup requires monster/inventory services');return heroStartup=enableHeroStartup(environment,layouts,monsterCreation,itemInventory);},
+        enableHeroEquipment:layouts=>{if(!heroStartup)throw new Error('Equipment requires hero startup');return enableHeroEquipment(environment,layouts,heroStartup);},
+        enableQuestPager:layouts=>enableQuestPager(environment,layouts),
+        enableDoLifecycle:layouts=>enableDoLifecycle(environment,layouts),
+        enableTerminalInput:(layouts,options)=>enableTerminalInput(environment,layouts,options),
+        enableSaveLifecycle:layouts=>enableSaveLifecycle(environment,layouts),
+        enableTerminalMessages:layouts=>enableTerminalMessages(environment,layouts),
+        enableMessages:layouts=>enableMessages(environment,layouts),
+        enableRuntimeInfo:layouts=>enableRuntimeInfo(environment,layouts),
+        enableTurnLoop:layouts=>{const context=states.get('game-startup-context');if(!context)throw new Error('Turn loop requires game startup');return enableTurnLoop(environment,layouts,{environment:context});},
+        enableGameStartup:layouts=>{if(!monsterCreation)throw new Error('Game startup requires monster services');const startup=enableGameStartup(environment,layouts,monsterCreation);states.set('game-startup-context',startup.environment);return startup;},
         enableSerialization:layouts=>enableSerialization(environment,layouts),
         enableTerminal:(layout,options)=>enableTerminal(environment,layout,options),
         enableLua:options=>createStandaloneLua(environment,options),
-        state:name=>states.get(name),
-        resolve:name=>{const owner=owners.get(name);if(!owner)throw new Error('Unresolved standalone function '+name);return (...args)=>call(owner,name,...args);},
+        enableLuaSandbox:layouts=>enableLuaSandbox(environment,layouts),
+        state:name=>states.get(name),hasFunction:name=>owners.has(name),
+        resolve,
         status:()=>Object.fromEntries([...modules].map(([k,v])=>[k,v.status])),
         record:transport.record,array:transport.array,address};
     return environment;

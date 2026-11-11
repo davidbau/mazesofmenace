@@ -1,0 +1,935 @@
+{
+  "bones": {
+    "schema": {
+      "object": [
+        [
+          "nobj",
+          "*object"
+        ],
+        [
+          "cobj",
+          "*object"
+        ],
+        [
+          "ocontainer",
+          "*object"
+        ],
+        [
+          "oextra",
+          "*oextra"
+        ],
+        [
+          "in_use",
+          "u32"
+        ],
+        [
+          "oartifact",
+          "i8"
+        ],
+        [
+          "otyp",
+          "i16"
+        ],
+        [
+          "oclass",
+          "i8"
+        ],
+        [
+          "oeaten",
+          "u32"
+        ],
+        [
+          "where",
+          "i8"
+        ],
+        [
+          "no_charge",
+          "u32"
+        ],
+        [
+          "known",
+          "u32"
+        ],
+        [
+          "dknown",
+          "u32"
+        ],
+        [
+          "bknown",
+          "u32"
+        ],
+        [
+          "rknown",
+          "u32"
+        ],
+        [
+          "lknown",
+          "u32"
+        ],
+        [
+          "cknown",
+          "u32"
+        ],
+        [
+          "tknown",
+          "u32"
+        ],
+        [
+          "invlet",
+          "i8"
+        ],
+        [
+          "how_lost",
+          "u32"
+        ],
+        [
+          "corpsenm",
+          "i32"
+        ],
+        [
+          "spe",
+          "i8"
+        ],
+        [
+          "nomerge",
+          "u32"
+        ],
+        [
+          "lamplit",
+          "u32"
+        ],
+        [
+          "age",
+          "i64"
+        ],
+        [
+          "quan",
+          "i64"
+        ],
+        [
+          "owt",
+          "u32"
+        ],
+        [
+          "owornmask",
+          "i64"
+        ],
+        [
+          "ghostly",
+          "u32"
+        ],
+        [
+          "o_id",
+          "u32"
+        ]
+      ],
+      "monster": [
+        [
+          "nmon",
+          "*monster"
+        ],
+        [
+          "data",
+          "*permonst"
+        ],
+        [
+          "minvent",
+          "*object"
+        ],
+        [
+          "mextra",
+          "*mextra"
+        ],
+        [
+          "m_id",
+          "u32"
+        ],
+        [
+          "mx",
+          "i16"
+        ],
+        [
+          "my",
+          "i16"
+        ],
+        [
+          "iswiz",
+          "u32"
+        ],
+        [
+          "cham",
+          "i16"
+        ],
+        [
+          "mpeaceful",
+          "u32"
+        ],
+        [
+          "m_lev",
+          "u8"
+        ],
+        [
+          "mhp",
+          "i32"
+        ],
+        [
+          "mhpmax",
+          "i32"
+        ],
+        [
+          "female",
+          "u32"
+        ],
+        [
+          "msleeping",
+          "u32"
+        ],
+        [
+          "mlstmv",
+          "i64"
+        ],
+        [
+          "mtame",
+          "i8"
+        ],
+        [
+          "seen_resistance",
+          "u64"
+        ]
+      ],
+      "permonst": [
+        [
+          "mlet",
+          "i8"
+        ],
+        [
+          "msound",
+          "u8"
+        ],
+        [
+          "geno",
+          "u16"
+        ],
+        [
+          "mflags2",
+          "u64"
+        ],
+        [
+          "pmnames",
+          "@"
+        ]
+      ],
+      "oextra": [
+        [
+          "oname",
+          "*"
+        ],
+        [
+          "omonst",
+          "*monster"
+        ]
+      ],
+      "mextra": [
+        [
+          "mgivenname",
+          "*"
+        ],
+        [
+          "ebones",
+          "*ebones"
+        ]
+      ],
+      "ebones": [
+        [
+          "parentmid",
+          "u32"
+        ],
+        [
+          "role",
+          "u8"
+        ],
+        [
+          "race",
+          "u8"
+        ],
+        [
+          "oldalign",
+          "&align"
+        ],
+        [
+          "deathlevel",
+          "u8"
+        ],
+        [
+          "luck",
+          "i8"
+        ],
+        [
+          "mnum",
+          "i16"
+        ],
+        [
+          "female",
+          "u32"
+        ],
+        [
+          "demigod",
+          "u32"
+        ],
+        [
+          "crowned",
+          "u32"
+        ]
+      ],
+      "fruit": [
+        [
+          "nextf",
+          "*fruit"
+        ],
+        [
+          "fid",
+          "i32"
+        ]
+      ],
+      "trap": [
+        [
+          "ntrap",
+          "*trap"
+        ],
+        [
+          "ttyp",
+          "u32"
+        ],
+        [
+          "madeby_u",
+          "u32"
+        ],
+        [
+          "tseen",
+          "u32"
+        ]
+      ],
+      "level": [
+        [
+          "dnum",
+          "i16"
+        ],
+        [
+          "dlevel",
+          "i16"
+        ]
+      ],
+      "dungeon": [
+        [
+          "boneid",
+          "i8"
+        ]
+      ],
+      "special": [
+        [
+          "boneid",
+          "i8"
+        ]
+      ],
+      "room": [
+        [
+          "rtype",
+          "i8"
+        ],
+        [
+          "orig_rtype",
+          "i8"
+        ],
+        [
+          "lx",
+          "i16"
+        ],
+        [
+          "hx",
+          "i16"
+        ],
+        [
+          "ly",
+          "i16"
+        ],
+        [
+          "hy",
+          "i16"
+        ]
+      ],
+      "terrain": [
+        [
+          "roomno",
+          "u32"
+        ],
+        [
+          "seenv",
+          "u8"
+        ],
+        [
+          "waslit",
+          "u32"
+        ],
+        [
+          "glyph",
+          "i32"
+        ]
+      ],
+      "cemetery": [
+        [
+          "next",
+          "*cemetery"
+        ],
+        [
+          "who",
+          "@"
+        ],
+        [
+          "how",
+          "@"
+        ],
+        [
+          "when",
+          "@"
+        ],
+        [
+          "frpx",
+          "i16"
+        ],
+        [
+          "frpy",
+          "i16"
+        ],
+        [
+          "bonesknown",
+          "i8"
+        ]
+      ],
+      "align": [
+        [
+          "type",
+          "i8"
+        ],
+        [
+          "record",
+          "i32"
+        ],
+        [
+          "abuse",
+          "u32"
+        ]
+      ],
+      "coord": [
+        [
+          "x",
+          "i16"
+        ],
+        [
+          "y",
+          "i16"
+        ]
+      ],
+      "hero": [
+        [
+          "twoweap",
+          "i8"
+        ],
+        [
+          "ux",
+          "i16"
+        ],
+        [
+          "uy",
+          "i16"
+        ],
+        [
+          "ux0",
+          "i16"
+        ],
+        [
+          "uy0",
+          "i16"
+        ],
+        [
+          "uz",
+          "&level"
+        ],
+        [
+          "usteed",
+          "*monster"
+        ],
+        [
+          "uswallow",
+          "u32"
+        ],
+        [
+          "ugrave_arise",
+          "i32"
+        ],
+        [
+          "umonnum",
+          "i32"
+        ],
+        [
+          "ulevel",
+          "i32"
+        ],
+        [
+          "uhpmax",
+          "i32"
+        ],
+        [
+          "ualign",
+          "&align"
+        ],
+        [
+          "uluck",
+          "i8"
+        ],
+        [
+          "uevent",
+          "&event"
+        ],
+        [
+          "uroleplay",
+          "&roleplay"
+        ],
+        [
+          "uhandedness",
+          "u32"
+        ]
+      ],
+      "event": [
+        [
+          "udemigod",
+          "u32"
+        ],
+        [
+          "uhand_of_elbereth",
+          "u32"
+        ]
+      ],
+      "roleplay": [
+        [
+          "numbones",
+          "i64"
+        ]
+      ],
+      "role": [
+        [
+          "name",
+          "&rolename"
+        ],
+        [
+          "filecode",
+          "*"
+        ],
+        [
+          "mnum",
+          "i16"
+        ]
+      ],
+      "rolename": [
+        [
+          "m",
+          "*"
+        ]
+      ],
+      "race": [
+        [
+          "noun",
+          "*"
+        ],
+        [
+          "filecode",
+          "*"
+        ]
+      ],
+      "gender": [
+        [
+          "filecode",
+          "*"
+        ]
+      ],
+      "alignment": [
+        [
+          "filecode",
+          "*"
+        ]
+      ],
+      "file": [
+        [
+          "mode",
+          "i32"
+        ],
+        [
+          "fd",
+          "i32"
+        ],
+        [
+          "structlevel",
+          "i8"
+        ],
+        [
+          "fieldlevel",
+          "i8"
+        ],
+        [
+          "fpdef",
+          "*"
+        ],
+        [
+          "style",
+          "&style"
+        ]
+      ],
+      "style": [
+        [
+          "deflt",
+          "i8"
+        ]
+      ],
+      "flags": [
+        [
+          "bones",
+          "i8"
+        ],
+        [
+          "debug",
+          "i8"
+        ],
+        [
+          "explore",
+          "i8"
+        ],
+        [
+          "female",
+          "i8"
+        ]
+      ],
+      "iflags": [
+        [
+          "wc_eight_bit_input",
+          "i8"
+        ]
+      ],
+      "program": [
+        [
+          "reading_bonesfile",
+          "i32"
+        ]
+      ],
+      "gs": [
+        [
+          "save_dlevel",
+          "&level"
+        ]
+      ],
+      "gf": [
+        [
+          "ftrap",
+          "*trap"
+        ],
+        [
+          "ffruit",
+          "*fruit"
+        ]
+      ],
+      "gi": [
+        [
+          "invent",
+          "*object"
+        ],
+        [
+          "in_mklev",
+          "i8"
+        ]
+      ],
+      "gu": [
+        [
+          "urole",
+          "&role"
+        ],
+        [
+          "urace",
+          "&race"
+        ]
+      ],
+      "svp": [
+        [
+          "plname",
+          "@"
+        ]
+      ],
+      "svn": [
+        [
+          "nhuuid",
+          "@"
+        ]
+      ],
+      "gb": [
+        [
+          "bones",
+          "@"
+        ]
+      ],
+      "savedlevel": [
+        [
+          "buriedobjlist",
+          "*object"
+        ],
+        [
+          "bonesinfo",
+          "*cemetery"
+        ],
+        [
+          "flags",
+          "&levelflags"
+        ],
+        [
+          "monlist",
+          "*monster"
+        ],
+        [
+          "objlist",
+          "*object"
+        ]
+      ],
+      "levelflags": [
+        [
+          "wizard_bones",
+          "u32"
+        ]
+      ],
+      "class": [
+        [
+          "oc_uses_known",
+          "u32"
+        ]
+      ]
+    },
+    "types": [
+      "struct obj",
+      "struct monst",
+      "struct permonst",
+      "struct oextra",
+      "struct mextra",
+      "struct ebones",
+      "struct fruit",
+      "struct trap",
+      "d_level",
+      "dungeon",
+      "s_level",
+      "struct mkroom",
+      "struct rm",
+      "struct cemetery",
+      "align",
+      "coord",
+      "struct you",
+      "struct u_event",
+      "struct u_roleplay",
+      "struct Role",
+      "struct RoleName",
+      "struct Race",
+      "struct Gender",
+      "struct Align",
+      "NHFILE",
+      "struct fieldlevel_content",
+      "flag",
+      "instance_flags",
+      "sinfo",
+      "instance_globals_s",
+      "instance_globals_f",
+      "instance_globals_i",
+      "instance_globals_u",
+      "instance_globals_saved_p",
+      "instance_globals_saved_n",
+      "instance_globals_b",
+      "dlevel_t",
+      "struct levelflags",
+      "struct objclass"
+    ],
+    "globals": {
+      "nhcb_name": null,
+      "nhcb_counts": null,
+      "c_color_names": "c_color_names",
+      "c_obj_colors": null,
+      "c_common_strings": "c_common_strings",
+      "disclosure_options": null,
+      "emptystr": null,
+      "flags": "flag",
+      "hexdd": null,
+      "xdir": null,
+      "ydir": null,
+      "zdir": null,
+      "dirs_ord": null,
+      "has_strong_rngseed": null,
+      "head_engr": null,
+      "iflags": "instance_flags",
+      "a11y": "accessibility_data",
+      "materialnm": null,
+      "quitchars": null,
+      "shield_static": null,
+      "u": "you",
+      "ubirthday": null,
+      "urealtime": "u_realtime",
+      "uwep": null,
+      "uarm": null,
+      "uswapwep": null,
+      "uquiver": null,
+      "uarmu": null,
+      "uskin": null,
+      "uarmc": null,
+      "uarmh": null,
+      "uarms": null,
+      "uarmg": null,
+      "uarmf": null,
+      "uamul": null,
+      "uright": null,
+      "uleft": null,
+      "ublindf": null,
+      "uchain": null,
+      "uball": null,
+      "vowels": null,
+      "WIN_MESSAGE": null,
+      "WIN_STATUS": null,
+      "WIN_MAP": null,
+      "WIN_INVEN": null,
+      "ynchars": null,
+      "ynqchars": null,
+      "ynaqchars": null,
+      "ynNaqchars": null,
+      "rightleftchars": null,
+      "hidespinchars": null,
+      "yn_number": null,
+      "ARGV0": null,
+      "urole_init_data": "Role",
+      "urace_init_data": "Race",
+      "disp": "display_hints",
+      "g_init_a": "instance_globals_a",
+      "g_init_b": "instance_globals_b",
+      "g_init_c": "instance_globals_c",
+      "g_init_d": "instance_globals_d",
+      "g_init_e": "instance_globals_e",
+      "g_init_f": "instance_globals_f",
+      "g_init_g": "instance_globals_g",
+      "g_init_h": "instance_globals_h",
+      "g_init_i": "instance_globals_i",
+      "g_init_j": "instance_globals_j",
+      "g_init_k": "instance_globals_k",
+      "g_init_l": "instance_globals_l",
+      "g_init_m": "instance_globals_m",
+      "g_init_n": "instance_globals_n",
+      "g_init_o": "instance_globals_o",
+      "g_init_p": "instance_globals_p",
+      "g_init_q": "instance_globals_q",
+      "g_init_r": "instance_globals_r",
+      "g_init_s": "instance_globals_s",
+      "g_init_t": "instance_globals_t",
+      "g_init_u": "instance_globals_u",
+      "g_init_v": "instance_globals_v",
+      "g_init_w": "instance_globals_w",
+      "g_init_x": "instance_globals_x",
+      "g_init_y": "instance_globals_y",
+      "g_init_z": "instance_globals_z",
+      "init_svb": "instance_globals_saved_b",
+      "init_svc": "instance_globals_saved_c",
+      "init_svd": "instance_globals_saved_d",
+      "init_sve": "instance_globals_saved_e",
+      "init_svh": "instance_globals_saved_h",
+      "init_svi": "instance_globals_saved_i",
+      "init_svk": "instance_globals_saved_k",
+      "init_svl": "instance_globals_saved_l",
+      "init_svm": "instance_globals_saved_m",
+      "init_svn": "instance_globals_saved_n",
+      "init_svo": "instance_globals_saved_o",
+      "init_svp": "instance_globals_saved_p",
+      "init_svq": "instance_globals_saved_q",
+      "init_svr": "instance_globals_saved_r",
+      "init_svs": "instance_globals_saved_s",
+      "init_svt": "instance_globals_saved_t",
+      "init_svu": "instance_globals_saved_u",
+      "init_svx": "instance_globals_saved_x",
+      "init_svw": "instance_globals_saved_w",
+      "init_svy": "instance_globals_saved_y",
+      "init_program_state": "sinfo",
+      "ga": "instance_globals_a",
+      "gb": "instance_globals_b",
+      "gc": "instance_globals_c",
+      "gd": "instance_globals_d",
+      "ge": "instance_globals_e",
+      "gf": "instance_globals_f",
+      "gg": "instance_globals_g",
+      "gh": "instance_globals_h",
+      "gi": "instance_globals_i",
+      "gj": "instance_globals_j",
+      "gk": "instance_globals_k",
+      "gl": "instance_globals_l",
+      "gm": "instance_globals_m",
+      "gn": "instance_globals_n",
+      "go": "instance_globals_o",
+      "gp": "instance_globals_p",
+      "gq": "instance_globals_q",
+      "gr": "instance_globals_r",
+      "gs": "instance_globals_s",
+      "gt": "instance_globals_t",
+      "gu": "instance_globals_u",
+      "gv": "instance_globals_v",
+      "gw": "instance_globals_w",
+      "gx": "instance_globals_x",
+      "gy": "instance_globals_y",
+      "gz": "instance_globals_z",
+      "svb": "instance_globals_saved_b",
+      "svc": "instance_globals_saved_c",
+      "svd": "instance_globals_saved_d",
+      "sve": "instance_globals_saved_e",
+      "svh": "instance_globals_saved_h",
+      "svi": "instance_globals_saved_i",
+      "svk": "instance_globals_saved_k",
+      "svl": "instance_globals_saved_l",
+      "svm": "instance_globals_saved_m",
+      "svn": "instance_globals_saved_n",
+      "svo": "instance_globals_saved_o",
+      "svp": "instance_globals_saved_p",
+      "svq": "instance_globals_saved_q",
+      "svr": "instance_globals_saved_r",
+      "svs": "instance_globals_saved_s",
+      "svt": "instance_globals_saved_t",
+      "svu": "instance_globals_saved_u",
+      "svw": "instance_globals_saved_w",
+      "svx": "instance_globals_saved_x",
+      "svy": "instance_globals_saved_y",
+      "program_state": "sinfo",
+      "cg": "const_globals",
+      "hands_obj": "obj"
+    },
+    "rngSites": [
+      [
+        247,
+        "give_to_nearby_mon"
+      ],
+      [
+        290,
+        "drop_upon_death"
+      ],
+      [
+        296,
+        "drop_upon_death"
+      ],
+      [
+        377,
+        "can_make_bones"
+      ],
+      [
+        645,
+        "getbones"
+      ]
+    ]
+  },
+  "sourceSha256": {
+    "js/ported/bones-runtime.js": "be0792e783b0ea9af1010525bc36a291f6bc6bb67140a1a32291f20b0a39be78",
+    "nethack-c/wasm/tu-fragments/bones-support.c": "cbb0e47e2e59ec2b1cc5572c64610bba26ddd0b9ff13b81cd4dafa9eb5dcdfa7",
+    "js/ported/decl-runtime.js": "0af217623e8b759b4923d614abd4fde5bccdff12b6dbb3aaa0912f690dad909a",
+    "scripts/export-standalone-level-abi.py": "c9e25770b3bd735fe8a27c0be0c380ea8e085d851f87a5cc692ec2951b8097ba"
+  }
+}

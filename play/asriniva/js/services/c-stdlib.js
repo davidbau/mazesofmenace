@@ -16,6 +16,13 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
         realloc: (p, n) => memory.realloc(p, n), free: p => memory.free(p),
         memcpy: (...args) => memory.memcpy(...args), memmove: (...args) => memory.memmove(...args),
         memset: (...args) => memory.memset(...args), memcmp: (...args) => memory.memcmp(...args),
+        memchr(p, byte, n) {
+            p = Number(p); n = Number(n);
+            if (n === 0) return 0;
+            memory.bounds(p, n);
+            const i = memory.HEAPU8.subarray(p, p + n).indexOf(Number(byte) & 255);
+            return i < 0 ? 0 : p + i;
+        },
         strlen: p => memory.strlen(p),
         strnlen(p, n) {
             let length = 0;
@@ -30,6 +37,7 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
             return memory.memcpy(destination, source, memory.strlen(source) + 1);
         },
         strncpy(destination, source, n) {
+            n = Number(n);
             memory.bounds(destination, n);
             const count = api.strnlen(source, n);
             memory.memcpy(destination, source, count);
