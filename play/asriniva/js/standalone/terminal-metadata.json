@@ -906,7 +906,7 @@
     128
   ],
   "sourceSha256": {
-    "js/ported/termcap-runtime.js": "8544e99ffb69c2acdb88eea53e6f29da9f0bacc2598b107e66f25518a94704c2",
+    "js/ported/termcap-runtime.js": "74ccdf315d0d414a22885a636806e9ec571b195623d7b980883fd8f99d31689e",
     "nethack-c/wasm/tu-libraries/termcap.js": "be0bb1b55051f6171b45548582d2172a1cd14ccb2227978e39ff6df5efa354c2",
     "nethack-c/wasm/tu-fragments/termcap-support.c": "f514178bc577bcf9220dd0a6afd59a14caabdb060fda2f3322e923e158158d22",
     "nethack-c/wasm/tu-fragments/termcap-source-data.h": "a87bd6c0796e86769c81671b6d6a9e6e882b087fe1e7ebd731771553f92b3342"

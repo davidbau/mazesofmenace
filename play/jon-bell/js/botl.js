@@ -189,6 +189,7 @@ export function armor_status() {
 /* C botl.c:2321-2334: rule edits request a redraw; they resend all field
  * values and discard temporary highlights only when highlighting is enabled. */
 export function reset_status_hilites() {
+    game._statusRulesPending = false;
     /* botl.c:2321-2331: only sets update_all + botlx; the fields are re-evaluated
      * against the new rules when the next bot() delivers them, so a page
      * raised before that bot() still shows the old colours. */
@@ -723,14 +724,20 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus) {
             if (p >= 0) {
                 const first = textmatch.slice(0, p);
                 (game.status_field_hilites ||= []).push(`${name}/${first}/${clrname}&${attrs}`);
+                game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                 await pline('Added hilite %s', `${name}/${first}/${clrname}&${attrs}`);
                 textmatch = textmatch.slice(p + 4);
             }
             const rule = `${name}/${textmatch}/${clrname}&${attrs}`;
             (game.status_field_hilites ||= []).push(rule);
+            game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
             await pline('Added hilite %s', rule);
-            reset_status_hilites();
+            /* C botl.c:4300 reset_status_hilites() only sets update_all + botlx; the
+             * menu's more() that pages this message runs no bot() (wintty.c:1921), so
+             * update_all survives to the next real flush.  drainTopline()'s flush is
+             * ours, so reset after it, as the threshold arm does. */
             await drainTopline();
+            reset_status_hilites();
             return true;
         }
     }
@@ -869,9 +876,11 @@ export async function status_hilite_menu(preserveStatus = false) {
                 const attrs = attr === 1 ? 'normal' : HL_ATTRBITS.filter(b => attr & b[1]).map(b => b[2]).join('+');
                 const rule = `${name}/${rel}/${clr2colorname(color).replace(/ /g, '-')}${attr ? '&' + attrs : ''}`;
                 (game.status_field_hilites ||= []).push(rule);
+                game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                 await pline('Added hilite %s', rule);
-                reset_status_hilites();
+                /* botl.c:4300: reset after our drainTopline() flush (see above). */
                 await drainTopline();
+                reset_status_hilites();
                 /* C botl.c:4298 pline() -> pline.c:274 flush_screen():
                  * later additions retain the status painted by that message. */
                 flushed = !game._statusBlankAfterDocrt;
@@ -906,9 +915,11 @@ export async function status_hilite_menu(preserveStatus = false) {
                     const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
                     const rule = `condition/${cname}/${clr2colorname(clr).replace(/ /g, '-')}&${attrs}`;
                     (game.status_condition_hilites ||= []).push(rule);
+                    game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                     await pline('Added hilite %s', rule);
-                    reset_status_hilites();
+                    /* botl.c:4300: reset after our drainTopline() flush (see above). */
                     await drainTopline();
+                    reset_status_hilites();
                     flushed = !game._statusBlankAfterDocrt;
                     added = true;
                     break;
@@ -1005,6 +1016,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                     const behave = `${['=', '<', '<=', '>=', '>'][lt]}${val}${percent ? '%' : ''}`;
                     const rule = `${name}/${behave}/${clr2colorname(clr).replace(/ /g, '-')}&${attrs}`;
                     (game.status_field_hilites ||= []).push(rule);
+                    game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                     await pline('Added hilite %s', rule);
                     /* the --More-- page still shows the old status: C re-evaluates
                      * unchanged fields only at reset_status_hilites (botl.c:4302) */

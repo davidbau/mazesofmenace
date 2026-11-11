@@ -83,19 +83,22 @@ export function enableAddressPort(environment,name,{only}={}) {
     for(const row of schema.variadics??[])local['var'+row.site]=(...args)=>resolve(row.function)(...args);
     for(const row of schema.dynamicVariadics??[])for(const target of row.targets)local['dynamic'+row.site+'_'+target]=(...args)=>resolve(target)(...args);
     for(const row of schema.callbackCalls??[])local['indirect'+row.site]=(fn,...args)=>environment.functions.indirect(fn,signature(row.ret,row.types),...args);
+    for(const row of schema.callbacks??[])local['cb'+row.site]=(fn,...args)=>environment.functions.indirect(fn,signature(ctypes.canonical(row.ret),row.types.map(ctypes.canonical)),...args);
     for(const [fn,info]of Object.entries(schema.dependencies??{}))local[fn]=(...args)=>{
-        const value=resolve(fn)(...args);return info.ret.includes('*')?environment.address(value):value;
+        const value=resolve(fn)(...args);return info.ret.includes('*')?(typeof value==='string'?services.literal(value):environment.address(value)):value;
     };
     let factoryEnvironment;
     if(only)for(const key of only)if(typeof namespace[key]!=='function')throw new Error('Unknown address adapter export '+name+'.'+key);
-    const wrappers=Object.fromEntries(Object.entries(namespace).filter(([key,fn])=>typeof fn==='function'&&(!only||only.includes(key))&&!/StaticInitializers$/.test(key)&&(!schema.functionTypes||Object.hasOwn(schema.functionTypes,key))).map(([key])=>[key,(...args)=>{
+    const bind=key=>(...args)=>{
         if(pair[2]==='layout')return bridge(local,layout,key,...args);
         if(pair[2]==='factory'){factoryEnvironment??=bridge(local,layout,namespace);return withCEnvironment(factoryEnvironment,namespace[key],...args);}
         return bridge(local,key,...args);
-    }]));
+    };
+    const wrappers=Object.fromEntries(Object.entries(namespace).filter(([key,fn])=>typeof fn==='function'&&(!only||only.includes(key))&&!/StaticInitializers$/.test(key)&&(!schema.functionTypes||Object.hasOwn(schema.functionTypes,key))).map(([key])=>[key,bind(key)]));
     environment.register(name,wrappers,local);
     return{
         services:local,layout:keys,
+        expose:names=>{for(const key of names)if(typeof namespace[key]!=='function')throw new Error('Unknown '+name+' export '+key);environment.extend(name,Object.fromEntries(names.map(key=>[key,bind(key)])));},
         unresolved:()=>Object.keys(schema.dependencies??{}).filter(fn=>{try{resolve(fn);return false;}catch{return true;}}),
         limitation:'Adapter transport only until the complete game dependency closure and original component tests pass.',
     };

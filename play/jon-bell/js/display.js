@@ -6434,7 +6434,7 @@ function _status_field_hilites(row) {
     const _rulesKey = (game.status_field_hilites || []).join(';') + '|' + (game.status_condition_hilites || []).join(';');
     if (game._statusFieldRulesKey !== _rulesKey) {
         game._statusFieldRulesKey = _rulesKey;
-        delete game._statusFieldColors;
+        if (!game._statusRulesPending) delete game._statusFieldColors;
     }
     const delivered = (game._statusFieldColors ||= {});
     const result = new Map();
@@ -6854,6 +6854,9 @@ function _status_condition_hilites(row) {
     const fields = _status_field_hilites(row);
     // C wintty.c:5080-5097,5213-5234: zero disables conditions and fields.
     if (!game.iflags?.hilite_delta) return cells;
+    /* botl.c:4574: hilite_delta raised without update_all; the grid paint keeps
+     * the uncoloured fields as delivered, like _hilite_status_wrap. */
+    if (game._statusHiliteHeld) return cells;
     /* wintty.c:5080-5083,4908-4950 condcolor()/condattr(): the colour is the
      * LOWEST colour index whose gc.cond_hilites[] mask holds the condition;
      * attributes are the union over every attribute slot holding it. */

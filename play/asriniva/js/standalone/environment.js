@@ -34,6 +34,7 @@ import {shouldPersistGameFile} from '../wasm-replay-support.js';
 import {enableTerminal} from './terminal.js';
 import {enableObjectState} from './object-state.js';
 import {enableObjectRecords} from './object-records.js';
+import {enableItemInventory} from './item-inventory.js';
 
 export function createStandaloneEnvironment(options={}) {
     const base=createJsRuntime(options),{memory}=base;
@@ -52,6 +53,13 @@ export function createStandaloneEnvironment(options={}) {
         callComparator:(fn,a,b)=>typeof fn==='function'?fn(a,b):functions.indirect(fn,'ipp',a,b),
     });
     const modules=new Map(),owners=new Map(),globals=new Map(),states=new Map();
+    const addressAdapters=new Map();
+    function extend(name,namespace) {
+        const entry=modules.get(name);if(!entry)throw new Error('Unknown standalone module '+name);
+        const exports=Object.entries(namespace);
+        for(const [fn,value]of exports)if(typeof value!=='function'||owners.has(fn))throw new Error('Duplicate or invalid standalone export '+fn);
+        for(const [fn,value]of exports){entry.namespace[fn]=value;owners.set(fn,name);if(!(fn in services))services[fn]=(...args)=>call(name,fn,...args);}
+    }
     function register(name,namespace,environment=services,{initialize,dependencies=[],prepareArgs}={}) {
         if(modules.has(name))throw new Error('Duplicate standalone module '+name);
         const exports=Object.entries(namespace).filter(([,v])=>typeof v==='function');
@@ -223,14 +231,16 @@ export function createStandaloneEnvironment(options={}) {
         services.tgetent=(_buffer,name)=>runtime.tgetent(services,name);
         return runtime;
     }
-    const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,start,call,allocateGlobal,requireGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
+    const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,extend,start,call,allocateGlobal,requireGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
         setEnvironment:(name,value)=>{base.setEnvironment(name,value);if(value===null||value===undefined)delete ENV[name];else ENV[name]=String(value);},
         captureFiles:baseline=>captureGameFiles(base.filesystem,baseline,shouldPersistGameFile),
         restoreFiles:state=>restoreGameFiles(base.filesystem,state),
         fileBaseline:()=>filesUnder(base.filesystem,'/nethack'),
-        enableAddressPort:(name,options)=>enableAddressPort(environment,name,options),
+        enableAddressPort:(name,options)=>{const adapter=enableAddressPort(environment,name,options);addressAdapters.set(name,adapter);return adapter;},
+        exposeAddressPort:(name,names)=>{const adapter=addressAdapters.get(name);if(!adapter)throw new Error('Address adapter not enabled: '+name);return adapter.expose(names);},
         enableObjectState:layouts=>enableObjectState(environment,layouts),
         enableObjectRecords:layouts=>enableObjectRecords(environment,layouts),
+        enableItemInventory:layouts=>enableItemInventory(environment,layouts),
         enableSerialization:layouts=>enableSerialization(environment,layouts),
         enableTerminal:(layout,options)=>enableTerminal(environment,layout,options),
         enableLua:options=>createStandaloneLua(environment,options),

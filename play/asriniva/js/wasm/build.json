@@ -597,6 +597,8 @@
       "teleport_nhlobj_test_l_obj_timer_start",
       "teleport_nhlobj_test_l_obj_timer_stop",
       "teleport_nhlobj_test_l_obj_to_table",
+      "teleport_nhlsel_test_l_selection_push_new",
+      "teleport_nhlsel_test_params_sel_2coords",
       "teleport_o_init_test_all",
       "teleport_o_init_test_append",
       "teleport_o_init_test_class",
@@ -1255,12 +1257,11 @@
     ],
     "sourceSha256": {
       ".cache/wasm64-build/tree/src/wasm/dlb.o": "a63b81d21024f9fb1fff3057dd864a37e01b95de418d47c1cc9a31661fdb4663",
-      ".cache/wasm64-build/tree/src/wasm/nhlsel.o": "abe63510d594e0363b6becf5c396a458d526e98c36e095afdcf5958c5aa657cf",
       ".cache/wasm64-build/tree/src/wasm/unixres.o": "a63b81d21024f9fb1fff3057dd864a37e01b95de418d47c1cc9a31661fdb4663",
       ".cache/wasm64-build/tree/src/wasm/bridge.o": "9b86f8bd17cb28b2eb4f9ce0e033aa75d9ac7f2f8469fbb520244aa412e10c41",
       ".cache/wasm64-build/tree/src/wasm/lua-bridge.o": "7f86c1b41b7f2ecf9a218097da6b57a66ba525f3da194dac46a9b31065023068",
       ".cache/wasm64-build/tree/src/wasm/dependency-bridge.o": "cfc129a7af0e6aa01944fc45173eb7a3fdee566b05feb7ef7dea7ad0972d1c4f",
-      ".cache/wasm64-build/tree/src/wasm/tu-support.o": "457d5ff55c896f4d8ed12da19c01c38c81a4374b612ce1373a5fcea60ab6f72f",
+      ".cache/wasm64-build/tree/src/wasm/tu-support.o": "b225076c1c1c8016004c9ae6bee57ecc30a4ea96ac87f4e509ff391a27698f99",
       ".cache/wasm64-build/tree/src/wasm/tu-role-storage.o": "4aaeda6bc2f64b103de78f8951afeb8bbc8607a62aa44141fe680dd82384d0c9",
       ".cache/wasm64-build/tree/src/wasm/tu-vision-storage.o": "2fd7383467b23eea3ea1b90b09c4a6c2fc18f364a9d14b61ca94a3efb21e3815",
       ".cache/wasm64-build/tree/src/wasm/mkmaze-support.o": "c93bcd595cff740464c62abd02fc83d18a4ed57c44c9bc1966b6fb1131c23b6b",
@@ -1312,7 +1313,7 @@
       "nethack-c/wasm/tu-libraries/quest.js": "1f876ba91fbed94730b1d74fa421c8554563d817973879582da7eb7e979a60f5",
       "nethack-c/wasm/tu-libraries/minion.js": "86810701e7239d5d891c62fd2fcc3d121678713df705e8eef92fdaf968f3c6d6",
       "nethack-c/wasm/tu-libraries/iactions.js": "fa4f889e09c4d1ef82cce41f70f7053db294a5529a06cc4ce8d07b985a3fa2b9",
-      "nethack-c/wasm/tu-libraries/selvar.js": "4e956e1ea97b5843815c75f580ffccadd4363d299bf55f6cfea7d5396d3784f2",
+      "nethack-c/wasm/tu-libraries/selvar.js": "fea5d6b45d2d253b0ff9a1a42e157abd5a825eb5b61f23b39304187831ca9b87",
       "nethack-c/wasm/tu-libraries/steal.js": "c8d6e7633e6d7a1aeb4a73294879a1693a970988a60771bd2fd3e919d5989f21",
       "nethack-c/wasm/tu-libraries/sit.js": "5f262fbeb275f45f7e39af847ed8ec9dc36f6989fd4b7b0c1f1968e4638729de",
       "nethack-c/wasm/tu-libraries/fountain.js": "f91263af9d512f78ea767e9993d7de7a05060407b1b9132ae9cc1d4b2884fb47",
@@ -1324,7 +1325,7 @@
       "nethack-c/wasm/tu-libraries/version.js": "1054ebd49d3cf191313fe738b97453291d6a6b3158e03294d9b1109805beb523",
       "nethack-c/wasm/tu-libraries/coloratt.js": "e40d6c35aecce160599b3f623f782d6189c8af6af64ce0f04e9076349eb0e84a",
       "nethack-c/wasm/tu-libraries/priest.js": "987fb46392efeefbbb6d85a964ef6638ba52108e3341de21eb1a7bba465f3d9e",
-      "nethack-c/wasm/tu-libraries/light.js": "a1545b5f6108ed39efe84e39c97439526c6091f25d7eeccf45093aa1eea1a020",
+      "nethack-c/wasm/tu-libraries/light.js": "b3ce644e4f9620600f9cc4e68c3fa59295de9e4c78918045d4a53595249dfaa1",
       "nethack-c/wasm/tu-libraries/lock.js": "9de95d8196540c4910bd8f53debbd7818759a5ea24f015e95fe11ca48154ba06",
       "nethack-c/wasm/tu-libraries/steed.js": "00dae28dba7e4ef5e1fca7056349563bf0969880fe17f446aa83218d7688dea9",
       "nethack-c/wasm/tu-libraries/wizard.js": "c681b4b3aec2db081ff4234ddf33c7c7f9fb3cbd35656efd696bf53ec85d5d7b",
@@ -1380,7 +1381,7 @@
       "nethack-c/wasm/tu-libraries/detect.js": "68839be229803cb5b9f14584810e8fd1412f4b8fb07081833b0b2ee8ebdfc5df",
       "nethack-c/wasm/tu-libraries/teleport.js": "958d5fc8ce8516cc0417e4fd14cf51b17224aacab38d3fbb2dd65d25216e1587",
       "nethack-c/wasm/tu-libraries/mklev.js": "41a90dd34ebbc7eef32dbe7c90384bf4b5414fdc23b35558fbab985c549bc2a9",
-      "nethack-c/wasm/tu-libraries/monmove.js": "4265c777abecebc13b1a0ada9eada47d184ee4ab1a3d02ade56fce56edd489f5",
+      "nethack-c/wasm/tu-libraries/monmove.js": "a760bf02d8b4dd663172d8051b934d1cf417637ae0aa4d256de06e808a49d194",
       "nethack-c/wasm/tu-libraries/spell.js": "eb77c4d09d4f68975c2bf694c080cbd5b3d5ec039ede6ed5fbf0c10d138ed7c1",
       "nethack-c/wasm/tu-libraries/do.js": "7cd2e78d1fc6d99d3f4aaf8479baa54f8b7f9899cb64455409f872958323a5d4",
       "nethack-c/wasm/tu-libraries/timeout.js": "b3adee2c24f034d3ef2c34872b9c1865411e0d4dffbba89dfa8d05e2915d528e",
@@ -1404,7 +1405,7 @@
       "nethack-c/wasm/tu-libraries/nhlua.js": "b0a18e446a058bc68c21674e180c0c5f8d3833d8fca13d81c437d5b3538a2019",
       "nethack-c/wasm/tu-libraries/files.js": "7a184117967c835c17c978df41c0e2af3a53f61d35f3790a2267207e110e671c",
       "nethack-c/wasm/tu-libraries/display.js": "b84d44f073b3fc8ec90d56634ce8270f3ca52fcb9c1c6a907bef3b8821468f78",
-      "nethack-c/wasm/tu-libraries/invent.js": "876c37fb6a9c25a72f8876baf3c0ab464d2d1b05d7c66cdd84c2ddceaf95ca7b",
+      "nethack-c/wasm/tu-libraries/invent.js": "3f8ef62b28e08ac13a15b16df6b9e0332e6ff9f4bb1b3f513fd1b58f42d846fe",
       "nethack-c/wasm/tu-libraries/cmd.js": "822d5692a45556341f7c3ce26338dbe265db6f39c20002c302c4d962afe7e559",
       "nethack-c/wasm/tu-libraries/hack.js": "6bfde9942d2b88d33da37c21c65abcb037447d4e3f507297a67532c3ac6d9f1d",
       "nethack-c/wasm/tu-libraries/uhitm.js": "733b4e9a9c6c9525c69ebd7973c68394c81264322d23edb8d6408d7bee8a0aa8",
@@ -1421,20 +1422,21 @@
       "nethack-c/wasm/tu-libraries/options.js": "b6fb82aa4d6bd99208bc81289972d0b77fa32d3db2d996cf3be97dc04f96e1b3",
       "nethack-c/wasm/tu-libraries/botl.js": "a040d6a64c8f70f717aae48baca8e8e1da5056d6cdd17bcba6b65f9350b5a65d",
       "nethack-c/wasm/tu-libraries/zap.js": "28c13623384cf01f54671ba0fbe1efc26a0f667d90359171728e6b6722d1ac21",
-      "nethack-c/wasm/tu-ports.json": "1a541347d535205c4fba50484d76703d74e1104710f5c1f233ba7490e9bdef64",
+      "nethack-c/wasm/tu-libraries/nhlsel.js": "5f0631dbe320abb532957ff21e73b67075986f0a1b5f5eb73cad9329bf14fbcc",
+      "nethack-c/wasm/tu-ports.json": "e44e3bc8e88b79a0820de5c93ca658d67df10c06fb89e40edf9357a1bd470b61",
       "scripts/write-game-library-pruner.mjs": "059762326b2a035f346cece1f00ea09f5784833e10987cda781e2d28bd61c9a1",
       ".cache/emsdk/upstream/emscripten/node_modules/acorn/dist/acorn.mjs": "4c09beddbf61851ae40b86d32bc5b05eb0ce1ac3d0145676c2609d725abedf87",
       ".cache/emsdk/node/24.19.0_64bit/bin/node": "27db838bb204ef7c21df2931f5656e4c8fb32e6e947f363a402b49714d32b5b1",
       ".cache/emsdk/upstream/bin/llvm-nm": "f2d0b6423d92215de5ba8a2c3fb3a8c84c3634dd9192978bed03897bb21ad5c1",
-      ".cache/wasm64-build/production-library-pruning/native-inputs.json": "b9a7a6679ddcdaa3d72c67909ce396257bbc21f8abded847d7a3e23ebe424eb1",
+      ".cache/wasm64-build/production-library-pruning/native-inputs.json": "ef712492bb93e63d5ceaa266bcd6a940011048018c7166126bae79f51bd62f40",
       ".cache/emsdk/upstream/emscripten/src/utility.mjs": "913e9bcb41b6ad5db7515b99518781c9375dac9ddce62480381ecc244527a7d9",
       ".cache/emsdk/upstream/emscripten/src/modules.mjs": "e21baf8355ca2355fe78583dd62d422770a96d02536d3e47e2f435a39e89c6c1",
       ".cache/emsdk/upstream/emscripten/src/jsifier.mjs": "24b5838f26f4d87696946fdabea381dae16fa1a736d72bc37ee333291cd33d5e",
-      ".cache/wasm64-build/production-library-pruning/inputs.json": "78d67628d2023ef10ecc51fcc66023dfa325445b3f0c07c45b8bd597309e7276",
+      ".cache/wasm64-build/production-library-pruning/inputs.json": "7a2258ea7ffafe12cab3248dfd19701a81ce997d03ddfe6a491a864b40a580d6",
       "scripts/reviewed_build_provenance.py": "3bfff734265ce4ab4abc578ce25d01a6d5c0ef92f9d5ad471024644cc3ca5b1b",
       "nethack-c/wasm/build.py": "54e28fa9c1ac419b39decd18da160fe4534fd4aa54803bad034c3afae7337e95",
-      ".cache/wasm64-build/production-library-pruning/normal-link-pruner.js": "32e37e7eb99bb37a0e54875db38d7bd9e67b876b58f975456aad17ec2215cefd",
-      ".cache/wasm64-build/production-library-pruning/normal-link-pruner-manifest.json": "42b20cd5b95ad1317ed83b1b9a9ec884b46248792fc96654d12b478d5c0d5121"
+      ".cache/wasm64-build/production-library-pruning/normal-link-pruner.js": "a892463e2274673d09cb4fa3fbfbf9703d9c19a5a02401dd39cdff5457b58bdf",
+      ".cache/wasm64-build/production-library-pruning/normal-link-pruner-manifest.json": "1d777c68b932934cc7dbea5b0d8fcbd065da1a7d8cb4af9c978025ce94bf07fe"
     }
   },
   "probeBuildBackends": [
@@ -1518,10 +1520,10 @@
       "js/services/posix-regex.js": "a95c5c6bca5bf2fade60f06d888dc3be8c2e6cc2813dbeb1dc25dd090821abeb",
       "js/services/wasm-dependency-runtime.js": "72dc3dc32e93a7c07b4232f98616bf17395b1e521045d1a6a1b125c6f2847805",
       "js/services/native-c-compat.js": "1b87b4b198f09da9ca7dc5133926f3154ee4855929e4e5eb590340e749d9c2b8",
-      "js/services/native-regex-libc.js": "f0421d2e05e36e84420269f2708e80942b6185e56f3601c9293e5fb23cd5b56e",
+      "js/services/native-regex-libc.js": "8206a1733113f80a04750711c3b040b5dadaf213010acc1135fe60c73d46eb4c",
       "js/services/native-qsort.js": "c33be22f1de1bcdefd11bf1fe0304e75769b7c07993789140fa10cf9d82cab19",
       "js/services/c-time.js": "0980974f4053a54dbc6221a12eb41b6d20feccd7ef12c359fb27b255718de61a",
-      "js/ported/wasm-runtime.js": "e24d727a75c50f16297c29c8b3dd72cc1793e63013ca131f4c82e29af3690f55",
+      "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
       "js/ported/posixregex.js": "3389499c549a670141e87d8dcb42d1caf50419a24c7e8a7751a8bfdfcecfcf41",
       "js/ported/posixregex-runtime.js": "567795a5ccac27c7109b250e1e88f8b050da006f163d916f72173901660ee1bf",
       "js/wasm-adapter.js": "d29f8c905987d6b209e8456d9a5e763c83866be8b40d10ab0ac0bce7636cef91",
@@ -1615,7 +1617,7 @@
       "reference": "prepared",
       "library": "nethack-c/wasm/tu-libraries/calendar.js",
       "adapterSourceSha256": {},
-      "sha256": "3dc51bb6b44f12255074944817ce5fee783e8ed9cc03c0f078efc027ce5cd743",
+      "sha256": "1e475c7d82dce8bbf7bb188e4c77143b211aa53fcb264650a64cd542cc337ee9",
       "abiLibrarySha256": "5dcee39068638e940d42c19ff1a55b6de19f2a1f5d580e92822df3a31872fd77",
       "preparedCSourceSha256": "5ef88878eedd42a7ab59fa374dc4e01798a448b72acace9c7a8d26c5ae883b17"
     },
@@ -1856,9 +1858,14 @@
       "source": "src/selvar.c",
       "javascript": "js/ported/selvar.js",
       "library": "nethack-c/wasm/tu-libraries/selvar.js",
-      "adapterSourceSha256": {},
+      "adapterSources": [
+        "js/ported/selvar-runtime.js"
+      ],
+      "adapterSourceSha256": {
+        "js/ported/selvar-runtime.js": "58a8f73a2b71492303fdf166ea1c51c394aec9ecdc6d41010d9c9ef5691de20d"
+      },
       "sha256": "a1e210748a139b2917a2100fdeedc574ed0c84fa97715ebcec9841299e24a529",
-      "abiLibrarySha256": "4e956e1ea97b5843815c75f580ffccadd4363d299bf55f6cfea7d5396d3784f2",
+      "abiLibrarySha256": "fea5d6b45d2d253b0ff9a1a42e157abd5a825eb5b61f23b39304187831ca9b87",
       "preparedCSourceSha256": "af33824e7004e7799ca1e88d0b00813bb5b9a1087015b9fb5a250473b2318b58"
     },
     {
@@ -2001,7 +2008,7 @@
       "configuredFunctions": true,
       "adapterSourceSha256": {},
       "sha256": "15c865998d790ffcd3558aabee5df472f28823f55adf214171dba9b54e72a6f4",
-      "abiLibrarySha256": "a1545b5f6108ed39efe84e39c97439526c6091f25d7eeccf45093aa1eea1a020",
+      "abiLibrarySha256": "b3ce644e4f9620600f9cc4e68c3fa59295de9e4c78918045d4a53595249dfaa1",
       "preparedCSourceSha256": "d1d81c386a3ad2005f09c64425f584ba444fdb4c13df23ef81db35c4aa3328d1"
     },
     {
@@ -2043,7 +2050,12 @@
       "javascript": "js/ported/worm.js",
       "library": "nethack-c/wasm/tu-libraries/worm.js",
       "configuredFunctions": true,
-      "adapterSourceSha256": {},
+      "adapterSources": [
+        "js/ported/worm-runtime.js"
+      ],
+      "adapterSourceSha256": {
+        "js/ported/worm-runtime.js": "29a0925b562d488044a901e7f16f3fd566bb3773e0b4536767e46638762c7122"
+      },
       "sha256": "7c976f7e7cc535607ee232b452232dfeb72918c8faa3d3d6b8c58780367cead8",
       "abiLibrarySha256": "3c58aca331826ce8340dd73f875f354adfcb35ff2813904faf9a6f9adf553d39",
       "preparedCSourceSha256": "eddba29f0ee121680cfbfda102b371fec2ef5bf8c27dff45a741e5b634335bcd"
@@ -2734,7 +2746,7 @@
         "nethack-c/wasm/tu-fragments/glyphs-fixture-data.h"
       ],
       "adapterSourceSha256": {
-        "js/ported/glyphs-runtime.js": "1819fefe4ed9d3e8fe946e0aaa78a6434278404d8a77db63ed02bc700f3fbc36",
+        "js/ported/glyphs-runtime.js": "1157b93e6b9a9af8f4ecdca94dd722337e9e1aa8be35a62f7b6e5c481def2e62",
         "nethack-c/wasm/tu-fragments/glyphs-support.c": "f74cb82021a7875e80b4770e2aa76bbafb6b8b1888c6622baa81542a5b7c0adb",
         "scripts/tu-glyphs-layout.h": "8371ac4843c51864abd296e728e1e173112e017d576b6cff9351a88b4146d2d2",
         "nethack-c/wasm/tu-fragments/glyphs-source-check.mjs": "362c12c5e92f9b3bdd78ecba1ca10ef613237e95939e7d881ea515361ff04e85",
@@ -3389,14 +3401,14 @@
         "nethack-c/wasm/tu-monmove-support.inc"
       ],
       "adapterSourceSha256": {
-        "js/ported/monmove-runtime.js": "df2aaaddf4e915dd3a0e71556b4eeaa21006cc56ce2fe154f6c03fe28904a528",
+        "js/ported/monmove-runtime.js": "4248f7e934e189861ebf44fe565c1fff627470bfcfee9d73f3170ea0e7843001",
         "scripts/tu-monmove-layout.h": "b75cab0072cc22b3d6d37a1cf927465ce2e2d0e39dae8fa9fe645ed4149cefc6",
         "scripts/tu-monmove-command.c": "2ce0731e3c05d474707280e75eab8812dbf39e561448b7486d8abe8782e3f4b0",
         "scripts/check-monmove-data.mjs": "70e74d1cdc1c36389b8a9696cb52a168c84034c04b3db8077485cdeea7887f14",
         "nethack-c/wasm/tu-monmove-support.inc": "7f2865bd51620be0b1c74a37589bfaa830eb94aea195f40ce722fafcc4c22a1b"
       },
       "sha256": "5de0a2637789797e687065ef7ebeccc336d80e3e2aa0292a55a626b83ed32f01",
-      "abiLibrarySha256": "4265c777abecebc13b1a0ada9eada47d184ee4ab1a3d02ade56fce56edd489f5",
+      "abiLibrarySha256": "a760bf02d8b4dd663172d8051b934d1cf417637ae0aa4d256de06e808a49d194",
       "preparedCSourceSha256": "a7dae4554a30b51e0971ae32086c7494da8e3b8c18ee0e6d4a875f4a8baaf613"
     },
     {
@@ -4432,7 +4444,7 @@
         "nethack-c/wasm/tu-fragments/display-storage.c": "0e4dee2968b249cc412b9f9fd5a8d8891824f826aaca08ad947b7b51aa69c225"
       },
       "adapterSourceSha256": {
-        "js/ported/display-runtime.js": "9069082cec915f436562147271ce077ad7b80b1ae42945ededbdc7eff6bc7258",
+        "js/ported/display-runtime.js": "03300103eec3035e8c10620ac8da9ced5212110ba7c9a4dc0afdbec7ad9cd44a",
         "nethack-c/wasm/tu-fragments/display-support.c": "a2229a43cca57321f7f91fa3167e24d6f65ef3dcd7edb3f323176e74ed8f9354",
         "nethack-c/wasm/tu-fragments/display-storage.c": "0e4dee2968b249cc412b9f9fd5a8d8891824f826aaca08ad947b7b51aa69c225",
         "nethack-c/wasm/tu-fragments/display-schema.json": "9dcfa8c1372e4520d5874d1ee007bad622b9b8732db302625167d09860368db8",
@@ -4471,7 +4483,7 @@
         "nethack-c/wasm/tu-fragments/invent-support.c": "c7d89badfbb71154e7297d6e933fbf90f8f791a3882e52c09abf0d141805080b"
       },
       "adapterSourceSha256": {
-        "js/ported/invent-runtime.js": "ea6a756eafc2759e86904bfd97bdc18da13f1cf7e2f3f190c78420d3b9c90ef0",
+        "js/ported/invent-runtime.js": "6219ddc555f15b88a68c972ca23e94a023026c85aeeea5da2e5559a9c4e43b3c",
         "scripts/tu-invent-layout.h": "29871eedd5f1342d3bd2adc73dc62d31e40b9a50032f068e65b8581d38267c49",
         "nethack-c/wasm/tu-fragments/invent-support.c": "c7d89badfbb71154e7297d6e933fbf90f8f791a3882e52c09abf0d141805080b",
         "nethack-c/wasm/tu-fragments/invent-schema.json": "02c2f8b8674c6fff599d16598265dad19fd5492827b9dc9385e9b4b2fb66a344",
@@ -4479,7 +4491,7 @@
         "nethack-c/wasm/tu-fragments/invent-source-check.py": "3a5df2da74c01cfaa430a0f1f22661823310f02467e804b81352d717dddc1792"
       },
       "sha256": "a776bb9ad57b30ac001541f5b596bff173f95639a955f7dffd30dfe6d81c8604",
-      "abiLibrarySha256": "876c37fb6a9c25a72f8876baf3c0ab464d2d1b05d7c66cdd84c2ddceaf95ca7b",
+      "abiLibrarySha256": "3f8ef62b28e08ac13a15b16df6b9e0332e6ff9f4bb1b3f513fd1b58f42d846fe",
       "preparedCSourceSha256": "0b93d6ce1abb5b63ed7ea07c26a57e1016c6cef0fc2ef0e4016e6622054524b5"
     },
     {
@@ -4661,7 +4673,7 @@
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json"
       ],
       "adapterSourceSha256": {
-        "js/ported/hack-runtime.js": "792776f4123510b6c4bd1a6d2076c7efc70b3e196a363324ac83478f16c99b2f",
+        "js/ported/hack-runtime.js": "28c9bd4654efc153bd3cc4964c5165318c57a41991e527349f855b5fa309c259",
         "nethack-c/wasm/tu-fragments/hack-support.c": "96ac1f586baaa384f44baf031f931cdee9e27b414c24af20767b3098c382615c",
         "nethack-c/wasm/tu-fragments/hack-schema.json": "313661a301f57d05999c093175824fad955b5723255495ff7b2b156cfd80b266",
         "nethack-c/wasm/tu-fragments/hack-source-data.h": "8f7531d7c1e7c3f483d1753f69c9af107a694ee1164b5bddb4bdb300437cd85c",
@@ -4671,7 +4683,7 @@
         "scripts/check-hack-data.mjs": "e11595babef2f5191eb3f4b2c52a916d4898fadb9d8219c44420f1cd0129df1b",
         "scripts/build-tu137-group-a.py": "7c3a8397dea506331dbd553b6f14e41a8ae945e1341a57ec3b40a2ad8f24fd9d",
         "nethack-c/wasm/tu-fragments/tu137-group-a-probes.json": "53abd4abe87c6a49e7ab7aae67b4e17fb8d0b9a9c96f2e99957e1d5fde6cbee8",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605"
       },
@@ -4721,7 +4733,7 @@
         "nethack-c/wasm/tu-fragments/uhitm-runtime-method.inc": "57db70a3782304bea69e92c28d5c075a57e7142d94e9344ffe856eee82b7d1ad",
         "scripts/build-tu137-group-a.py": "7c3a8397dea506331dbd553b6f14e41a8ae945e1341a57ec3b40a2ad8f24fd9d",
         "nethack-c/wasm/tu-fragments/tu137-group-a-probes.json": "53abd4abe87c6a49e7ab7aae67b4e17fb8d0b9a9c96f2e99957e1d5fde6cbee8",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605",
         "nethack-c/wasm/tu-fragments/tu137-group-a/uhitm-source-tools/source-data.py": "901a9fbada377e7625c19f9579be6d278b896ac34e7e4f08ffeb0ff86f145332",
@@ -4769,13 +4781,13 @@
         "scripts/check-mon-data.mjs": "99199f5e47552cc3617ab788eb8586c785e91bbe948cb88d24cddc072ad13762",
         "scripts/build-tu137-group-a.py": "7c3a8397dea506331dbd553b6f14e41a8ae945e1341a57ec3b40a2ad8f24fd9d",
         "nethack-c/wasm/tu-fragments/tu137-group-a-probes.json": "53abd4abe87c6a49e7ab7aae67b4e17fb8d0b9a9c96f2e99957e1d5fde6cbee8",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605",
         ".cache/mon-author/functions.json": "4cba2bdec78ae058666ba7a2297a3656894e35415032845491ef1500ec21eaf3",
         ".cache/mon-author/support.c": "5ec89641145fafe1407e2c45ded6b23a583e11ec87ad626de915b6d5a5de73e6"
       },
-      "sha256": "20b2521a2828b27678d0ecaf049ede0fa96a3da0a3753daf6943387b6641ebe2",
+      "sha256": "05f3f39643975e5f2861c8b9cbdc617eaf9b4e5ae8a644efa616a7a49a9aaa4e",
       "abiLibrarySha256": "61f56e2f378f8b79f09c86d6ccf6d9d361c1fc39097d156b4cf73feac669f86e",
       "preparedCSourceSha256": "0ab56f908ac2147a5e57970250b99f90d47f2ec32fbdfb1a6fab04c33167bd01"
     },
@@ -4832,7 +4844,7 @@
         "scripts/check-pickup-negative.mjs": "0977fcdac2a66250c72a29ae56076b0a648b3f3b3ca64651a2c9a8b2e2c40789",
         "scripts/build-tu137-group-a.py": "7c3a8397dea506331dbd553b6f14e41a8ae945e1341a57ec3b40a2ad8f24fd9d",
         "nethack-c/wasm/tu-fragments/tu137-group-a-probes.json": "53abd4abe87c6a49e7ab7aae67b4e17fb8d0b9a9c96f2e99957e1d5fde6cbee8",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605",
         ".cache/pickup-first-pass/inventory-notes.txt": "967f63706dcc7eb2973dc58a9eaf73350560d5a2cadff9d3404dda3ef6d1b544",
@@ -4892,7 +4904,7 @@
         "nethack-c/wasm/tu-fragments/shk-check-metadata.mjs": "85ecb77f1fe36e967bbe6cfe3d5132e5aadaf5782c86edcdd44dfc64d808cce5",
         "scripts/build-tu137-group-a.py": "7c3a8397dea506331dbd553b6f14e41a8ae945e1341a57ec3b40a2ad8f24fd9d",
         "nethack-c/wasm/tu-fragments/tu137-group-a-probes.json": "53abd4abe87c6a49e7ab7aae67b4e17fb8d0b9a9c96f2e99957e1d5fde6cbee8",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605",
         ".cache/shk-first-pass/schema.json": "038f5444c7cd5922b57b21a26a5f380a10297e546f8d0b67a83f76d15baa527a"
@@ -4945,7 +4957,7 @@
         "nethack-c/wasm/tu-fragments/sp_lev-source-data.h": "591c166d8c0cf28a2d2361a8b657eab1a753a282ebdd40ba979e6d22f3cd628c",
         "nethack-c/wasm/tu-fragments/sp_lev-support.c": "aac622b6388201890bcfa003b0160b0a8dd947e941b4ebdd0acfa18382cc010c",
         "nethack-c/wasm/tu-fragments/sp_lev-types.h": "2bc00154c26474bc1b5d60e3c58f1ee31a36d90c708694006482013437feee74",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b_probe_support.py": "3daedb19f245cfa724dd65ab9988e4e112bbf832019c50cf537d32b8d67f223d",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b-probe-commands.json": "f7bdca824fd095d9d91a0ee202f657c6e521644c6d099913641b02f82e465e11",
@@ -5121,7 +5133,7 @@
         "scripts/tu-trap-probe-consumer.c": "ecfc4d1591aa9a362560b2b1998977558e9e94d36a210e2dd875c999e2873754",
         "scripts/test-tu-trap.mjs": "ddac0313db3438dfd16c0dc2e2aebef30677b53f7a9a035ece2ebd4eef569b52",
         "scripts/check-trap-data.mjs": "c5864dc5b0fb7646f55ebf6adecf3ad82ddb1821386ffebd3aba3fdafd06aa20",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b_probe_support.py": "3daedb19f245cfa724dd65ab9988e4e112bbf832019c50cf537d32b8d67f223d",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b-probe-commands.json": "f7bdca824fd095d9d91a0ee202f657c6e521644c6d099913641b02f82e465e11",
@@ -5217,7 +5229,7 @@
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json"
       ],
       "adapterSourceSha256": {
-        "js/ported/termcap-runtime.js": "8544e99ffb69c2acdb88eea53e6f29da9f0bacc2598b107e66f25518a94704c2",
+        "js/ported/termcap-runtime.js": "74ccdf315d0d414a22885a636806e9ec571b195623d7b980883fd8f99d31689e",
         "nethack-c/wasm/tu-fragments/termcap-support.c": "f514178bc577bcf9220dd0a6afd59a14caabdb060fda2f3322e923e158158d22",
         "nethack-c/wasm/tu-fragments/termcap-schema.json": "0d963f245e82151dd4187371c37e83bcc8b3c966136662fd601ddfd19c5df01c",
         "nethack-c/wasm/tu-fragments/termcap-source-data.h": "a87bd6c0796e86769c81671b6d6a9e6e882b087fe1e7ebd731771553f92b3342",
@@ -5225,7 +5237,7 @@
         "nethack-c/wasm/tu-fragments/termcap-source-check.mjs": "95bb6eb2b68fc6b2cad6aa773477e67d08557cfc1ff203f033387ebb1fee07b9",
         "scripts/tu-termcap-layout.h": "46e644f2b269e6f9b5d3b0e0e8acad202086e69902a5cc9aefbb1ddb43a766fd",
         "scripts/check-termcap-data.mjs": "f57bdcf9e90ae9ecd6284d28ba0564910e8076c03ffdae0d7c3d03128ddc3c63",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b_probe_support.py": "3daedb19f245cfa724dd65ab9988e4e112bbf832019c50cf537d32b8d67f223d",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b-probe-commands.json": "f7bdca824fd095d9d91a0ee202f657c6e521644c6d099913641b02f82e465e11",
@@ -5273,7 +5285,7 @@
         "scripts/test-tu-topl.mjs": "8239c4c695b797dbd1ef61a6c50ca615a63e0f13190e6332585372c291fd6c62",
         "scripts/tu-topl-layout.h": "bedaed7d470817325a8b5d4f8ce2ff81fd05f336b01b9bbf2123c966eadad9b4",
         "scripts/tu-topl-probe.c": "0e23833e79b47d212d29dc6711c98b2a36b5624d857c6f557b710a3cc183bb19",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b_probe_support.py": "3daedb19f245cfa724dd65ab9988e4e112bbf832019c50cf537d32b8d67f223d",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b-probe-commands.json": "f7bdca824fd095d9d91a0ee202f657c6e521644c6d099913641b02f82e465e11",
@@ -5322,7 +5334,7 @@
         "nethack-c/wasm/tu-wintty-storage.c": "b96491eec09b21f896bfd6444b1ee931ec5b010823d35d7e7afea9fe854d8db3"
       },
       "adapterSourceSha256": {
-        "js/ported/wintty-runtime.js": "ca098d33244cbbd6207da772048b28ef60bb050b73d18b251c3ceca79aa1f4a0",
+        "js/ported/wintty-runtime.js": "25acdb90e67d59092f9ec03fca4de84c2154184373a0d6d3c4d32169138fcdb8",
         "nethack-c/wasm/tu-wintty-storage.c": "b96491eec09b21f896bfd6444b1ee931ec5b010823d35d7e7afea9fe854d8db3",
         "nethack-c/wasm/tu-wintty-support.inc": "fb57cafd4b436e5c9c481b0f4d8487e5466191509fc20bdbff72e44432a47ec2",
         "scripts/check-wintty-data.mjs": "df26edb717565ce618e4b86fb6597874d3f941e40a83c2345a2ee560bf2fb20f",
@@ -5330,7 +5342,7 @@
         "scripts/tu-wintty-consumer.c": "1c87d62b028e45d247682a442c9015438e9523a373e36d995452ac47a6cb6833",
         "scripts/tu-wintty-layout.h": "5c5d25d7f6864a91fc0dbc01727ed60b122c459205423c55be578a24b621256b",
         "scripts/tu-wintty-probe.c": "a976926c993e62ea0b4a70a7ea65ddfdf0a27a3af78b445c7292cad7e2ee01ed",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b_probe_support.py": "3daedb19f245cfa724dd65ab9988e4e112bbf832019c50cf537d32b8d67f223d",
         "nethack-c/wasm/tu-fragments/tu137-group-b/b-probe-commands.json": "f7bdca824fd095d9d91a0ee202f657c6e521644c6d099913641b02f82e465e11",
@@ -5382,11 +5394,11 @@
         "nethack-c/wasm/tu-fragments/unixunix-source-metadata.json": "32bba9bbd8d2056be5a9b8146ca15ebdecddfd99afff7f9b9d2fa49d5352229a",
         "scripts/check-unixunix-source.py": "355c7c5df471964ba98ef637637868e43aa8f5622673c865ad68c993a1c7a4c2",
         "scripts/check-unixunix-imports.mjs": "1999d516aef1cdd2151f2ad7d40f2b5a58a97afe230d0e17aa4958c3d1ada88e",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "scripts/reviewed_build_provenance.py": "3bfff734265ce4ab4abc578ce25d01a6d5c0ef92f9d5ad471024644cc3ca5b1b",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605",
-        "nethack-c/wasm/tu-fragments/unixunix-reviewed-makefile.py": "b18e119bb05547f2b34c7c09ac9dc151b7c93198ed58dee80adc473347bfa1b4"
+        "nethack-c/wasm/tu-fragments/unixunix-reviewed-makefile.py": "013b54f7904f0695ee98e3f5a551c36372ee29cb351c1c6581113dd4f1608d60"
       },
       "sha256": "b5593bb9c6f29079b793466137a38a410c459f76339fc1bc1dec0b12473a1822",
       "abiLibrarySha256": "a5c0636ee4476c0604ac862f0798dc9e13e97ae590c5463599272fc6f0816082",
@@ -5436,7 +5448,7 @@
         "nethack-c/wasm/tu-fragments/unixmain-source-inventory.json": "ed4477175437eb841e9c94460bbd93942c1673d3136acc98a8de35f56a313c0a",
         "nethack-c/wasm/tu-fragments/unixmain-source-check.py": "e3d79a1570a5e642f4275c8a8fcd6a617361966758bc6960cb1c9a5705ab1143",
         "nethack-c/wasm/tu-fragments/unixmain-check-metadata.mjs": "d62a67a62b44aed3e2c5764c0294bc3057dc0a3d2119176169426e6dea7099a6",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605"
       },
@@ -5475,7 +5487,7 @@
         "nethack-c/wasm/tu-fragments/options-schema.json": "515e6110979f35b8cb518f03adcfb3af176c3ffe8bbe8bc4f0ae262b2d5406bb",
         "scripts/tu-options-layout.h": "f317e01539fa2558850b89e9923ae95d6d7cf907f4166a4f0f58eeedfeb30793",
         "scripts/check-options-data.mjs": "4dd80a78db3ae0c98688ff97aed69458f6a8aee380f1cdffe058ba4dc64a5323",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605"
       },
@@ -5523,7 +5535,7 @@
         "nethack-c/wasm/tu-botl-varargs.inc": "ced32fb47cc0a6329cd09396c5d22ea0196f25afaaefc5fe8f5a8af9b0ba2f13",
         "scripts/tu-botl-layout.h": "b7b50032e30c6c8e80e79063c8166fc95d638864ff7e3dc4114035f73ac3ecc1",
         "scripts/check-botl-data.mjs": "3b2d3d84d0b6d522623ac0c6e4cb175b0704008bda31674116c08634bb4cbf39",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605"
       },
@@ -5562,15 +5574,48 @@
         "nethack-c/wasm/tu-zap-support.inc": "66825e28e054d6b941e3392d4b4f7ab3620413e8e1c97eedfe49ca34f502dce3",
         "scripts/tu-zap-layout.h": "86c48c7e92111dda41982cb7953c19051f78b4489f45dace7ddf5ff23d795bf6",
         "scripts/check-zap-data.mjs": "c4553aa35812b556bcf85f374c4245a51c1c27e68974d6deb738188081283c15",
-        "scripts/build-tu-probes.py": "ae9e927afeabc67c5cd214c6071e6a07c5c8d287c053350a1292cc6716188587",
+        "scripts/build-tu-probes.py": "bab9364c0110299d77e638144758b780ded20cf2e94c94de1643591b607b7400",
         "scripts/test-tu-structure.py": "a711e5e331079bd7b8ceeaa590b5ab067251b8784d4c252582770a968da20398",
         "nethack-c/wasm/tu-fragments/tu137-source-check-order.json": "1de9295fec859e5008f89a4e178ef00a477fdeb5f4f335c35734c276df669605"
       },
       "sha256": "b182dfa8e5837896cc7ed2eb7ea704e4375828a63d284d28264ce1142bd08490",
       "abiLibrarySha256": "28c13623384cf01f54671ba0fbe1efc26a0f667d90359171728e6b6722d1ac21",
       "preparedCSourceSha256": "8ee02bd7aa29b026d6b5a2e0017ddf402fcfc6fc81037e35ceda2d86467547cb"
+    },
+    {
+      "name": "nhlsel",
+      "source": "src/nhlsel.c",
+      "javascript": "js/ported/nhlsel.js",
+      "library": "nethack-c/wasm/tu-libraries/nhlsel.js",
+      "configuredFunctions": true,
+      "reference": "pristine",
+      "probeContext": false,
+      "adapterSources": [
+        "js/ported/nhlsel-runtime.js",
+        "nethack-c/wasm/tu-fragments/nhlsel-support.inc",
+        "nethack-c/wasm/tu-fragments/nhlsel-metadata.py",
+        "scripts/tu-nhlsel-layout.h",
+        "scripts/build-nhlsel-probes.py",
+        "scripts/golden_emscripten_profile.py",
+        "nethack-c/wasm/golden-emscripten-profile.json"
+      ],
+      "parityLimitations": [
+        "Original unary selection alias use-after-free is preserved; defined-corpus parity only, no whole-TU/native/full-game equivalence claim."
+      ],
+      "adapterSourceSha256": {
+        "js/ported/nhlsel-runtime.js": "fb867852506e1f4e2643b4a1cfb477a6870abef921fbe3bb11d7d80970854204",
+        "nethack-c/wasm/tu-fragments/nhlsel-support.inc": "2f9f782f91b086097c9fd25274339d94fdf85951b07532d7b0088425c7061635",
+        "nethack-c/wasm/tu-fragments/nhlsel-metadata.py": "41ad44e09dadbcb8d866a11f85c3b2f36b3fbe5274084ab2c2e8bea8fa56b57d",
+        "scripts/tu-nhlsel-layout.h": "bdd4aac1a7e0efa9bc2597302105b2afd3f119b5c90b9b0a7850af410cf0a232",
+        "scripts/build-nhlsel-probes.py": "b7770b2c54c9c6ab49c375ce0030262e11f3fe4d4ec104e67de12bb7750a8e68",
+        "scripts/golden_emscripten_profile.py": "54c569f7a3f489e6c24bbdcba9b1cbfc2f2e598b8ab78a80d5e51bcd7aa8c951",
+        "nethack-c/wasm/golden-emscripten-profile.json": "0049ef0ecf3b02100f0f465c3162ac78e559e5ac44b2ac35d7ac04350d180e1e"
+      },
+      "sha256": "3068cf168404c1e259e7e9626ad1aff6089690b9ff883779969e2c88bb7786e7",
+      "abiLibrarySha256": "5f0631dbe320abb532957ff21e73b67075986f0a1b5f5eb73cad9329bf14fbcc",
+      "preparedCSourceSha256": "ce93cdb316eb18ae4ad32238076ab61cec319973a5cff049ce95289a54239ec5"
     }
   ],
   "sourceDateEpoch": "1777723200",
-  "wasmSha256": "e64b9c6eb9505289aec3f177ae88944a1f43f51a665f71ffa50ce31d53eb8de6"
+  "wasmSha256": "44eade0c6f8c93e7b278d45088811fd582267481ba2235611c3a1a3017d9b5ea"
 }

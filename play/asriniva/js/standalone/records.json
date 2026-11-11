@@ -15850,7 +15850,7 @@
       "signed": false
     }
   },
-  "addressMetadataSha256": "a7f50badc7d3f9779524d32b7dc13919f7aeaa0598ba1b39fc44a892107bb952",
+  "addressMetadataSha256": "19e8e97122ba43699b635fe5f1aa0dc3a5c874e9e593b5e310a1d2930b1b6942",
   "limitation": "Named records and directly named fields only; anonymous embedded paths need adapter schemas. Offsets and bitfields are measured, not inferred from libc or Darwin.",
   "rngSites": {
     "rect": {
