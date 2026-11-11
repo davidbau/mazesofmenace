@@ -13,7 +13,7 @@ import { obj_extract_self, start_corpse_timeout } from './mklev.js';
 import { acurrstr as effective_strength } from './dokick.js';
 import { delobj } from './invent.js';
 import { stackobj } from './sp_lev.js';
-import { COST_BRKLCK, TIMEOUT } from './const.js';
+import { COST_BRKLCK } from './const.js';
 import { bhp_is_lava as is_lava, verbalize } from './cmd.js';
 import { is_pool } from './look.js';
 import { hliquid } from './mhitm.js';
@@ -147,7 +147,7 @@ export async function b_trapped(item, bodypart) {
     if (bodypart !== NO_PART)
         exercise(A_CON, false);
     const st = game.u?.uprops?.[STUNNED];
-    await make_stunned(((st?.intrinsic | 0) & TIMEOUT) + dmg, true);
+    await make_stunned(((st?.intrinsic | 0) & 0xffffff) + dmg, true);
 }
 
 function _rawRnd(x) {

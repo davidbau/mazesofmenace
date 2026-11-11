@@ -124,7 +124,7 @@ export function createObjnamEnvironment(services,L,state){
         return address(p);
     };
     C.recordLocal=(t,initializer)=>{const p=services.stackAlloc(size(t));if(initializer)write(p,t,initializer);return record(p,t);};
-    C.scalarLocal=(t,initializer=0)=>{const p=services.stackAlloc(size(t));write(p,t,initializer);return C.reference(p,t);};
+    C.scalarLocal=(t,initializer)=>{const p=services.stackAlloc(size(t));if(initializer!==undefined)write(p,t,initializer);return C.reference(p,t);};
     C.declareStatic=(name,t,initial)=>{
         if(state.statics.has(name))return;
         if(arrayType(t)){

@@ -1,7 +1,19 @@
 export function createSelvarState() { return { selection_flood_check_func: 0n }; }
 
+const pools=new WeakMap(),bindings=new WeakMap();
+export function withSelvarEnvironment(services,layout,state,callback){
+    if(!Object.isFrozen(layout)||!services.moduleKey)return callback(createSelvarEnvironment(services,layout,state));
+    let modules=pools.get(state);if(!modules)pools.set(state,modules=new WeakMap());
+    let layouts=modules.get(services.moduleKey);if(!layouts)modules.set(services.moduleKey,layouts=new WeakMap());
+    let frames=layouts.get(layout);if(!frames)layouts.set(layout,frames=[]);
+    let frame=frames.find(entry=>!entry.busy);
+    if(!frame){frame={services,busy:true};const prototype=new Proxy({}, {get:(_,key)=>frame.services[key]});frame.env=createSelvarEnvironment(services,layout,state,prototype);frames.push(frame);}
+    frame.busy=true;frame.services=services;bindings.get(frame.env)(services);
+    try{return callback(frame.env);}finally{bindings.get(frame.env)(undefined);frame.services=undefined;frame.busy=false;}
+}
+
 // Live C views, scalar conversions and header macros outside the translated TU.
-export function createSelvarEnvironment(services, layout, state) {
+export function createSelvarEnvironment(services, layout, state,servicePrototype=services) {
     const widths = { pointerSize: 8, longSize: 8, intSize: 4, charSize: 1, charSigned: 1,
         booleanSize: 1, booleanSigned: 1, coordxySize: 2, coordxySigned: 1,
         floatSize: 4, CHAR_BIT: 8, sel_wid_size: 4, sel_hei_size: 4,
@@ -12,7 +24,8 @@ export function createSelvarEnvironment(services, layout, state) {
         if (layout[key] !== value) throw new Error('Review changed selvar ABI: ' + key);
     const address = value => Number(value?.address ?? value ?? 0);
     const global = index => address(services.global(index));
-    const view = () => new DataView(services.heap().buffer);
+    let dataView,signedBytes;
+    const view=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
     const pointer = at => Number(view().getBigUint64(at, true));
     const int = v => typeof v === 'bigint' ? Number(BigInt.asIntN(32, v)) : v | 0;
     const coordxy = v => int(v) << 16 >> 16;
@@ -71,8 +84,8 @@ export function createSelvarEnvironment(services, layout, state) {
         result.address = at;
         return result;
     }
-    const env = { ...services, ...layout, selvarState: state,
-        get HEAP8() { return new Int8Array(services.heap().buffer); },
+    const env = { ...layout, selvarState: state,
+        get HEAP8() { const buffer=services.heap().buffer;if(signedBytes?.buffer!==buffer)signedBytes=new Int8Array(buffer);return signedBytes; },
         get HEAPU8() { return services.heap(); },
         int, coordxy, char, long, selection, rect, room, coordArray,
         longToFloat(value) {
@@ -121,5 +134,7 @@ export function createSelvarEnvironment(services, layout, state) {
         min(a, b) { return a < b ? a : b; }, max(a, b) { return a > b ? a : b; },
         abs(v) { return Math.abs(v); },
     };
+    Object.setPrototypeOf(env,servicePrototype);
+    bindings.set(env,next=>{services=next;});
     return env;
 }

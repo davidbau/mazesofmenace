@@ -1,6 +1,6 @@
 // region.js — port of nethack-c/src/region.c (scaffold: functions are added here
 
-import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS, PLNMSG_ENVELOPED_IN_GAS, HALF_PHDAM, COLNO, ROWNO } from './const.js';
+import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS, PLNMSG_ENVELOPED_IN_GAS, HALF_PHDAM } from './const.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 const TOWEL = 234; /* C objects.h TOWEL; youprop.h Half_gas_damage */
@@ -9,8 +9,7 @@ import { You, Your } from './do_wear.js';
 import { makeplural } from './objnam.js';
 import { body_part, region_danger } from './cmd.js';
 import { losehp } from './hack.js';
-import { killed, m_monnam, haseyes } from './mhitm.js';
-import { PM_LONG_WORM } from './pm.generated.js';
+import { killed } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
 import { make_blinded, BlindedTimeout } from './zap.js';
 import { set_itimeout } from './potion.js';
@@ -19,10 +18,9 @@ import { EYE, LUNG, POISON_RES, KILLED_BY_AN, M_SEEN_POISON, M_POISONGAS_OK } fr
 import { resists_poison } from './mklev.js';
 import { wake_nearto, setmangry } from './mon.js';
 import { isok } from './hacklib.js';
-import { selection_getbounds, selection_getpoint } from './selvar.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
-import { newsym, _m_at, mon_overrides_region, Unaware, impossible_sync, impossible_sync as impossible, nh_sprintf, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
+import { newsym, _m_at, mon_overrides_region, Unaware, impossible_sync, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { You_feel, pline } from './pline.js';
 import { m_poisongas_ok } from './mon.js';
 import { is_pool_or_lava } from './look.js';
@@ -245,8 +243,8 @@ export function create_region(rects, nrect) {
         reg.bounding_box = { lx: rects[0].lx, ly: rects[0].ly,
                              hx: rects[0].hx, hy: rects[0].hy };
     } else {
-        reg.bounding_box.lx = COLNO;
-        reg.bounding_box.ly = ROWNO;
+        reg.bounding_box.lx = COLNO_REG;
+        reg.bounding_box.ly = ROWNO_REG;
         reg.bounding_box.hx = 0; /* 1 */
         reg.bounding_box.hy = 0;
     }
@@ -284,6 +282,10 @@ export function create_region(rects, nrect) {
     return reg;
 }
 
+// C ref: config.h — COLNO 80, ROWNO 21 (the create_region empty-bbox seed).
+const COLNO_REG = 80;
+const ROWNO_REG = 21;
+
 // C ref: region.c:129-155 add_rect_to_reg(NhRegion *reg, NhRect *rect)
 export function add_rect_to_reg(reg, rect) {
     if (reg.nrects <= 0 || !reg.rects)
@@ -302,15 +304,11 @@ export function add_rect_to_reg(reg, rect) {
 }
 
 // C ref: region.c:157-186 add_mon_to_reg(NhRegion *reg, struct monst *mon).
+// The impossible() long-worm diagnostic is a message, not an effect; C
+// returns without adding either way, which is what this port does.
 export function add_mon_to_reg(reg, mon) {
-    /* if this is a long worm, it might already be present in the region;
-       only include it once no matter how segments the region contains */
-    if (mon_in_region(reg, mon)) {
-        if ((mon.data?.pmidx | 0) !== PM_LONG_WORM)
-            impossible("add_mon_to_reg: %s [#%u] already in region.",
-                       m_monnam(mon), mon.m_id >>> 0);
+    if (mon_in_region(reg, mon))
         return;
-    }
     if (reg.max_monst <= reg.n_monst) {
         if (!reg.monsters)
             reg.monsters = [];
@@ -341,18 +339,9 @@ export function mon_in_region(reg, mon) {
     return false;
 }
 
-// C ref: region.c:259-276 free_region(NhRegion *reg).
-export function free_region(reg) {
-    if (reg) {
-        if (reg.rects)
-            reg.rects = null;
-        if (reg.monsters)
-            reg.monsters = null;
-        if (reg.enter_msg)
-            reg.enter_msg = null;
-        if (reg.leave_msg)
-            reg.leave_msg = null;
-    }
+// C ref: region.c:259-276 free_region(NhRegion *reg) — pure free(); JS is
+// garbage-collected, so the C body has no observable effect to reproduce.
+export function free_region(_reg) {
 }
 
 // C ref: decl.h svn.n_regions / gr.regions — a read-only view of the live
@@ -366,48 +355,12 @@ export function regions_list() {
     return (gr.regions || []).slice(0, svn.n_regions | 0);
 }
 
-const SIZEOF_NHREGION = 96;
-const SIZEOF_NHRECT = 8;
-const SIZEOF_UNSIGNED = 4;
-
-// C ref: region.c:899-922 region_stats(hdrfmt, hdrbuf, count, size)
-export function region_stats(hdrfmt, hdrbuf, count, size) {
-    let rg;
-    let i;
-
-    /* other stats formats take one parameter; this takes two */
-    const hdr = nh_sprintf(hdrfmt || "regions, size %ld+%ld*rect+N",
-                           [SIZEOF_NHREGION, SIZEOF_NHRECT]);
-    if (hdrbuf && typeof hdrbuf === 'object')
-        hdrbuf.value = hdr;
-    const cnt = svn.n_regions | 0; /* might be 0 even tho max_regions isn't */
-    let sz = (gm.max_regions | 0) * SIZEOF_NHREGION;
-    for (i = 0; i < svn.n_regions; ++i) {
-        rg = gr.regions[i];
-        sz += (rg.nrects | 0) * SIZEOF_NHRECT;
-        if (rg.enter_msg)
-            sz += String(rg.enter_msg).length + 1;
-        if (rg.leave_msg)
-            sz += String(rg.leave_msg).length + 1;
-        sz += (rg.max_monst | 0) * SIZEOF_UNSIGNED;
-    }
-    if (count && typeof count === 'object')
-        count.value = cnt;
-    if (size && typeof size === 'object')
-        size.value = sz;
-    return { hdrbuf: hdr, count: cnt, size: sz };
-}
-
 /* C region_stats() read-only allocation view for wizard #stats. */
 export function region_stats_snapshot() {
-    const stats = region_stats("regions, size %ld+%ld*rect+N", null, null, null);
     return {
-        n_regions: stats.count,
+        n_regions: svn.n_regions | 0,
         max_regions: gm.max_regions | 0,
         regions: (gr.regions || []).slice(0, svn.n_regions | 0),
-        count: stats.count,
-        size: stats.size,
-        hdrbuf: stats.hdrbuf,
     };
 }
 /* C ref: fountain.c:224-227 glyph_at()/glyph_to_cmap().  The display glyph
@@ -529,36 +482,14 @@ function Blind_reg() {
     return Blind();
 }
 
-// C ref: restore.c:1484-1507 lookup_id_mapping(unsigned int gid, unsigned int *nidp)
-function lookup_id_mapping(gid, nidp) {
-    const idmap = game && game._id_map;
-    if (idmap && typeof idmap.has === 'function' && idmap.has(gid)) {
-        const nid = idmap.get(gid) >>> 0;
-        if (nidp && typeof nidp === 'object')
-            nidp.value = nid;
-        return true;
-    }
-    return false;
-}
-
-// C ref: region.c:927-943 reset_region_mids(NhRegion *reg) — bones-file
-// m_id remapping.
+// C ref: region.c:927-952 reset_region_mids(NhRegion *reg) — bones-file
+// m_id remapping.  Reached only from rest_regions() on a ghostly (bones)
+// KNOWN GAP: nethack-c/src/region.c:928; needs the bones m_id relocation
+// table.  C draws NO RNG on this path.  C's no-action value for a region
+// with no relocatable monsters is to drop them all, which is what the
+// n_monst = 0 below does.
 export function reset_region_mids(reg) {
-    let i = 0, n = reg.n_monst | 0;
-    const mid_list = reg.monsters;
-    const mapped = { value: 0 };
-
-    while (i < n) {
-        if (!lookup_id_mapping(mid_list[i], mapped)) {
-            /* shrink list to remove missing monster; order doesn't matter */
-            mid_list[i] = mid_list[--n];
-        } else {
-            /* move on to next monster */
-            mid_list[i] = mapped.value;
-            ++i;
-        }
-    }
-    reg.n_monst = n;
+    reg.n_monst = 0;
 }
 
 // C ref: region.c:393-405 clear_regions(void)
@@ -578,44 +509,29 @@ export function clear_regions() {
  * reaches clear_regions() via clear_level_structures(); rest_regions()
  * repopulates gr.regions/svn.n_regions from the level's own records.
  *
- * Named *_snapshot because region.c's own save_regions/rest_regions serialise
+ * This port keeps the live regions in module state, so the save hands back the
+ * three fields verbatim and the restore reinstalls them.  Both are RNG-free.
+ * The saved array is the LIVE array — the caller must not mutate it, and
+ * clear_regions() replaces (never mutates) gr.regions, so a stored snapshot
+ * stays intact across the intervening level. */
+/* Named *_snapshot because region.c's own save_regions/rest_regions serialise
  * through an NHFILE and rest_regions(nhfp) is already ported below; these are
  * the in-memory equivalent js/save.js#savelev uses. */
 export function regions_save_snapshot() {
-    const regs = gr.regions
-        ? gr.regions.slice(0, svn.n_regions | 0).map((r) => r && ({
-            ...r,
-            bounding_box: r.bounding_box ? { ...r.bounding_box } : { lx: 0, ly: 0, hx: 0, hy: 0 },
-            rects: r.rects ? r.rects.map((rc) => ({ ...rc })) : null,
-            monsters: r.monsters ? r.monsters.slice(0, r.n_monst | 0) : null,
-            arg: r.arg ? { ...r.arg } : { a_int: 0 },
-        }))
-        : null;
-    return { regions: regs, n_regions: svn.n_regions, max_regions: gm.max_regions };
+    return { regions: gr.regions, n_regions: svn.n_regions, max_regions: gm.max_regions };
 }
 export function regions_rest_snapshot(saved, elapsed = 0) {
-    const ghostly = !!(game?.program_state?.reading_bonesfile);
-    const tmstamp = ghostly ? 0 : elapsed;
     gr.regions = saved ? saved.regions : null;
     svn.n_regions = saved ? (saved.n_regions | 0) : 0;
-    gm.max_regions = svn.n_regions;
+    gm.max_regions = saved ? (saved.max_regions | 0) : 0;
     // C rest_regions ages finite lifetimes by the time spent off-level, then
     // removes expired regions without invoking their expiration callbacks.
     for (let i = 0; i < svn.n_regions; i++) {
         const reg = gr.regions[i];
-        if (ghostly) {
-            clear_hero_inside(reg);
-            clear_heros_fault(reg);
-        }
-        reg.max_monst = reg.n_monst | 0;
-        if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - tmstamp);
+        if (reg.ttl >= 0) reg.ttl = Math.max(0, reg.ttl - elapsed);
     }
     for (let i = svn.n_regions - 1; i >= 0; i--) {
-        const r = gr.regions[i];
-        if (r.ttl === 0)
-            remove_region(r);
-        else if (ghostly && r.n_monst > 0)
-            reset_region_mids(r);
+        if (gr.regions[i].ttl === 0) remove_region(gr.regions[i]);
     }
 }
 
@@ -1092,7 +1008,7 @@ export async function inside_gas_cloud(p1, p2) {
         }
         if (heros_fault(reg))
             await setmangry(mtmp, true);
-        if (haseyes(mtmp.data) && mtmp.mcansee) {
+        if (((data?.mflags1 | 0) & 0x1000) === 0 && mtmp.mcansee) { /* haseyes */
             mtmp.mblinded = 1;
             mtmp.mcansee = 0;
         }
@@ -1142,35 +1058,20 @@ function make_gas_cloud(cloud, damage, inside_cloud) {
     if (!in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
         region_pline_sync("You are enveloped in a cloud of "
                           + (damage ? "noxious gas" : "steam") + "!");
-        (game.iflags ||= {}).last_msg = PLNMSG_ENVELOPED_IN_GAS; /* region.c:1203 */
+        (game.iflags ||= {}).last_msg = PLNMSG_ENVELOPED_IN_GAS; /* region.c:1204 */
     }
 }
 
-// C ref: region.c:1312-1336 create_gas_cloud_selection(sel, damage).  The
-// bounds scan visits the selection's set cells and consumes no RNG.  mklev.js
-// holds its fog room as an ordered {x,y} cell array rather than a selvar, so
-// an Array is accepted as the already-scanned cell list.
-export function create_gas_cloud_selection(sel, damage) {
+// C ref: region.c:1312-1335 create_gas_cloud_selection().  JS callers already
+// hold a selection's set cells as ordered {x,y} points; the C helper's bounds
+// scan is only used to visit those cells and consumes no RNG.
+export function create_gas_cloud_selection(points, damage) {
     const inside_cloud = is_hero_inside_gas_cloud();
     const cloud = create_region(null, 0);
-    const tmprect = { lx: 0, ly: 0, hx: 0, hy: 0 };
 
-    if (Array.isArray(sel)) {
-        for (const point of sel) {
-            tmprect.lx = tmprect.hx = point.x | 0;
-            tmprect.ly = tmprect.hy = point.y | 0;
-            add_rect_to_reg(cloud, { ...tmprect });
-        }
-    } else {
-        const r = { lx: 0, ly: 0, hx: 0, hy: 0 };
-        selection_getbounds(sel, r);
-        for (let x = r.lx; x <= r.hx; x++)
-            for (let y = r.ly; y <= r.hy; y++)
-                if (selection_getpoint(x, y, sel)) {
-                    tmprect.lx = tmprect.hx = x;
-                    tmprect.ly = tmprect.hy = y;
-                    add_rect_to_reg(cloud, { ...tmprect });
-                }
+    for (const point of points || []) {
+        const x = point.x | 0, y = point.y | 0;
+        add_rect_to_reg(cloud, { lx: x, ly: y, hx: x, hy: y });
     }
 
     make_gas_cloud(cloud, damage | 0, inside_cloud);

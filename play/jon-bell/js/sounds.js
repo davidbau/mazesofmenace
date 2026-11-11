@@ -18,7 +18,7 @@ import { cansee as cansee_ff } from './vision.js'; // relocate-fns
 import { nomul } from './allmain.js'; // relocate-fns
 import { adjalign, exercise } from './attrib.js'; // relocate-fns
 import { midnight, night } from './calendar.js'; // relocate-fns
-import { ALGN_SINNED, MS_ANIMAL, MS_DJINNI, MS_GUARDIAN, MS_NEMESIS, MS_SILENT, OCLASS_WEAPON, SPE_NOVEL_OTYP, STATUE_OTYP, SetVoice, Your, _EDOG_local, _Role_if_PM_HEALER, _Underwater, _cmd_Hallucination, _fl_pmidx, _glyph_at as glyph_at, _haseyes, _helpless_mon, _hero_Deaf, _hero_youmonst, _quest_status, _um_mhis, _uprop_active, create_nhwindow, currency, destroy_nhwindow, display_nhwindow, freeinv, incr_itimeout_prop, inv_cnt, is_weptool, merge_choice, nothing_happens, pline_The, putstr, quest_chat, record_achievement, which_armor } from './cmd.js'; // relocate-fns
+import { ALGN_SINNED, MS_ANIMAL, MS_DJINNI, MS_GUARDIAN, MS_NEMESIS, MS_SILENT, OCLASS_WEAPON, SPE_NOVEL_OTYP, STATUE_OTYP, SetVoice, Your, _EDOG_local, _Role_if_PM_HEALER, _Underwater, _cmd_Hallucination, _fl_pmidx, _glyph_at, _haseyes, _helpless_mon, _hero_Deaf, _hero_youmonst, _quest_status, _um_mhis, _uprop_active, create_nhwindow, currency, destroy_nhwindow, display_nhwindow, freeinv, incr_itimeout_prop, inv_cnt, is_weptool, merge_choice, nothing_happens, pline_The, putstr, quest_chat, record_achievement, which_armor } from './cmd.js'; // relocate-fns
 import { money_cnt } from './hack.js'; // relocate-fns
 import { ACH_ORCL, A_WIS, BOLT_LIM, CLAIRVOYANT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FROMOUTSIDE, FULL_MOON, Has_contents, INTRINSIC, IRONBARS, IS_WALL, In_endgame, LL_CONDUCT, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, NHW_MENU, PROTECTION, SDOOR, STRAT_WAITMASK, TEMPLE, Upolyd, W_ARMH as W_ARMH_TO, isok } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, canseemon, glyph_is_invisible_at } from './display.js'; // relocate-fns
@@ -663,7 +663,7 @@ export function growl_sound(mtmp) {
 }
 
 /* C ref: sounds.c:1457 responsive_mon_at(x, y) */
-function responsive_mon_at(x, y) {
+function _responsive_mon_at(x, y) {
     const u = game.u || {};
     let mtmp = isok(x, y) ? m_at(x, y) : null;
     if (mtmp && (helpless(mtmp)
@@ -721,7 +721,7 @@ export async function tiphat() {
         otmp = null;
         if (!vismon && !unseen)
             otmp = g.level?.levelObjects?.[x]?.[y] ?? null;
-        const glyph = glyph_at(x, y);
+        const glyph = _glyph_at(x, y);
         statue = !!((glyph?.cls === GLYPHCLS_OBJ && glyph.otyp === STATUE_OTYP)
                     || (!vismon && !unseen && otmp && (otmp.otyp | 0) === STATUE_OTYP));
         if (vismon && (M_AP_TYPE(mtmp) === M_AP_FURNITURE
@@ -730,7 +730,7 @@ export async function tiphat() {
         }
         const loc = g.level?.at?.(x, y);
         if (vismon || unseen || (statue && Hallu)
-            || (range === 1 && mtmp && responsive_mon_at(x, y)
+            || (range === 1 && mtmp && _responsive_mon_at(x, y)
                 && !is_silent(mtmp.data))
             || !(accessible(x, y) || (loc && loc.typ === IRONBARS)))
             break;
@@ -739,7 +739,7 @@ export async function tiphat() {
     let nada = false;
     if (unseen || (statue && Hallu)) {
         await pline(`That ${unseen ? 'unseen ' : ''}creature is ignoring you!`);
-    } else if (!mtmp || !responsive_mon_at(x, y)) {
+    } else if (!mtmp || !_responsive_mon_at(x, y)) {
         if (vismon)
             await pline(`${Monnam(mtmp)} seems not to notice you.`);
         else

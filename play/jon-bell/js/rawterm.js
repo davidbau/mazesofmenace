@@ -60,8 +60,6 @@ export function exit_nhwindows(str) {
     end_screen();
     if (str)
         raw_print(str);
-    else if (game._rawCursorFrozen)
-        raw_print('');
 }
 
 export function raw_print(str) {

@@ -316,7 +316,7 @@ export function use_stethoscope(obj)
 {
     let mtmp;
     let lev;
-    const res = C.localScalar("int", 0);
+    const res = C.localScalar("int");
     let rx, ry;
     let interference = (Number(Boolean(C.u.uswallow && C.is_whirly(C.u.ustuck.data)
                             && !(C.rngSource(325, 4), C.rn2(C.Role_if(C.PM_HEALER) ? 10 : 3)))));
@@ -1463,7 +1463,7 @@ export function snuff_candle(otmp)
     if ((candle || otmp.otyp == C.CANDELABRUM_OF_INVOCATION)
         && otmp.lamplit) {
         let buf = C.stackAlloc(256);
-        const x = C.localScalar("short", 0); const y = C.localScalar("short", 0);
+        const x = C.localScalar("short"); const y = C.localScalar("short");
         let many = candle ? (otmp.quan > 1n) : (otmp.spe > 1);
 
         C.get_obj_location(otmp, x, y, 0);
@@ -1483,7 +1483,7 @@ export function snuff_candle(otmp)
 
 export function snuff_lit(obj)
 {
-    const x = C.localScalar("short", 0); const y = C.localScalar("short", 0);
+    const x = C.localScalar("short"); const y = C.localScalar("short");
 
     if (obj.lamplit) {
         if (obj.otyp == C.OIL_LAMP || obj.otyp == C.MAGIC_LAMP
@@ -1527,7 +1527,7 @@ export function splash_lit(obj)
                    /* don't assume that lit lantern has been swallowed;
                       a nymph might have stolen it or picked it up */
                    && ((mtmp = obj.ocarry), C.humanoid(mtmp.data))) {
-            const x = C.localScalar("short", 0); const y = C.localScalar("short", 0);
+            const x = C.localScalar("short"); const y = C.localScalar("short");
 
             useeit = Number(Boolean(C.get_obj_location(obj, x, y, 0) && C.cansee(x.value, y.value)));
             uhearit = Number(Boolean(C.couldsee(x.value, y.value) && C.distu(x.value, y.value) < 5 * 5));
@@ -1563,7 +1563,7 @@ export function splash_lit(obj)
 
 export function catch_lit(obj)
 {
-    const x = C.localScalar("short", 0); const y = C.localScalar("short", 0);
+    const x = C.localScalar("short"); const y = C.localScalar("short");
 
     if (!obj.lamplit && C.ignitable(obj) && C.get_obj_location(obj, x, y, 0)) {
         if (((obj.otyp == C.MAGIC_LAMP /* spe==0 => no djinni inside */
@@ -1771,7 +1771,7 @@ export function rub_ok(obj)
 
 export function dorub()
 {
-    const obj = C.localScalar("struct obj *", 0);
+    const obj = C.localScalar("struct obj *");
 
     if (C.nohands(C.gy.youmonst.data)) {
         C.You("aren't able to rub anything without hands.");
@@ -1903,7 +1903,7 @@ export function is_valid_jump_pos(x, y, magic, showmsg)
            passage through doorways: horizontal, vertical, or diagonal;
            since knight's jump and other irregular directions are
            possible, we flatten those out to simplify door checks */
-        let diag; const traj = C.localScalar("int", 0);
+        let diag; const traj = C.localScalar("int");
         let dx = x - C.u.ux, dy = y - C.u.uy,
                 ax = C.abs(dx), ay = C.abs(dy);
 
@@ -2056,7 +2056,7 @@ export function jump(magic)
     } else {
         const uc = C.localRecord("struct nhcoord");
         let side;
-        const range = C.localScalar("int", 0); let  temp;
+        const range = C.localScalar("int"); let  temp;
         let wastrapped = 0;
 
         if (C.u.utrap) {
@@ -3354,7 +3354,7 @@ export function calc_pole_range(min_range, max_range)
 
 export function could_pole_mon()
 {
-    const min_range = C.localScalar("int", 0); const max_range = C.localScalar("int", 0);
+    const min_range = C.localScalar("int"); const max_range = C.localScalar("int");
     const cc = C.localRecord("struct nhcoord");
     let hitm = C.svc.context.polearm.hitmon;
 
@@ -3390,7 +3390,7 @@ export function snickersnee_used_dist_attk(obj)
 export function use_pole(obj, autohit)
 {
     const thump = "Thump!  Your blow bounces harmlessly off the %s.";
-    let res = C.ECMD_OK; const max_range = C.localScalar("int", 0); const min_range = C.localScalar("int", 0); let  glyph;
+    let res = C.ECMD_OK; const max_range = C.localScalar("int"); const min_range = C.localScalar("int"); let  glyph;
     const cc = C.localRecord("struct nhcoord");
     let mtmp;
     let hitm = C.svc.context.polearm.hitmon;
@@ -3743,7 +3743,7 @@ export function use_grapple(obj)
         let tmpwin = C.create_nhwindow(C.NHW_MENU);
         const any = C.localRecord("union any");
         let buf = C.stackAlloc(256);
-        const selected = C.localScalar("menu_item *", 0);
+        const selected = C.localScalar("menu_item *");
         let clr = C.NO_COLOR;
 
         any = C.cg.zeroany; /* set all bits to zero */
@@ -4176,7 +4176,7 @@ export function apply_ok(obj)
 
 export function doapply()
 {
-    const obj = C.localScalar("struct obj *", 0);
+    const obj = C.localScalar("struct obj *");
     let res = C.ECMD_TIME;
 
     if (C.nohands(C.gy.youmonst.data)) {

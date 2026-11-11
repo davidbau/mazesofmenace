@@ -1,5 +1,5 @@
 import { forget_engravings, sanitize_engravings } from './engrave.js';
-import { obj_attach_mid, curse as curse_obj, free_omid } from './mkobj.js';
+import { obj_attach_mid, curse as curse_obj } from './mkobj.js';
 import { weight } from './weight.js';
 // bones.c — the bones subsystem: savebones() writes the level a hero died on,
 // getbones() reads it back into the NEXT game on the same level.
@@ -50,7 +50,7 @@ import { has_oname, ONAME, ONAME_BONES, has_mgivenname, DEFUNCT_MONSTER, NON_PM,
 import { free_oname } from './do_name.js';
 import { In_quest, Is_botlevel, Is_oracle_level, ROOMOFFSET, DELPHI } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
-import { Is_branchlev, Is_special } from './dungeon.js';
+import { Is_branchlev } from './dungeon.js';
 import { formatkiller } from './topten.js';
 import { OC_USES_KNOWN } from './mklev.js';
 import { In_hell } from './dungeon.js';
@@ -69,8 +69,7 @@ import { dismount_steed } from './cmd.js';
 import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
 import { clear_bypasses } from './worn.js';
-import { yyyymmddhhmmss } from './calendar.js';
-import { age_is_relative } from './timeout.js';
+import { hhmmss, yyyymmdd } from './calendar.js';
 import { permonstTemplate } from './makemon.js';
 import { safe_oname } from './do_name.js';
 
@@ -115,22 +114,27 @@ function dgn_boneid(dnum) {
     const row = DUNGEON_LUA_TABLE.find((d) => d.name === dname);
     return (row && row.bonetag) ? row.bonetag : '0';
 }
-/* C dungeon.c:1447 Is_special(lev) — the s_level for this (dnum,dlevel), or
+/* C dungeon.c:585 Is_special(lev) — the s_level for this (dnum,dlevel), or
  * NULL.  js/dungeon_rng.js:553 publishes the same chain as game._sp_levchn,
  * and each entry carries the level's own boneid (its `bonetag` char code). */
 function sp_level_boneid(uz) {
-    const sl = Is_special(uz);
-    if (!sl)
-        return null;
-    return (sl.boneid | 0) ? String.fromCharCode(sl.boneid | 0) : null;
+    const chn = game._sp_levchn || [];
+    for (const sl of chn) {
+        if ((sl.dlevel?.dnum | 0) === (uz?.dnum | 0)
+            && (sl.dlevel?.dlevel | 0) === (uz?.dlevel | 0))
+            return (sl.boneid | 0) ? String.fromCharCode(sl.boneid | 0) : null;
+    }
+    return null;
 }
 /* C bones.c:18-31 — special levels with no boneid are explicitly ineligible
  * for bones.  Keep this predicate separate from the filename helper so the
  * death path can apply the same no_bones_level guard before asking a wizard
  * whether to save bones. */
 export function no_bones_special_level(uz) {
-    const sptr = Is_special(uz);
-    return Boolean(sptr && !(sptr.boneid | 0));
+    const chn = game._sp_levchn || [];
+    return chn.some((sl) => (sl.dlevel?.dnum | 0) === (uz?.dnum | 0)
+        && (sl.dlevel?.dlevel | 0) === (uz?.dlevel | 0)
+        && !(sl.boneid | 0));
 }
 
 /* C bones.c:18-34.  Both the death path and level generation use this guard.
@@ -464,8 +468,7 @@ export async function savebones(how, when, corpse) {
         const { christen_monst } = await import('./mhitm.js');
         christen_monst(mtmp, String(g.plname ?? g.u?.plname ?? ''));
     }
-    if (corpse)
-        obj_attach_mid(corpse, mtmp.m_id); // C bones.c:502-503
+    obj_attach_mid(corpse, mtmp.m_id); // C bones.c:503
 
     /* C bones.c:505-539 — the ghost's own fields and deceased hero's identity. */
     mtmp.m_lev = (u.ulevel | 0) ? (u.ulevel | 0) : 1;
@@ -541,8 +544,8 @@ export async function savebones(how, when, corpse) {
         const newbones = {
             who: `${plname}-${_fc3(g.urole?.filecode)}-${_fc3(g.urace?.filecode)}`
                  + `-${gender}-${alignFc}`,
-            how: formatkiller('', 256 /* sizeof newbones->how */, how, true), /* C bones.c:585 */
-            when: yyyymmddhhmmss(when), /* C bones.c:586 */
+            how: formatkiller('', 256 /* sizeof newbones->how */, how, true),
+            when: String(yyyymmdd(when)) + String(hhmmss(when)).padStart(6, '0'),
             frpx: u.ux0 | 0,
             frpy: u.uy0 | 0,
             bonesknown: false,
@@ -680,40 +683,21 @@ async function getbones_load(f) {
          * getlev() must see the snapshot through the normal store, which is where
          * the bones file's copy is installed first. */
         const { propagate } = await import('./makemon.js');
-        const idmap = new Map(); /* C restore.c:1314 add_id_mapping */
         for (let m = f.snap.fmon; m; m = m.nmon) {
-            const nid = next_ident_bones();
-            idmap.set(m.m_id, nid);
-            m.m_id = nid;
+            m.m_id = next_ident_bones();
             // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
             if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
                 m.mhpmax = DEFUNCT_MONSTER;
-            renumber_objchn(m.minvent, f.snap.fruits, f.snap.omoves, idmap);
+            renumber_objchn(m.minvent, f.snap.fruits);
         }
-        renumber_objchn(f.snap.fobj, f.snap.fruits, f.snap.omoves, idmap);
-        renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits, f.snap.omoves, idmap);
-        renumber_objchn(f.snap.billobjs, f.snap.fruits, f.snap.omoves, idmap);
+        renumber_objchn(f.snap.fobj, f.snap.fruits);
+        renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits);
+        renumber_objchn(f.snap.billobjs, f.snap.fruits);
 
         const ledger = ledger_no(u.uz);
         (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
-        g._id_map = idmap; /* C restore.c:1068..1304 gi.id_map for lookup_id_mapping */
         const { getlev } = await import('./restore.js');
         await getlev(ledger);
-        /* C restore.c:1301,1510-1528 reset_oattached_mids(ghostly). */
-        for (let otmp = g.fobj; otmp; otmp = otmp.nobj) {
-            if (has_omonst(otmp)) {
-                const mtmp = otmp.oextra.omonst;
-                mtmp.m_id = 0;
-                mtmp.mpeaceful = mtmp.mtame = 0; /* pet's owner died! */
-            }
-            if (otmp.oextra?.omid) {
-                if (idmap.has(otmp.oextra.omid))
-                    otmp.oextra.omid = idmap.get(otmp.oextra.omid);
-                else
-                    free_omid(otmp);
-            }
-        }
-        g._id_map = null; /* C restore.c:1304 clear_id_mapping() */
 
         /* C bones.c:714-731 — sanitize names, purge defunct monsters, repair shops. */
         const { mongone } = await import('./mklev.js');
@@ -809,24 +793,16 @@ function next_ident_bones() {
 /* C restore.c:238-300 restobjchn()'s ghostly arm, applied to a chain this port
  * swapped in rather than read: one next_ident() per object, container contents
  * included (C recurses into otmp->cobj at :270 AFTER the parent's renumber). */
-function renumber_objchn(ochain, fruits, omoves, idmap, frozen = false) {
+function renumber_objchn(ochain, fruits) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
-        const nid = next_ident_bones();
-        idmap.set(otmp.o_id, nid);
-        otmp.o_id = nid;
+        otmp.o_id = next_ident_bones();
         if (otmp.otyp === 285 /* SLIME_MOLD; restore.c:260,500 ghostfruit */) {
             const fruit = fruits?.find(f => f.fid === otmp.spe);
             if (fruit) otmp.spe = fruitadd(fruit.fname, null, false);
             else impossible_sync('no old fruit?');
         }
-        /* C restore.c:266-267 — age shifted from the old hero's clock. */
-        if (!frozen && !age_is_relative(otmp))
-            otmp.age = (game.moves | 0) - (omoves | 0) + (otmp.age | 0);
         if (otmp.cobj)
-            renumber_objchn(otmp.cobj, fruits, omoves, idmap,
-                            otmp.otyp === 216 /* ICE_BOX; restore.c:273 Is_IceBox */);
-        if (otmp.bypass)
-            otmp.bypass = 0;
+            renumber_objchn(otmp.cobj, fruits);
     }
 }
 

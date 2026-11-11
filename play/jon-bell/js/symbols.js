@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { reset_glyphmap } from './display.js';
-import { lowc, mungspaces, fuzzymatch } from './hacklib.js';
+import { lowc, mungspaces } from './hacklib.js';
 import { gs, SYM_CONTROL, SYM_PCHAR, SYM_OC, SYM_MON, SYM_OTH, H_UTF8 } from './const.js';
 import { escapes } from './options.js';
 import { dat_content } from './dat_source.js';
@@ -570,15 +570,8 @@ function match_sym_real(buf) {
         ['S_explode6', 'S_expl_mr'], ['S_explode7', 'S_expl_bl'], ['S_explode8', 'S_expl_bc'],
         ['S_explode9', 'S_expl_br']];
     for (const [alt, nm] of alternates)
-        if (len >= alt.length && alt.toLowerCase().startsWith(key)) {
-            const sp = LOADSYMS.find((s) => s.name === nm);
-            /* symbols.c:894 case-sensitive strcmp on the canonical name */
-            if (sp)
-                return sp;
-            /* symbols.c:894 F-arm: the inner while exhausted without the
-             * canonical name, so C falls through to the NEXT alternate
-             * instead of failing here (needs a name absent from loadsyms) */
-        }
+        if (len >= alt.length && alt.toLowerCase().startsWith(key))
+            return LOADSYMS.find((sp) => sp.name === nm) || null;
     return null;
 }
 
@@ -731,33 +724,18 @@ function gs_symset(which_set) {
     return gs.symset[which_set];
 }
 
-/* files.c:2631 read_sym_file() validity: dat/symbols carries a "start:" line
- * for the name (including sets the pick-list skips, e.g. MACgraphics). */
-export function symset_defined_in_file(name) {
-    const text = dat_content('symbols') || '';
-    return text.split('\n').some((l) => {
-        const m = /^\s*(?:start|begin)\s*[:=]\s*(\S.*?)\s*$/i.exec(l);
-        return m && strcmpi(m[1], name);
-    });
-}
-
 /* symbols.c:692 load_symset(s, PRIMARYSET) + files.c:2631 read_sym_file():
  * fills gp.primary_syms[] and the set's handling/nocolor from dat/symbols.
  * Returns false when the named set is not in the file (C then clears the
  * entry and keeps the default symbols). */
 export function load_primary_symset_from_file(name) {
     const text = dat_content('symbols');
-    const set = gs_symset(0);
-    /* C files.c:2635 read_sym_file(): explicitly = FALSE before the open.
-     * The bundled dat/symbols stands in for fopen_sym_file(), so the
-     * files.c:2637 open-failure return 0 is reachable only with a name. */
-    set.explicitly = false;
     if (name && !text)
         return false;
+    const set = gs_symset(0);
     /* symbols.c:330-345 clear_symsetentry(PRIMARYSET, TRUE) */
     set.handling = 0; set.nocolor = 0; set.primary = 0; set.rogue = 0;
     set.name = name || null;
-    set.explicitly = true;              /* files.c:2639, after fopen_sym_file */
     ensure_sym_arrays();
     init_primary_syms_real();
     /* C symbols.c:1067-1071: selecting Default Symbols still resets the
@@ -773,27 +751,8 @@ export function load_primary_symset_from_file(name) {
             continue;                       /* parse_conf_file skips comments */
         parse_sym_line_real(line, 0, st);
     }
-    /* C files.c:2649-2673: neither the set's start nor its finish was seen,
-     * so the name is not in the file.  "Default symbols" (fuzzymatch over
-     * " -_", case-blind) or "default" clears the entry and returns success;
-     * any other name was invalid: explicitly = FALSE, return 0. */
-    if (!st.start && !st.end) {
-        if (set.name
-            && (fuzzymatch(set.name, 'Default symbols', ' -_', true)
-                || strcmpi(set.name, 'default')))
-            clear_symsetentry(0, true);
-        if (set.name) {
-            set.explicitly = false;
-            game._symsetLoaded = null;
-            return false;
-        }
-        game._symsetLoaded = null;
-        return true;
-    }
-    /* C files.c:2668-2673: a set that started but never finished only queues
-     * a config error; the load itself succeeds. */
-    game._symsetLoaded = name;
-    return true;
+    game._symsetLoaded = (st.start || st.end) ? name : null;
+    return !!game._symsetLoaded;
 }
 
 /* symbols.c:303-307 update_ov_primary_symset() for a SYMBOLS=S_x:val pair */

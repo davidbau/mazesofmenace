@@ -1,0 +1,766 @@
+{
+  "source": "js/ported/decl-runtime.js",
+  "sha256": "0af217623e8b759b4923d614abd4fde5bccdff12b6dbb3aaa0912f690dad909a",
+  "globals": [
+    {
+      "name": "nhcb_name",
+      "bytes": 32,
+      "alignment": 8
+    },
+    {
+      "name": "nhcb_counts",
+      "bytes": 16,
+      "alignment": 4
+    },
+    {
+      "name": "c_color_names",
+      "bytes": 88,
+      "alignment": 8
+    },
+    {
+      "name": "c_obj_colors",
+      "bytes": 128,
+      "alignment": 8
+    },
+    {
+      "name": "c_common_strings",
+      "bytes": 112,
+      "alignment": 8
+    },
+    {
+      "name": "disclosure_options",
+      "bytes": 7,
+      "alignment": 1
+    },
+    {
+      "name": "emptystr",
+      "bytes": 1,
+      "alignment": 1
+    },
+    {
+      "name": "flags",
+      "bytes": 208,
+      "alignment": 8
+    },
+    {
+      "name": "hexdd",
+      "bytes": 33,
+      "alignment": 1
+    },
+    {
+      "name": "xdir",
+      "bytes": 10,
+      "alignment": 1
+    },
+    {
+      "name": "ydir",
+      "bytes": 10,
+      "alignment": 1
+    },
+    {
+      "name": "zdir",
+      "bytes": 10,
+      "alignment": 1
+    },
+    {
+      "name": "dirs_ord",
+      "bytes": 8,
+      "alignment": 1
+    },
+    {
+      "name": "has_strong_rngseed",
+      "bytes": 1,
+      "alignment": 1
+    },
+    {
+      "name": "head_engr",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "iflags",
+      "bytes": 424,
+      "alignment": 8
+    },
+    {
+      "name": "a11y",
+      "bytes": 16,
+      "alignment": 4
+    },
+    {
+      "name": "materialnm",
+      "bytes": 176,
+      "alignment": 8
+    },
+    {
+      "name": "quitchars",
+      "bytes": 5,
+      "alignment": 1
+    },
+    {
+      "name": "shield_static",
+      "bytes": 84,
+      "alignment": 4
+    },
+    {
+      "name": "u",
+      "bytes": 2760,
+      "alignment": 8
+    },
+    {
+      "name": "ubirthday",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "urealtime",
+      "bytes": 24,
+      "alignment": 8
+    },
+    {
+      "name": "uwep",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarm",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uswapwep",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uquiver",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarmu",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uskin",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarmc",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarmh",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarms",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarmg",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uarmf",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uamul",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uright",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uleft",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "ublindf",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uchain",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "uball",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "vowels",
+      "bytes": 11,
+      "alignment": 1
+    },
+    {
+      "name": "WIN_MESSAGE",
+      "bytes": 4,
+      "alignment": 4
+    },
+    {
+      "name": "WIN_STATUS",
+      "bytes": 4,
+      "alignment": 4
+    },
+    {
+      "name": "WIN_MAP",
+      "bytes": 4,
+      "alignment": 4
+    },
+    {
+      "name": "WIN_INVEN",
+      "bytes": 4,
+      "alignment": 4
+    },
+    {
+      "name": "ynchars",
+      "bytes": 3,
+      "alignment": 1
+    },
+    {
+      "name": "ynqchars",
+      "bytes": 4,
+      "alignment": 1
+    },
+    {
+      "name": "ynaqchars",
+      "bytes": 5,
+      "alignment": 1
+    },
+    {
+      "name": "ynNaqchars",
+      "bytes": 6,
+      "alignment": 1
+    },
+    {
+      "name": "rightleftchars",
+      "bytes": 3,
+      "alignment": 1
+    },
+    {
+      "name": "hidespinchars",
+      "bytes": 4,
+      "alignment": 1
+    },
+    {
+      "name": "yn_number",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "ARGV0",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "urole_init_data",
+      "bytes": 312,
+      "alignment": 8
+    },
+    {
+      "name": "urace_init_data",
+      "bytes": 112,
+      "alignment": 8
+    },
+    {
+      "name": "disp",
+      "bytes": 3,
+      "alignment": 1
+    },
+    {
+      "name": "g_init_a",
+      "bytes": 280,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_b",
+      "bytes": 4872,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_c",
+      "bytes": 584,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_d",
+      "bytes": 168,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_e",
+      "bytes": 40,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_f",
+      "bytes": 144,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_g",
+      "bytes": 95000,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_h",
+      "bytes": 104,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_i",
+      "bytes": 72,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_j",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "g_init_k",
+      "bytes": 24,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_l",
+      "bytes": 696,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_m",
+      "bytes": 384,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_n",
+      "bytes": 152,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_o",
+      "bytes": 560,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_p",
+      "bytes": 536,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_q",
+      "bytes": 1,
+      "alignment": 1
+    },
+    {
+      "name": "g_init_r",
+      "bytes": 408,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_s",
+      "bytes": 1408,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_t",
+      "bytes": 456,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_u",
+      "bytes": 440,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_v",
+      "bytes": 200,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_w",
+      "bytes": 192,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_x",
+      "bytes": 56,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_y",
+      "bytes": 224,
+      "alignment": 8
+    },
+    {
+      "name": "g_init_z",
+      "bytes": 3,
+      "alignment": 1
+    },
+    {
+      "name": "init_svb",
+      "bytes": 96,
+      "alignment": 8
+    },
+    {
+      "name": "init_svc",
+      "bytes": 704,
+      "alignment": 8
+    },
+    {
+      "name": "init_svd",
+      "bytes": 2584,
+      "alignment": 8
+    },
+    {
+      "name": "init_sve",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "init_svh",
+      "bytes": 4,
+      "alignment": 4
+    },
+    {
+      "name": "init_svi",
+      "bytes": 4,
+      "alignment": 2
+    },
+    {
+      "name": "init_svk",
+      "bytes": 272,
+      "alignment": 8
+    },
+    {
+      "name": "init_svl",
+      "bytes": 42568,
+      "alignment": 8
+    },
+    {
+      "name": "init_svm",
+      "bytes": 1552,
+      "alignment": 8
+    },
+    {
+      "name": "init_svn",
+      "bytes": 52,
+      "alignment": 4
+    },
+    {
+      "name": "init_svo",
+      "bytes": 24,
+      "alignment": 8
+    },
+    {
+      "name": "init_svp",
+      "bytes": 96,
+      "alignment": 1
+    },
+    {
+      "name": "init_svq",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "init_svr",
+      "bytes": 18368,
+      "alignment": 8
+    },
+    {
+      "name": "init_svs",
+      "bytes": 352,
+      "alignment": 8
+    },
+    {
+      "name": "init_svt",
+      "bytes": 16,
+      "alignment": 8
+    },
+    {
+      "name": "init_svu",
+      "bytes": 16,
+      "alignment": 2
+    },
+    {
+      "name": "init_svx",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "init_svw",
+      "bytes": 16,
+      "alignment": 8
+    },
+    {
+      "name": "init_svy",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "init_program_state",
+      "bytes": 120,
+      "alignment": 4
+    },
+    {
+      "name": "ga",
+      "bytes": 280,
+      "alignment": 8
+    },
+    {
+      "name": "gb",
+      "bytes": 4872,
+      "alignment": 8
+    },
+    {
+      "name": "gc",
+      "bytes": 584,
+      "alignment": 8
+    },
+    {
+      "name": "gd",
+      "bytes": 168,
+      "alignment": 8
+    },
+    {
+      "name": "ge",
+      "bytes": 40,
+      "alignment": 8
+    },
+    {
+      "name": "gf",
+      "bytes": 144,
+      "alignment": 8
+    },
+    {
+      "name": "gg",
+      "bytes": 95000,
+      "alignment": 8
+    },
+    {
+      "name": "gh",
+      "bytes": 104,
+      "alignment": 8
+    },
+    {
+      "name": "gi",
+      "bytes": 72,
+      "alignment": 8
+    },
+    {
+      "name": "gj",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "gk",
+      "bytes": 24,
+      "alignment": 8
+    },
+    {
+      "name": "gl",
+      "bytes": 696,
+      "alignment": 8
+    },
+    {
+      "name": "gm",
+      "bytes": 384,
+      "alignment": 8
+    },
+    {
+      "name": "gn",
+      "bytes": 152,
+      "alignment": 8
+    },
+    {
+      "name": "go",
+      "bytes": 560,
+      "alignment": 8
+    },
+    {
+      "name": "gp",
+      "bytes": 536,
+      "alignment": 8
+    },
+    {
+      "name": "gq",
+      "bytes": 1,
+      "alignment": 1
+    },
+    {
+      "name": "gr",
+      "bytes": 408,
+      "alignment": 8
+    },
+    {
+      "name": "gs",
+      "bytes": 1408,
+      "alignment": 8
+    },
+    {
+      "name": "gt",
+      "bytes": 456,
+      "alignment": 8
+    },
+    {
+      "name": "gu",
+      "bytes": 440,
+      "alignment": 8
+    },
+    {
+      "name": "gv",
+      "bytes": 200,
+      "alignment": 8
+    },
+    {
+      "name": "gw",
+      "bytes": 192,
+      "alignment": 8
+    },
+    {
+      "name": "gx",
+      "bytes": 56,
+      "alignment": 8
+    },
+    {
+      "name": "gy",
+      "bytes": 224,
+      "alignment": 8
+    },
+    {
+      "name": "gz",
+      "bytes": 3,
+      "alignment": 1
+    },
+    {
+      "name": "svb",
+      "bytes": 96,
+      "alignment": 8
+    },
+    {
+      "name": "svc",
+      "bytes": 704,
+      "alignment": 8
+    },
+    {
+      "name": "svd",
+      "bytes": 2584,
+      "alignment": 8
+    },
+    {
+      "name": "sve",
+      "bytes": 8,
+      "alignment": 8
+    },
+    {
+      "name": "svh",
+      "bytes": 4,
+      "alignment": 4
+    },
+    {
+      "name": "svi",
+      "bytes": 4,
+      "alignment": 2
+    },
+    {
+      "name": "svk",
+      "bytes": 272,
+      "alignment": 8
+    },
+    {
+      "name": "svl",
+      "bytes": 42568,
+      "alignment": 8
+    },
+    {
+      "name": "svm",
+      "bytes": 1552,
+      "alignment": 8
+    },
+    {
+      "name": "svn",
+      "bytes": 52,
+      "alignment": 4
+    },
+    {
+      "name": "svo",
+      "bytes": 24,
+      "alignment": 8
+    },
+    {
+      "name": "svp",
+      "bytes": 96,
+      "alignment": 1
+    },
+    {
+      "name": "svq",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "svr",
+      "bytes": 18368,
+      "alignment": 8
+    },
+    {
+      "name": "svs",
+      "bytes": 352,
+      "alignment": 8
+    },
+    {
+      "name": "svt",
+      "bytes": 16,
+      "alignment": 8
+    },
+    {
+      "name": "svu",
+      "bytes": 16,
+      "alignment": 2
+    },
+    {
+      "name": "svw",
+      "bytes": 16,
+      "alignment": 8
+    },
+    {
+      "name": "svx",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "svy",
+      "bytes": 8,
+      "alignment": 4
+    },
+    {
+      "name": "program_state",
+      "bytes": 120,
+      "alignment": 4
+    },
+    {
+      "name": "cg",
+      "bytes": 320,
+      "alignment": 8
+    },
+    {
+      "name": "hands_obj",
+      "bytes": 112,
+      "alignment": 8
+    }
+  ]
+}

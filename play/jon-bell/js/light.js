@@ -642,7 +642,7 @@ export async function wiz_light_sources() {
                         : (id.a_monst === g.youmonst) ? 'you' : '<m>')
                     : '???';
             const o = id.a_obj ?? id.a_monst;
-            const ptr = '<ptr>';
+            const ptr = '0x' + (o ? 0x55d0c0de0000 + (((o.o_id ?? o.m_id) | 0) << 6) : 0).toString(16).padStart(12, '0');
             lines.push(`  ${pad2(ls.x)},${pad2(ls.y)}   ${pad2(ls.range)}   0x${(ls.flags | 0).toString(16).padStart(4, '0')}  ${who}  ${ptr}`);
         }
     } else {

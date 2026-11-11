@@ -929,28 +929,29 @@ export function addinv_core0(obj,other_obj,update_perm_invent)
     other_obj=C.ptr(other_obj);
     update_perm_invent=C.i8(update_perm_invent);
     const stackFrame=C.stackSave();
-    const automaticFrame=C.enterAutomatic([["addinv_core0.otmp",8]]);
+    const automaticFrame=C.enterAutomatic([["addinv_core0.obj",8],["addinv_core0.otmp",8]]);
     try {
+    obj=C.local("addinv_core0.obj","struct obj *",obj);
     let otmp=C.local("addinv_core0.otmp","struct obj *"); let prev;
-    let saved_otyp=C.i32(C.field(obj,"obj","otyp").value);
+    let saved_otyp=C.i32(C.field(obj.value,"obj","otyp").value);
     /* for panic */
     let obj_was_thrown;
     added: {
-    if(Number(C.i32(C.field(obj,"obj","where").value)!=0)) C.variadic(9,C.literal("addinv: obj not free"));
-    if(Number(C.i32(C.field(obj,"obj","how_lost").value)==4)) return (0);
+    if(Number(C.i32(C.field(obj.value,"obj","where").value)!=0)) C.variadic(9,C.literal("addinv: obj not free"));
+    if(Number(C.i32(C.field(obj.value,"obj","how_lost").value)==4)) return (0);
     /* normally addtobill() clears no_charge when items in a shop are
        picked up, but won't do so if the shop has become untended */
-    (C.field(obj,"obj","no_charge").value=C.u32(0));
+    (C.field(obj.value,"obj","no_charge").value=C.u32(0));
     /* should not be set in hero's invent */
-    if((Number(C.field((obj),"obj","cobj").value!=0))) C.picked_container(obj);
+    if((Number(C.field((obj.value),"obj","cobj").value!=0))) C.picked_container(obj.value);
     /* clear no_charge */
-    (obj_was_thrown=C.i8((Number(C.i32(C.field(obj,"obj","how_lost").value)==1))));
-    (C.field(obj,"obj","how_lost").value=C.u32(0));
+    (obj_was_thrown=C.i8((Number(C.i32(C.field(obj.value,"obj","how_lost").value)==1))));
+    (C.field(obj.value,"obj","how_lost").value=C.u32(0));
     if(C.field(C.gl,"instance_globals_l","loot_reset_justpicked").value) {
         (C.field(C.gl,"instance_globals_l","loot_reset_justpicked").value=(C.i8(0)));
         C.reset_justpicked(C.field(C.gi,"instance_globals_i","invent").value);
     }
-    addinv_core1(obj);
+    addinv_core1(obj.value);
     /* handle most side effects of carrying obj */
     /* for addinv_before(); if something has been removed and is now being
        reinserted, try to put it in the same place instead of merging or
@@ -958,9 +959,9 @@ export function addinv_core0(obj,other_obj,update_perm_invent)
     if(other_obj) {
         for((otmp.value=C.field(C.gi,"instance_globals_i","invent").value);otmp.value;(otmp.value=C.field(otmp.value,"obj","nobj").value)) {
             if(Number(C.field(otmp.value,"obj","nobj").value==other_obj)) {
-                (C.field(obj,"obj","nobj").value=other_obj);
-                (C.field(otmp.value,"obj","nobj").value=obj);
-                (C.field(obj,"obj","where").value=C.i8(3));
+                (C.field(obj.value,"obj","nobj").value=other_obj);
+                (C.field(otmp.value,"obj","nobj").value=obj.value);
+                (C.field(obj.value,"obj","where").value=C.i8(3));
                 break added; /* source goto added */
             }
         }
@@ -968,33 +969,33 @@ export function addinv_core0(obj,other_obj,update_perm_invent)
     /* merge with quiver in preference to any other inventory slot
        in case quiver and wielded weapon are both eligible; adding
        extra to quivered stack is more useful than to wielded one */
-    if(Number(!!(C.global("uquiver").value&&merged(C.global("uquiver").value,obj)))) {
-        (obj=C.global("uquiver").value);
-        if(Number(!(obj))) C.variadic(10,C.literal("addinv: null obj after quiver merge otyp=%d"),saved_otyp);
+    if(Number(!!(C.global("uquiver").value&&merged(C.global("uquiver").address,obj.address)))) {
+        (obj.value=C.global("uquiver").value);
+        if(Number(!(obj.value))) C.variadic(10,C.literal("addinv: null obj after quiver merge otyp=%d"),saved_otyp);
         break added; /* source goto added */
     }
     /* merge if possible; find end of chain in the process */
-    for(((prev=0),(otmp.value=C.field(C.gi,"instance_globals_i","invent").value));otmp.value;((prev=otmp.value),(otmp.value=C.field(otmp.value,"obj","nobj").value))) if(merged(otmp.address,obj)) {
-        (obj=otmp.value);
-        if(Number(!(obj))) C.variadic(11,C.literal("addinv: null obj after merge otyp=%d"),saved_otyp);
+    for(((prev=0),(otmp.value=C.field(C.gi,"instance_globals_i","invent").value));otmp.value;((prev=otmp.value),(otmp.value=C.field(otmp.value,"obj","nobj").value))) if(merged(otmp.address,obj.address)) {
+        (obj.value=otmp.value);
+        if(Number(!(obj.value))) C.variadic(11,C.literal("addinv: null obj after merge otyp=%d"),saved_otyp);
         break added; /* source goto added */
     }
 
     /* didn't merge, so insert into chain */
-    assigninvlet(obj);
+    assigninvlet(obj.value);
     if(Number(!!(C.i32(C.field(C.flags,"flag","invlet_constant").value)||Number(!(prev))))) {
-        (C.field(obj,"obj","nobj").value=C.field(C.gi,"instance_globals_i","invent").value);
+        (C.field(obj.value,"obj","nobj").value=C.field(C.gi,"instance_globals_i","invent").value);
         /* insert at beginning */
-        (C.field(C.gi,"instance_globals_i","invent").value=obj);
+        (C.field(C.gi,"instance_globals_i","invent").value=obj.value);
         if(C.field(C.flags,"flag","invlet_constant").value) reorder_invent();
     } else {
-        (C.field(prev,"obj","nobj").value=obj);
+        (C.field(prev,"obj","nobj").value=obj.value);
         /* insert at end */
-        (C.field(obj,"obj","nobj").value=0);
+        (C.field(obj.value,"obj","nobj").value=0);
     }
-    (C.field(obj,"obj","where").value=C.i8(3));
+    (C.field(obj.value,"obj","where").value=C.i8(3));
     /* fill empty quiver if obj was thrown */
-    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(obj_was_thrown)&&C.i32(C.field(C.flags,"flag","pickup_thrown").value)))&&Number(!(C.global("uquiver").value))))&&Number(C.i32(C.field(obj,"obj","oartifact").value)!=C.ART_MJOLLNIR)))&&Number(C.i32(C.field(obj,"obj","otyp").value)!=C.AKLYS)))&&(Number(!!(C.i32(C.throwing_weapon(obj))||(Number(!!(Number(!!((Number(!!(Number(C.i32(C.field(obj,"obj","oclass").value)==C.WEAPON_CLASS)||Number(C.i32(C.field(obj,"obj","oclass").value)==C.GEM_CLASS))))&&Number(C.i32(C.field((C.objects+Number(C.field(obj,"obj","otyp").value)*C.sizes["struct objclass"]),"objclass","oc_subtyp").value)>=C.i32((-C.P_CROSSBOW)))))&&Number(C.i32(C.field((C.objects+Number(C.field(obj,"obj","otyp").value)*C.sizes["struct objclass"]),"objclass","oc_subtyp").value)<=C.i32((-C.P_BOW)))))))))))) C.setuqwep(obj);
+    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(obj_was_thrown)&&C.i32(C.field(C.flags,"flag","pickup_thrown").value)))&&Number(!(C.global("uquiver").value))))&&Number(C.i32(C.field(obj.value,"obj","oartifact").value)!=C.ART_MJOLLNIR)))&&Number(C.i32(C.field(obj.value,"obj","otyp").value)!=C.AKLYS)))&&(Number(!!(C.i32(C.throwing_weapon(obj.value))||(Number(!!(Number(!!((Number(!!(Number(C.i32(C.field(obj.value,"obj","oclass").value)==C.WEAPON_CLASS)||Number(C.i32(C.field(obj.value,"obj","oclass").value)==C.GEM_CLASS))))&&Number(C.i32(C.field((C.objects+Number(C.field(obj.value,"obj","otyp").value)*C.sizes["struct objclass"]),"objclass","oc_subtyp").value)>=C.i32((-C.P_CROSSBOW)))))&&Number(C.i32(C.field((C.objects+Number(C.field(obj.value,"obj","otyp").value)*C.sizes["struct objclass"]),"objclass","oc_subtyp").value)<=C.i32((-C.P_BOW)))))))))))) C.setuqwep(obj.value);
     /* if Mjollnir is thrown and fails to return, we want to
            auto-pick it when we move to its spot, but not into quiver
            because it needs to be wielded to be re-thrown;
@@ -1004,13 +1005,13 @@ export function addinv_core0(obj,other_obj,update_perm_invent)
            so that player will be prompted for what to throw and
            possibly realize that re-wielding is necessary */
     } /* source added: */
-    (C.field(obj,"obj","pickup_prev").value=C.u32(1));
-    addinv_core2(obj);
+    (C.field(obj.value,"obj","pickup_prev").value=C.u32(1));
+    addinv_core2(obj.value);
     /* handle extrinsics conferred by carrying obj */
-    carry_obj_effects(obj);
+    carry_obj_effects(obj.value);
     /* carrying affects the obj */
     if(update_perm_invent) update_inventory();
-    return obj;
+    return obj.value;
     } finally {C.leaveAutomatic(automaticFrame);C.stackRestore(stackFrame); }
 }
 
@@ -3812,10 +3813,11 @@ export function stackobj(obj)
 {
     obj=C.ptr(obj);
     const stackFrame=C.stackSave();
-    const automaticFrame=C.enterAutomatic([["stackobj.otmp",8]]);
+    const automaticFrame=C.enterAutomatic([["stackobj.obj",8],["stackobj.otmp",8]]);
     try {
+    obj=C.local("stackobj.obj","struct obj *",obj);
     let otmp=C.local("stackobj.otmp","struct obj *");
-    for((otmp.value=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(C.field(obj,"obj","ox").value)*(8*21))+Number(C.field(obj,"obj","oy").value)*8),"struct obj *").value);otmp.value;(otmp.value=C.field(C.field(otmp.value,"obj","v").address,"vptrs","v_nexthere").value)) if(Number(!!(Number(otmp.value!=obj)&&merged(obj,otmp.address)))) break;
+    for((otmp.value=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(C.field(obj.value,"obj","ox").value)*(8*21))+Number(C.field(obj.value,"obj","oy").value)*8),"struct obj *").value);otmp.value;(otmp.value=C.field(C.field(otmp.value,"obj","v").address,"vptrs","v_nexthere").value)) if(Number(!!(Number(otmp.value!=obj.value)&&merged(obj.address,otmp.address)))) break;
 
     return;
     } finally {C.leaveAutomatic(automaticFrame);C.stackRestore(stackFrame); }
@@ -4370,8 +4372,9 @@ export function doorganize_core(obj)
 {
     obj=C.ptr(obj);
     const stackFrame=C.stackSave();
-    const automaticFrame=C.enterAutomatic([["doorganize_core.otmp",8],["doorganize_core.splitting",8],["doorganize_core.lets",(1*55)],["doorganize_core.qbuf",(1*128)]]);
+    const automaticFrame=C.enterAutomatic([["doorganize_core.obj",8],["doorganize_core.otmp",8],["doorganize_core.splitting",8],["doorganize_core.lets",(1*55)],["doorganize_core.qbuf",(1*128)]]);
     try {
+    obj=C.local("doorganize_core.obj","struct obj *",obj);
     let otmp=C.local("doorganize_core.otmp","struct obj *"); let splitting=C.local("doorganize_core.splitting","struct obj *"); let bumped;
     let ix; let cur; let trycnt;
     let let_;
@@ -4382,22 +4385,22 @@ export function doorganize_core(obj)
     let objname; let otmpname;
     let adj_type;
     let ever_mind=(C.i8(0)); let collect; let isgold;
-    if(Number(!(obj))) return 2;
+    if(Number(!(obj.value))) return 2;
     /* can only be gold if check_invent_gold() found a problem:  multiple '$'
        stacks and/or gold in some other slot, otherwise (*adjust_filter)()
        won't allow gold to be picked; if player has picked any stack of gold
        as #adjust 'from' slot, we'll force the 'to' slot to be '$' below */
-    (isgold=C.i8((Number(C.i32(C.field(obj,"obj","oclass").value)==C.COIN_CLASS))));
+    (isgold=C.i8((Number(C.i32(C.field(obj.value,"obj","oclass").value)==C.COIN_CLASS))));
     /* figure out whether user gave a split count to getobj() */
     (splitting.value=(bumped=0));
-    for((otmp.value=C.field(C.gi,"instance_globals_i","invent").value);otmp.value;(otmp.value=C.field(otmp.value,"obj","nobj").value)) if(Number(C.field(otmp.value,"obj","nobj").value==obj)) {
+    for((otmp.value=C.field(C.gi,"instance_globals_i","invent").value);otmp.value;(otmp.value=C.field(otmp.value,"obj","nobj").value)) if(Number(C.field(otmp.value,"obj","nobj").value==obj.value)) {
         /* knowledge of splitobj() operation */
-        if(Number(C.i32(C.field(otmp.value,"obj","invlet").value)==C.i32(C.field(obj,"obj","invlet").value))) (splitting.value=otmp.value);
+        if(Number(C.i32(C.field(otmp.value,"obj","invlet").value)==C.i32(C.field(obj.value,"obj","invlet").value))) (splitting.value=otmp.value);
         break;
     }
 
     /* initialize the list with all lower and upper case letters */
-    (C.cell((lets+Number(0)*1),"char").value=C.i8(((Number(C.i32(C.field(obj,"obj","oclass").value)==C.COIN_CLASS))?C.GOLD_SYM:32)));
+    (C.cell((lets+Number(0)*1),"char").value=C.i8(((Number(C.i32(C.field(obj.value,"obj","oclass").value)==C.COIN_CLASS))?C.GOLD_SYM:32)));
     for(((ix=1),(let_=C.i8(97)));Number(C.i32(let_)<=122);) (C.cell((lets+Number((()=>{const old=ix;ix=C.i32((old+1));return old;})())*1),"char").value=(()=>{const old=let_;let_=C.i8((old+1));return old;})());
 
     for((let_=C.i8(65));Number(C.i32(let_)<=90);) (C.cell((lets+Number((()=>{const old=ix;ix=C.i32((old+1));return old;})())*1),"char").value=(()=>{const old=let_;let_=C.i8((old+1));return old;})());
@@ -4408,7 +4411,7 @@ export function doorganize_core(obj)
     if(Number(!!(Number(!(C.field(C.flags,"flag","invlet_constant").value))&&Number(((ix=C.inv_cnt((C.i8(0)))))<C.invlet_basic)))) (C.cell((lets+Number(C.i32((ix+((splitting.value?1:2)))))*1),"char").value=C.i8(0));
     /* blank out all the letters currently in use in the inventory
        except those that will be merged with the selected object */
-    for((otmp.value=C.field(C.gi,"instance_globals_i","invent").value);otmp.value;(otmp.value=C.field(otmp.value,"obj","nobj").value)) if(Number(!!(Number(otmp.value!=obj)&&Number(!(mergable(otmp.value,obj)))))) {
+    for((otmp.value=C.field(C.gi,"instance_globals_i","invent").value);otmp.value;(otmp.value=C.field(otmp.value,"obj","nobj").value)) if(Number(!!(Number(otmp.value!=obj.value)&&Number(!(mergable(otmp.value,obj.value)))))) {
         (let_=C.field(otmp.value,"obj","invlet").value);
         if(Number(!!(Number(C.i32(let_)>=97)&&Number(C.i32(let_)<=122)))) (C.cell((lets+Number(C.i32((C.i32((1+C.i32(let_)))-97)))*1),"char").value=C.i8(32));
  else if(Number(!!(Number(C.i32(let_)>=65)&&Number(C.i32(let_)<=90)))) (C.cell((lets+Number(C.i32((C.i32((C.i32((1+C.i32(let_)))-65))+26)))*1),"char").value=C.i8(32));
@@ -4425,18 +4428,18 @@ export function doorganize_core(obj)
     if(Number(cur>5)) compactify(lets);
     /* get 'to' slot to use as destination */
     if(Number(!(splitting.value))) C.strcpy(qbuf,C.literal("Adjust letter"));
- else C.variadic(124,qbuf,C.literal("Split %ld"),C.field(obj,"obj","quan").value);
+ else C.variadic(124,qbuf,C.literal("Split %ld"),C.field(obj.value,"obj","quan").value);
     /* note: splitting->quan is the amount being left in original slot */
     C.variadic(125,C.eos(qbuf),C.literal(" to what [%s]%s?"),lets,(C.field(C.gi,"instance_globals_i","invent").value?C.literal(" (? see used letters)"):C.literal("")));
     adjust_input: for((trycnt=1);;(()=>{const old=trycnt;trycnt=C.i32((old+1));return trycnt;})()) {
         noadjust: {
             (let_=C.i8((Number(!(isgold))?C.i32(C.yn_function(qbuf,0,C.i8(0),(C.i8(1)))):C.GOLD_SYM)));
             if(Number(!!(Number(C.i32(let_)==63)||Number(C.i32(let_)==42)))) {
-                (let_=display_used_invlets(C.i8((splitting.value?C.i32(C.field(obj,"obj","invlet").value):0))));
+                (let_=display_used_invlets(C.i8((splitting.value?C.i32(C.field(obj.value,"obj","invlet").value):0))));
                 if(Number(!(let_))) continue;
                 if(Number(C.i32(let_)==27)) break noadjust; /* source goto noadjust */
             }
-    if(Number(!!(C.strchr(C.quitchars,C.i32(let_))||(Number(!!(splitting.value&&Number(C.i32(let_)==C.i32(C.field(obj,"obj","invlet").value)))))))) {break noadjust;} else if(Number(!!(Number(C.i32(let_)==C.GOLD_SYM)&&Number(C.i32(C.field(obj,"obj","oclass").value)!=C.COIN_CLASS)))) {
+    if(Number(!!(C.strchr(C.quitchars,C.i32(let_))||(Number(!!(splitting.value&&Number(C.i32(let_)==C.i32(C.field(obj.value,"obj","invlet").value)))))))) {break noadjust;} else if(Number(!!(Number(C.i32(let_)==C.GOLD_SYM)&&Number(C.i32(C.field(obj.value,"obj","oclass").value)!=C.COIN_CLASS)))) {
         /* adjusting to same slot is meaningful since all
                compatible stacks get collected along the way,
                but splitting to same slot is not */
@@ -4454,24 +4457,24 @@ export function doorganize_core(obj)
             C.variadic(127,C.literal("Select an inventory slot letter."));
             continue adjust_input;
         } /* source noadjust: */
-        if(splitting.value) merged(splitting.address,obj);
+        if(splitting.value) merged(splitting.address,obj.address);
         if(Number(!(ever_mind))) C.variadic(128,C.literal("%s"),C.field(C.c_common_strings,"c_common_strings","c_Never_mind").value);
         return 0;
     }
     /* else try again */
-    (collect=C.i8((Number(C.i32(let_)==C.i32(C.field(obj,"obj","invlet").value)))));
+    (collect=C.i8((Number(C.i32(let_)==C.i32(C.field(obj.value,"obj","invlet").value)))));
     /* change the inventory and print the resulting item */
     (adj_type=(C.i32(collect)?C.literal("Collecting:"):(Number(!(splitting.value))?C.literal("Moving:"):C.literal("Splitting:"))));
     /*
      * don't use freeinv/addinv to avoid double-touching artifacts,
      * dousing lamps, losing luck, cursing loadstone, etc.
      */
-    C.extract_nobj(obj,C.field(C.gi,"instance_globals_i","invent").address);
+    C.extract_nobj(obj.value,C.field(C.gi,"instance_globals_i","invent").address);
     for((otmp.value=C.field(C.gi,"instance_globals_i","invent").value);otmp.value;) {
         (otmpname=((Number(!!(C.field((otmp.value),"obj","oextra").value&&(C.field(C.field((otmp.value),"obj","oextra").value,"oextra","oname").value))))?(C.field(C.field((otmp.value),"obj","oextra").value,"oextra","oname").value):0));
         /* it's tempting to pull this outside the loop, but merged() could
            free ONAME(obj) [via obfree()] and replace it with ONAME(otmp) */
-        (objname=((Number(!!(C.field((obj),"obj","oextra").value&&(C.field(C.field((obj),"obj","oextra").value,"oextra","oname").value))))?(C.field(C.field((obj),"obj","oextra").value,"oextra","oname").value):0));
+        (objname=((Number(!!(C.field((obj.value),"obj","oextra").value&&(C.field(C.field((obj.value),"obj","oextra").value,"oextra","oname").value))))?(C.field(C.field((obj.value),"obj","oextra").value,"oextra","oname").value):0));
         if(collect) {
             /* Collecting: #adjust an inventory stack into its same slot;
                keep it there and merge other compatible stacks into it.
@@ -4479,21 +4482,21 @@ export function doorganize_core(obj)
                with compatible named ones; we only want that if it is
                the 'from' stack (obj) with a name and candidate (otmp)
                without one, not unnamed 'from' with named candidate. */
-            if(Number(!!((Number(!!(Number(!(otmpname))||(Number(!!(objname&&Number(!(C.strcmp(objname,otmpname)))))))))&&merged(otmp.address,obj)))) {
+            if(Number(!!((Number(!!(Number(!(otmpname))||(Number(!!(objname&&Number(!(C.strcmp(objname,otmpname)))))))))&&merged(otmp.address,obj.address)))) {
                 /*adj_type = "Collecting:"; //already set to this*/
-                (obj=otmp.value);
+                (obj.value=otmp.value);
                 (otmp.value=C.field(otmp.value,"obj","nobj").value);
-                C.extract_nobj(obj,C.field(C.gi,"instance_globals_i","invent").address);
+                C.extract_nobj(obj.value,C.field(C.gi,"instance_globals_i","invent").address);
                 continue;
                 /* otmp has already been updated */
             }
         } else if(Number(C.i32(C.field(otmp.value,"obj","invlet").value)==C.i32(let_))) {
             /* Merging: when from and to are compatible */
-            if(Number(!!((Number(!!(Number(!(otmpname))||(Number(!!(objname&&Number(!(C.strcmp(objname,otmpname)))))))))&&merged(otmp.address,obj)))) {
+            if(Number(!!((Number(!!(Number(!(otmpname))||(Number(!!(objname&&Number(!(C.strcmp(objname,otmpname)))))))))&&merged(otmp.address,obj.address)))) {
                 (adj_type=C.literal("Merging:"));
-                (obj=otmp.value);
+                (obj.value=otmp.value);
                 (otmp.value=C.field(otmp.value,"obj","nobj").value);
-                C.extract_nobj(obj,C.field(C.gi,"instance_globals_i","invent").address);
+                C.extract_nobj(obj.value,C.field(C.gi,"instance_globals_i","invent").address);
                 break;
                 /* otmp has been updated and we're done merging */
             }
@@ -4502,23 +4505,23 @@ export function doorganize_core(obj)
                otherwise bump whatever is there to an open slot. */
             if(Number(!(splitting.value))) {
                 (adj_type=C.literal("Swapping:"));
-                (C.field(otmp.value,"obj","invlet").value=C.field(obj,"obj","invlet").value);
+                (C.field(otmp.value,"obj","invlet").value=C.field(obj.value,"obj","invlet").value);
             } else {
                 /* strip 'from' name if it has one */
-                if(Number(!!(objname&&Number(!(C.field(obj,"obj","oartifact").value))))) ((C.field(C.field((obj),"obj","oextra").value,"oextra","oname").value)=0);
-                if(Number(!(mergable(otmp.value,obj)))) {
+                if(Number(!!(objname&&Number(!(C.field(obj.value,"obj","oartifact").value))))) ((C.field(C.field((obj.value),"obj","oextra").value,"oextra","oname").value)=0);
+                if(Number(!(mergable(otmp.value,obj.value)))) {
                     /* won't merge; put 'from' name back */
-                    if(objname) ((C.field(C.field((obj),"obj","oextra").value,"oextra","oname").value)=objname);
+                    if(objname) ((C.field(C.field((obj.value),"obj","oextra").value,"oextra","oname").value)=objname);
                 } else {
                     /* will merge; discard 'from' name */
                     if(objname) (C.free(objname),(objname=0));
                 }
-                if(merged(otmp.address,obj)) {
+                if(merged(otmp.address,obj.address)) {
                     (adj_type=C.literal("Splitting and merging:"));
-                    (obj=otmp.value);
-                    C.extract_nobj(obj,C.field(C.gi,"instance_globals_i","invent").address);
+                    (obj.value=otmp.value);
+                    C.extract_nobj(obj.value,C.field(C.gi,"instance_globals_i","invent").address);
                 } else if(Number(C.inv_cnt((C.i8(0)))>=C.invlet_basic)) {
-                    merged(splitting.address,obj);
+                    merged(splitting.address,obj.address);
                     /* undo split */
                     /* "knapsack cannot accommodate any more items" */
                     C.variadic(129,C.literal("pack is too full."));
@@ -4536,10 +4539,10 @@ export function doorganize_core(obj)
         (otmp.value=C.field(otmp.value,"obj","nobj").value);
     }
     /* inline addinv; insert loose object at beginning of inventory */
-    (C.field(obj,"obj","invlet").value=let_);
-    (C.field(obj,"obj","nobj").value=C.field(C.gi,"instance_globals_i","invent").value);
-    (C.field(obj,"obj","where").value=C.i8(3));
-    (C.field(C.gi,"instance_globals_i","invent").value=obj);
+    (C.field(obj.value,"obj","invlet").value=let_);
+    (C.field(obj.value,"obj","nobj").value=C.field(C.gi,"instance_globals_i","invent").value);
+    (C.field(obj.value,"obj","where").value=C.i8(3));
+    (C.field(C.gi,"instance_globals_i","invent").value=obj.value);
     reorder_invent();
     if(bumped) {
         /* splitting the 'from' stack is causing an incompatible
@@ -4552,7 +4555,7 @@ export function doorganize_core(obj)
         reorder_invent();
     }
     /* messages deferred until inventory has been fully reestablished */
-    prinv(adj_type,obj,0n);
+    prinv(adj_type,obj.value,0n);
     if(bumped) prinv(C.literal("Moving:"),bumped,0n);
     if(splitting.value) C.clear_splitobjs();
     /* reset splitobj context */

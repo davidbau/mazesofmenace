@@ -76,7 +76,7 @@ export function term_startup(wid,hgt)
               
     let term;
     let tptr;
-    let tbufptr; let pc;
+    let tbufptr; const _termcapTbufptrCell = C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value); let pc;
     let i;
 
           
@@ -170,7 +170,7 @@ export function term_startup(wid,hgt)
               
     tptr = C.charPointer(( C.alloc(1024)));
 
-    tbufptr = C.charPointer(C.tbuf);
+    _termcapTbufptrCell.value = C.charPointer(C.tbuf);
     if (!C.strncmp(term, "5620", 4))
         C.flags.null = C.char(0); /* this should be a termcap flag */
     if (C.tgetent(tptr, term) < 1) {
@@ -180,10 +180,10 @@ export function term_startup(wid,hgt)
         C.HEAP8[C.charPointer(buf) + Number(C.BUFSZ - 1)] = C.char(0);
         C.error("Unknown terminal type: %s.", term);
     }
-    if (!C.pointerEqual((pc = C.charPointer(C.tgetstr(C.nhStr("pc"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value)))),0))
+    if (!C.pointerEqual((pc = C.charPointer(C.tgetstr(C.nhStr("pc"),_termcapTbufptrCell))),0))
         C.PC = C.char(C.HEAP8[C.charPointer(pc)]);
 
-    if (!(C.BC = C.charPointer(C.tgetstr(C.nhStr("le"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))))) { /* both termcap and terminfo use le */
+    if (!(C.BC = C.charPointer(C.tgetstr(C.nhStr("le"),_termcapTbufptrCell)))) { /* both termcap and terminfo use le */
                
         C.error("Terminal must backspace.");
      
@@ -202,7 +202,7 @@ export function term_startup(wid,hgt)
                    
                     
      
-    C.HO = C.charPointer(C.tgetstr(C.nhStr("ho"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value)));
+    C.HO = C.charPointer(C.tgetstr(C.nhStr("ho"),_termcapTbufptrCell));
       
     /*
      * LI and CO are set in ioctl.c via a TIOCGWINSZ if available.  If
@@ -231,59 +231,59 @@ export function term_startup(wid,hgt)
     if (Number(Boolean(C.CO < C.COLNO || C.LI < C.ROWNO + 3)))
         C.setclipped();
       
-    C.nh_ND = C.charPointer(C.tgetstr(C.nhStr("nd"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* move cursor right 1 column */
+    C.nh_ND = C.charPointer(C.tgetstr(C.nhStr("nd"),_termcapTbufptrCell)); /* move cursor right 1 column */
     if (C.tgetflag(C.nhStr("os"))) /* term can overstrike */
         C.error("NetHack can't have OS.");
     if (C.tgetflag(C.nhStr("ul"))) /* underline by overstrike w/ underscore */
         C.ul_hack = C.char(1);
-    C.CE = C.charPointer(C.tgetstr(C.nhStr("ce"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* clear line from cursor to eol */
-    C.UP = C.charPointer(C.tgetstr(C.nhStr("up"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* move cursor up 1 line */
+    C.CE = C.charPointer(C.tgetstr(C.nhStr("ce"),_termcapTbufptrCell)); /* clear line from cursor to eol */
+    C.UP = C.charPointer(C.tgetstr(C.nhStr("up"),_termcapTbufptrCell)); /* move cursor up 1 line */
     /* It seems that xd is no longer supported, and we should use
        a linefeed instead; unfortunately this requires resetting
        CRMOD, and many output routines will have to be modified
        slightly. Let's leave that till the next release. */
-    C.XD = C.charPointer(C.tgetstr(C.nhStr("xd"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value)));
+    C.XD = C.charPointer(C.tgetstr(C.nhStr("xd"),_termcapTbufptrCell));
     /* not:             XD = Tgetstr("do"); */
-    if (!(C.nh_CM = C.charPointer(C.tgetstr(C.nhStr("cm"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))))) { /* cm: move cursor */
+    if (!(C.nh_CM = C.charPointer(C.tgetstr(C.nhStr("cm"),_termcapTbufptrCell)))) { /* cm: move cursor */
         if (Number(Boolean(!C.UP && !C.HO)))
             C.error("NetHack needs CM or UP or HO.");
         C.tty_raw_print("Playing NetHack on terminals without CM is suspect.");
         C.tty_wait_synch();
     }
-    C.SO = C.charPointer(C.tgetstr(C.nhStr("so"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* standout start */
-    C.SE = C.charPointer(C.tgetstr(C.nhStr("se"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* standout end */
-    C.nh_US = C.charPointer(C.tgetstr(C.nhStr("us"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* underline start */
-    C.nh_UE = C.charPointer(C.tgetstr(C.nhStr("ue"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* underline end */
-    C.ZH = C.charPointer(C.tgetstr(C.nhStr("ZH"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* italic start */
-    C.ZR = C.charPointer(C.tgetstr(C.nhStr("ZR"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* italic end */
+    C.SO = C.charPointer(C.tgetstr(C.nhStr("so"),_termcapTbufptrCell)); /* standout start */
+    C.SE = C.charPointer(C.tgetstr(C.nhStr("se"),_termcapTbufptrCell)); /* standout end */
+    C.nh_US = C.charPointer(C.tgetstr(C.nhStr("us"),_termcapTbufptrCell)); /* underline start */
+    C.nh_UE = C.charPointer(C.tgetstr(C.nhStr("ue"),_termcapTbufptrCell)); /* underline end */
+    C.ZH = C.charPointer(C.tgetstr(C.nhStr("ZH"),_termcapTbufptrCell)); /* italic start */
+    C.ZR = C.charPointer(C.tgetstr(C.nhStr("ZR"),_termcapTbufptrCell)); /* italic end */
     C.SG = C.int(C.tgetnum(C.nhStr("sg"))); /* -1: not fnd; else # of spaces left by so */
     if (Number(Boolean(!C.SO || !C.SE || (C.SG > 0))))
         C.SO = C.charPointer(C.SE = C.charPointer(C.nh_US = C.charPointer(C.nh_UE = C.charPointer(C.nullstr))));
-    C.TI = C.charPointer(C.tgetstr(C.nhStr("ti"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* nonconsequential cursor movement start */
-    C.TE = C.charPointer(C.tgetstr(C.nhStr("te"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* nonconsequential cursor movement end */
+    C.TI = C.charPointer(C.tgetstr(C.nhStr("ti"),_termcapTbufptrCell)); /* nonconsequential cursor movement start */
+    C.TE = C.charPointer(C.tgetstr(C.nhStr("te"),_termcapTbufptrCell)); /* nonconsequential cursor movement end */
     C.VS = C.charPointer(C.VE = C.charPointer(C.nullstr));
                
-    C.VS = C.charPointer(C.tgetstr(C.nhStr("eA"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* enable graphics */
+    C.VS = C.charPointer(C.tgetstr(C.nhStr("eA"),_termcapTbufptrCell)); /* enable graphics */
       
-    C.KS = C.charPointer(C.tgetstr(C.nhStr("ks"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* keypad start (special mode) */
-    C.KE = C.charPointer(C.tgetstr(C.nhStr("ke"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* keypad end (ordinary mode [ie, digits]) */
-    C.MR = C.charPointer(C.tgetstr(C.nhStr("mr"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* reverse */
-    C.MB = C.charPointer(C.tgetstr(C.nhStr("mb"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* blink */
-    C.MD = C.charPointer(C.tgetstr(C.nhStr("md"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* boldface */
+    C.KS = C.charPointer(C.tgetstr(C.nhStr("ks"),_termcapTbufptrCell)); /* keypad start (special mode) */
+    C.KE = C.charPointer(C.tgetstr(C.nhStr("ke"),_termcapTbufptrCell)); /* keypad end (ordinary mode [ie, digits]) */
+    C.MR = C.charPointer(C.tgetstr(C.nhStr("mr"),_termcapTbufptrCell)); /* reverse */
+    C.MB = C.charPointer(C.tgetstr(C.nhStr("mb"),_termcapTbufptrCell)); /* blink */
+    C.MD = C.charPointer(C.tgetstr(C.nhStr("md"),_termcapTbufptrCell)); /* boldface */
     if (!C.SO)
         C.SO = C.charPointer(C.MD);
-    C.MH = C.charPointer(C.tgetstr(C.nhStr("mh"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* dim */
-    C.ME = C.charPointer(C.tgetstr(C.nhStr("me"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* turn off all attributes */
+    C.MH = C.charPointer(C.tgetstr(C.nhStr("mh"),_termcapTbufptrCell)); /* dim */
+    C.ME = C.charPointer(C.tgetstr(C.nhStr("me"),_termcapTbufptrCell)); /* turn off all attributes */
     if (!C.ME)
         C.ME = C.charPointer(C.SE ? C.SE : C.nullstr); /* default to SE value */
 
-    C.nh_VI = C.charPointer(C.tgetstr(C.nhStr("vi"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value)));
-    C.nh_VE = C.charPointer(C.tgetstr(C.nhStr("ve"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value)));
+    C.nh_VI = C.charPointer(C.tgetstr(C.nhStr("vi"),_termcapTbufptrCell));
+    C.nh_VE = C.charPointer(C.tgetstr(C.nhStr("ve"),_termcapTbufptrCell));
     /*nh_VS = Tgetstr(nhStr("vs"));*/
     if (Number(Boolean(!C.nh_VI || !C.nh_VE)) /*|| !nh_VS*/ )
         C.nh_VI = C.charPointer(C.nh_VE = C.charPointer(( 0)));
 
-    C.nh_Ic = C.charPointer(C.tgetstr(C.nhStr("Ic"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value)));
+    C.nh_Ic = C.charPointer(C.tgetstr(C.nhStr("Ic"),_termcapTbufptrCell));
 
     /* Get rid of padding numbers for nh_HI and nh_HE.  Hope they
      * aren't really needed!!!  nh_HI and nh_HE are outputted to the
@@ -298,9 +298,9 @@ export function term_startup(wid,hgt)
     C.nh_HE = C.charPointer(C.dupstr((C.charPointer(C.ME) + i)));
     C.dynamic_HIHE = C.char(1);
 
-    C.AS = C.charPointer(C.tgetstr(C.nhStr("as"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* alt charset start */
-    C.AE = C.charPointer(C.tgetstr(C.nhStr("ae"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* alt charset end */
-    C.nh_CD = C.charPointer(C.tgetstr(C.nhStr("cd"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))); /* clear lines from cursor and down */
+    C.AS = C.charPointer(C.tgetstr(C.nhStr("as"),_termcapTbufptrCell)); /* alt charset start */
+    C.AE = C.charPointer(C.tgetstr(C.nhStr("ae"),_termcapTbufptrCell)); /* alt charset end */
+    C.nh_CD = C.charPointer(C.tgetstr(C.nhStr("cd"),_termcapTbufptrCell)); /* clear lines from cursor and down */
                                      
                                                          
                                    
@@ -312,9 +312,9 @@ export function term_startup(wid,hgt)
     (wid).value = C.int(C.CO);
     (hgt).value = C.int(C.LI);
     /* cl: clear screen, set cursor to upper left */
-    if (!(C.CL = C.charPointer(C.tgetstr(C.nhStr("cl"),C.localPointer("char *",()=>tbufptr,_value=>tbufptr=_value))))) /* last thing set */
+    if (!(C.CL = C.charPointer(C.tgetstr(C.nhStr("cl"),_termcapTbufptrCell)))) /* last thing set */
         C.error("NetHack needs CL.");
-    if (C.int( (C.pointerDifference(tbufptr,C.tbuf,"char"))) > C.int( (BigInt(1*512))))
+    if (C.int( (C.pointerDifference(_termcapTbufptrCell.value,C.tbuf,"char"))) > C.int( (BigInt(1*512))))
         C.error("TERMCAP entry too big...\n");
     C.free(( tptr));
        /* TERMLIB */

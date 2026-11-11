@@ -1073,7 +1073,7 @@ export function doname_base(obj, doname_flags) /* object to format */
     let aname = 0;
     let omndx = (obj).corpsenm;
     let bp;
-    let bp_eos;
+    const bp_eos = C.scalarLocal("char *");
     let bp_end;
     let bpspaceleft;
 /* 'bp' will be within an obuf[] rather than at the start of one,
@@ -1082,11 +1082,11 @@ export function doname_base(obj, doname_flags) /* object to format */
        'bp_eos' and 'bpspaceleft' are used and updated by Concat*() macros */
     (bp = xname(obj));
     (bp_end = C.ptrAdd(C.ptrAdd((C.gx).xnamep, C.BUFSZ, "char"), -(1), "char"));
-    (bp_eos = C.eos(bp));
-    ((Number(!!((C.ptrCompare(bp_end, bp_eos, ">=")) || ((C.__assert_fail(C.literal("bp_end >= bp_eos"), C.literal("objnam.c"), 1250, C.literal("doname_base")), 0))))));
+    (bp_eos.value = C.eos(bp));
+    ((Number(!!((C.ptrCompare(bp_end, bp_eos.value, ">=")) || ((C.__assert_fail(C.literal("bp_end >= bp_eos"), C.literal("objnam.c"), 1250, C.literal("doname_base")), 0))))));
 /* ok provided xname() bounds checking works */
 /* size_t cast: convert signed ptrdiff_t to unsigned size_t */
-    (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char"))));
+    (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char"))));
     if ((C.iflags).override_ID) {
         (known = (dknown = (cknown = (bknown = (lknown = (C.char(1)))))));
     }
@@ -1182,8 +1182,8 @@ export function doname_base(obj, doname_flags) /* object to format */
            everything out if no merges occur */
         let itemcount = C.count_contents(obj, (C.char(0)), (C.char(0)), (C.char(1)), (C.char(0)));
         do {
-            C.nh_snprintf(C.literal("doname_base"), 1379, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" containing %ld item%s"), itemcount, ((((Number((itemcount) == C.long(1)))) ? C.literal("") : C.literal("s"))), "lp");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1379, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" containing %ld item%s"), itemcount, ((((Number((itemcount) == C.long(1)))) ? C.literal("") : C.literal("s"))), "lp");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
     }
@@ -1192,16 +1192,16 @@ export function doname_base(obj, doname_flags) /* object to format */
     switch (switch_class) {
         case (C.AMULET_CLASS):
             if (C.long(((obj).owornmask & C.W_AMUL))) do {
-                C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (being worn)"), C.ulong((bpspaceleft + C.ulong(0))));
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (being worn)"), C.ulong((bpspaceleft + C.ulong(0))));
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         break;
         case (C.ARMOR_CLASS):
             if (C.long(((obj).owornmask & C.W_ARMOR))) {
                 do {
-                    C.strncat(C.ptrAdd(bp_eos, -(0), "char"), (((C.ptrCompare(obj, C.uskin, "=="))) ? C.literal(" (embedded in your skin)") : ((C.doffing(obj)) ? C.literal(" (being doffed)") : ((C.donning(obj)) ? C.literal(" (being donned)") : C.literal(" (being worn)")))), C.ulong((bpspaceleft + C.ulong(0))));
-                    ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                    C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), (((C.ptrCompare(obj, C.uskin, "=="))) ? C.literal(" (embedded in your skin)") : ((C.doffing(obj)) ? C.literal(" (being doffed)") : ((C.donning(obj)) ? C.literal(" (being donned)") : C.literal(" (being worn)")))), C.ulong((bpspaceleft + C.ulong(0))));
+                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                 }
                 while (0);
 /* in case of perm_invent update while Wear/Takeoff
@@ -1209,7 +1209,7 @@ export function doname_base(obj, doname_flags) /* object to format */
                       because donning() returns True for both cases */
 /* we just added a parenthesized phrase, but the right paren
                might be absent if the appended string got truncated */
-                if (Number(C.deref(C.ptrAdd(bp_eos, C.int((-1)), "char"), "char") == 41)) {
+                if (Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)) {
 /* slippery fingers is an intrinsic condition of the hero
                    rather than extrinsic condition of objects, but gloves
                    are described as slippery when hero has slippery fingers */
@@ -1217,18 +1217,18 @@ export function doname_base(obj, doname_flags) /* object to format */
                                            * replace paren, changing that
                                            * to be "(something; slippery)" */
                     do {
-                        C.strncat(C.ptrAdd(bp_eos, -(1), "char"), C.literal("; slippery)"), C.ulong((bpspaceleft + C.ulong(1))));
-                        ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                        C.strncat(C.ptrAdd(bp_eos.value, -(1), "char"), C.literal("; slippery)"), C.ulong((bpspaceleft + C.ulong(1))));
+                        ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                     }
                     while (0);
                 }
-                if (Number(C.deref(C.ptrAdd(bp_eos, C.int((-1)), "char"), "char") == 41)) {
+                if (Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)) {
 /* there could be light-emitting artifact gloves someday,
                    so add 'lit' separately from 'slippery' rather than via
                    'else if' after uarmg+Glib */
                     if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && C.int((obj).lamplit))) && C.artifact_light(obj)))) do {
-                        C.nh_snprintf(C.literal("doname_base"), 1413, C.ptrAdd(bp_eos, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
-                        ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                        C.nh_snprintf(C.literal("doname_base"), 1413, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
+                        ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                     }
                     while (0);
                 }
@@ -1247,8 +1247,8 @@ export function doname_base(obj, doname_flags) /* object to format */
             if (C.long(((obj).owornmask & (C.long((C.W_TOOL | C.W_SADDLE)))))) {
 /* blindfold */
                 do {
-                    C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (being worn)"), C.ulong((bpspaceleft + C.ulong(0))));
-                    ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                    C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (being worn)"), C.ulong((bpspaceleft + C.ulong(0))));
+                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                 }
                 while (0);
                 break;
@@ -1257,8 +1257,8 @@ export function doname_base(obj, doname_flags) /* object to format */
             let mlsh = C.find_mid(C.uint((obj).leashmon), C.FM_FMON);
             if (Number(!!(mlsh && Number(!((Number(((mlsh)).mhp < 1))))))) {
                 do {
-                    C.nh_snprintf(C.literal("doname_base"), 1435, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (attached to %s)"), C.noit_mon_nam(mlsh), "p");
-                    ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                    C.nh_snprintf(C.literal("doname_base"), 1435, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (attached to %s)"), C.noit_mon_nam(mlsh), "p");
+                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                 }
                 while (0);
             }
@@ -1276,8 +1276,8 @@ export function doname_base(obj, doname_flags) /* object to format */
 /* separately formatted suffix avoids need for ConcatF3() */
             C.sprintf(suffix, C.literal("%s%s"), ((((Number(((obj).spe) == 1))) ? C.literal("") : C.literal("s"))), ((Number(!((obj).lamplit))) ? C.literal(" attached") : C.literal(", lit")), "pp");
             do {
-                C.nh_snprintf(C.literal("doname_base"), 1453, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%d of 7 candle%s)"), (obj).spe, suffix, "ip");
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.nh_snprintf(C.literal("doname_base"), 1453, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%d of 7 candle%s)"), (obj).spe, suffix, "ip");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
             break;
@@ -1301,8 +1301,8 @@ export function doname_base(obj, doname_flags) /* object to format */
                 if (Number(turns_left < full_burn_time)) C.strcat(prefix, C.literal("partly used "));
             }
             if ((obj).lamplit) do {
-                C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (lit)"), C.ulong((bpspaceleft + C.ulong(0))));
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (lit)"), C.ulong((bpspaceleft + C.ulong(0))));
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
             break;
@@ -1312,15 +1312,15 @@ export function doname_base(obj, doname_flags) /* object to format */
         case (C.WAND_CLASS):
 
             if (known) do {
-                C.nh_snprintf(C.literal("doname_base"), 1486, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%d:%d)"), C.int((obj).recharged), (obj).spe, "ii");
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.nh_snprintf(C.literal("doname_base"), 1486, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%d:%d)"), C.int((obj).recharged), (obj).spe, "ii");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         break;
         case (C.POTION_CLASS):
             if (Number(!!(Number((obj).otyp == C.POT_OIL) && C.int((obj).lamplit)))) do {
-                C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (lit)"), C.ulong((bpspaceleft + C.ulong(0))));
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (lit)"), C.ulong((bpspaceleft + C.ulong(0))));
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         break;
@@ -1328,19 +1328,19 @@ export function doname_base(obj, doname_flags) /* object to format */
 
 /* normal rings reach here 'naturally'; meat ring jumps here */
             if (C.long(((obj).owornmask & C.W_RINGR))) do {
-                C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (on right "), C.ulong((bpspaceleft + C.ulong(0))));
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (on right "), C.ulong((bpspaceleft + C.ulong(0))));
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         if (C.long(((obj).owornmask & C.W_RINGL))) do {
-            C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (on left "), C.ulong((bpspaceleft + C.ulong(0))));
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (on left "), C.ulong((bpspaceleft + C.ulong(0))));
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
         if (C.long(((obj).owornmask & C.W_RING))) /* either left or right */
         do {
-            C.nh_snprintf(C.literal("doname_base"), 1499, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal("%s)"), C.body_part(C.HAND), "p");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1499, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal("%s)"), C.body_part(C.HAND), "p");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
         if (Number(!!(known && C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged)))) {
@@ -1375,8 +1375,8 @@ export function doname_base(obj, doname_flags) /* object to format */
                 C.strcat(prefix, C.deref(C.ptrAdd((C.deref(C.ptrAdd(C.mons, omndx, "struct permonst"), "struct permonst")).pmnames, C.NEUTRAL, "const char *"), "const char *"));
                 C.strcat(prefix, C.literal(" "));
                 if (Number((obj).spe == 1)) do {
-                    C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (laid by you)"), C.ulong((bpspaceleft + C.ulong(0))));
-                    ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                    C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (laid by you)"), C.ulong((bpspaceleft + C.ulong(0))));
+                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                 }
                 while (0);
             }
@@ -1389,8 +1389,8 @@ export function doname_base(obj, doname_flags) /* object to format */
             case (C.CHAIN_CLASS):
                 add_erosion_words(obj, prefix);
         if (C.long(((obj).owornmask & (C.long((C.W_BALL | C.W_CHAIN)))))) do {
-            C.nh_snprintf(C.literal("doname_base"), 1545, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s to you)"), (((C.long(((obj).owornmask & 2097152n)))) ? C.literal("chained") : C.literal("attached")), "p");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1545, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s to you)"), (((C.long(((obj).owornmask & 2097152n)))) ? C.literal("chained") : C.literal("attached")), "p");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
         break;
@@ -1402,8 +1402,8 @@ export function doname_base(obj, doname_flags) /* object to format */
         let cgend = (C.int(((obj).spe & C.CORPSTAT_GENDER)));
         let mgend = ((((Number(cgend == C.CORPSTAT_MALE))) ? C.MALE : (((Number(cgend == C.CORPSTAT_FEMALE))) ? C.FEMALE : C.NEUTRAL)));
         do {
-            C.nh_snprintf(C.literal("doname_base"), 1558, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s)"), (((Number(cgend != 0))) ? (C.deref(C.ptrAdd(C.genders, mgend, "const struct Gender"), "const struct Gender")).adj : C.castPointer(C.literal("unspecified gender"), "char *")), "p");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1558, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s)"), (((Number(cgend != 0))) ? (C.deref(C.ptrAdd(C.genders, mgend, "const struct Gender"), "const struct Gender")).adj : C.castPointer(C.literal("unspecified gender"), "char *")), "p");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
     }
@@ -1417,8 +1417,8 @@ export function doname_base(obj, doname_flags) /* object to format */
            contrast with secondary weapon's "in left hand" */
         if (Number(!!((Number(!!(Number((obj).quan != 1n) || ((((Number((obj).oclass == C.WEAPON_CLASS))) ? (Number(!!((Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.GEM_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW))))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW)))))) || (Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.TOOL_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_BOOMERANG))))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_DART))))))))) : Number(!((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))))))))) && Number(!(twoweap_primary))))) {
             do {
-                C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (wielded)"), C.ulong((bpspaceleft + C.ulong(0))));
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (wielded)"), C.ulong((bpspaceleft + C.ulong(0))));
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         }
@@ -1439,23 +1439,23 @@ export function doname_base(obj, doname_flags) /* object to format */
 /* note: Sting's glow message, if added, will insert text
                in front of "(weapon in hand)"'s closing paren */
             do {
-                C.nh_snprintf(C.literal("doname_base"), 1595, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s %s)"), ((tethered) ? C.literal("tethered to") : ((twoweap_primary) ? C.literal("wielded in") : C.literal("weapon in"))), hand_s, "pp");
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.nh_snprintf(C.literal("doname_base"), 1595, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s %s)"), ((tethered) ? C.literal("tethered to") : ((twoweap_primary) ? C.literal("wielded in") : C.literal("weapon in"))), hand_s, "pp");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
 /* we just added a parenthesized phrase, but the right paren
                might be absent if the appended string got truncated */
-            if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && bpspaceleft)) && Number(C.deref(C.ptrAdd(bp_eos, C.int((-1)), "char"), "char") == 41)))) {
+            if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && bpspaceleft)) && Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)))) {
                 if (Number(!!(Number(!!((C.gw).warn_obj_cnt && C.ptrCompare(obj, C.uwep, "=="))) && Number((C.long(((C.deref(C.ptrAdd((C.u).uprops, C.WARN_OF_MON, "struct prop"), "struct prop")).extrinsic & C.W_WEP))) != 0n)))) /* we know bp[] ends with ')'; overwrite that */
                 do {
-                    C.nh_snprintf(C.literal("doname_base"), 1605, C.ptrAdd(bp_eos, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s %s)"), C.glow_verb((C.gw).warn_obj_cnt, (C.char(1))), C.glow_color((obj).oartifact), "pp");
-                    ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                    C.nh_snprintf(C.literal("doname_base"), 1605, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s %s)"), C.glow_verb((C.gw).warn_obj_cnt, (C.char(1))), C.glow_color((obj).oartifact), "pp");
+                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                 }
                 while (0);
                 else if (Number(!!(C.int((obj).lamplit) && C.artifact_light(obj)))) /* as above, overwrite known closing paren */
                 do {
-                    C.nh_snprintf(C.literal("doname_base"), 1609, C.ptrAdd(bp_eos, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
-                    ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                    C.nh_snprintf(C.literal("doname_base"), 1609, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
+                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                 }
                 while (0);
             }
@@ -1463,14 +1463,14 @@ export function doname_base(obj, doname_flags) /* object to format */
     }
     if (C.long(((obj).owornmask & C.W_SWAPWEP))) {
         if ((C.u).twoweap) do {
-            C.nh_snprintf(C.literal("doname_base"), 1616, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (wielded in %s %s)"), (((Number(C.int((C.u).uhandedness) == 0))) ? C.literal("left") : C.literal("right")), C.body_part(C.HAND), "pp");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1616, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (wielded in %s %s)"), (((Number(C.int((C.u).uhandedness) == 0))) ? C.literal("left") : C.literal("right")), C.body_part(C.HAND), "pp");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
         else /* TODO: rephrase this when obj isn't a weapon or weptool */
         do {
-            C.nh_snprintf(C.literal("doname_base"), 1620, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (alternate weapon%s; not wielded)"), ((((Number(((obj).quan) == C.long(1)))) ? C.literal("") : C.literal("s"))), "p");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1620, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (alternate weapon%s; not wielded)"), ((((Number(((obj).quan) == C.long(1)))) ? C.literal("") : C.literal("s"))), "p");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
     }
@@ -1498,8 +1498,8 @@ export function doname_base(obj, doname_flags) /* object to format */
             break;
         }
         do {
-            C.nh_snprintf(C.literal("doname_base"), 1645, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s)"), (((Number(Qtyp == 1))) ? C.literal("in quiver") : (((Number(Qtyp == 2))) ? C.literal("in quiver pouch") : C.literal("at the ready"))), "p");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1645, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s)"), (((Number(Qtyp == 1))) ? C.literal("in quiver") : (((Number(Qtyp == 2))) ? C.literal("in quiver pouch") : C.literal("at the ready"))), "p");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
     }
@@ -1518,8 +1518,8 @@ export function doname_base(obj, doname_flags) /* object to format */
 /* separately formatted suffix avoids need for ConcatF3() */
         C.sprintf(pricebuf, C.literal("%ld %s"), quotedprice, C.currency(quotedprice), "lp");
         do {
-            C.nh_snprintf(C.literal("doname_base"), 1661, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s, %s)"), ((C.int((obj).unpaid)) ? C.literal("unpaid") : C.literal("contents")), pricebuf, "pp");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1661, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s, %s)"), ((C.int((obj).unpaid)) ? C.literal("unpaid") : C.literal("contents")), pricebuf, "pp");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
         C.record_price_quote((obj).otyp, C.ulong(C.long((quotedprice / (obj).quan))), (C.char(1)));
@@ -1532,15 +1532,15 @@ export function doname_base(obj, doname_flags) /* object to format */
             const pricebuf = C.localArray("char[40]", 0);
             C.sprintf(pricebuf, C.literal("%ld %s"), price, C.currency(price), "lp");
             do {
-                C.nh_snprintf(C.literal("doname_base"), 1673, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s, %s)"), ((nochrg.value) ? C.literal("contents") : C.literal("for sale")), pricebuf, "pp");
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.nh_snprintf(C.literal("doname_base"), 1673, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%s, %s)"), ((nochrg.value) ? C.literal("contents") : C.literal("for sale")), pricebuf, "pp");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         }
         else if (Number(nochrg.value > 0)) {
             do {
-                C.strncat(C.ptrAdd(bp_eos, -(0), "char"), C.literal(" (no charge)"), C.ulong((bpspaceleft + C.ulong(0))));
-                ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+                C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (no charge)"), C.ulong((bpspaceleft + C.ulong(0))));
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
             }
             while (0);
         }
@@ -1564,20 +1564,20 @@ export function doname_base(obj, doname_flags) /* object to format */
        "aum" is stolen from Crawl's "Arbitrary Unit of Measure" */
     if (Number(!!((C.flags).debug && (C.iflags).wizweight))) {
 /* wizard mode user has asked to see object weights */
-        if (Number(!!(with_price && Number(C.deref(C.ptrAdd(bp_eos, C.int((-1)), "char"), "char") == 41)))) do {
-            C.nh_snprintf(C.literal("doname_base"), 1700, C.ptrAdd(bp_eos, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %u aum)"), (obj).owt, "u");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+        if (Number(!!(with_price && Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)))) do {
+            C.nh_snprintf(C.literal("doname_base"), 1700, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %u aum)"), (obj).owt, "u");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
         else do {
-            C.nh_snprintf(C.literal("doname_base"), 1702, C.ptrAdd(bp_eos, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%u aum)"), (obj).owt, "u");
-            ((bp_eos = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos, "char")))));
+            C.nh_snprintf(C.literal("doname_base"), 1702, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%u aum)"), (obj).owt, "u");
+            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
 /* ConcatF1(bp) updates bp_eos and bpspaceleft but we're done
            with them now; add a fake use so compiler won't complain
            about a variable assignment that won't be subsequently used */
-        ((bp_eos));
+        ((bp_eos.value));
         ((bpspaceleft));
     }
     (bp = strprepend(bp, prefix));
@@ -3969,13 +3969,13 @@ export function readobjnam_postparse1(d) {
 /* not the "ninja" rank */
 {
 /* not the "mage" rank */
-        let rest = 0;
+        const rest = C.scalarLocal("const char *", 0);
         if (Number(!!(Number(!!(Number((d).mntmp < C.LOW_PM) && Number(C.strlen((d).bp) > C.ulong(2)))) && (Number((((d).mntmp = C.name_to_monplus((d).bp, rest, C.fieldRef(d, "mgend")))) >= C.LOW_PM))))) {
             let obp = (d).bp;
 /* 'rest' is a pointer past the matching portion; if that was
                an alternate name or a rank title rather than the canonical
                monster name we wouldn't otherwise know how much to skip */
-            ((d).bp = rest);
+            ((d).bp = rest.value);
 /* cast away const */
             if (Number(C.deref((d).bp, "char") == 32)) {
                 C.bump(C.fieldRef(d, "bp"), 1, true, "char *");
@@ -4395,7 +4395,7 @@ export function readobjnam_postparse3(d) {
         }
     }
     if (Number(!!(Number(!((d).oclass)) && (d).actualn))) {
-        const objtyp = C.scalarLocal("short", 0);
+        const objtyp = C.scalarLocal("short");
 /* Perhaps it's an artifact specified by name, not type */
         ((d).name = C.artifact_name((d).actualn, objtyp, (C.char(1))));
         if ((d).name) {
@@ -4819,7 +4819,7 @@ export function readobjnam(bp, no_wish) {
     if ((d).name) {
         let aname;
         let novelname;
-        const objtyp = C.scalarLocal("short", 0);
+        const objtyp = C.scalarLocal("short");
 /* an artifact name might need capitalization fixing */
         (aname = C.artifact_name((d).name, objtyp, (C.char(1))));
         if (Number(!!(aname && Number(objtyp.value == ((d).otmp).otyp)))) ((d).name = aname);

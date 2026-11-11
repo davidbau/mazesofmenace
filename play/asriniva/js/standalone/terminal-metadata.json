@@ -1,0 +1,914 @@
+{
+  "schemas": {
+    "flag": {
+      "ctype": "struct flag",
+      "fields": [
+        {
+          "name": "null",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "silent",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "tc_gbl_data": {
+      "ctype": "struct tc_gbl_data",
+      "fields": [
+        {
+          "name": "tc_CO",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_LI",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_AS",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_AE",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_t": {
+      "ctype": "struct instance_globals_t",
+      "fields": [
+        {
+          "name": "tc_gbl_data",
+          "d": {
+            "s": "tc_gbl_data"
+          },
+          "ctype": "struct tc_gbl_data",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "tc_lcl_data": {
+      "ctype": "struct tc_lcl_data",
+      "fields": [
+        {
+          "name": "tc_ND",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_ul_hack",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_CM",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_US",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_UE",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_HI",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_HE",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "tc_CD",
+          "d": {
+            "p": ""
+          },
+          "ctype": "char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "symsetentry": {
+      "ctype": "struct symsetentry",
+      "fields": [
+        {
+          "name": "handling",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "enum symset_handling_types",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_s": {
+      "ctype": "struct instance_globals_s",
+      "fields": [
+        {
+          "name": "symset",
+          "d": {
+            "a": [
+              2
+            ],
+            "e": {
+              "s": "symsetentry"
+            }
+          },
+          "ctype": "struct symsetentry[2]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_c": {
+      "ctype": "struct instance_globals_c",
+      "fields": [
+        {
+          "name": "currentgraphics",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "Cmd",
+          "d": {
+            "s": "cmd"
+          },
+          "ctype": "struct cmd",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "cmd": {
+      "ctype": "struct cmd",
+      "fields": [
+        {
+          "name": "num_pad",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "DisplayDesc": {
+      "ctype": "struct DisplayDesc",
+      "fields": [
+        {
+          "name": "cury",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "curx",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "nomux_cell": {
+      "ctype": "nomux_cell",
+      "fields": [
+        {
+          "name": "ch",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "fg",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "unsigned char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "attr",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "unsigned char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "decgfx",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "unsigned char",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_flags": {
+      "ctype": "struct instance_flags",
+      "fields": [
+        {
+          "name": "wc2_darkgray",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "debug_fuzzer",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "xint8",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "colorcount",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "uint32_t",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "ti_map_entry": {
+      "ctype": "TELEPORT_TERMCAP_TI_MAP_TYPE",
+      "fields": [
+        {
+          "name": "nh_color",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "nh_bright_color",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ti_color",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    }
+  },
+  "globals": [
+    {
+      "name": "tbuf",
+      "d": {
+        "a": [
+          512
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "flags",
+      "d": {
+        "s": "flag"
+      }
+    },
+    {
+      "name": "PC",
+      "d": {
+        "t": "i8"
+      }
+    },
+    {
+      "name": "BC",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "HO",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "gt",
+      "d": {
+        "s": "instance_globals_t"
+      }
+    },
+    {
+      "name": "tc_lcl_data",
+      "d": {
+        "s": "tc_lcl_data"
+      }
+    },
+    {
+      "name": "CE",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "UP",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "XD",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "SO",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "SE",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "ZH",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "ZR",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "SG",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "nullstr",
+      "d": {
+        "a": [
+          1
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "TI",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "TE",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "VS",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "VE",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "KS",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "KE",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "MR",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "MB",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "MD",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "MH",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "ME",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "nh_VI",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "nh_VE",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "nh_Ic",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "dynamic_HIHE",
+      "d": {
+        "t": "i8"
+      }
+    },
+    {
+      "name": "CL",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "tty_standout_on",
+      "d": {
+        "a": [
+          16
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "tty_standout_off",
+      "d": {
+        "a": [
+          16
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "gs",
+      "d": {
+        "s": "instance_globals_s"
+      }
+    },
+    {
+      "name": "gc",
+      "d": {
+        "s": "instance_globals_c"
+      }
+    },
+    {
+      "name": "HE_resets_AS",
+      "d": {
+        "t": "i8"
+      }
+    },
+    {
+      "name": "decgraphics_mode_callback",
+      "d": {
+        "f": true
+      }
+    },
+    {
+      "name": "utf8graphics_mode_callback",
+      "d": {
+        "f": true
+      }
+    },
+    {
+      "name": "ttyDisplay",
+      "d": {
+        "p": "DisplayDesc"
+      }
+    },
+    {
+      "name": "BASE_WINDOW",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "stdout",
+      "d": {
+        "p": ""
+      }
+    },
+    {
+      "name": "nomux_seq",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "nomux_anim_id",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "nomux_buf",
+      "d": {
+        "a": [
+          24,
+          80
+        ],
+        "e": {
+          "s": "nomux_cell"
+        }
+      }
+    },
+    {
+      "name": "nomux_fg_cur",
+      "d": {
+        "t": "u8"
+      }
+    },
+    {
+      "name": "nomux_attr_cur",
+      "d": {
+        "t": "u8"
+      }
+    },
+    {
+      "name": "nomux_decgfx_cur",
+      "d": {
+        "t": "u8"
+      }
+    },
+    {
+      "name": "iflags",
+      "d": {
+        "s": "instance_flags"
+      }
+    },
+    {
+      "name": "nomux_out",
+      "d": {
+        "a": [
+          6144
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "nomux_raw_active",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "nomux_raw_row",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "nomux_raw_col",
+      "d": {
+        "t": "i32"
+      }
+    },
+    {
+      "name": "ospeed",
+      "d": {
+        "t": "i16"
+      }
+    },
+    {
+      "name": "tmspc10",
+      "d": {
+        "a": [
+          15
+        ],
+        "e": {
+          "t": "i16"
+        }
+      }
+    },
+    {
+      "name": "hilites",
+      "d": {
+        "a": [
+          16
+        ],
+        "e": {
+          "p": ""
+        }
+      }
+    },
+    {
+      "name": "nilstring",
+      "d": {
+        "a": [
+          1
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "ti_map",
+      "d": {
+        "a": [
+          6
+        ],
+        "e": {
+          "s": "ti_map_entry"
+        }
+      }
+    },
+    {
+      "name": "nulstr",
+      "d": {
+        "a": [
+          1
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    }
+  ],
+  "functions": [
+    "term_startup",
+    "term_shutdown",
+    "tty_number_pad",
+    "tty_decgraphics_termcap_fixup",
+    "term_start_screen",
+    "term_end_screen",
+    "nocmov",
+    "cmov",
+    "xputc",
+    "nomux_markers_enabled",
+    "nomux_emit_marker",
+    "nomux_capture_write_screen",
+    "nomux_capture_write_input_boundary",
+    "nomux_clear_screen",
+    "nomux_clear_to_eol",
+    "nomux_putch",
+    "nomux_set_attr",
+    "nomux_end_attr",
+    "nomux_set_fg",
+    "nomux_end_fg",
+    "nomux_sgr_fg",
+    "nomux_capture_screen",
+    "nomux_enter_raw_mode",
+    "nomux_raw_putch",
+    "nomux_raw_emit",
+    "nomux_raw_emit_eol",
+    "nomux_get_cursor",
+    "xputs",
+    "cl_end",
+    "term_clear_screen",
+    "home",
+    "standoutbeg",
+    "standoutend",
+    "backsp",
+    "tty_nhbell",
+    "graph_on",
+    "graph_off",
+    "tty_delay_output",
+    "cl_eos",
+    "init_hilite",
+    "kill_hilite",
+    "s_atr2str",
+    "e_atr2str",
+    "term_attr_fixup",
+    "term_start_attr",
+    "term_end_attr",
+    "term_start_raw_bold",
+    "term_end_raw_bold",
+    "term_end_color",
+    "term_start_color",
+    "term_start_bgcolor",
+    "term_curs_set",
+    "emit24bit",
+    "emit256",
+    "term_start_extracolor",
+    "term_end_extracolor"
+  ],
+  "foreignCallbacks": [
+    "tty_utf8graphics_fixup"
+  ],
+  "bufferKeys": [
+    "tty_decgraphics_termcap_fixup.ctrlN",
+    "tty_decgraphics_termcap_fixup.ctrlO",
+    "tty_decgraphics_termcap_fixup.appMode",
+    "tty_decgraphics_termcap_fixup.numMode",
+    "emit24bit.tcolorbuf",
+    "emit256.tcolorbuf"
+  ],
+  "signatures": {
+    "term_startup": "vpp",
+    "term_shutdown": "v",
+    "tty_number_pad": "vi",
+    "teleport_termcap_test_tty_decgraphics_termcap_fixup": "v",
+    "term_start_screen": "v",
+    "term_end_screen": "v",
+    "nocmov": "vii",
+    "cmov": "vii",
+    "xputc": "ii",
+    "teleport_termcap_test_nomux_markers_enabled": "i",
+    "teleport_termcap_test_nomux_emit_marker": "vp",
+    "nomux_capture_write_screen": "v",
+    "nomux_capture_write_input_boundary": "v",
+    "nomux_clear_screen": "v",
+    "nomux_clear_to_eol": "vii",
+    "nomux_putch": "vi",
+    "nomux_set_attr": "vi",
+    "nomux_end_attr": "v",
+    "nomux_set_fg": "vi",
+    "nomux_end_fg": "v",
+    "teleport_termcap_test_nomux_sgr_fg": "ii",
+    "nomux_capture_screen": "p",
+    "nomux_enter_raw_mode": "v",
+    "teleport_termcap_test_nomux_raw_putch": "vi",
+    "nomux_raw_emit": "vpi",
+    "nomux_raw_emit_eol": "v",
+    "nomux_get_cursor": "vpp",
+    "xputs": "vp",
+    "cl_end": "v",
+    "term_clear_screen": "v",
+    "home": "v",
+    "standoutbeg": "v",
+    "standoutend": "v",
+    "backsp": "v",
+    "tty_nhbell": "v",
+    "graph_on": "v",
+    "graph_off": "v",
+    "tty_delay_output": "v",
+    "cl_eos": "v",
+    "teleport_termcap_test_init_hilite": "v",
+    "teleport_termcap_test_kill_hilite": "v",
+    "teleport_termcap_test_s_atr2str": "pi",
+    "teleport_termcap_test_e_atr2str": "pi",
+    "term_attr_fixup": "ii",
+    "term_start_attr": "vi",
+    "term_end_attr": "vi",
+    "term_start_raw_bold": "v",
+    "term_end_raw_bold": "v",
+    "term_end_color": "v",
+    "term_start_color": "vi",
+    "term_start_bgcolor": "vi",
+    "term_curs_set": "vi",
+    "teleport_termcap_test_emit24bit": "vj",
+    "teleport_termcap_test_emit256": "vi",
+    "term_start_extracolor": "vii",
+    "term_end_extracolor": "v",
+    "teleport_termcap_callback_tty_decgraphics_termcap_fixup": "v"
+  },
+  "typeAliases": {
+    "TELEPORT_TERMCAP_TI_MAP_TYPE": "struct teleport_termcap_ti_map_entry"
+  },
+  "bufferSizes": [
+    2,
+    2,
+    3,
+    3,
+    128,
+    128
+  ],
+  "sourceSha256": {
+    "js/ported/termcap-runtime.js": "8544e99ffb69c2acdb88eea53e6f29da9f0bacc2598b107e66f25518a94704c2",
+    "nethack-c/wasm/tu-libraries/termcap.js": "be0bb1b55051f6171b45548582d2172a1cd14ccb2227978e39ff6df5efa354c2",
+    "nethack-c/wasm/tu-fragments/termcap-support.c": "f514178bc577bcf9220dd0a6afd59a14caabdb060fda2f3322e923e158158d22",
+    "nethack-c/wasm/tu-fragments/termcap-source-data.h": "a87bd6c0796e86769c81671b6d6a9e6e882b087fe1e7ebd731771553f92b3342"
+  }
+}

@@ -1,3 +1,4 @@
+import {withCEnvironment} from './c-runtime.js';
 // Live native storage and header expansions; riding policy remains in steed.js.
 const steedsByModule = new WeakMap();
 export function createSteedEnvironment(services, layout, namespace) {
@@ -189,4 +190,46 @@ export function createSteedEnvironment(services, layout, namespace) {
     }
     env.steeds=steeds;
     return env;
+}
+
+const steedEnvironments=new WeakMap();
+function steedEnvironmentFor(services,layout,namespace){
+    let layouts=steedEnvironments.get(services.moduleKey);
+    if(!layouts){layouts=new WeakMap();steedEnvironments.set(services.moduleKey,layouts);}
+    let namespaces=layouts.get(layout);
+    if(!namespaces){namespaces=new WeakMap();layouts.set(layout,namespaces);}
+    let entry=namespaces.get(namespace);
+    if(!entry){
+        entry={active:services};
+        // ACURR is a directly captured function in the unchanged constructor.
+        // Retain its call receiver while reading the current service facade.
+        entry.acurr=function(...args){return Reflect.apply(Reflect.get(entry.active,'acurr',entry.active),this,args);};
+        const forwarding=new Proxy(Object.create(null),{
+            get:(_target,key)=>key==='acurr'?entry.acurr:Reflect.get(entry.active,key,entry.active),
+            has:(_target,key)=>Reflect.has(entry.active,key),
+        });
+        entry.environment=createSteedEnvironment(forwarding,layout,namespace);
+        // Keep an entry completed by constructor reentry for this exact key.
+        const completed=namespaces.get(namespace);
+        if(completed)return completed;
+        // Never expose a partially constructed environment.
+        namespaces.set(namespace,entry);
+    }
+    return entry;
+}
+export function callSteed(services,layout,namespace,name,...args){
+    const entry=steedEnvironmentFor(services,layout,namespace),previous=entry.active,environment=entry.environment;
+    entry.active=services;
+    try{
+            if (name === 'use_saddle') args[0] = environment.object(args[0]);
+            if (name === 'put_saddle_on_mon') {
+                args[0] = environment.object(args[0]); args[1] = environment.monster(args[1]);
+            }
+            if (['can_saddle', 'can_ride', 'mount_steed', 'maybewakesteed', 'poly_steed', 'place_monster'].includes(name))
+                args[0] = environment.monster(args[0]);
+            if (name === 'poly_steed') args[1] = environment.permonst(args[1]);
+            if (name === 'landing_spot') args[0] = environment.coord(args[0]);
+            const result = withCEnvironment(environment, namespace[name], ...args);
+            return typeof result === 'string' ? services.literal(result) : result?.address ?? result ?? 0;
+    }finally{entry.active=previous;}
 }

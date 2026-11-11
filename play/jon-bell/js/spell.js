@@ -1551,14 +1551,13 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
     /* Raw (printed-width) lines drive the window geometry; the display lines
      * add SGR attributes and collapse blank runs into ESC[NC.               */
     const rawLines = [prompt, '', headingRaw, ...items.map((it) => `${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`), '(end)'];
-    const buildWindowLines = () => [
+    const windowLines = [
         menu_heading_text(prompt),
         '',
         menu_heading_text(collapseGaps(headingRaw).replace(/\t/g, '\x1b[1C')),
         ...items.map((it) => collapseGaps(`${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`).replace(/\t/g, '\x1b[1C')),
         '(end)',
     ];
-    const windowLines = buildWindowLines();
 
     /* C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to
      * offx 0 on a cleared screen (wintty.c:1407), content at col 1, nothing of
@@ -1601,21 +1600,19 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
      * build a count, and ESC while counting only stops the count (counting
      * clears at the next loop turn); a key outside resp is re-read inside
      * xwaitforspace so a live count survives it. */
-    let counting = false, reset_count = true, count = 0;
+    let counting = false, reset_count = true;
     for (;;) {
-        if (reset_count) { counting = false; count = 0; }
+        if (reset_count) counting = false;
         else reset_count = true;
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
         if (key === 27 /* ESC — C ref: tty menu cancel */) {
-            g._ttyDismissMore = 1; /* getline.c:245-247 — xwaitforspace's ESC arm */
             if (!counting)
                 return { count: 0, picked: 0 };
             continue;
         }
         if (ch >= '0' && ch <= '9' && !items.some((it) => it.accel === ch)) {
-            count = count * 10 + (ch.charCodeAt(0) - 48);
-            if (count !== 0) { counting = true; reset_count = false; }
+            if (ch !== '0' || counting) { counting = true; reset_count = false; }
             continue;
         }
         if (ch === ' ' || ch === '\n' || ch === '\r') {
@@ -1645,27 +1642,12 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             }
             continue;
         }
-        if (ch === '-' || ch === '\\') {
-            let changed = false;
-            for (const it of items)
-                if (it.sel) { it.sel = false; changed = true; }
-            if (changed) {
-                const wl = buildWindowLines();
-                g._screen_output = noOverlay
-                    ? wl.map((t) => (t === '' ? '' : ` ${t}`)).join('\n')
-                    : build_window_screen(wl, WIN_COL, uac);
-                if (disp) { disp.cursorCol = endCursorCol; disp.cursorRow = endRow; }
-            }
-            continue;
-        }
         const hit = how === 'PICK_NONE' ? undefined : items.find((it) => it.accel === ch);
         if (hit)
             /* PICK_ONE/PICK_NONE both terminate on an accelerator; PICK_NONE
              * has no accelerators registered, so `hit` is never set there. */
             // C wintty.c:1756 toggles the entry before finishing PICK_ONE.
-            /* C wintty.c:1114 toggle_menu_curr: a counted pick of an already
-             * selected entry keeps it selected (only records the count). */
-            return { count: hit.sel && !(counting && count > 0) ? 0 : 1, picked: hit.a_int };
+            return { count: hit.sel ? 0 : 1, picked: hit.a_int };
         if (how === 'PICK_NONE')
             /* C ref: a PICK_NONE picklist is display-only — any other key just
              * re-reads (the dismiss keys above already returned). */
@@ -2150,13 +2132,13 @@ export async function spelleffects(spell_otyp, atme, force) {
         break;
 
     case SPE_CURE_BLINDNESS:
-        await healup(0, 0, false, true);           /* spell.c:1552 */
+        healup(0, 0, false, true);           /* spell.c:1552 */
         break;
     case SPE_CURE_SICKNESS: {
         /* C ref: spell.c:1554-1568 */
         const was_sick = !!(u.uprops && u.uprops[SICK] && u.uprops[SICK].intrinsic);
         const was_slimed = !!(u.uprops && u.uprops[SLIMED] && u.uprops[SLIMED].intrinsic);
-        await healup(0, 0, true, false);
+        healup(0, 0, true, false);
         if (was_sick || !was_slimed)
             await pline(`You are ${was_sick ? 'no longer' : 'not'} ill.`);
         if (was_slimed)
@@ -2686,7 +2668,6 @@ export async function study_book(spellbook) {
         spellbook.novelidx = spellbook.corpsenm = box.value;
         if (await read_tribute('books', tribtitle, 0, null, spellbook.o_id)) {
             _bump_literate(tribtitle);
-            await check_unpaid_usage(spellbook, false); /* spell.c:526 check_unpaid */
             _makeknown(booktype);
             const _u = g.u || (g.u = {});
             _u.uevent = _u.uevent || {};

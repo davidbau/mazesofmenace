@@ -40,7 +40,7 @@ export function createApplyEnvironment(services,L){
   boolean:v=>Number(BigInt.asIntN(8,(typeof v==='bigint'?v:BigInt(Math.trunc(v))))),long:v=>BigInt.asIntN(64,BigInt(v)),
   byte:p=>Object.defineProperty({address:literal(p)},'value',{get:()=>view().getInt8(literal(p)),set:v=>view().setInt8(literal(p),Number(v))}),
   ref:(t,p)=>{p=address(p);return p?Object.defineProperty({address:p},'value',{get:()=>read(t,p),set:v=>write(t,p,v)}):0;},
-  localScalar:(t,v)=>{const p=Number(services.stackAlloc(size(t)));write(t,p,v);return env.ref(t,p);},
+  localScalar:(t,v)=>{const p=Number(services.stackAlloc(size(t)));if(v!==undefined)write(t,p,v);return env.ref(t,p);},
   localArray:(t,n)=>seq(Number(services.stackAlloc(size(t)*n)),t,size(t)),
   localRecord:t=>record(t,services.stackAlloc(size(t))),
   fieldRef:(o,name)=>{const f=records[o.nativeType][fieldAliases[name]??name];if(!f||f.bit||f.const)throw Error('Review APPLY addressable field '+name);return env.ref(f.type,o.address+L[f.key]);},
@@ -287,10 +287,33 @@ env.y_n=(query)=>(env.yn_function(query, env.ynchars, 110, 1));
  return new Proxy(env,{get:(o,k,r)=>{if(typeof k==='string'&&!['rectState','trackState'].includes(k)&&!Reflect.has(o,k))throw Error('Missing APPLY environment key '+k);return Reflect.get(o,k,r);}});
 
 }
+const applyEnvironments=new WeakMap();
+function applyEntry(services,L){
+ const key=services.moduleKey;
+ if(!key||!['object','function'].includes(typeof key)||!L||!['object','function'].includes(typeof L))return {environment:createApplyEnvironment(services,L)};
+ let layouts=applyEnvironments.get(key),entry=layouts?.get(L);
+ if(entry)return entry;
+ // Validate immutable compiler metadata before publishing reusable live views.
+ const primitive={'char':1,'signed char':1,'unsigned char':1,'short':2,'unsigned short':2,'int':4,'unsigned int':4,'long':8,'long long':8,'unsigned long':8,'unsigned long long':8};
+ const extent=t=>{const a=t.match(/^(.*?)((?:\[\d+\])+)$/);if(a)return extent(a[1])*[...a[2].matchAll(/\[(\d+)\]/g)].reduce((n,m)=>n*Number(m[1]),1);if(t.includes('*'))return 8;if(primitive[t])return primitive[t];if(records[t])return Number(L['R'+Object.values(records[t])[0].record+'_size']);throw Error('Review APPLY layout type '+t);};
+ for(const[k,v]of Object.entries({pointerSize:8,longSize:8,booleanSize:1}))if(L[k]!==v)throw Error('Review APPLY ABI '+k);
+ for(const[t,fields]of Object.entries(records)){
+  const bytes=extent(t);if(!Number.isSafeInteger(bytes)||bytes<=0)throw Error('Review APPLY record layout '+t);
+  for(const f of Object.values(fields))if(!f.bit){const offset=L[f.key],width=L[f.key+'_size'];if(!Number.isSafeInteger(offset)||offset<0||width!==extent(f.type)||offset+width>bytes)throw Error('Review APPLY field layout '+f.key);}
+ }
+ entry={current:services,layout:L,environment:null};
+ const forwarding=new Proxy(Object.create(null),{
+  get:(_,k)=>Reflect.get(entry.current,k,entry.current),has:(_,k)=>Reflect.has(entry.current,k),
+  ownKeys:()=>Reflect.ownKeys(entry.current),getOwnPropertyDescriptor:(_,k)=>{const d=Reflect.getOwnPropertyDescriptor(entry.current,k);return d?{...d,configurable:true}:undefined;}
+ });
+ try{entry.environment=createApplyEnvironment(forwarding,L);if(!layouts){layouts=new WeakMap();applyEnvironments.set(key,layouts);}layouts.set(L,entry);return entry;}
+ finally{entry.current=undefined;}
+}
 export function callApply(services,layout,name,...args){
- const saved=services.stackSave();
+ const saved=services.stackSave();let entry,previous;
  try{
-  const env=createApplyEnvironment(services,layout);
+  entry=applyEntry(services,layout);previous=entry.current;entry.current=services;
+  const env=entry.environment;
   for(const[i,t]of(params[name]??[]).entries()){
    const target=t.replace(/\s*\*$/,'');
    if(t.endsWith('**')||t.endsWith('* *'))args[i]=env.ref(t.slice(0,-1).trim(),args[i]);
@@ -305,5 +328,5 @@ export function callApply(services,layout,name,...args){
   }
   const result=withCEnvironment(env,()=>core[name](...args));
   return typeof result==='string'?services.literal(result):result?.address??result;
- }finally{services.stackRestore(saved);}
+ }finally{try{services.stackRestore(saved);}finally{if(entry)entry.current=previous;}}
 }

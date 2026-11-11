@@ -19,8 +19,28 @@ export function createWormState(services, layout) {
     return state;
 }
 
+const environmentPools=new WeakMap(),environmentBindings=new WeakMap();
+export function withWormEnvironment(services,layout,state,callback) {
+    if(!Object.isFrozen(layout))return callback(createWormEnvironment(services,layout,state));
+    let layouts=environmentPools.get(state);
+    if(!layouts)environmentPools.set(state,layouts=new WeakMap());
+    let frames=layouts.get(layout);
+    if(!frames)layouts.set(layout,frames=[]);
+    let frame=frames.find(entry=>!entry.busy);
+    if(!frame){
+        frame={services,busy:true};
+        const prototype=new Proxy({}, {get:(_,key)=>frame.services[key]});
+        frame.env=createWormEnvironment(services,layout,state,prototype);
+        frames.push(frame);
+    }
+    frame.busy=true;frame.services=services;
+    const binding=environmentBindings.get(frame.env);binding.bind(services);
+    try{return callback(frame.env);}
+    finally{binding.reset();binding.bind(undefined);frame.services=undefined;frame.busy=false;}
+}
+
 // Live native storage and header expansions; worm policy remains in worm.js.
-export function createWormEnvironment(services, layout, state) {
+export function createWormEnvironment(services, layout, state,servicePrototype=services) {
     const widths={pointerSize:8,longSize:8,intSize:4,booleanSize:1,booleanSigned:1,
         coordxySize:2,coordxySigned:1,seg_nseg_size:8,seg_wx_size:2,seg_wy_size:2,
         mon_data_size:8,mon_mx_size:2,mon_my_size:2,mon_mhp_size:4,mon_mhpmax_size:4,
@@ -35,7 +55,8 @@ export function createWormEnvironment(services, layout, state) {
     const address=value=>Number(value?.address??value??0);
     const raw=value=>BigInt.asUintN(64,BigInt(value?.address??value??0));
     const global=i=>address(services.global(i));
-    const view=()=>new DataView(services.heap().buffer);
+    let dataView;
+    const view=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
     const rawPointer=at=>view().getBigUint64(at,true);
     const pointer=at=>Number(rawPointer(at));
     const int=value=>typeof value==='bigint'?Number(BigInt.asIntN(32,value)):value|0;
@@ -99,7 +120,7 @@ export function createWormEnvironment(services, layout, state) {
             state.growtimeBorrows.delete(index);
         }}
     }
-    const env=Object.assign(Object.create(services),layout,{
+    const env=Object.assign(Object.create(servicePrototype),layout,{
         address,int,uint:value=>int(value)>>>0,boolean,coordxy,long,ulong:value=>BigInt.asUintN(64,BigInt(value)),
         bool:value=>Number(Boolean(value)),segment,monster,permonst,nhfile,u,svm,svc,svl,mons,wheads,wtails,
         wgrowtime:state.wgrowtime,wormState:state,
@@ -121,7 +142,7 @@ export function createWormEnvironment(services, layout, state) {
         cansee(x,y){return Boolean(view().getUint8(pointer(pointer(global(4)+layout.vizArray)+y*8)+x)&layout.IN_SIGHT);},
         update_file:fp=>fp.mode&(layout.COUNTING|layout.WRITING),release_data:fp=>fp.mode&layout.FREEING,
         rn1:(bound,offset,line,caller)=>int(services.rn2(int(bound),line,caller)+int(offset)),
-        newsym_rn2:services.rn2_on_display_rng,
+        newsym_rn2:(...args)=>services.rn2_on_display_rng(...args),
         what_mon:(mon,rng)=>env.Hallucination?rng(layout.NUMMONS):mon,
         monnum_to_glyph:(mon,gender)=>int(int(mon)+(gender===layout.MALE?layout.GLYPH_MON_MALE_OFF:layout.GLYPH_MON_FEM_OFF)),
         detected_monnum_to_glyph:(mon,gender)=>int(int(mon)+(gender===layout.MALE?layout.GLYPH_DETECT_MALE_OFF:layout.GLYPH_DETECT_FEM_OFF)),
@@ -134,5 +155,6 @@ export function createWormEnvironment(services, layout, state) {
             return Boolean(get(layout.HALLUC,'intrinsic')&&!(get(layout.HALLUC_RES,'intrinsic')||get(layout.HALLUC_RES,'extrinsic')));}},
     });
     env.clone_mon=(...args)=>monster(services.clone_mon(...args));
+    environmentBindings.set(env,{bind:next=>{services=next;},reset(){namedCoords.clear();growtimeBuffer=0;}});
     return env;
 }

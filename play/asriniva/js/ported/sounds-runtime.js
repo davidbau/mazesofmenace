@@ -64,7 +64,30 @@ export function createSoundsEnvironment(services,layout,state){
     env.nosound_procs=soundproc(state.source);env.soundlib_choices=sounds.soundlib_choices.map(row=>({sndprocs:env.nosound_procs}));
     return env;
 }
-export function callSounds(services,layout,name,...args){let state=states.get(services.moduleKey);if(!state)states.set(services.moduleKey,state={source:0});const env=createSoundsEnvironment(services,layout,state);if(name==='nosoundAddress')return state.source;
+const cachedEnvironments=new WeakMap();
+function environmentForCall(services,layout,state){
+ let layouts=cachedEnvironments.get(services.moduleKey);
+ if(!layouts){layouts=new WeakMap();cachedEnvironments.set(services.moduleKey,layouts);}
+ let entry=layouts.get(layout);
+ if(!entry){
+  entry={active:services};
+  const methods=new Map();
+  const forwarding=new Proxy({}, {
+   get(_target,key){
+    const value=Reflect.get(entry.active,key,entry.active);
+    if(typeof value!=='function')return value;
+    let method=methods.get(key);
+    if(!method){method=(...args)=>Reflect.apply(Reflect.get(entry.active,key,entry.active),entry.active,args);methods.set(key,method);}
+    return method;
+   },
+   has:(_target,key)=>Reflect.has(entry.active,key),
+  });
+  entry.environment=createSoundsEnvironment(forwarding,layout,state);
+  layouts.set(layout,entry);
+ }
+ return entry;
+}
+export function callSounds(services,layout,name,...args){const saved=services.stackSave();let entry,previous;try{let state=states.get(services.moduleKey);if(!state)states.set(services.moduleKey,state={source:0});entry=environmentForCall(services,layout,state);previous=entry.active;entry.active=services;const env=entry.environment;if(name==='nosoundAddress')return state.source;
     if(['mon_in_room','throne_mon_sound','beehive_mon_sound','morgue_mon_sound','zoo_mon_sound','temple_priest_sound','oracle_sound','growl_sound','growl','yelp','whimper','beg','maybe_gasp','cry_sound','mon_is_gecko','domonnoise','set_voice'].includes(name))args[0]=env.monster(args[0]);
-    const saved=services.stackSave();try{const result=withCEnvironment(env,sounds[name],...args);return typeof result==='string'?services.literal(result):result?.address??result??0;}finally{services.stackRestore(saved);}
+    const result=withCEnvironment(env,sounds[name],...args);return typeof result==='string'?services.literal(result):result?.address??result??0;}finally{if(entry)entry.active=previous;services.stackRestore(saved);}
 }

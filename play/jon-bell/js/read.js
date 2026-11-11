@@ -1460,7 +1460,6 @@ const SCR_BLANK_PAPER = 365;
  * with the 364 js/mklev.js:1909 already carries. */
 const SCR_MAIL = 364;
 /* objects.h SCROLL block, same table: 'scare monster' and 'create monster'. */
-const SCR_CONFUSE_MONSTER = 325;
 const SCR_SCARE_MONSTER = 326;
 const SCR_CREATE_MONSTER = 329;
 /* objects.h SPELL block (dig = 366): 'confuse monster' 377, 'create monster'
@@ -1490,8 +1489,6 @@ const ALCHEMY_SMOCK_RD = 144;
  * flags.initrole are ROLE INDICES (the same encoding js/objnam.js:3460
  * _Role_if uses), NOT monster ids. */
 const ROLE_IDX_TOURIST = 10;
-/* roles[] index of the Wizard -- js/roles.js mnum: 12 (C PM_WIZARD). */
-const ROLE_IDX_WIZARD = 12;
 /* C read.c:332 `static const char find_any_braille[] = "feel any Braille
  * writing.";` -- the argument to You_cant(), which prefixes "You can't ". */
 const FIND_ANY_BRAILLE = 'feel any Braille writing.';
@@ -2145,7 +2142,7 @@ async function seffect_enchant_armor(sobjp) {
     /* C read.c:1163-1164 — elven armor (and a wizard's cornuthaum) vibrates
      * warningly when enchanted beyond a limit. */
     const special_armor = _is_elven_armor(otmp)
-        || (_Role_if_rd(ROLE_IDX_WIZARD)                /* Role_if(PM_WIZARD) */
+        || (((g.flags?.initrole ?? -1) | 0) === 12 /* Role_if(PM_WIZARD) */
             && otyp === CORNUTHAUM);
     let same_color;
     if (scursed)
@@ -2315,7 +2312,6 @@ async function chwepon(otmp, amount) {
                 buf = `Your right ${body_part_fr(HAND_FR)} tingles.`;
             }
             await _uncurse(uwep);
-            update_inventory(); /* C wield.c:938 */
         } else {
             buf = `Your ${makeplural(body_part_fr(HAND_FR))} `
                 + `${(amount >= 0) ? 'twitch' : 'itch'}.`;
@@ -2411,7 +2407,7 @@ async function chwepon(otmp, amount) {
 
     /* C wield.c:1036-1039; obj.h u_wield_art tests the primary weapon. */
     if ((uwep.oartifact | 0) === ART_MAGICBANE && (uwep.spe | 0) >= 0) {
-        await Your('right %s %sches!', food_body_part(HAND_FR),
+        await Your('right %s %sches!', food_body_part(6 /* HAND */),
                    amount > 1 && (uwep.spe | 0) > 1 ? 'flin' : 'it');
     }
 
@@ -2601,11 +2597,11 @@ async function seffect_teleportation(sobj) {
 
     if (confused || scursed) {
         await level_tele();
-        /* C read.c:2021-2025 — "gives 'materialize on different/same level!'
+        /* C read.c:1793 — "gives 'materialize on different/same level!'
          * message, must be a teleport scroll". */
         game._gk_known = true;
     } else {
-        /* C read.c:2026-2027 — scrolltele() calls learnscroll() as appropriate. */
+        /* C read.c:1796 — scrolltele() calls learnscroll() as appropriate. */
         await scrolltele(sobj);
     }
 }
@@ -2747,7 +2743,7 @@ async function seffect_destroy_armor(sobjp) {
  *                    odd ? "a chain letter threatening your luck"
  *                        : "junk mail addressed to the finder of the Eye of Larn");
  *              break;
- *     default: #ifdef MAIL readmail(sobj); #else pline(...); #endif  break;
+ *     default: readmail(sobj);   break;      [MAIL is not defined in this build]
  *     }
  *
  * spe carries the provenance: 0 delivered in-game, 1 from bones or WISHING
@@ -2781,12 +2777,8 @@ async function seffect_mail(sobjp) {
                         : 'junk mail addressed to the finder of the Eye of Larn');
         break;
     default:
-        /* C read.c:2178-2185.  MAIL is a host build choice: unixconf.h:145
-         * defines it unless NOMAIL, and sys/unix/hints/macOS.500:121 sets
-         * -DNOMAIL.  With MAIL defined, readmail(sobj) runs here, but a spe-0
-         * mail scroll exists only after mail.c's in-game delivery from the
-         * host mailbox, which js/ (no filesystem) never performs.  The arm is
-         * unreachable either way; it keeps the NOMAIL precaution text. */
+        /* C read.c:2178-2185: MAIL is undefined in this build, so the
+         * readmail() call is preprocessed out and the precaution remains. */
         await pline('That was a scroll of mail?');
         break;
     }
@@ -3124,7 +3116,7 @@ import { currency as currency_gd } from './shk.js';
 import { ARTICLE_THE as ARTICLE_THE_GD, ARTICLE_YOUR as ARTICLE_YOUR_GD,
          SUPPRESS_SADDLE as SUPPRESS_SADDLE_GD } from './const.js';
 import { MKOBJ_OC_MATERIAL as MKOBJ_OC_MATERIAL_GD } from './mkobj_erosion_meta.js';
-import { FOOT as FOOT_GD, TOE as TOE_RD, D_TRAPPED as D_TRAPPED_RD, BEAR_TRAP, otrapped_of } from './const.js';
+import { FOOT as FOOT_GD, TOE as TOE_RD, D_TRAPPED as D_TRAPPED_RD, otrapped_of } from './const.js';
 import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_GD } from './pm.generated.js';
 const COIN_CLASS_GD = 12, GOLD_MAT_GD = 15, GOLD_PIECE_GD = 438;
 function _oc_material_gd(o) { return MKOBJ_OC_MATERIAL_GD[o.otyp | 0] | 0; }
@@ -3318,19 +3310,13 @@ async function seffect_gold_detection(sobjp) {
         sobjp.obj = null; /* failure: strange_feeling() -> useup() */
 }
 
-const OTRAP_NONE_RD = 0, OTRAP_HERE_RD = 1, OTRAP_THERE_RD = 2;
-const CHEST_OTYP_RD = 215;
-function _Is_box_rd(otmp) {
-    const otyp = otmp.otyp | 0;
-    return otyp === LARGE_BOX_OTYP_RD || otyp === CHEST_OTYP_RD;
-}
 /* C detect.c:907-953 detect_obj_traps(list, FALSE, 0, NULL): OTRAP_NONE=0,
  * OTRAP_HERE=1, OTRAP_THERE=2.  Only the show_them == FALSE scan is ported. */
 function _detect_obj_traps_scan(objlist, show_them = false, how = 0) {
     const u = game.u || {};
-    let result = OTRAP_NONE_RD;
+    let result = 0;
     for (let otmp = objlist; otmp; otmp = otmp.nobj) {
-        const isbox = _Is_box_rd(otmp);
+        const isbox = (otmp.otyp | 0) === 214 || (otmp.otyp | 0) === 215;
         const xp = { value: 0 }, yp = { value: 0 };
         if ((isbox && otrapped_of(otmp)) || Has_contents(otmp)) {
             if (!get_obj_location(otmp, xp, yp, BURIED_TOO | CONTAINED_TOO)
@@ -3340,7 +3326,7 @@ function _detect_obj_traps_scan(objlist, show_them = false, how = 0) {
             otmp.tknown = 1; /* C detect.c:934 */
             observe_object(otmp);
             const x = xp.value, y = yp.value;
-            result |= (x === (u.ux | 0) && y === (u.uy | 0)) ? OTRAP_HERE_RD : OTRAP_THERE_RD;
+            result |= (x === (u.ux | 0) && y === (u.uy | 0)) ? 1 : 2;
             if (show_them) /* C detect.c:938-942: dummytrap.ttyp == TRAPPED_CHEST */
                 _sense_trap({ tx: x, ty: y, ttyp: TRAPPED_CHEST_RD }, x, y, how);
         }
@@ -3382,7 +3368,7 @@ function _sense_trap(trap, x, y, src_cursed) {
         atHero = trap.tx === (u.ux | 0) && trap.ty === (u.uy | 0);
     } else {
         /* C detect.c:886-895: trap == NULL when !Hallucination && !src_cursed */
-        const dummytrap = { tx: x, ty: y, ttyp: BEAR_TRAP };
+        const dummytrap = { tx: x, ty: y, ttyp: 5 /* BEAR_TRAP */ };
         map_trap(dummytrap, 1);
         atHero = x === (u.ux | 0) && y === (u.uy | 0);
     }
@@ -3453,7 +3439,7 @@ export async function trap_detect(sobj) {
     }
     for (const l of lists) {
         const tr = _detect_obj_traps_scan(l);
-        if (tr & OTRAP_THERE_RD) { await display_trap_map(cursed_src); return 0; }
+        if (tr & 2) { await display_trap_map(cursed_src); return 0; }
         if (tr) found = true;
     }
     if (_detect_obj_traps_scan(g.invent)) found = true;
@@ -3584,8 +3570,6 @@ function display_stinking_cloud_positions(on_off) {
  * (display_stinking_cloud_positions) is cosmetic and not modelled; its
  * validity callback (can_center_cloud) IS installed, because autodescribe
  * reads it back for " (invalid target)". */
-/* C read.c:1913 `#define ZT_SPELL_O_FIRE 11` -- local to seffect_fire. */
-const ZT_SPELL_O_FIRE = 11;
 async function seffect_fire(holder) {
     const sobj = holder.obj;
     const g = game, u = g.u;
@@ -3644,7 +3628,7 @@ async function seffect_fire(holder) {
             await burn_away_slime_fr();
         }
     }
-    await explode_fr(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS_OC, EXPL_FIERY_FR);
+    await explode_fr(cc.x, cc.y, 11 /* ZT_SPELL_O_FIRE */, dam, SCROLL_CLASS_OC, EXPL_FIERY_FR);
 }
 
 /* C ref: read.c:3082-3105 do_stinking_cloud */
@@ -3671,7 +3655,7 @@ async function do_stinking_cloud(sobj, mention_stinking) {
 export async function seffects(sobj) {
     const otyp = sobj.otyp | 0;
     if (_scroll_oc_magic(otyp))
-        exercise(A_WIS, true); /* read.c:2200 — rn2(19) */
+        exercise(2 /* A_WIS */, true); /* read.c:2200 — rn2(19) */
     switch (otyp) {
     case SCR_ENCHANT_ARMOR: {
         /* C read.c:2208-2210 seffect_enchant_armor(&sobj).  The no-armor branch
@@ -3695,7 +3679,7 @@ export async function seffects(sobj) {
         break;
     }
     case SCR_ENCHANT_WEAPON: {
-        /* C read.c:2233-2235 seffect_enchant_weapon(&sobj).  The no-weapon
+        /* C read.c:2211-2213 seffect_enchant_weapon(&sobj).  The no-weapon
          * branch runs chwepon()'s strange_feeling(), which useup()s the scroll
          * and sets *sobjp = 0, so seffects must then return 1 and read_scroll
          * must NOT useup again — same holder shape as the enchant-armor arm. */
@@ -3725,9 +3709,10 @@ export async function seffects(sobj) {
          * seffects returns 0 and read_scroll performs the useup. */
         await seffect_punishment(sobj);
         break;
-    case SCR_CONFUSE_MONSTER:
+    case 325: /* SCR_CONFUSE_MONSTER */
     case SPE_CONFUSE_MONSTER:
-        /* C read.c:2214-2217 pairs the scroll and the spellbook on one arm. */
+        /* C read.c:2214-2217 pairs the scroll and the spellbook on one arm;
+         * this file carried only the scroll. */
         await seffect_confuse_monster(sobj);
         break;
     case SCR_MAIL:
@@ -3940,8 +3925,7 @@ async function seffect_light(sobj) {
             /* surround with cancelled tame lights which won't explode */
             let sawlights = false;
             /* C read.c:1765 — rn1(2, 3) + (sblessed * 2).  The rn1 is drawn
-             * ONCE, before the loop; each makemon() in the loop (read.c:1768)
-             * then draws its own RNG. */
+             * ONCE, before the loop, and is the only RNG on this arm. */
             const numlights = rn1(2, 3) + (sblessed ? 2 : 0);
             for (let i = 0; i < numlights; ++i) {
                 /* js/mklev.js makemon() takes the monster INDEX in the mdat
@@ -4216,8 +4200,7 @@ async function seffect_genocide(sobj) {
     if (!already_known)
         await You('have found a scroll of genocide!');
     g._gk_known = true;
-    /* C read.c:1737 — the cursed bit comes from the scroll (scursed), the
-     * confused bit from the hero's Confusion property (_Confusion()). */
+    /* C read.c:1737 — cursed/confused bits are encoded by the scroll state. */
     if (sobj.blessed)
         await do_class_genocide();
     else
@@ -4443,15 +4426,7 @@ async function seffect_magic_mapping(sobj) {
     await pline('A map coalesces in your mind!');
     const cval = (scursed && !confused); /* C read.c:2144 */
     if (cval) game.u.uprops[CONFUSION].intrinsic = 1; /* HConfusion = 1 to screw up map */
-    /* C read.c:2146-2148 — notice_mon_off(); do_mapping(); notice_mon_on();
-     * (flag.h:233-238: a11y.mon_notices_blocked++ / --, clamped at 0). */
-    const a11y = (game.a11y ||= {});
-    a11y.mon_notices_blocked = (a11y.mon_notices_blocked || 0) + 1;
     await do_mapping();
-    if (--a11y.mon_notices_blocked < 0) {
-        await impossible('mon_notices_blocked<0');
-        a11y.mon_notices_blocked = 0;
-    }
     if (cval) {
         game.u.uprops[CONFUSION].intrinsic = 0; /* restore */
         await pline("Unfortunately, you can't grasp the details.");
@@ -4467,21 +4442,19 @@ export function magic_map_background(loc, x, y, show = false) {
                bwspec: tg.bwspec };
     /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
     if (!cansee(x, y) && !loc.waslit) {
-        const S_stone = 0, S_room = 19, S_darkroom = 20, S_litcorr = 23;
         const darkRoomOn = !!(game.flags?.dark_room && game.iflags?.use_color);
         // C display.c:244-247 tests glyph identity, including IBM/custom symbols.
-        if (loc.typ === ROOM && rg.cmap === S_room) {
+        if (loc.typ === ROOM && rg.cmap === 19) {
             rg = darkRoomOn
-                ? cmap_glyph(Is_rogue_level(game.u?.uz) ? S_stone : S_darkroom)
+                ? cmap_glyph(Is_rogue_level(game.u?.uz) ? 0 : 20)
                 : { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
         }
-        if (loc.typ === CORR && rg.cmap === S_litcorr) {
+        if (loc.typ === CORR && rg.cmap === 23) {
             const dark = terrain_glyph(loc, x, y);
             rg = { ch: dark.ch, color: dark.color, decgfx: dark.dec, cmap: dark.cmap };
         }
     }
-    /* C display.c:250-252 only replaces unexplored/cmap memory
-     * (glyph_is_unexplored(lev->glyph) || glyph_is_cmap(lev->glyph)). Objects and
+    /* C display.c:250-252 only replaces unexplored/cmap memory. Objects and
      * invisible-monster markers survive magic mapping. Trap and engraving
      * glyphs are in C's cmap range; legacy terrain memory has no cls. */
     const rememberedClass = loc.remembered_glyph?.cls;
@@ -5105,9 +5078,7 @@ export async function unpunish() {
     const u = game.u;
     if (uchain) {
         uchain.owornmask = (uchain.owornmask | 0) & ~W_CHAIN;
-        /* C setworn(0, W_CHAIN): only the field clear is done here; setworn's
-         * other side effects are omitted (unpunish_rd calls setworn). */
-        u.uchain = null;
+        u.uchain = null;                       /* setworn(0, W_CHAIN) */
         await delobj(uchain);
     }
     if (uball) {

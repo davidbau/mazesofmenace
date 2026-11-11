@@ -195,3 +195,40 @@ export function createLockEnvironment(services, layout, namespace) {
     env.shop_keeper = (...args) => monster(services.shop_keeper(...args));
     return env;
 }
+
+// Cache only completed environments; heap fields and world addresses stay live.
+const lockEnvironments = new WeakMap();
+export function withLockEnvironment(services, layout, namespace, invoke) {
+    const key = services.moduleKey;
+    // Older embedding facades have no stable Module identity: retain their original path.
+    if ((typeof key !== 'object' || key === null) && typeof key !== 'function')
+        return invoke(createLockEnvironment(services, layout, namespace), services);
+    let layouts = lockEnvironments.get(key);
+    if (!layouts) { layouts = new WeakMap(); lockEnvironments.set(key, layouts); }
+    let namespaces = layouts.get(layout);
+    if (!namespaces) { namespaces = new WeakMap(); layouts.set(layout, namespaces); }
+    let entry = namespaces.get(namespace);
+    if (!entry) {
+        entry = { active: services };
+        // ACURR is captured by the unchanged standalone LOCK constructor.
+        const acurr = (...args) => Reflect.apply(entry.active.acurr, entry.active, args);
+
+        const forwarding = new Proxy(Object.create(null), {
+            get: (_target, key) => key === 'acurr' ? acurr : Reflect.get(entry.active, key, entry.active),
+            has: (_target, key) => Reflect.has(entry.active, key),
+            ownKeys: () => Reflect.ownKeys(entry.active),
+            getOwnPropertyDescriptor: (_target, key) => Reflect.has(entry.active, key)
+                ? { configurable: true, enumerable: Object.prototype.propertyIsEnumerable.call(entry.active, key) } : undefined,
+        });
+        entry.forwarding = forwarding;
+        entry.environment = createLockEnvironment(forwarding, layout, namespace);
+        // Constructor/ABI validation and service bindings must finish before publication.
+        const completed = namespaces.get(namespace);
+        if (completed) entry = completed;
+        else namespaces.set(namespace, entry);
+    }
+    const previous = entry.active;
+    entry.active = services;
+    try { return invoke(entry.environment, entry.forwarding); }
+    finally { entry.active = previous; }
+}

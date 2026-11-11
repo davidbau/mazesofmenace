@@ -112,13 +112,8 @@ export class TtyMenu {
     /* C ref: tty_add_menu.  `aInt` is anything.a_int; a non-zero identifier
      * makes the line selectable, and tty_add_menu prefixes it with "%c - "
      * using `ch` (or '?' when ch is 0 — end_menu overwrites str[0] with the
-     * assigned accelerator later).  `gch` is the group accelerator
-     * (wintty.c:2592 `char gch` — 0 = no group): tty_add_menu stores it
-     * verbatim as item->gselector (:2632) whether or not the line is
-     * selectable, and process_menu_window's gacc collection (wintty.c:1352-1379)
-     * filters it later — a key in gacc picks the row through the group_accel
-     * arm (wintty.c:1739-1748) and finishes a PICK_ONE menu. */
-    add_menu(aInt, ch, attr, str, skipinvert = false, preselected = false, gch = 0) {
+     * assigned accelerator later). */
+    add_menu(aInt, ch, attr, str, skipinvert = false, preselected = false) {
         if (str === null || str === undefined) return;   /* C: str == 0 -> return */
         let s = String(str);
         // C windows.c:1803-1806: match before tty adds the selector prefix.
@@ -126,8 +121,7 @@ export class TtyMenu {
             ? game.menu_colorings?.find(mc => mc.match.test(s)) : null;
         if (aInt) s = `${ch ? ch : '?'} - ${s}`;
         this.mlist.push({ aInt, selector: ch || 0, attr: attr | 0, str: s, menuColor,
-                          selected: preselected, count: -1, skipinvert,
-                          groupSelector: gch || 0 });
+                          selected: preselected, count: -1, skipinvert });
     }
 
     /**
@@ -299,8 +293,8 @@ export class TtyMenu {
             if (fresh) { this._renderPage(curr_page); fresh = false; }
             else this._publish();
 
-            let key = await nhgetch();
-            let morc = String.fromCharCode(key);
+            const key = await nhgetch();
+            const morc = String.fromCharCode(key);
             const from = this.plist[curr_page], to = this.plist[curr_page + 1];
             const group = how === PICK_ONE && !this.mlist.slice(from, to).some(c => c.aInt && c.selector === morc) && this.mlist.find(c => c.groupSelector === morc);
             if (group) {
@@ -317,26 +311,11 @@ export class TtyMenu {
             if (key !== 10 && key !== 13 && key !== 27 && key !== 0
                 && morc !== ' ' && !(morc >= '0' && morc <= '9')
                 && '<>^|,\\~.-@:'.indexOf(morc) < 0
-                && (game.mapped_menu_cmds || '').indexOf(morc) < 0
                 && !this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
                 reset_count = false;
                 continue;
             }
-            /* C wintty.c:1555-1561: a key that is not an explicit selection on
-             * this page goes through map_menu_cmd() (options.c), so an rc
-             * menu_next_page:} makes '}' page forward. */
-            if (!this.mlist.slice(from, to).some((c) => c.aInt && c.selector === morc)) {
-                const mi = (game.mapped_menu_cmds || '').indexOf(morc);
-                if (mi >= 0) {
-                    morc = game.mapped_menu_op[mi];
-                    key = morc.charCodeAt(0);
-                }
-            }
 
-            /* getline.c:245-247: menu dmore() reads through xwaitforspace, so
-             * ESC sets ttyDisplay->dismiss_more even when it only stops a
-             * count (wintty.c:1604-1610). */
-            if (key === 27) game._ttyDismissMore = 1;
             /* C wintty.c:1556-1562: a current-page item selector is an EXPLICIT
              * choice even when it is a digit (menu_objsyms uses '0'..'5'). */
             if (morc >= '0' && morc <= '9'

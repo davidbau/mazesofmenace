@@ -41,8 +41,18 @@ export function createFilesEnvironment(services){
  return env;
 }
 export function callFiles(services,name,...args){
- let env=states.get(services.moduleKey);if(!env){env=createFilesEnvironment(services);states.set(services.moduleKey,env);}
- Object.setPrototypeOf(env,services);
- const fn=files[name];if(typeof fn!=='function')throw Error('Unknown original FILES function '+name);
- const stackFrame=services.stackSave();try{return withCEnvironment(env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+ let state=states.get(services.moduleKey);
+ if(!state){
+  state={services};
+  const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});
+  state.env=createFilesEnvironment(forwarding);
+  states.set(services.moduleKey,state);
+ }
+ const previous=state.services;
+ state.services=services;
+ try{
+  const fn=files[name];if(typeof fn!=='function')throw Error('Unknown original FILES function '+name);
+  const stackFrame=services.stackSave();
+  try{return withCEnvironment(state.env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+ }finally{state.services=previous;}
 }

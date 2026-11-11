@@ -38,7 +38,31 @@ export function createQuestpgrEnvironment(services,layout){
     env.mkclass=(...args)=>permonst(services.mkclass(...args));
     return env;
 }
-export function callQuestpgr(services,layout,name,...args){const env=createQuestpgrEnvironment(services,layout);
+const questpgrEnvironments=new WeakMap();
+function questpgrEnvironmentFor(services,layout){
+    let layouts=questpgrEnvironments.get(services.moduleKey);
+    if(!layouts){layouts=new WeakMap();questpgrEnvironments.set(services.moduleKey,layouts);}
+    let entry=layouts.get(layout);
+    if(!entry){
+        entry={active:services};
+        const forwarding=new Proxy(Object.create(null),{
+            get:(_target,key)=>Reflect.get(entry.active,key,entry.active),
+            has:(_target,key)=>Reflect.has(entry.active,key),
+        });
+        entry.environment=createQuestpgrEnvironment(forwarding,layout);
+        // Reentry may already have published the first complete environment.
+        const completed=layouts.get(layout);
+        if(completed)return completed;
+        // Publish only after constructor and ABI validation complete.
+        layouts.set(layout,entry);
+    }
+    return entry;
+}
+export function callQuestpgr(services,layout,name,...args){
+    const entry=questpgrEnvironmentFor(services,layout),previous=entry.active,env=entry.environment;
+    entry.active=services;
+    try{
     if(['is_quest_artifact','find_qarti'].includes(name))args[0]=env.object(args[0]);if(name==='stinky_nemesis')args[0]=env.monster(args[0]);if(name==='com_pager_core')args[3]=env.charPointerPointer(args[3]);
     const result=withCEnvironment(env,questpgr[name],...args);return result?.address??result??0;
+    }finally{entry.active=previous;}
 }

@@ -695,7 +695,7 @@ export function tty_putmsghistory(msg, restoring_msghist)
         C.Strcpy(C.gt.toplines, msg);
         C.dumplogmsg(C.gt.toplines);
     } else if (C.snapshot_mesgs) {
-        C.toplAssert("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE", 719, Number(Boolean(C.ttyDisplay == 0 ||
+        C.toplAssert("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE", 720, Number(Boolean(C.ttyDisplay == 0 ||
                  C.ttyDisplay.toplin != C.TOPLINE_NEED_MORE)));
 
         /* done putting arbitrary messages in; put the snapshot ones back */

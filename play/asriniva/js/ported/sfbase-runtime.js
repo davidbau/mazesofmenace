@@ -35,3 +35,30 @@ export function createSfbaseEnvironment(services,layout) {
     for(const [index,name]of ['PRId32','PRId64','PRIu32','PRIu64'].entries())env[name]=services.pri(index);
     return env;
 }
+
+// Production-only wrapper reuse. The public constructor above remains fresh.
+export function createOptimizedSfbaseEnvironment(services,layout) {
+    const env=createSfbaseEnvironment(services,layout);
+    const factories=[env.structlevel,env.fieldlevel],recent=[undefined,undefined];
+    const address=value=>Number(value?.address??value??0);
+    function table(value,fieldlevel=false){
+        const at=address(value),mode=fieldlevel?1:0,previous=recent[mode];
+        if(previous?.at===at)return previous.wrapper;
+        const wrapper=factories[mode](at);
+        recent[mode]={at,wrapper};
+        return wrapper;
+    }
+    env.structlevel=value=>table(value);
+    env.fieldlevel=value=>table(value,true);
+    for(const[index,name]of ['sfoprocs','sfiprocs','sfoflprocs','sfiflprocs'].entries()){
+        const original=env[name];
+        env[name]=new Proxy(original,{get(target,key){
+            if(typeof key==='string'&&/^-?\d+$/.test(key)){
+                const at=address(services.global(index))+Number(key)*layout[(index>=2?'fieldlevel':'structlevel')+'Size'];
+                return table(at,index>=2);
+            }
+            return Reflect.get(target,key);
+        }});
+    }
+    return env;
+}

@@ -1,6 +1,8 @@
-// JS implementation of the configured native ERE byte interface. Handles and
-// memory belong to the runtime; no native regex implementation is called.
-import {compilePosixRegex,execPosixRegex,freePosixRegex,nativeRegexError} from './posix-regex.js';
+// JS implementation of the golden Emscripten regex ABI. Its flag values and
+// opaque storage are compatible with the existing caller, while parser, match
+// and diagnostic behavior follow the original Emscripten musl/TRE C library.
+// Handles and memory belong to the runtime; no C regex code is called here.
+import {compilePosixRegex,execPosixRegex,freePosixRegex,posixRegexError} from './posix-regex.js';
 export function createNativeRegexLibc() {
     const namespaces = new WeakMap();
     const statistics = new WeakMap();
@@ -21,7 +23,7 @@ export function createNativeRegexLibc() {
                 ++calls.regcomp;
                 if(flags!==5&&flags!==9)throw new Error('Unsupported native ERE compilation flags');
                 re=Number(re);if(handles.has(re))freePosixRegex(handles.get(re));handles.delete(re);
-                const result=compilePosixRegex(bytes(source),9,true);
+                const result=compilePosixRegex(bytes(source),9);
                 if(!result.status)handles.set(re,result.handle);
                 return result.status;
             },
@@ -32,7 +34,7 @@ export function createNativeRegexLibc() {
             },
             regerror(error,re,out,size) {
                 ++calls.regerror;
-                const text=nativeRegexError(error),heap=services.heap();out=Number(out);size=Number(size);
+                const text=posixRegexError(error),heap=services.heap();out=Number(out);size=Number(size);
                 for(let i=0;i<Math.min(text.length,size-1);i++)heap[out+i]=text.charCodeAt(i);
                 if(size)heap[out+Math.min(text.length,size-1)]=0;
                 return text.length+1;
@@ -42,7 +44,7 @@ export function createNativeRegexLibc() {
     };
     provide.diagnostics = key => ({
         transport:'ported-posixregex-direct-js',
-        backend:'javascript-native-macos-compatible-ERE-C-locale',
+        backend:'javascript-emscripten-musl-TRE-ERE-C-locale',
         calls:{...(statistics.get(key) ?? emptyCalls())},
         liveHandles:namespaces.get(key)?.size ?? 0,
     });

@@ -14,7 +14,7 @@ import { compilePosixRegex, execPosixRegex, freePosixRegex, posixRegexError,
 import { withCEnvironment } from './c-runtime.js';
 import * as allocation from './alloc.js';
 import * as strings from './strutil.js';
-import * as isaac from './isaac64.js';
+import * as isaac from '../isaac64.js';
 import * as md4 from './nhmd4.js';
 import * as calendar from './calendar.js';
 import * as regex from './posixregex.js';
@@ -176,12 +176,22 @@ export function createJsRuntime(options = {}) {
             const pointer = memory.calloc(1, JS_RUNTIME_LAYOUTS.isaac64.size);
             if (!pointer) throw new RangeError('ISAAC allocation failed');
             const value = isaacContext(pointer);
-            isaac.isaac64_init(value, seed, seed.length);
+            const initialized = isaac.isaac64_init(seed);
+            value.r.set(initialized.r);
+            value.m.set(initialized.m);
+            for (const field of ['n','a','b','c']) value[field] = initialized[field];
             return {
                 address: pointer,
                 next: () => isaac.isaac64_next_uint64(isaacContext(pointer)),
-                bounded: n => isaac.isaac64_next_uint(isaacContext(pointer), BigInt(n)),
-                reseed: bytes => isaac.isaac64_reseed(isaacContext(pointer), bytes, bytes.length),
+                bounded(n) {
+                    n=BigInt.asUintN(64,BigInt(n));
+                    if(!n)throw new RangeError('Zero ISAAC bound');
+                    let r,v,d;
+                    do {r=isaac.isaac64_next_uint64(isaacContext(pointer));v=r%n;d=r-v;}
+                    while(BigInt.asUintN(64,d+n-1n)<d);
+                    return v;
+                },
+                reseed: bytes => isaac.isaac64_reseed(isaacContext(pointer), bytes),
             };
         },
         createMD4() {

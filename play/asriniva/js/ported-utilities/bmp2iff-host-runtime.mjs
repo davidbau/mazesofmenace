@@ -1,0 +1,24 @@
+import * as core from './bmp2iff-host.mjs';
+import {withCEnvironment} from './bmp2iff-host-scope.mjs';
+export function createUtility(m){
+    const names=['BMPFILEHEADER_SIZE','BMPINFOHEADER_SIZE','RGB_SIZE','pointerSize','longSize','bfType','bfOffBits','biWidth','biHeight','biBitCount','biClrUsed','SEEK_SET','SEEK_END'];
+    const layout=Object.fromEntries(names.map((k,i)=>[k,Number(m._bmp_layout(i))]));
+    for(const[k,v]of Object.entries({BMPFILEHEADER_SIZE:14,BMPINFOHEADER_SIZE:40,RGB_SIZE:3,pointerSize:8,longSize:8}))if(layout[k]!==v)throw Error('Review BMP ABI '+k);
+    const addr=p=>Number(p?.address??p??0),size=n=>BigInt.asUintN(64,BigInt(n)),memory=()=>new DataView(m.HEAPU8.buffer),strings=new Map();
+    const literal=s=>{if(typeof s!=='string')return addr(s);if(strings.has(s))return strings.get(s);const b=new TextEncoder().encode(s+'\0'),p=Number(m._malloc(BigInt(b.length)));m.HEAPU8.set(b,p);strings.set(s,p);return p;};
+    const types={u8:['Uint8',1],i32:['Int32',4],u32:['Uint32',4],ptr:['BigUint64',8],RGB:[null,layout.RGB_SIZE]};
+    const rgb=p=>{const o={address:p};for(const[k,i]of[['r',0],['g',1],['b',2]])Object.defineProperty(o,k,{get:()=>memory().getUint8(p+i),set:v=>memory().setUint8(p+i,Number(v))});return o;};
+    function arrayAt(kind,p,n){const [method,stride]=types[kind];const target={address:p,byteLength:n*stride,[Symbol.toPrimitive]:()=>p};return new Proxy(target,{get(o,k){if(typeof k==='string'&&/^-?\d+$/.test(k)){const at=p+Number(k)*stride;if(kind==='RGB')return rgb(at);const v=memory()['get'+method](at,true);return kind==='ptr'?arrayAt('u8',Number(v),0):v;}return Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^-?\d+$/.test(k)){const at=p+Number(k)*stride;if(kind==='RGB'){const x=[v.r,v.g,v.b];for(let j=0;j<3;j++)memory().setUint8(at+j,x[j]);}else memory()['set'+method](at,kind==='ptr'?BigInt(addr(v)):Number(v),true);return true;}return Reflect.set(o,k,v);}});}
+    const array=(kind,n,init,zero=false)=>{const p=m.stackAlloc(n*types[kind][1]),a=arrayAt(kind,p,n);if(zero)m.HEAPU8.fill(0,p,p+a.byteLength);if(init)for(let i=0;i<init.length;i++)a[i]=init[i];return a;};
+    const record=type=>{const o={address:m.stackAlloc(layout[type+'_SIZE'])},defs=type==='BMPFILEHEADER'?[['bfType','Uint16'],['bfOffBits','Uint32']]:[['biWidth','Int32'],['biHeight','Int32'],['biBitCount','Uint16'],['biClrUsed','Uint32']];for(const[k,t]of defs)Object.defineProperty(o,k,{get:()=>memory()['get'+t](o.address+layout[k],true)});return o;};
+    const C={callLocal(fn,...args){const sp=m.stackSave();try{return fn(...args);}finally{m.stackRestore(sp);}},layout,int:n=>Number(n)|0,uint:n=>Number(BigInt.asUintN(32,BigInt(n))),uchar:n=>Number(n)&255,size_t:size,div:(a,b)=>Math.trunc(a/b),ptrAdd:(p,n)=>Number(BigInt.asUintN(64,BigInt(addr(p))+BigInt(n))),array,record,bytes:p=>arrayAt('u8',addr(p),0),iff_fp:0,stderr:1,SEEK_SET:layout.SEEK_SET,SEEK_END:layout.SEEK_END,
+      rows:(n,w)=>{const a=array('u8',n*w);return new Proxy(a,{get(o,k){if(typeof k==='string'&&/^\d+$/.test(k))return arrayAt('u8',o.address+Number(k)*w,w);return Reflect.get(o,k);}});},
+      argv:p=>new Proxy({address:addr(p)},{get(o,k){return typeof k==='string'&&/^\d+$/.test(k)?Number(memory().getBigUint64(o.address+Number(k)*8,true)):Reflect.get(o,k);}}),
+      malloc:n=>arrayAt('u8',Number(m._malloc(size(n))),0),calloc:(n,s)=>arrayAt('u8',Number(m._calloc(size(n),size(s))),0),free:p=>m._free(BigInt(addr(p))),
+      memset:(p,v,n)=>m._memset(BigInt(addr(p)),Number(v),size(n)),memcpy:(d,s,n)=>m._memcpy(BigInt(addr(d)),BigInt(addr(s)),size(n)),strcmp:(a,b)=>m._strcmp(BigInt(literal(a)),BigInt(literal(b))),atoi:s=>m._atoi(BigInt(literal(s))),abs:n=>Math.abs(n|0)|0,
+      fopen:(p,mode)=>Number(m._bmp_fopen(BigInt(literal(p)),BigInt(literal(mode)))),fclose:p=>m._bmp_fclose(BigInt(addr(p))),fread:(p,a,b,f)=>m._bmp_fread(BigInt(addr(p)),size(a),size(b),BigInt(addr(f))),fwrite:(p,a,b,f)=>m._bmp_fwrite(BigInt(literal(p)),size(a),size(b),BigInt(addr(f))),fputc:(c,f)=>m._bmp_fputc(c|0,BigInt(addr(f))),ftell:f=>m._bmp_ftell(BigInt(addr(f))),fseek:(f,o,w)=>m._bmp_fseek(BigInt(addr(f)),BigInt(o),w|0),perror:s=>m._bmp_perror(BigInt(literal(s))),
+      fprintf:(_stream,fmt,...args)=>args.length===0?m._bmp_error0(BigInt(literal(fmt))):typeof args[0]==='number'&&fmt.includes('%d')?m._bmp_error_int(BigInt(literal(fmt)),args[0]|0):m._bmp_error_ptr(BigInt(literal(fmt)),BigInt(literal(args[0]))),
+      printf:(fmt,p,w,h,c,n,t)=>m._bmp_summary(BigInt(literal(fmt)),BigInt(literal(p)),w|0,h|0,c|0,n|0,t|0),
+    };
+    return {C,invoke(name,...args){const sp=m.stackSave();try{if(name==='coldist')args=args.map(p=>rgb(addr(p)));if(name==='nearest'){args[0]=rgb(addr(args[0]));args[1]=arrayAt('RGB',addr(args[1]),args[2]);}return withCEnvironment(C,core[name],...args);}finally{m.stackRestore(sp);}}};
+}

@@ -1,3 +1,15 @@
+// Fixed scalar field metadata only; offsets and ABI sizes remain checked per view.
+const mondataFields=Object.freeze({
+    attack:Object.freeze([Object.freeze(["aatyp","Uint8",1]),Object.freeze(["adtyp","Uint8",1]),Object.freeze(["damn","Uint8",1]),Object.freeze(["damd","Uint8",1])]),
+    permonst:Object.freeze([Object.freeze(["pmidx","Int32",4]),Object.freeze(["mlet","Int8",1]),Object.freeze(["mlevel","Int8",1]),Object.freeze(["mmove","Int8",1]),Object.freeze(["ac","Int8",1]),Object.freeze(["geno","Uint16",2]),Object.freeze(["mresists","Uint8",1]),Object.freeze(["mflags1","BigUint64",8]),Object.freeze(["mflags2","BigUint64",8]),Object.freeze(["msize","Uint8",1]),Object.freeze(["msound","Uint8",1])]),
+    object:Object.freeze([Object.freeze(["oclass","Int8",1]),Object.freeze(["otyp","Int16",2]),Object.freeze(["oartifact","Int8",1]),Object.freeze(["owornmask","BigInt64",8])]),
+    monster:Object.freeze([Object.freeze(["mnum","Int16",2]),Object.freeze(["movement","Int16",2]),Object.freeze(["mhp","Int32",4]),Object.freeze(["mx","Int16",2]),Object.freeze(["my","Int16",2]),Object.freeze(["cham","Int16",2]),Object.freeze(["mtame","Int8",1]),Object.freeze(["m_lev","Uint8",1]),Object.freeze(["mintrinsics","Uint16",2]),Object.freeze(["mextrinsics","Uint16",2]),Object.freeze(["mtrapseen","BigInt64",8]),Object.freeze(["seen_resistance","BigUint64",8])]),
+    trap:Object.freeze([Object.freeze(["tx","Int16",2]),Object.freeze(["ty","Int16",2])]),
+    hero:Object.freeze([Object.freeze(["umovement","Int16",2]),Object.freeze(["ulycn","Int32",4]),Object.freeze(["ucreamed","Uint32",4]),Object.freeze(["umonnum","Int32",4]),Object.freeze(["umonster","Int32",4]),Object.freeze(["ulevel","Int32",4])]),
+    props:Object.freeze([Object.freeze(["intrinsic","BigInt64",8]),Object.freeze(["extrinsic","BigInt64",8]),Object.freeze(["blocked","BigInt64",8])]),
+    mvitals:Object.freeze([Object.freeze(["mvflags","Uint8",1])]),
+    objects:Object.freeze([Object.freeze(["oc_oprop","Uint8",1]),Object.freeze(["oc_skill","Int8",1])]),
+});
 // Compiler layouts and header macros only; monster policy stays in mondata.js.
 export function createMondataEnvironment(services, layout, namespace) {
     const widths = {pointerSize:8,longSize:8,intSize:4,shortSize:2,booleanSize:1,coordSize:2,
@@ -18,8 +30,7 @@ export function createMondataEnvironment(services, layout, namespace) {
         set(value){view()['set'+kind](at(),kind.startsWith('Big')?BigInt(value):Number(value),true);},
     });
     const fields=(obj,at,prefix,definitions)=>{
-        for(const [key,kind] of definitions){
-            const size=Number(kind.match(/\d+/)[0])/8;
+        for(const [key,kind,size] of definitions){
             if(layout[prefix+key+'_size']!==size)throw new Error('Review changed mondata field: '+prefix+key);
             scalar(obj,key,()=>at+layout[prefix+key],kind);
         }return obj;
@@ -29,18 +40,18 @@ export function createMondataEnvironment(services, layout, namespace) {
     });
     const indexed=get=>new Proxy({}, {get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);}});
     function attack(value){const at=address(value);if(!at)return 0;
-        return fields({address:identity(value)},at,'atk_',[['aatyp','Uint8'],['adtyp','Uint8'],['damn','Uint8'],['damd','Uint8']]);}
+        return fields({address:identity(value)},at,'atk_',mondataFields.attack);}
     function permonst(value){const at=address(value);if(!at)return 0;
-        const obj=fields({address:identity(value)},at,'pm_',[['pmidx','Int32'],['mlet','Int8'],['mlevel','Int8'],['mmove','Int8'],['ac','Int8'],['geno','Uint16'],['mresists','Uint8'],['mflags1','BigUint64'],['mflags2','BigUint64'],['msize','Uint8'],['msound','Uint8']]);
+        const obj=fields({address:identity(value)},at,'pm_',mondataFields.permonst);
         Object.defineProperties(obj,{
             mattk:{get(){return indexed(i=>attack(at+layout.pm_mattk+i*layout.attackSize));}},
             pmnames:{get(){return indexed(i=>pointer(at+layout.pm_pmnames+i*layout.pointerSize));}},
         });return obj;}
     function object(value){const at=address(value);if(!at)return 0;
-        const obj=fields({address:identity(value)},at,'obj_',[['oclass','Int8'],['otyp','Int16'],['oartifact','Int8'],['owornmask','BigInt64']]);
+        const obj=fields({address:identity(value)},at,'obj_',mondataFields.object);
         pointerField(obj,'nobj',()=>at+layout.obj_nobj,object);return obj;}
     function monster(value){const at=address(value);if(!at)return 0;
-        const obj=fields({address:identity(value)},at,'mon_',[['mnum','Int16'],['movement','Int16'],['mhp','Int32'],['mx','Int16'],['my','Int16'],['cham','Int16'],['mtame','Int8'],['m_lev','Uint8'],['mintrinsics','Uint16'],['mextrinsics','Uint16'],['mtrapseen','BigInt64'],['seen_resistance','BigUint64']]);
+        const obj=fields({address:identity(value)},at,'mon_',mondataFields.monster);
         pointerField(obj,'data',()=>at+layout.mon_data,permonst);
         for(const key of ['mw','minvent'])pointerField(obj,key,()=>at+layout['mon_'+key],object);
         pointerField(obj,'nmon',()=>at+layout.mon_nmon,monster);
@@ -48,28 +59,28 @@ export function createMondataEnvironment(services, layout, namespace) {
             Object.defineProperty(obj,key,{get(){return services.monsterBit(at,i);}});
         return obj;}
     function trap(value){const at=address(value);if(!at)return 0;
-        const obj=fields({address:identity(value)},at,'dtrap_',[['tx','Int16'],['ty','Int16']]);
+        const obj=fields({address:identity(value)},at,'dtrap_',mondataFields.trap);
         Object.defineProperty(obj,'ttyp',{get(){return services.trapBit(at,0);}});return obj;}
     const scalarPointer=(value,kind)=>{const at=address(value);if(!at)return 0;const obj={address:identity(value)};scalar(obj,'value',()=>at,kind);return obj;};
     const intPointer=value=>scalarPointer(value,'Int32');
     const charPointer=value=>typeof value==='string'?services.literal(value):identity(value);
     const charPointerPointer=value=>{const at=address(value);if(!at)return 0;const obj={address:identity(value)};
         Object.defineProperty(obj,'value',{get(){return pointer(at);},set(value){view().setBigUint64(at,raw(charPointer(value)),true);}});return obj;};
-    const u=fields({address:global(0)},global(0),'u_',[['umovement','Int16'],['ulycn','Int32'],['ucreamed','Uint32'],['umonnum','Int32'],['umonster','Int32'],['ulevel','Int32']]);
+    const u=fields({address:global(0)},global(0),'u_',mondataFields.hero);
     pointerField(u,'usteed',()=>global(0)+layout.u_usteed,monster);
-    const props=indexed(i=>fields({address:global(0)+layout.u_uprops+i*layout.propSize},global(0)+layout.u_uprops+i*layout.propSize,'prop_',[['intrinsic','BigInt64'],['extrinsic','BigInt64'],['blocked','BigInt64']]));
+    const props=indexed(i=>fields({address:global(0)+layout.u_uprops+i*layout.propSize},global(0)+layout.u_uprops+i*layout.propSize,'prop_',mondataFields.props));
     Object.defineProperty(u,'uprops',{get(){return props;}});
     for(const [i,key] of ['twoweap','uswallow'].entries())Object.defineProperty(u,key,{get(){return services.heroBit(i);}});
     u.uhave={};Object.defineProperty(u.uhave,'amulet',{get(){return services.heroBit(2);}});
     const gy={},svm={},gi={},cg={},gm={},gu={urace:{}};
     Object.defineProperty(gy,'youmonst',{get(){return monster(global(1)+layout.youmonst);}});
-    Object.defineProperty(svm,'mvitals',{get(){return indexed(i=>fields({},global(2)+layout.mvitals+i*layout.mvitalSize,'mvital_',[['mvflags','Uint8']]));}});
+    Object.defineProperty(svm,'mvitals',{get(){return indexed(i=>fields({},global(2)+layout.mvitals+i*layout.mvitalSize,'mvital_',mondataFields.mvitals));}});
     pointerField(gi,'invent',()=>global(3)+layout.invent,object);
     Object.defineProperty(cg,'zeroobj',{get(){return object(global(4)+layout.zeroobj);}});
     scalar(gm,'multi',()=>global(5)+layout.multi,'BigInt64');
     scalar(gu.urace,'mnum',()=>global(8)+layout.raceMnum,'Int16');
     const mons=indexed(i=>permonst(global(9)+i*layout.permonstSize));
-    const objects=indexed(i=>fields({address:global(10)+i*layout.objectClassSize},global(10)+i*layout.objectClassSize,'cls_',[['oc_oprop','Uint8'],['oc_skill','Int8']]));
+    const objects=indexed(i=>fields({address:global(10)+i*layout.objectClassSize},global(10)+i*layout.objectClassSize,'cls_',mondataFields.objects));
     const def_monsyms=indexed(i=>{const at=global(11)+i*layout.classSymSize,obj={address:at};
         scalar(obj,'sym',()=>at+layout.sym_sym,'Int8');pointerField(obj,'explain',()=>at+layout.sym_explain);return obj;});
     const levl=indexed(x=>indexed(y=>{const obj={};Object.defineProperty(obj,'lit',{get(){return services.terrainBit(x,y,0);}});return obj;}));

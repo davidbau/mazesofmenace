@@ -10,17 +10,33 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
         if(Number(layout[k])!==v)throw Error('Review changed TERMCAP ABI: '+k);
     const pointerValue=v=>{const n=BigInt.asUintN(64,BigInt(v?.address??v??0));return n<=BigInt(Number.MAX_SAFE_INTEGER)?Number(n):n;};
     const addr=v=>Number(v?.address??v??0),raw=v=>BigInt.asUintN(64,BigInt(typeof v==='function'?functionPointer(v):typeof v==='string'?services.literal(v):typeof v==='boolean'?Number(v):typeof v==='number'?Math.trunc(v):v?.address??v??0));
-    const memory=()=>new DataView(services.heap().buffer),cache=new Map(),names=Object.keys(schemas);
+    let dataView;
+    const memory=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;},cache=new Map(),names=Object.keys(schemas);
     const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.f?8:d.s?Number(layout[d.s+'Size']):d.a.reduce((a,b)=>a*b,1)*width(d.e);
     const decode=(d,v)=>{if(d.p!==undefined)return d.p?view(d.p,v):pointerValue(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return v;
         const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
-    const read=(d,at)=>{if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
+    const read=(d,at)=>{if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return bits===64?decode(d,dv.getBigUint64(at,true)):dv[(d.t[0]==='i'?'getInt':'getUint')+bits](at,true);};
     const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
-    function array(d,at){const key='array:'+JSON.stringify(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},stride=width(child),target={address:at,byteLength:width(d),descriptor:d};
-        const result=new Proxy(target,{get(o,k){return typeof k==='string'&&/^\d+$/.test(k)?read(child,at+Number(k)*stride):Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});cache.set(key,result);return result;}
-    function view(name,value){const at=pointerValue(value);if(!at)return 0;const key=name+':'+at;if(cache.has(key))return cache.get(key);const result=new Proxy({address:at,kind:name},{get:(o,k)=>{if(typeof k==='string'&&/^\d+$/.test(k))return view(name,at+Number(k)*Number(layout[name+'Size']));if(typeof k==='string'&&!Reflect.has(o,k))throw Error('Unknown TERMCAP record field '+name+'.'+k);return Reflect.get(o,k);},set:(o,k,v)=>{if(!Reflect.has(o,k))throw Error('Unknown TERMCAP record field '+name+'.'+String(k));return Reflect.set(o,k,v);}});cache.set(key,result);const ki=names.indexOf(name);
-        schemas[name].fields.forEach((f,i)=>Object.defineProperty(result,f.name,{get:()=>decode(f.d,services.read(ki,at,i)),set:v=>services.write(ki,at,i,raw(v))}));
-        return result;}
+    const arrayTypes=new WeakMap(),recordTypes=new Map();
+    function array(d,at){let type=arrayTypes.get(d);if(!type){const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e};type={key:'array:'+JSON.stringify(d),child,stride:width(child),bytes:width(d)};arrayTypes.set(d,type);}let addresses=cache.get(type.key);if(!addresses)cache.set(type.key,addresses=new Map());if(addresses.has(at))return addresses.get(at);const {child,stride}=type,target={address:at,byteLength:type.bytes,descriptor:d},children=child.s||child.a?new Map():null;
+        const result=new Proxy(target,{get(o,k){if(typeof k==='string'&&/^\d+$/.test(k)){const i=Number(k);if(!children)return read(child,at+i*stride);if(!children.has(i))children.set(i,read(child,at+i*stride));return children.get(i);}return Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});addresses.set(at,result);return result;}
+    function view(name,value){const at=pointerValue(value);if(!at)return 0;const key=name+':'+at;if(cache.has(key))return cache.get(key);
+        let type=recordTypes.get(name);
+        if(!type){
+            const prototype={},ki=names.indexOf(name);
+            for(const [i,f]of schemas[name].fields.entries()){
+                if(name==='nomux_cell'){
+                    // The connected C module supplies the byte offset. Every
+                    // access still reads/writes live memory, including growth.
+                    const offset=addr(services.address(ki,at,i))-addr(at);
+                    if(!Number.isInteger(offset)||offset<0||offset+width(f.d)>Number(layout.nomux_cellSize))throw Error('Review changed TERMCAP cell offset '+f.name);
+                    Object.defineProperty(prototype,f.name,{get(){return read(f.d,addr(this.address)+offset);},set(v){write(f.d,addr(this.address)+offset,v);}});
+                }else Object.defineProperty(prototype,f.name,{get(){return decode(f.d,services.read(ki,this.address,i));},set(v){services.write(ki,this.address,i,raw(v));}});
+            }
+            type={prototype,handler:{get(o,k){if(typeof k==='string'&&/^\d+$/.test(k))return view(name,o.address+Number(k)*Number(layout[name+'Size']));if(typeof k==='string'&&!Reflect.has(o,k))throw Error('Unknown TERMCAP record field '+name+'.'+k);return Reflect.get(o,k);},set(o,k,v){if(!Reflect.has(o,k))throw Error('Unknown TERMCAP record field '+name+'.'+String(k));return Reflect.set(o,k,v);}}};
+            recordTypes.set(name,type);
+        }
+        const result=new Proxy(Object.assign(Object.create(type.prototype),{address:at,kind:name}),type.handler);cache.set(key,result);return result;}
     const env=Object.assign(Object.create(services),layout,{view,
         callLocal:(fn,...args)=>{const saved=services.stackSave();try{return fn(...args);}finally{services.stackRestore(saved);}},
         addressOf:(o,f)=>addr(services.address(names.indexOf(o.kind),o.address,schemas[o.kind].fields.findIndex(x=>x.name===f))),

@@ -267,7 +267,7 @@ export function cmd_from_func(fn) {
             if (i >= 32 && i <= 126)
                 return i;
             else
-                ret = (i << 24) >> 24; // C cmd.c:3058: ret = (char) i.
+                ret = i;
         }
     }
     const bind = cmdbind_get(32);

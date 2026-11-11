@@ -374,7 +374,7 @@ export function undead_to_corpse(mndx)
         break;
     case C.PM_VAMPIRE:
     case C.PM_VAMPIRE_LEADER:
-
+/* DEFERRED */
 
 
     case C.PM_HUMAN_ZOMBIE:
@@ -514,7 +514,7 @@ export function make_corpse(mtmp,corpseflags)
     case C.PM_GRAY_DRAGON:
     case C.PM_GOLD_DRAGON:
     case C.PM_SILVER_DRAGON:
-
+/* DEFERRED */
 
 
     case C.PM_RED_DRAGON:
@@ -2366,7 +2366,7 @@ export function replmon(mtmp,mtmp2)
         C.del_light_source(C.LS_MONSTER, C.monst_to_any(mtmp));
     }
     (mtmp2.nmon = C.fmon);
-    (C.fmon = C.int(mtmp2));
+    (C.fmon = mtmp2);
     if (C.samePtr(C.u.ustuck, mtmp))
         set_ustuck(mtmp2);
     if (C.samePtr(C.u.usteed, mtmp))
@@ -2391,7 +2391,7 @@ export function relmon(mon,monst_list)
 
     /* remove 'mon' from the 'fmon' list */
     if (C.samePtr(mon, C.fmon)) {
-        (C.fmon = C.int(C.fmon.nmon));
+        (C.fmon = C.fmon.nmon);
     } else {
         let mtmp;
 
@@ -3178,7 +3178,7 @@ export function monkilled(mdef,fltxt,how)
 
     if (((fltxt && (mdef.wormno ? C.worm_known(mdef) : C.cansee(mdef.mx, mdef.my))) ? 1 : 0))
         C.pline_mon(mdef, "%s is %s%s%s!", C.Monnam(mdef),
-              (C.nonliving(mptr) ? "destroyed" : "killed"), (fltxt ? " by the " : ""), fltxt);
+              (C.nonliving(mptr) ? "destroyed" : "killed"), (C.loadChar(fltxt) ? " by the " : ""), fltxt);
     else
         /* sad feeling is deferred until after potential life-saving */
         (C.iflags.sad_feeling = C.char((mdef.mtame ? 1 : 0)));
@@ -5801,7 +5801,7 @@ export function flash_mon(mtmp)
 
 /*if (!m_next2u(mtmp))*/
 
-/* DEFERRED */
+
 
 /* can't do this here; leave it for mfndpos() */
 

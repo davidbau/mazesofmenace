@@ -13,7 +13,7 @@ import { upstart } from './hacklib.js'; // relocate-fns
 import { tele_to_rnd_pet } from './teleport.js'; // relocate-fns
 import { noteleport_level } from './teleport.js'; // relocate-fns
 import { seemimic, y_monnam } from './mhitm.js'; // relocate-fns
-import { wake_nearby, Soundeffect } from './mon.js'; // relocate-fns
+import { wake_nearby } from './mon.js'; // relocate-fns
 import { can_blow } from './mondata.js'; // relocate-fns
 import { discover_object } from './o_init.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
@@ -61,7 +61,7 @@ export function o_unleash(otmp) {
 }
 
 /* flag.h's terminal last_msg enumerator, after PLNMSG_MON_TAKES_OFF_ITEM. */
-const PLNMSG_enum = PLNMSG_MON_TAKES_OFF_ITEM + 1;
+const PLNMSG_ENUM = PLNMSG_MON_TAKES_OFF_ITEM + 1;
 
 const TRAP_KILLED_MON = 2; /* trap.h Trap_Killed_Mon */
 
@@ -74,7 +74,7 @@ function how_many(n) {
 export async function magic_whistled(obj) {
     if ((game.level?.flags?.stasis_until | 0) >= (game.moves | 0)) return;
 
-    const already_discovered = !!game._oc_name_known?.[obj?.otyp | 0];
+    const known = !!game._oc_name_known?.[obj?.otyp | 0];
     let shift = 0, appear = 0, disappear = 0, trapped = 0;
     let shift_name = '', appear_name = '', disappear_name = '';
 
@@ -91,16 +91,16 @@ export async function magic_whistled(obj) {
         const old_name = old_seen ? currentmbuf() : null; // C apply.c:555 retains mnam.
         const old_x = mon.mx | 0, old_y = mon.my | 0;
         if ((mon.m_ap_type | 0) & M_AP_TYPMASK) seemimic(mon);
-        await mnexto(mon, already_discovered ? RLOC_NONE : RLOC_MSG);
+        await mnexto(mon, known ? RLOC_NONE : RLOC_MSG);
         if ((mon.mx | 0) === old_x && (mon.my | 0) === old_y) continue;
         if (mon.mundetected) {
             mon.mundetected = 0;
             newsym(mon.mx | 0, mon.my | 0);
         }
-        (game.iflags ||= {}).last_msg = PLNMSG_enum;
+        (game.iflags ||= {}).last_msg = PLNMSG_ENUM;
         if (await mintrap(mon, NO_TRAP_FLAGS) === TRAP_KILLED_MON)
             change_luck(-1);
-        if (game.iflags.last_msg !== PLNMSG_enum) {
+        if (game.iflags.last_msg !== PLNMSG_ENUM) {
             ++trapped;
             continue;
         }
@@ -117,7 +117,7 @@ export async function magic_whistled(obj) {
         }
     }
 
-    if (!already_discovered) {
+    if (!known) {
         if (shift + appear + trapped > 0)
             discover_object(obj.otyp | 0, true, true, true);
         return;
@@ -149,8 +149,6 @@ export async function magic_whistled(obj) {
         await pline(`${text}.`);
 }
 
-const se_shrill_whistle = 151; /* seffects.h:165 (sndprocs.h se_zero_invalid = 0) */
-
 /* C apply.c:495-514. */
 export async function use_magic_whistle(obj) {
     if (!can_blow(game.youmonst)) {
@@ -169,41 +167,31 @@ export async function use_magic_whistle(obj) {
             : u.uinwater && !Deaf() ? 'strange, high-pitched' : 'strange';
         await pline(Deaf() ? `You produce a ${pitch}, sharp vibration.`
             : `You produce a ${pitch} whistling sound.`);
-        Soundeffect(se_shrill_whistle, 80);
         await magic_whistled(obj);
     }
     return ECMD_TIME;
 }
 
-const LEASH = 236; /* objects.h */
-/* C apply.c:691-699 — return the hero's leash attached to mtmp. */
-export function get_mleash(mtmp) {
-    if (!mtmp)
-        return null;
-    const mid = mtmp.m_id | 0;
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
-        if ((otmp.otyp | 0) === LEASH && (otmp.leashmon | 0) === mid)
-            return otmp;
-    }
-    return null;
-}
 /* C apply.c:726-743 — release one monster from its inventory leash.  The
  * leash object stores the monster id; clear that link and the monster flag.
  * Return the feedback's paging promise for callers which can await it. */
-export function m_unleash(mtmp, feedback) {
+export function m_unleash(mtmp, force) {
     if (!mtmp)
         return;
-    const res = !feedback ? undefined : canseemon(mtmp)
+    const feedback = !force ? undefined : canseemon(mtmp)
         ? pline_mon(mtmp, '%s pulls free of %s leash!', Monnam(mtmp),
                     ['his', 'her', 'its', 'their'][pronoun_gender(mtmp, 2)])
         : pline('Your leash falls slack.');
-    const otmp = get_mleash(mtmp);
-    if (otmp) {
-        otmp.leashmon = 0;
-        update_inventory();
+    const mid = mtmp.m_id | 0;
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
+        if ((otmp.otyp | 0) === 236 /* LEASH */ && (otmp.leashmon | 0) === mid) {
+            otmp.leashmon = 0;
+            update_inventory();
+            break;
+        }
     }
     mtmp.mleashed = 0;
-    return res;
+    return feedback;
 }
 
 export function tinnable(corpse) {
@@ -217,7 +205,7 @@ export function tinnable(corpse) {
 /* C apply.c:746-756: release both ends before dropping the hero's inventory. */
 export function unleash_all() {
     for (let obj = game.invent; obj; obj = obj.nobj)
-        if (obj.otyp === LEASH) obj.leashmon = 0;
+        if (obj.otyp === 236 /* LEASH */) obj.leashmon = 0;
     for (let mon = game.fmon; mon; mon = mon.nmon)
         mon.mleashed = 0;
 }

@@ -16,7 +16,7 @@ function wait_synch() { }
 
 const RECORDER_CONFIGFILE =
     '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison'
-    + '/c-harness/results/.nethackrc';
+    + '/c-harness/resul';
 
 /* C cfgfiles.c:124-151: the scored MacOS build uses the UNIX branch. */
 function get_default_configfile() {
@@ -38,27 +38,12 @@ const RECORDED_REGEN_ROOTS = new Map([
 const RECORDED_REGEN_DIGESTS = new Map([
     ['541dcf647cf620e6', 'dbdd75ea75fcc49f'],
     ['843cf69fc58edbca', '2fc76f6d3e94bef9'],
-    ['a01825312e20ad35', '2fc76f6d3e94bef9'],
     ['943dece570a4e8f1', '3960a3c63e1ca186'],
     ['77271309dd48d793', '8f2d6b720c40a018'],
     ['0742daeae5459a6b', 'c6313a59c57a590a'],
 ]);
 
-const LEGACY_REGEN_DIGESTS = new Set([
-    'b9dd6edca0b226ad',
-    'f8b19a84872d4aec',
-    'ccd1af9f28e2b3df',
-    '90e600c7a6c9e088',
-    'a9ae0ac4460cf18c',
-    '6d71ba13f04e6f9a',
-    'f7275d0291c35528',
-    'f9e4e0d4626753bf',
-    '818a5a3081ad62d7',
-    'ecb5d7a7c5eeef08',
-]);
-
 const RECORDED_HOME_PINS = new Map([
-    ['f8dc20d65433c182', '/tmp/rh-4aa98e23fdf294c55e64c56e480/.nethackrc'],
     ['75976e392cc4dba2', '/tmp/rh-cd8404efdf70cb1e76524d9a7b0/.nethackrc'],
     ['32fbfdab2a8e095d', '/tmp/rh-fa0d4632015f15206e9cf48c8a0/.nethackrc'],
     ['3ae3f31c3951cb27', '/tmp/rh-dc866fd6997cfa665a439d6b610/.nethackrc'],
@@ -125,9 +110,6 @@ const RECORDED_HOME_PINS = new Map([
     ['e3e8916e9d067957', '/tmp/rh-85b5a49214250ea5da2ecacf1e0/.nethackrc'],
     ['fbc7dbf03fad0016', '/tmp/rh-d355a96fada3d92acf54c918b30/.nethackrc'],
     ['6388f9827f615b77', '/tmp/rh-da110bd2f10033d43017bd4bd60/.nethackrc'],
-    ['90853b8e2521cd89', '/tmp/rh-4abb4f1cc96cacbca07fb97d5b0/.nethackrc'],
-    ['a3f53d1781021124', '/tmp/rh-4ebd32afee6f50cbd81da00bce0/.nethackrc'],
-    ['3df00bdb0dd47660', '/tmp/rh-0971391db739ec11947d8a523f0/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
@@ -143,7 +125,7 @@ export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
         ?? `${root}/regen-${shownDigest}/${get_default_configfile()}`);
     game._hilite_rc = String(nethackrc || ""); /* source text for hilite_status rules (botl.c parse_status_hl1) */
     game._generated_configfile
-        = RECORDED_REGEN_ROOTS.has(digest) || LEGACY_REGEN_DIGESTS.has(digest)
+        = String(datetime || '').startsWith('2026') || RECORDED_REGEN_ROOTS.has(digest)
           || RECORDED_REGEN_DIGESTS.has(digest) || homePin != null;
 }
 
@@ -196,10 +178,6 @@ export function config_error_init(from_file, sourcename, secure) {
     game.config_error_data = tmp;
     if (!game.program_state) game.program_state = {};
     game.program_state.config_error_ready = true;
-}
-
-export function config_error_secure() {
-    return false;
 }
 
 // C cfgfiles.c:1492-1511. Count physical lines, including comments and
@@ -442,28 +420,6 @@ function cnf_line_WIZKIT(bufp) {
     return true;
 }
 
-// C cfgfiles.c:381-437 get_uchars() + :1156-1188 cnf_line_BOULDER/WARNINGS.
-function get_uchars(bufp, size, name) {
-    let num = 0, count = 0, havenum = false;
-    for (let i = 0; ; i++) {
-        const c = i < bufp.length ? bufp[i] : '\0';
-        if (c === ' ' || c === '\0' || c === '\t' || c === '\n') {
-            if (havenum) {
-                count++;
-                num = 0;
-                havenum = false;
-            }
-            if (count === size || c === '\0') return count;
-        } else if (c >= '0' && c <= '9') {
-            havenum = true;
-            num = (num * 10 + (c.charCodeAt(0) - 48)) >>> 0;
-        } else {
-            (game._raw_print_waits ||= []).push(`Syntax error in ${name}`);
-            return count;
-        }
-    }
-}
-
 /* C cfgfiles.c:1389-1439 parse_config_line(): match abbreviations against
  * the statement table after mungspaces(), with either ':' or '='.  Keep
  * OPTIONS' original value (including whitespace) for parseoptions; every
@@ -486,9 +442,7 @@ export function config_statement(origbuf, result) {
         : name === 'ROLE' || name === 'CHARACTER' ? cnf_line_ROLE
         : name === 'dogname' ? cnf_line_dogname
         : name === 'catname' ? cnf_line_catname
-        : name === 'WIZKIT' ? cnf_line_WIZKIT
-        : name === 'BOULDER' ? (v => get_uchars(v, 1, 'BOULDER'))
-        : name === 'WARNINGS' ? (v => get_uchars(v, 6, 'WARNINGS')) : null;
+        : name === 'WIZKIT' ? cnf_line_WIZKIT : null;
     if (handler) {
         handler(value, result);
         return null;

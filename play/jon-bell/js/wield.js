@@ -15,7 +15,7 @@ import { addinv_nomerge } from './invent.js';
 import { nhgetch } from './input.js';
 import { reassign, update_inventory } from './inventory_refresh.js';
 import { arti_light_description, arti_light_radius, artifact_light } from './light.js';
-import { CORPSE, humanoid, permonstTemplate, splitobj, unsplitobj } from './makemon.js';
+import { permonstTemplate, splitobj, unsplitobj } from './makemon.js';
 import { clear_splitobjs, set_bknown } from './mklev.js';
 import { inside_shop } from './shk.js';
 import { On_stairs } from './stairs.js';
@@ -26,9 +26,6 @@ import { begin_burn, end_burn } from './timeout.js';
 import { bane_applies_hero, touch_artifact_youmonst } from './wizcmds.js';
 import { setworn } from './worn.js';
 import { W_QUIVER, W_SWAPWEP, W_WEP } from './const.js'; // relocate-fns
-import { W_ACCESSORY, W_ARMOR, W_SADDLE } from './const.js';
-/* include/hack.h invlet_basic: a..z then A..Z. */
-const invlet_basic = 52;
 import { Tobjnam } from './objnam.js'; // relocate-fns
 import { Blind } from './vision.js'; // relocate-fns
 
@@ -101,7 +98,7 @@ export async function doquiver_core(verb) {
     let was_uwep = false;
     let readyPartial = false;
     const was_twoweap = !!(u.twoweap);
-    /* C ref: wield.c:521 gm.multi = 0 */
+    /* C ref: wield.c:518 gm.multi = 0 */
     g.multi = 0;
     /* C ref: wield.c:519 event_log */
     /* NB: 'typeof event_log' on an undeclared identifier does NOT throw, so this
@@ -110,10 +107,10 @@ export async function doquiver_core(verb) {
      * Made an explicit global lookup: same behaviour, no unbound read. */
     if (typeof globalThis.event_log === 'function')
         globalThis.event_log(`multi[doquiver_core=${g.multi}]`);
-    /* C ref: wield.c:522-527 — an empty pack: uquiver is already Null, so say so
-     * and take NO key. */
+    /* C ref: wield.c:521-527 — an empty pack: uquiver is already Null, so say so
+     * and take NO key.  (The hand-rolled body had this too.) */
     if (!g.invent) {
-        await You('have nothing to ready for firing.');
+        await pline('You have nothing to ready for firing.');
         return ECMD_OK;
     }
     /* C ref: wield.c:529 clear_splitobjs() */
@@ -150,7 +147,7 @@ export async function doquiver_core(verb) {
             await pline('That ammunition is already readied!');
             return ECMD_OK;
         }
-        if ((newquiver.oclass | 0) === OCLASS_COIN) {
+        if ((newquiver.oclass | 0) === 12 /* COIN_CLASS */) {
             await You("can't ready only part of your gold.");
             await unsplitobj(newquiver);
             return ECMD_OK;
@@ -163,7 +160,8 @@ export async function doquiver_core(verb) {
         await pline('That ammunition is already readied!');
         return ECMD_OK;
     }
-    if ((newquiver.owornmask | 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+    const W_ARMOR_Q = 0x0000007f, W_ACCESSORY_Q = 0x000f0000, W_SADDLE_Q = 0x00100000;
+    if ((newquiver.owornmask | 0) & (W_ARMOR_Q | W_ACCESSORY_Q | W_SADDLE_Q)) {
         await You('cannot %s that!', verb);
         return ECMD_OK;
     }
@@ -182,7 +180,7 @@ export async function doquiver_core(verb) {
          * break;` (a 'n' answer) falls through to the all-or-nothing confirm
          * below; 'q' returns ECMD_OK; 'y' splits the rest off and does `goto
          * quivering`, skipping the confirm, the unwield and was_uwep. */
-        if ((newquiver.quan | 0) > 1 && inv_cnt(false) < invlet_basic && splittable(newquiver)) {
+        if ((newquiver.quan | 0) > 1 && inv_cnt(false) < 52 && splittable(newquiver)) {
             qbuf = `You are wielding ${newquiver.quan | 0} ${_ia_simpleonames(newquiver)}.`
                  + `  Ready ${(newquiver.quan | 0) - 1} of them?`;
             const splitAns = await _ynq_cmd(qbuf);
@@ -222,7 +220,7 @@ export async function doquiver_core(verb) {
         }
     } else if (newquiver === u.uswapwep) {
         /* C ref: wield.c:613-648 */
-        if ((newquiver.quan | 0) > 1 && inv_cnt(false) < invlet_basic && splittable(newquiver)) {
+        if ((newquiver.quan | 0) > 1 && inv_cnt(false) < 52 && splittable(newquiver)) {
             /* C offers the partial-stack split first.  The old port skipped
              * this prompt and therefore consumed the recorded `y` as the
              * all-or-nothing confirmation, leaving the stack unsplit. */
@@ -341,7 +339,7 @@ export async function setuwep(obj) {
 export async function doswapweapon() {
     const g = game;
     const u = g.u || (g.u = {});
-    /* C ref: wield.c:467  gm.multi = 0 (bookkeeping only, no RNG) */
+    /* C ref: wield.c:463  gm.multi = 0 (bookkeeping only, no RNG) */
     g.multi = 0;
     /* C ref: wield.c:465-469 —
      *     if (cantwield(gy.youmonst.data)) { pline("Don't be ridiculous!");
@@ -357,12 +355,12 @@ export async function doswapweapon() {
         return ECMD_FAIL;
     }
     const result = await _doswapweapon();
-    /* C ref: wield.c:497-498 —
+    /* C ref: wield.c:495-496 —
      *     if (u.twoweap && !can_twoweapon()) untwoweapon(); */
     if (u.twoweap && !(await can_twoweapon())) {
         await untwoweapon();
     }
-    /* C ref: wield.c:500  return result; */
+    /* C ref: wield.c:498  return result; */
     return result;
 }
 
@@ -628,7 +626,7 @@ export async function dowield() {
     }
     quiverSelection: if (u.uquiver && wep === u.uquiver) {
         let qbuf;
-        if ((u.uquiver.quan | 0) > 1 && inv_cnt(false) < invlet_basic
+        if ((u.uquiver.quan | 0) > 1 && inv_cnt(false) < 52
                 && splittable(u.uquiver)) {
             qbuf = `You have ${u.uquiver.quan | 0} ${_ia_simpleonames(u.uquiver)}`
                  + ` readied.  Wield one?`;
@@ -661,7 +659,9 @@ export async function dowield() {
         await setuqwep(null);
     }
     if (wep && itemCh !== '-') {
-        if ((wep.owornmask | 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+        const W_ARMOR_W = 0x0000007f, W_ACCESSORY_W = 0x000f0000,
+              W_SADDLE_W = 0x00100000;
+        if ((wep.owornmask | 0) & (W_ARMOR_W | W_ACCESSORY_W | W_SADDLE_W)) {
             await pline('You cannot wield that!');
             g.context.move = 0;   /* C ECMD_FAIL — no turn */
             return ECMD_FAIL;
@@ -712,7 +712,7 @@ export async function dowield() {
     /* C wield.c:183 — `wep->otyp == CORPSE && cant_wield_corpse(wep)`: wielding
      * a cockatrice corpse bare-handed (wield.c:143-155) is fatal; if the hero
      * is life-saved the corpse is not wielded and a turn is used. */
-    if ((wep.otyp | 0) === CORPSE && !u.uarmg
+    if ((wep.otyp | 0) === 265 /* CORPSE */ && !u.uarmg
             && sr_touch_petrifies_ptr(permonstTemplate(wep.corpsenm))
             && !_uprop_active('STONE_RES')) {
         await You('wield %s in your bare %s.', corpse_xname(wep, null, 4 /* CXN_PFX_THE */),
@@ -926,10 +926,6 @@ export async function dowield() {
  * exactly where C's function would do nothing. */
 async function _dowield_pushweapon_tail(oldwep) {
     const g = game, u = g.u || {};
-    /* C wield.c:270-271 ready_weapon() tail: bare-handed status condition
-     * flips when the hero gains or loses a wielded weapon. */
-    if (!!oldwep !== !!u.uwep && g.flags?.cond_barehanded)
-        g.disp.botl = true;
     if (g.flags?.pushweapon && oldwep && u.uwep !== oldwep)
         await setuswapwep(oldwep);
     if (u.twoweap)
@@ -969,7 +965,10 @@ export function empty_handed() {
     const youmonst_data = game.youmonst?.data;
     if (!youmonst_data) return "not wielding anything";
 
-    if (humanoid(youmonst_data)) {
+    const M1_HUMANOID = 0x00020000;
+    const is_humanoid = (youmonst_data.mflags1 & M1_HUMANOID) !== 0;
+
+    if (is_humanoid) {
         return "bare handed"; /* hands but no weapon and no gloves */
     }
 
@@ -978,7 +977,7 @@ export function empty_handed() {
 
 /* C wield.c:1072 mwelded: obj && (owornmask & W_WEP) && will_weld */
 export function mwelded(obj) {
-    return !!(obj && ((obj.owornmask | 0) & W_WEP) && will_weld(obj));
+    return !!(obj && ((obj.owornmask | 0) & 0x100) && will_weld(obj));
 }
 
 export async function weldmsg(obj) {
@@ -1019,7 +1018,12 @@ export async function untwoweapon() {
     if (u.twoweap) {
         /* wield.c:82 can_no_longer_twoweap */
         await You('can no longer wield two weapons at once.');
-        set_twoweap(false); /* C wield.c:910 */
+        /* wield.c:1103-1109 set_twoweap(FALSE) */
+        u.twoweap = false;
+        if (game.flags && game.flags.weaponstatus) {
+            if (!game.disp) game.disp = {};
+            game.disp.botl = 1;
+        }
         update_inventory();
     }
 }
@@ -1039,9 +1043,10 @@ export async function wield_tool(obj, verb) {
 
     const W_ARMOR_MASK = W_ARM_C | W_ARMC_C | W_ARMH_C | W_ARMS_C | W_ARMG_C
         | W_ARMF_C | W_ARMU_C;
+    const W_ACCESSORY_MASK = 0x000F0000; /* W_RINGL|W_RINGR|W_AMUL|W_TOOL */
     const mask = obj.owornmask | 0;
 
-    if (mask & (W_ARMOR_MASK | W_ACCESSORY)) {
+    if (mask & (W_ARMOR_MASK | W_ACCESSORY_MASK)) {
         await pline(`You can't ${verb} ${yname(obj)} while wearing `
               + `${more_than_1 ? "them" : "it"}.`);
         return false;
@@ -1182,9 +1187,15 @@ export async function can_twoweapon() {
         /* C wield.c:789 — an artifact resists being held second. */
         await pline('%s being held second to another weapon!',
                     Yobjnam2(u.uswapwep, 'resist'));
-    } else if ((u.uswapwep.otyp | 0) === CORPSE && await _cant_wield_corpse(u.uswapwep)) {
-        /* [Note: !TWOWEAPOK() check prevents ever getting here...] */
-        ; /* must be life-saved to reach here; return FALSE */
+    } else if ((u.uswapwep.otyp | 0) === 265 /* CORPSE — same literal _MG_CORPSE uses */) {
+        /* C cant_wield_corpse(): only an unprotected cockatrice corpse
+         * reaches this life-saving recovery path. */
+        const corpseForm = u.uswapwep.corpsenm | 0;
+        if ((corpseForm === 9 || corpseForm === 10) && !u.uarmg
+                && !_uprop_active('STONE_RES')) {
+            await pline(`You wield ${_the_str(xname(u.uswapwep))} in your bare hands.`);
+            await instapetrify(`wielding ${xname(u.uswapwep)}`);
+        }
     } else if (_uprop_active('GLIB') || u.uswapwep.cursed) {
         /* C wield.c:795-800 — Glib or a cursed secondary: identify the curse
          * (only when not Glib) and drop_uswapwep() reports and drops. */
@@ -1195,20 +1206,6 @@ export async function can_twoweapon() {
         return true;
     }
     return false;
-}
-
-/* C wield.c:138-153 cant_wield_corpse() — the same test ready_weapon inlines
- * at wield.c:183. */
-async function _cant_wield_corpse(obj) {
-    if (game.u.uarmg || (obj.otyp | 0) !== CORPSE
-        || !sr_touch_petrifies_ptr(permonstTemplate(obj.corpsenm))
-        || _uprop_active('STONE_RES'))
-        return false;
-    /* Prevent wielding cockatrice when not wearing gloves --KAA */
-    await You('wield %s in your bare %s.', corpse_xname(obj, null, 4 /* CXN_PFX_THE */),
-              makeplural_objnam(body_part(HAND)));
-    await instapetrify(`wielding ${killer_xname(obj)} bare-handed`);
-    return true;
 }
 
 /* C wield.c:809-831: a cursed secondary weapon or slippery grasp forces a drop. */

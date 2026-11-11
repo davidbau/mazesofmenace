@@ -140,6 +140,29 @@ export function createSpellEnvironment(services,L,state){
  env.sameFunction=(token,fn)=>raw(token)===(fn===core.learn?raw(services.callbackPointer(0)):raw(fn));env.set_occupation=(fn,text,time)=>{if(fn!==core.learn)throw Error('Unknown SPELL occupation');return services.set_occupation(services.callbackPointer(0),text,time);};env.iter_mons=fn=>{if(fn!==core.deadbook_pacify_undead)throw Error('Unknown SPELL monster callback');return services.iter_mons();};env.qsort=(base,n,size,fn)=>{if(fn!==core.spell_cmp)throw Error('Unknown SPELL comparator');return services.qsort(base,n,size);};env.getpos_sethilite=(a,b)=>{if(a!==core.display_spell_target_positions||b!==core.can_center_spell_location)throw Error('Unknown SPELL target callbacks');return services.getpos_sethilite();};env.walk_path=(a,b,fn,arg)=>{if(fn!==core.spell_aim_step)throw Error('Unknown SPELL aim callback');return services.walk_path(a,b,arg);};
  return env;
 }
-export function callSpell(services,L,name,...args){let state=states.get(services.moduleKey);if(!state)states.set(services.moduleKey,state=createSpellState(L));const env=createSpellEnvironment(services,L,state),saved=services.stackSave();try{
+const cachedEnvironments=new WeakMap();
+function environmentForCall(services,layout,state){
+ let layouts=cachedEnvironments.get(services.moduleKey);
+ if(!layouts){layouts=new WeakMap();cachedEnvironments.set(services.moduleKey,layouts);}
+ let entry=layouts.get(layout);
+ if(!entry){
+  entry={active:services};
+  const methods=new Map();
+  const forwarding=new Proxy({}, {
+   get(_target,key){
+    const value=Reflect.get(entry.active,key,entry.active);
+    if(typeof value!=='function')return value;
+    let method=methods.get(key);
+    if(!method){method=(...args)=>Reflect.apply(Reflect.get(entry.active,key,entry.active),entry.active,args);methods.set(key,method);}
+    return method;
+   },
+   has:(_target,key)=>Reflect.has(entry.active,key),
+  });
+  entry.environment=createSpellEnvironment(forwarding,layout,state);
+  layouts.set(layout,entry);
+ }
+ return entry;
+}
+export function callSpell(services,L,name,...args){const saved=services.stackSave();let entry,previous;try{let state=states.get(services.moduleKey);if(!state)states.set(services.moduleKey,state=createSpellState(L));entry=environmentForCall(services,L,state);previous=entry.active;entry.active=services;const env=entry.environment;
  if(['cursed_book','confused_book','deadbook','book_cursed','study_book','book_disappears','initialspell'].includes(name))args[0]=env.object(args[0]);if(name==='book_substitution'){args[0]=env.object(args[0]);args[1]=env.object(args[1]);}if(name==='deadbook_pacify_undead')args[0]=env.monster(args[0]);if(['getspell'].includes(name))args[0]=env.intPointer(args[0]);if(name==='spelleffects_check'){args[1]=env.intPointer(args[1]);args[2]=env.intPointer(args[2]);}if(name==='dospellmenu')args[2]=env.intPointer(args[2]);if(name==='propagate_chain_lightning'){args[0]=env.queue(args[0]);args[1]=env.zap(args[1]);}const result=withCEnvironment(env,()=>core[name](...args));return typeof result==='string'?services.literal(result):result?.address??result;
- }finally{services.stackRestore(saved);}}
+ }finally{if(entry)entry.active=previous;services.stackRestore(saved);}}

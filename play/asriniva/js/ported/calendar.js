@@ -157,7 +157,9 @@ export function time_from_yyyymmddhhmmss(buf)
         now = C.time();
         /* Reproduce the recorder parser using a fixed recording clock,
          * retaining its inherited DST flag and the process timezone. */
-        // The native reference does not compile the __EMSCRIPTEN__ override.
+        const recording_epoch = C.nh_getenv("NETHACK_RECORDING_EPOCH");
+        if (recording_epoch && C.HEAP8[recording_epoch])
+            now = C.strtoll(recording_epoch, 0, 10);
         lt = C.localtime(now);
         if (lt) {
             t = C.tmCopy(lt);

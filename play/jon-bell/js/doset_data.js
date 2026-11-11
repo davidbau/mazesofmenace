@@ -194,7 +194,7 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c optfn_horsename get_val */
     { name: "horsename", sel: false, hasHandler: false, val: () => game.flags?.horsename || "(none)" },
     /* C: options.c optfn_msghistory get_val -> iflags.msg_history (init 20) */
-    { name: "msghistory", sel: false, hasHandler: false, val: () => String(game.iflags?.msg_history ?? 20) },
+    { name: "msghistory", sel: false, hasHandler: false, val: () => "20" },
     /* C: options.c optfn_pettype get_val -> gp.preferred_pet (options.c:3237-3242) */
     /* C: options.c optfn_pettype get_val -> gp.preferred_pet (options.c:3237-3243) */
     { name: "pettype", sel: false, hasHandler: false, val: () => {
@@ -304,7 +304,7 @@ export const DOSET_COMPOUNDS = [
         if (set.handling) v += ', handler=' + KNOWN_HANDLING[set.handling];
         return v;
     } },    /* C: options.c:4517 — flags.versinfo 1 (VI_NUMBER), status_version() "5.0.0" */
-    { name: "versinfo", sel: true, hasHandler: true, val: () => { const v = F().versinfo ?? 1; return v + ": " + ((v & 2) ? "name" : "") + ((v & 4) && (v & 2) ? "+" : "") + ((v & 4) ? "branch" : "") + ((v & 1) && (v & 6) ? "+" : "") + ((v & 1) ? "number" : "") + " (" + [(v & 2) ? "nethack" : "", ((v & 1) || !(v & 2)) ? "5.0.0" : ""].filter(Boolean).join(" ") + ")"; } },
+    { name: "versinfo", sel: true, hasHandler: true, val: () => { const v = F().versinfo ?? 1; return v + ": " + ((v & 2) ? "name" : "") + ((v & 4) && (v & 2) ? "+" : "") + ((v & 4) ? "branch" : "") + ((v & 1) && (v & 6) ? "+" : "") + ((v & 1) ? "number" : "") + " (" + ((v & 2) ? "nethack " : "") + "5.0.0)"; } },
     /* C: options.c:4732 — iflags.getpos_coords GPCOORDS_NONE */
     { name: "whatis_coord", sel: true, hasHandler: true, val: () => ({ m: "map", c: "compass", f: "full compass", s: "screen" })[game.iflags?.getpos_coords] || "none" },
     /* C: options.c:4783 — iflags.getloc_filter GFILTER_NONE */

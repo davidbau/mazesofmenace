@@ -4,7 +4,7 @@
 /* def_monsyms[].sym — C drawing.c def_monsyms[MAXMCLASSES], built from
  * defsym.h MONSYM(idx, ch, ...) rows 1..60.  Row 0 is C's own
  * { '\0', "", "" } entry (no class 0); def_char_to_monclass never tests it. */
-export const MAXMCLASSES = 61; /* C sym.h enum mon_syms MAXMCLASSES (defsym.h MONSYM rows 1..60) */
+const MAXMCLASSES = 61; /* C sym.h enum mon_syms MAXMCLASSES (defsym.h MONSYM rows 1..60) */
 const def_monsyms_sym = '\0abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]';
 
 /*
@@ -37,7 +37,7 @@ export function def_char_to_monclass(ch) {
 // [0]: placeholder (not used, indexed from 1)
 // [1-17]: ], ), [, =, ", (, %, !, ?, +, /, $, *, `, 0, _, .
 // MAXOCLASSES = 18
-export const MAXOCLASSES = 18;
+const MAXOCLASSES = 18;
 export const def_oc_syms_chars = [
     undefined,  // 0: placeholder
     ']', ')', '[', '=', '"', '(', '%', '!',  // 1-8

@@ -1,0 +1,1217 @@
+{
+  "source": "nethack-c/wasm/lua-bridge.c",
+  "sha256": "da61142fe8f8b6d1cc86ea9414818926de5707c9b9e93e9cbbaf80321e76846e",
+  "functions": {
+    "lua_newstate": {
+      "return": "lua_State *",
+      "arguments": [
+        {
+          "index": null,
+          "number": false
+        },
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "luaL_newstate": {
+      "return": "lua_State *",
+      "arguments": [
+        {
+          "index": null,
+          "number": false
+        }
+      ]
+    },
+    "lua_close": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "lua_gettop": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "lua_absindex": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_settop": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_checkstack": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushvalue": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_copy": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_rotate": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushnil": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushboolean": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushinteger": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushnumber": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": true
+        }
+      ]
+    },
+    "lua_pushlightuserdata": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushstring": {
+      "return": "const char *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushlstring": {
+      "return": "const char *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_pushcclosure": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_type": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_typename": {
+      "return": "const char *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_isnumber": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_isstring": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_isinteger": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_iscfunction": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_rawequal": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_toboolean": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_tointegerx": {
+      "return": "lua_Integer",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_tonumberx": {
+      "return": "lua_Number",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_tolstring": {
+      "return": "const char *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_touserdata": {
+      "return": "void *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_topointer": {
+      "return": "const void *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_createtable": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_getglobal": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_setglobal": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_getfield": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_setfield": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_geti": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_seti": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_gettable": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_settable": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_rawget": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_rawset": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_rawgeti": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_rawseti": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_next": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_len": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_rawlen": {
+      "return": "lua_Unsigned",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_getmetatable": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_setmetatable": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_newuserdatauv": {
+      "return": "void *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_callk": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        },
+        {
+          "index": 4,
+          "number": false
+        }
+      ]
+    },
+    "lua_pcallk": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        },
+        {
+          "index": 4,
+          "number": false
+        },
+        {
+          "index": 5,
+          "number": false
+        }
+      ]
+    },
+    "lua_error": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaL_checkinteger": {
+      "return": "lua_Integer",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "luaL_optinteger": {
+      "return": "lua_Integer",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_checklstring": {
+      "return": "const char *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_optlstring": {
+      "return": "const char *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        }
+      ]
+    },
+    "luaL_checkoption": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        }
+      ]
+    },
+    "luaL_checktype": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_checkudata": {
+      "return": "void *",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_newmetatable": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "luaL_setfuncs": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_requiref": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        }
+      ]
+    },
+    "luaL_checkversion_": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": true
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_loadbufferx": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        },
+        {
+          "index": 4,
+          "number": false
+        }
+      ]
+    },
+    "luaL_loadstring": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_getallocf": {
+      "return": "lua_Alloc",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_atpanic": {
+      "return": "lua_CFunction",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        }
+      ]
+    },
+    "lua_setwarnf": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_warning": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_sethook": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        }
+      ]
+    },
+    "lua_getstack": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "lua_getinfo": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        }
+      ]
+    },
+    "luaL_traceback": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        },
+        {
+          "index": 1,
+          "number": false
+        },
+        {
+          "index": 2,
+          "number": false
+        },
+        {
+          "index": 3,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_base": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_coroutine": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_table": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_string": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_math": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_utf8": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_os": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaopen_debug": {
+      "return": "int",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    },
+    "luaL_openlibs": {
+      "return": "void",
+      "arguments": [
+        {
+          "index": 0,
+          "number": false
+        }
+      ]
+    }
+  }
+}

@@ -4,20 +4,50 @@ const fields={"find": ["findtype", "val", "loadsyms_offset", "loadsyms_count", "
 const pointers={"find.extraval": "pointer", "find.unicode_val": "pointer", "find.callback": "callback", "find.reserved": "pointer", "cache.id": "pointer", "detail.next": "detail", "detail.content.urep.u.utf8str": "pointer", "detail.content.sym.symparse": "pointer", "map.u": "unicode", "unicode.utf8str": "pointer", "custom.customization_name": "pointer", "custom.details": "detail", "custom.details_end": "detail", "symset.name": "pointer", "symparse.name": "pointer", "enum.nm": "pointer", "descr.oc_name": "pointer", "descr.oc_descr": "pointer"};
 const globals=["gs.symset_which_set", "iflags.customsymbols", "iflags.customcolors", "iflags.pending_customizations", "gc.currentgraphics"];
 const headers=["glyph_is_body", "glyph_is_body_piletop", "glyph_is_cmap", "glyph_is_cmap_a", "glyph_is_cmap_altar", "glyph_is_cmap_b", "glyph_is_cmap_c", "glyph_is_cmap_gehennom", "glyph_is_cmap_knox", "glyph_is_cmap_main", "glyph_is_cmap_mines", "glyph_is_cmap_sokoban", "glyph_is_cmap_zap", "glyph_is_detected_female_monster", "glyph_is_detected_male_monster", "glyph_is_explosion", "glyph_is_fem_statue", "glyph_is_fem_statue_piletop", "glyph_is_female_pet", "glyph_is_invisible", "glyph_is_male_pet", "glyph_is_male_statue", "glyph_is_male_statue_piletop", "glyph_is_monster", "glyph_is_normal_female_monster", "glyph_is_normal_male_monster", "glyph_is_normal_piletop_obj", "glyph_is_nothing", "glyph_is_object", "glyph_is_ridden_female_monster", "glyph_is_ridden_male_monster", "glyph_is_statue", "glyph_is_swallow", "glyph_is_unexplored", "glyph_is_warning", "glyph_to_body_corpsenm", "glyph_to_explosion", "glyph_to_mon", "glyph_to_obj", "glyph_to_statue_corpsenm", "glyph_to_swallow"];
-const raw=v=>BigInt(v?.address??v??0),address=v=>Number(raw(v));
+const raw=v=>BigInt(v?.address??v??0),address=v=>{const at=v?.address??v??0;return typeof at==='number'&&Number.isSafeInteger(at)?at:Number(raw(v));};
 const indexed=(get,set,at=0)=>new Proxy({address:at},{get:(target,key)=>/^\d+$/.test(String(key))?get(Number(key)):Reflect.get(target,key),set:(_,key,v)=>{if(!set)throw new Error('Read-only GLYPHS array');set(Number(key),v);return true;}});
+const recordContexts=new WeakMap();
+const kindNames=Object.keys(fields);
+const recordSchemas=Object.fromEntries(kindNames.map((kind,kindIndex)=>{
+ const root={descriptors:Object.create(null),children:Object.create(null)};
+ fields[kind].forEach((path,fieldIndex)=>{
+  const parts=path.split('.'),key=parts.pop();let node=root;
+  for(const part of parts){if(!node.children[part]){node.children[part]={descriptors:Object.create(null),children:Object.create(null)};node.descriptors[part]=null;}node=node.children[part];}
+  const pointerKind=pointers[kind+'.'+path];
+  node.descriptors[key]={get(){const context=recordContexts.get(this),value=context.services.get(kindIndex,fieldIndex,context.at);
+   if(pointerKind==='callback')return address(value)===context.callbackAt?glyphs.to_custom_symset_entry_callback:address(value);
+   if(pointerKind==='pointer')return address(value);if(pointerKind)return context.typed(pointerKind,value);return Number(value);},
+   set(value){const context=recordContexts.get(this);if(kind==='find'&&path==='callback'&&typeof value==='function'){if(value!==glyphs.to_custom_symset_entry_callback)throw new Error('Review unknown GLYPHS callback');value=context.callbackAt;}context.services.set(kindIndex,fieldIndex,context.at,raw(value));}};
+ });return[kind,root];
+}));
+// Shared accessors contain schema only; every record keeps its original context.
+const recordPrototypes=new WeakMap(),recordChildren=new WeakMap();
+function defineRecord(node,schema,context){
+ let prototype=recordPrototypes.get(schema);
+ if(!prototype){
+  prototype=Object.create(Object.getPrototypeOf(node));const descriptors={...schema.descriptors};
+  for(const [key,childSchema]of Object.entries(schema.children))descriptors[key]={get(){let children=recordChildren.get(this);if(!children)recordChildren.set(this,children=new Map());if(!children.has(key))children.set(key,defineRecord(Object.create(null),childSchema,recordContexts.get(this)));return children.get(key);},set(value){let children=recordChildren.get(this);if(!children)recordChildren.set(this,children=new Map());children.set(key,value);},enumerable:true,configurable:true};
+  Object.defineProperties(prototype,descriptors);recordPrototypes.set(schema,prototype);
+ }
+ recordContexts.set(node,context);Object.setPrototypeOf(node,prototype);return node;
+}
 export function createGlyphsBridge(layout){
  const states=new WeakMap();
  return (services,name,...args)=>{
   if(layout.pointerSize!==8||layout.longSize!==8||layout.sizeSize!==8||layout.intSize!==4||layout.uint32Size!==4||!layout.charSigned)throw new Error('Review GLYPHS memory64/long/char ABI');
   const saved=services.stackSave();
+  let cacheSlot,symparseSlot,mapSlot,detailSlot,unicodeSlot,reuseActive=true;
   try{
-   const callbackAt=services.callbackAddress(),kinds=Object.keys(fields);
-   const typed=(kind,at)=>{at=address(at);if(!at)return 0;const out={address:at};
-    fields[kind].forEach((path,i)=>{const parts=path.split('.'),key=parts.pop();let target=out;for(const p of parts)target=target[p]??=(Object.create(null));
-     Object.defineProperty(target,key,{get(){const value=services.get(kinds.indexOf(kind),i,at),ptr=pointers[kind+'.'+path];if(ptr==='callback')return address(value)===callbackAt?glyphs.to_custom_symset_entry_callback:address(value);if(ptr==='pointer')return address(value);if(ptr)return typed(ptr,value);return Number(value);},
-      set(value){if(kind==='find'&&path==='callback'&&typeof value==='function'){if(value!==glyphs.to_custom_symset_entry_callback)throw new Error('Review unknown GLYPHS callback');value=callbackAt;}services.set(kinds.indexOf(kind),i,at,raw(value));}});
-    });return out;
+   // Retain only the current buffer/view; every access still asks this invocation's heap service.
+   let viewBuffer, dataView;
+   const view=()=>{const buffer=services.heap().buffer;if(buffer!==viewBuffer){const next=new DataView(buffer);viewBuffer=buffer;dataView=next;}return dataView;};
+   const callbackAt=services.callbackAddress();
+   const typed=(kind,at)=>{at=address(at);if(!at)return 0;
+    const slot=kind==='cache'?cacheSlot:kind==='symparse'?symparseSlot:kind==='map'?mapSlot:kind==='detail'?detailSlot:kind==='unicode'?unicodeSlot:undefined;
+    if(reuseActive&&slot?.address===at)return slot.record;
+    const record=defineRecord({address:at},recordSchemas[kind],{services,callbackAt,typed,at});
+    if(reuseActive){if(kind==='cache')cacheSlot={address:at,record};else if(kind==='symparse')symparseSlot={address:at,record};else if(kind==='map')mapSlot={address:at,record};else if(kind==='detail')detailSlot={address:at,record};else if(kind==='unicode')unicodeSlot={address:at,record};}
+    return record;
    };
    const cacheArray=at=>{at=address(at);return at?indexed(i=>typed('cache',at+i*layout.cacheEntrySize),undefined,at):0;};
    let state=states.get(services.moduleKey);
@@ -40,10 +70,10 @@ export function createGlyphsBridge(layout){
     newArray:n=>Array(Number(n)),
     byteArray(values){const at=services.stackAlloc(values.length);services.heap().set(values,at);return at;},
     byteMatrix(rows,cols){const at=services.stackAlloc(rows*cols);return Array.from({length:rows},(_,i)=>at+i*cols);},
-    intLocal(value){const at=services.stackAlloc(4);new DataView(services.heap().buffer).setInt32(at,Number(value),true);return{address:at};},
-    loadChar:(p,i=0)=>new DataView(services.heap().buffer).getInt8(address(p)+Number(i)),
-    storeChar:(p,v)=>new DataView(services.heap().buffer).setInt8(address(p),Number(v)),
-    storeInt:(p,v)=>new DataView(services.heap().buffer).setInt32(address(p),Number(v),true),
+    intLocal(value){const at=services.stackAlloc(4);view().setInt32(at,Number(value),true);return{address:at};},
+    loadChar:(p,i=0)=>view().getInt8(address(p)+Number(i)),
+    storeChar:(p,v)=>view().setInt8(address(p),Number(v)),
+    storeInt:(p,v)=>view().setInt32(address(p),Number(v),true),
     samePtr:(a,b)=>raw(a)===raw(b),nhUse(){},
     glyphAddress:i=>services.element(0,i,0),glyphArray:at=>indexed(i=>typed('map',address(at)+i*layout.mapSize)),
     glyphmap:indexed(i=>typed('map',services.element(0,i,0))),
@@ -60,6 +90,6 @@ export function createGlyphsBridge(layout){
    if(['glyph_find_core','parse_id'].includes(name))args[1]=typed('find',args[1]);
    if(name==='add_custom_nhcolor_entry')args[2]=Number(args[2])>>>0;
    return withCEnvironment(env,glyphs[name],...args);
-  }finally{services.stackRestore(saved);}
+  }finally{try{services.stackRestore(saved);}finally{reuseActive=false;cacheSlot=symparseSlot=mapSlot=detailSlot=unicodeSlot=undefined;}}
  };
 }

@@ -32,7 +32,7 @@ import { newsym } from './display.js';
 import { couldsee } from './vision.js';
 import { m_at } from './uhitm.js';
 import { mon_pmname, rndmonnam,
-         bogon_is_pname } from './do_name.js';
+         bogon_is_pname as dn_bogon_is_pname } from './do_name.js';
 import { just_an } from './objnam.js';
 import { check_special_room, ALGN_SINNED } from './cmd.js';
 import { halu_gname } from './pray.js';
@@ -791,6 +791,7 @@ function DIR_CLAMP(dir) { return ((dir + N_DIRS) % N_DIRS); }
 const SPBOOK_no_NOVEL = -10;
 const AMULET_OF_YENDOR = 213;
 
+export function bogon_is_pname(code) { return dn_bogon_is_pname(code); }
 /* C ref: dungeon.c:1050-1054 on_level(a, b) — same dungeon AND same depth. */
 export { on_level };
 export { mongone } from './mklev.js';

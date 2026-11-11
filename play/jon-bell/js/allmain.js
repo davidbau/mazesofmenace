@@ -186,7 +186,7 @@ import { which_armor } from './worn.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
-import { get_configfile, config_error_secure } from './cfgfiles.js';
+import { get_configfile } from './cfgfiles.js';
 import { dobjsfree, clear_splitobjs } from './mklev.js';
 import { see_nearby_monsters } from './mon.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
@@ -229,40 +229,18 @@ export async function report_config_errors() {
     const nerrs = cfgerrs ? cfgerrs.filter(m => typeof m === 'string').length : 0;
     if (nerrs) {
         const n = nerrs;
-        const secure = config_error_secure();
-        let shown_line = -1;
-        for (let i = 0; i < cfgerrs.length; i++) {
-            const msg = cfgerrs[i];
+        for (const msg of cfgerrs) {
             if (typeof msg !== 'string') { raw_print(msg.pline); continue; }
-            const punct = '.!?'.includes(msg.slice(-1)) ? '' : '.';
-            if (secure) {
-                raw_print(`Error: ${msg}${punct}`);
-                continue;
-            }
-            /* non-secure frame: the offending line once per line, then
-             * " * Line N: msg." (cfgfiles.c:1578-1588) */
-            const ctx = g._config_error_ctx?.[i] ?? { line_num: 0, origline: '' };
-            if (ctx.line_num !== shown_line) {
-                raw_print('');
-                raw_print(ctx.origline);
-                shown_line = ctx.line_num;
-            }
-            raw_print(` * ${ctx.line_num > 0 ? `Line ${ctx.line_num}: ` : ''}${msg}${punct}`);
+            raw_print(`Error: ${msg}${'.!?'.includes(msg.slice(-1)) ? '' : '.'}`);
         }
         raw_print('');
         raw_print(`${n} error${n === 1 ? '' : 's'} in ${get_configfile()}.`);
         raw_print('');
         g._config_errors = [];
-        g._config_error_ctx = [];
         /* The recorded tty cursor never leaves where the raw_print() report
          * parked it: every step of a game that opened with a config-error
-         * report records that one position.  nomux_get_cursor() reports the
-         * raw row counter itself (patch 006 termcap.c), so freeze the rows
-         * this report actually emitted — every entry's row above plus each
-         * line-change's blank+origline pair (cfgfiles.c:1578-1581) plus the
-         * blank/count/blank tail — which rawterm's row counter has been
-         * tallying, not a guess at it (cfgerrs.length + 3 lost the pairs). */
-        g._rawCursorFrozen = [0, g._rawterm ? g._rawterm.row : 0, 1];
+         * report records that one position. */
+        g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, Math.max(g.nhDisplay?.cursorRow ?? 0, cfgerrs.length + 3), 1]; // raw rows scroll past the 24-row screen
         for (;;) {
             const c = await nhgetch();
             if (c === 10 || c === 13 || c === undefined || c < 0)
@@ -369,19 +347,13 @@ export async function newgame() {
      * purges dead monsters (e.g. a statue trap's mk_trap_statue leftover on
      * Dlvl 1) so a no-time level teleport into the endgame cannot trip
      * dmonsfree's pending-count impossible(). */
-    g.program_state.saving++;
-    if ((g.flags.ins_chkpt ?? true) && (g.iflags.purge_monsters | 0))
+    if ((g.iflags.purge_monsters | 0))
         await dmonsfree();
-    if (g.flags.ins_chkpt ?? true) engr_reset_text_pointers(); /* allmain.c:838 checkpoint */
+    engr_reset_text_pointers(); /* allmain.c:838 save_currentstate() -> save_engravings */
     /* allmain.c:838 save_currentstate() -> savelev(WRITING), save.c:487-488:
      *     if (iflags.purge_monsters) dmonsfree(); */
-    if ((g.flags.ins_chkpt ?? true) && g.objs_deleted) dobjsfree();
-    if (g.flags.ins_chkpt ?? true) { // save.c:493-494, startup checkpoint
-        const lev = g.dungeons[g.u.uz.dnum].ledger_start + g.u.uz.dlevel;
-        g.level_info ||= {};
-        (g.level_info[lev] ||= { flags: 0 }).flags |= PROPS.VISITED;
-    }
-    g.program_state.saving--;
+    if ((g.iflags?.purge_monsters | 0))
+        await dmonsfree();
     // Hero state (u.uhp/uhpmax/uen/uenmax/uac/uhunger/ulevel/acurr/amax/ualign)
     // is now set by u_init_misc(), called via fastforward_pre_mklev() →
     // consumeUInitMiscHeroInitRng() → u_init_misc() (src/u_init.ts).  That ran
@@ -838,13 +810,7 @@ export async function newgame() {
             } else if (part.length + standing.length + 3 < 80 - 8 && !part.startsWith('You die')) {
                 standing += '  ' + part;
             } else {
-                /* topl.c:232 more(): ESC sets WIN_STOP, so update_topl's skip
-                 * test (topl.c:257) swallows this pline and any that follow. */
-                if (await topl_more_page(standing, g.u?.uac ?? 0) === 27) {
-                    g._topl_win_stop = true;
-                    standing = '';
-                    break;
-                }
+                await topl_more_page(standing, g.u?.uac ?? 0);
                 standing = part;
             }
         }
@@ -3393,11 +3359,7 @@ async function moveloop_core_faithful() {
     // prompt's more() then shows the map as the last pline flushed it.
     const cannedCmd = !g.occupation && (g.multi | 0) === 0
         && !!cmdq_peek(g.gi?.in_doagain ? CQ_REPEAT : CQ_CANNED);
-    // C allmain.c:516-530 repeats without parse()'s map flush (cmd.c:5104).
-    // A getobj more() in that command still sees the last physical paint.
-    const repeatCmd = !g.occupation && (g.multi | 0) > 0;
-    await flush_screen(1, (g.occupation !== eatfood || (g.multi | 0) < 0)
-                       && !cannedCmd && !repeatCmd);
+    await flush_screen(1, (g.occupation !== eatfood || (g.multi | 0) < 0) && !cannedCmd);
     const preMoveUz = g.u && g.u.uz
         ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel }
         : null;
@@ -3592,7 +3554,6 @@ async function moveloop_core_faithful() {
     // before the next invocation advances monsters or an occupation.
     if (g.vision_full_recalc)
         vision_recalc(0);
-    run_tport_botl(); // C allmain.c:547-555
     // ===================== go.occupation DRIVER — DIG (faithful) =====================
     // C allmain.c:558: end-turn callbacks follow command and vision effects,
     // before the next invocation's occupation/world block.
@@ -5438,8 +5399,7 @@ export async function moveloop_core() {
         throw over;
     }
     try {
-        if (await moveloop_core_impl()) return await moveloop_core_faithful();
-        return;
+        return await moveloop_core_impl();
     } catch (e) {
         if (e?.nhPanic) return await panic(e.message);
         if (game?.program_state?.exiting
@@ -5525,7 +5485,7 @@ async function moveloop_core_impl() {
     // g.moves-indexed calibrated step table.  Everything OUTSIDE the per-turn
     // block (vision, bot, flush_screen, rhack, occupation/multi loops) is shared
     // with the calibrated path; only the head world-block emission differs.
-    if (FF_FAITHFUL) return true;
+    if (FF_FAITHFUL) return await moveloop_core_faithful();
     // Fast-forward per-step RNG (monster movement, regen, sounds, hunger).
     // C ref: allmain.c:243 — the monster-movement + new-turn block (mcalcmove,
     // makemon, dosounds, gethungry, exerchk) only runs when svc.context.move

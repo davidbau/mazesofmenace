@@ -1,7 +1,7 @@
 // botl.js — C ref: botl.c.
 import { money_cnt } from './hack.js';
-import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, gs } from './const.js';
-import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, suppress_map_output } from './display.js';
+import { CONFUSION, Is_rogue_level, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SICK, SLIMED, gs } from './const.js';
+import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
@@ -11,8 +11,8 @@ import { weapon_descr, weapon_type } from './uhitm.js';
 import { near_capacity } from './hack.js';
 import { attrnames, clr2colorname, match_str2clr } from './coloratt.js'; // relocate-fns
 import { display_text_window } from './com_pager.js'; // relocate-fns
-import { status_held_rows, gather_condition_hilite_lines, _condbitmask2str, status_xp_percent_changing } from './display.js'; // relocate-fns
-import { trimspaces } from './hacklib.js'; // relocate-fns
+import { gather_condition_hilite_lines, _condbitmask2str } from './display.js'; // relocate-fns
+import { mungspaces } from './hacklib.js'; // relocate-fns
 import { status_fieldname } from './options.js'; // relocate-fns
 import { HL_ATTRBITS, drainTopline, query_attr_one, query_color } from './optmenu.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
@@ -189,7 +189,6 @@ export function armor_status() {
 /* C botl.c:2321-2334: rule edits request a redraw; they resend all field
  * values and discard temporary highlights only when highlighting is enabled. */
 export function reset_status_hilites() {
-    game._statusRulesPending = false;
     /* botl.c:2321-2331: only sets update_all + botlx; the fields are re-evaluated
      * against the new rules when the next bot() delivers them, so a page
      * raised before that bot() still shows the old colours. */
@@ -213,7 +212,6 @@ export async function bot() {
     if (game._statusHilitesReset) { /* reset_status_hilites() */
         game._statusHilitesReset = false;
         game._statusHiliteHeld = false;
-        delete game._statusHeldUhs; delete game._statusHeldRow;
         delete game._blTemp;
         delete game._statusFieldColors;
     }
@@ -299,7 +297,6 @@ export async function bot() {
          * the live status, including the new level, and hold that new paint
          * for subsequent delayed flushes. */
         game._lastPaintedBotl = _capture_botl(true);
-        status_hpbar_attr_eval();
         /* column of the T: field as painted; a lone timebot() paint reuses it */
         { const l2 = _statusLine2().replace(/\x1b\[[0-9;]*m/g, '').lastIndexOf('T:');
           if (l2 >= 0) game._statusTimeCol = l2; }
@@ -355,10 +352,6 @@ export async function bot() {
          * every enabled field, so wintty's tty_status[NOW][].valid is now set
          * for all of them (wintty.c:4513-4518); see timebot(). */
         game._ttyStatusValid = true;
-        /* botl.c:965-969,1285-1294 bot() toggles now_or_before_idx and stores
-         * moves into that bank's BL_TIME; the tty is told only when it differs
-         * from the other bank's (see timebot()). */
-        _bl_time_bank_store(true);
         let _row3Rendered = false;
         /* wintty.c:1061-1068 clears the physical status before render_status(),
          * not after it.  Retain the new row and its finalx-dependent erasure. */
@@ -476,22 +469,6 @@ export function check_gold_symbol(level = game.u?.uz) {
     g.iflags.invis_goldsym = (goldch <= 32); // goldch <= ' ' (space, ASCII 32)
 }
 
-/* C botl.c:1285-1294 stat_update_time() writes svm.moves into the CURRENT
- * blstats bank without bot()'s 0/1 toggle; eval_notify_windowport_field()
- * tells the tty only if it differs from the other bank's BL_TIME, otherwise
- * the tty keeps the last delivered value (the tutorial-exit T:2 -> T:4 hold). */
-function _bl_time_bank_store(toggle) {
-    const g = game;
-    if (!g || !g.flags?.time) return;
-    const bk = g._blTimeBank ??= { idx: 0, val: [0, 0], shown: 0 };
-    if (toggle) bk.idx = 1 - bk.idx;
-    const m = g.moves | 0;
-    bk.val[bk.idx] = m;
-    if (bk.val[1 - bk.idx] !== m || !bk.shown)
-        bk.shown = m;
-    g._timeBotlFrozenMoves = bk.shown !== m ? bk.shown : null;
-}
-
 export function timebot() {
     // C botl.c:277-278: the menu's status suppression covers time updates too.
     if (game?._bot_disabled)
@@ -516,7 +493,6 @@ export function timebot() {
             g._statusTimeOnly = g.moves | 0; /* botl.c:259 guards bot() only, not timebot() */
         /* botl.c:1285-1294 stat_update_time(): BL_TIME alone goes through
          * eval_notify_windowport_field, so a changed clock marks it chg. */
-        _bl_time_bank_store(false);
         _status_note_pushed_time();
         /* stat_update_time() -> tty_status_update(BL_TIME) writes only the T:
          * field; over rows cls() blanked (and bot() declined, botl.c:259) it is
@@ -565,14 +541,6 @@ export function status_eval_next_unhilite() {
             h.chg = false;
             if (g.disp) g.disp.botl = 1;
         }
-        /* C botl.c:2305-2312 — a timed-out temporary rule forces a repaint */
-        if (!g.disp?.botl && !g.multi) {
-            /* only the hitpointbar title slot clears its rule on expiry
-             * (status_hpbar_attr_eval); other slots keep h.rule, which would
-             * re-force the repaint every turn */
-            const h = hist.title;
-            if (h && h.rule && h.time > 0 && h.time < g.bl_hilite_moves) g.disp.botl = 1;
-        }
     }
     if (g._blChg) {
         g._blChg = false;
@@ -591,12 +559,6 @@ const INITBLSTATS = [
     ['hitpoints-max', 'I'], ['dungeon-level', 'S'], ['experience', 'L', true],
     ['condition', 'M'], ['version', 'S'], ['weapon', 'S'], ['armor', 'S'], ['terrain', 'S'],
 ];
-/* C botl.h:52-59 enum statusfields: initblstats[] (above) puts BL_VERS before
- * BL_WEAPON..BL_TERRAIN, the enum puts it last.  C keys rules and the
- * status_hilite_menu identifiers by the enum, then indexes initblstats[] by
- * it (botl.c:3627,3729,4423): picking "weapon" offers "version". Port that. */
-const bl_enum = (i) => (i < 23 ? i : i === 23 ? 26 : i - 1);
-const bl_index = (fld) => (fld < 23 ? fld : fld === 26 ? 23 : fld + 1);
 
 /* C botl.c:3707 status_hilite_menu_choose_behavior; returns the BL_TH_* value,
  * 0 (BL_TH_NONE) for no pick, -1 (BL_TH_NONE - 1) for a cancelled menu. */
@@ -609,7 +571,7 @@ async function status_hilite_menu_choose_behavior(fld, preserveStatus) {
     const ent = (beh, ch, text) => { m.add_menu(beh, ch, ATR_NONE, text, false, false); onlybeh = beh; nopts++; };
     if (!isCond) ent(105, 'a', `Always highlight ${fldname}`);
     if (isCond) ent(103, 'b', 'Bitmask of conditions');
-    if (!isCond && fld !== 26 /* BL_VERS, botl.c:3743 */) ent(102, 'c', `${fldname} value changes`);
+    if (!isCond && fldname !== 'version') ent(102, 'c', `${fldname} value changes`);
     if (!isCap && !isHunger && (at === 'I' || at === 'L')) ent(101, 'n', 'Number threshold');
     if (hasMax) ent(100, 'p', 'Percentage threshold');
     if (fldname === 'hitpoints') ent(106, 'C', `Highlight critically low ${fldname}`);
@@ -647,16 +609,12 @@ async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok, preser
 
 function status_hilite2str_rules(spec) {
     const out = [], fz = s => s.replace(/[ \-_]/g, '').toLowerCase();
-    /* store_status_hilite already separates entries as parse_status_hl1 does
-     * (botl.c:2605-2639), preserving spaces in the title's text component.
-     * Menu-added rules also arrive as one entry; do not split their titles. */
-    for (const one of [spec]) {
-        const s = one.toLowerCase().split('/'), os = one.split('/');
+    const origs = spec.split(' ').filter(Boolean);
+    for (const [oi, one] of spec.toLowerCase().split(' ').filter(Boolean).entries()) {
+        const s = one.split('/'), os = origs[oi].split('/');
         const fldname = status_fieldname(s[0]);
-        // C botl.c:2228 resolves fields case-insensitively; HD retains its display case.
-        const idx = INITBLSTATS.findIndex(([n]) => n.toLowerCase() === fldname);
-        if (idx < 0 || fldname === 'condition' || fldname === 'characteristics') continue;
-        const fld = bl_enum(idx); /* botl.c:3666 initblstats[hl->fld].fldname */
+        const fld = INITBLSTATS.findIndex(([n]) => n === fldname);
+        if (fld < 0 || fldname === 'condition' || fldname === 'characteristics') continue;
         const at = INITBLSTATS[fld][1];
         for (let i = 1; i < s.length && s[i]; i += 2) {
             const t = s[i];
@@ -708,20 +666,13 @@ function status_hilite_linestr_gather() {
     return lines;
 }
 
-/* C botl.c:2746 query_arrayvalue: menu over arr[arrmin, arrmax); Null entries
- * skipped (botl.c:2763 — hutxt[]'s NOT_HUNGRY gap), identifier i + adj with
- * adj = arrmin > 0 ? 1 : arrmax, pick maps to identifier - adj, ESC returns
- * arrmin - 1 (botl.c:2752,2756). */
-async function query_arrayvalue(querystr, arr, arrmin, arrmax, preserveStatus) {
+/* C botl.c:2747 query_arrayvalue (arrmin 0): returns the index, -1 on ESC. */
+async function query_arrayvalue(querystr, arr, preserveStatus) {
     const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
-    const adj = arrmin > 0 ? 1 : arrmax;
-    for (let i = arrmin; i < arrmax; i++) {
-        if (arr[i] === null || arr[i] === undefined) continue; /* C !arr[i]: Null only, "" kept */
-        m.add_menu(i + adj, 0, ATR_NONE, arr[i], false, false);
-    }
+    arr.forEach((a, i) => m.add_menu(i + arr.length, 0, ATR_NONE, a, false, false));
     m.end_menu(querystr);
     const { count, picks } = await m.select_menu(PICK_ONE);
-    return count > 0 ? picks[0] - adj : arrmin - 1;
+    return count > 0 ? picks[0] - arr.length : -1;
 }
 
 /* C botl.c:4170-4300 status_hilite_menu_add, BL_TH_TEXTMATCH arm for BL_TITLE.
@@ -733,20 +684,12 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus) {
     const ranks = ROLE_RANKS[role_index_by_name(game.urole?.name?.m || game.urole?.name?.f || '')].rank;
     const female = !!game.flags?.female;
     const rolelist = [];
-    /* botl.c:4134-4167: the fixed arrays with their C windows.  hutxt[]
-     * (botl.c:4157) has a Null gap for NOT_HUNGRY that query_arrayvalue skips
-     * and rv addresses; enc_stat[] (botl.c:11) is entered at SLT_ENCUMBER,
-     * past its "" at UNENCUMBERED, so ESC returns arrmin - 1 = 0 and the
-     * reject test is rv < SLT_ENCUMBER (botl.c:4139), not rv < 0. */
-    const fixed = name === 'hunger'
-        ? { arr: ['Satiated', null, 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'],
-            min: SATIATED, max: STARVED + 1, reject: SATIATED }
-        : name === 'alignment' ? { arr: ['chaotic', 'neutral', 'lawful'], min: 0, max: 3, reject: 0 }
-        : name === 'carrying-capacity'
-        ? { arr: ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'],
-            min: SLT_ENCUMBER, max: OVERLOADED + 1, reject: SLT_ENCUMBER }
+    /* botl.c:4148-4158 BL_HUNGER: hutxt[] minus its null gap (query_arrayvalue skips it) */
+    const fixed = name === 'hunger' ? ['Satiated', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved']
+        : name === 'alignment' ? ['chaotic', 'neutral', 'lawful']
+        : name === 'carrying-capacity' ? ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded']
         : null;
-    if (fixed) rolelist.push(...fixed.arr);
+    if (fixed) rolelist.push(...fixed);
     else for (let i = 0; i < 9; i++) {
         const mbuf = `"${ranks[i][0]}"`;
         let fbuf = '', obuf = '';
@@ -765,10 +708,9 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus) {
         }
     }
     if (!fixed) rolelist.push('"none of the above (polymorphed)"');
-    const w = fixed || { min: 0, max: rolelist.length, reject: 0 };
     for (;;) {
-        const rv = await query_arrayvalue(`Choose ${name} text value to match:`, rolelist, w.min, w.max, preserveStatus);
-        if (rv < w.reject) return false;
+        const rv = await query_arrayvalue(`Choose ${name} text value to match:`, rolelist, preserveStatus);
+        if (rv < 0) return false;
         let textmatch = rolelist[rv];
         for (;;) {
             const clr = await query_color(`Choose a color for when ${name} is '${textmatch}':`, 8, preserveStatus);
@@ -781,20 +723,14 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus) {
             if (p >= 0) {
                 const first = textmatch.slice(0, p);
                 (game.status_field_hilites ||= []).push(`${name}/${first}/${clrname}&${attrs}`);
-                game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                 await pline('Added hilite %s', `${name}/${first}/${clrname}&${attrs}`);
                 textmatch = textmatch.slice(p + 4);
             }
             const rule = `${name}/${textmatch}/${clrname}&${attrs}`;
             (game.status_field_hilites ||= []).push(rule);
-            game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
             await pline('Added hilite %s', rule);
-            /* C botl.c:4300 reset_status_hilites() only sets update_all + botlx; the
-             * menu's more() that pages this message runs no bot() (wintty.c:1921), so
-             * update_all survives to the next real flush.  drainTopline()'s flush is
-             * ours, so reset after it, as the threshold arm does. */
-            await drainTopline();
             reset_status_hilites();
+            await drainTopline();
             return true;
         }
     }
@@ -855,9 +791,9 @@ export async function status_hilite_menu(preserveStatus = false) {
             m.add_menu_str('');
         }
         INITBLSTATS.forEach(([name], i) => {
-            const count = lines.filter(l => l.fld === bl_enum(i)).length;
+            const count = lines.filter(l => l.fld === i).length;
             if (name === 'score' && !count) return; /* no SCORE_ON_BOTL */
-            m.add_menu(bl_enum(i) + 1, 0, ATR_NONE,
+            m.add_menu(i + 1, 0, ATR_NONE,
                 name.padEnd(18) + (count ? ` (${count} defined)` : ''), false, false);
         });
         m.end_menu('Status hilites:');
@@ -866,8 +802,6 @@ export async function status_hilite_menu(preserveStatus = false) {
             if (lines.length && !game.iflags.hilite_delta) {
                 game.iflags.hilite_delta = 3;
                 game._statusHiliteHeld = true; /* no update_all yet: fields stay as delivered */
-                game._statusHeldUhs = game._botlPaintedUhs != null ? game._botlPaintedUhs | 0 : 1; /* hunger as delivered (NOT_HUNGRY=1) */
-                game._statusHeldRow = status_held_rows();
             }
             return;
         }
@@ -892,15 +826,12 @@ export async function status_hilite_menu(preserveStatus = false) {
             : await status_hilite_menu_choose_behavior(fld, flushed);
         // C botl.c:4225-4243,4285-4301: always rule, with color/attribute retries.
         /* each add re-offers a behavior (botl.c:4445-4447); dispatch it again */
-        /* C botl.c:3896,3939: one retry counter per status_hilite_menu_add call,
-         * bumped at every pass through choose_value whatever the behavior;
-         * choose_behavior gotos keep it */
-        let retry = 0;
         for (;;) {
+            let criticalRetries = 0;
             while (beh === 105 || beh === 102 || beh === 106) { // botl.c:4088-4102: up/down picker and retry.
                 /* C botl.c:3914,3935,4233-4243: CRITICALHP leaves both
                  * prompts empty, and cancelled colors retry choose_value. */
-                if (retry++ > 5) {
+                if (beh === 106 && criticalRetries++ > 5) {
                     await pline("That's enough tries.");
                     await drainTopline();
                     beh = 0;
@@ -936,16 +867,11 @@ export async function status_hilite_menu(preserveStatus = false) {
                     continue;
                 }
                 const attrs = attr === 1 ? 'normal' : HL_ATTRBITS.filter(b => attr & b[1]).map(b => b[2]).join('+');
-                const how = `/${rel}/${clr2colorname(color).replace(/ /g, '-')}${attr ? '&' + attrs : ''}`;
-                const rule = `${name}${how}`;
-                /* botl.c:4296 status_hilite_add_threshold(fld): the rule joins
-                 * fld's own chain whatever initblstats[fld] is named */
-                (game.status_field_hilites ||= []).push(`${INITBLSTATS[bl_index(fld)][0]}${how}`);
-                game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
+                const rule = `${name}/${rel}/${clr2colorname(color).replace(/ /g, '-')}${attr ? '&' + attrs : ''}`;
+                (game.status_field_hilites ||= []).push(rule);
                 await pline('Added hilite %s', rule);
-                /* botl.c:4300: reset after our drainTopline() flush (see above). */
-                await drainTopline();
                 reset_status_hilites();
+                await drainTopline();
                 /* C botl.c:4298 pline() -> pline.c:274 flush_screen():
                  * later additions retain the status painted by that message. */
                 flushed = !game._statusBlankAfterDocrt;
@@ -953,7 +879,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                 beh = adding ? await status_hilite_menu_choose_behavior(fld, true)
                     : await status_hilite_menu_fld_current(fld, name);
                 adding = true; flushed = true; /* status was repainted by the current-hilites menu */
-                retry = 0;
+                criticalRetries = 0;
             }
             /* C botl.c:4112-4125,4245-4268 BL_TH_CONDITION: query_conditions() (botl.c:3107),
              * then the color/attribute retries; a cancelled color re-asks the conditions. */
@@ -968,24 +894,21 @@ export async function status_hilite_menu(preserveStatus = false) {
                     for (let i = 0; i < r.count; i++) cond |= 1 << (r.picks[i] - 1);
                     if (!cond) break;
                     const cname = _condbitmask2str(cond);
-                    let clr = await query_color(`Choose a color for conditions ${cname}:`, 8, true);
+                    const clr = await query_color(`Choose a color for conditions ${cname}:`, 8, true);
                     if (clr === -1) continue;
                     let atr = await query_attr_one(`Choose attribute for conditions ${cname}:`, 0, true);
                     while (atr === -1) {
                         const c2 = await query_color(`Choose a color for conditions ${cname}:`, 8, true);
                         if (c2 === -1) break;
-                        clr = c2; /* botl.c:4233 choose_color reassigns clr */
                         atr = await query_attr_one(`Choose attribute for conditions ${cname}:`, 0, true);
                     }
                     if (atr === -1) continue;
                     const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
                     const rule = `condition/${cname}/${clr2colorname(clr).replace(/ /g, '-')}&${attrs}`;
                     (game.status_condition_hilites ||= []).push(rule);
-                    game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                     await pline('Added hilite %s', rule);
-                    /* botl.c:4300: reset after our drainTopline() flush (see above). */
-                    await drainTopline();
                     reset_status_hilites();
+                    await drainTopline();
                     flushed = !game._statusBlankAfterDocrt;
                     added = true;
                     break;
@@ -1006,12 +929,11 @@ export async function status_hilite_menu(preserveStatus = false) {
             /* C botl.c:3943-4070 choose_value for BL_TH_VAL_ABSOLUTE/PERCENTAGE:
              * the getlin prompt, its rejection arms, the up/down/both menu for a
              * bare number, then choose_color (botl.c:4232-4300). */
-            for (; beh === 100 || beh === 101;) {
+            for (let retry = 0; beh === 100 || beh === 101;) {
                 if (retry++ > 5) { await pline("That's enough tries."); await drainTopline(); beh = 0; break; }
                 const percent = beh === 100;
                 const name = INITBLSTATS[fld][0];
-                // C botl.c:3958 trims the ends but preserves internal whitespace.
-                const inbuf = trimspaces(await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${name} threshold:`));
+                const inbuf = mungspaces(await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${name} threshold:`));
                 if (inbuf === '' || inbuf[0] === '\x1b') {
                     beh = await status_hilite_menu_choose_behavior(fld, true);
                     continue;
@@ -1083,7 +1005,6 @@ export async function status_hilite_menu(preserveStatus = false) {
                     const behave = `${['=', '<', '<=', '>=', '>'][lt]}${val}${percent ? '%' : ''}`;
                     const rule = `${name}/${behave}/${clr2colorname(clr).replace(/ /g, '-')}&${attrs}`;
                     (game.status_field_hilites ||= []).push(rule);
-                    game._statusRulesPending = true; // rule is live but colours stay as delivered until reset_status_hilites (botl.c:4300)
                     await pline('Added hilite %s', rule);
                     /* the --More-- page still shows the old status: C re-evaluates
                      * unchanged fields only at reset_status_hilites (botl.c:4302) */
@@ -1210,7 +1131,7 @@ export function describe_level(buf, dflgs, uz) {
 }
 
 export function exp_percent_changing() {
-    return status_xp_percent_changing();
+    return false;
 }
 
 export function title_to_mon(str, rank_indx, title_length) {

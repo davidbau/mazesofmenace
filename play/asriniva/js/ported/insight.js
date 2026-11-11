@@ -398,7 +398,7 @@ export function enlightenment(mode, final) /* BASICENLIGHTENMENT | MAGICENLIGHTE
     if (!C.ge.en_via_menu) {
         C.display_nhwindow(C.ge.en_win, 1);
     } else {
-        const selected = C.menuPointerLocal();
+        const selected = C.menuPointerLocal(0);
 
         C.end_menu(C.ge.en_win, 0);
         if (C.select_menu(C.ge.en_win, C.PICK_NONE, selected) > 0)

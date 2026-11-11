@@ -100,7 +100,7 @@ function _hero_hates_silver_uh() {
 /* handle_tip lives in js/cmd.js (it owns game.context.tips and the tip texts);
  * cmd.js imports this file, so this is a late-bound ES-module cycle — the same
  * shape js/monmove.js relies on for shk_move / pri_move. */
-import { handle_tip, mbodypart, mbodypart as mbodypart_real } from './cmd.js';
+import { handle_tip, mbodypart as mbodypart_real } from './cmd.js';
 import { dry_a_towel } from './weapon.js';
 import { can_twoweapon, untwoweapon } from './wield.js';
 import { artifact_alignment } from './wizcmds.js';
@@ -112,7 +112,7 @@ import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { set_malign, levelDifficulty, grow_up, monflee, nonlivingMon, is_demon, monhp_per_lvl, monPmname, zombie_maker } from './makemon.js';
-import { pmname, Monnam, mon_nam } from './do_name.js';
+import { pmname, Monnam as Monnam_dn, mon_nam as mon_nam_dn } from './do_name.js';
 import { which_armor } from './worn.js';
 import { emits_light, permonstTemplate, set_mon_data } from './makemon.js';
 import { noteleport_level as noteleport_level_uh } from './teleport.js';
@@ -159,7 +159,7 @@ import { getObjName } from './o_init.js';
 import { shade_miss, mon_nam_too, x_monnam, xm_has_mgivenname as has_mgivenname } from './mhitm.js';
 import { mon_hates_blessings, mon_hates_silver } from './mondata.js';
 import { some_mon_nam, l_monnam, a_monnam } from './mhitm.js';
-import { sleep_monst, slept_monst } from './mhitm.js';
+import { sleep_monst } from './mhitm.js';
 import { Resists_Elem, resists_blnd, can_blnd } from './mondata.js';
 import { y_monnam, helpless } from './mhitm.js';
 import { locomotion } from './mondata.js';
@@ -214,7 +214,7 @@ import { flooreffects, set_wounded_legs } from './do.js';
 /* C wield.c:543 yname(obj) -- "your <xname>" / "the <xname>"; the one body
  * lives in js/do_wear.js.  do_attack's gu.unweapon line needs it. */
 import { yname, You, is_shield, bimanual, is_flimsy, some_armor } from './do_wear.js';
-import { monstone, mon_to_stone, vamp_stone, obj_resists, dmgtype, engulf_target, mhitm_knockback } from './dogmove.js';
+import { monstone, mon_to_stone, vamp_stone, obj_resists, dmgtype, slept_monst, engulf_target, mhitm_knockback } from './dogmove.js';
 import { destroy_items as destroy_items_zap,
          destroy_items_mon as destroy_items_mon_zap } from './zap.js';
 import { poly_when_stoned } from './mondata.js';
@@ -415,8 +415,10 @@ export function dbon() {
  * C ref: monsters.h NAM() macro — same order as C mons[] array.
  * Used by mon_nam() / Monnam() helpers below for hit/miss/kill messages. */
 export const MONS_NAMES = ["giant ant","killer bee","soldier ant","fire ant","giant beetle","queen bee","acid blob","quivering blob","gelatinous cube","chickatrice","cockatrice","pyrolisk","jackal","fox","coyote","werejackal","little dog","dingo","dog","large dog","wolf","werewolf","winter wolf cub","warg","winter wolf","hell hound pup","hell hound","gas spore","floating eye","freezing sphere","flaming sphere","shocking sphere","kitten","housecat","jaguar","lynx","panther","large cat","tiger","displacer beast","gremlin","gargoyle","winged gargoyle","hobbit","dwarf","bugbear","dwarf lord","dwarf king","mind flayer","master mind flayer","manes","homunculus","imp","lemure","quasit","tengu","blue jelly","spotted jelly","ochre jelly","kobold","large kobold","kobold lord","kobold shaman","leprechaun","small mimic","large mimic","giant mimic","wood nymph","water nymph","mountain nymph","goblin","hobgoblin","orc","hill orc","mordor orc","uruk hai","orc shaman","orc captain","rock piercer","iron piercer","glass piercer","rothe","mumak","leocrotta","wumpus","titanothere","baluchitherium","mastodon","sewer rat","giant rat","rabid rat","wererat","rock mole","woodchuck","cave spider","centipede","giant spider","scorpion","lurker above","trapper","pony","white unicorn","gray unicorn","black unicorn","horse","warhorse","fog cloud","dust vortex","ice vortex","energy vortex","steam vortex","fire vortex","baby long worm","baby purple worm","long worm","purple worm","grid bug","xan","yellow light","black light","zruty","couatl","aleax","angel","ki rin","archon","bat","giant bat","raven","vampire bat","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","stalker","air elemental","fire elemental","earth elemental","water elemental","lichen","brown mold","yellow mold","green mold","red mold","shrieker","violet fungus","gnome","gnome lord","gnomish wizard","gnome king","giant","stone giant","hill giant","fire giant","frost giant","ettin","storm giant","titan","minotaur","jabberwock","keystone kop","kop sergeant","kop lieutenant","kop kaptain","lich","demilich","master lich","arch lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy","elf mummy","human mummy","ettin mummy","giant mummy","red naga hatchling","black naga hatchling","golden naga hatchling","guardian naga hatchling","red naga","black naga","golden naga","guardian naga","ogre","ogre lord","ogre king","gray ooze","brown pudding","green slime","black pudding","quantum mechanic","genetic engineer","rust monster","disenchanter","garter snake","snake","water moccasin","python","pit viper","cobra","troll","ice troll","rock troll","water troll","olog hai","umber hulk","vampire","vampire lord","vlad the impaler","barrow wight","wraith","nazgul","xorn","monkey","ape","owlbear","yeti","carnivorous ape","sasquatch","kobold zombie","gnome zombie","orc zombie","dwarf zombie","elf zombie","human zombie","ettin zombie","ghoul","giant zombie","skeleton","straw golem","paper golem","rope golem","gold golem","leather golem","wood golem","flesh golem","clay golem","stone golem","glass golem","iron golem","human","","","","elf","woodland elf","green elf","grey elf","elf lord","elvenking","doppelganger","shopkeeper","guard","prisoner","oracle","priest","high priest","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","medusa","wizard of yendor","croesus","ghost","shade","water demon","incubus","horned devil","erinys","barbed devil","marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","sandestin","balrog","juiblex","yeenoghu","orcus","geryon","dispater","baalzebub","asmodeus","demogorgon","death","pestilence","famine","mail daemon","djinni","jellyfish","piranha","shark","giant eel","electric eel","kraken","newt","gecko","iguana","baby crocodile","lizard","chameleon","crocodile","salamander","long worm tail","archeologist","barbarian","caveman","healer","knight","monk","","ranger","rogue","samurai","tourist","valkyrie","wizard","lord carnarvon","pelias","shaman karnov","hippocrates","king arthur","grand master","arch priest","orion","master of thieves","lord sato","twoflower","norn","neferet the green","minion of huhetotl","thoth amon","chromatic dragon","cyclops","ixoth","master kaen","nalzok","scorpius","master assassin","ashikaga takauji","lord surtur","dark one","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"];
-/* mon_nam / Monnam — C ref: do_name.c:1041, 1073; the one body lives in js/do_name.js. */
-export { mon_nam, Monnam };
+/* mon_nam — C ref: do_name.c:1041; the one body lives in js/do_name.js. */
+export function mon_nam(mtmp) { return mon_nam_dn(mtmp); }
+/* Monnam — C ref: do_name.c:1073; the one body lives in js/do_name.js. */
+export function Monnam(mtmp) { return Monnam_dn(mtmp); }
 /* Per-otyp weapon damage dice for small (wsdam) and large (wldam) targets.
  * Generated from nethack-c/include/objects.h WEAPON()/PROJECTILE() macros.
  * Weapons start at otyp 18 (ARROW). Index = otyp. 0 = no damage die.
@@ -635,17 +637,15 @@ function spec_applies(arti, mtmp, mndx) {
         case AD_ELEC_UH:
             return !(yours ? _hero_resists(SHOCK_RES) : Resists_Elem(mtmp, SHOCK_RES));
         case AD_DRST_UH:
-            /* artifact.c:1050 `resists_poison(mtmp)` = monst.h:277
-             * Resists_Elem(mon, POISON_RES); resists_poison_uh below is
-             * exactly that call (mondata.c:129 full body, worn/carried/
-             * wielded arms included). */
+            /* artifact.c:1049 `resists_poison(mtmp)`.  resists_poison_uh
+             * below carries the same mresists|mextrinsics|mintrinsics
+             * simplification. Unreached in practice (no artilist[] row with
+             * SPFX_ATTK + nonzero damn has this adtyp), ported for
+             * completeness (Cardinal Rule 1: port the whole switch). */
             return !(yours ? _hero_resists(POISON_RES) : resists_poison_uh(mtmp));
         case AD_DRLI_UH:
             return !(yours ? _hero_resists(DRAIN_RES) : resists_drli(mtmp));
         case AD_STON_UH:
-            /* artifact.c:1054 `resists_ston(mtmp)` = monst.h:279
-             * Resists_Elem(mon, STONE_RES); sh_resists_ston forwards to
-             * js/mklev.js resists_ston, which is exactly that call. */
             return !(yours ? _hero_resists(STONE_RES) : sh_resists_ston(mtmp));
         default:
             impossible("Weird weapon special attack.");
@@ -713,7 +713,10 @@ function arti_attacks(adtyp, otmp) {
         return false;
     return (ARTI_SPEC[artidx].adtyp | 0) === (adtyp | 0);
 }
-import { spec_ability } from './artifact.js';
+import { spec_ability as spec_ability_real } from './attrib.js';
+function spec_ability(otmp, abil) {
+    return spec_ability_real(otmp, abil);
+}
 /* C artifact.h:22,24 */
 const SPFX_DRLI_UH   = 0x00000100;
 const SPFX_BEHEAD_UH = 0x00000400;
@@ -1273,7 +1276,7 @@ export async function weapon_hit_bonus(weapon) {
 }
 
 /* weapon_dam_bonus(weapon) — damage bonus from weapon skill and other factors.
- * C ref: weapon.c:1643-1729 */
+ * C ref: weapon.c:1638-1725 */
 export async function weapon_dam_bonus(weapon) {
     const _u = game.u || {};
     const wep_type = weapon_type(weapon);
@@ -1316,7 +1319,7 @@ export async function weapon_dam_bonus(weapon) {
         default:        bonus = -3; break; /* P_ISRESTRICTED / P_UNSKILLED */
         }
     }
-    /* C weapon.c:1711-1726 — "Riding gives some thrusting damage". */
+    /* C weapon.c:1702-1714 — "Riding gives some thrusting damage". */
     if (_u.usteed && type !== P_TWO_WEAPON_COMBAT) {
         switch (P_SKILL(P_RIDING)) {
         case P_SKILLED: bonus += 1; break;
@@ -4534,7 +4537,7 @@ export function m_at(x, y) {
 export function uwep_skill_type() {
     const u = game.u || {};
     if (u.twoweap)
-        return P_TWO_WEAPON_COMBAT;
+        return 36;  /* P_TWO_WEAPON_COMBAT */
     return weapon_type(u.uwep);
 }
 
@@ -4563,7 +4566,6 @@ export function weapon_type(obj) {
  * - For P_BARE_HANDED_COMBAT: barehands_or_martial[martial_bonus()]
  * - For other negative indices: odd_skill_names[-idx]
  */
-const PICK_AXE = 259, UNICORN_HORN = 261;
 const skill_names_indices = [
     /* C ref: weapon.c:38-49 — maps skill index to object otyp or negative index (PN_*) */
     /* Indexed by P_* constants: 0=P_NONE, 1=P_DAGGER, ... 37=P_RIDING */
@@ -4623,9 +4625,10 @@ export function skill_name(skill) {
 
     /* Positive index: look up object name */
     if (idx > 0) {
-        /* getObjName() directly reads the complete OC_NAME table, including
-         * fixed-name tools such as PICK_AXE and UNICORN_HORN, matching
-         * C's OBJ_NAME(objects[skill_names_indices[skill]]). */
+        /* getObjName() is a direct OC_NAME lookup that returns null for objects
+         * without an OC_NAME entry, and that the fixed-name pick-axe is therefore
+         * missing from it.  C's table entry is PICK_AXE itself. */
+        const PICK_AXE = 259, UNICORN_HORN = 261;
         return getObjName(idx) ?? ((idx === PICK_AXE || idx === UNICORN_HORN) ? OC_NAME[idx] : null) ?? "unknown";
     }
 
@@ -5394,7 +5397,13 @@ function BlindedTimeout() {
     return 0;
 }
 
-/* C polyself.c:1972-2140 mbodypart — imported from cmd.js (polyself.js). */
+/* C polyself.c:1956-2046 mbodypart — use cmd.js's complete body-part
+ * table.  The former local stub returned the enum token (for example
+ * "hand") instead of the form-specific noun, silently corrupting reachable
+ * grabs, bites, and limb messages for non-humanoid monsters. */
+function mbodypart(mon, part) {
+    return mbodypart_real(mon, part);
+}
 
 /* otense() is imported from js/objnam.js (the real objnam.c:2756 body).
  * It used to be a file-local `return verb + "s"` stub here, which is right only

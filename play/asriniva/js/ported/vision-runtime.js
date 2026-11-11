@@ -3,6 +3,25 @@ const globals=[{"name":"flags","d":{"s":"flag"}},{"name":"iflags","d":{"s":"inst
 const privateStorage=[{"name":"could_see","d":{"a":[2,21,80],"e":{"t":"u8"}},"ctype":"seenV[2][21][80]"},{"name":"cs_rows0","d":{"a":[21],"e":{"q":{"t":"u8"}}},"ctype":"seenV *[21]"},{"name":"cs_rows1","d":{"a":[21],"e":{"q":{"t":"u8"}}},"ctype":"seenV *[21]"},{"name":"cs_rmin0","d":{"a":[21],"e":{"t":"i16"}},"ctype":"coordxy[21]"},{"name":"cs_rmax0","d":{"a":[21],"e":{"t":"i16"}},"ctype":"coordxy[21]"},{"name":"cs_rmin1","d":{"a":[21],"e":{"t":"i16"}},"ctype":"coordxy[21]"},{"name":"cs_rmax1","d":{"a":[21],"e":{"t":"i16"}},"ctype":"coordxy[21]"},{"name":"viz_clear","d":{"a":[21,80],"e":{"t":"i8"}},"ctype":"char[21][80]"},{"name":"viz_clear_rows","d":{"a":[21],"e":{"q":{"t":"i8"}}},"ctype":"char *[21]"},{"name":"left_ptrs","d":{"a":[21,80],"e":{"t":"i16"}},"ctype":"coordxy[21][80]"},{"name":"right_ptrs","d":{"a":[21,80],"e":{"t":"i16"}},"ctype":"coordxy[21][80]"},{"name":"start_row","d":{"t":"i32"},"ctype":"int"},{"name":"start_col","d":{"t":"i32"},"ctype":"int"},{"name":"step","d":{"t":"i32"},"ctype":"int"},{"name":"cs_rows","d":{"q":{"q":{"t":"u8"}}},"ctype":"seenV **"},{"name":"cs_left","d":{"q":{"t":"i16"}},"ctype":"coordxy *"},{"name":"cs_right","d":{"q":{"t":"i16"}},"ctype":"coordxy *"},{"name":"vis_func","d":{"f":true},"ctype":"void (*)(coordxy, coordxy, genericptr_t)"},{"name":"varg","d":{"p":""},"ctype":"genericptr_t"},{"name":"colbump","d":{"a":[81],"e":{"t":"i16"}},"ctype":"coordxy [81]"}];
 import * as core from './vision.js';
 import {withCEnvironment} from './c-runtime.js';
+// Only compiler-owned descriptor identities are memoized. Unknown descriptors
+// retain JSON.stringify behavior, including external mutable descriptor inputs.
+const descriptorKeys=new WeakMap();
+function censusDescriptor(d){
+    if(!d||typeof d!=='object'||descriptorKeys.has(d))return;
+    descriptorKeys.set(d,JSON.stringify(d));
+    for(const key of ['e','q'])if(d[key])censusDescriptor(d[key]);
+}
+for(const row of Object.values(schemas))for(const field of row.fields)censusDescriptor(field.d);
+for(const row of [...globals,...privateStorage])censusDescriptor(row.d);
+const descriptorKey=d=>descriptorKeys.has(d)?descriptorKeys.get(d):JSON.stringify(d);
+// Derived children of compiler-owned descriptors share their immutable metadata
+// contract, including when exposed through target.descriptor. Unknown parents
+// remain dynamic; structural equality alone never establishes ownership.
+function ownedChildDescriptor(parent,child){
+    if(descriptorKeys.has(parent))censusDescriptor(child);
+    return child;
+}
+
 const instances=new WeakMap();
 export function createVisionEnvironment(services,layout){
     for(const[k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,COLNO:80,ROWNO:21,MAX_RADIUS:15,charSigned:1,seenVSize:1,coordxySize:2,config_MACRO_CPATH:1,config_EXTEND_SPINE:0,config_DEBUG:1}))if(layout[k]!==v)throw Error('Review changed VISION ABI/config '+k);
@@ -13,7 +32,7 @@ export function createVisionEnvironment(services,layout){
         const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
     const read=(d,at)=>{if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.q||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
     const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||d.q||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
-    function array(d,at){const key='array:'+JSON.stringify(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},stride=width(child),target={address:at,byteLength:width(d),descriptor:d};
+    function array(d,at){const key='array:'+descriptorKey(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:ownedChildDescriptor(d,{a:d.a.slice(1),e:d.e}),stride=width(child),target={address:at,byteLength:width(d),descriptor:d};
         const result=new Proxy(target,{get(o,k){return typeof k==='string'&&/^\d+$/.test(k)?read(child,at+Number(k)*stride):Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});cache.set(key,result);return result;}
     function view(name,value){const at=addr(value);if(!at)return 0;const key=name+':'+at;if(cache.has(key))return cache.get(key);const result={address:at,kind:name};cache.set(key,result);const ki=names.indexOf(name);
         schemas[name].fields.forEach((f,i)=>Object.defineProperty(result,f.name,{get:()=>decode(f.d,services.read(ki,at,i)),set:v=>services.write(ki,at,i,raw(v))}));

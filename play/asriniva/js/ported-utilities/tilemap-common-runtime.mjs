@@ -1,0 +1,27 @@
+import * as core from './tilemap-common.mjs';import * as data from './tilemap-common-data.mjs';
+import {withCEnvironment}from'./tilemap-scope.mjs';
+const states=new WeakMap();
+export function createUtility(m){
+ const names=['BUFSZ','NUMMONS','NUM_OBJECTS','MAX_GLYPH','ALT_COUNT','pointerSize','intSize','pmSize','pmnames','descrSize','oc_name','oc_descr','symSize','explanation','mapSize','map_tilenum','tilesUsedSize','tilenum','src','file_entry','tilenam','references','tilenamSize','referencesSize','MON_GLYPH','OBJ_GLYPH','OTH_GLYPH','MALE','FEMALE','NEUTRAL','S_stone','main_walls','mines_walls','S_vwall','S_trwall','S_ndoor','S_brdnladder','S_altar','altar_unaligned','altar_other','S_grave','S_arrow_trap','MAXTCHARS','NUM_ZAP','S_digbeam','S_goodpos','S_sw_tl','S_sw_br','expl_dark','expl_frosty','S_expl_tl','S_expl_br','WARNCOUNT','sokoban_walls','TRUE','FALSE','EXIT_FAILURE'];
+ const L=Object.fromEntries(names.map((k,i)=>[k,Number(m._tm_layout(i))]));if(L.pointerSize!==8||L.intSize!==4)throw Error('Review actual ABI');
+ const ptr=p=>Number(p?.address??p??0),p64=p=>BigInt(ptr(p)),size=n=>BigInt.asUintN(64,BigInt(n)),int=n=>typeof n==='bigint'?Number(BigInt.asIntN(32,n)):Number(n)|0,view=()=>new DataView(m.HEAPU8.buffer);
+ let state=states.get(m);if(!state){state={strings:new Map()};states.set(m,state);}
+ const literal=s=>{if(typeof s!=='string')return ptr(s);if(state.strings.has(s))return state.strings.get(s);const b=new TextEncoder().encode(s+'\0'),p=Number(m._malloc(BigInt(b.length)));m.HEAPU8.set(b,p);state.strings.set(s,p);return p;};
+ const indexed=(p,stride,make,length)=>new Proxy({address:p,length},{get(o,k){if(typeof k==='string'&&/^-?\d+$/.test(k))return make(p+Number(k)*stride);return Reflect.get(o,k);}});
+ const pointerAt=p=>Number(view().getBigUint64(p,true));
+ const pm=p=>({address:p,pmnames:indexed(p+L.pmnames,8,pointerAt,3)});
+ function descriptor(p){return{address:p,get oc_name(){return pointerAt(p+L.oc_name);},get oc_descr(){return pointerAt(p+L.oc_descr);}};}
+ const used=p=>{const o={address:p};for(const k of['tilenum','src','file_entry'])Object.defineProperty(o,k,{get:()=>view().getInt32(p+L[k],true),set:n=>view().setInt32(p+L[k],int(n),true)});for(const k of['tilenam','references'])Object.defineProperty(o,k,{get:()=>p+L[k]});return o;};
+ const listBase=Number(m._tm_storage(1));const tilelist=new Proxy({address:listBase,length:2500},{get(o,k){if(typeof k==='string'&&/^\d+$/.test(k)){const p=pointerAt(listBase+Number(k)*8);return p?used(p):0;}return Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){view().setBigUint64(listBase+Number(k)*8,p64(v),true);return true;}return Reflect.set(o,k,v);}});
+ const C={...L,tilenamSize:BigInt(L.tilenamSize),referencesSize:BigInt(L.referencesSize),tilesUsedSize:BigInt(L.tilesUsedSize),charPointer:literal,int,div:(a,b)=>Math.trunc(a/b),ptrAdd:(p,n)=>Number(BigInt.asUintN(64,BigInt(literal(p))+BigInt(n))),nhUse:()=>{},
+ tilenameBuffer:Number(m._tm_storage(2)),stderr:Number(m._tm_stderr()),tilelist,
+ tilemap:indexed(Number(m._tm_storage(0)),L.mapSize,p=>({address:p,get tilenum(){return view().getInt16(p+L.map_tilenum,true);}}),L.MAX_GLYPH),
+ mons:indexed(Number(m._tm_storage(3)),L.pmSize,pm,L.NUMMONS),obj_descr:indexed(Number(m._tm_storage(4)),L.descrSize,descriptor,L.NUM_OBJECTS),defsyms:indexed(Number(m._tm_storage(5)),L.symSize,p=>({address:p,get explanation(){return pointerAt(p+L.explanation);}}),L.ALT_COUNT),
+ bytesLocal:n=>m.stackAlloc(n),tilesUsedLocal(zero){const p=m.stackAlloc(L.tilesUsedSize);if(zero)m.HEAPU8.fill(0,p,p+L.tilesUsedSize);return used(p);},loadChar:p=>view().getInt8(ptr(p)),storeChar:(p,n)=>{view().setInt8(ptr(p),n);return int(n)<<24>>24;},
+ strcmp:(a,b)=>m._strcmp(BigInt(literal(a)),BigInt(literal(b))),strlen:p=>m._strlen(BigInt(literal(p))),def_char_to_objclass:c=>m._def_char_to_objclass(int(c)),malloc:n=>Number(m._malloc(size(n))),free:p=>m._free(p64(p)),exit:n=>m._tm_exit(int(n)),
+ Sprintf(out,fmt,...a){const p=p64(out),f=BigInt(literal(fmt));if(a.length===0)return m._tm_sprintf0(p,f);if(a.length===1)return fmt.includes('%s')?m._tm_sprintfp(p,f,BigInt(literal(a[0]))):m._tm_sprintfi(p,f,int(a[0]));if(a.length===2)return fmt.includes('%s')?m._tm_sprintfpp(p,f,BigInt(literal(a[0])),BigInt(literal(a[1]))):m._tm_sprintfii(p,f,int(a[0]),int(a[1]));if(a.length===3)return m._tm_sprintfpii(p,f,BigInt(literal(a[0])),int(a[1]),int(a[2]));throw Error('Review source ABI shape');},
+ Snprintf(out,n,fmt,...a){const i=a.pop(),shapes=['pp','p','pp','p','i','pp','ppi','i','pp'],shape=shapes[i];return m['_tm_snprintf'+i](p64(out),size(n),BigInt(literal(fmt)),...a.map((v,j)=>shape[j]==='p'?BigInt(literal(v)):int(v)));},
+ Fprintf(f,fmt,...a){const p=p64(f),s=BigInt(literal(fmt));if(a.length===0)return m._tm_print0(p,s);if(a.length===1)return typeof a[0]==='bigint'?m._tm_printz(p,s,size(a[0])):m._tm_printp(p,s,BigInt(literal(a[0])));if(a.length===5)return m._tm_printlist(p,s,int(a[0]),BigInt(literal(a[1])),int(a[2]),BigInt(literal(a[3])),BigInt(literal(a[4])));throw Error('Review source fprintf shape');}};
+ for(const[k,v]of Object.entries(data)){if(k==='altlabels')C[k]=v.map(row=>({...row,tilelabel:literal(row.tilelabel),expectedlabel:literal(row.expectedlabel)}));else if(k==='conditionals')C[k]=v.map(row=>({...row,name:literal(row.name)}));else C[k]=v.map(literal);}
+ return{C,L,invoke(name,...args){const sp=m.stackSave();try{const out=withCEnvironment(C,core[name],...args);return typeof out==='string'?literal(out):out;}finally{m.stackRestore(sp);}}};
+}

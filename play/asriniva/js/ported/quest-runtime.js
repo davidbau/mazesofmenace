@@ -164,3 +164,49 @@ export function createQuestEnvironment(services, layout) {
         carrying(...args) { return object(services.carrying(...args)); },
     };
 }
+
+// Cache only completed environments; heap fields and world addresses stay live.
+const questEnvironments = new WeakMap();
+export function withQuestEnvironment(services, layout, namespace, invoke) {
+    const key = services.moduleKey;
+    // Older embedding facades have no stable Module identity: retain their original path.
+    if ((typeof key !== 'object' || key === null) && typeof key !== 'function')
+        return invoke(createQuestEnvironment(services, layout), services);
+    let layouts = questEnvironments.get(key);
+    if (!layouts) { layouts = new WeakMap(); questEnvironments.set(key, layouts); }
+    let namespaces = layouts.get(layout);
+    if (!namespaces) { namespaces = new WeakMap(); layouts.set(layout, namespaces); }
+    let entry = namespaces.get(namespace);
+    if (!entry) {
+        entry = { active: services };
+        const forwarding = new Proxy(Object.create(null), {
+            get: (_target, key) => Reflect.get(entry.active, key, entry.active),
+            has: (_target, key) => Reflect.has(entry.active, key),
+            ownKeys: () => Reflect.ownKeys(entry.active),
+            getOwnPropertyDescriptor: (_target, key) => Reflect.has(entry.active, key)
+                ? { configurable: true, enumerable: Object.prototype.propertyIsEnumerable.call(entry.active, key) } : undefined,
+        });
+        entry.forwarding = forwarding;
+        entry.environment = createQuestEnvironment(forwarding, layout);
+        // Preserve live service overrides despite the constructor's service spread.
+        const ownedKeys = new Set([...Object.keys(layout), ...["STRAT_WAITMASK", "LL_ACHIEVE", "HEAP8", "HEAPU8", "int", "boolean", "coordxy", "monster", "object", "permonst", "level", "branch", "trap", "Qstat", "u", "wizard", "Deaf", "Not_firsttime", "quest_dnum", "qstart_level", "Is_qstart", "Is_qlocate", "Is_nemesis", "svc", "gi", "gf", "mons", "helpless", "dungeon_branch", "find_quest_artifact", "carrying"]]);
+        for (const key of Reflect.ownKeys(services)) {
+            const descriptor = Object.getOwnPropertyDescriptor(entry.environment, key);
+            if (!ownedKeys.has(key) && descriptor?.configurable && 'value' in descriptor)
+                Object.defineProperty(entry.environment, key, {
+                    configurable: true, enumerable: descriptor.enumerable,
+                    get: () => Reflect.get(entry.active, key, entry.active),
+                });
+        }
+        Object.setPrototypeOf(entry.environment, forwarding);
+
+        // Constructor/ABI validation and service bindings must finish before publication.
+        const completed = namespaces.get(namespace);
+        if (completed) entry = completed;
+        else namespaces.set(namespace, entry);
+    }
+    const previous = entry.active;
+    entry.active = services;
+    try { return invoke(entry.environment, entry.forwarding); }
+    finally { entry.active = previous; }
+}
