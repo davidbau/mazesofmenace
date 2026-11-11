@@ -21,7 +21,7 @@ import { del_engr_at, makemon, mkgold, mkobj, mkobj_at, mksobj_at, rnd_class } f
 import { sobj_at } from './invent.js';
 import { level_difficulty } from './dungeon.js';
 import { set_levltyp } from './mkmaze.js';
-import { curse, uncurse } from './mkobj.js';
+import { bless, curse, uncurse } from './mkobj.js';
 import { nexttodoor } from './mkroom.js';
 import { angry_guards, get_iter_mons, minliquid } from './mon.js';
 import { observe_object } from './o_init.js';
@@ -649,7 +649,7 @@ export async function dipfountain(obj) {
             if (obj.spe > -6 && !rn2(3))
                 obj.spe--;
             obj.oerodeproof = false;
-            exercise(A_WIS, false);
+            await exercise(A_WIS, false);
             livelog_printf(LL_ARTIFACT, 'was denied %s!  The %s has deemed %s unworthy',
                 artiname(1 /* ART_EXCALIBUR */), 'Lady of the Lake', g.flags.female ? 'her' : 'him');
         } else {
@@ -659,11 +659,10 @@ export async function dipfountain(obj) {
             obj = await oname(obj, artiname(1 /* ART_EXCALIBUR */),
                         ONAME_VIA_DIP | ONAME_KNOW_ARTI);
             discover_artifact(1 /* ART_EXCALIBUR */); // C fountain.c:433
-            obj.cursed = false;
-            obj.blessed = true;
+            await bless(obj);
             obj.oeroded = obj.oeroded2 = 0;
             obj.oerodeproof = true;
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             livelog_printf(LL_ARTIFACT, 'was given %s by the %s',
                 artiname(1 /* ART_EXCALIBUR */), 'Lady of the Lake');
         }
@@ -736,7 +735,7 @@ export async function dipfountain(obj) {
         case 27:
             await You_feel('a sudden chill.');
             break;
-        case 28: /* Bath / lose gold — not ported (TODO) */
+        case 28: /* C fountain.c:501-529 — Strange feeling (bath / lose gold) */
             await pline('An urge to take a bath overwhelms you.');
             {
                 let money = money_cnt(g.invent) | 0;
@@ -759,7 +758,7 @@ export async function dipfountain(obj) {
                             otmp.quan = (otmp.quan | 0) - coin_loss;
                             money -= coin_loss * denomination;
                             if (!otmp.quan)
-                                await delobj(otmp); /* UNPORTED-CALLEE, C's own call */
+                                await delobj(otmp);
                         }
                     }
                     g._botlGoldStale = _goldShownBeforeLoss;
@@ -770,7 +769,7 @@ export async function dipfountain(obj) {
                 }
             }
             break;
-        case 29: /* See coins — not ported (TODO) */
+        case 29: /* C fountain.c:530-546 — You see coins */
             if (loc && (loc.flags & F_LOOTED))
                 break;
             if (loc)
@@ -802,6 +801,7 @@ export async function breaksink(x, y) {
         await pline('The pipes break!  Water spurts out!');
     set_levltyp(x, y, FOUNTAIN);
     if (loc) {
+        loc.looted = 0;
         loc.flags = 1; /* SET_FOUNTAIN_LOOTED */
         loc.blessedftn = 0;
     }
@@ -972,10 +972,10 @@ export async function sink_backs_up(x, y) {
 export async function wash_hands() {
     const hands = makeplural_objnam(body_part(HAND));
     let res = ER_NOTHING;
-    const was_glib = !!(game.u.uprops[GLIB].intrinsic);
+    const was_glib = _prop_active(GLIB);
     await pline('You wash your %s%s in the %s.', game.u.uarmg ? 'gloved ' : '',
                 hands, hliquid('water'));
-    if (game.u.uprops[GLIB].intrinsic) {
+    if (_prop_active(GLIB)) {
         make_glib(0);
         await pline('Your %s are no longer slippery.', fingers_or_gloves(true));
     }

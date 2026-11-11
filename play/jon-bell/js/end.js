@@ -1403,7 +1403,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
                 return '#';
             }
             if (choices.indexOf(ch) >= 0)
-                return _answered(ch);
+                return ch === '#' ? ch : _answered(ch);
             if (choices.indexOf(ch.toLowerCase()) >= 0)
                 return _answered(ch.toLowerCase());
             /* anything else: C rings the bell and re-loops, repainting the same
@@ -2412,10 +2412,11 @@ async function really_done(how) {
     }
 }
 
-/* C save.c:1077 freedynamicdata — only the parts with state that outlives
- * a JS segment are modelled.  save.c:1136 wish_history_flush(): C's static
- * wish_history[] is emptied before exit, so a restored game starts with none. */
+/* C save.c:1077 freedynamicdata — release the saved role-option strings
+ * (save.c:1131) and process-local wish history (save.c:1136) before exit. */
 async function freedynamicdata() {
+    const { freeroleoptvals } = await import('./options.js');
+    freeroleoptvals(); // C save.c:1131, before wish_history_flush().
     const { wish_history_flush } = await import('./zap.js');
     wish_history_flush();
 }
@@ -2575,7 +2576,10 @@ async function _container_contents_one(box, identified, all_containers, reportem
                 const raw = await nhgetch();
                 const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
                 /* C dmore(cw, quitchars) -> xwaitforspace(" \r\n\033"). */
-                if (k === 32 || k === 10 || k === 13 || k === 27) { esc = k === 27; break; }
+                if (k === 32 || k === 10 || k === 13 || k === 27) {
+                    if (k === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
+                    esc = k === 27; break;
+                }
             }
             if (esc) break;
         }

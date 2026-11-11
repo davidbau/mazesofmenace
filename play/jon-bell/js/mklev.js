@@ -3,7 +3,7 @@ import { impossible_sync } from './display.js';
 import { ledger_no as ledger_no_real } from './bones.js';
 import { quest_monster_died } from './quest.js';
 import { is_quest_artifact } from './objnam.js';
-import { surface, coord_desc } from './cmd.js';
+import { surface, coord_desc, invocation_pos } from './cmd.js';
 import { removed_from_icebox } from './pickup.js';
 import { explode } from './explode.js';
 import { EXPL_FIERY } from './const.js';
@@ -147,7 +147,7 @@ import { insert_branch } from './dungeon.js';
 import { consumeDungeonInitRng } from './dungeon_rng.js';
 import { paniclog } from './files.js';
 import { registerStaticReset } from './statics.js';
-import { PM_LEPRECHAUN } from './pm.generated.js';
+import { PM_LEPRECHAUN, PM_DWARF, PM_GNOME } from './pm.generated.js';
 import { distmin, dist2 } from './hacklib.js';
 import { depth as depth_of_level } from './dungeon.js';
 import { oinit } from './o_init.js';
@@ -171,11 +171,11 @@ import { ALL_TRAPS } from './const.js';
 import { rloco, thiefdead } from './steal.js';
 import { cansee, couldsee, block_point, vision_recalc, Blind as Blind_pickup } from './vision.js';
 import { canseemon, canspotmon, newsym, sensemon, unmap_object, glyph_is_invisible_at, GLYPHCLS_INVIS, see_nearby_objects, map_location, swallowed } from './display.js';
-import { pline, You_hear, You_see } from './pline.js';
+import { pline, pline_The, You, You_hear, You_see } from './pline.js';
 import { invalidateTerrainStatus } from './terrain-status.js';
 /* rumors.c outrumor()'s is_fainted() guard.  CYCLIC (js/eat.js imports getrumor
  * from this file); is_fainted is a hoisted `export function`, so it resolves. */
-import { set_tin_variety, is_fainted, mon_givit, food_disappears, eaten_stat } from './eat.js';
+import { set_tin_variety, is_fainted, mon_givit, food_disappears, eaten_stat, cant_finish_meal } from './eat.js';
 import { book_disappears } from './spell.js';
 import { impossible as lifecycle_impossible } from './pline.js';
 import { LS_OBJECT } from './const.js';
@@ -194,7 +194,7 @@ import { merged } from './invent.js';
 import { oid_price_adjustment } from './shk.js';
 import { shkgone } from './shk.js';
 import { shkname } from './dokick.js';
-import { is_ice } from './dbridge.js';
+import { is_ice, is_lava } from './dbridge.js';
 import { subfrombill, find_objowner, onbill } from './shk.js';
 /* in_rooms: the ONE implementation (js/shk.js:490, C hack.c:3497).  Imported and
  * re-exported so the modules that import it from here get the real body. */
@@ -209,7 +209,7 @@ import { delete_contents } from './shk.js';
 /* C shknam.c:793's on_level(&u.uz, &orcus_level); the real body from
  * js/dungeon.js (js/shk.js and js/priest.js now re-export the same one).
  * dungeon_branch_dnum is the canonical dungeon_branch() end2 scan. */
-import { on_level, dungeon_branch_dnum } from './dungeon.js';
+import { on_level, dungeon_branch_dnum, at_dgn_entrance } from './dungeon.js';
 /* C zap.c:1458 obj_resists — the real body (js/dogmove.js).  It was imported
  * under an alias only because this file also declared a file-local
  * `function obj_resists(otmp, a, b) { return false; }` stub that shadowed it
@@ -265,7 +265,7 @@ import { cvt_sdoor_to_door } from './detect.js';
 import { unpunish } from './read.js';
 import { bury_an_obj } from './dig.js';
 import { CORPSTAT_BURIED } from './const.js';
-import { m_at, mon_nam as mon_nam_wm, Monnam as Monnam_real, experience, newexplevel } from './uhitm.js';
+import { m_at, mon_nam as mon_nam_wm, Monnam, experience, newexplevel } from './uhitm.js';
 import { hastrack } from './track.js';
 import { in_your_sanctuary, p_coaligned, priestini, mon_aligntyp, newepri } from './priest.js';
 /* touch_artifact()'s hero branch and the artilist[] spfx/alignment/role columns
@@ -963,7 +963,7 @@ export function start_corpse_timeout(body) {
         action = ZOMBIFY_MON;
         when = rn1(15, 5); /* 5..19 */
     }
-    /* C mkobj.c:1436 (void) start_timer(when, TIMER_OBJECT, action,
+    /* C mkobj.c:1431 (void) start_timer(when, TIMER_OBJECT, action,
      * obj_to_any(body)) — start_timer does the body.timed++ itself. */
     start_timer(when, TIMER_OBJECT, action, obj_to_any(body));
 }
@@ -1573,6 +1573,8 @@ export function add_to_migration(obj) {
     if (where !== OBJ_FREE)
         throw new Error(`add_to_migration: obj where=${where}, not free`);
 
+    if (obj.unpaid)
+        impossible_sync("unpaid object migrating to another level? [%s]", simpleonames(obj));
     /* C: obj->no_charge = 0 — only relevant while inside a shop */
     obj.no_charge = 0;
 
@@ -2206,7 +2208,8 @@ export function dobjsfree() {
 export function add_to_buried(obj) {
     if (!obj)
         return;
-    /* C: panic if obj->where != OBJ_FREE — in JS just proceed */
+    if ((obj.where | 0) !== OBJ_FREE)
+        throw new Error(`panic: add_to_buried: obj where=${obj.where}, not free`);
     obj.where = OBJ_BURIED;
     if (game.level) {
         obj.nobj = game.level.buriedobjlist ?? null;
@@ -3777,7 +3780,7 @@ export function rest_engravings(saved) {
 export { l_nhcore_init } from './nhlua.js';
 import { nh_callback_run, NHCB_LVL_ENTER, nhl_init, nhl_loadlua, nhl_done } from './nhlua.js';
 import { ENV } from './hostenv.js';
-import { can_be_hatched, dead_species, dealloc_mextra, hideunder, minliquid, mongone, newcham, pm_to_cham, undead_to_corpse, validspecmon, zombie_form } from './mon.js'; // relocate-fns
+import { can_be_hatched, dead_species, dealloc_mextra, hideunder, minliquid, mongone, newcham, pm_to_cham, se_scratching, Soundeffect, undead_to_corpse, validspecmon, zombie_form } from './mon.js'; // relocate-fns
 import { str_lines_maxlen, stripdigits, strsubst, upstart } from './hacklib.js'; // relocate-fns
 import { antholemon, do_mkroom, fill_zoo, has_dnstairs, has_upstairs, inside_room, somex, somexy, somexyspace, somey } from './mkroom.js'; // relocate-fns
 import { stairway_add, stairway_at } from './stairs.js'; // relocate-fns
@@ -6977,9 +6980,9 @@ export function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, true);
     g.level.rooms[g.level.nroom] = croom;
     g.level.nroom++;
-    if (g.level.nroom < MAXNROFROOMS) {
-        g.level.rooms[g.level.nroom] = { hx: -1 };
-    }
+    /* C mklev.c:316-317 — croom++; croom->hx = -1; unconditionally:
+     * svr.rooms[MAXNROFROOMS] is the top-level half's sentinel slot. */
+    g.level.rooms[g.level.nroom] = { hx: -1 };
 }
 // C ref: mklev.c do_room_or_subroom()
 function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, is_room) {
@@ -7584,7 +7587,7 @@ export async function makecorridors() {
         }
     }
 }
-// C ref: mklev.c:1815-1822 occupied() = t_at(x,y) || IS_FURNITURE(levl[x][y].typ)
+// C ref: mklev.c:1805-1811 occupied() = t_at(x,y) || IS_FURNITURE(levl[x][y].typ)
 // || is_lava(x,y) || is_pool(x,y) || invocation_pos(x,y).
 export function occupied(x, y) {
     // t_at(x,y) means a trap blocks the tile.
@@ -7595,12 +7598,10 @@ export function occupied(x, y) {
     // #wizloadlua re-fills a level, stale gs.stairs nodes sit on non-STAIRS
     // terrain and C treats those squares as free.
     const loc = game.level.at(x, y);
-    if (loc && (IS_FURNITURE(loc.typ)
-                || loc.typ === LAVAPOOL || loc.typ === LAVAWALL
-                || IS_POOL(loc.typ)))
+    if ((loc && IS_FURNITURE(loc.typ))
+        || is_lava(x, y) || is_pool(x, y))
         return true;
-    const invocation_pos = false; /* stub — WIRE_PENDING: invocation_pos (hack.c:965) unported */
-    return invocation_pos;
+    return invocation_pos(x, y);
 }
 /* C ref: selvar.c:781 selection_from_mkroom + selvar.c:284 selection_rndcoord.
  * Builds the ordered list of cells rndcoord(selection.room()) would index over:
@@ -7744,16 +7745,13 @@ export function mkstairs(x, y, up, croom, force = false) {
         dnum: g.u?.uz?.dnum ?? 0,
         dlevel: (g.u?.uz?.dlevel ?? 1) + (up ? -1 : 1),
     };
+    /* C mklev.c:2193-2196 — the stairway list is the only record C keeps;
+     * set_levltyp() honours CAN_OVERWRITE_TERRAIN, so the type is not
+     * forced afterwards. */
     stairway_add(x, y, !!up, false, dest);
     set_levltyp(x, y, STAIRS);
-    if (loc) {
-        loc.typ = STAIRS;
+    if (loc)
         loc.ladder = up ? LA_UP : LA_DOWN;
-    }
-    if (up)
-        g.level.upstair = { x, y };
-    else
-        g.level.dnstair = { x, y };
 }
 async function generate_stairs() {
     const g = game;
@@ -7896,8 +7894,9 @@ async function makeniche(trap_type) {
 async function make_niches() {
     const g = game;
     let ct = rnd(Math.trunc(g.level.nroom / 2) + 1);
-    let ltptr = ((g.u?.uz?.dlevel ?? 1) > 15);
-    let vamp = ((g.u?.uz?.dlevel ?? 1) > 5 && (g.u?.uz?.dlevel ?? 1) < 25);
+    const dep = depth_of_level(g.u?.uz) | 0;
+    let ltptr = (!g.level.flags.noteleport && dep > 15);
+    let vamp = (dep > 5 && dep < 25);
     while (ct--) {
         if (ltptr && !rn2(6)) {
             ltptr = false;
@@ -7977,14 +7976,6 @@ function dungeon_branch_by_dnum(dnum) {
         return null;
     return dungeon_branch_dnum(dnum);
 }
-/* C ref: dungeon.c:1897-1903 at_dgn_entrance("The Quest") —
- * dungeon_branch(s) then on_level(&u.uz, &br->end1); the name's dnum is the
- * cached game.quest_dnum, and the comparison is the REAL on_level port
- * (js/dungeon.js:57), not a hand-inlined dnum/dlevel test. */
-function at_dgn_entrance_quest() {
-    const br = dungeon_branch_by_dnum(game.quest_dnum);
-    return !!(br && on_level(game.u?.uz, br.end1));
-}
 async function mk_knox_portal(x, y) {
     const g = game;
     const knox = g.knox_level;
@@ -8014,7 +8005,7 @@ async function mk_knox_portal(x, y) {
     /* C mklev.c:2647-2651 — in the main dungeon, not at the Quest entrance,
      * beneath 10 and above Medusa. */
     if (!(uz && uz.dnum === g.oracle_level?.dnum
-        && !at_dgn_entrance_quest()
+        && !at_dgn_entrance("The Quest")
         && u_depth > 10
         && u_depth < (depth_of_level(g.medusa_level) | 0)))
         return;
@@ -8023,7 +8014,18 @@ async function mk_knox_portal(x, y) {
     source.dlevel = uz.dlevel;
     br.end1_floating = false;
     insert_branch(br, true);
+    await debugpline('mklev.c', 'Made knox portal.'); /* C mklev.c:2656 debugpline0 */
     await place_branch(br, x, y);
+}
+/* C mklev.c:1676-1687 pos_to_room() — the room containing <x,y>, or null. */
+function pos_to_room(x, y) {
+    const g = game;
+    for (let i = 0; i < (g.level.nroom | 0); i++) {
+        const curr = g.level.rooms[i];
+        if (inside_room(curr, x, y))
+            return curr;
+    }
+    return null;
 }
 // C ref: nethack-c/src/mklev.c:1701-1757 place_branch()
 // Places branch staircase or portal for the current dungeon level.
@@ -8037,23 +8039,20 @@ export async function place_branch(branchp, x, y) {
     if (!branchp || g.made_branch)
         return;
     const mp = { x: 0, y: 0 };
-    /* C ref: mklev.c:1718-1725 — the x==0 arm finds random coords; the x!=0 arm
-     * only calls pos_to_room(x, y), whose return value C discards.  Before the
-     * mk_knox_portal port this function had a single caller that always took the
-     * x==0 arm, so the parameters were dropped and the search ran
-     * unconditionally — which would have spent find_branch_room's RNG on a call
-     * C makes with explicit coords. */
+    /* C ref: mklev.c:1708-1715 — the x==0 arm finds random coords; the x!=0
+     * arm only calls pos_to_room(x, y), whose return value C discards. */
     if (!x) {
         await find_branch_room(mp);
     }
     else {
+        pos_to_room(x, y);
         mp.x = x;
         mp.y = y;
     }
     const dnum = g.u?.uz?.dnum ?? 0;
     const dlevel = g.u?.uz?.dlevel ?? 1;
     const on_end1 = (branchp.end1?.dnum === dnum && branchp.end1?.dlevel === dlevel);
-    /* C ref: mklev.c:1727-1735 */
+    /* C ref: mklev.c:1717-1725 */
     const dest = on_end1 ? branchp.end2 : branchp.end1;
     /* BR_NO_END1=1, BR_NO_END2=2; make_stairs false iff type matches the end we're on */
     const BR_NO_END1 = 1;
@@ -8061,23 +8060,21 @@ export async function place_branch(branchp, x, y) {
     const BR_PORTAL = 3;
     const brtype = branchp.type ?? 0;
     const make_stairs = on_end1 ? (brtype !== BR_NO_END1) : (brtype !== BR_NO_END2);
-    /* C ref: mklev.c:1737-1748 */
+    /* C ref: mklev.c:1727-1739 */
     if (brtype === BR_PORTAL) {
-        await mkportal(mp.x, mp.y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
+        const ucf = g.u?.ucamefrom;
+        if (g.iflags?.debug_fuzzer && (ucf?.dnum || ucf?.dlevel))
+            await mkportal(mp.x, mp.y, ucf.dnum, ucf.dlevel);
+        else
+            await mkportal(mp.x, mp.y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
     }
     else if (make_stairs) {
         const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
         stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
+        set_levltyp(mp.x, mp.y, STAIRS);
         const loc = g.level?.at(mp.x, mp.y);
-        if (loc) {
-            loc.typ = STAIRS;
-            /* C ref: mklev.c:1748 levl[x][y].ladder = goes_up ? LA_UP : LA_DOWN */
-            loc.ladder = goes_up ? 1 : 2;
-        }
-        if (goes_up)
-            g.level.upstair = { x: mp.x, y: mp.y };
-        else
-            g.level.dnstair = { x: mp.x, y: mp.y };
+        if (loc)
+            loc.ladder = goes_up ? LA_UP : LA_DOWN;
     }
     /* C ref: mklev.c:1756 — set made_branch regardless */
     g.made_branch = true;
@@ -8173,6 +8170,9 @@ async function mktrap_victim(trap) {
     const lvl = level_difficulty();
     const kind = trap.ttyp;
     const x = trap.tx, y = trap.ty;
+    /* C mklev.c:1825 */
+    if (!(x > 0 && x < COLNO && y >= 0 && y < ROWNO))
+        throw new Error(`mktrap_victim: assertion failed: <${x},${y}> off map`);
     let trap_item = null;
     switch (kind) {
         case ARROW_TRAP:
@@ -8193,7 +8193,7 @@ async function mktrap_victim(trap) {
         const cls = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
         const otmp = await mkobj(cls, false);
         curse(otmp);
-        /* C mklev.c:1891-1898 — "for mktrap_victim(), PIT is actually an exploded
+        /* C mklev.c:1877-1885 — "for mktrap_victim(), PIT is actually an exploded
          * LANDMINE": if a fragile object has been created, destroy it. */
         if (kind === PIT && breaktest(otmp)) {
             await dealloc_obj(otmp);
@@ -8201,11 +8201,8 @@ async function mktrap_victim(trap) {
             place_object(otmp, x, y);
         }
     } while (!rn2(5));
-    // Victim type
-    const PM_ELF = 264, PM_DWARF = 44, PM_ORC = 72, PM_GNOME = 165, PM_HUMAN = 260;
-    /* PM_ARCHEOLOGIST / PM_WIZARD come from the file-level pm.generated.js
-     * import (line 19) — same values (331/343) as the removed local copies;
-     * diff=12 → rn2(12) matches C mklev.c:1941 */
+    /* C mklev.c:1890 — Place a corpse.  PM_* are the pm.generated.js
+     * imports; rn1(PM_WIZARD - PM_ARCHEOLOGIST, ...) is rn2(12), mklev.c:1931 */
     let victim_mnum;
     switch (rn2(15)) {
         case 0:
@@ -8228,7 +8225,7 @@ async function mktrap_victim(trap) {
         case 9:
             victim_mnum = PM_GNOME;
             if (!rn2(10)) {
-                const otmp = await mksobj(rn2(4) ? 224 : 225, true, false); // TALLOW_CANDLE / WAX_CANDLE
+                const otmp = await mksobj(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, true, false);
                 otmp.quan = 1;
                 otmp.owt = weight(otmp);
                 curse(otmp);
@@ -8243,8 +8240,8 @@ async function mktrap_victim(trap) {
     }
     if (victim_mnum === PM_HUMAN && rn2(25))
         victim_mnum = rn1(PM_WIZARD - PM_ARCHEOLOGIST, PM_ARCHEOLOGIST);
-    const otmp = await mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
-    // C mklev.c:1943 — otmp->age -= (TAINT_AGE + 1); died too long ago to safely eat.
+    const otmp = await mkcorpstat(CORPSE, null, victim_mnum, x, y, CORPSTAT_INIT);
+    // C mklev.c:1933 — otmp->age -= (TAINT_AGE + 1); died too long ago to safely eat.
     // No RNG. Makes the trap-victim corpse "old" so dogfood()/eat classify it as
     // rotted (peek_at_iced_corpse_age(obj) + 50 <= moves is always true at age=-50).
     if (otmp)
@@ -8380,7 +8377,7 @@ export async function mkinvokearea() {
     const g = game;
     const u = g.u;
     const inv = g.svi.inv_pos;
-    await pline('The floor shakes violently under you!');
+    await pline_The('floor shakes violently under you!');
 
     let xmin = inv.x, xmax = inv.x, ymin = inv.y, ymax = inv.y;
     let wallct = mkinvk_check_wall(xmin, ymin);
@@ -8403,7 +8400,7 @@ export async function mkinvokearea() {
         }
     }
     if (wallct)
-        await pline('The walls around you begin to bend and crumble!');
+        await pline_The('walls around you begin to bend and crumble!');
     // C display_nhwindow(WIN_MESSAGE, TRUE), before changing the terrain.
     if (g._pending_message) {
         const shown = g._pending_message;
@@ -8444,8 +8441,8 @@ export async function mkinvokearea() {
         await flush_screen(1);
         // nh_delay_output() is a window-port delay, with no game-state effect.
     }
-    await pline('You are standing at the top of a stairwell leading down!');
-    mkstairs(u.ux, u.uy, 0, null);
+    await You('are standing at the top of a stairwell leading down!');
+    mkstairs(u.ux, u.uy, 0, null, false);
     newsym(u.ux, u.uy);
     g.vision_full_recalc = 1;
 }
@@ -8638,7 +8635,7 @@ function water_has_kelp(x, y, kelp_pool, kelp_moat) {
     const loc = game.level.at(x, y);
     if (!loc)
         return false;
-    /* C mklev.c:1442-1444 — WATER only counts when NOT on the plane of water */
+    /* C mklev.c:1434-1435 — WATER only counts when NOT on the plane of water */
     if (kelp_pool && (loc.typ === POOL || (loc.typ === WATER && !Is_waterlevel(game.u?.uz))) && !rn2(kelp_pool))
         return true;
     if (kelp_moat && loc.typ === MOAT && !rn2(kelp_moat))
@@ -8916,7 +8913,7 @@ export function Monnam_unported(m) { return Monnam_wm(m); }
  * js/mcastu.js's Monnam is not importable here because mcastu imports
  * wake_nearto FROM this file. */
 function Monnam_wm(mon) {
-    return Monnam_real(mon);
+    return Monnam(mon);
 }
 
 
@@ -8959,7 +8956,7 @@ export function clear_dknown(obj) {
      * GEM=13, VENOM=17. Previous literal had WAND wrongly duplicating
      * WEAPON's 2 (so real wands never hit this branch), TOOL wrongly using
      * CHAIN_CLASS's 16, and VENOM wrongly using the out-of-range 21. */
-    const dknowns = [11, 4, 8, 9, 13, 10, 2, 6, 17]; // WAND, RING, POTION, SCROLL, GEM, SPBOOK, WEAPON, TOOL, VENOM (oclass values)
+    const dknowns = [WAND_CLASS, RING_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS, SPBOOK_CLASS, WEAPON_CLASS, TOOL_CLASS, VENOM_CLASS]; // WAND, RING, POTION, SCROLL, GEM, SPBOOK, WEAPON, TOOL, VENOM (oclass values)
 
     /* Base dknown setting: if oclass is in dknowns, dknown=0, else dknown=1 */
     let dknown_val = 0;
@@ -9195,10 +9192,10 @@ export function extract_nobj(obj, owner, key) {
 }
 
 /* C mkobj.c:2733-2738. Recompute each enclosing container after extraction. */
-export function container_weight(container) {
-    container.owt = weight(container);
-    if (container.where === OBJ_CONTAINED)
-        container_weight(container.ocontainer);
+export function container_weight(object) {
+    object.owt = weight(object);
+    if (object.where === OBJ_CONTAINED)
+        container_weight(object.ocontainer);
 }
 
 /* C mkobj.c:2834 dealloc_obj_real — JavaScript GC owns the final release. */
@@ -9311,9 +9308,6 @@ export async function revive_corpse(otmp, do_msgs = true) {
         || (wasBuried && (mdat.mlet === S_TROLL || is_rider_pm(mnum)));
     /* C do.c:2121-2133: name, location and wield state are read BEFORE
      * revive() consumes the corpse. */
-    if (is_zomb && wasBuried
-        && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
-        return false;
     const where0 = otmp.where | 0;
     const chewed = (otmp.oeaten | 0) !== 0;
     const is_uwep = otmp === game.u?.uwep;
@@ -9330,6 +9324,12 @@ export async function revive_corpse(otmp, do_msgs = true) {
         const carrier = get_container_location(container, containerWhere, containerNesting);
         if (containerWhere.value === OBJ_MINVENT) mcarry = carrier;
     }
+    /* C zap.c:909: stop eating before checking location or creating a monster. */
+    await cant_finish_meal(otmp);
+    /* C zap.c:953-957: a buried zombie needs terrain it can dig through. */
+    if (is_zomb && wasBuried
+        && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
+        return false;
     let x = otmp.ox | 0, y = otmp.oy | 0;
     if (where0 === OBJ_CONTAINED) {
         // C zap.c:914-945: use the outer container's current location,
@@ -9497,8 +9497,10 @@ export async function revive_corpse(otmp, do_msgs = true) {
             newsym(mon.mx | 0, mon.my | 0);
         } else {
             const dx = (mon.mx | 0) - (game.u.ux | 0), dy = (mon.my | 0) - (game.u.uy | 0);
-            if (dx * dx + dy * dy < 5 * 5)
+            if (dx * dx + dy * dy < 5 * 5) {
+                Soundeffect(se_scratching, 50); // C do.c:2230
                 await You_hear('scratching noises.');
+            }
         }
         await fill_pit(mon.mx | 0, mon.my | 0);
     } else if (where0 === OBJ_MINVENT) {
@@ -9539,6 +9541,10 @@ export async function revive_corpse(otmp, do_msgs = true) {
             else
                 await pline(`${The_rc(cname)} disappears${effect}!`);
         }
+    } else {
+        /* C do.c:2235-2239: OBJ_BURIED without is_zomb falls through to the
+         * default arm, as does any other location. */
+        await lifecycle_impossible('revive_corpse: lost corpse @ %d', where0);
     }
     return mon;
 }
@@ -9591,10 +9597,6 @@ export function slimeproof(data) {
         || (pm | 0) === PM_FIRE_ELEMENTAL
         || (pm | 0) === PM_SALAMANDER
         || (data.mlet | 0) === S_GHOST_MV;
-}
-
-function Monnam(mtmp) {
-    return Monnam_wm(mtmp);
 }
 
 /* doname: likewise deleted.  Its only references in this file were as the
@@ -9669,7 +9671,7 @@ export async function add_to_minv(mon, obj) {
         if (await merged(target, source))
             return 1;
     }
-    obj.where = 4; /* OBJ_MINVENT */
+    obj.where = OBJ_MINVENT;
     obj.ocarry = mon;
     obj.nobj = mon.minvent;
     mon.minvent = obj;
@@ -10212,7 +10214,7 @@ export async function split_mon_ml(mon, mtmp) {
             m2.mhpmax = Math.trunc(u.mhmax / 2);
             u.mhmax -= m2.mhpmax;
             // cloneu has already requested the status redraw.
-            await pline(`You multiply${reason}!`);
+            await You(`multiply${reason}!`); /* C potion.c:2894 You() */
         }
         return m2;
     }

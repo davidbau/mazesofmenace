@@ -29,7 +29,7 @@ import { removed_from_icebox } from './pickup.js';
 import { which_armor } from './worn.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { aggravate as aggravate_real } from './wizard.js';
-import { AT_BOOM, AT_EXPL, AT_GAZE, M1_ANIMAL, hliquid as hliquid_ml, is_youmonst, new_mgivenname, noit_mon_nam, noname_monnam, seemimic, update_inventory, x_monnam, y_monnam } from './mhitm.js';
+import { free_mgivenname, AT_BOOM, AT_EXPL, AT_GAZE, M1_ANIMAL, hliquid as hliquid_ml, is_youmonst, new_mgivenname, noit_mon_nam, noname_monnam, seemimic, update_inventory, x_monnam, y_monnam } from './mhitm.js';
 import { growl } from './sounds.js';
 import { Resists_Elem, attacktype, big_to_little, little_to_big, locomotion, mon_hates_silver, on_fire as on_fire_ml, poly_when_stoned } from './mondata.js';
 import { digests_gu, expels_gu, mon_mattk_raw } from './mhitu.js';
@@ -619,8 +619,8 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
         /* C mon.c:655+ — every golem arm frees the dead monster's given name
          * ("don't christen obj") except stone golem, whose named statue does
          * get christened (C's own omission, ported). */
-        if (golem && mndx !== PM_STONE_GOLEM_MC && mtmp.mextra)
-            mtmp.mextra.mgivenname = null;
+        if (golem && mndx !== PM_STONE_GOLEM_MC)
+            free_mgivenname(mtmp);
         if (golem) {
             if (!obj) /* rope golem, rn2(3) == 0: C returns before newsym */
                 return null;
@@ -1893,7 +1893,7 @@ function mhealup(otmp) {
 /* C sndprocs.h:272 Soundeffect(seid, vol) — compiled empty without
  * SND_LIB_INTEGRATED; the tty game has no soundlib, so a no-op is faithful.
  * seffects.h enum sound_effect_entries (se_zero_invalid = 0 first). */
-export const se_crunching_sound = 60, se_slurping_sound = 154;
+export const se_crunching_sound = 60, se_scratching = 145, se_slurping_sound = 154;
 export function Soundeffect(se, vol) {
 }
 

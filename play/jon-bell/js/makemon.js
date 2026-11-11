@@ -113,7 +113,7 @@ import { g_at, surface, ceiling } from './cmd.js';
 import { docall } from './do_name.js';
 import { sp_levchn_lookup, mksobj, next_ident, set_corpsenm, add_to_container, engr_at, set_bknown, makemon, start_corpse_timeout, start_glob_timeout } from './mklev.js';
 import { Can_dig_down } from './dungeon.js';
-import { stairway_at } from './stairs.js';
+import { stairway_at, stairway_find_special_dir } from './stairs.js';
 import { mongets } from './m_initweap.js';
 import { builds_up } from './dungeon.js';
 import { ESHK } from './const.js';
@@ -667,15 +667,6 @@ export function olfaction(mdat) {
         || mlet === S_LIGHT)
         return false;
     return true;
-}
-export function sliparm(ptr) {
-    /* C mondata.h:57 is_whirly(ptr) = mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL]. */
-    const is_whirly = (ptr.mlet === S_VORTEX || ptr.pmidx === PM_AIR_ELEMENTAL);
-    /* noncorporeal() is this module's own helper (mondata.h:31 —
-     * ptr->mlet == S_GHOST, NOT an M1_UNSOLID test; that is C's separate
-     * unsolid(), mondata.h:63).  A local copy of it used to live here and
-     * shadow it. */
-    return is_whirly || ptr.msize <= MZ_SMALL || noncorporeal(ptr);
 }
 function is_were(ptr) { return (ptr.mflags2 & M2_WERE) !== 0; }
 export function is_demon(ptr) { return (ptr.mflags2 & M2_DEMON) !== 0; }
@@ -2827,8 +2818,9 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
                     weapon = rn2(2) ? _QUARTERSTAFF : _ATHAME;
                 /* if (rn2(2)) { armor = rn2(2)?BLACK_DSM:SILVER_DSM; cloak = CMR; } */
                 if (rn2(2)) {
-                    /* BLACK_DRAGON_SCALE_MAIL = 108, SILVER_DRAGON_SCALE_MAIL = 103 */
-                    armor = rn2(2) ? 108 : 103;
+                    /* v5 objects.h: BLACK_DRAGON_SCALE_MAIL = 107 (shimmering is
+                     * #if 0, so 108 is BLUE), SILVER_DRAGON_SCALE_MAIL = 103 */
+                    armor = rn2(2) ? 107 : 103;
                     cloak = _CLOAK_OF_MAGIC_RESISTANCE;
                 }
                 /* if (rn2(4)) helm = HELM_OF_BRILLIANCE */
@@ -4440,37 +4432,24 @@ async function mloot_container(mon, container, vismon) {
             contnr_nam = an(nearby ? xname(container)
                                     : (await distant_name(container, xname)));
         }
-        /* C obj_extract_self(xobj) for the OBJ_CONTAINED case (mkobj.c:2557-
-         * 2570), which is extract_nobj(obj, &container->cobj) (mkobj.c:2594-
-         * 2612 — unlinks AND sets obj->where = OBJ_FREE, obj->nobj = 0) plus
+        /* C muse.c:2340 — obj_extract_self(xobj); "this reduces container's
+         * weight".  The real port (js/mklev.js obj_extract_self, forwarded by
+         * the js/dokick.js import above; C mkobj.c:2557-2592) has the
+         * OBJ_CONTAINED arm: extract_nobj(obj, &container->cobj) (mkobj.c:2596-
+         * 2615 — unlinks AND sets obj->where = OBJ_FREE, obj->nobj = 0) plus
          * container_weight() and clearing the stale ocontainer back-link.
-         * Written inline rather than via the imported js/dokick.js
-         * obj_extract_self, which handles only the OBJ_MIGRATING case and
-         * would silently no-op on a contained item. */
-        {
-            let prev = null;
-            for (let o = container.cobj; o; prev = o, o = o.nobj) {
-                if (o === xobj) {
-                    if (prev)
-                        prev.nobj = o.nobj;
-                    else
-                        container.cobj = o.nobj;
-                    break;
-                }
-            }
-            xobj.where = OBJ_FREE;
-            xobj.nobj = null;
-            xobj.ocontainer = null;
-            container_weight(container);
-        }
+         * The old inline copy claimed the import "handles only the
+         * OBJ_MIGRATING case"; that stopped being true when the OBJ_CONTAINED
+         * arm landed, so call it, as C does. */
+        obj_extract_self(xobj);
         if (can_carry(mon, xobj)) {
             if (vismon) {
                 if (howfar > 2) /* not adjacent */
-                    void Norep(`${Monnam(mon)} rummages through ${contnr_nam}.`);
+                    await Norep(`${Monnam(mon)} rummages through ${contnr_nam}.`);
                 else if (takeout_indx === 0) /* adjacent, first item */
-                    pline_mon(mon, `${Monnam(mon)} removes ${(await doname(xobj))} from ${contnr_nam}.`);
+                    await pline_mon(mon, `${Monnam(mon)} removes ${(await doname(xobj))} from ${contnr_nam}.`);
                 else /* adjacent, additional items */
-                    pline(`${upstart(mpronounbuf)} removes ${(await doname(xobj))}.`);
+                    await pline(`${upstart(mpronounbuf)} removes ${(await doname(xobj))}.`);
             }
             if ((container.otyp | 0) === ICE_BOX_OTYP)
                 removed_from_icebox(xobj); /* resume rotting for corpse */
@@ -4501,6 +4480,8 @@ async function mloot_container(mon, container, vismon) {
  * so every one of them believed the monster's square was in sight and printed
  * messages C suppresses.  This file already imports from './vision.js'. */
 function Can_rise_up(x, y, uz) {
+    /* C dungeon.c:1675 — stairway_find_special_dir(FALSE) */
+    const stway = stairway_find_special_dir(false);
     const wiz1 = game.wiz1_level;
     const isWiz1 = !!(wiz1 && uz && ((wiz1.dlevel | 0) || (wiz1.dnum | 0))
         && (uz.dnum | 0) === (wiz1.dnum | 0) && (uz.dlevel | 0) === (wiz1.dlevel | 0));
@@ -4512,13 +4493,8 @@ function Can_rise_up(x, y, uz) {
         return true;
     /* A branch whose entry level is one can rise only when the special
        inter-dungeon upstairs exists and this is not ledger level one. */
-    if (!dgn || (dgn.entry_lev | 0) !== 1 || ledger_no(uz) === 1)
-        return false;
-    for (let s = game.stairs; s; s = s.next) {
-        if (s.tolev?.dnum !== (uz.dnum | 0) && s.up)
-            return true;
-    }
-    return false;
+    return !!(dgn && (dgn.entry_lev | 0) === 1 && ledger_no(uz) !== 1
+              && stway && stway.up);
 }
 /* C ref: rm.h:526-534 `#define remove_monster(x, y) svl.level.monsters[x][y]
  * = (struct monst *) 0` — clear the monster-presence GRID cell at <x,y>.
@@ -4896,11 +4872,10 @@ export async function use_defensive(mtmp) {
         /* already removed from mtmp.minvent so not m_useup(mtmp, otmp) */
         await obfree(otmp, null);
         /* Bump bridge objs_deleted.count to match C's dealloc_obj counter —
-         * the same workaround js/read.js:1971 and js/potion.js:1784 already
+         * the same adjustment js/read.js:1971 and js/potion.js:1784 already
          * apply for their own obfree/delobj call sites (objs_deleted.count is
-         * a dead-placeholder mapstate bridge slot per
-         * js/hold_another_object.js:361, not derived from game.objs_deleted's
-         * chain length). */
+         * a mapstate bridge slot per js/hold_another_object.js:361, not
+         * derived from game.objs_deleted's chain length). */
         {
             const store = game.__bridge__ || (game.__bridge__ = {});
             const key = 'objs_deleted.count';
@@ -5267,14 +5242,14 @@ export async function use_misc(mtmp) {
                 get_level(tolevel, tolev);
                 if (on_level(tolevel, game.u.uz)) {
                     if (vismon) {
-                        pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
+                        await pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
                         await trycall(otmp);
                     }
                     await m_useup(mtmp, otmp);
                     return 2;
                 }
                 if (vismon) {
-                    pline_mon(mtmp, `${Monnam(mtmp)} rises up, through the ${ceiling(mtmp.mx, mtmp.my)}!`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} rises up, through the ${ceiling(mtmp.mx, mtmp.my)}!`);
                     await trycall(otmp);
                 }
                 await m_useup(mtmp, otmp);
@@ -5282,7 +5257,7 @@ export async function use_misc(mtmp) {
                 return 2;
             } else {
                 if (vismon) {
-                    pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
                     await trycall(otmp);
                 }
                 await m_useup(mtmp, otmp);
@@ -5290,7 +5265,7 @@ export async function use_misc(mtmp) {
             }
         }
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} seems more experienced.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} seems more experienced.`);
         if (oseen)
             makeknown(POT_GAIN_LEVEL_OTYP);
         await m_useup(mtmp, otmp);
@@ -5311,18 +5286,18 @@ export async function use_misc(mtmp) {
         mon_set_minvis(mtmp, !otmp.cursed ? false : true);
         if (vismon && mtmp.minvis) {
             if (canspotmon(mtmp)) {
-                pline(`${upstart(s_suffix(nambuf))} body takes on a ${Hallucination() ? "normal" : "strange"} transparency.`);
+                await pline(`${upstart(s_suffix(nambuf))} body takes on a ${Hallucination() ? "normal" : "strange"} transparency.`);
             } else {
-                pline(`Suddenly you cannot see ${nambuf}.`);
+                await pline(`Suddenly you cannot see ${nambuf}.`);
                 if (vis)
                     map_invisible(mtmp.mx, mtmp.my);
             }
             if (oseen)
                 makeknown(otmp.otyp);
         } else if (vismon && !mtmp.minvis) {
-            pline(`${Monnam(mtmp)} briefly seems to be transparent.`);
+            await pline(`${Monnam(mtmp)} briefly seems to be transparent.`);
         } else if (!vismon && canseemon(mtmp)) {
-            pline(`${Monnam(mtmp)} suddenly appears!`);
+            await pline(`${Monnam(mtmp)} suddenly appears!`);
         }
         if (otmp.otyp === POT_INVISIBILITY_OTYP) {
             if (otmp.cursed)
@@ -5361,7 +5336,7 @@ export async function use_misc(mtmp) {
         await mquaffmsg(mtmp, otmp);
         await m_useup(mtmp, otmp);
         if (vismon)
-            pline_mon(mtmp, `${Monnam(mtmp)} suddenly mutates!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} suddenly mutates!`);
         await newcham(mtmp, muse_newcham_mon(mtmp), NC_SHOW_MSG);
         if (oseen)
             makeknown(POT_POLYMORPH_OTYP);
@@ -5375,7 +5350,7 @@ export async function use_misc(mtmp) {
         if (vis || vistrapspot)
             seetrap(t);
         if (vismon || vistrapspot) {
-            pline_mon(mtmp, `${Some_Monnam(mtmp)} deliberately ${vtense(fakename[0], locomotion(mtmp.data, "jump"))} onto a ${t.tseen ? trapname(t.ttyp, false) : "hidden trap"}!`);
+            await pline_mon(mtmp, `${Some_Monnam(mtmp)} deliberately ${vtense(fakename[0], locomotion(mtmp.data, "jump"))} onto a ${t.tseen ? trapname(t.ttyp, false) : "hidden trap"}!`);
         }
         remove_monster(mtmp.mx, mtmp.my);
         newsym(mtmp.mx, mtmp.my);
@@ -5413,18 +5388,18 @@ export async function use_misc(mtmp) {
             hand_buf = hand;
 
             if (vismon)
-                pline_mon(mtmp, `${Monnam(mtmp)} flicks a bullwhip towards your ${hand_buf}!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} flicks a bullwhip towards your ${hand_buf}!`);
             if (obj.otyp === HEAVY_IRON_BALL) {
-                pline(`${The_whip} fails to wrap around ${the_weapon}.`);
+                await pline(`${The_whip} fails to wrap around ${the_weapon}.`);
                 return 1;
             }
             await urgent_pline(`${The_whip} wraps around ${the_weapon} you're wielding!`);
             if (welded(obj)) {
-                pline(`${!is_plural(obj) ? "It is" : "They are"} welded to your ${hand_buf}${!obj.bknown ? '!' : '.'}`);
+                await pline(`${!is_plural(obj) ? "It is" : "They are"} welded to your ${hand_buf}${!obj.bknown ? '!' : '.'}`);
                 where_to = 0;
             }
             if (!where_to) {
-                pline(`The whip slips free.`); /* C muse.c:2588 pline_The("whip slips free.") */
+                await pline_The("whip slips free.");
                 return 1;
             } else if (where_to === 3 && mon_hates_silver(mtmp)
                        && (MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0) === SILVER) {
@@ -5434,15 +5409,15 @@ export async function use_misc(mtmp) {
             freeinv(obj);
             switch (where_to) {
             case 1:
-                pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} from your ${hand_buf}!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} from your ${hand_buf}!`);
                 place_object(obj, mtmp.mx, mtmp.my);
                 break;
             case 2:
-                pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} to the ${surface(game.u.ux, game.u.uy)}!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} to the ${surface(game.u.ux, game.u.uy)}!`);
                 await dropy(obj);
                 break;
             case 3:
-                pline_mon(mtmp, `${Monnam(mtmp)} snatches ${the_weapon}!`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} snatches ${the_weapon}!`);
                 await mpickobj(mtmp, obj);
                 break;
             }
@@ -5453,7 +5428,7 @@ export async function use_misc(mtmp) {
         return 0;
 
     default:
-        impossible(`${Monnam(mtmp)} wanted to perform action ${game.has_misc}?`);
+        await impossible(`${Monnam(mtmp)} wanted to perform action ${game.has_misc}?`);
         break;
     }
     return 0;
@@ -5542,8 +5517,8 @@ export function hero_behind_chokepoint(mtmp) {
  * any object that is not a charged WAN_UNDEAD_TURNING, and it draws no RNG on
  * that path; find_offensive() calls this for EVERY object in the monster's
  * inventory, so the guard is on the hot path for every offensive scan.  The
- * body proper (carrying(CORPSE) / linedup_chk_corpse / m_seenres) is not
- * ported and throws rather than silently declining to use the wand. */
+ * body proper (carrying(CORPSE) / linedup_chk_corpse) is the ported function
+ * below, m_use_undead_turning(). */
 /* C mthrowu.c:1295-1327 linedup_callback with muse.c:1294 linedup_chk_corpse
  * (sobj_at(CORPSE, x, y)) as the callback. */
 function _linedup_corpse(ax, ay, bx, by) {
@@ -5559,7 +5534,7 @@ function _linedup_corpse(ax, ay, bx, by) {
             bx += dx, by += dy;
             if (blocking_terrain(bx, by))
                 return false;
-            if (sobj_at(265, bx, by))
+            if (sobj_at(CORPSE, bx, by))
                 return true;
         } while (bx !== ax || by !== ay);
     }
@@ -5924,6 +5899,7 @@ export { CORPSE }; // relocate-fns
 export { create_mplayers } from './mplayer.js'; // relocate-fns
 export { _PM_ARCHEOLOGIST, _PM_WIZARD }; // relocate-fns
 export { pmname } from './do_name.js'; // relocate-fns
+export { sliparm } from './mondata.js'; // C mondata.c:632
 export { canSaddleMndx, monsndx }; // relocate-fns
 export { noteleport_level } from './teleport.js'; // relocate-fns
 export { M2_LORD }; // relocate-fns
@@ -5951,20 +5927,40 @@ export async function unsplitobj(obj) {
         list = obj.ocarry?.minvent || null;
         break;
     case OBJ_CONTAINED:
-        list = obj.ocontainer?.cobj || obj.nexthere?.cobj || null;
+        list = obj.ocontainer?.cobj || null;
         break;
     default:
         return null;
     }
 
-    let parent = null, child = null;
-    const oid = obj.o_id | 0;
-    if (oid === (split.child_oid | 0)) child = obj;
-    else if (oid === (split.parent_oid | 0)) parent = obj;
-    else return null;
-    for (let it = list; it && (!parent || !child); it = it.nobj) {
-        if ((it.o_id | 0) === (split.parent_oid | 0)) parent = it;
-        if ((it.o_id | 0) === (split.child_oid | 0)) child = it;
+    /* C mkobj.c:589-602 — first try the expected case (obj split from
+     * another stack, parent probably precedes child), else the alternate
+     * (another stack split from obj); either way check obj->nobj first. */
+    let parent = null, child = null, target_oid = 0;
+    if ((obj.o_id | 0) === (split.child_oid | 0)) {
+        child = obj;
+        target_oid = split.parent_oid | 0;
+        if (obj.nobj && (obj.nobj.o_id | 0) === target_oid)
+            parent = obj.nobj;
+    } else if ((obj.o_id | 0) === (split.parent_oid | 0)) {
+        parent = obj;
+        target_oid = split.child_oid | 0;
+        if (obj.nobj && (obj.nobj.o_id | 0) === target_oid)
+            child = obj.nobj;
+    }
+    /* C mkobj.c:603-616 — scan obj's list for the missing half */
+    if (child && !parent) {
+        for (let it = list; it; it = it.nobj)
+            if ((it.o_id | 0) === target_oid) {
+                parent = it;
+                break;
+            }
+    } else if (parent && !child) {
+        for (let it = list; it; it = it.nobj)
+            if ((it.o_id | 0) === target_oid) {
+                child = it;
+                break;
+            }
     }
     if (!parent || !child) return null;
     const { merged } = await import('./hold_another_object.js');

@@ -22,7 +22,7 @@ import { t_at } from './trap.js'; // relocate-fns
 import { level_difficulty } from './dungeon.js'; // relocate-fns
 import { sobj_at } from './invent.js'; // relocate-fns
 import { makemon as mklev_makemon } from './mklev.js'; // relocate-fns
-import { enexto_out } from './teleport.js'; // relocate-fns
+import { enexto_out as enexto } from './teleport.js'; // relocate-fns
 import { revive } from './zap.js'; // relocate-fns
 import { AIR, BLCORNER, BRCORNER, CLOUD, CROSSWALL, DBWALL, DOOR, DRAWBRIDGE_DOWN, FOUNTAIN, GRAVE, HWALL, IRONBARS, LADDER, LAVAPOOL, LAVAWALL, SINK, STAIRS, STONE, TDWALL, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER } from './const.js'; // relocate-fns
 import { S_AIR_C, S_ALTAR_C, S_BARS_C, S_BLCORN_C, S_BRCORN_C, S_CLOUD_C, S_CORR_C, S_CRWALL_C, S_DARKROOM_C, S_DNLADDER_C, S_DNSTAIR_C, S_FOUNTAIN_C, S_GRAVE_C, S_HCDBRIDGE_C, S_HCDOOR_C, S_HODBRIDGE_C, S_HODOOR_C, S_HWALL_C, S_ICE_C, S_LAVAWALL_C, S_LAVA_C, S_LITCORR_C, S_NDOOR_C, S_POOL_C, S_ROOM_C, S_SINK_C, S_STONE_C, S_TDWALL_C, S_THRONE_C, S_TLCORN_C, S_TLWALL_C, S_TRCORN_C, S_TREE_C, S_TRWALL_C, S_TUWALL_C, S_UPLADDER_C, S_UPSTAIR_C, S_VCDBRIDGE_C, S_VCDOOR_C, S_VODBRIDGE_C, S_VODOOR_C, S_VWALL_C, S_WATER_C } from './display.js'; // relocate-fns
@@ -530,6 +530,10 @@ export async function fill_zoo(sroom) {
             if (game.level?.flags)
                 game.level.flags.has_morgue = true;
             break;
+        case SWAMP:
+            if (game.level?.flags)
+                game.level.flags.has_swamp = true;
+            break;
         case BEEHIVE:
             if (game.level?.flags)
                 game.level.flags.has_beehive = true;
@@ -939,18 +943,15 @@ export async function do_mkroom(roomtype) {
  * — make a swarm of undead, reviving existing corpses with zap.c revive(). */
 export async function mkundead(mm, revive_corpses, mm_flags) {
     let cnt = Math.trunc((level_difficulty() + 1) / 10) + rnd(5);
+    let cc, otmp;
     while (cnt-- > 0) {
         const mdat = morguemon();
-        if (mdat != null) {
-            const cc = enexto_out(mm.x, mm.y, permonstTemplate(mdat));
-            if (cc) {
-                /* mkroom.c:469-471 */
-                let otmp;
-                if (!revive_corpses || !(otmp = sobj_at(CORPSE, cc.x, cc.y))
-                    || !(await revive(otmp, false)))
-                    await mklev_makemon(mdat, cc.x, cc.y, mm_flags);
-            }
-        }
+        /* C mkroom.c:468-472 */
+        if (mdat != null && (cc = enexto(mm.x, mm.y, permonstTemplate(mdat)))
+            && (!revive_corpses
+                || !(otmp = sobj_at(CORPSE, cc.x, cc.y))
+                || !(await revive(otmp, false))))
+            await mklev_makemon(mdat, cc.x, cc.y, mm_flags);
     }
     if (game.level && game.level.flags)
         game.level.flags.graveyard = true;

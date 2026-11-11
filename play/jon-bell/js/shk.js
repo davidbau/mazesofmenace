@@ -27,14 +27,14 @@ import { pline, You_hear, Norep, pline_The, There, You_cant, Your } from './plin
  * awaits these message boundaries; older unrelated callers retain their
  * existing contracts until their own closure is migrated. */
 import { You as You_real } from './do_wear.js';
-import { canspotmon, canseemon as canseemon_real } from './display.js';
+import { canspotmon, canseemon, canseemon as canseemon_real } from './display.js';
 import { shtype_name, makemon, next_ident, mksobj, del_engr_at } from './mklev.js';
 import { mpickobj } from './steal.js';
 import { highc } from './hacklib.js';
 import { angry_guards, mongone, Soundeffect } from './mon.js';
 import { is_demon, poly_gender } from './makemon.js';
 import { is_pick } from './dig.js';
-import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, PASSES_WALLS, QBUFSZ, BUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS, OBJ_FREE, OBJ_INVENT, OBJ_ONBILL, OBJ_FLOOR, OBJ_CONTAINED, OBJ_BURIED, OBJ_MINVENT } from './const.js';
+import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, FAST, PASSES_WALLS, QBUFSZ, BUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS, OBJ_FREE, OBJ_INVENT, OBJ_ONBILL, OBJ_FLOOR, OBJ_CONTAINED, OBJ_BURIED, OBJ_MINVENT } from './const.js';
 import { get_obj_location } from './zap.js';
 import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_MAIL_DAEMON, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
 import { has_mgivenname, MGIVENNAME } from './const.js';
@@ -539,14 +539,14 @@ async function make_itemized_bill(shkp) {
         }
 
         let quan, cost, used;
-        if ((otmp.where | 0) === OBJ_ONBILL_SHK) {
+        if ((otmp.where | 0) === OBJ_ONBILL) {
             quan = bp.bquan | 0;
             cost = (bp.price | 0) * quan;
             used = FullyUsedUp;
-        } else if ((otmp.where | 0) === OBJ_CONTAINED_SHK || Has_contents(otmp)) {
+        } else if ((otmp.where | 0) === OBJ_CONTAINED || Has_contents(otmp)) {
             const item = otmp;
             let cknown = true;
-            while ((otmp.where | 0) === OBJ_CONTAINED_SHK && otmp.ocontainer) {
+            while ((otmp.where | 0) === OBJ_CONTAINED && otmp.ocontainer) {
                 otmp = otmp.ocontainer;
                 if (!otmp.cknown) cknown = false;
             }
@@ -596,18 +596,30 @@ async function menu_pick_pay_items(ibillct, ibill) {
             largest_amt = ibill[i].cost;
     const amt_width = String(largest_amt).length;
 
+    const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
+
     /* C:1693-1717 — the entries, with the two optional headings. */
-    const entries = []; /* {selector, text, indx} */
+    const entries = []; /* {selector, text, indx, page} */
     const headings = new Map(); /* index into entries -> heading text */
     if (ibill[0].usedup <= PartlyUsedUp) {
         headings.set(0, `Used up item${(ibillct > 1 && ibill[1].usedup <= PartlyUsedUp) ? 's' : ''}:`);
     }
     let menu_ch = 97; /* 'a' */
+    let lineIdx = 2; /* after title and blank line */
     for (let i = 0; i < ibillct; i++) {
         if (i > 0 && ibill[i - 1].usedup <= PartlyUsedUp
             && ibill[i].usedup >= PartlyIntact) {
             headings.set(i, `Unpaid item${(i < ibillct - 1) ? 's' : ''}:`);
         }
+        if (headings.has(i)) {
+            if (lineIdx % PAGE_CONTENT === 0) menu_ch = 97;
+            lineIdx++;
+        }
+        if (lineIdx % PAGE_CONTENT === 0) menu_ch = 97;
+        const entryPage = Math.trunc(lineIdx / PAGE_CONTENT);
+        const selector = String.fromCharCode(menu_ch);
+        menu_ch = (menu_ch === 122) ? 65 : (menu_ch + 1);
+        lineIdx++;
         const otmp = ibill[i].obj;
         const save_quan = otmp.quan;
         otmp.quan = ibill[i].quan; /* in case it's partly used */
@@ -615,9 +627,9 @@ async function menu_pick_pay_items(ibillct, ibill) {
         otmp.quan = save_quan;
         const amt = ibill[i].cost;
         entries.push({
-            selector: String.fromCharCode(menu_ch++),
+            selector,
             text: `${String(amt).padStart(amt_width)} Zm, ${p}`,
-            indx: i, selected: false, mark: '-',
+            indx: i, page: entryPage, selected: false, mark: '-',
         });
     }
 
@@ -633,7 +645,6 @@ async function menu_pick_pay_items(ibillct, ibill) {
         return out;
     };
     const uac = g.u?.uac ?? 0;
-    const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
     /* wintty.c:1908-1921 offx = min(40, cols - maxcol - 1) clamps to 0 for a
      * widest line of 77+ columns (maxcol = len + 2 >= 79): full-screen too. */
     const FULL_SCREEN = renderLines().length + 1 >= SCREEN_ROWS
@@ -641,8 +652,8 @@ async function menu_pick_pay_items(ibillct, ibill) {
         || renderLines().some(l => l.length >= 77);
     const pageCount = Math.max(1, Math.ceil(renderLines().length / PAGE_CONTENT));
     const WIN_COL = FULL_SCREEN ? 1 : tty_window_offx([...renderLines(), '(end)'], 'end');
-    const BY_SEL = new Map(entries.map(e => [e.selector.charCodeAt(0), e]));
     let page = 0;
+    const getPageEntry = (k) => entries.find(e => e.page === page && e.selector.charCodeAt(0) === k);
 
     let cancelled = false;
     /* C ref: win/tty/getline.c:213 — a MENU_SEARCH's tty_getlin ends with
@@ -679,34 +690,45 @@ async function menu_pick_pay_items(ibillct, ibill) {
          * space (:2747), "(N of M)" has none (:1538). */
         set_cursor_shk(WIN_COL + footer.length + (pageCount > 1 ? 0 : 1), footerRow);
         const k = await nhgetch();
-        if (!BY_SEL.has(k) && k >= 48 && k <= 57) {
+        const pageEntry = getPageEntry(k);
+        if (!pageEntry && k >= 48 && k <= 57) {
             count = count * 10n + BigInt(k - 48);
             if (count > 9223372036854775807n) count = 0n; /* AppendLongDigit */
             continue;
         }
+        if (k === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
         if (k === 27 && count > 0n) { count = 0n; continue; }
-        if (!BY_SEL.has(k) && k !== 0 && k !== 10 && k !== 13 && k !== 27
+        if (!pageEntry && k !== 0 && k !== 10 && k !== 13 && k !== 27
             && !' ^|><.-@,\\~:'.includes(String.fromCharCode(k))) continue;
         const counted = count > 0n;
         count = 0n;
         if (k === 27) { cancelled = true; break; }     /* ESC */
-        if (k === 10 || k === 13 || k === 32 || k === 0) break; /* commit */
-        const e = BY_SEL.get(k);
-        if (e) {
+        if (k === 10 || k === 13 || k === 0) break;    /* commit */
+        if (k === 32 || k === 0x3e /* '>' */) {
+            if (page + 1 < pageCount) { page++; continue; }
+            if (k === 32) break;
+            continue;
+        }
+        if (k === 0x3c /* '<' */) { if (page > 0) page--; continue; }
+        if (k === 0x5e /* '^' */) { if (page > 0) page = 0; continue; }
+        if (k === 0x7c /* '|' */) { if (page + 1 < pageCount) page = pageCount - 1; continue; }
+        if (pageEntry) {
             /* C wintty.c toggle_menu_curr() + set_item_state(): the
              * incremental repaint marks a plain selection '+'. */
-            e.selected = counted || !e.selected;
-            e.mark = e.selected ? (counted ? '#' : '+') : '-';
+            pageEntry.selected = counted || !pageEntry.selected;
+            pageEntry.mark = pageEntry.selected ? (counted ? '#' : '+') : '-';
             continue;
         }
         /* C wintty.c process_menu_window() menu_* defaults (defaults.nh):
          * select_all '.', unselect_all '-', select_page ',', unselect_page
          * '\\', invert_all '@', invert_page '~'. Page-scoped commands
-         * currently apply globally across all entries in this port.
+         * restrict to entries on the current page (en.page === page).
          * Each marks '+' / '-' like set_item_state(). */
         if (k === 0x2e || k === 0x2c || k === 0x2d || k === 0x5c
             || k === 0x40 || k === 0x7e) {
+            const pageOnly = (k === 0x2c || k === 0x5c || k === 0x7e);
             for (const en of entries) {
+                if (pageOnly && en.page !== page) continue;
                 /* C wintty.c:1208: selecting an already selected entry
                  * preserves its subset count (and its '#' indicator). */
                 if ((k === 0x2e || k === 0x2c) && en.selected) continue;
@@ -821,20 +843,20 @@ async function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
             }
     } else {
         paiditem.unpaid = 0;
-        if ((paiditem.where | 0) === OBJ_ONBILL_SHK) {
+        if ((paiditem.where | 0) === OBJ_ONBILL) {
             obj_extract_self(paiditem);
             await dealloc_obj(paiditem);
         }
         const bill = eshkp.bill_p || eshkp.bill;
         const newebillct = (eshkp.billct | 0) - 1;
-        /* C copies the LAST bill_p[] entry into the vacated slot; `bp` is a
-         * pointer INTO bill_p[], so find its index and overwrite in place. */
+        /* C copies the LAST bill_p[] entry into the vacated slot (`*bp = eshkp->bill_p[newebillct]`);
+         * overwrite `bp` in place, and clone the vacated tail slot so a later
+         * add_one_tobill into bill[newebillct] does not alias `bp`. */
         const bpIdx = bill.indexOf(bp);
-        /* C copies the struct (`*bp = eshkp->bill_p[eshkp->billct]`); sharing the
-         * object would alias two slots, so a later add_one_tobill into the
-         * vacated slot rewrote the survivor too. */
-        if (bpIdx >= 0 && bpIdx !== newebillct && bill[newebillct])
-            bill[bpIdx] = { ...bill[newebillct] };
+        if (bpIdx >= 0 && bpIdx !== newebillct && bill[newebillct]) {
+            Object.assign(bp, bill[newebillct]);
+            bill[newebillct] = { ...bill[newebillct] };
+        }
         for (let j = 0; j < ibillct; j++)
             if (ibill[j].bidx === newebillct)
                 ibill[j].bidx = bpIdx;
@@ -935,7 +957,7 @@ async function reject_purchase(shkp, obj, billedQuan) {
     const intact = obj.quan | 0;
     obj.quan = (billedQuan | 0) - intact;
     if (!_shk_Deaf() && !muteshk(shkp)) {
-        const which = (obj.where | 0) === OBJ_CONTAINED_SHK
+        const which = (obj.where | 0) === OBJ_CONTAINED
             ? `the one${plur(intact)} in ${thesimpleoname(obj.ocontainer)}`
             : intact > 1 ? "these" : "this one";
         SetVoice(shkp, 0, 80, 0);
@@ -1061,7 +1083,7 @@ async function buy_container(shkp, indx, ibillct, ibill) {
     const unpaidcontainer = !!container.unpaid;
     const sightunseen = ibill[indx].usedup === UndisclosedContainer || ibill[indx].usedup === KnownContainer;
     if (await insufficient_funds(shkp, container, 0) || await insufficient_funds(shkp, container, totalcost)) return 1;
-    const outer = (obj) => { let o = obj; while ((o.where | 0) === OBJ_CONTAINED_SHK && o.ocontainer) o = o.ocontainer; return o; };
+    const outer = (obj) => { let o = obj; while ((o.where | 0) === OBJ_CONTAINED && o.ocontainer) o = o.ocontainer; return o; };
     const ids = [];
     for (let i = 0; i < (e.billct | 0); i++) {
         const bp = (e.bill_p || e.bill || [])[i], obj = bp && bp_to_obj(bp);
@@ -1069,7 +1091,7 @@ async function buy_container(shkp, indx, ibillct, ibill) {
             await lifecycle_impossible("Can't find contained item on shop bill (#%d).", bp.bo_id);
             return 2;
         }
-        if ((obj.where | 0) !== OBJ_CONTAINED_SHK && !Has_contents(obj)) continue;
+        if ((obj.where | 0) !== OBJ_CONTAINED && !Has_contents(obj)) continue;
         if (outer(obj) !== container) continue;
         if ((obj.quan | 0) < (bp.bquan | 0)) { await reject_purchase(shkp, obj, bp.bquan | 0); return 1; }
         if ((bp.bo_id >>> 0) !== (container.o_id >>> 0)) ids.push(bp.bo_id >>> 0);
@@ -1772,9 +1794,9 @@ export function costly_spot(x, y) {
 }
 export function contained_cost(obj, shkp, price, usell, unpaid_only) {
     let top = obj;
-    for (; (top.where | 0) === OBJ_CONTAINED_SHK; top = top.ocontainer)
+    for (; (top.where | 0) === OBJ_CONTAINED; top = top.ocontainer)
         continue;
-    const on_floor = ((top.where | 0) === OBJ_FLOOR_SHK
+    const on_floor = ((top.where | 0) === OBJ_FLOOR
                       || (top.where | 0) === OBJ_FREE);
     let x, y;
     const loc = ((top.where | 0) === OBJ_FREE)
@@ -1833,9 +1855,9 @@ export function count_contents(container, nested, quantity, everything, newdrop)
     let shoppy = false;
     if (!everything && !newdrop) {
         let top = container;
-        while ((top.where | 0) === 2 && top.ocontainer) top = top.ocontainer;
+        while ((top.where | 0) === OBJ_CONTAINED && top.ocontainer) top = top.ocontainer;
         const loc = _get_obj_location_shk(top, 0);
-        if ((top.where | 0) === 1 && loc) shoppy = costly_spot(loc.x, loc.y);
+        if ((top.where | 0) === OBJ_FLOOR && loc) shoppy = costly_spot(loc.x, loc.y);
     }
     let count = 0;
     for (let ot = container?.cobj; ot; ot = ot.nobj) {
@@ -2289,7 +2311,7 @@ export function shk_your(buf, obj) {
         prefix = shk_owns_shk(obj);
         if (prefix == null) prefix = mon_owns_shk(obj);
         if (prefix == null)
-            prefix = the_your_shk[(obj.where | 0) === 3 /* OBJ_INVENT */ ? 1 : 0];
+            prefix = the_your_shk[(obj.where | 0) === OBJ_INVENT ? 1 : 0];
     }
     return prefix + ' ';
 }
@@ -2479,9 +2501,9 @@ export async function shk_move(shkp) {
                 badinv = !!(carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK));
                 /* C shk.c:4968-4970: || (Fast && (sobj_at(PICK_AXE, u.ux, u.uy)
                  * || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy))); Fast is
-                 * HFast || EFast (youprop.h:376), uprops[64] as at line 3220. */
+                 * HFast || EFast (youprop.h:376), uprops[FAST] as at line 3220. */
                 if (!badinv) {
-                    const fastp = u.uprops?.[64];
+                    const fastp = u.uprops?.[FAST];
                     badinv = !!((fastp?.intrinsic || fastp?.extrinsic)
                                 && (sobj_at(PICK_AXE, u.ux, u.uy)
                                     || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy)));
@@ -2771,7 +2793,7 @@ export function block_entry(x, y) {
 
     /* x,y must be in a shop room */
     const shops = in_rooms(x, y, SHOPBASE);
-    const roomno = shops.length > 0 ? shops[0] : -1;
+    const roomno = shops.length > 0 ? shops[0] : 0;
     if (roomno < 0 || !IS_SHOP(roomno))
         return false;
 
@@ -2807,7 +2829,7 @@ export function block_door(x, y) {
     const u = g.u;
 
     const shops = in_rooms(x, y, SHOPBASE);
-    const roomno = shops.length > 0 ? shops[0] : -1;
+    const roomno = shops.length > 0 ? shops[0] : 0;
     if (roomno < 0 || !IS_SHOP(roomno))
         return false;
 
@@ -2927,7 +2949,8 @@ export async function u_entered_shop(enterstring) {
     const rmno = enterstring.charCodeAt(0);
     const shkp = shop_keeper(rmno);
     if (!shkp) {
-        /* C shk.c:766 compares offsets in hack.c:3498's one static buffer. */
+        /* C shk.c:753 static char empty_shops[5], shk.c:763 strchr test,
+         * and shk.c:764-765 in_rooms pointer comparison. */
         if (!empty_shops.includes(enterstring[0])
             && (in_rooms(u.ux | 0, u.uy | 0, SHOPBASE).length
                 !== in_rooms(u.ux0 | 0, u.uy0 | 0, SHOPBASE).length))
@@ -2946,7 +2969,7 @@ export async function u_entered_shop(enterstring) {
         u.ushops = '';
         return;
     }
-    /* C shk.c:779: a tended shop records this before greeting/dialogue.  It is
+    /* C shk.c:783: a tended shop records this before greeting/dialogue.  It is
      * visible later in #conduct's achievement list even when the shopkeeper is
      * mute or following. */
     record_achievement(ACH_SHOP);
@@ -3000,6 +3023,7 @@ export async function u_entered_shop(enterstring) {
         }
     } else if (eshkp.robbed) {
         if (!_shk_Deaf()) {
+            Soundeffect(se_mutter_imprecations, 50);
             await pline(`${Shknam(shkp)} mutters imprecations against shoplifters.`);
         } else {
             await pline('%s is combing through %s inventory list.', Shknam(shkp), noit_mhis(shkp));
@@ -3047,7 +3071,7 @@ export async function u_entered_shop(enterstring) {
             await flush_screen(1);
             await dochug(shkp);
         } else {
-            const fast = u.uprops?.[64]; // FAST; C youprop.h:376 HFast || EFast
+            const fast = u.uprops?.[FAST]; // C youprop.h:376 HFast || EFast
             if ((fast?.intrinsic || fast?.extrinsic)
                 && (sobj_at(PICK_AXE, u.ux, u.uy) || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy)))
                 await dochug(shkp);
@@ -3590,13 +3614,11 @@ export async function inherits(shkp, numsk, croaked, silently) {
         && u.ushops.indexOf(String.fromCharCode(eshkp.shoproom)) !== -1);
     let takes = '';
 
-    /* C shk.c:2591-2593 — "not strictly consistent; affects messages and
-       prevents next player ... from being ambushed by an invisible shopkeeper" */
+    /* C shk.c:2591-2593 — clear shopkeeper invisibility for messages and bones */
     shkp.minvis = 0;
     shkp.perminvis = 0;
 
-    /* C shk.c:2595-2608 — "The simplifying principle is that first-come
-       already took everything you had." */
+    /* C shk.c:2595-2608 — subsequent shopkeepers when numsk > 1 */
     if (numsk > 1) {
         if (cansee(shkp.mx, shkp.my) && croaked && !silently) {
             takes = '';
@@ -3970,7 +3992,7 @@ async function makekops_shk(mm) {
         }
     }
 }
-const se_alarm = 0; /* C sndprocs.h audio effect */
+const se_alarm = 0, se_mutter_imprecations = 0; /* C sndprocs.h audio effects */
 async function call_kops(shkp, nearshop) {
     if (!shkp) return;
     Soundeffect(se_alarm, 80);
@@ -4327,10 +4349,8 @@ function wait_synch() { }
 function sgn(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
 /* C ref: rm.h MON_AT(x,y) — (m_at(x,y) != 0) for a live monster. */
 function MON_AT(x, y) { return m_at(x, y) != null; }
-/* C display.h:117-120 _canseemon macro / display.c:200 canseemon(mon) — the
- * real general port lives in js/display.js (canseemon_real, imported
- * above). RNG-free. */
-function canseemon(shkp) { return canseemon_real(shkp); }
+/* C display.h:117-120 _canseemon macro / display.c:200 canseemon(mon) —
+ * imported directly from js/display.js. */
 const HAND = 6;
 const NECK = 11;
 const HEAD = 8; /* hack.h enum bodypart_types */
@@ -4511,19 +4531,19 @@ const BURIED_TOO_SHK = 0x02;
 function _get_obj_location_shk(obj, locflags) {
     if (!obj) return null;
     switch (obj.where | 0) {
-    case 3: /* OBJ_INVENT */
+    case OBJ_INVENT:
         return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
-    case 1:
+    case OBJ_FLOOR:
         return { x: obj.ox | 0, y: obj.oy | 0 };
-    case 4: /* OBJ_MINVENT */
+    case OBJ_MINVENT:
         if (obj.ocarry && (obj.ocarry.mx | 0))
             return { x: obj.ocarry.mx | 0, y: obj.ocarry.my | 0 };
         break; /* !mx => migrating monster */
-    case 6: /* OBJ_BURIED */
+    case OBJ_BURIED:
         if (locflags & BURIED_TOO_SHK)
             return { x: obj.ox | 0, y: obj.oy | 0 };
         break;
-    case 2: /* OBJ_CONTAINED */
+    case OBJ_CONTAINED:
         if (locflags & CONTAINED_TOO_SHK)
             return _get_obj_location_shk(obj.ocontainer, locflags);
         break;
@@ -4757,16 +4777,16 @@ export function get_cost_of_shop_item(obj, nochrg) {
         return 0;
 
     let top = obj;
-    while ((top.where | 0) === 2 /* OBJ_CONTAINED */ && top.ocontainer)
+    while ((top.where | 0) === OBJ_CONTAINED && top.ocontainer)
         top = top.ocontainer;
     const eshkp = ESHK(shkp);
-    const freespot = ((top.where | 0) === 1
+    const freespot = ((top.where | 0) === OBJ_FLOOR
                       && loc.x === ((eshkp?.shk_x ?? eshkp?.shk?.x ?? 0) | 0)
                       && loc.y === ((eshkp?.shk_y ?? eshkp?.shk?.y ?? 0) | 0));
-    const nc = (((top.where | 0) === 1) && (obj.no_charge || freespot)) ? 1 : 0;
+    const nc = (((top.where | 0) === OBJ_FLOOR) && (obj.no_charge || freespot)) ? 1 : 0;
     if (nochrg) nochrg.value = nc;
 
-    const carried = (top.where | 0) === 3 /* OBJ_INVENT */;
+    const carried = (top.where | 0) === OBJ_INVENT;
     if (carried ? !!(obj.unpaid | 0) : !nc) {
         const per_unit_cost = get_cost(obj, shkp);
         cost = get_pricing_units(obj) * per_unit_cost;

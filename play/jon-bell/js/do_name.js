@@ -12,7 +12,7 @@ import { Upolyd } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { ismnum, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM } from './const.js';
 import { impossible } from './steed.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, carrying, cmdq_clear, cmdq_pop, donamelevel, flooreffects_is_plural, getObjFromGetobj, getpos, look_at_object, set_cursor, type_is_pname, verbalize } from './cmd.js'; // relocate-fns
+import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, carrying, cmdq_clear, cmdq_pop, donamelevel, flooreffects_is_plural, getObjFromGetobj, getpos, look_at_object, set_cursor, type_is_pname, verbalize } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
 import { ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, OBJ_FREE, OBJ_INVENT, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, PL_PSIZ, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, await_menu_key, canspotmon, docorner_blank_utf8_captures, docrt, flush_screen, force_more_pages, see_with_infrared, sensemon } from './display.js'; // relocate-fns
@@ -22,12 +22,14 @@ import { newobj } from './game.js'; // relocate-fns
 import { mungspaces, upstart } from './hacklib.js'; // relocate-fns
 import { update_inventory } from './inventory_refresh.js'; // relocate-fns
 import { mhe } from './makemon.js'; // relocate-fns
-import { new_mgivenname, distant_monnam, helpless, objtyp_is_callable, roguename } from './mhitm.js'; // relocate-fns
+import { new_mgivenname, free_mgivenname, distant_monnam, helpless, objtyp_is_callable, roguename } from './mhitm.js'; // relocate-fns
+export { free_mgivenname };
 import { OC_USES_KNOWN, dealloc_obj, wipeout_text } from './mklev.js'; // relocate-fns
+import { OC_NAME } from './oc_name_data.js';
 import { discover_object, undiscover_object } from './o_init.js'; // relocate-fns
 import { CXN_NORMAL, Ysimple_name2, simpleonames as _ia_simpleonames, an, getObjDescr, oname, xname_flags } from './objnam.js';
 import { artifact_name as artifact_name_exported, exist_artifact } from './artifact.js'; // relocate-fns
-import { pline } from './pline.js'; // relocate-fns
+import { pline, There } from './pline.js'; // relocate-fns
 import { NUMMONS, PM_DEATH, PM_FAMINE, PM_GHOST, PM_JUIBLEX, PM_PESTILENCE } from './pm.generated.js'; // relocate-fns
 import { COIN_CLASS, safe_qbuf as inventory_safe_qbuf } from './shk.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
@@ -40,7 +42,6 @@ import { NH_BLACK, NH_BLUE, NH_GOLDEN, NH_PURPLE, NH_RED, NH_SILVER } from './re
 import { NON_PM } from './const.js'; // relocate-fns
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js'; // relocate-fns
 import { m_at as monster_at } from './uhitm.js'; // relocate-fns
-import { y_monnam as y_monnam_real } from './mhitm.js'; // relocate-fns
 export { read_tribute } from './files.js'; // relocate-fns
 
 // C do_name.c:16-27: names share five reusable buffers; retain the cell
@@ -378,15 +379,17 @@ async function namefloorobj() {
         // C do_name.c:697: vobj_at() uses the tile's nexthere pile head,
         // whose order can differ from the global fobj/nobj chain.
         obj = g.level?.levelObjects?.[cc.x]?.[cc.y] ?? null;
-    } else if (g.level?.at(cc.x, cc.y)?.disp_cls === GLYPHCLS_OBJ) {
-        ({ obj, fakeobj } = await look_at_object(cc.x, cc.y, _glyph_at(cc.x, cc.y), false, true));
+    } else {
+        const glyph = glyph_at(cc.x, cc.y);
+        if (glyph?.cls === GLYPHCLS_OBJ)
+            ({ obj, fakeobj } = await look_at_object(cc.x, cc.y, glyph, false, true));
     }
     if (!obj) {
-        await pline(`There doesn't seem to be any object ${here ? 'under you' : 'there'}.`);
+        await There("doesn't seem to be any object %s.", here ? 'under you' : 'there');
         return;                                         /* C:704-709 */
     }
     const STRANGE_OBJECT = 0; /* objects.h:80 */
-    const buf = (obj.otyp !== STRANGE_OBJECT) ? _ia_simpleonames(obj) : 'strange object';
+    const buf = (obj.otyp !== STRANGE_OBJECT) ? _ia_simpleonames(obj) : OC_NAME[STRANGE_OBJECT];
     const use_plural = obj.quan > 1;
     if ((u.uprops[HALLUC]?.intrinsic | 0)
         && !((u.uprops[HALLUC_RES]?.intrinsic | 0) || (u.uprops[HALLUC_RES]?.extrinsic | 0))) {
@@ -521,8 +524,6 @@ async function rename_disco() {
     await docall(odummy);
 }
 
-const SPE_NOVEL = 408; /* objects.h: SPE_NOVEL */
-
 /* C ref: do_name.c:463 name_ok(obj) — getobj's classifier for `#name i'. */
 export function name_ok(obj) {
     if (!obj || (obj.oclass | 0) === COIN_CLASS)
@@ -566,8 +567,14 @@ async function do_mgivenname() {
         return;
     }
     mtmp = u_at(cx, cy) ? u.usteed : m_at(cx, cy);
-    const do_swallow = !mtmp && u.uswallow && g.level?.at(cx, cy)?.disp_cls === GLYPHCLS_SWALLOW;
-    if (do_swallow) mtmp = u.ustuck;
+    let do_swallow = false;
+    if (!mtmp && u.uswallow) {
+        const glyph = glyph_at(cx, cy);
+        if (glyph?.cls === GLYPHCLS_SWALLOW) {
+            mtmp = u.ustuck;
+            do_swallow = true;
+        }
+    }
     if (!do_swallow && (!mtmp
         || (!sensemon(mtmp)
             && (!(cansee(cx, cy) || see_with_infrared(mtmp))
@@ -579,17 +586,13 @@ async function do_mgivenname() {
     }
     const monnambuf = distant_monnam(mtmp, ARTICLE_THE);
     const qbuf = `What do you want to call ${monnambuf}?`;
-    let buf = await getlin(qbuf);
-    /* name_from_player: empty or ESC -> NULL -> return. */
-    if (!buf || buf === '\x1b')
+    const buf = await name_from_player(qbuf, has_mgivenname(mtmp) ? mtmp.mextra.mgivenname : null);
+    if (buf == null)
         return;
-    buf = mungspaces(buf);
-    if (buf.length >= PL_PSIZ_CMD)
-        buf = buf.slice(0, PL_PSIZ_CMD - 1);
     const GENO_UNIQ = 0x1000; /* monflag.h G_UNIQ */
     if (((mtmp.data?.geno | 0) & GENO_UNIQ) && !mtmp.ispriest) {
         if (!await _alreadynamed(mtmp, monnambuf, buf))
-            await pline(`${monnambuf.charAt(0).toUpperCase()}${monnambuf.slice(1)} doesn't like being called names!`);
+            await pline(`${upstart(monnambuf)} doesn't like being called names!`);
     } else if (mtmp.isshk && !(_uprop_active('DEAF') || helpless(mtmp) || mtmp.data.msound <= MS_ANIMAL)) {
         if (!await _alreadynamed(mtmp, monnambuf, buf)) {
             SetVoice(mtmp, 0, 80, 0);
@@ -598,7 +601,7 @@ async function do_mgivenname() {
     } else if (mtmp.ispriest || mtmp.isminion || mtmp.isshk
                || _fl_pmidx(mtmp) === PM_GHOST || mtmp.mextra?.ebones) {
         if (!await _alreadynamed(mtmp, monnambuf, buf))
-            await pline(`${monnambuf.charAt(0).toUpperCase()}${monnambuf.slice(1)} will not accept the name ${buf}.`);
+            await pline(`${upstart(monnambuf)} will not accept the name ${buf}.`);
     } else {
         christen_monst(mtmp, buf);
     }
@@ -644,7 +647,7 @@ async function _alreadynamed(mtmp, monnambuf, usrbuf) {
 }
 
 async function do_oname(obj) {
-    if ((obj.otyp | 0) === SPE_NOVEL_OTYP) {
+    if ((obj.otyp | 0) === SPE_NOVEL) {
         /* C do_name.c:298 — novels already carry their published title and
          * cannot be renamed.  Ysimple_name2 suppresses the novel title. */
         await pline('%s already has a published name.', Ysimple_name2(obj));
@@ -693,8 +696,6 @@ async function do_oname(obj) {
     }
     await oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
 }
-
-const PL_PSIZ_CMD = PL_PSIZ; /* config.h PL_PSIZ */
 
 /* C do_name.c:605-633 docall_xname(obj) — the formatter docall() hands to
  * safe_qbuf().  Formats a COPY of the object with the doname-caliber
@@ -750,8 +751,6 @@ async function name_from_player(prompt, _defres) {
         out = out.slice(0, PL_PSIZ - 1);
     return out;
 }
-
-const PL_PSIZ_DOCALL = PL_PSIZ; /* global.h:404 PL_PSIZ */
 
 export async function docall(obj) {
     const g = game;
@@ -892,9 +891,7 @@ function minimal_monnam_body(mon, ckloc) {
     return name;
 }
 
-export function y_monnam(mtmp) {
-    return y_monnam_real(mtmp); // C do_name.c:1117-1129
-}
+export { y_monnam } from './mhitm.js'; // C do_name.c:1117-1129
 
 /* C do_name.c:1320-1360 obj_pmname(obj) — mons[].pmname for a corpse/statue/
  * figurine, keyed off obj->corpsenm + the CORPSTAT_GENDER bits in obj->spe.

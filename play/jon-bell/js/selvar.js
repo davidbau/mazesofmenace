@@ -1,6 +1,6 @@
 // selvar.js — C ref: selvar.c.
 import { COLNO, ROWNO, STONE, W_EAST, W_NORTH, W_RANDOM, W_SOUTH, W_WEST, isok } from './const.js';
-import { newsym_force as newsym_force_real } from './display.js';
+import { newsym_force } from './display.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { match_maptyps, random_wdir } from './sp_lev.js';
@@ -613,6 +613,3 @@ export function selection_do_randline(x1, y1, x2, y2, rough, rec, ov) {
 
     selection_setpoint(x2, y2, ov, 1);
 }
-
-/* C display.c: newsym_force — share the canonical forced repaint state. */
-function newsym_force(x, y) { return newsym_force_real(x, y); }

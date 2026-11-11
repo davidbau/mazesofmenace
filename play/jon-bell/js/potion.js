@@ -5,11 +5,11 @@ import { game, wizard, discover } from './gstate.js';
 import { ledger_no } from './bones.js';
 import { You, Your, You_feel } from './pline.js';
 import { a_monnam } from './mhitm.js';
-import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, toggle_blindness, M1_NOEYES_ZAP, resist, potionhit_polymorph, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
+import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, toggle_blindness, M1_NOEYES_ZAP, resist, bhitm, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { explode, explode_oil } from './explode.js';
 import { spoteffects } from './hack.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, cmdq_pop, cmdq_clear, useup } from './cmd.js';
+import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, cmdq_pop, cmdq_clear, useup, SetVoice, check_unpaid } from './cmd.js';
 import { discover_artifact } from './artifact.js';
 import { CQ_CANNED, ECMD_FAIL, SHOPBASE, CMDQ_KEY, CMDQ_USER_INPUT } from './const.js';
 import { EXPL_FIERY } from './const.js';
@@ -37,7 +37,9 @@ import { _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
 import { key2txt, mime_action, pair_of, readchar } from './cmd.js';
-import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ } from './display.js';
+import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ, pager_boulder_symbol, pager_showsyms } from './display.js';
+import { def_oc_syms_chars } from './drawing.js';
+import { SchroedingersBox } from './pickup_container.js';
 import { map_monst } from './detect.js';
 import { unconstrain_map, map_redisplay } from './detect.js';
 /* make_hallucinated()'s "changed" block (potion.c:415-433). */
@@ -77,7 +79,7 @@ import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE, FOOT } from './const.js';
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
-import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, killed, is_youmonst } from './mhitm.js';
+import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, slept_monst, killed, is_youmonst } from './mhitm.js';
 import { stagger, Resists_Elem, mon_hates_blessings, defended } from './mondata.js';
 import { float_vs_flight } from './mhitm.js';
 import { monkilled_trap } from './trap.js';
@@ -94,6 +96,7 @@ import { gloves_simple_name } from './objnam.js';
 /* obj.h / objclass.h predicate data for potion_dip's tail (see the block at
  * the bottom of this file).  Same tables js/uhitm.js and js/lock.js read. */
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 
 import { getObjName, discover_object, observe_object, objdescr_is } from './o_init.js';
 import './lock.js';
@@ -121,7 +124,7 @@ import { NOTELL, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, has_mgivenname,
 import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
          PM_GREMLIN, PM_IRON_GOLEM, PM_PESTILENCE,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { paralyze_monst, slept_monst } from './dogmove.js';
+import { paralyze_monst } from './dogmove.js';
 import { polyself } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
 import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,
@@ -191,7 +194,7 @@ import { goto_level } from './do.js';
 import { enlightenment_menu } from './cmd.js';
 import { MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, A_INT, A_CHA } from './const.js';
 import { PM_GHOST, PM_TENGU, PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
-import { set_malign, findgold, dmgtype_fromattack } from './makemon.js';
+import { set_malign, findgold, dmgtype_fromattack, mcureblindness } from './makemon.js';
 import { mon_set_minvis, which_armor } from './worn.js';
 import { split_mon_ml } from "./mklev.js";
 import { mongone } from './mon.js';
@@ -248,6 +251,9 @@ const SPBOOK_CLASS = 10;
  * MKOBJ_SVB_BASES[POTION_CLASS=8] = 297 (mkobj_data.js).
  * POT_WATER is at offset 25 → 297 + 25 = 322. */
 const POT_WATER = 322;
+/* C objects.h ARMOR("mummy wrapping") otyp = 138 (OC_NAME[138] in
+ * js/oc_name_data.js); peffect_invisibility's is_spell early-out tests it. */
+const MUMMY_WRAPPING = 138;
 /* C objects.h: POT_OIL otyp = 321 (POT_WATER - 1). */
 const POT_OIL = 321;
 /* ---------------------------------------------------------------------------
@@ -588,13 +594,13 @@ async function peffect_oil(otmp) {
         }
         await burn_away_slime();
     } else if (otmp.cursed) {
-        /* C potion.c:1291 */
+        /* C potion.c:1289 */
         await pline('This tastes like castor oil.');
     } else {
-        /* C potion.c:1293 */
+        /* C potion.c:1291 */
         await pline('That was smooth!');
     }
-    /* C potion.c:1295 — the per-quaff exercise/abuse draw. */
+    /* C potion.c:1293 — the per-quaff exercise/abuse draw. */
     exercise(A_WIS, good_for_you);
 }
 /* Sink-delivered potions use the shared effect dispatcher. */
@@ -625,6 +631,12 @@ export async function dopotion_unported(otmp) {
     return ECMD_TIME;
 }
 
+const AT_BREA = 12;          /* monattk.h — breath, ranged */
+const AD_ACID = 8;           /* monattk.h — acid */
+const M1_ACID = 0x08000000;  /* monflag.h:112 — acidic to eat */
+/* C mondata.h acidic(ptr) — (((ptr)->mflags1 & M1_ACID) != 0L) */
+function acidic(ptr) { return ((ptr?.mflags1 >>> 0) & M1_ACID) !== 0; }
+
 /* C ref: eat.c:3735-3785 vomit(void). */
 export async function vomit() {
     const g = game;
@@ -648,7 +660,7 @@ export async function vomit() {
     }
     if (spewed) {
         const data = g.youmonst?.data;
-        const mattk = attacktype_fordmg(data, 12 /* AT_BREA */, 8 /* AD_ACID */);
+        const mattk = attacktype_fordmg(data, AT_BREA, AD_ACID);
         if (mattk) {
             await You('breathe acid on yourself...');
             await ubreatheu(mattk);
@@ -657,7 +669,7 @@ export async function vomit() {
         const loc = g.level?.at?.(x, y) || g.level?.locations?.[x]?.[y];
         if ((loc?.typ | 0) === ALTAR)
             await altar_wrath(x, y);
-        if ((data?.mflags1 >>> 0) & 0x08000000 && is_ice(x, y))
+        if (acidic(data) && is_ice(x, y))
             await melt_ice_zap(x, y, 'Your stomach acid melts straight through the ice!');
     }
 }
@@ -726,7 +738,7 @@ async function ghost_from_bottle() {
                 + (_potion_Hallucination() ? rndmonnam(null) : 'ghost')
                 + ' emerges!');
     /* C potion.c:496 `if (flags.verbose) You("are frightened to death, ...")` */
-    if (g.flags?.verbose !== false)
+    if (g.flags?.verbose)
         await pline('You are frightened to death, and unable to move.');
     nomul(-3);
     g.multi_reason = 'being frightened to death';
@@ -780,6 +792,7 @@ export async function djinni_from_bottle(obj) {
     else if (obj.cursed)
         chance = (chance === 0) ? rn2(4) : 4;
     /* 0,1,2,3,4:  b=80%,5,5,5,5; nc=20%,20,20,20,20; c=5%,5,5,5,80 */
+    SetVoice(mtmp, 0, 80, 0); // C potion.c:2840
     switch (chance) {
     case 0:
         await _verbalize_potion('I am in your debt.  I will grant one wish!');
@@ -866,8 +879,8 @@ export async function dodrink() {
      *         pline("If you can't breathe air, how can you drink liquid?");
      *         return ECMD_OK;
      *     }
-     * This said "not ported (unreachable at chargen)", which is an absence
-     * claim about a property an amulet of strangulation sets at any point in a
+     * This refusal used to be absent, excused as unreachable at chargen — an
+     * absence claim about a property an amulet of strangulation sets at any point in a
      * game, not only at chargen.  With the refusal absent, a strangled hero who
      * presses 'q' gets "What do you want to drink?" instead of the refusal and
      * this port then EATS C's next command as the item letter — the keystroke
@@ -1407,7 +1420,7 @@ export async function dodrink() {
              * bcsign=0, d(4,4) draws 1 rng call. */
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             await pline('You feel better.');
-            healup(8 + d(4 + 2 * bcsign, 4), !otmp.cursed ? 1 : 0,
+            await healup(8 + d(4 + 2 * bcsign, 4), !otmp.cursed ? 1 : 0,
                    !!otmp.blessed, !otmp.cursed);
             exercise(A_CON, true);
             /* dopotion tail: peffects returns -1 → useup + identify */
@@ -1422,7 +1435,7 @@ export async function dodrink() {
             /* C potion.c:1145-1165 peffect_full_healing */
             const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
             await pline('You feel completely healed.');
-            healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
+            await healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
             /* Restore one lost level if blessed */
             if (otmp.blessed && u.ulevel < u.ulevelmax) {
                 u.ulevelmax -= 1;
@@ -2061,7 +2074,9 @@ export async function make_sick(xtime, cause, talk, type) {
         if (u.usick_type) { /* only partly cured */
             if (talk)
                 await You_feel("somewhat better.");
-            _set_prop_itimeout(ps, (ps.intrinsic | 0) * 2); /* approximation */
+            /* C potion.c:169 set_itimeout(&Sick, Sick * 2), verbatim; the
+             * doubling is C's own rule. */
+            _set_prop_itimeout(ps, (ps.intrinsic | 0) * 2);
         } else {
             if (talk)
                 await You_feel("cured.  What a relief!");
@@ -2073,9 +2088,9 @@ export async function make_sick(xtime, cause, talk, type) {
     const kptr = find_delayed_killer(SICK);
     if (ps.intrinsic | 0) {
         exercise(A_CON, false);
-        /* C: "setting delayed_killer used to be unconditional, but that's not
-           right when make_sick(0) is called to cure food poisoning if hero was
-           also fatally ill; this is only approximate" */
+        /* C potion.c:181-183: setting delayed_killer used to be
+           unconditional, but not when make_sick(0) cures food poisoning while
+           the hero is also fatally ill (C's own caveat, ported as-is). */
         if (xtime || !old || !kptr) {
             const kpfx = (cause === "#wizintrinsic") ? KILLED_BY : KILLED_BY_AN;
             delayed_killer(SICK, kpfx, cause);
@@ -2253,7 +2268,7 @@ async function strange_feeling(obj, txt) {
  *     set_itimeout(which, itimeout_incr(*which, incr));
  * MUTATES the pointed-at property word.  `which` is a {value} ref here (the
  * JS stand-in for C's `long *`); callers holding a plain number wrap/unwrap. */
-function incr_itimeout(which, incr) {
+export function incr_itimeout(which, incr) {
     set_itimeout(which, itimeout_incr(which.value, incr));
 }
 /* C potion.c:67-71  itimeout_incr(long old, int incr)
@@ -2286,9 +2301,10 @@ export function set_itimeout(which, val) {
 function Role_if(pm) {
     return ((game.urole && game.urole.mnum) | 0) === (pm | 0);
 }
-function split_mon(monst, ptr) {
-    // C potion.c:2873-2914: shared hero cloneu and monster clone_mon paths.
-    return split_mon_ml(monst, ptr);
+function split_mon(mon, mtmp) {
+    // C potion.c:2873-2914: mon is split; mtmp is the optional attacker whose
+    // heat triggered it.  Shared hero cloneu and monster clone_mon paths.
+    return split_mon_ml(mon, mtmp);
 }
 /* C hack.h:1530 `#define makeknown(x) discover_object((x), TRUE, TRUE, TRUE)`.
  * This was a throwing stub, and potionbreathe()'s tail (potion.c:2110-2115)
@@ -2300,7 +2316,7 @@ function makeknown(otyp) {
 }
 const SICK_ALL = 3;
 
-export function healup(nhp, nxtra, curesick, cureblind) {
+export async function healup(nhp, nxtra, curesick, cureblind) {
     const g = game;
     const u = g.u;
     if (nhp && g.disp && !((g.disp.botl | 0) || (g.disp.botlx | 0))
@@ -2325,11 +2341,13 @@ export function healup(nhp, nxtra, curesick, cureblind) {
     if (cureblind) {
         u.ucreamed = 0;
         make_blinded(0, true);
-        make_deaf(0, true);
+        // C make_blinded() waits for MSGTYP_STOP before the next cure.
+        if (g._blockingPline) await g._blockingPline;
+        await make_deaf(0, true);
     }
     if (curesick) {
-        make_vomiting(0, true);
-        make_sick(0, null, true, SICK_ALL);
+        await make_vomiting(0, true);
+        await make_sick(0, null, true, SICK_ALL);
     }
     if (g.disp)
         g.disp.botl = 1;
@@ -2603,7 +2621,8 @@ export async function impact_arti_light(obj, worsen, seeit) {
 /* C ref: potion.c:2419 dip_potion_explosion — does the dipped potion explode? */
 async function _dip_potion_explosion(obj, dmg) {
     const u = game.u;
-    const cloakSmock = u.uarmc?.otyp === 144; // objects.h: ALCHEMY_SMOCK
+    const ALCHEMY_SMOCK = 144; // C objects.h
+    const cloakSmock = u.uarmc?.otyp === ALCHEMY_SMOCK;
     if (obj.cursed || obj.otyp === POT_ACID
         || (obj.otyp === POT_OIL && obj.lamplit)
         || !rn2(cloakSmock ? 30 : 10)) {
@@ -2907,6 +2926,7 @@ async function potion_dip(obj, potion) {
             potion.in_use = false; /* didn't go poof */
         } else {
             await pline(`You fill ${_yname_dip(obj)} with oil.`);
+            check_unpaid(potion); /* C potion.c:2709 — Yendorian Fuel Tax */
             /* C potion.c:2720-2723 — burns more efficiently in a lamp. */
             obj.age = (obj.age | 0)
                 + Math.trunc((!potion.odiluted ? 4 : 3) * (potion.age | 0) / 2);
@@ -3154,7 +3174,9 @@ export async function polymorph_sink() {
         break;
     }
     case 3:
-        sym = 'grave'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null); break;
+        sym = 'room'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null);
+        if (loc.typ === GRAVE) sym = 'grave'; /* C do.c:444-445 */
+        break;
     }
     if (loc.typ !== ROOM) await pline(`The sink transforms into ${an(sym)}!`);
     else await pline('The sink vanishes.');
@@ -3174,8 +3196,6 @@ export async function dodip() {
     const at_sink = loc ? IS_SINK(here) : false;
     const menu_requested = !!g.iflags?.menu_requested;
     const at_here = (!menu_requested && (at_pool || at_fountain || at_sink));
-    /* C potion.c:2288 drink_ok_extra = 0 — reset before the first getobj. */
-    drink_ok_extra = 0;
 
     const obj = await getObjFromGetobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
     if (!obj) { g.context.move = 0; return ECMD_CANCEL; }
@@ -3226,8 +3246,8 @@ export async function dodip() {
             return ECMD_TIME;
         }
         ++drink_ok_extra;
-    } else if (!menu_requested && at_pool && can_reach_floor(false)) {
-        /* C potion.c:2336-2361: air/water planes permit levitating reach. */
+    } else if (!menu_requested && at_pool) {
+        /* C potion.c:2335-2362 */
         const pooltype = waterbody_name(u.ux, u.uy);
         const qbuf = `Dip ${g.flags?.verbose === false ? shortestname : obuf} into the ${pooltype}?`;
         if (await y_n(qbuf) === 'y') {
@@ -3290,7 +3310,7 @@ export async function potionhit(mon, obj, how) {
         distance = 0;
 
         /* C potion.c:1636-1640 */
-        pline(`The ${botlnam} crashes on your ${body_part(HEAD)} and breaks into shards.`);
+        await pline(`The ${botlnam} crashes on your ${body_part(HEAD)} and breaks into shards.`);
         /* C potion.c:1640 — apply Half_physical_damage to the impact. */
         await losehp(maybe_half_phys_pot(rnd(2)),
                ((how | 0) === POTHIT_OTHER_THROW) ? 'propelled potion' : 'thrown potion',
@@ -3308,7 +3328,7 @@ export async function potionhit(mon, obj, how) {
         }
         distance = dist2(tx, ty, u.ux | 0, u.uy | 0);
         if (!cansee(tx, ty)) {
-            pline('Crash!');
+            await pline('Crash!');
         } else {
             const mnam = mon_nam_pot(mon);
             let buf;
@@ -3319,7 +3339,7 @@ export async function potionhit(mon, obj, how) {
             } else {
                 buf = mnam;
             }
-            pline(`The ${botlnam} crashes on ${buf} and breaks into shards.`);
+            await pline(`The ${botlnam} crashes on ${buf} and breaks into shards.`);
         }
         /* C potion.c:1675-1676 — rn2(5) is evaluated regardless of the later
          * operands (it is the left side of &&), so the draw always happens. */
@@ -3330,7 +3350,7 @@ export async function potionhit(mon, obj, how) {
     /* C potion.c:1679-1681 — "oil doesn't instantly evaporate; Neither does a
      * saddle hit". */
     if ((obj.otyp | 0) !== POT_OIL && !hit_saddle && cansee(tx, ty))
-        pline(`${Tobjnam(obj, 'evaporate')}.`);
+        await pline(`${Tobjnam(obj, 'evaporate')}.`);
 
     if (isyou) {
         /* C potion.c:1683-1704 — the hero-target per-otyp arms. */
@@ -3341,14 +3361,14 @@ export async function potionhit(mon, obj, how) {
                 await explode_oil(obj, u.ux, u.uy);
             break;
         case POT_POLYMORPH:
-            You_feel(`a little ${_hallucination() ? 'normal' : 'strange'}.`);
+            await You_feel(`a little ${_hallucination() ? 'normal' : 'strange'}.`);
             // C potion.c:1692 finishes polyself before potionbreathe/trycall.
             if (!_unchanging() && !_prop_active(ANTIMAGIC))
                 await polyself(POLY_NOFLAGS);
             break;
         case POT_ACID:
             if (!_prop_active(ACID_RES)) {
-                pline(`This burns${obj.blessed ? ' a little' : obj.cursed ? ' a lot' : ''}!`);
+                await pline(`This burns${obj.blessed ? ' a little' : obj.cursed ? ' a lot' : ''}!`);
                 const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
                 await losehp(maybe_half_phys_pot(dmg), 'potion of acid', KILLED_BY_AN_POT);
             }
@@ -3388,7 +3408,7 @@ export async function potionhit(mon, obj, how) {
                 /* C:1743-1744 `goto do_illness` */
                 if ((mon.mhp | 0) > 2) {
                     mon.mhp = Math.trunc((mon.mhp | 0) / 2);
-                    if (canseemon(mon)) pline(`${Monnam(mon)} looks rather ill.`);
+                    if (canseemon(mon)) await pline(`${Monnam(mon)} looks rather ill.`);
                 }
                 break;
             }
@@ -3400,10 +3420,10 @@ export async function potionhit(mon, obj, how) {
             if ((mon.mhp | 0) < (mon.mhpmax | 0)) {
                 healmon(mon, mon.mhpmax, 0);
                 if (canseemon(mon))
-                    pline(`${Monnam(mon)} looks sound and hale again.`);
+                    await pline(`${Monnam(mon)} looks sound and hale again.`);
             }
             if (cureblind)
-                mcureblindness_pot(mon, canseemon(mon));
+                await mcureblindness(mon, canseemon(mon)); /* C potion.c:1756 */
             break;
         case POT_SICKNESS:
             if ((mon.data ? (mon.data.pmidx | 0) : -1) === PM_PESTILENCE) {
@@ -3412,21 +3432,21 @@ export async function potionhit(mon, obj, how) {
                 if ((mon.mhp | 0) < (mon.mhpmax | 0)) {
                     healmon(mon, mon.mhpmax, 0);
                     if (canseemon(mon))
-                        pline(`${Monnam(mon)} looks sound and hale again.`);
+                        await pline(`${Monnam(mon)} looks sound and hale again.`);
                 }
                 break;
             }
             if (dmgtype_pot(mon.data, AD_DISE_POT) || dmgtype_pot(mon.data, AD_PEST_POT)
                 || Resists_Elem(mon, POISON_RES)) {
                 if (canseemon(mon))
-                    pline(`${Monnam(mon)} looks unharmed.`);
+                    await pline(`${Monnam(mon)} looks unharmed.`);
                 break;
             }
             /* C:1771-1776 do_illness */
             if ((mon.mhp | 0) > 2) {
                 mon.mhp = Math.trunc((mon.mhp | 0) / 2);
                 if (canseemon(mon))
-                    pline(`${Monnam(mon)} looks rather ill.`);
+                    await pline(`${Monnam(mon)} looks rather ill.`);
             }
             break;
         case POT_CONFUSION:
@@ -3442,16 +3462,16 @@ export async function potionhit(mon, obj, how) {
             if (sawit && !canspotmon(mon)) {
                 if (cansee(mon.mx | 0, mon.my | 0)) map_invisible(mon.mx | 0, mon.my | 0);
             } else if (sawit && cursed_potion) {
-                pline(`${Monnam(mon)} briefly seems to be transparent.`);
+                await pline(`${Monnam(mon)} briefly seems to be transparent.`);
             } else if (!sawit && canspotmon(mon)) {
-                pline(`${Monnam(mon)} appears!`);
+                await pline(`${Monnam(mon)} appears!`);
             }
             break;
         }
         case POT_SLEEPING:
             /* C:1803-1807 — "wakeup() doesn't rouse victims of temporary sleep" */
             if (await sleep_monst(mon, rnd(12), POTION_CLASS)) {
-                pline(`${Monnam(mon)} falls asleep.`);
+                await pline(`${Monnam(mon)} falls asleep.`);
                 await slept_monst(mon);
             }
             break;
@@ -3476,7 +3496,7 @@ export async function potionhit(mon, obj, how) {
             if (mon_hates_blessings(mon) /* undead or demon */
                 || is_were_pot(pdata) || is_vampshifter_pot(mon)) {
                 if (obj.blessed) {
-                    pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
+                    await pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
                     if (!is_silent_pot(pdata))
                         wake_nearto(tx, ty, (pdata.mlevel | 0) * 10);
                     mon.mhp = (mon.mhp | 0) - d(2, 6);
@@ -3487,7 +3507,7 @@ export async function potionhit(mon, obj, how) {
                 } else if (obj.cursed) {
                     angermon = false;
                     if (canseemon(mon))
-                        pline(`${Monnam(mon)} looks healthier.`);
+                        await pline(`${Monnam(mon)} looks healthier.`);
                     healmon(mon, d(2, 6), 0);
                     if (is_were_pot(pdata) && is_human_pot(pdata))
                         await new_were(mon);
@@ -3498,7 +3518,7 @@ export async function potionhit(mon, obj, how) {
                 angermon = false;
                 await split_mon_ml(mon, null);
             } else if ((pdata ? (pdata.pmidx | 0) : -1) === PM_IRON_GOLEM) {
-                if (canseemon(mon)) pline(`${Monnam(mon)} rusts.`);
+                if (canseemon(mon)) await pline(`${Monnam(mon)} rusts.`);
                 mon.mhp = (mon.mhp | 0) - d(1, 6);
                 /* C potion.c:1862-1863 — this thrown potion is your attack,
                  * so use the ordinary killed() attribution/death sequence. */
@@ -3513,7 +3533,7 @@ export async function potionhit(mon, obj, how) {
         case POT_ACID: {
             const pdata = mon.data;
             if (!Resists_Elem(mon, ACID_RES) && !await resist(mon, POTION_CLASS, 0, NOTELL)) {
-                pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
+                await pline(`${Monnam(mon)} ${is_silent_pot(pdata) ? 'writhes' : 'shrieks'} in pain!`);
                 if (!is_silent_pot(pdata))
                     wake_nearto(tx, ty, (pdata.mlevel | 0) * 10);
                 mon.mhp = (mon.mhp | 0) - d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
@@ -3530,9 +3550,8 @@ export async function potionhit(mon, obj, how) {
             break;
         }
         case POT_POLYMORPH:
-            /* C potion.c:1885-1886 — bhitm() owns the full polymorph target
-             * logic; this adapter preserves its resistance/system-shock RNG. */
-            await potionhit_polymorph(mon, obj);
+            /* C potion.c:1885-1886 — (void) bhitm(mon, obj). */
+            await bhitm(mon, obj);
             break;
         default:
             break;
@@ -3614,16 +3633,6 @@ function resists_poison_pot(mon) {
  * js/mhitm.js's own copy is the same one-liner, unexported. */
 const AD_DISE_POT = 33, AD_PEST_POT = 38;
 function dmgtype_pot(mon_data, ad_type) { return !!dmgtype_fromattack(mon_data, ad_type, -1 /* AT_ANY */); }
-/* C muse.c:2872 mcureblindness(mon, verbos) — RNG-free.  js/makemon.js:5110
- * carries the same body, unexported. */
-function mcureblindness_pot(mon, verbos) {
-    if (!mon.mcansee) {
-        mon.mcansee = 1;
-        mon.mblinded = 0;
-        if (verbos && haseyes(mon.data))
-            pline(`${Monnam(mon)} can see again.`);
-    }
-}
 /* C ref: js/mhitm.js:4057 mon_perma_blind(mdef) — RNG-free, unexported. */
 function mon_perma_blind_pot(mdef) { return !!(mdef && !(mdef.mcansee | 0) && !(mdef.mblinded | 0)); } /* monst.h:253 */
 /* C do_name.c:1042 mon_nam(mtmp). */
@@ -3670,8 +3679,8 @@ export async function potionbreathe(obj) {
             }
             break;
         } else {
-            i = rn2(6);
-            for (isdone = ii = 0; !isdone && ii < 6; ii++) {
+            i = rn2(A_MAX);
+            for (isdone = ii = 0; !isdone && ii < A_MAX; ii++) {
                 const di = _C_ATTR_TO_DISP[i];
                 if ((u.acurr?.a?.[di] ?? 0) < (u.amax?.a?.[di] ?? 0)) {
                     u.acurr.a[di]++;
@@ -3706,9 +3715,9 @@ export async function potionbreathe(obj) {
             cureblind = true;
         if (cureblind) {
             make_blinded(0, !u.ucreamed);
-            make_deaf(0, true);
+            await make_deaf(0, true);
         }
-        exercise(4, true);
+        exercise(A_CON, true);
         break;
     case POT_SICKNESS:
         if (!Role_if(PM_HEALER)) {
@@ -3725,7 +3734,7 @@ export async function potionbreathe(obj) {
             }
             if (g.disp)
                 g.disp.botl = 1;
-            exercise(4, false);
+            exercise(A_CON, false);
         }
         break;
     case POT_HALLUCINATION:
@@ -3735,7 +3744,7 @@ export async function potionbreathe(obj) {
     case POT_BOOZE:
         if (!((u.uprops?.[CONFUSION]?.intrinsic | 0)))
             You_feel("somewhat dizzy.");
-        /* C potion.c:2033  make_confused(itimeout_incr(HConfusion, rnd(5)), FALSE)
+        /* C potion.c:2031  make_confused(itimeout_incr(HConfusion, rnd(5)), FALSE)
          * — itimeout_incr (pure), NOT incr_itimeout.  HConfusion is
          * u.uprops[CONFUSION].intrinsic (youprop.h:83). */
         make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0, rnd(5)), false);
@@ -3755,7 +3764,7 @@ export async function potionbreathe(obj) {
             nomul(-rnd(5));
             g.multi_reason = "frozen by a potion";
             g.nomovemsg = You_can_move_again;
-            exercise(3, false);
+            exercise(A_DEX, false);
         } else
             You("stiffen momentarily.");
         break;
@@ -3766,7 +3775,7 @@ export async function potionbreathe(obj) {
             nomul(-rnd(5));
             g.multi_reason = "sleeping off a magical draught";
             g.nomovemsg = You_can_move_again;
-            exercise(3, false);
+            exercise(A_DEX, false);
         } else {
             You("yawn.");
             monstseesu(M_SEEN_SLEEP);
@@ -3775,7 +3784,7 @@ export async function potionbreathe(obj) {
     case POT_SPEED:
         if (!_potion_Fast())
             Your("knees seem more flexible now.");
-        /* C potion.c:2070  incr_itimeout(&HFast, rnd(5)) — mutating, on the
+        /* C potion.c:2068  incr_itimeout(&HFast, rnd(5)) — mutating, on the
          * property word itself.  _fastrec(u).intrinsic is a plain number in this module (see
          * make_fast() below and the peffect_speed test at line ~1089), so wrap
          * it in the {value} ref incr_itimeout() takes and store back. */
@@ -3784,7 +3793,7 @@ export async function potionbreathe(obj) {
             incr_itimeout(HFast_ref, rnd(5));
             _fastrec(u).intrinsic = HFast_ref.value;
         }
-        exercise(3, true);
+        exercise(A_DEX, true);
         break;
     case POT_BLINDNESS:
         if (!_potion_Blind() && !_Unaware()) {
@@ -3817,7 +3826,7 @@ export async function potionbreathe(obj) {
         break;
     case POT_ACID:
     case POT_POLYMORPH:
-        exercise(4, false);
+        exercise(A_CON, false);
         break;
     }
 
@@ -3843,7 +3852,7 @@ export async function self_invis_message() {
     const HSee_invisible = u.uprops?.[SEE_INVIS]?.intrinsic || 0;
     const ESee_invisible = u.uprops?.[SEE_INVIS]?.extrinsic || 0;
     const See_invisible = HSee_invisible || ESee_invisible;
-    /* C potion.c:477-479 is a two-%s pline; js/display.js's pline takes ONE
+    /* C potion.c:473-477 is a two-%s pline; js/display.js's pline takes ONE
      * already-formatted string, so the C-style call printed the format itself.
      * This function had no live caller until trap.c's domagictrap fate-11 arm
      * reached it, which is why the breakage was invisible. */
@@ -4012,7 +4021,7 @@ async function peffect_invisibility(otmp) {
     const BInvis = (ip.blocked | 0);
     const Invis = !!(((ip.intrinsic | 0) || (ip.extrinsic | 0)) && !BInvis);
 
-    if (otmp.oclass === SPBOOK_CLASS && BInvis && u.uarmc?.otyp === 138 /* MUMMY_WRAPPING */) {
+    if (otmp.oclass === SPBOOK_CLASS && BInvis && u.uarmc?.otyp === MUMMY_WRAPPING) {
         await You_feel(`rather itchy under ${yname(u.uarmc)}.`);
         return;
     }
@@ -4021,7 +4030,7 @@ async function peffect_invisibility(otmp) {
     } else {
         await self_invis_message();
     }
-    /* C potion.c:826-829:
+    /* C potion.c:825-828:
      *     if (otmp->blessed && !rn2(HInvis ? 15 : 30)) HInvis |= FROMOUTSIDE;
      *     else incr_itimeout(&HInvis, d(6 - 3 * bcsign(otmp), 100) + 100);
      * The rn2 fires ONLY for a blessed potion — && short-circuits — which is
@@ -4112,7 +4121,7 @@ function peffect_paralysis(otmp) {
     }
 }
 async function peffect_sleeping(otmp) {
-    /* C potion.c:902-913.  Use the property table rather than the legacy
+    /* C potion.c:900-911.  Use the property table rather than the legacy
      * convenience fields, which are not populated for every reconstructed
      * hero state. */
     if (_prop_active(SLEEP_RES) || _free_action()) {
@@ -4184,9 +4193,43 @@ function _observe_recursively_det(obj) {
             _observe_recursively_det(o);
     }
 }
-function _check_map_spot_alldetect(x, y) {
+/* C ref: detect.c:214-227 o_in(obj, oclass) */
+function _o_in_det(obj, oclass) {
+    if (!oclass) return null;
+    if ((obj.oclass | 0) === oclass) return obj;
+    if (Has_contents(obj) && !SchroedingersBox(obj)) {
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+            if ((otmp.oclass | 0) === oclass) return otmp;
+            if (Has_contents(otmp)) {
+                const temp = _o_in_det(otmp, oclass);
+                if (temp) return temp;
+            }
+        }
+    }
+    return null;
+}
+/* C ref: detect.c:260-306 check_map_spot(x, y, oclass, material) — handles
+ * both ALL_CLASSES (!oclass) and class-specific detection. */
+function _check_map_spot_alldetect(x, y, oclass = 0) {
     const g = game;
     const loc = g.level && g.level.at ? g.level.at(x, y) : null;
+    if (oclass) {
+        const rg = loc && loc.remembered_glyph;
+        if (!rg || rg.cls !== GLYPHCLS_OBJ)
+            return false;
+        if (Number.isInteger(rg.otyp) ? (MKOBJ_OC_CLASS[rg.otyp] | 0) !== oclass
+            : rg.ch !== def_oc_syms_chars[oclass])
+            return false;
+        for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
+            if (_o_in_det(otmp, oclass))
+                return false;
+        const mtmp = m_at(x, y);
+        if (mtmp)
+            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+                if (_o_in_det(otmp, oclass))
+                    return false;
+        return true;
+    }
     if (!loc || loc.disp_cls !== GLYPHCLS_OBJ)
         return false;
     const hasFloorObj = !!(g.level && g.level.levelObjects
@@ -4196,12 +4239,12 @@ function _check_map_spot_alldetect(x, y) {
     const mtmp = m_at(x, y);
     return !(mtmp && mtmp.minvent);
 }
-/* C ref: detect.c:311-330 clear_stale_map(ALL_CLASSES, 0). RNG-free. */
-function _clear_stale_map_alldetect() {
+/* C ref: detect.c:311-330 clear_stale_map(!class ? ALL_CLASSES : class, 0). RNG-free. */
+function _clear_stale_map_alldetect(oclass = 0) {
     let change_made = false;
     for (let zx = 1; zx < COLNO; zx++) {
         for (let zy = 0; zy < ROWNO; zy++) {
-            if (_check_map_spot_alldetect(zx, zy)) {
+            if (_check_map_spot_alldetect(zx, zy, oclass)) {
                 unmap_object(zx, zy);
                 change_made = true;
             }
@@ -4211,20 +4254,15 @@ function _clear_stale_map_alldetect() {
 }
 /* C ref: detect.c:35-36 (flag.h) TER_OBJ 0x04 — see TER_MON/TER_DETECT above. */
 const TER_OBJ = 0x04;
+const ROCK_CLASS_DET = 14, SCROLL_CLASS_DET = 9;
+const _DET_OC_NAMES = [null, 'illegal objects', 'weapons', 'armor', 'rings', 'amulets',
+    'tools', 'food', 'potions', 'scrolls', 'spellbooks', 'wands', 'coins', 'rocks',
+    'large stones', 'iron balls', 'chains', 'venoms'];
 /* C objects.h GOLD_PIECE otyp — same value js/makemon.js:1404's local
  * GOLD_PIECE_OTYP carries (MKOBJ_SVB_BASES[COIN_CLASS]=438); this file's own
  * name to avoid importing a non-exported local from another module. */
 const GOLD_PIECE_OTYP_DET = 438;
 /* C ref: detect.c:603-788 object_detect(detector, class).
- *
- * Used by potions, scrolls, spells and crystal balls; the only LIVE caller in
- * this port is peffect_object_detection below, which always passes class=0.
- * With class===0 (and therefore boulder===0, since def_oc_syms[0] is never
- * the boulder symbol), every `(!class && !boulder) || o_in(obj, class) ||
- * o_in(obj, boulder)` guard in C takes its short-circuit TRUE half
- * unconditionally — o_in() and the boulder-symbol special case are NEVER
- * exercised on this path and are not ported; a future class!=0 caller needs
- * them ported first (throws below rather than silently mis-scoping).
  *
  * Returns 1 ("nothing detected"), 0 ("something detected").
  * RNG: rnd(10) once per monster whose minvent contains gold (the mapping
@@ -4240,26 +4278,38 @@ async function object_detect(detector, oclass) {
          * (after impossible()) and continues into normal detection. */
         oclass = 0;
     }
-    if (oclass) {
-        const { _cb_object_detect_class } = await import('./cmd.js');
-        return _cb_object_detect_class(oclass);
-    }
     const is_cursed = !!(detector && detector.cursed);
     const do_dknown = !!(detector
         && (detector.oclass === POTION_CLASS || detector.oclass === SPBOOK_CLASS)
         && detector.blessed);
     let ct = 0, ctu = 0;
+    let otmp = null;
+
+    /* C detect.c:628-637: boulder symbol check and stuff string */
+    const sym = oclass ? def_oc_syms_chars[oclass] : 0;
+    const bouldersym = g.symbolOverrides?.S_boulder ? pager_boulder_symbol()
+        : String.fromCharCode(pager_showsyms()?.[192 /* SYM_OFF_X + SYM_BOULDER */] || 96);
+    const boulder = (sym && sym === bouldersym) ? ROCK_CLASS_DET : 0;
+    const confused = ((u.uprops?.[CONFUSION]?.intrinsic | 0) || (u.uprops?.[CONFUSION]?.extrinsic | 0)) !== 0;
+    let stuff = (_hallucination() || (confused && oclass === SCROLL_CLASS_DET))
+        ? 'something' : (oclass ? _DET_OC_NAMES[oclass] : 'objects');
+    if (boulder && oclass !== ROCK_CLASS_DET)
+        stuff += ' and/or large stones';
 
     if (do_dknown) {
         for (let o = g.invent; o; o = o.nobj)
             _observe_recursively_det(o);
     }
     for (let o = g.fobj; o; o = o.nobj) {
-        if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder)) {
+            if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        }
         if (do_dknown) _observe_recursively_det(o);
     }
     for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
-        if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        if (!oclass || _o_in_det(o, oclass)) {
+            if (u_at(o.ox, o.oy)) ctu++; else ct++;
+        }
         if (do_dknown) _observe_recursively_det(o);
     }
 
@@ -4272,20 +4322,22 @@ async function object_detect(detector, oclass) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
         for (let o = mtmp.minvent; o; o = o.nobj) {
-            ct++;
+            if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder))
+                ct++;
             if (do_dknown) _observe_recursively_det(o);
         }
         /* C detect.c:668-676 — the `break` exits the OUTER mtmp loop the
          * instant ANY monster is a cursed-detector mimic-of-object or
          * carries gold.  Ported as-is (Cardinal Rule 1: port the bug). */
-        if ((is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT) || findgold(mtmp.minvent)) {
+        if ((is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT
+             && (!oclass || oclass === (MKOBJ_OC_CLASS[mtmp.mappearance | 0] | 0)))
+            || (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS))) {
             ct++;
             break;
         }
     }
 
-    const stale = _clear_stale_map_alldetect();
-    const stuff = _hallucination() ? 'something' : 'objects';
+    const stale = _clear_stale_map_alldetect(oclass);
     if (!stale && !ct) {
         if (!ctu) {
             if (detector)
@@ -4300,32 +4352,55 @@ async function object_detect(detector, oclass) {
         await force_more(g._pending_message);
     await cls();
     unconstrain_map();
-    for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj)
-        map_object(o, 1);
+    for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
+        if (!oclass || (otmp = _o_in_det(o, oclass)) !== null) {
+            if (oclass) {
+                if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
+                map_object(otmp, 1);
+            } else {
+                map_object(o, 1);
+            }
+        }
+    }
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
-            const o = g.level && g.level.levelObjects
-                && g.level.levelObjects[x] && g.level.levelObjects[x][y];
-            if (o) map_object(o, 1);
+            for (let o = g.level?.levelObjects?.[x]?.[y]; o; o = o.nexthere) {
+                if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
+                    || (otmp = _o_in_det(o, boulder)) !== null) {
+                    if (oclass || boulder) {
+                        if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
+                        map_object(otmp, 1);
+                    } else {
+                        map_object(o, 1);
+                    }
+                    break;
+                }
+            }
         }
     }
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
-        if (mtmp.minvent) {
-            const otmp = mtmp.minvent;
-            otmp.ox = mtmp.mx;
-            otmp.oy = mtmp.my;
-            map_object(otmp, 1);
+        for (let o = mtmp.minvent; o; o = o.nobj) {
+            if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
+                || (otmp = _o_in_det(o, boulder)) !== null) {
+                if (!oclass && !boulder)
+                    otmp = o;
+                otmp.ox = mtmp.mx;
+                otmp.oy = mtmp.my;
+                map_object(otmp, 1);
+                break;
+            }
         }
-        if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+        if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT
+            && (!oclass || oclass === (MKOBJ_OC_CLASS[mtmp.mappearance | 0] | 0))) {
             /* set_mimic_sym() (js/mklev.js) stores the disguise species flat on
              * the monster, not in mextra; has_mcorpsenm() is MCORPSENM != NON_PM. */
             const mcn = (MCORPSENM(mtmp) !== NON_PM) ? MCORPSENM(mtmp) : (mtmp.mcorpsenm ?? NON_PM);
             const corpsenm = (mcn !== NON_PM) ? mcn : PM_TENGU;
             map_object({ otyp: mtmp.mappearance | 0, quan: 1,
                           ox: mtmp.mx, oy: mtmp.my, corpsenm }, 1);
-        } else if (findgold(mtmp.minvent)) {
+        } else if (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS)) {
             map_object({ otyp: GOLD_PIECE_OTYP_DET, oclass: COIN_CLASS,
                           quan: rnd(10), ox: mtmp.mx, oy: mtmp.my }, 1);
         }
@@ -4581,14 +4656,14 @@ async function peffect_gain_level(otmp) {
 }
 async function peffect_healing(otmp) {
     await pline('You feel better.');
-    healup(8 + d(4 + 2 * ((otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0)), 4), !otmp.cursed ? 1 : 0,
+    await healup(8 + d(4 + 2 * ((otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0)), 4), !otmp.cursed ? 1 : 0,
            !!otmp.blessed, !otmp.cursed);
     exercise(A_CON, true);
 }
 async function peffect_extra_healing(otmp) {
     const u = game.u;
     await pline('You feel much better.');
-    healup(16 + d(4 + 2 * bcsign(otmp), 8),
+    await healup(16 + d(4 + 2 * bcsign(otmp), 8),
            otmp.blessed ? 5 : !otmp.cursed ? 2 : 0, !otmp.cursed, true);
     await make_hallucinated(0, true, 0);
     /* C constants: exercise()/acurr() in js/attrib.js take A_STR=0..A_CHA=5,
@@ -4611,7 +4686,7 @@ async function peffect_full_healing(otmp) {
     const u = game.u;
     await pline('You feel completely healed.');
     const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-    healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
+    await healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
     /* Restore one lost level if blessed */
     if (otmp.blessed && u.ulevel < u.ulevelmax) {
         /* when multiple levels have been lost, drinking
@@ -4838,8 +4913,8 @@ export async function speed_up(duration) {
         await pline("You are suddenly moving %sfaster.", _potion_Fast() ? "" : "much ");
     else
         await pline("Your %s get new energy.", makeplural(body_part(LEG)));
-    exercise(3, true);
-    /* C potion.c:2929  incr_itimeout(&HFast, duration) — inlined here because
+    exercise(A_DEX, true);
+    /* C potion.c:2927  incr_itimeout(&HFast, duration) — inlined here because
      * _fastrec(u).intrinsic is a plain number, not a {value} ref.  Uses the module-scope
      * TIMEOUT (0x00ffffff, prop.h:135); a local 0xFF copy previously truncated
      * HFast's timeout at 255 turns. */

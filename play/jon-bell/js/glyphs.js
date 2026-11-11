@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { config_error_add } from './cfgfiles.js';
 import { gs, H_UTF8, SYM_PCHAR, SYM_OC, SYM_MON } from './const.js';
-import { glyphid_table, glyph_is_monster, MON_MLET, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
+import { glyphid_table, glyph_is_monster, glyph_to_mon, glyph_is_object, glyph_to_obj, glyph_to_explosion, NUM_OBJECTS, MON_MLET, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
 import { LOADSYMS, customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbols.js';
 import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
 import { set_map_u } from './utf8map.js'; // relocate-fns
@@ -119,7 +119,7 @@ export function glyph_to_cmap(glyph) {
     else if (glyph >= GLYPH_SWALLOW_OFF && glyph < GLYPH_EXPLODE_OFF)
         return ((glyph - GLYPH_SWALLOW_OFF) & 0x7) + S_sw_tl;
     else if (glyph >= GLYPH_EXPLODE_OFF && glyph < GLYPH_WARNING_OFF)
-        return ((glyph - GLYPH_EXPLODE_OFF) % 9) + S_expl_tl;
+        return glyph_to_explosion(glyph) + S_expl_tl;
     else
         return MAXPCHARS;
 }
@@ -460,7 +460,7 @@ export function apply_customizations(which_set, docustomize) {
     let at_least_one = false;
     const do_colors = ((docustomize & do_custom_colors) !== 0);
     const do_symbols = ((docustomize & do_custom_symbols) !== 0);
-    if (do_symbols && game.iflags.customsymbols) apply_pending_s_utf8();
+    if (do_symbols && game.iflags.customsymbols !== false) apply_pending_s_utf8();
 
     for (let custs = 0; custs < custom_count; ++custs) {
         const sc = gs.sym_customizations[which_set | 0][custs];
@@ -470,7 +470,7 @@ export function apply_customizations(which_set, docustomize) {
                not to symset entries */
             let details = sc.details;
             while (details) {
-                if (game.iflags.customsymbols && do_symbols) {
+                if (game.iflags.customsymbols !== false && do_symbols) {
                     if (sc.custtype === custom_ureps) {
                         const gmap = glyphmap[details.content.urep.glyphidx];
                         if (gs.symset[which_set | 0].handling === H_UTF8)
@@ -478,7 +478,7 @@ export function apply_customizations(which_set, docustomize) {
                                       details.content.urep.u.utf8str);
                     }
                 }
-                if (game.iflags.customcolors && do_colors) {
+                if (game.iflags.customcolors !== false && do_colors) {
                     if (sc.custtype === custom_nhcolor) {
                         const gmap = glyphmap[details.content.ccolor.glyphidx];
                         set_map_customcolor(gmap, details.content.ccolor.nhcolor);
@@ -516,7 +516,6 @@ function shuffle_customizations() {
     /* C glyphs.c:591-731.  Object descriptions are shuffled after a
      * customization file has been applied; move each object glyph's color
      * and unicode replacement along with its description. */
-    const NUM_OBJECTS = 481;
     const offsets = [GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF];
     const descrIdx = game._objDescrIdx || {};
     for (const offset of offsets) {
@@ -553,7 +552,7 @@ function shuffle_customizations() {
             }
         }
         for (let i = 0; i < NUM_OBJECTS; i++)
-            glyphmap[offset + i] = tmp[i];
+            Object.assign(glyphmap[offset + i], tmp[i]);
     }
 }
 
@@ -573,24 +572,17 @@ function glyph_find_core(id, findwhat) {
                 do_callback = glyph_to_cmap(glyph) === findwhat.val;
                 break;
             case find_pm:
-                if (glyph_is_monster(glyph)) {
-                    const nm = MON_MLET.length;
-                    // display.h glyph_to_mon: the invisibility/body blocks
-                    // interrupt the otherwise contiguous monster families.
-                    const base = glyph < 4 * nm ? 0
-                        : glyph < 6 * nm + 1 ? 4 * nm + 1 : 7 * nm + 1;
-                    do_callback = MON_MLET[(glyph - base) % nm] === findwhat.val;
-                }
+                if (glyph_is_monster(glyph) && MON_MLET[glyph_to_mon(glyph)] === findwhat.val)
+                    do_callback = true;
                 break;
             case find_oc:
-                // C compares object TYPE, not class. parse_id's oc value is
-                // 0..16, so corpses/statues cannot match this branch.
-                do_callback = glyph === GLYPH_OBJ_OFF + findwhat.val
-                    || glyph === GLYPH_OBJ_PILETOP_OFF + findwhat.val;
+                if (glyph_is_object(glyph) && glyph_to_obj(glyph) === findwhat.val)
+                    do_callback = true;
                 break;
             case find_glyph:
                 do_callback = end_find = glyph === findwhat.val;
                 break;
+            case find_nothing:
             default:
                 end_find = true;
                 break;
@@ -611,7 +603,7 @@ function add_custom_glyph_entry(name, glyphidx, which_set, custtype, value) {
     if (!gdc.details)
         Object.assign(gdc, { customization_name: name, custtype, details: null, details_end: null });
     const field = custtype === custom_nhcolor ? 'ccolor' : 'urep';
-    if (gdc.custtype === custtype && gdc.customization_name === name)
+    if (gdc.custtype === custtype && gdc.customization_name && gdc.customization_name === name)
         for (let d = gdc.details; d; d = d.next)
             if (d.content[field].glyphidx === glyphidx) {
                 Object.assign(d.content[field], value);

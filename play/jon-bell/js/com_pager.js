@@ -352,6 +352,7 @@ export function _overlay_status_line(base, col, text) {
     // still leave the terminal in the reset state, or the menu footer written
     // after the clip (and every later blank cell) paints in reverse video.
     let sgrOpen = false;
+    let visAttr = 0;  // inverse(1)/underline(4): blanks under them are painted
     let decOpen = false;
     while (i < base.length && visCol < col) {
         const ch = base[i];
@@ -374,11 +375,27 @@ export function _overlay_status_line(base, col, text) {
                 // advance, but don't overshoot `col`
                 const room = col - visCol;
                 if (n <= room) { out += base.slice(i, j + 1); visCol += n; }
-                else { /* would overshoot — pad with spaces up to col below */ break; }
+                else {
+                    if (visAttr && room > 0) {
+                        out += room > 4 ? `\x1b[${room}C` : ' '.repeat(room);
+                        visCol += room;
+                    }
+                    /* would overshoot — pad with spaces up to col below */
+                    break;
+                }
             } else {
                 // SGR or other: emit as-is (no visible width)
                 out += base.slice(i, j + 1);
-                if (fin === 'm') sgrOpen = !/^(0)?$/.test(params);
+                if (fin === 'm') {
+                    sgrOpen = !/^(0)?$/.test(params);
+                    for (const p of (params || '0').split(';')) {
+                        if (p === '' || p === '0') visAttr = 0;
+                        else if (p === '7') visAttr |= 1;
+                        else if (p === '4') visAttr |= 4;
+                        else if (p === '27') visAttr &= ~1;
+                        else if (p === '24') visAttr &= ~4;
+                    }
+                }
             }
             i = j + 1;
             continue;
