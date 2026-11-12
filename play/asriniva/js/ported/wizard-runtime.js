@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live native storage and header expansions; Wizard policy remains in wizard.js.
 export function createWizardEnvironment(services, layout, namespace) {
     const widths={pointerSize:8,longSize:8,intSize:4,shortSize:2,shortSigned:1,
@@ -33,9 +34,7 @@ export function createWizardEnvironment(services, layout, namespace) {
         get(){return view()['get'+kind](at(),true);},
         set(value){view()['set'+kind](at(),kind.includes('Big')?BigInt(value):Number(value),true);},
     });
-    const ptrField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{
-        get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
-    });
+    const ptrField=(obj,key,at,wrap=value=>value)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const indexed=(get,at)=>new Proxy({address:at},{get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);}});
     function coord(value){const at=address(value),obj={address:at};
         for(const k of ['x','y'])scalar(obj,k,()=>at+layout['coord_'+k],'Int16');return obj;}

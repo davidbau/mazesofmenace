@@ -2194,7 +2194,7 @@
     }
   },
   "sourceSha256": {
-    "js/ported/polyself-runtime.js": "572478f04a63318b15a3839e10d5da6df1f163eeeb227dc440937ef16839f30d",
+    "js/ported/polyself-runtime.js": "ec4545d54e1084a33ad6c3c847fff66b2a2db250143bb87c04833fb0de7a1adf",
     "js/ported/u_init-runtime.js": "b6c47e0c75e7e1efe8d7ac9de848f12284fa1647a46abd7cbe4bbdd9455e8c42",
     "scripts/export-standalone-hero-abi.mjs": "2127703a403b6822676f0322e6c7d0edb0f9362de6ec6dfcd1c93cbfea37e50b",
     "scripts/tu-u_init-layout.h": "49854841c5e07c15768340169065f2c068780b46da69e1e7f71b2d3f655ad6e4",

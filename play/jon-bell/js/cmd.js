@@ -1252,6 +1252,7 @@ async function tty_get_ext_cmd_inner() {
             g._topl_prompt_echo = false;
             try { await doprev_message('# ' + buf); }
             finally { g._topl_prompt_echo = savEcho; }
+            g._prevmsg_combo = 0; /* getline.c:126 cw->maxcol = cw->maxrow */
             buf = buf.slice(0, typed);
             /* getline.c:130-131 redraws obufp after truncating at bufp;
              * any canonical case written by the completion hook is now visible. */
@@ -8156,6 +8157,14 @@ export async function y_n_default(query, def) {
     while (true) {
         if (!_ynKeep) {
             g._pending_message = prompt;
+            /* C topl.c:420-425 custompline -> pline.c:282: vpline records the
+             * "%s "-formatted prompt in gp.prevmsg even under SUPPRESS_HISTORY
+             * (that flag only skips dumplogmsg), so an intervening question
+             * breaks Norep's match.  Without this, donull's blocked-rest
+             * Norep("Are you waiting to get hit?...") was suppressed against
+             * the pre-prompt prevmsg and the topline rendered blank
+             * (df-xfd0082022a step 10). */
+            g._prevmsg = prompt + ' ';
             await flush_screen(1);
             set_cursor(prompt.length + 1, 0); /* one past prompt + trailing space */
         }
@@ -9041,18 +9050,23 @@ export async function doprev_message(liveTopline) {
      * With exactly one remembered line the walk instead CYCLES (see below). */
     let _comboWindow = false;
     let _comboCycle = 0;
+    /* getline.c:113-129: a getlin's else-arm passes the live query as one extra
+     * entry its single-arm calls do not; track the STORED ring length. */
+    const _storedLen = history.length - (liveTopline !== undefined ? 1 : 0);
     if (_pmw === 'c' && history.length) {
         /* topl.c:189 remember_topl() resets cw->maxcol = cw->maxrow even for a
          * SUPPRESS_HISTORY line (wintty.c:2294), which adds nothing to this
          * port's history; input.js marks that reset by nulling _prevmsg_next. */
-        if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {
+        if (g._prevmsg_history_length !== _storedLen || g._prevmsg_next == null) {
             g._prevmsg_combo = 0;
-            g._prevmsg_history_length = history.length;
+            g._prevmsg_history_length = _storedLen;
         }
         // topl.c:52 compares maxrow - 1 WITHOUT wrapping: at maxrow == 0
         // the second recall opens the window instead of showing the older line.
         const ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
-        const remembered = history.length - (g._toplEmptyAfterSuppress ? 0 : 1);
+        /* remembered RING lines: exclude the live topline (remember_topl'd or caller-appended). */
+        const remembered = liveTopline !== undefined ? _storedLen
+            : history.length - (g._toplEmptyAfterSuppress ? 0 : 1);
         /* topl.c:62-64: with fewer than two remembered lines, data[maxrow-2]
          * is NULL, so after the newest line the !cw->data[cw->maxcol] reset
          * sends maxcol back to maxrow and the walk CYCLES between gt.toplines
@@ -9061,7 +9075,9 @@ export async function doprev_message(liveTopline) {
         const limit = remembered < 2 ? Infinity
             : remembered % ring === 0 ? 1 : 2;
         _comboCycle = remembered === 1 ? 2 : 0;
-        if (liveTopline !== undefined || (g._prevmsg_combo || 0) >= limit) {
+        /* topl.c:44-71: the window opens only once the walk has descended past
+         * data[maxrow-1]; a getlin's else-arm CONTINUES that walk, never forces it. */
+        if ((g._prevmsg_combo || 0) >= limit) {
             _comboWindow = true;
             g._prevmsg_combo = 0;
         }
@@ -9081,7 +9097,8 @@ export async function doprev_message(liveTopline) {
              * The recall itself clears _toplEmptyAfterSuppress, so remember it
              * for the rest of the sequence. */
             if (k === 0) g._prevmsg_emptyTopl = liveTopline === undefined && !!g._toplEmptyAfterSuppress;
-            const _empty = !!g._prevmsg_emptyTopl;
+            /* a live-appended call carries gt.toplines as its own last entry */
+            const _empty = liveTopline === undefined && !!g._prevmsg_emptyTopl;
             /* topl.c:62-64: with one remembered line the wrap reset sends maxcol
              * back to maxrow after every data[] recall, so the walk alternates
              * gt.toplines <-> data[maxrow-1] instead of descending; cycle the
@@ -9093,7 +9110,8 @@ export async function doprev_message(liveTopline) {
             /* C topl.c:48-52,56-60: a NULL slot resets maxcol to maxrow.
              * With fewer than two remembered lines, combination therefore
              * cycles through toplines and the sole older line, if any. */
-            const remembered = history.length - (_empty ? 0 : 1);
+            const remembered = liveTopline !== undefined ? _storedLen
+                : history.length - (_empty ? 0 : 1);
             if (remembered <= 1 && k >= remembered)
                 g._prevmsg_combo = 0;
         } else if (g._prevmsg_history_length !== history.length || g._prevmsg_next == null) {

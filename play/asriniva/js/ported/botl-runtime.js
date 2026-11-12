@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native typed storage, header expansions and startup initializer transport only.
 import * as core from './botl.js';
 import * as data from './botl-data.js';
@@ -28,7 +29,7 @@ export function createBotlEnvironment(services,layout){
     env=Object.assign(Object.create(services),constants,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,
         boolean:v=>Number(v)<<24>>24,samePointer:(a,b)=>addr(a)===addr(b),
         element:(a,i)=>({address:addr(a)+i*width(a.descriptor.e),descriptor:a.descriptor.e,get value(){return a[i];},set value(v){a[i]=v;}}),
-        advance:(v,n)=>{if(v?.kind)return view(v.kind,addr(v)+n*layout[v.kind+'Size']);if(v?.descriptor){if(v.descriptor.a){const child=v.descriptor.a.length===1?v.descriptor.e:{a:v.descriptor.a.slice(1),e:v.descriptor.e};return array(v.descriptor,addr(v)+n*width(child));}const d=v.descriptor,at=addr(v)+n*width(d);return {address:at,descriptor:d,get value(){return read(d,at);},set value(x){write(d,at,x);}};}return addr(v)+n;},
+        advance:(v,n)=>{return Crt.advanceDescriptor(view,addr,layout,array,width,read,write,v,n);},
 
     });
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==layout['width_'+name+'_'+f.name])throw Error('Review changed BOTL field width: '+name+'.'+f.name);

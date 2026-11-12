@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // TERMCAP typed native-memory views; terminal policy remains in termcap.js.
 import * as core from './termcap.js';
 import { withCEnvironment } from './c-runtime.js';
@@ -16,7 +17,7 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
     const decode=(d,v)=>{if(d.p!==undefined)return d.p?view(d.p,v):pointerValue(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return v;
         const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
     const read=(d,at)=>{if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return bits===64?decode(d,dv.getBigUint64(at,true)):dv[(d.t[0]==='i'?'getInt':'getUint')+bits](at,true);};
-    const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
+    const write=(d,at,v)=>{return Crt.writeDescriptor(services,addr,width,memory,raw,d,at,v);};
     const arrayTypes=new WeakMap(),recordTypes=new Map();
     function array(d,at){let type=arrayTypes.get(d);if(!type){const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e};type={key:'array:'+JSON.stringify(d),child,stride:width(child),bytes:width(d)};arrayTypes.set(d,type);}let addresses=cache.get(type.key);if(!addresses)cache.set(type.key,addresses=new Map());if(addresses.has(at))return addresses.get(at);const {child,stride}=type,target={address:at,byteLength:type.bytes,descriptor:d},children=child.s||child.a?new Map():null;
         const result=new Proxy(target,{get(o,k){if(typeof k==='string'&&/^\d+$/.test(k)){const i=Number(k);if(!children)return read(child,at+i*stride);if(!children.has(i))children.set(i,read(child,at+i*stride));return children.get(i);}return Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});addresses.set(at,result);return result;}
@@ -115,7 +116,7 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
     Object.defineProperty(env,"ul_hack",{get:()=>env.tc_lcl_data.tc_ul_hack,set:value=>{env.tc_lcl_data.tc_ul_hack=value;}});
     env.NULL=0;
     const cString=v=>{if(typeof v==='string')return v;const bytes=services.heap();let at=addr(v),out='';while(bytes[at])out+=String.fromCharCode(bytes[at++]);return out;};
-    const formatShape=fmt=>{let shape='';for(const m of cString(fmt).matchAll(/%(?:[-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?(hh|ll|[hljztL])?([%csdiouxXpfgeEaAn])/g)){if(m[4]==='%')continue;if(m[1]==='*')shape+='i';if(m[2]==='*')shape+='i';shape+=m[4]==='s'||m[4]==='p'?'p':/[fgeEaA]/.test(m[4])?'d':m[3]==='l'||m[3]==='ll'||m[3]==='z'?'j':'i';}return shape;};
+    const formatShape=fmt=>{return Crt.formatShape(cString,fmt);};
     env.error=(...args)=>{const key="error_p"+formatShape(args[0]);if(!services[key])throw Error("Unconfigured TERMCAP varargs "+key);return invoke(services[key],args);};
     env.fprintf=(...args)=>{const key="fprintf_pp"+formatShape(args[1]);if(!services[key])throw Error("Unconfigured TERMCAP varargs "+key);return invoke(services[key],args);};
     env.sprintf=(...args)=>{const key="sprintf_pp"+formatShape(args[1]);if(!services[key])throw Error("Unconfigured TERMCAP varargs "+key);return invoke(services[key],args);};

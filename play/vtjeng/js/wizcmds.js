@@ -64,7 +64,7 @@ import { body_part, float_vs_flight, polyself } from './polyself.js';
 import { create_particular } from './read.js';
 import { getlin, select_menu, add_menu_heading } from './windows.js';
 import { game } from './gstate.js';
-import { done } from './end.js';
+import { done, panic } from './end.js';
 import { minimal_monnam, mon_nam, x_monnam } from './do_name.js';
 import { dmonsfree, makemon_runtime } from './makemon_create.js';
 import { rndmonst } from './makemon.js';
@@ -74,8 +74,10 @@ import { note_unported } from './unported.js';
 import { load_lua } from './nhlua.js';
 import { coreRandom } from './rng.js';
 import {
-    cmd_from_func, getdir, levltyp, makemap_prepost, paranoid_query, yn_function, ynq,
+    cmd_from_func, getdir, levltyp, makemap_prepost, paranoid_query, y_n,
+    yn_function, ynq,
 } from './cmd.js';
+import { get_feature_notice_ver } from './version.js';
 import { hurtle, mhurtle } from './dothrow.js';
 import { display_inventory } from './invent.js';
 import {
@@ -875,8 +877,7 @@ export async function wiz_telekinesis(state = game, env = {}) {
     return ECMD_OK;
 }
 
-// C ref: wizcmds.c wiz_panic() (534-546). Native panic's shutdown,
-// error-save and core dump remain an explicit discarded-void callee gap.
+// C ref: wizcmds.c wiz_panic() (534-546).
 export async function wiz_panic(state = game) {
     if (state.iflags.debug_fuzzer) {
         state.u.uhp = state.u.uhpmax = 1000;
@@ -885,8 +886,31 @@ export async function wiz_panic(state = game) {
     }
     if (await paranoid_query(
         true, 'Do you want to call panic() and end your game?', state,
-    )) {
-        note_unported('end.c panic');
+    ))
+        await panic('Crash test (#panic).', state);
+    return ECMD_OK;
+}
+
+// C ref: wizcmds.c wiz_fuzzer() (548-564). Both answers to the y_n() set
+// iflags.debug_fuzzer, after which C takes every key from cmd.c randomkey()
+// and never waits for input again, so no recording reaches past that y_n().
+// The port's fuzz-testing branches (pline.c impossible()'s panic, cmd.c
+// can_do_extcmd()'s NOFUZZERCMD refusal, yn_function()'s and getdir()'s
+// random answers, end.c fuzzer_savelife()) are not all ported, so the port
+// records the gap here instead of entering that mode.
+export async function wiz_fuzzer(state = game) {
+    if (Number(state.flags.suppress_alert ?? 0)
+        < Number(get_feature_notice_ver('3.7.0'))) {
+        await ttyPline(
+            'The fuzz tester will make NetHack execute random keypresses.',
+            state,
+        );
+        await ttyPline('There is no conventional way out of this mode.', state);
+    }
+    if (await paranoid_query(true, 'Do you want to start fuzz testing?', state)) {
+        /* Thoth, take the reins */
+        await y_n('Do you want to call panic() after impossible()?', state);
+        note_unported('wizcmds.c wiz_fuzzer');
     }
     return ECMD_OK;
 }

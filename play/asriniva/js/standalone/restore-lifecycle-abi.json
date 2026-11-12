@@ -2797,7 +2797,7 @@
   ],
   "sourceSha256": {
     "scripts/export-standalone-restore-lifecycle-abi.py": "ecfc748e56157ca7e0ed12fb95d40093f6e679b9ee2c2855618f0946ddb1c694",
-    "js/ported/restore-runtime.js": "2c4cafaa9acfc6c9581a104daf8acfa1de3212bccebcdeeea5414c44ed03430f",
+    "js/ported/restore-runtime.js": "aff166900e2ce06537d0889d14dcf61a2e887898a952dd640956c63f5bdd7006",
     "js/ported/restore.js": "3751cba6ba26613a10bd6ec964285db04344f04d71b5ace65e082d96c8a86f1b",
     "nethack-c/wasm/tu-restore-support.inc": "f3169e492ead040c24fcdf810576315a322b42af205ce637df8c239c69368c4b",
     "nethack-c/wasm/tu-restore-types.h": "0d7c9d6d1c5e05e77238b8d7377e0acb20915e0024df65818f0fff9c608e81e6",
@@ -2805,7 +2805,7 @@
     "scripts/tu-restore-layout.h": "15a963ff6f6585b25ac42825491a57b30fea6b1b79d03434a191e2d84376b19d",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   },
   "referenceHeaderSha256": {

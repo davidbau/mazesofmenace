@@ -767,11 +767,11 @@
     "scripts/export-standalone-pager-target-abi.py": "00c2a2e2f71b2c01b425716d428a708ab55c7693c0ea972b6de98403e798c1ba",
     "js/standalone/pager-target-header-functions.js": "f9cfb0b5983a9ad05ab79aa8ef70bb35fc1ff1762233425b7d01e8d814112ae5",
     "nethack-c/wasm/tu-fragments/pager-support.c": "cf3d9c3f08272ed84e030ee70518f1f42e5f622bcc11c6561af396bd3fe58af6",
-    "js/standalone/pager-lookup.js": "243c7cd86277d521e96d220a820c6dfc4636f33e8950d0d40b626ea69d21a471",
+    "js/standalone/pager-lookup.js": "f8f439a87860b3c48037ba3459efc246e3baef07501ba8125fc7e0a60fbfc882",
     "js/ported/pager.js": "6c13cf9d9e88fd0db37ad0c77c64d3f4bd2389eedbdfc44b1f1dca16cbebd934",
     "js/ported/pager-runtime.js": "6bf8a2bfc708578490798a30be117d9c7eb7e2798036c1a3cc198cd459922155",
     "nethack-c/wasm/tu-libraries/pager.js": "0100bde0d32f02960fe21df964f32445400d493366eea3f21f1b12a5fce2fbc9",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },
   "referenceHeaderSha256": {

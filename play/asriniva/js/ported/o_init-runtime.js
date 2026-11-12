@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live native storage and header expansions; object discovery policy stays in o_init.js.
 export function createOInitEnvironment(services, layout, namespace) {
     const widths={pointerSize:8,longSize:8,sizeTSize:8,intSize:4,shortSize:2,shortSigned:1,
@@ -28,9 +29,7 @@ export function createOInitEnvironment(services, layout, namespace) {
         get(){return view()['get'+kind](at(),true);},
         set(value){view()['set'+kind](at(),kind.includes('Big')?BigInt(value):Number(value),true);},
     });
-    const ptrField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{
-        get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
-    });
+    const ptrField=(obj,key,at,wrap=value=>value)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const indexed=(get,set,at)=>new Proxy({address:at},{
         get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);},
         set(obj,key,value){if(set&&typeof key==='string'&&/^-?\d+$/.test(key)){set(Number(key),value);return true;}return Reflect.set(obj,key,value);},

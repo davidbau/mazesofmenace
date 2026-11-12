@@ -1,4 +1,7 @@
 {
+  "nativeTransports": {
+    "strlen": "unsigned long (const char *)"
+  },
   "public": {
     "learnwand": "void (struct obj *)",
     "bhitm": "int (struct monst *, struct obj *)",
@@ -2666,9 +2669,10 @@
     }
   ],
   "sourceSha256": {
-    "scripts/export-standalone-zap-abi.py": "9d3ed32bed0d301465e6326b61145e675d5bd5d6de8cea6b85adaa60b8efd0ed",
+    "scripts/export-standalone-zap-abi.py": "896162534f759393c8ea0e75aded9c9c91519303cddbc5cf116610f707809893",
     "scripts/tu-zap-layout.h": "86c48c7e92111dda41982cb7953c19051f78b4489f45dace7ddf5ff23d795bf6",
     "nethack-c/wasm/tu-zap-support.inc": "66825e28e054d6b941e3392d4b4f7ab3620413e8e1c97eedfe49ca34f502dce3",
+    "js/standalone/zap.js": "d8381f7b7ececfcb3676e3958db47ab7dac5b972a0c9efacd1f801c0a6ad8e45",
     "js/ported/zap.js": "b182dfa8e5837896cc7ed2eb7ea704e4375828a63d284d28264ce1142bd08490",
     "js/ported/zap-runtime.js": "5273f943aecb72c02b864621145d439d3d08419227a69e102dd4393b78bc29ea",
     "nethack-c/wasm/tu-libraries/zap.js": "28c13623384cf01f54671ba0fbe1efc26a0f667d90359171728e6b6722d1ac21",
@@ -2798,7 +2802,8 @@
     ".cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
     ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
     ".cache/wasm64-build/tree/src/zap.c": "8ee02bd7aa29b026d6b5a2e0017ddf402fcfc6fc81037e35ceda2d86467547cb",
-    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb"
+    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb",
+    "scripts/tu-zap-layout.h": "86c48c7e92111dda41982cb7953c19051f78b4489f45dace7ddf5ff23d795bf6"
   },
   "scope": "Original ZAP factory/storage shared owner; accepted public subset determined by connected tests, not whole-module registration."
 }

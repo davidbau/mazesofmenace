@@ -2373,7 +2373,7 @@
   },
   "sourceSha256": {
     "scripts/export-standalone-status-abi.py": "6758aa7ec73f2d3c1123060d093451ef3efea5759b4fe97484735669128a90ed",
-    "js/ported/botl-runtime.js": "84aeb17d71b5c6a2d498610c0257d3194da5a12894bee1824f99bbcab00002b1",
+    "js/ported/botl-runtime.js": "c727759cef7fb2f74c63996bc8417b3196025f1017313aee4120a273424bc77c",
     "js/ported/botl.js": "b9fe8833e7b8a8ad06790c6bb1ddbd75cbf8a3d0129d8150aefba25e85358c25",
     "js/ported/botl-data.js": "1d00fed5ec599653eb634e4222387b3f5683c0b275a4b9fad1aa7bddaee96206",
     "nethack-c/wasm/tu-botl-abi.h": "664c424eb43bc768f544e23dc7b675986a9786ead51be627bac58ee594e9b0ad",

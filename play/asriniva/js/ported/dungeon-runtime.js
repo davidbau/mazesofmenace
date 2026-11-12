@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for DUNGEON JS bodies.
 import * as dungeon from './dungeon.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -9,10 +10,10 @@ export function createDungeonEnvironment(services){
  const ptr=v=>{const n=Number(v);if(!Number.isSafeInteger(n)||BigInt(n)!==BigInt(v))throw Error('DUNGEON pointer exceeds exact address range');return n;};
  const types={char:'i8','signed char':'i8','unsigned char':'u8',short:'i16','unsigned short':'u16',int:'i32','unsigned int':'u32',unsigned:'u32',long:'i64','unsigned long':'u64','long long':'i64','unsigned long long':'u64'};
  const env=Object.assign(Object.create(services),layout,{ptr,sizes:Object.fromEntries(Object.entries(layout).filter(([k])=>k.startsWith('size:')).map(([k,v])=>[k.slice(5),v]))});
- for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{const n=BigInt[signed==='i'?'asIntN':'asUintN'](bits,BigInt(typeof v==='number'?Math.trunc(v):v));return bits===64?n:Number(n);};
+ for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{return Crt.narrowInteger(signed,bits,v);};
  const memory=()=>new DataView(services.heap().buffer),type=t=>t.includes('*')?'p':t.startsWith('enum ')?'i32':types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error('Review DUNGEON scalar '+t);return env[d](v);};
- env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review DUNGEON cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){const dv=memory();return decode(t,bits===64?dv.getBigUint64(address,true):dv['getUint'+bits](address,true));},set value(v){const dv=memory();if(bits===64)dv.setBigUint64(address,BigInt.asUintN(64,BigInt(v)),true);else dv['setUint'+bits](address,Number(v),true);}};};
+ env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review DUNGEON cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){return Crt.readIntegerCell(memory,decode,t,bits,address);},set value(v){return Crt.writeIntegerCell(memory,address,bits,v);}};};
  const kinds=Object.keys(schema.schema);
  env.field=(at,name,field)=>{const kind=kinds.indexOf(name),index=schema.schema[name]?.fields.findIndex(f=>f.name===field),f=schema.schema[name]?.fields[index];if(kind<0||index<0||!f)throw Error('Review DUNGEON field '+name+'.'+field);at=ptr(at);return {get address(){return ptr(services.address(kind,at,index));},get value(){return decode(f.canonical,services.read(kind,at,index));},set value(v){services.write(kind,at,index,BigInt.asUintN(64,BigInt(v)));}};};
  schema.globals.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>ptr(services.global(i))}));
@@ -26,7 +27,7 @@ export function createDungeonEnvironment(services){
  env.indirect=(site,fn,...args)=>{if(!schema.callbackCalls[site])throw Error('Review DUNGEON indirect call');return services['indirect'+site](fn,...args);};
  env.dynamicVariadic=(target,site,...args)=>{if(!schema.dynamicVariadics[site]?.targets.includes(target))throw Error('Review DUNGEON dynamic vararg target');return services['dynamic'+site+'_'+target](...args);};
  const recordKey=t=>Object.keys(schema.schema).find(k=>schema.schema[k].ctype===t)??t.replace(/^(struct|union) /,'');
- const sizeOf=t=>{const a=t.match(/^(.*?)\[(\d+)\](.*)$/);if(a)return +a[2]*sizeOf(a[1]+a[3]);if(t.includes('*'))return 8;if(t.startsWith('enum '))return 4;if(types[t])return +types[t].slice(1)/8;return env.sizes[t];};
+ const sizeOf=t=>{return Crt.typeSize(types,env,sizeOf,t);};
  env.initialize=(at,t,values)=>{at=ptr(at);const bytes=sizeOf(t);if(!Number.isInteger(bytes))throw Error('Review DUNGEON initializer extent '+t);services.heap().fill(0,at,at+bytes);const array=t.match(/^(.*?)\[(\d+)\](.*)$/);if(array){if(typeof values==='number'&&array[1]==='char'&&!array[3]){env.copy(at,values,bytes);return;}const element=array[1]+array[3],stride=sizeOf(element);values.forEach((v,i)=>{if(Array.isArray(v))env.initialize(at+i*stride,element,v);else env.cell(at+i*stride,element).value=v;});return;}const key=recordKey(t);if(schema.schema[key]){const fields=schema.schema[key].fields;values.forEach((v,i)=>{const f=fields[i];if(!f)throw Error('Review DUNGEON record initializer '+t);if(Array.isArray(v))env.initialize(env.field(at,key,f.name).address,f.canonical,v);else env.field(at,key,f.name).value=v;});return;}env.cell(at,t).value=values;};
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of dungeon.dungeonStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);

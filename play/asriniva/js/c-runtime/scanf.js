@@ -1,6 +1,6 @@
 // Narrow scanf conversions over a byte reader; no seeking or whole-stream copy.
 // Integer consumption and failure rules follow the pinned musl vfscanf/intscan.
-import abi from './scanf-abi.json' with {type:'json'};
+import abi from './libc-profile.json' with {type:'json'};
 export function scanFormatted(memory,libc,reader,format,outputs){
  if(abi.longBytes!==8||abi.pointerBytes!==8||abi.EOF!==-1)throw new Error('Review scanf target ABI');
  let position=0,assigned=0,out=0;

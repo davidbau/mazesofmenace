@@ -1,0 +1,31 @@
+{
+  "calls": {
+    "strncmpi": "int (const char *, const char *, int)",
+    "strsubst": "char *(char *, const char *, const char *)"
+  },
+  "strcmpi": {
+    "actual": "strncmpi",
+    "length": -1,
+    "prototype": "int (const char *, const char *)"
+  },
+  "widths": {
+    "int": 4,
+    "pointer": 8
+  },
+  "scope": "Only the existing monster-equipment WORN context text/pointer boundary; original string comparison/substitution and armor policies remain canonical.",
+  "sourceSha256": {
+    "scripts/export-standalone-worn-text-abi.py": "b55b9aecf578e6dcb00652ddd4f4cdc6ff2b6e36c2cea8531a2dc853273d0758",
+    "js/standalone/monster-inventory.js": "cb3caea3a682887d4b9b8cef817418a1ba4d5f0cc65aab39d2a91c7c6e789b90",
+    "js/ported/worn.js": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
+    "js/ported/hacklib.js": "308c32f2c959a8aadcb816d333ea5faf2aad90c9325523ae6a5551bd9d4963e3",
+    "nethack-c/wasm/tu-libraries/worn.js": "9887555ed959b09741bf9e2e9a471d7f63e7eee44d57b8071ab460ce8109097d",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "nethack-c/upstream/src/worn.c": "0414baea25644ea52cc7b628dff4ab1a533eada1523405eaabe7d7555bc3d4cf"
+  },
+  "referenceHeaderSha256": {
+    ".cache/wasm64-build/tree/include/global.h": "8ff55a3c6ee5cc18d00f1982146080d81e9e3dc9e369ab1ffc79890c07b8a8d0",
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/src/worn.c": "0414baea25644ea52cc7b628dff4ab1a533eada1523405eaabe7d7555bc3d4cf",
+    ".cache/wasm64-build/tree/src/hacklib.c": "78e81aedddb93a6bc8d966f3f586e689ae05c335d34dba36af6abb95700d5ec4"
+  }
+}

@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live native storage and header expansions; priest policy remains in priest.js.
 export function createPriestEnvironment(services, layout) {
     const widths = { pointerSize: 8, longSize: 8, intSize: 4, charSize: 1, charSigned: 1,
@@ -30,10 +31,7 @@ export function createPriestEnvironment(services, layout) {
     const char = v => int(v) << 24 >> 24;
     const coordxy = v => int(v) << 16 >> 16;
     const long = v => BigInt.asIntN(64, BigInt(v));
-    const scalar = (o, key, at, kind) => Object.defineProperty(o, key, {
-        get() { return view()['get' + kind](at(), true); },
-        set(v) { view()['set' + kind](at(), kind.includes('Big') ? BigInt(v) : Number(v), true); },
-    });
+    const scalar = (o, key, at, kind) => Crt.defineScalarValue(view,o,key,at,kind);
     const ptrField = (o, key, at, wrap = v => v) => Object.defineProperty(o, key, {
         get() { return wrap(pointer(at())); },
         set(v) { view().setBigUint64(at(), BigInt(address(v)), true); },

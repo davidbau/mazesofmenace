@@ -212,7 +212,7 @@
     "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/worm.js": "c759a5ff7cca38b4ac4c3ef7a9d27cb0e2d3b90f9d077854e03d5698acfe5eae",
     "/Users/arj/Desktop/nethack_comp/runtime-environment/scripts/export-standalone-worm-abi.py": "99a24cf9aa18be6231c8d2d0f143387246fd2100144988c9ec845ed2b0500d59",
     "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/worm.js": "7c976f7e7cc535607ee232b452232dfeb72918c8faa3d3d6b8c58780367cead8",
-    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/worm-runtime.js": "29a0925b562d488044a901e7f16f3fd566bb3773e0b4536767e46638762c7122",
+    "js/ported/worm-runtime.js": "ef678c4cbc55d427fdf33b7d6e21eb14c9bcbf06cb441863c37e3fb5a62c3f60",
     "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
     "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-libraries/worm.js": "3c58aca331826ce8340dd73f875f354adfcb35ff2813904faf9a6f9adf553d39",
     "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",

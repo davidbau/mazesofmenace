@@ -9557,9 +9557,7 @@ export function _pline_flush_frame_record(off, msg) {
         flushEpoch: _flush_epoch, /* later flush_screen paints supersede a standing line */
         mm: !!g._inMovemonBlock,   /* plined from inside movemon (allmain.c:250) */
         mmExit: g._movemonExitSeq | 0, /* movemon loops finished before this pline */
-        cells: (g._swallowPlineCells?.get(String(msg))
-                ? new Map(g._swallowPlineCells.get(String(msg)))
-                : _mention_map_cells_or_now(msg)),
+        cells: _mention_map_cells_or_now(msg),
         moves: _painted_moves(),
         /* display.c:2237 — flush_screen() runs bot() only when botl/botlx is set;
          * otherwise the physical status keeps the previous paint (polymon sets
@@ -12543,13 +12541,26 @@ function _flush_screen_repaint(mode) {
      * _mapPrinted: their whole-row bot() also stays on top of map y=20
      * (wizcmds.c:994 select_menu -> wintty.c:2794 dismiss -> :979 flush; the
      * def_feedback pline's flush, wizcmds.c:1081-1082, then rewrites row 1). */
+    /* C display.c:2224-2226: while delay_flushing is on, flush_screen()
+     * returns before bot() AND before the gnew loop — nothing it would have
+     * consumed is consumed.  goto_level() runs its docrt() inside that window
+     * (do.c:1720 armed it; do.c:1841's flush_screen(-1) ends it), and a pline
+     * raised under it (see_monsters -> Sting_effects, artifact.c:2472) reaches
+     * pline.c:273's flush point; this port paints that flush with bot()
+     * declined (_botlPaintHeld) for its own frame accounting, but its docrt
+     * markers must survive to the arrival flush, which in C is the ONLY real
+     * flush: bot()'s BL_RESET status first, then the whole gnew map print —
+     * map row y=20 back over status row 1 (df-xf23ef6d5b1 step 256: the
+     * wraith 'W' at map x=1,y=20 is the row-21 terminal state). */
+    const delayHeld = !!game._botlPaintHeld;
     if (docrtMapAfterBot
         || (game._docrtMapPending && !game._r1botAfterMap && !_mapPrinted)) {
         game._status1Whole = false;
         game._r1textOver = false;
         game._r1wipe = null;
     }
-    game._docrtMapPending = false;
+    if (!delayHeld)
+        game._docrtMapPending = false;
     // C ref: display.c:2241-2263 — the gnew repaint loop runs here, between
     // bot() and display_nhwindow(WIN_MAP), and leaves the tty cursor one column
     // past the last glyph it printed; `if (cursor_on_u) curs(WIN_MAP, u.ux,
@@ -12569,16 +12580,20 @@ function _flush_screen_repaint(mode) {
      * caller has to re-assert.  See getpos()'s prologue (js/cmd.js). */
     _last_flush_forced_cursor = !!(_forcedCurs && !mode);
     /* C display.c:2236-2256: pending row-20 glyphs paint over even a full
-     * status reset performed by bot() above. Preserve coverage elsewhere. */
+     * status reset performed by bot() above. Preserve coverage elsewhere.
+     * Under delay_flushing (delayHeld above) the gnew loop never ran, so the
+     * repaint record stays unspent for the real flush that ends the delay. */
     const repaint = game._r1GlyphRepaint;
-    if (repaint && repaint.level === game.level && _threeStatusLines() && !_map_row20_clipped()) {
+    if (!delayHeld && repaint && repaint.level === game.level
+        && _threeStatusLines() && !_map_row20_clipped()) {
         repaint.flushed = true;
         repaint.whole = !!game._status1Whole;
         game._status1Whole = false;
     }
     const _prevRows = _flush_ran_bot ? String(game._screen_output || '').split('\n') : null;
     _buildScreenOutput();
-    game._r1GlyphRepaint = null;
+    if (!delayHeld)
+        game._r1GlyphRepaint = null;
     /* wintty.c render_status leaves the tty cursor just past the last status
      * field it rewrote (changed fields only); flush_screen(0) does not move it
      * back to the hero. */
@@ -12598,7 +12613,9 @@ function _flush_screen_repaint(mode) {
         if (rows.length === 24 && _flush_had_botlx && _status_plain_len(last) > 0)
             _last_flush_status_end = [_status_plain_len(last), 23];
     }
-    if (game) game._docrtGnewPending = false; /* gnew cells printed (display.c:2256) */
+    /* gnew cells printed (display.c:2256) — but not under delay_flushing,
+     * where C's flush returned before the print loop (display.c:2225). */
+    if (game && !delayHeld) game._docrtGnewPending = false;
     _flush_epoch++;
     if (game?.level)
         game._lastFlushFrame = { cells: _capture_painted_cells(), moves: _painted_moves(),
@@ -15349,43 +15366,18 @@ export function swallowed(first) {
     const left_ok = isok(ux - 1, uy);
     const rght_ok = isok(ux + 1, uy);
 
-    /* C display.c:2011-2072 / 1357-1381: when swallowed(1) announces each stomach
-     * cell under mention_map, each cell is shown sequentially in C before its
-     * pline_xy pages. Record the cell state at each direction so that the
-     * overflowing message page displays exactly the cells painted up to then. */
-    const recordSwallowFrames = first && g.a11y?.glyph_updates
-        && !g.program_state?.in_docrt && !g.program_state?.gameover
-        && !g.program_state?.in_getlev && !g.program_state?.stopprint;
-    let swallowMap = null;
-    let descPrefix = null;
-    if (recordSwallowFrames) {
-        swallowMap = g._swallowPlineCells = new Map();
-        const mon = stuck;
-        const text = (mon ? `interior of ${mon_nam(mon)}` : 'interior of a monster') + '.';
-        const gp = g.iflags?.getpos_coords;
-        const mode = (!gp || gp === 'n') ? 'f' : gp;
-        descPrefix = (x, y) => `${_rt_coord_desc(x, y, mode)}: ${text}`;
-    }
-
     if (isok(ux, uy - 1)) {
         if (left_ok) _show_swallow_sym(ux - 1, uy - 1, S_sw_tl, mndx);
         _show_swallow_sym(ux, uy - 1, S_sw_tc, mndx);
-        if (swallowMap) swallowMap.set(descPrefix(ux, uy - 1), _capture_painted_cells());
         if (rght_ok) _show_swallow_sym(ux + 1, uy - 1, S_sw_tr, mndx);
-        if (swallowMap) swallowMap.set(descPrefix(ux + 1, uy - 1), _capture_painted_cells());
     }
     if (left_ok) _show_swallow_sym(ux - 1, uy, S_sw_ml, mndx);
-    if (swallowMap) swallowMap.set(descPrefix(ux - 1, uy), _capture_painted_cells());
     display_self();
     if (rght_ok) _show_swallow_sym(ux + 1, uy, S_sw_mr, mndx);
-    if (swallowMap) swallowMap.set(descPrefix(ux + 1, uy), _capture_painted_cells());
     if (isok(ux, uy + 1)) {
         if (left_ok) _show_swallow_sym(ux - 1, uy + 1, S_sw_bl, mndx);
-        if (swallowMap) swallowMap.set(descPrefix(ux - 1, uy + 1), _capture_painted_cells());
         _show_swallow_sym(ux, uy + 1, S_sw_bc, mndx);
-        if (swallowMap) swallowMap.set(descPrefix(ux, uy + 1), _capture_painted_cells());
         if (rght_ok) _show_swallow_sym(ux + 1, uy + 1, S_sw_br, mndx);
-        if (swallowMap) swallowMap.set(descPrefix(ux + 1, uy + 1), _capture_painted_cells());
     }
 
     /* C display.c:1383-1384 — update the swallowed position. */

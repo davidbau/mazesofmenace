@@ -1,4 +1,7 @@
 {
+  "headerMacros": {
+    "nhUse": "((void) (arg))"
+  },
   "storageBytes": {
     "mongen_order": 1532,
     "mclass_maxf": 61,
@@ -14,11 +17,11 @@
     "static boolean mongen_order_init = FALSE;"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-makemon-private-abi.py": "de01369a57bddc58875e845fa5b4704bacd6e90439bce9ec7a3346fa143d59ee",
+    "scripts/export-standalone-makemon-private-abi.py": "be420a414c81b94dfbbf5045dafb37918ce485a2f313aa40535d54292dab000a",
     "js/standalone/monster-selection.js": "d69cd3d7414a1e8921f2dd5d1532d993aa59f59a8cdb0f2f1538bd1be8e07598",
-    "js/standalone/monster-creation.js": "b7e361f072224f39b284cc8fe50017380d04401d775b777e00b314b3058ac2a4",
+    "js/standalone/monster-creation.js": "3797e59061491fafde98c020502fb8b9200e6f6565c8b3c9a92cd8c45985f1ae",
     "js/ported/makemon.js": "f88948f12832888a3352ed42ef04c71dc2cc1cbb57f8ae78a8fd895619f832f8",
-    "js/ported/makemon-runtime.js": "8858da6aba755b449224492ff5495e5f21be5b69dfbf5359250069abbfc6e882",
+    "js/ported/makemon-runtime.js": "a9fc850998099704dc7d735972d15c2aeffdfe018083dc414a4fea6379380ad8",
     "nethack-c/wasm/tu-fragments/makemon-support.inc": "de19d3be6489c15b31b7e4832f5bb64f02cb645f16a0577efc99a17571237a93",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   },
@@ -146,5 +149,5 @@
     ".cache/wasm64-build/tree/src/makemon.c": "04bb46b793cb7a724544ed5860f57116e4661ce5d052a1321d90dc0167d3ffc3",
     "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb"
   },
-  "scope": "Original zero-initialized source-private table/flag storage only; original init_mongen_order and comparator/qsort policies execute unchanged."
+  "scope": "Original zero-initialized source-private table/flag storage and discarded-value header helper; original init_mongen_order and comparator/qsort policies execute unchanged."
 }

@@ -1,5 +1,6 @@
 // Original DATE storage and VERSION policies; all shared roots remain live.
 import * as version from '../ported/version.js';
+import abi from './persistence-transport-abi.json' with {type:'json'};
 import * as date from '../ported/date.js';
 import {initializeDate} from '../ported/date-runtime.js';
 import {createVersionState,createVersionEnvironment} from '../ported/version-runtime.js';
@@ -20,6 +21,15 @@ export function enableVersionInfo(environment,layouts){
  });
  for(const name of ['strcmp','strchr','strrchr'])local[name]=(...args)=>services[name](text(args[0]),...args.slice(1).map(v=>typeof v==='string'?text(v):v));
  for(const direction of ['sfo','sfi'])for(const type of ['char','uchar','version_info'])local[(direction==='sfo'?'Sfo_':'Sfi_')+type]=(file,data,tag,...count)=>environment.resolve(direction+'_'+type)(environment.address(file),environment.address(data),text(tag),...count.map(transport.int));
+ // Native VERSION macros call the live shared windowprocs, without a second owner.
+ const windowCall=(name,...args)=>{const row=abi.versionWindows[name];if(!row||ctypes.record('struct window_procs').fields[row.field]?.ctype!==row.nativeType)throw Error('Review VERSION native window '+name);return environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),row.field,'void *'),row.signature,...args);};
+ Object.assign(local,{
+  create_nhwindow:type=>windowCall('create_nhwindow',transport.int(type)),
+  putstr:(win,attr,value)=>windowCall('putstr',transport.int(win),transport.int(attr),text(value)),
+  display_nhwindow:(win,blocking)=>windowCall('display_nhwindow',transport.int(win),transport.char(blocking)),
+  destroy_nhwindow:win=>windowCall('destroy_nhwindow',transport.int(win)),
+  wait_synch:()=>windowCall('wait_synch'),
+ });
  const state=createVersionState(local,L,version),context=createVersionEnvironment(local,L,state);
  environment.register('version',version,context,{prepareArgs:(name,args)=>{
   args=[...args];if(['version_string','getversionstring','status_version'].includes(name))args[1]=context.size_t(args[1]);

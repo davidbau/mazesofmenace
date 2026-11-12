@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // TRAP typed memory, scalar widths, native calls and callback transport.
 // Source policy is in trap.js; each native instance owns its static storage.
 import * as trap from './trap.js';
@@ -99,27 +100,7 @@ export function createTrapEnvironment(services, state) {
         }
         return value;
     }
-    function initialize(at, type, value) {
-        at = address(at);
-        services.heap().fill(0, at, at + sizeof(type));
-        function put(at, type, value) {
-            if (value === null || value === undefined) return;
-            if (type.array) {
-                const element = type.array.length === 1 ? type.of : {array:type.array.slice(1),of:type.of};
-                if (typeof value === 'string') {
-                    for (let i=0;i<value.length;i++) write(at+i,type.of,value.charCodeAt(i));
-                } else value.forEach((v,i) => put(at+i*sizeof(element),element,v));
-            } else if (type.record) {
-                for (const [name,v] of Object.entries(value)) {
-                    const f = fieldInfo(type.record,name);
-                    if (f.bits !== null) env.setBit(at+f.offset,f.bitOffset,f.bits,initialValue(v));
-                    else put(at+f.offset,f.type,v);
-                }
-            } else write(at,type,typeof value === 'string' ? services.literal(value) : initialValue(value));
-        }
-        put(at,type,value);
-        return at;
-    }
+    function initialize(at, type, value) {return Crt.initializeRecord(address,services,sizeof,write,fieldInfo,env,initialValue,at,type,value);}
     const env = {
         cast, read, write, binary, sizeof, initialize, data, global, functionPointer,
         truth:value => value !== 0 && value !== 0n && value !== null && value !== undefined && value !== false,

@@ -2648,14 +2648,14 @@
     "scripts/export-standalone-dogmove-abi.py": "86768e223d963e2fc78d514dbce1feec6cb2ece8f4500dad76cf509b3a99212f",
     "js/standalone/dogmove.js": "1ece1ed90ea834537a6c6c3053a4cd4a8afe69dcc2ebf2ad2e6f95c642be2882",
     "js/ported/dogmove.js": "c73eb4d6a4b0ea4ecb1eca0f26627fac568c0e8452a273b6c0615be0190e72fb",
-    "js/ported/dogmove-runtime.js": "68f39554a118125b30f1d49c37d1821aa1bbb3c21af34fc0d7f12808055703d9",
+    "js/ported/dogmove-runtime.js": "4b71d3b609ebf7976e9afd1593028dcc49d21a2bce03698fa9788e42f499826c",
     "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
     "nethack-c/wasm/tu-fragments/dogmove-schema.json": "8e15a126272e0f7940c25590930a272824d51535a90221b37271098e5fc5c809",
     "nethack-c/wasm/tu-fragments/dogmove-support.c": "d56689691f09bf8b89c23c0fea016d954d4d8f64e3ab4d71e0f56112d47c00ee",
     "nethack-c/wasm/tu-fragments/dogmove-source-data.h": "1d4be7a751cfcc80744977df9d836ffe60025317b75c35c6d0a2cc51aff8600c",
     "nethack-c/wasm/tu-libraries/dogmove.js": "c44c138f79ba34618b44efc5ed1c456f3e6eb179dcb901ad78ac6a218d854a3d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   }
 }

@@ -17322,10 +17322,12 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-options-abi.py": "fdd431ff0039ebb94fba936ad26acfedf684780d2ecbb4b87333154ef898d0ee",
+    "scripts/export-standalone-options-abi.py": "de32f348dacc8f9524cdc3293e1b6609703fdf17f28cb643dc7acaeed5fcc1e9",
     "nethack-c/wasm/tu-fragments/options-schema.json": "515e6110979f35b8cb518f03adcfb3af176c3ffe8bbe8bc4f0ae262b2d5406bb",
     "js/ported/options.js": "033ff2db9d49f713d811f541c7e6bc7c7bdd228dc1e1b6f629d4a4262754468f",
-    "js/ported/options-runtime.js": "72e955d9160d64ffa4dfb96bf4f66605010071bc00f181865dbb6a30f9577d87",
+    "js/ported/options-runtime.js": "2a63f9e9533b40f01de1fd099d620c48be401a77ce23ac1d7644b76747cb5f5d",
+    "js/standalone/options.js": "2e077e6925a45753bcaf5578f6ec85e27e171d21db5cd6477dc5c5ef43fed2e7",
+    "nethack-c/wasm/tu-libraries/options.js": "b6fb82aa4d6bd99208bc81289972d0b77fa32d3db2d996cf3be97dc04f96e1b3",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-options-abi.h": "f1a9e95d4ceb4353c381942fd9a3212674608e66d0b25d46bf4cd7bd2644be14"
   },
@@ -17381,6 +17383,7 @@
     ".cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
     ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
     ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/options-abi.c": "c32d0301f526cae721290ad2cf95e6cd52cc3211986311ac21049cb1ecf50f45",
     ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
     ".cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
     ".cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",
@@ -17452,6 +17455,7 @@
     ".cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
     ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
     ".cache/wasm64-build/tree/src/options.c": "494772974500aa9b42df179b4e090def15fd0bc8148f09a9c392bbadd05dd940",
-    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb"
+    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb",
+    "nethack-c/wasm/tu-options-abi.h": "f1a9e95d4ceb4353c381942fd9a3212674608e66d0b25d46bf4cd7bd2644be14"
   }
 }

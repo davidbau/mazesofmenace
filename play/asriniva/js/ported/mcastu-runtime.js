@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Compiler layouts and header expansions; spell decisions stay in mcastu.js.
 export function createMcastuEnvironment(services, layout, namespace) {
     const widths={pointerSize:8,longSize:8,intSize:4,coordSize:2,booleanSize:1,
@@ -19,10 +20,7 @@ export function createMcastuEnvironment(services, layout, namespace) {
     const int=value=>typeof value==='bigint'?Number(BigInt.asIntN(32,value)):value|0;
     const boolean=value=>int(value)<<24>>24;
     const long=value=>BigInt.asIntN(64,BigInt(value));
-    const scalar=(obj,key,at,kind)=>Object.defineProperty(obj,key,{
-        get(){return view()['get'+kind](at(),true);},
-        set(value){view()['set'+kind](at(),kind.startsWith('Big')?BigInt(value):Number(value),true);},
-    });
+    const scalar=(obj,key,at,kind)=>Crt.defineScalarField(view,obj,key,at,kind);
     const pointerField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{
         get(){return wrap(pointer(at()));},
         set(value){view().setBigUint64(at(),typeof value==='string'?raw(services.literal(value)):raw(value),true);},

@@ -16,7 +16,29 @@
       "gv",
       "genders",
       "def_oc_syms"
-    ]
+    ],
+    "windows": {
+      "create_nhwindow": {
+        "field": "win_create_nhwindow",
+        "signature": "ii",
+        "nativeType": "winid (*)(int) win_create_nhwindow"
+      },
+      "start_menu": {
+        "field": "win_start_menu",
+        "signature": "vij",
+        "nativeType": "void (*)(winid, unsigned long) win_start_menu"
+      },
+      "end_menu": {
+        "field": "win_end_menu",
+        "signature": "vip",
+        "nativeType": "void (*)(winid, const char *) win_end_menu"
+      },
+      "destroy_nhwindow": {
+        "field": "win_destroy_nhwindow",
+        "signature": "vi",
+        "nativeType": "void (*)(winid) win_destroy_nhwindow"
+      }
+    }
   },
   "worn": {
     "globals": [
@@ -80,15 +102,21 @@
     ]
   },
   "sourceSha256": {
-    "scripts/export-standalone-equipment-abi.py": "e06f2e9f06bd89c34b70f4b0144c5c80f15ee73cc82763950ae20c6599fd78d3",
+    "scripts/export-standalone-equipment-abi.py": "31e012a7ce00b72f99d122740ad5e55aa14feaf137521994e28b279e0b71fc0d",
+    "js/standalone/hero-equipment.js": "dcba41f2f5caa2cb1ca1924de2743e1f8851b20da9772bc2578268b73482fc3f",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "nethack-c/wasm/tu-libraries/weapon.js": "0303766572429519079a031676ff80f2b41f399614320d88aaaaf4edbae723a1",
+    "nethack-c/wasm/tu-libraries/wield.js": "0aff7987e96c7279c83c87acd24cf09dba2a747c006584f9d1973a35a5d4febf",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-weapon-support.inc": "30c6ed5f7a06c4fa75707642626efd5a03153f8c80f113d202d155086358f60e",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "js/ported/weapon.js": "edd0319a89e6fcecd69f5f6962f812e5aa5ad7f71a8eeda11bee98fe13b47edd",
     "js/ported/weapon-runtime.js": "a7fa7b16ded8ddccbf84be84529dd7e46dff6a66f43b851fd99550e554b9dd73",
     "js/ported/worn.js": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
-    "js/ported/worn-runtime.js": "d397cf6428b52a80843d74a95e90154b5b704cea2d50196ef4d89954b2ebbe41",
+    "js/ported/worn-runtime.js": "6b0c91d03fbc69b6b519247a0b7989e52f50ce54562b70cf6d2b536788743eb5",
     "js/ported/wield.js": "7c4052a40ad20eec5b6a5918597dc800165cb77694472e7aa0b8aed112f54583",
-    "js/ported/wield-runtime.js": "c25ec34234202712beec185d825f867aa4a7340edd1495f7bece592ad6f05cf1"
+    "js/ported/wield-runtime.js": "64b45ffc1d0c07856e30c61a88dcb390f95385f03ceab1a3c391d224c14ff790",
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470"
   }
 }

@@ -1,4 +1,4 @@
-import {address} from './memory-services.js';
+import {address} from './memory.js';
 export function createBitfields(memory,metadata) {
     function field(type,key,ptr) {
         const record=metadata.records[type],item=record?.fields[key];

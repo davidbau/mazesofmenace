@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native layout and header macros; ball and chain policy remains in ball.js.
 export function createBallState(services, layout) {
     let bcrestriction = 0;
@@ -26,13 +27,8 @@ export function createBallEnvironment(services, layout, state) {
     const int=value=>typeof value==='bigint'?Number(BigInt.asIntN(32,value)):value|0;
     const coordxy=value=>int(value)<<16>>16;
     const boolean=value=>int(value)<<24>>24;
-    const scalar=(obj,key,at,kind)=>Object.defineProperty(obj,key,{
-        get(){return view()['get'+kind](at(),true);},
-        set(value){view()['set'+kind](at(),kind.startsWith('Big')?BigInt(value):Number(value),true);},
-    });
-    const pointerField=(obj,key,at,wrap)=>Object.defineProperty(obj,key,{
-        get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
-    });
+    const scalar=(obj,key,at,kind)=>Crt.defineScalarField(view,obj,key,at,kind);
+    const pointerField=(obj,key,at,wrap)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const indexed=get=>new Proxy({}, {get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);}});
     function monster(value){const at=address(value);return at?{address:at}:0;}
     function object(value){const at=address(value);if(!at)return 0;const obj={address:at};

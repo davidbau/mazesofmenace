@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Private C static state is owned by JS, separately for each actual WASM Module.
 export function createWormState(services, layout) {
     const growtimeValues=new BigInt64Array(layout.MAX_NUM_WORMS);
@@ -67,9 +68,7 @@ export function createWormEnvironment(services, layout, state,servicePrototype=s
         get(){return view()['get'+kind](at(),true);},
         set(value){view()['set'+kind](at(),kind.includes('Big')?BigInt(value):Number(value),true);},
     });
-    const ptrField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{
-        get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
-    });
+    const ptrField=(obj,key,at,wrap=value=>value)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const indexed=(get,set,at)=>new Proxy({address:at},{
         get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);},
         set(obj,key,value){if(set&&typeof key==='string'&&/^-?\d+$/.test(key)){set(Number(key),value);return true;}return Reflect.set(obj,key,value);},

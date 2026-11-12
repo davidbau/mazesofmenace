@@ -1998,11 +1998,11 @@
   },
   "sourceSha256": {
     "scripts/export-standalone-files-abi.py": "62943121494628104c70d247d4ae7a0864a40f21fce22546c6122396cbb3c0ce",
-    "js/ported/files-runtime.js": "999d3dde75cd6535fb0bfb38be1d08f9a58110d5ab840000a326d9b3a3afbf72",
+    "js/ported/files-runtime.js": "9dcd7addcce56437a208a2c5e8e1b04080f41e994dff1be870d9e79cbd5588bb",
     "js/ported/files.js": "3c8cf03fd7727673facb5404e171670378710938a9eb93de0693476fe7930e35",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-fragments/files-support.c": "a4bb22d3b88c6bd766099739ab0dea282898962c21cae14ec4d337113d790d7c",
-    "js/standalone/files.js": "7195a39afdbe5d9dc3b837333c18b01f1063664d104f0ee8fffc64913686acb3"
+    "js/standalone/files.js": "1834d27e1d3a21333cb01230c1c7066dc46b5a7d8f73cfa63fcfecd563adb4c1"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

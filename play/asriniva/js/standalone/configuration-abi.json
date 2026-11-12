@@ -3550,7 +3550,7 @@
   },
   "sourceSha256": {
     "scripts/export-standalone-configuration-abi.py": "1d0c46b600e41fd626546203f044458569e0998f0e4395870a21e510a2b00a3c",
-    "js/ported/cfgfiles-runtime.js": "34cca46021459743c2b38100eb3b85203dc1ffa533e8d0df6c170f70100c66ea",
+    "js/ported/cfgfiles-runtime.js": "31e1faa8246a9f00f037ffdf9c8d1983a062152dd7147bda40cab0352ff94078",
     "js/ported/cfgfiles.js": "f5b90ac494fa1d828ad5c5c35f0509727039f2eca3e79037b604d3b4e97c7680",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

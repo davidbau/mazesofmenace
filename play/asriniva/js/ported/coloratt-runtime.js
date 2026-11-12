@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native table storage and field views; color policy remains in coloratt.js.
 export function createColorattState(services, layout, namespace) {
     const view = () => new DataView(services.heap().buffer);
@@ -42,10 +43,7 @@ export function createColorattEnvironment(services, layout, state) {
     const view = () => new DataView(services.heap().buffer);
     const pointer = at => Number(view().getBigUint64(at, true));
     const int = v => typeof v === 'bigint' ? Number(BigInt.asIntN(32, v)) : v | 0;
-    const scalar = (o, key, at, kind) => Object.defineProperty(o, key, {
-        get() { return view()['get' + kind](at(), true); },
-        set(v) { view()['set' + kind](at(), kind.includes('Big') ? BigInt(v) : Number(v), true); },
-    });
+    const scalar = (o, key, at, kind) => Crt.defineScalarValue(view,o,key,at,kind);
     const ptrField = (o, key, at, wrap = v => v) => Object.defineProperty(o, key, {
         get() { return wrap(pointer(at())); },
         set(v) { view().setBigUint64(at(), BigInt(address(v)), true); },

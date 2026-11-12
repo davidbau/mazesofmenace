@@ -4429,14 +4429,14 @@
   ],
   "sourceSha256": {
     "scripts/export-standalone-do-lifecycle-abi.py": "442ebd981527ca5745e7a4a24d288662e378163d46280a42f68f14baecd1abb8",
-    "js/ported/do-runtime.js": "13d23c8f595691cb80772e342f8d13295f87e94731a0f77181b015fffcc15d5e",
+    "js/ported/do-runtime.js": "699ce680dc203c809bd96f92bdcb5ad115fc537ee675c7c6cbbe4c55a85840f8",
     "js/ported/do.js": "7cd70e74a773b93d69eec2fc92a1d8464a9f80349ea2d7559d7e61d53b742bdb",
     "nethack-c/wasm/tu-do-support.inc": "d9ddaeb31bccdaa23de146a1efe329e4664831ee61a96fedf3c2132600be8249",
     "nethack-c/wasm/tu-do-varargs.inc": "c54e2e8a94b9e61c245d98b224dbfcc0ad67397fd2e286d034572c8899045564",
     "nethack-c/wasm/tu-libraries/do.js": "7cd2e78d1fc6d99d3f4aaf8479baa54f8b7f9899cb64455409f872958323a5d4",
     "scripts/tu-do-layout.h": "c31040cd9f3b33a8249a1ac2af738bf2d08cd57221c09625708458c5abb6b0cd",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   },
   "referenceHeaderSha256": {

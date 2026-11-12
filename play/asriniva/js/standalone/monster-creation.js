@@ -18,6 +18,7 @@ export function enableMonsterCreation(environment,layouts,selection){
  const services=new Proxy(environment.services,{get:(o,key,r)=>Reflect.has(o,key)?Reflect.get(o,key,r):typeof key==='string'?(...args)=>environment.resolve(key)(...args):undefined});
  const record=(type,p)=>views.record(type,p),raw=v=>BigInt(environment.address(v)),L=layouts.makemon;
  const env=Object.create(selection.environment);
+ env.nhUse=value=>{void value;};
  const context=layout=>{
   const local=Object.create(env);
   for(const[key,value]of Object.entries(layout)){
@@ -95,13 +96,18 @@ export function enableMonsterCreation(environment,layouts,selection){
  env.newmonst=()=>env.monster(services.alloc(L.monsterSize));env.makeknown=n=>services.discover_object(n,1,1,1);env.canspotmon=m=>Number(Boolean(services.canseemon(m)||services.sensemon(m)));
  env.u_wield_art=n=>services.is_art(env.uwep,n);env.cansee=(x,y)=>Number(Boolean(env.gv.viz_array[y][x]&L.IN_SIGHT));env.next2u=(x,y)=>Number(env.distu(x,y)<=2);env.greatest_erosion=o=>env.max(o.oeroded,o.oeroded2);env.race_hostile=p=>Number(Boolean(p.mflags2&BigInt(env.gu.urace.hatemask)));env.race_peaceful=p=>Number(Boolean(p.mflags2&BigInt(env.gu.urace.lovemask)));env.showdebug=f=>services.debugcore(f,1);env.pline1=s=>services.pline('%s',s);env.emits_light=p=>Number(p.mlet===L.S_LIGHT||[L.PM_FLAMING_SPHERE,L.PM_SHOCKING_SPHERE,L.PM_BABY_GOLD_DRAGON,L.PM_FIRE_VORTEX,L.PM_FIRE_ELEMENTAL,L.PM_GOLD_DRAGON].some(n=>env.samePtr(p,env.mons[n])));
 
- env.qsort=(p,n,width,fn)=>services.qsort(p,n,width,(a,b)=>transport.scoped(()=>withCEnvironment(env,fn,a,b)));
+ env.qsort=(p,n,width,fn)=>environment.resolve('nh_deterministic_qsort')(environment.address(p),transport.ulong(n),transport.ulong(width),(a,b)=>transport.scoped(()=>withCEnvironment(env,fn,a,b)));
  env.rn1=(range,base)=>services.rn2(range)+base;
  env.cansee=(x,y)=>Number(Boolean(transport.read('Uint8',transport.read('ptr',env.gv.viz_array+y*8)+x)&L.IN_SIGHT));
  for(const[name,type]of Object.entries({mksobj:'struct obj',mkobj:'struct obj',mkobj_at:'struct obj',which_armor:'struct obj',findgold:'struct obj',oname:'struct obj',christen_monst:'struct monst',Is_special:'struct s_level',qt_montype:'struct permonst'}))env[name]=(...args)=>record(type,environment.resolve(name)(...args));
  env.zeromextra=record('struct mextra',environment.allocateGlobal('makemon.zeromextra',ctypes.size('struct mextra')));
- const names=['makemon','propagate','mbirth_limit','monhp_per_lvl','newmonhp','init_mextra','newmextra','adj_lev','golemhp','peace_minded','set_malign','newmcorpsenm','freemcorpsenm','mongets','m_initweap','m_initinv','m_initthrow','mkmonmoney','grow_up','create_critters','mkclass','mkclass_aligned'];
+ const names=['makemon','propagate','mbirth_limit','monhp_per_lvl','newmonhp','init_mextra','newmextra','adj_lev','golemhp','peace_minded','set_malign','newmcorpsenm','freemcorpsenm','mongets','m_initweap','m_initinv','m_initthrow','mkmonmoney','grow_up','create_critters','mkclass','mkclass_aligned','mkclass_poly','clone_mon','unmakemon','set_mimic_sym','bagotricks','summon_furies','dump_mongen'];
  environment.register('monster-creation',Object.fromEntries(names.map(n=>[n,makemon[n]])),env,{prepareArgs:(fn,args)=>{
+  if(fn==='mkclass_poly'||fn==='summon_furies')return [transport.int(args[0])];
+  if(fn==='dump_mongen')return [];
+  if(fn==='bagotricks'){const p=environment.address(args[2]);return [record('struct obj',args[0]),transport.char(args[1]),p?Object.defineProperty({address:p},'value',{get:()=>memory.view.getInt32(p,true),set:v=>memory.view.setInt32(p,transport.int(v),true)}):0];}
+  if(fn==='clone_mon')return [record('struct monst',args[0]),transport.short(args[1]),transport.short(args[2])];
+  if(fn==='unmakemon')return [record('struct monst',args[0]),transport.uint(args[1])];
   if(fn==='mkclass'||fn==='mkclass_aligned')return [transport.char(args[0]),transport.int(args[1]),...(fn==='mkclass_aligned'?[transport.char(args[2])]:[])];
   if(fn==='create_critters')return [transport.int(args[0]),record('struct permonst',args[1]),transport.char(args[2])];
   if(fn==='makemon'||fn==='adj_lev'||fn==='peace_minded')args[0]=record('struct permonst',args[0]);

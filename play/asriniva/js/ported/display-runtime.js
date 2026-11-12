@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for DISPLAY JS bodies.
 import * as display from './display.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -16,7 +17,7 @@ export function createDisplayEnvironment(services){
  let dataView;
  const memory=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;},type=t=>t.includes('*')?'p':t.startsWith('enum ')?'i32':types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error('Review DISPLAY scalar '+t);return env[d](v);};
- env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review DISPLAY cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){const dv=memory();return bits===64?decode(t,dv.getBigUint64(address,true)):dv[(d[0]==='i'?'getInt':'getUint')+bits](address,true);},set value(v){const dv=memory();if(bits===64)dv.setBigUint64(address,BigInt.asUintN(64,BigInt(v)),true);else dv['setUint'+bits](address,Number(v),true);}};};
+ env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review DISPLAY cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){const dv=memory();return bits===64?decode(t,dv.getBigUint64(address,true)):dv[(d[0]==='i'?'getInt':'getUint')+bits](address,true);},set value(v){return Crt.writeIntegerCell(memory,address,bits,v);}};};
  // Bounded ownership; eviction never retargets an accessor held by a caller.
  const fieldAccessors=new Map(),fieldBases=new WeakMap();
  env.field=(at,name,field)=>{
@@ -43,7 +44,7 @@ export function createDisplayEnvironment(services){
  env.indirect=(site,fn,...args)=>{if(!schema.callbackCalls[site])throw Error('Review DISPLAY indirect call');return services['indirect'+site](fn,...args);};
  env.dynamicVariadic=(target,site,...args)=>{if(!schema.dynamicVariadics[site]?.targets.includes(target))throw Error('Review DISPLAY dynamic vararg target');return services['dynamic'+site+'_'+target](...args);};
  const recordKey=t=>Object.keys(schema.schema).find(k=>schema.schema[k].ctype===t)??t.replace(/^(struct|union) /,'');
- const sizeOf=t=>{const a=t.match(/^(.*?)\[(\d+)\](.*)$/);if(a)return +a[2]*sizeOf(a[1]+a[3]);if(t.includes('*'))return 8;if(t.startsWith('enum '))return 4;if(types[t])return +types[t].slice(1)/8;return env.sizes[t];};
+ const sizeOf=t=>{return Crt.typeSize(types,env,sizeOf,t);};
  env.initialize=(at,t,values)=>{at=ptr(at);const bytes=sizeOf(t);if(!Number.isInteger(bytes))throw Error('Review DISPLAY initializer extent '+t);services.heap().fill(0,at,at+bytes);if(values===0||values===0n)return;const array=t.match(/^(.*?)\[(\d+)\](.*)$/);if(array){if(typeof values==='number'&&array[1]==='char'&&!array[3]){env.copy(at,values,bytes);return;}const element=array[1]+array[3],stride=sizeOf(element);values.forEach((v,i)=>{if(Array.isArray(v))env.initialize(at+i*stride,element,v);else env.cell(at+i*stride,element).value=v;});return;}const key=recordKey(t);if(schema.schema[key]){const fields=schema.schema[key].fields;values.forEach((v,i)=>{const f=fields[i];if(!f)throw Error('Review DISPLAY record initializer '+t);if(Array.isArray(v))env.initialize(env.field(at,key,f.name).address,f.canonical,v);else if(f.bit)env.field(at,key,f.name).value=v;else env.cell(env.field(at,key,f.name).address,f.canonical).value=v;});return;}env.cell(at,t).value=values;};
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of display.displayStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);

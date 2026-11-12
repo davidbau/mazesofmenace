@@ -315,9 +315,9 @@
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/mcastu.js": "0f46bb9c9bcafc72987a7079dfae0b10e5a073732b8b35739f2d86123f21670c",
     "js/ported/mcastu.js": "14da9c1a0ed399a9b679239c48c0c57f41ba51a5f31efba41f8751550f99700b",
-    "js/ported/mcastu-runtime.js": "97e06a5a74f1039d8c6f9e3bd53fd0b077f4138f4addec4dbe88ccffd5d81a70",
+    "js/ported/mcastu-runtime.js": "9bbc89583f00cc35ad3bac25b1dbcf35fc49dc43edafa23ce8d53b31ceae935d",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

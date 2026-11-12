@@ -15,6 +15,7 @@ export function enableMovement(environment,layouts){
   const family=families.find(name=>k.startsWith(name+'_')&&/^[pijd]+$/.test(k.slice(name.length+1)));
   return family?((...args)=>{const shape=k.slice(family.length+1);return resolve(family)(...args.map((v,i)=>shape[i]==='p'?text(v):shape[i]==='j'?BigInt(v):shape[i]==='i'?Number(BigInt.asIntN(32,BigInt(v))):v));}):((...args)=>environment.resolve(k)(...args.map(v=>v?.address??v)));
  }});
+ local.rngCaller=(line,caller)=>{const n=environment.transport.int(line),name=typeof caller==='string'?caller:memory.readString(environment.address(caller));if(!abi.rngCallers.some(row=>row[0]===n&&row[1]===name))throw new Error('Unexpected HACK RNG caller');if(services.rng_log_enabled())services.rng_log_set_caller(text('hack.c'),n,text(caller));};
  const kinds=Object.keys(abi.schemas),scalar=d=>d.t?{i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'}[d.t]:'void *';
  const field=(kind,index)=>{const row=abi.schemas[kinds[kind]],f=row?.fields[index];if(!f)throw new Error('Unknown HACK field');return {type:row.ctype,f};};
  const code=t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':ctypes.size(t)===8?'j':'i';};

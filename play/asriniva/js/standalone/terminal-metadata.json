@@ -917,8 +917,9 @@
     128
   ],
   "sourceSha256": {
-    "scripts/export-standalone-terminal.py": "691e80e4f3947a4c7ac5443629b2c0cef9c6659c2176b82c3127650d995d87f7",
-    "js/ported/termcap-runtime.js": "74ccdf315d0d414a22885a636806e9ec571b195623d7b980883fd8f99d31689e",
+    "scripts/export-standalone-terminal.py": "41064f28998159a3e408a356841eac1857a3ea9f379c9dc81792aba3f44dba69",
+    "js/ported/termcap-runtime.js": "a59105a12a62b99e325560aac296e1dac5c58fb96b9c72f012053b03bef41fcd",
+    "js/standalone/terminal.js": "a864724aea1dbc3a73c1c0a46ee720e14260961cd76d763758d1acf0321ea9de",
     "nethack-c/wasm/tu-libraries/termcap.js": "be0bb1b55051f6171b45548582d2172a1cd14ccb2227978e39ff6df5efa354c2",
     "nethack-c/wasm/tu-fragments/termcap-support.c": "f514178bc577bcf9220dd0a6afd59a14caabdb060fda2f3322e923e158158d22",
     "nethack-c/wasm/tu-fragments/termcap-source-data.h": "a87bd6c0796e86769c81671b6d6a9e6e882b087fe1e7ebd731771553f92b3342"

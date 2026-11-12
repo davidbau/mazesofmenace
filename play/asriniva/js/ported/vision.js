@@ -217,7 +217,7 @@ export function vision_reset()
         block = 1; /* location (0,y) is always stone; it's !isok() */
         lev = C.levl[1][y];
         for (x = 1; x < C.COLNO; x++, lev = C.advance(lev, C.ROWNO))
-            if (block != (C.IS_OBSTRUCTED(lev.typ) || does_block(x, y, lev))) {
+            if (block != Number(Boolean(C.IS_OBSTRUCTED(lev.typ) || does_block(x, y, lev)))) {
                 if (block) {
                     for (i = dig_left; i < x; i++) {
                         C.left_ptrs[y][i] = dig_left;

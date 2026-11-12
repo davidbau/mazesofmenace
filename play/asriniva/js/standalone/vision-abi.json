@@ -1003,8 +1003,10 @@
     }
   ],
   "sourceSha256": {
-    "js/ported/vision-runtime.js": "a74156a69e3e30d033ed97fbffbe641b1b093e58a31f46ca005cf77e933c374e",
-    "scripts/export-standalone-vision-abi.py": "5495238c75315e4f4e73c2644cb8d2e4f066bf7ae26c58c01153357731ec1442",
-    "nethack-c/wasm/tu-vision-support.inc": "62453eaea15a7e23f59703a101f16196dc6a30f968ed7cd02c0e81daf4354b45"
+    "js/ported/vision-runtime.js": "c64df5dfe113e7acf1e1664a45882b2e3fe81f57db6868ddb9f4d77a6facf8d8",
+    "scripts/export-standalone-vision-abi.py": "995e6e87f96806059aae12c6fa6c895e1a0ef6519431dd4063f3d78e46ac25a8",
+    "nethack-c/wasm/tu-vision-support.inc": "62453eaea15a7e23f59703a101f16196dc6a30f968ed7cd02c0e81daf4354b45",
+    "js/standalone/vision.js": "dd43f560699abfe76a1d3a49a3f2bcaa2d041aa675c8b5d810c4deefa51e65c5",
+    "nethack-c/wasm/tu-libraries/vision.js": "cfb2b98bf2558e2e81753f398b2f830ea7063d6f8a9643ba1b91b7759a91277c"
   }
 }

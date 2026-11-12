@@ -1,0 +1,3479 @@
+{
+  "layout": {
+    "pointerSize": 8,
+    "longSize": 8,
+    "intSize": 4,
+    "charSigned": 1,
+    "littleEndian": 1,
+    "ACID_RES": 7,
+    "constwidth_ACID_RES": 4,
+    "ACID_VENOM": 480,
+    "constwidth_ACID_VENOM": 4,
+    "AD_ACID": 8,
+    "constwidth_AD_ACID": 4,
+    "AD_ANY": -1,
+    "constwidth_AD_ANY": 4,
+    "AD_BLND": 11,
+    "constwidth_AD_BLND": 4,
+    "AD_COLD": 3,
+    "constwidth_AD_COLD": 4,
+    "AD_CONF": 25,
+    "constwidth_AD_CONF": 4,
+    "AD_DGST": 26,
+    "constwidth_AD_DGST": 4,
+    "AD_DISE": 33,
+    "constwidth_AD_DISE": 4,
+    "AD_DRST": 7,
+    "constwidth_AD_DRST": 4,
+    "AD_ELEC": 6,
+    "constwidth_AD_ELEC": 4,
+    "AD_FIRE": 2,
+    "constwidth_AD_FIRE": 4,
+    "AD_HALU": 36,
+    "constwidth_AD_HALU": 4,
+    "AD_MAGM": 1,
+    "constwidth_AD_MAGM": 4,
+    "AD_RBRE": 242,
+    "constwidth_AD_RBRE": 4,
+    "AIR": 35,
+    "constwidth_AIR": 4,
+    "ALCHEMY_SMOCK": 144,
+    "constwidth_ALCHEMY_SMOCK": 4,
+    "AMULET_OF_STRANGULATION": 203,
+    "constwidth_AMULET_OF_STRANGULATION": 4,
+    "AMULET_OF_UNCHANGING": 207,
+    "constwidth_AMULET_OF_UNCHANGING": 4,
+    "ANTIMAGIC": 12,
+    "constwidth_ANTIMAGIC": 4,
+    "ANTI_MAGIC": 21,
+    "constwidth_ANTI_MAGIC": 4,
+    "ARM": 0,
+    "constwidth_ARM": 4,
+    "ARROW_TRAP": 1,
+    "constwidth_ARROW_TRAP": 4,
+    "AT_BREA": 12,
+    "constwidth_AT_BREA": 4,
+    "AT_CLAW": 1,
+    "constwidth_AT_CLAW": 4,
+    "AT_ENGL": 11,
+    "constwidth_AT_ENGL": 4,
+    "AT_EXPL": 13,
+    "constwidth_AT_EXPL": 4,
+    "AT_GAZE": 15,
+    "constwidth_AT_GAZE": 4,
+    "AT_SPIT": 10,
+    "constwidth_AT_SPIT": 4,
+    "AT_WEAP": 254,
+    "constwidth_AT_WEAP": 4,
+    "A_CON": 4,
+    "constwidth_A_CON": 4,
+    "A_DEX": 3,
+    "constwidth_A_DEX": 4,
+    "A_STR": 0,
+    "constwidth_A_STR": 4,
+    "A_WIS": 2,
+    "constwidth_A_WIS": 4,
+    "BEAR_TRAP": 5,
+    "constwidth_BEAR_TRAP": 4,
+    "BLACK_DRAGON_SCALES": 117,
+    "constwidth_BLACK_DRAGON_SCALES": 4,
+    "BLACK_DRAGON_SCALE_MAIL": 107,
+    "constwidth_BLACK_DRAGON_SCALE_MAIL": 4,
+    "BLINDED": 15,
+    "constwidth_BLINDED": 4,
+    "BLINDING_VENOM": 479,
+    "constwidth_BLINDING_VENOM": 4,
+    "BLND_RES": 38,
+    "constwidth_BLND_RES": 4,
+    "BLUE_DRAGON_SCALES": 118,
+    "constwidth_BLUE_DRAGON_SCALES": 4,
+    "BLUE_DRAGON_SCALE_MAIL": 108,
+    "constwidth_BLUE_DRAGON_SCALE_MAIL": 4,
+    "BOLT_LIM": 8,
+    "constwidth_BOLT_LIM": 4,
+    "BUFSZ": 256,
+    "constwidth_BUFSZ": 4,
+    "CLOUD": 36,
+    "constwidth_CLOUD": 4,
+    "COLD_RES": 2,
+    "constwidth_COLD_RES": 4,
+    "CONFUSION": 14,
+    "constwidth_CONFUSION": 4,
+    "CORPSE": 265,
+    "constwidth_CORPSE": 4,
+    "COULD_SEE": 1,
+    "constwidth_COULD_SEE": 4,
+    "DART_TRAP": 2,
+    "constwidth_DART_TRAP": 4,
+    "DIED": 0,
+    "constwidth_DIED": 4,
+    "DISINT_RES": 4,
+    "constwidth_DISINT_RES": 4,
+    "DISMOUNT_POLY": 4,
+    "constwidth_DISMOUNT_POLY": 4,
+    "DRAIN_RES": 9,
+    "constwidth_DRAIN_RES": 4,
+    "ECMD_CANCEL": 2,
+    "constwidth_ECMD_CANCEL": 4,
+    "ECMD_OK": 0,
+    "constwidth_ECMD_OK": 4,
+    "ECMD_TIME": 1,
+    "constwidth_ECMD_TIME": 4,
+    "EYE": 1,
+    "constwidth_EYE": 4,
+    "FEMALE": 1,
+    "constwidth_FEMALE": 4,
+    "FINGER": 3,
+    "constwidth_FINGER": 4,
+    "FINGERTIP": 4,
+    "constwidth_FINGERTIP": 4,
+    "FIRE_RES": 1,
+    "constwidth_FIRE_RES": 4,
+    "FIRE_TRAP": 10,
+    "constwidth_FIRE_TRAP": 4,
+    "FLYING": 49,
+    "constwidth_FLYING": 4,
+    "FOOT": 5,
+    "constwidth_FOOT": 4,
+    "FOUNTAIN": 28,
+    "constwidth_FOUNTAIN": 4,
+    "FREE_ACTION": 66,
+    "constwidth_FREE_ACTION": 4,
+    "FROMFORM": "268435456",
+    "constwidth_FROMFORM": 8,
+    "FROMOUTSIDE": "67108864",
+    "constwidth_FROMOUTSIDE": 8,
+    "FROMRACE": "33554432",
+    "constwidth_FROMRACE": 8,
+    "GENOCIDED": 10,
+    "constwidth_GENOCIDED": 4,
+    "GOLD_DRAGON_SCALES": 112,
+    "constwidth_GOLD_DRAGON_SCALES": 4,
+    "GOLD_DRAGON_SCALE_MAIL": 102,
+    "constwidth_GOLD_DRAGON_SCALE_MAIL": 4,
+    "GRAY_DRAGON_SCALES": 111,
+    "constwidth_GRAY_DRAGON_SCALES": 4,
+    "GRAY_DRAGON_SCALE_MAIL": 101,
+    "constwidth_GRAY_DRAGON_SCALE_MAIL": 4,
+    "GREEN_DRAGON_SCALES": 119,
+    "constwidth_GREEN_DRAGON_SCALES": 4,
+    "GREEN_DRAGON_SCALE_MAIL": 109,
+    "constwidth_GREEN_DRAGON_SCALE_MAIL": 4,
+    "G_GENOD": 2,
+    "constwidth_G_GENOD": 4,
+    "G_UNIQ": 4096,
+    "constwidth_G_UNIQ": 4,
+    "HAIR": 14,
+    "constwidth_HAIR": 4,
+    "HALLUC": 23,
+    "constwidth_HALLUC": 4,
+    "HALLUC_RES": 24,
+    "constwidth_HALLUC_RES": 4,
+    "HAND": 6,
+    "constwidth_HAND": 4,
+    "HANDED": 7,
+    "constwidth_HANDED": 4,
+    "HEAD": 8,
+    "constwidth_HEAD": 4,
+    "HOLE": 13,
+    "constwidth_HOLE": 4,
+    "INFRAVISION": 36,
+    "constwidth_INFRAVISION": 4,
+    "INVIS": 40,
+    "constwidth_INVIS": 4,
+    "I_SPECIAL": "536870912",
+    "constwidth_I_SPECIAL": 8,
+    "KILLED_BY": 1,
+    "constwidth_KILLED_BY": 4,
+    "KILLED_BY_AN": 0,
+    "constwidth_KILLED_BY_AN": 4,
+    "LANDMINE": 6,
+    "constwidth_LANDMINE": 4,
+    "LEATHER": 7,
+    "constwidth_LEATHER": 4,
+    "LEG": 9,
+    "constwidth_LEG": 4,
+    "LEVEL_TELEP": 16,
+    "constwidth_LEVEL_TELEP": 4,
+    "LEVITATION": 48,
+    "constwidth_LEVITATION": 4,
+    "LL_CONDUCT": "32",
+    "constwidth_LL_CONDUCT": 8,
+    "LL_MINORAC": "4096",
+    "constwidth_LL_MINORAC": 8,
+    "LOW_PM": 0,
+    "constwidth_LOW_PM": 4,
+    "LS_MONSTER": 2,
+    "constwidth_LS_MONSTER": 4,
+    "M1_AMORPHOUS": "4",
+    "constwidth_M1_AMORPHOUS": 8,
+    "M1_ANIMAL": "262144",
+    "constwidth_M1_ANIMAL": 8,
+    "M1_CLING": "16",
+    "constwidth_M1_CLING": 8,
+    "M1_CONCEAL": "128",
+    "constwidth_M1_CONCEAL": 8,
+    "M1_FLY": "1",
+    "constwidth_M1_FLY": 8,
+    "M1_HIDE": "256",
+    "constwidth_M1_HIDE": 8,
+    "M1_HUMANOID": "131072",
+    "constwidth_M1_HUMANOID": 8,
+    "M1_MINDLESS": "65536",
+    "constwidth_M1_MINDLESS": 8,
+    "M1_NOEYES": "4096",
+    "constwidth_M1_NOEYES": 8,
+    "M1_NOHANDS": "8192",
+    "constwidth_M1_NOHANDS": 8,
+    "M1_NOHEAD": "32768",
+    "constwidth_M1_NOHEAD": 8,
+    "M1_OVIPAROUS": "4194304",
+    "constwidth_M1_OVIPAROUS": 8,
+    "M1_REGEN": "8388608",
+    "constwidth_M1_REGEN": 8,
+    "M1_SEE_INVIS": "16777216",
+    "constwidth_M1_SEE_INVIS": 8,
+    "M1_SLITHY": "524288",
+    "constwidth_M1_SLITHY": 8,
+    "M1_SWIM": "2",
+    "constwidth_M1_SWIM": 8,
+    "M1_TPORT": "33554432",
+    "constwidth_M1_TPORT": 8,
+    "M1_TPORT_CNTRL": "67108864",
+    "constwidth_M1_TPORT_CNTRL": 8,
+    "M1_UNSOLID": "1048576",
+    "constwidth_M1_UNSOLID": 8,
+    "M1_WALLWALK": "8",
+    "constwidth_M1_WALLWALK": 8,
+    "M2_DWARF": "32",
+    "constwidth_M2_DWARF": 8,
+    "M2_ELF": "16",
+    "constwidth_M2_ELF": 8,
+    "M2_FEMALE": "131072",
+    "constwidth_M2_FEMALE": 8,
+    "M2_GIANT": "8192",
+    "constwidth_M2_GIANT": 8,
+    "M2_GNOME": "64",
+    "constwidth_M2_GNOME": 8,
+    "M2_HUMAN": "8",
+    "constwidth_M2_HUMAN": 8,
+    "M2_JEWELS": "536870912",
+    "constwidth_M2_JEWELS": 8,
+    "M2_MALE": "65536",
+    "constwidth_M2_MALE": 8,
+    "M2_NEUTER": "262144",
+    "constwidth_M2_NEUTER": 8,
+    "M2_NOPOLY": "1",
+    "constwidth_M2_NOPOLY": 8,
+    "M2_ORC": "128",
+    "constwidth_M2_ORC": 8,
+    "M2_PNAME": "524288",
+    "constwidth_M2_PNAME": 8,
+    "M2_STRONG": "67108864",
+    "constwidth_M2_STRONG": 8,
+    "M2_UNDEAD": "2",
+    "constwidth_M2_UNDEAD": 8,
+    "M2_WERE": "4",
+    "constwidth_M2_WERE": 8,
+    "M3_INFRAVISION": 256,
+    "constwidth_M3_INFRAVISION": 4,
+    "MAGIC_PORTAL": 17,
+    "constwidth_MAGIC_PORTAL": 4,
+    "MAGIC_TRAP": 20,
+    "constwidth_MAGIC_TRAP": 4,
+    "MALE": 0,
+    "constwidth_MALE": 4,
+    "MAXULEV": 30,
+    "constwidth_MAXULEV": 4,
+    "MR_ACID": 64,
+    "constwidth_MR_ACID": 4,
+    "MR_COLD": 2,
+    "constwidth_MR_COLD": 4,
+    "MR_DISINT": 8,
+    "constwidth_MR_DISINT": 4,
+    "MR_ELEC": 16,
+    "constwidth_MR_ELEC": 4,
+    "MR_FIRE": 1,
+    "constwidth_MR_FIRE": 4,
+    "MR_POISON": 32,
+    "constwidth_MR_POISON": 4,
+    "MR_SLEEP": 4,
+    "constwidth_MR_SLEEP": 4,
+    "MR_STONE": 128,
+    "constwidth_MR_STONE": 4,
+    "MS_SHRIEK": 18,
+    "constwidth_MS_SHRIEK": 4,
+    "MUMMY_WRAPPING": 138,
+    "constwidth_MUMMY_WRAPPING": 4,
+    "MZ_HUGE": 4,
+    "constwidth_MZ_HUGE": 4,
+    "MZ_SMALL": 1,
+    "constwidth_MZ_SMALL": 4,
+    "M_AP_FURNITURE": 1,
+    "constwidth_M_AP_FURNITURE": 4,
+    "M_AP_NOTHING": 0,
+    "constwidth_M_AP_NOTHING": 4,
+    "M_AP_OBJECT": 2,
+    "constwidth_M_AP_OBJECT": 4,
+    "M_AP_TYPMASK": 7,
+    "constwidth_M_AP_TYPMASK": 4,
+    "NATTK": 6,
+    "constwidth_NATTK": 4,
+    "NECK": 11,
+    "constwidth_NECK": 4,
+    "NEUTRAL": 2,
+    "constwidth_NEUTRAL": 4,
+    "NON_PM": -1,
+    "constwidth_NON_PM": 4,
+    "NOSE": 17,
+    "constwidth_NOSE": 4,
+    "NO_KILLER_PREFIX": 2,
+    "constwidth_NO_KILLER_PREFIX": 4,
+    "NO_PART": -1,
+    "constwidth_NO_PART": 4,
+    "NO_TRAP_FLAGS": 0,
+    "constwidth_NO_TRAP_FLAGS": 4,
+    "NUMMONS": 383,
+    "constwidth_NUMMONS": 4,
+    "ORANGE_DRAGON_SCALES": 116,
+    "constwidth_ORANGE_DRAGON_SCALES": 4,
+    "ORANGE_DRAGON_SCALE_MAIL": 106,
+    "constwidth_ORANGE_DRAGON_SCALE_MAIL": 4,
+    "PASSES_WALLS": 53,
+    "constwidth_PASSES_WALLS": 4,
+    "PIT": 11,
+    "constwidth_PIT": 4,
+    "PM_AIR_ELEMENTAL": 154,
+    "constwidth_PM_AIR_ELEMENTAL": 4,
+    "PM_ALIGNED_CLERIC": 275,
+    "constwidth_PM_ALIGNED_CLERIC": 4,
+    "PM_AMOROUS_DEMON": 290,
+    "constwidth_PM_AMOROUS_DEMON": 4,
+    "PM_ARCHEOLOGIST": 331,
+    "constwidth_PM_ARCHEOLOGIST": 4,
+    "PM_BABY_GOLD_DRAGON": 134,
+    "constwidth_PM_BABY_GOLD_DRAGON": 4,
+    "PM_BABY_GRAY_DRAGON": 133,
+    "constwidth_PM_BABY_GRAY_DRAGON": 4,
+    "PM_BABY_PURPLE_WORM": 113,
+    "constwidth_PM_BABY_PURPLE_WORM": 4,
+    "PM_BAT": 126,
+    "constwidth_PM_BAT": 4,
+    "PM_BLACK_DRAGON": 149,
+    "constwidth_PM_BLACK_DRAGON": 4,
+    "PM_BLACK_LIGHT": 119,
+    "constwidth_PM_BLACK_LIGHT": 4,
+    "PM_BLUE_DRAGON": 150,
+    "constwidth_PM_BLUE_DRAGON": 4,
+    "PM_CAVE_SPIDER": 94,
+    "constwidth_PM_CAVE_SPIDER": 4,
+    "PM_CHICKATRICE": 9,
+    "constwidth_PM_CHICKATRICE": 4,
+    "PM_CLERIC": 337,
+    "constwidth_PM_CLERIC": 4,
+    "PM_COCKATRICE": 10,
+    "constwidth_PM_COCKATRICE": 4,
+    "PM_DWARF": 44,
+    "constwidth_PM_DWARF": 4,
+    "PM_ELECTRIC_EEL": 320,
+    "constwidth_PM_ELECTRIC_EEL": 4,
+    "PM_ELF": 264,
+    "constwidth_PM_ELF": 4,
+    "PM_FIRE_ELEMENTAL": 155,
+    "constwidth_PM_FIRE_ELEMENTAL": 4,
+    "PM_FIRE_VORTEX": 111,
+    "constwidth_PM_FIRE_VORTEX": 4,
+    "PM_FLAMING_SPHERE": 30,
+    "constwidth_PM_FLAMING_SPHERE": 4,
+    "PM_FLESH_GOLEM": 255,
+    "constwidth_PM_FLESH_GOLEM": 4,
+    "PM_FLOATING_EYE": 28,
+    "constwidth_PM_FLOATING_EYE": 4,
+    "PM_FOG_CLOUD": 106,
+    "constwidth_PM_FOG_CLOUD": 4,
+    "PM_GHOUL": 246,
+    "constwidth_PM_GHOUL": 4,
+    "PM_GIANT": 169,
+    "constwidth_PM_GIANT": 4,
+    "PM_GIANT_BAT": 127,
+    "constwidth_PM_GIANT_BAT": 4,
+    "PM_GIANT_EEL": 319,
+    "constwidth_PM_GIANT_EEL": 4,
+    "PM_GIANT_SPIDER": 96,
+    "constwidth_PM_GIANT_SPIDER": 4,
+    "PM_GNOME": 165,
+    "constwidth_PM_GNOME": 4,
+    "PM_GOLD_DRAGON": 144,
+    "constwidth_PM_GOLD_DRAGON": 4,
+    "PM_GRAY_DRAGON": 143,
+    "constwidth_PM_GRAY_DRAGON": 4,
+    "PM_GREEN_DRAGON": 151,
+    "constwidth_PM_GREEN_DRAGON": 4,
+    "PM_GREEN_ELF": 266,
+    "constwidth_PM_GREEN_ELF": 4,
+    "PM_GREEN_SLIME": 208,
+    "constwidth_PM_GREEN_SLIME": 4,
+    "PM_GREMLIN": 40,
+    "constwidth_PM_GREMLIN": 4,
+    "PM_GREY_ELF": 267,
+    "constwidth_PM_GREY_ELF": 4,
+    "PM_HILL_GIANT": 171,
+    "constwidth_PM_HILL_GIANT": 4,
+    "PM_HILL_ORC": 73,
+    "constwidth_PM_HILL_ORC": 4,
+    "PM_HUMAN": 260,
+    "constwidth_PM_HUMAN": 4,
+    "PM_IRON_GOLEM": 259,
+    "constwidth_PM_IRON_GOLEM": 4,
+    "PM_JELLYFISH": 316,
+    "constwidth_PM_JELLYFISH": 4,
+    "PM_KI_RIN": 124,
+    "constwidth_PM_KI_RIN": 4,
+    "PM_KRAKEN": 321,
+    "constwidth_PM_KRAKEN": 4,
+    "PM_MANES": 50,
+    "constwidth_PM_MANES": 4,
+    "PM_MARILITH": 294,
+    "constwidth_PM_MARILITH": 4,
+    "PM_MASTER_MIND_FLAYER": 49,
+    "constwidth_PM_MASTER_MIND_FLAYER": 4,
+    "PM_MASTODON": 87,
+    "constwidth_PM_MASTODON": 4,
+    "PM_MEDUSA": 284,
+    "constwidth_PM_MEDUSA": 4,
+    "PM_MIND_FLAYER": 48,
+    "constwidth_PM_MIND_FLAYER": 4,
+    "PM_MORDOR_ORC": 74,
+    "constwidth_PM_MORDOR_ORC": 4,
+    "PM_MUMAK": 82,
+    "constwidth_PM_MUMAK": 4,
+    "PM_ORANGE_DRAGON": 148,
+    "constwidth_PM_ORANGE_DRAGON": 4,
+    "PM_ORC": 72,
+    "constwidth_PM_ORC": 4,
+    "PM_ORC_CAPTAIN": 77,
+    "constwidth_PM_ORC_CAPTAIN": 4,
+    "PM_OWLBEAR": 235,
+    "constwidth_PM_OWLBEAR": 4,
+    "PM_PURPLE_WORM": 115,
+    "constwidth_PM_PURPLE_WORM": 4,
+    "PM_RAVEN": 128,
+    "constwidth_PM_RAVEN": 4,
+    "PM_RED_DRAGON": 146,
+    "constwidth_PM_RED_DRAGON": 4,
+    "PM_ROTHE": 81,
+    "constwidth_PM_ROTHE": 4,
+    "PM_SALAMANDER": 329,
+    "constwidth_PM_SALAMANDER": 4,
+    "PM_SHARK": 318,
+    "constwidth_PM_SHARK": 4,
+    "PM_SHOCKING_SPHERE": 31,
+    "constwidth_PM_SHOCKING_SPHERE": 4,
+    "PM_SHRIEKER": 163,
+    "constwidth_PM_SHRIEKER": 4,
+    "PM_SILVER_DRAGON": 145,
+    "constwidth_PM_SILVER_DRAGON": 4,
+    "PM_STALKER": 153,
+    "constwidth_PM_STALKER": 4,
+    "PM_STONE_GIANT": 170,
+    "constwidth_PM_STONE_GIANT": 4,
+    "PM_STONE_GOLEM": 257,
+    "constwidth_PM_STONE_GOLEM": 4,
+    "PM_URUK_HAI": 75,
+    "constwidth_PM_URUK_HAI": 4,
+    "PM_VAMPIRE": 226,
+    "constwidth_PM_VAMPIRE": 4,
+    "PM_VAMPIRE_BAT": 129,
+    "constwidth_PM_VAMPIRE_BAT": 4,
+    "PM_VAMPIRE_LEADER": 227,
+    "constwidth_PM_VAMPIRE_LEADER": 4,
+    "PM_VLAD_THE_IMPALER": 228,
+    "constwidth_PM_VLAD_THE_IMPALER": 4,
+    "PM_WHITE_DRAGON": 147,
+    "constwidth_PM_WHITE_DRAGON": 4,
+    "PM_WINGED_GARGOYLE": 42,
+    "constwidth_PM_WINGED_GARGOYLE": 4,
+    "PM_WOLF": 20,
+    "constwidth_PM_WOLF": 4,
+    "PM_YELLOW_DRAGON": 152,
+    "constwidth_PM_YELLOW_DRAGON": 4,
+    "POISON_RES": 6,
+    "constwidth_POISON_RES": 4,
+    "POLYMORPH": 61,
+    "constwidth_POLYMORPH": 4,
+    "POLYMORPH_CONTROL": 62,
+    "constwidth_POLYMORPH_CONTROL": 4,
+    "POLY_CONTROLLED": 1,
+    "constwidth_POLY_CONTROLLED": 4,
+    "POLY_LOW_CTRL": 8,
+    "constwidth_POLY_LOW_CTRL": 4,
+    "POLY_MONSTER": 2,
+    "constwidth_POLY_MONSTER": 4,
+    "POLY_REVERT": 4,
+    "constwidth_POLY_REVERT": 4,
+    "POLY_TRAP": 22,
+    "constwidth_POLY_TRAP": 4,
+    "PROT_FROM_SHAPE_CHANGERS": 60,
+    "constwidth_PROT_FROM_SHAPE_CHANGERS": 4,
+    "P_SABER": 9,
+    "constwidth_P_SABER": 4,
+    "P_SHORT_SWORD": 5,
+    "constwidth_P_SHORT_SWORD": 4,
+    "QBUFSZ": 128,
+    "constwidth_QBUFSZ": 4,
+    "REASSESS_ONLY": 1,
+    "constwidth_REASSESS_ONLY": 1,
+    "RED_DRAGON_SCALES": 114,
+    "constwidth_RED_DRAGON_SCALES": 4,
+    "RED_DRAGON_SCALE_MAIL": 104,
+    "constwidth_RED_DRAGON_SCALE_MAIL": 4,
+    "REFLECTING": 65,
+    "constwidth_REFLECTING": 4,
+    "REGENERATION": 57,
+    "constwidth_REGENERATION": 4,
+    "ROCKTRAP": 3,
+    "constwidth_ROCKTRAP": 4,
+    "ROLLING_BOULDER_TRAP": 7,
+    "constwidth_ROLLING_BOULDER_TRAP": 4,
+    "ROOM": 25,
+    "constwidth_ROOM": 4,
+    "RUBBER_HOSE": 78,
+    "constwidth_RUBBER_HOSE": 4,
+    "RUST_TRAP": 9,
+    "constwidth_RUST_TRAP": 4,
+    "SEE_INVIS": 29,
+    "constwidth_SEE_INVIS": 4,
+    "SHOCK_RES": 5,
+    "constwidth_SHOCK_RES": 4,
+    "SHOPBASE": 14,
+    "constwidth_SHOPBASE": 4,
+    "SHOP_WEB_COST": "30",
+    "constwidth_SHOP_WEB_COST": 8,
+    "SICK": 17,
+    "constwidth_SICK": 4,
+    "SICK_ALL": 3,
+    "constwidth_SICK_ALL": 4,
+    "SICK_RES": 10,
+    "constwidth_SICK_RES": 4,
+    "SILVER_DRAGON_SCALES": 113,
+    "constwidth_SILVER_DRAGON_SCALES": 4,
+    "SILVER_DRAGON_SCALE_MAIL": 103,
+    "constwidth_SILVER_DRAGON_SCALE_MAIL": 4,
+    "SLEEP_RES": 3,
+    "constwidth_SLEEP_RES": 4,
+    "SLIMED": 22,
+    "constwidth_SLIMED": 4,
+    "SLP_GAS_TRAP": 8,
+    "constwidth_SLP_GAS_TRAP": 4,
+    "SPECIAL_PM": 330,
+    "constwidth_SPECIAL_PM": 4,
+    "SPIKED_PIT": 12,
+    "constwidth_SPIKED_PIT": 4,
+    "SQKY_BOARD": 4,
+    "constwidth_SQKY_BOARD": 4,
+    "STAIRS": 26,
+    "constwidth_STAIRS": 4,
+    "STEALTH": 42,
+    "constwidth_STEALTH": 4,
+    "STONED": 18,
+    "constwidth_STONED": 4,
+    "STONE_RES": 8,
+    "constwidth_STONE_RES": 4,
+    "STONING": 8,
+    "constwidth_STONING": 4,
+    "STRANGE_OBJECT": 0,
+    "constwidth_STRANGE_OBJECT": 4,
+    "STRANGLED": 19,
+    "constwidth_STRANGLED": 4,
+    "STUNNED": 13,
+    "constwidth_STUNNED": 4,
+    "SWIMMING": 51,
+    "constwidth_SWIMMING": 4,
+    "S_ANGEL": 27,
+    "constwidth_S_ANGEL": 4,
+    "S_BLOB": 2,
+    "constwidth_S_BLOB": 4,
+    "S_CENTAUR": 29,
+    "constwidth_S_CENTAUR": 4,
+    "S_COCKATRICE": 3,
+    "constwidth_S_COCKATRICE": 4,
+    "S_DOG": 4,
+    "constwidth_S_DOG": 4,
+    "S_DRAGON": 30,
+    "constwidth_S_DRAGON": 4,
+    "S_EEL": 57,
+    "constwidth_S_EEL": 4,
+    "S_ELEMENTAL": 31,
+    "constwidth_S_ELEMENTAL": 4,
+    "S_EYE": 5,
+    "constwidth_S_EYE": 4,
+    "S_FELINE": 6,
+    "constwidth_S_FELINE": 4,
+    "S_FUNGUS": 32,
+    "constwidth_S_FUNGUS": 4,
+    "S_GHOST": 54,
+    "constwidth_S_GHOST": 4,
+    "S_GIANT": 34,
+    "constwidth_S_GIANT": 4,
+    "S_GOLEM": 55,
+    "constwidth_S_GOLEM": 4,
+    "S_HUMAN": 53,
+    "constwidth_S_HUMAN": 4,
+    "S_JELLY": 10,
+    "constwidth_S_JELLY": 4,
+    "S_LEPRECHAUN": 12,
+    "constwidth_S_LEPRECHAUN": 4,
+    "S_LIGHT": 25,
+    "constwidth_S_LIGHT": 4,
+    "S_MIMIC": 13,
+    "constwidth_S_MIMIC": 4,
+    "S_MUMMY": 39,
+    "constwidth_S_MUMMY": 4,
+    "S_NYMPH": 14,
+    "constwidth_S_NYMPH": 4,
+    "S_ORC": 15,
+    "constwidth_S_ORC": 4,
+    "S_PUDDING": 42,
+    "constwidth_S_PUDDING": 4,
+    "S_QUANTMECH": 43,
+    "constwidth_S_QUANTMECH": 4,
+    "S_RODENT": 18,
+    "constwidth_S_RODENT": 4,
+    "S_SPIDER": 19,
+    "constwidth_S_SPIDER": 4,
+    "S_UNICORN": 21,
+    "constwidth_S_UNICORN": 4,
+    "S_VAMPIRE": 48,
+    "constwidth_S_VAMPIRE": 4,
+    "S_VORTEX": 22,
+    "constwidth_S_VORTEX": 4,
+    "S_WORM": 23,
+    "constwidth_S_WORM": 4,
+    "S_YETI": 51,
+    "constwidth_S_YETI": 4,
+    "S_ZOMBIE": 52,
+    "constwidth_S_ZOMBIE": 4,
+    "TELEPAT": 30,
+    "constwidth_TELEPAT": 4,
+    "TELEPORT": 46,
+    "constwidth_TELEPORT": 4,
+    "TELEPORT_CONTROL": 47,
+    "constwidth_TELEPORT_CONTROL": 4,
+    "TELEP_TRAP": 15,
+    "constwidth_TELEP_TRAP": 4,
+    "TOE": 13,
+    "constwidth_TOE": 4,
+    "TRAPDOOR": 14,
+    "constwidth_TRAPDOOR": 4,
+    "TT_BEARTRAP": 1,
+    "constwidth_TT_BEARTRAP": 4,
+    "TT_BURIEDBALL": 6,
+    "constwidth_TT_BURIEDBALL": 4,
+    "TT_INFLOOR": 5,
+    "constwidth_TT_INFLOOR": 4,
+    "TT_LAVA": 4,
+    "constwidth_TT_LAVA": 4,
+    "TT_PIT": 2,
+    "constwidth_TT_PIT": 4,
+    "TT_WEB": 3,
+    "constwidth_TT_WEB": 4,
+    "UNCHANGING": 63,
+    "constwidth_UNCHANGING": 4,
+    "VIBRATING_SQUARE": 23,
+    "constwidth_VIBRATING_SQUARE": 4,
+    "WARN_OF_MON": 32,
+    "constwidth_WARN_OF_MON": 4,
+    "WC2_FLUSH_STATUS": "128",
+    "constwidth_WC2_FLUSH_STATUS": 8,
+    "WC2_HILITE_STATUS": "8",
+    "constwidth_WC2_HILITE_STATUS": 8,
+    "WEAPON_CLASS": 2,
+    "constwidth_WEAPON_CLASS": 4,
+    "WEB": 18,
+    "constwidth_WEB": 4,
+    "WHITE_DRAGON_SCALES": 115,
+    "constwidth_WHITE_DRAGON_SCALES": 4,
+    "WHITE_DRAGON_SCALE_MAIL": 105,
+    "constwidth_WHITE_DRAGON_SCALE_MAIL": 4,
+    "W_ARMU": "64",
+    "constwidth_W_ARMU": 8,
+    "YELLOW_DRAGON_SCALES": 120,
+    "constwidth_YELLOW_DRAGON_SCALES": 4,
+    "YELLOW_DRAGON_SCALE_MAIL": 110,
+    "constwidth_YELLOW_DRAGON_SCALE_MAIL": 4,
+    "d_levelSize": 4,
+    "width_d_level_dnum": 2,
+    "width_d_level_dlevel": 2,
+    "RoleNameSize": 16,
+    "width_RoleName_m": 8,
+    "width_RoleName_f": 8,
+    "vptrsSize": 8,
+    "width_vptrs_v_nexthere": 8,
+    "flagSize": 208,
+    "width_flag_confirm": 1,
+    "width_flag_debug": 1,
+    "width_flag_female": 1,
+    "width_flag_safe_dog": 1,
+    "width_flag_verbose": 1,
+    "trapSize": 32,
+    "window_procsSize": 416,
+    "width_window_procs_wincap2": 8,
+    "attribsSize": 6,
+    "width_attribs_a": 6,
+    "objSize": 112,
+    "width_obj_nobj": 8,
+    "width_obj_v": 8,
+    "width_obj_otyp": 2,
+    "width_obj_quan": 8,
+    "width_obj_spe": 1,
+    "width_obj_oclass": 1,
+    "width_obj_corpsenm": 4,
+    "width_obj_owornmask": 8,
+    "objclassSize": 72,
+    "width_objclass_oc_subtyp": 1,
+    "attackSize": 4,
+    "width_attack_aatyp": 1,
+    "width_attack_adtyp": 1,
+    "width_attack_damn": 1,
+    "width_attack_damd": 1,
+    "permonstSize": 96,
+    "width_permonst_mlet": 1,
+    "width_permonst_mlevel": 1,
+    "width_permonst_geno": 2,
+    "width_permonst_mattk": 24,
+    "width_permonst_msound": 1,
+    "width_permonst_msize": 1,
+    "width_permonst_mresists": 1,
+    "width_permonst_mflags1": 8,
+    "width_permonst_mflags2": 8,
+    "width_permonst_mflags3": 2,
+    "warntype_infoSize": 32,
+    "width_warntype_info_polyd": 8,
+    "width_warntype_info_species": 8,
+    "width_warntype_info_speciesidx": 2,
+    "propSize": 24,
+    "width_prop_extrinsic": 8,
+    "width_prop_blocked": 8,
+    "width_prop_intrinsic": 8,
+    "monstSize": 192,
+    "width_monst_nmon": 8,
+    "width_monst_data": 8,
+    "width_monst_m_id": 4,
+    "width_monst_mnum": 2,
+    "width_monst_cham": 2,
+    "width_monst_m_lev": 1,
+    "width_monst_mx": 2,
+    "width_monst_my": 2,
+    "width_monst_mhp": 4,
+    "width_monst_mappearance": 4,
+    "width_monst_m_ap_type": 1,
+    "width_monst_mtame": 1,
+    "width_monst_minvent": 8,
+    "display_hintsSize": 3,
+    "width_display_hints_botl": 1,
+    "context_infoSize": 704,
+    "width_context_info_warntype": 32,
+    "rmSize": 8,
+    "width_rm_typ": 1,
+    "u_conductSize": 144,
+    "width_u_conduct_polyselfs": 8,
+    "c_common_stringsSize": 112,
+    "width_c_common_strings_c_thats_enough_tries": 8,
+    "width_c_common_strings_c_shudder_for_moment": 8,
+    "width_c_common_strings_c_Never_mind": 8,
+    "width_c_common_strings_c_the_your": 16,
+    "RoleSize": 312,
+    "width_Role_name": 16,
+    "width_Role_mnum": 2,
+    "dgn_topologySize": 114,
+    "width_dgn_topology_d_water_level": 4,
+    "width_dgn_topology_d_air_level": 4,
+    "width_dgn_topology_d_astral_level": 4,
+    "RaceSize": 112,
+    "width_Race_noun": 8,
+    "width_Race_adj": 8,
+    "width_Race_individual": 16,
+    "width_Race_mnum": 2,
+    "width_Race_selfmask": 2,
+    "width_Race_attrmax": 12,
+    "GenderSize": 48,
+    "width_Gender_adj": 8,
+    "instance_globals_iSize": 72,
+    "width_instance_globals_i_invent": 8,
+    "youSize": 2760,
+    "width_you_ux": 2,
+    "width_you_uy": 2,
+    "width_you_dx": 4,
+    "width_you_dy": 4,
+    "width_you_dz": 4,
+    "width_you_uz": 4,
+    "width_you_ulevel": 4,
+    "width_you_ulevelmax": 4,
+    "width_you_utrap": 4,
+    "width_you_utraptype": 4,
+    "width_you_uhunger": 4,
+    "width_you_uprops": 1656,
+    "width_you_umonster": 4,
+    "width_you_umonnum": 4,
+    "width_you_mh": 4,
+    "width_you_mhmax": 4,
+    "width_you_mtimedone": 4,
+    "width_you_macurr": 6,
+    "width_you_mamax": 6,
+    "width_you_ulycn": 4,
+    "width_you_uconduct": 144,
+    "width_you_acurr": 6,
+    "width_you_amax": 6,
+    "width_you_uhp": 4,
+    "width_you_uhpmax": 4,
+    "width_you_uen": 4,
+    "width_you_uenmax": 4,
+    "width_you_uhpinc": 60,
+    "width_you_ueninc": 60,
+    "width_you_uexp": 8,
+    "width_you_ustuck": 8,
+    "width_you_usteed": 8,
+    "width_you_twoweap": 1,
+    "width_you_mcham": 2,
+    "instance_globals_mSize": 384,
+    "width_instance_globals_m_multi": 8,
+    "width_instance_globals_m_multi_reason": 8,
+    "dlevel_tSize": 40376,
+    "width_dlevel_t_locations": 13440,
+    "width_dlevel_t_objects": 13440,
+    "width_dlevel_t_monlist": 8,
+    "instance_globals_nSize": 152,
+    "width_instance_globals_n_nomovemsg": 8,
+    "kinfoSize": 272,
+    "width_kinfo_format": 4,
+    "width_kinfo_name": 256,
+    "mvitalsSize": 4,
+    "width_mvitals_mvflags": 1,
+    "instance_globals_sSize": 1408,
+    "width_instance_globals_s_sex_change_ok": 4,
+    "sinfoSize": 120,
+    "width_sinfo_restoring": 4,
+    "instance_globals_uSize": 440,
+    "width_instance_globals_u_urole": 312,
+    "width_instance_globals_u_urace": 112,
+    "instance_globals_vSize": 200,
+    "width_instance_globals_v_viz_array": 8,
+    "width_instance_globals_v_vision_full_recalc": 1,
+    "instance_globals_wSize": 192,
+    "width_instance_globals_w_were_changes": 8,
+    "instance_globals_ySize": 224,
+    "width_instance_globals_y_youmonst": 192,
+    "instance_globals_saved_cSize": 704,
+    "width_instance_globals_saved_c_context": 704,
+    "instance_globals_saved_dSize": 2584,
+    "width_instance_globals_saved_d_dungeon_topology": 114,
+    "instance_globals_saved_kSize": 272,
+    "width_instance_globals_saved_k_killer": 272,
+    "instance_globals_saved_lSize": 42568,
+    "width_instance_globals_saved_l_level": 40376,
+    "instance_globals_saved_mSize": 1552,
+    "width_instance_globals_saved_m_mvitals": 1532,
+    "instance_globals_saved_pSize": 96,
+    "width_instance_globals_saved_p_pl_character": 32
+  },
+  "schema": {
+    "d_level": {
+      "ctype": "struct d_level",
+      "fields": [
+        {
+          "name": "dnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dlevel",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "RoleName": {
+      "ctype": "struct RoleName",
+      "fields": [
+        {
+          "name": "m",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "f",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "vptrs": {
+      "ctype": "union vptrs",
+      "fields": [
+        {
+          "name": "v_nexthere",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "flag": {
+      "ctype": "struct flag",
+      "fields": [
+        {
+          "name": "confirm",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "debug",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "female",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "safe_dog",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "verbose",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "trap": {
+      "ctype": "struct trap",
+      "fields": [
+        {
+          "name": "ttyp",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "madeby_u",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        }
+      ]
+    },
+    "window_procs": {
+      "ctype": "struct window_procs",
+      "fields": [
+        {
+          "name": "wincap2",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "attribs": {
+      "ctype": "struct attribs",
+      "fields": [
+        {
+          "name": "a",
+          "d": {
+            "a": [
+              6
+            ],
+            "e": {
+              "t": "i8"
+            }
+          },
+          "ctype": "schar[6]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "obj": {
+      "ctype": "struct obj",
+      "fields": [
+        {
+          "name": "nobj",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "v",
+          "d": {
+            "s": "vptrs"
+          },
+          "ctype": "union vptrs",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "otyp",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "quan",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "spe",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oclass",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "lamplit",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "in_use",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "corpsenm",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "owornmask",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "objclass": {
+      "ctype": "struct objclass",
+      "fields": [
+        {
+          "name": "oc_material",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "oc_subtyp",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "attack": {
+      "ctype": "struct attack",
+      "fields": [
+        {
+          "name": "aatyp",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "adtyp",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "damn",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "damd",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "permonst": {
+      "ctype": "struct permonst",
+      "fields": [
+        {
+          "name": "mlet",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mlevel",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "geno",
+          "d": {
+            "t": "u16"
+          },
+          "ctype": "unsigned short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mattk",
+          "d": {
+            "a": [
+              6
+            ],
+            "e": {
+              "s": "attack"
+            }
+          },
+          "ctype": "struct attack[6]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "msound",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "msize",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mresists",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mflags1",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mflags2",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mflags3",
+          "d": {
+            "t": "u16"
+          },
+          "ctype": "unsigned short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "warntype_info": {
+      "ctype": "struct warntype_info",
+      "fields": [
+        {
+          "name": "polyd",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "species",
+          "d": {
+            "p": "permonst"
+          },
+          "ctype": "struct permonst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "speciesidx",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "prop": {
+      "ctype": "struct prop",
+      "fields": [
+        {
+          "name": "extrinsic",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "blocked",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "intrinsic",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "monst": {
+      "ctype": "struct monst",
+      "fields": [
+        {
+          "name": "nmon",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "data",
+          "d": {
+            "p": "permonst"
+          },
+          "ctype": "struct permonst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "m_id",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "cham",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "m_lev",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mx",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "my",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mhp",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mappearance",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "m_ap_type",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mtame",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "minvis",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mcan",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mcansee",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "msleeping",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mstun",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mcanmove",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mconf",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mpeaceful",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "minvent",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "display_hints": {
+      "ctype": "struct display_hints",
+      "fields": [
+        {
+          "name": "botl",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "context_info": {
+      "ctype": "struct context_info",
+      "fields": [
+        {
+          "name": "warntype",
+          "d": {
+            "s": "warntype_info"
+          },
+          "ctype": "struct warntype_info",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "rm": {
+      "ctype": "struct rm",
+      "fields": [
+        {
+          "name": "typ",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "u_conduct": {
+      "ctype": "struct u_conduct",
+      "fields": [
+        {
+          "name": "polyselfs",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "c_common_strings": {
+      "ctype": "struct c_common_strings",
+      "fields": [
+        {
+          "name": "c_thats_enough_tries",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        },
+        {
+          "name": "c_shudder_for_moment",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        },
+        {
+          "name": "c_Never_mind",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        },
+        {
+          "name": "c_the_your",
+          "d": {
+            "a": [
+              2
+            ],
+            "e": {
+              "p": ""
+            }
+          },
+          "ctype": "const char *const[2]",
+          "bit": false,
+          "const": true
+        }
+      ]
+    },
+    "Role": {
+      "ctype": "struct Role",
+      "fields": [
+        {
+          "name": "name",
+          "d": {
+            "s": "RoleName"
+          },
+          "ctype": "struct RoleName",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "dgn_topology": {
+      "ctype": "struct dgn_topology",
+      "fields": [
+        {
+          "name": "d_water_level",
+          "d": {
+            "s": "d_level"
+          },
+          "ctype": "d_level",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "d_air_level",
+          "d": {
+            "s": "d_level"
+          },
+          "ctype": "d_level",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "d_astral_level",
+          "d": {
+            "s": "d_level"
+          },
+          "ctype": "d_level",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "Race": {
+      "ctype": "struct Race",
+      "fields": [
+        {
+          "name": "noun",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "adj",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "individual",
+          "d": {
+            "s": "RoleName"
+          },
+          "ctype": "struct RoleName",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "selfmask",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "attrmax",
+          "d": {
+            "a": [
+              6
+            ],
+            "e": {
+              "t": "i16"
+            }
+          },
+          "ctype": "xint16[6]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "Gender": {
+      "ctype": "struct Gender",
+      "fields": [
+        {
+          "name": "adj",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_i": {
+      "ctype": "struct instance_globals_i",
+      "fields": [
+        {
+          "name": "invent",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "you": {
+      "ctype": "struct you",
+      "fields": [
+        {
+          "name": "ux",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uy",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dx",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dy",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dz",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uz",
+          "d": {
+            "s": "d_level"
+          },
+          "ctype": "d_level",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ulevel",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ulevelmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "utrap",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "utraptype",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhunger",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uprops",
+          "d": {
+            "a": [
+              69
+            ],
+            "e": {
+              "s": "prop"
+            }
+          },
+          "ctype": "struct prop[69]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "umonster",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "umonnum",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mh",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mhmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mtimedone",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "macurr",
+          "d": {
+            "s": "attribs"
+          },
+          "ctype": "struct attribs",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mamax",
+          "d": {
+            "s": "attribs"
+          },
+          "ctype": "struct attribs",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ulycn",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uswallow",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "uinwater",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "uundetected",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mfemale",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "uconduct",
+          "d": {
+            "s": "u_conduct"
+          },
+          "ctype": "struct u_conduct",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "acurr",
+          "d": {
+            "s": "attribs"
+          },
+          "ctype": "struct attribs",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "amax",
+          "d": {
+            "s": "attribs"
+          },
+          "ctype": "struct attribs",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhp",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhpmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uen",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uenmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhpinc",
+          "d": {
+            "a": [
+              30
+            ],
+            "e": {
+              "t": "i16"
+            }
+          },
+          "ctype": "xint16[30]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ueninc",
+          "d": {
+            "a": [
+              30
+            ],
+            "e": {
+              "t": "i16"
+            }
+          },
+          "ctype": "xint16[30]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uexp",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ustuck",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "usteed",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "twoweap",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mcham",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_m": {
+      "ctype": "struct instance_globals_m",
+      "fields": [
+        {
+          "name": "multi",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "cmdcount_nht",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "multi_reason",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "dlevel_t": {
+      "ctype": "dlevel_t",
+      "fields": [
+        {
+          "name": "locations",
+          "d": {
+            "a": [
+              80,
+              21
+            ],
+            "e": {
+              "s": "rm"
+            }
+          },
+          "ctype": "struct rm[80][21]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "objects",
+          "d": {
+            "a": [
+              80,
+              21
+            ],
+            "e": {
+              "p": "obj"
+            }
+          },
+          "ctype": "struct obj *[80][21]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "monlist",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_n": {
+      "ctype": "struct instance_globals_n",
+      "fields": [
+        {
+          "name": "nomovemsg",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "kinfo": {
+      "ctype": "struct kinfo",
+      "fields": [
+        {
+          "name": "format",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "name",
+          "d": {
+            "a": [
+              256
+            ],
+            "e": {
+              "t": "i8"
+            }
+          },
+          "ctype": "char[256]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "mvitals": {
+      "ctype": "struct mvitals",
+      "fields": [
+        {
+          "name": "mvflags",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_s": {
+      "ctype": "struct instance_globals_s",
+      "fields": [
+        {
+          "name": "sex_change_ok",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "sinfo": {
+      "ctype": "struct sinfo",
+      "fields": [
+        {
+          "name": "restoring",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_u": {
+      "ctype": "struct instance_globals_u",
+      "fields": [
+        {
+          "name": "urole",
+          "d": {
+            "s": "Role"
+          },
+          "ctype": "struct Role",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "urace",
+          "d": {
+            "s": "Race"
+          },
+          "ctype": "struct Race",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_v": {
+      "ctype": "struct instance_globals_v",
+      "fields": [
+        {
+          "name": "viz_array",
+          "d": {
+            "p": ""
+          },
+          "ctype": "seenV **",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "vision_full_recalc",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_w": {
+      "ctype": "struct instance_globals_w",
+      "fields": [
+        {
+          "name": "were_changes",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_y": {
+      "ctype": "struct instance_globals_y",
+      "fields": [
+        {
+          "name": "youmonst",
+          "d": {
+            "s": "monst"
+          },
+          "ctype": "struct monst",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_c": {
+      "ctype": "struct instance_globals_saved_c",
+      "fields": [
+        {
+          "name": "context",
+          "d": {
+            "s": "context_info"
+          },
+          "ctype": "struct context_info",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_d": {
+      "ctype": "struct instance_globals_saved_d",
+      "fields": [
+        {
+          "name": "dungeon_topology",
+          "d": {
+            "s": "dgn_topology"
+          },
+          "ctype": "struct dgn_topology",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_k": {
+      "ctype": "struct instance_globals_saved_k",
+      "fields": [
+        {
+          "name": "killer",
+          "d": {
+            "s": "kinfo"
+          },
+          "ctype": "struct kinfo",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_l": {
+      "ctype": "struct instance_globals_saved_l",
+      "fields": [
+        {
+          "name": "level",
+          "d": {
+            "s": "dlevel_t"
+          },
+          "ctype": "dlevel_t",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_m": {
+      "ctype": "struct instance_globals_saved_m",
+      "fields": [
+        {
+          "name": "mvitals",
+          "d": {
+            "a": [
+              383
+            ],
+            "e": {
+              "s": "mvitals"
+            }
+          },
+          "ctype": "struct mvitals[383]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_p": {
+      "ctype": "struct instance_globals_saved_p",
+      "fields": [
+        {
+          "name": "pl_character",
+          "d": {
+            "a": [
+              32
+            ],
+            "e": {
+              "t": "i8"
+            }
+          },
+          "ctype": "char[32]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    }
+  },
+  "globals": [
+    {
+      "name": "mons",
+      "d": {
+        "a": [
+          384
+        ],
+        "e": {
+          "s": "permonst"
+        }
+      }
+    },
+    {
+      "name": "u",
+      "d": {
+        "s": "you"
+      }
+    },
+    {
+      "name": "gy",
+      "d": {
+        "s": "instance_globals_y"
+      }
+    },
+    {
+      "name": "uwep",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "gu",
+      "d": {
+        "s": "instance_globals_u"
+      }
+    },
+    {
+      "name": "program_state",
+      "d": {
+        "s": "sinfo"
+      }
+    },
+    {
+      "name": "windowprocs",
+      "d": {
+        "s": "window_procs"
+      }
+    },
+    {
+      "name": "gw",
+      "d": {
+        "s": "instance_globals_w"
+      }
+    },
+    {
+      "name": "disp",
+      "d": {
+        "s": "display_hints"
+      }
+    },
+    {
+      "name": "uamul",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "flags",
+      "d": {
+        "s": "flag"
+      }
+    },
+    {
+      "name": "gm",
+      "d": {
+        "s": "instance_globals_m"
+      }
+    },
+    {
+      "name": "svk",
+      "d": {
+        "s": "instance_globals_saved_k"
+      }
+    },
+    {
+      "name": "svp",
+      "d": {
+        "s": "instance_globals_saved_p"
+      }
+    },
+    {
+      "name": "genders",
+      "d": {
+        "a": [
+          0
+        ],
+        "e": {
+          "s": "Gender"
+        }
+      }
+    },
+    {
+      "name": "gs",
+      "d": {
+        "s": "instance_globals_s"
+      }
+    },
+    {
+      "name": "uarmg",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uarm",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "c_common_strings",
+      "d": {
+        "s": "c_common_strings"
+      }
+    },
+    {
+      "name": "svm",
+      "d": {
+        "s": "instance_globals_saved_m"
+      }
+    },
+    {
+      "name": "uskin",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "ynchars",
+      "d": {
+        "a": [
+          0
+        ],
+        "e": {
+          "t": "i8"
+        }
+      }
+    },
+    {
+      "name": "svd",
+      "d": {
+        "s": "instance_globals_saved_d"
+      }
+    },
+    {
+      "name": "uball",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "gv",
+      "d": {
+        "s": "instance_globals_v"
+      }
+    },
+    {
+      "name": "gi",
+      "d": {
+        "s": "instance_globals_i"
+      }
+    },
+    {
+      "name": "uarmc",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uarmu",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uarmh",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "objects",
+      "d": {
+        "a": [
+          482
+        ],
+        "e": {
+          "s": "objclass"
+        }
+      }
+    },
+    {
+      "name": "uarms",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uarmf",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "ublindf",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uswapwep",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "svl",
+      "d": {
+        "s": "instance_globals_saved_l"
+      }
+    },
+    {
+      "name": "gn",
+      "d": {
+        "s": "instance_globals_n"
+      }
+    },
+    {
+      "name": "svc",
+      "d": {
+        "s": "instance_globals_saved_c"
+      }
+    }
+  ],
+  "rngSites": [
+    {
+      "function": "polyman",
+      "line": 256,
+      "kind": "rn1",
+      "offset": 9112
+    },
+    {
+      "function": "newman",
+      "line": 342,
+      "kind": "rn1",
+      "offset": 11916
+    },
+    {
+      "function": "newman",
+      "line": 361,
+      "kind": "rn2",
+      "offset": 12740
+    },
+    {
+      "function": "newman",
+      "line": 390,
+      "kind": "rn1",
+      "offset": 13858
+    },
+    {
+      "function": "newman",
+      "line": 404,
+      "kind": "rn1",
+      "offset": 14399
+    },
+    {
+      "function": "newman",
+      "line": 414,
+      "kind": "rn1",
+      "offset": 14735
+    },
+    {
+      "function": "polyself",
+      "line": 490,
+      "kind": "rn2",
+      "offset": 17508
+    },
+    {
+      "function": "polyself",
+      "line": 492,
+      "kind": "rnd",
+      "offset": 17591
+    },
+    {
+      "function": "polyself",
+      "line": 554,
+      "kind": "rn2",
+      "offset": 19903
+    },
+    {
+      "function": "polyself",
+      "line": 556,
+      "kind": "rn2",
+      "offset": 20011
+    },
+    {
+      "function": "polyself",
+      "line": 558,
+      "kind": "rn2",
+      "offset": 20120
+    },
+    {
+      "function": "polyself",
+      "line": 601,
+      "kind": "rn2",
+      "offset": 22450
+    },
+    {
+      "function": "polyself",
+      "line": 674,
+      "kind": "rn2",
+      "offset": 25878
+    },
+    {
+      "function": "polyself",
+      "line": 675,
+      "kind": "rn2",
+      "offset": 25938
+    },
+    {
+      "function": "polyself",
+      "line": 678,
+      "kind": "rn2",
+      "offset": 26128
+    },
+    {
+      "function": "polyself",
+      "line": 702,
+      "kind": "rn1",
+      "offset": 26926
+    },
+    {
+      "function": "polyself",
+      "line": 712,
+      "kind": "rn2",
+      "offset": 27315
+    },
+    {
+      "function": "polymon",
+      "line": 792,
+      "kind": "rn2",
+      "offset": 30022
+    },
+    {
+      "function": "polymon",
+      "line": 813,
+      "kind": "rn1",
+      "offset": 30772
+    },
+    {
+      "function": "polymon",
+      "line": 861,
+      "kind": "d",
+      "offset": 32627
+    },
+    {
+      "function": "polymon",
+      "line": 866,
+      "kind": "rnd",
+      "offset": 32773
+    },
+    {
+      "function": "polymon",
+      "line": 868,
+      "kind": "d",
+      "offset": 32816
+    },
+    {
+      "function": "polymon",
+      "line": 897,
+      "kind": "rn1",
+      "offset": 33673
+    },
+    {
+      "function": "polymon",
+      "line": 956,
+      "kind": "rnl",
+      "offset": 36362
+    },
+    {
+      "function": "dogaze",
+      "line": 1715,
+      "kind": "d",
+      "offset": 62983
+    },
+    {
+      "function": "dogaze",
+      "line": 1722,
+      "kind": "rn2",
+      "offset": 63309
+    },
+    {
+      "function": "dogaze",
+      "line": 1741,
+      "kind": "rn2",
+      "offset": 64130
+    },
+    {
+      "function": "dogaze",
+      "line": 1743,
+      "kind": "d",
+      "offset": 64175
+    },
+    {
+      "function": "domindblast",
+      "line": 1921,
+      "kind": "rn2",
+      "offset": 70711
+    },
+    {
+      "function": "domindblast",
+      "line": 1921,
+      "kind": "rn2",
+      "offset": 70723
+    },
+    {
+      "function": "domindblast",
+      "line": 1922,
+      "kind": "rnd",
+      "offset": 70752
+    }
+  ],
+  "variadicABI": {
+    "Your_pppp": {
+      "name": "Your",
+      "types": [
+        "const char *",
+        "char *",
+        "char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "You_p": {
+      "name": "You",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "urgent_pline_pp": {
+      "name": "urgent_pline",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "sprintf_pppp": {
+      "name": "sprintf",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *",
+        "char *"
+      ],
+      "ret": "int"
+    },
+    "livelog_printf_lppp": {
+      "name": "livelog_printf",
+      "types": [
+        "long",
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "urgent_pline_p": {
+      "name": "urgent_pline",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "livelog_printf_lpip": {
+      "name": "livelog_printf",
+      "types": [
+        "long",
+        "const char *",
+        "int",
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "Your_p": {
+      "name": "Your",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "You_pp": {
+      "name": "You",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "pline_pp": {
+      "name": "pline",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "pline_p": {
+      "name": "pline",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "You_cant_p": {
+      "name": "You_cant",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "You_cant_pp": {
+      "name": "You_cant",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "Your_pp": {
+      "name": "Your",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "sprintf_ppp": {
+      "name": "sprintf",
+      "types": [
+        "char *",
+        "const char *",
+        "const char *"
+      ],
+      "ret": "int"
+    },
+    "You_feel_pp": {
+      "name": "You_feel",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "livelog_printf_lpp": {
+      "name": "livelog_printf",
+      "types": [
+        "long",
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "You_ppp": {
+      "name": "You",
+      "types": [
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "pline_ppp": {
+      "name": "pline",
+      "types": [
+        "const char *",
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "pline_The_p": {
+      "name": "pline_The",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "pline_The_pp": {
+      "name": "pline_The",
+      "types": [
+        "const char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "Your_ppp": {
+      "name": "Your",
+      "types": [
+        "const char *",
+        "char *",
+        "char *"
+      ],
+      "ret": "void"
+    },
+    "You_pppp": {
+      "name": "You",
+      "types": [
+        "const char *",
+        "const char *",
+        "const char *",
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "impossible_p": {
+      "name": "impossible",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "impossible_pi": {
+      "name": "impossible",
+      "types": [
+        "const char *",
+        "int"
+      ],
+      "ret": "void"
+    },
+    "There_pp": {
+      "name": "There",
+      "types": [
+        "const char *",
+        "const char *"
+      ],
+      "ret": "void"
+    },
+    "There_p": {
+      "name": "There",
+      "types": [
+        "const char *"
+      ],
+      "ret": "void"
+    }
+  },
+  "dependencies": {
+    "Armor_gone": "int (void)",
+    "Blindf_off": "void (struct obj *)",
+    "Boots_off": "int (void)",
+    "Cloak_off": "int (void)",
+    "Gloves_off": "int (void)",
+    "Helmet_off": "int (void)",
+    "Mgender": "int (struct monst *)",
+    "Monnam": "char *(struct monst *)",
+    "On_stairs": "boolean (coordxy, coordxy)",
+    "Resists_Elem": "boolean (struct monst *, int)",
+    "Shield_off": "int (void)",
+    "Some_Monnam": "char *(struct monst *)",
+    "abs": "int (int)",
+    "acurr": "schar (int)",
+    "add_damage": "void (coordxy, coordxy, long)",
+    "adjabil": "void (int, int)",
+    "an": "char *(const char *)",
+    "arti_light_radius": "int (struct obj *)",
+    "artifact_light": "boolean (struct obj *)",
+    "attacktype": "boolean (struct permonst *, int)",
+    "attacktype_fordmg": "struct attack *(struct permonst *, int, int)",
+    "breakarm": "boolean (struct permonst *)",
+    "buried_ball_to_freedom": "void (void)",
+    "bury_objs": "void (int, int)",
+    "can_be_strangled": "boolean (struct monst *)",
+    "can_ride": "boolean (struct monst *)",
+    "cancel_don": "void (void)",
+    "canletgo": "boolean (struct obj *, const char *)",
+    "canseemon": "int (struct monst *)",
+    "character_race": "const struct Race *(short)",
+    "cloak_simple_name": "const char *(struct obj *)",
+    "counter_were": "int (int)",
+    "cxname": "char *(struct obj *)",
+    "dealloc_killer": "void (struct kinfo *)",
+    "defended": "boolean (struct monst *, int)",
+    "del_light_source": "void (int, union any *)",
+    "deltrap": "void (struct trap *)",
+    "destroy_items": "int (struct monst *, int, int)",
+    "discover_object": "void (int, boolean, boolean, boolean)",
+    "dismount_steed": "void (int)",
+    "dist2": "int (coordxy, coordxy, coordxy, coordxy)",
+    "dmgtype": "boolean (struct permonst *, int)",
+    "dmgtype_fromattack": "struct attack *(struct permonst *, int, int)",
+    "done": "void (int)",
+    "donning": "boolean (struct obj *)",
+    "dotrap": "void (struct trap *, unsigned int)",
+    "dropx": "void (struct obj *)",
+    "egg_type_from_parent": "int (int, boolean)",
+    "encumber_msg": "void (void)",
+    "end_burn": "void (struct obj *, boolean)",
+    "exercise": "void (int, boolean)",
+    "expels": "void (struct monst *, struct permonst *, boolean)",
+    "feeltrap": "void (struct trap *)",
+    "find_ac": "void (void)",
+    "find_delayed_killer": "struct kinfo *(int)",
+    "getdir": "int (const char *)",
+    "getlin": "void (const char *, char *)",
+    "golemhp": "int (int)",
+    "has_ceiling": "boolean (d_level *)",
+    "helm_simple_name": "const char *(struct obj *)",
+    "hideunder": "boolean (struct monst *)",
+    "hliquid": "const char *(const char *)",
+    "ignite_items": "void (struct obj *)",
+    "in_rooms": "char *(coordxy, coordxy, int)",
+    "instapetrify": "void (const char *)",
+    "is_fainted": "boolean (void)",
+    "is_home_elemental": "boolean (struct permonst *)",
+    "is_pool": "boolean (coordxy, coordxy)",
+    "is_pool_or_lava": "boolean (coordxy, coordxy)",
+    "killed": "void (struct monst *)",
+    "l_monnam": "char *(struct monst *)",
+    "learn_egg_type": "void (int)",
+    "losehp": "void (int, const char *, schar)",
+    "make_blinded": "void (long, boolean)",
+    "make_glib": "void (int)",
+    "make_sick": "void (long, const char *, boolean, int)",
+    "make_slimed": "void (long, const char *)",
+    "make_stoned": "void (long, const char *, int, const char *)",
+    "makeplural": "char *(const char *)",
+    "maketrap": "struct trap *(coordxy, coordxy, int)",
+    "max_rank_sz": "void (void)",
+    "maybe_adjust_light": "void (struct obj *, int)",
+    "mkclass_poly": "int (int)",
+    "mksobj": "struct obj *(int, boolean, boolean)",
+    "mon_nam": "char *(struct monst *)",
+    "monst_to_any": "anything *(struct monst *)",
+    "mungspaces": "char *(char *)",
+    "name_to_mon": "int (const char *, int *)",
+    "name_to_monclass": "int (const char *, int *)",
+    "new_light_source": "void (coordxy, coordxy, int, int, union any *)",
+    "newhp": "int (void)",
+    "newpw": "int (void)",
+    "newsym": "void (coordxy, coordxy)",
+    "newuhs": "void (boolean)",
+    "nomul": "void (int)",
+    "num_horns": "int (struct permonst *)",
+    "observe_object": "void (struct obj *)",
+    "on_level": "boolean (d_level *, d_level *)",
+    "otense": "char *(struct obj *, const char *)",
+    "pmname": "const char *(struct permonst *, int)",
+    "poly_when_stoned": "boolean (struct permonst *)",
+    "racial_exception": "int (struct monst *, struct obj *)",
+    "rank_of": "const char *(int, short, boolean)",
+    "redist_attr": "void (void)",
+    "reset_utrap": "void (boolean)",
+    "resists_drli": "boolean (struct monst *)",
+    "retouch_equipment": "void (int)",
+    "rndexp": "long (boolean)",
+    "rounddiv": "int (long, int)",
+    "s_suffix": "char *(const char *)",
+    "see_monsters": "void (void)",
+    "selftouch": "void (const char *)",
+    "sensemon": "int (struct monst *)",
+    "set_itimeout": "void (long *, long)",
+    "set_mimic_blocking": "void (void)",
+    "set_mon_data": "void (struct monst *, struct permonst *)",
+    "set_ustuck": "void (struct monst *)",
+    "set_utrap": "void (unsigned int, unsigned int)",
+    "setmangry": "void (struct monst *, boolean)",
+    "setuhpmax": "void (int, boolean)",
+    "setworn": "void (struct obj *, long)",
+    "simpleonames": "char *(struct obj *)",
+    "sliparm": "boolean (struct permonst *)",
+    "spoteffects": "void (boolean)",
+    "status_initialize": "void (boolean)",
+    "sticks": "boolean (struct permonst *)",
+    "strcat": "char *(char *, const char *)",
+    "strchr": "char *(const char *, int)",
+    "strcmp": "int (const char *, const char *)",
+    "strcpy": "char *(char *, const char *)",
+    "strncmp": "int (const char *, const char *, unsigned long)",
+    "strstri": "char *(const char *, const char *)",
+    "strsubst": "char *(char *, const char *, const char *)",
+    "surface": "const char *(coordxy, coordxy)",
+    "t_at": "struct trap *(coordxy, coordxy)",
+    "the": "char *(const char *)",
+    "the_unique_pm": "boolean (struct permonst *)",
+    "throwit": "void (struct obj *, long, boolean, struct obj *)",
+    "ubreatheu": "void (struct attack *)",
+    "ubuzz": "void (int, int)",
+    "unconscious": "boolean (void)",
+    "unmul": "void (const char *)",
+    "unpunish": "void (void)",
+    "untwoweapon": "void (void)",
+    "update_inventory": "void (void)",
+    "useup": "void (struct obj *)",
+    "uswapwepgone": "void (void)",
+    "uwepgone": "void (void)",
+    "valid_vampshiftform": "boolean (int, int)",
+    "vtense": "char *(const char *, const char *)",
+    "wakeup": "void (struct monst *, boolean)",
+    "weapon_descr": "const char *(struct obj *)",
+    "were_beastie": "int (int)",
+    "were_summon": "int (struct permonst *, boolean, int *, char *)",
+    "y_monnam": "char *(struct monst *)",
+    "yn_function": "char (const char *, const char *, char, boolean)",
+    "yname": "char *(struct obj *)",
+    "youhiding": "void (boolean, int)"
+  },
+  "public": {
+    "set_uasmon": "void (void)",
+    "float_vs_flight": "void (void)",
+    "steed_vs_stealth": "void (void)",
+    "change_sex": "void (void)",
+    "livelog_newform": "void (boolean, int, int)",
+    "polyself": "void (int)",
+    "polymon": "int (int)",
+    "uasmon_maxStr": "schar (void)",
+    "rehumanize": "void (void)",
+    "dobreathe": "int (void)",
+    "dospit": "int (void)",
+    "doremove": "int (void)",
+    "dospinweb": "int (void)",
+    "dosummon": "int (void)",
+    "dogaze": "int (void)",
+    "dohide": "int (void)",
+    "dopoly": "int (void)",
+    "domindblast": "int (void)",
+    "uunstick": "void (void)",
+    "skinback": "void (boolean)",
+    "mbodypart": "const char *(struct monst *, int)",
+    "body_part": "const char *(int)",
+    "poly_gender": "int (void)",
+    "ugolemeffects": "void (int, int)",
+    "ugenocided": "boolean (void)",
+    "udeadinside": "const char *(void)"
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-polyself-abi.py": "05d671b0839584afd8456535ada136431b7525cdd0ddebdd532d51fd41fa82c9",
+    "js/standalone/polyself.js": "8eb74e67e1d16c63ea951621c78509403d05ad008b8084e1e10f476f87c23b4f",
+    "js/standalone/hero-startup.js": "ede908dc5667db890e49b0dbd673a9c7164bf02b04acaca6b6d61ffde400e78e",
+    "scripts/tu-polyself-layout.h": "67da0abadda5eb49b7d57d7eae746f70e930503a2826c652f676d168c18295e8",
+    "nethack-c/wasm/tu-fragments/polyself-schema.json": "b1635d05f03da9f5897ccec59e69730d5a8caa3eac30320ab4abc716f5bbc2ad",
+    "nethack-c/wasm/tu-libraries/polyself.js": "97bfe618d0c0f0f006cc49bf2fb4f72d667662245961c857583b7146e4e8fabc",
+    "nethack-c/wasm/tu-fragments/polyself-support.c": "74333e4d6121793b8603fc0b54b11900383b214ed92172e188434d9a5759b49e",
+    "nethack-c/wasm/tu-fragments/polyself-source-data.h": "e12a578f30087febc05846af33be53e4778dacc72a6ae17ad469f0708508cef1",
+    "js/ported/polyself.js": "ba3f6d670dbcf21ab86be5f9d12c71d69b4b7562e6242a19e930da17c115bd55",
+    "js/ported/polyself-runtime.js": "ec4545d54e1084a33ad6c3c847fff66b2a2db250143bb87c04833fb0de7a1adf",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+  },
+  "referenceHeaderSha256": {
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/assert.h": "477f9fcf67e8eccb59dea935f0dc7abd40829f8d61a3e73e4151ff6a18ef25f9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/alltypes.h": "3ff1707efd8cba950d5604298884372be259d614600fa2dfc21d8a66010cc60c",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/ioctl.h": "a1ef9fa70d6d1f14e1a370b21c428b27c5f89e88ebe7500174d60683b096219e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/ioctl_fix.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/limits.h": "b9358162a3bdf8a203cc3e24195fe3a0b3f27ec58669a596cbba96ba0c855e70",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/posix.h": "1518ec6b108557044f70590eeabfb55f419360d2bc93e503f7d24efaf0b8bded",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/resource.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/signal.h": "efc3603f0b1d17a4802c1b5ff7f38d763b85e40eb8bfc8d3eceb212a305abc55",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/stdint.h": "0211357ac8bc3e08fae6703be5502e3cd917b4c02d6b51ac5f22a2473b0a2b03",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/termios.h": "9d2247d093e9ed7b6dd2c4305f500987d0bbb8a5b1c4df10d51154d2e41d133a",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/ctype.h": "0bf45ee657538bf2033a9a17f286f5a4cbcba22a19667deb28d43ac8952c6d30",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/features.h": "078acf7161200b03710cdf93f039f6dbfed993ec619f16ea902a41871c228603",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/inttypes.h": "68064c64ec3303bd27ee6ff514b945bcf910b82c3d63c5ddd6c351a836d78543",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/limits.h": "54d66aac63111f27a6b6584ee91711ecdcfbb26b730ab0cf744d8a05503b27c7",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/regex.h": "4acf94cf0e0f14b2eb50accac93fee886fcc4f821a9b7bb5347a5d035a027ad3",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/signal.h": "18a55cd40db16c4ee993521d53f288e1a4537b9ccb31ab43c35c9a1e2a24f947",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdarg.h": "20b903cf4ddd7e0244e0bee6e615e24e1921bab2f0986957fe4f7869c608890a",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stddef.h": "b1e3361a23c44b7d7e9b5911b5d87fe822f172192c2bae816f14e64431ff701b",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdint.h": "b6e77f1611e56cf499233172cab8bc09c0f7d937f3daa5ad552e1712fc6663e5",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdio.h": "14d89974ef0227b6ea8f000ef93a283efcdc8c852b511c00a9850b5b0a1689b9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdlib.h": "8f732c241f6d2f0a56dbaeb98ea044d5c2aec8e78fb5e734bb67c910cb954632",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/string.h": "75aabfb7b9dc14788dcb2a89bf21b371eeb2b29eb4af6b8374f1ffd682447ccf",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/strings.h": "b8fde0a141ac481de1f88abafbf5678ddfd8d89b309e3253adea1fa0ecb8d9e4",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/ioctl.h": "18cc2b9eee923943e198f03f77cae411bd8f34d9a3fc2202851a1e95dc73532e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/resource.h": "72450db0aa279bc66100654c177e1d16475a52cc32848156f1c6cff44a3fc836",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/select.h": "cda463ae12b5b189bea17a69b403d6f53949f013d926d92fb325be11f95db3ae",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/time.h": "2199cd4c44b3ebc8a18ca2ff146983e43b8747cc4ed2b4c2f71b583895b4e3cb",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/wait.h": "acde94b89d03174f7ae945e3fe671f5fefc3beb815c99cbff0b596958377d36f",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/termios.h": "09b969e2fc65d080cd77a889cc728fa464de38a1edabbed145d9cbf1d567da51",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/time.h": "57b4e7a312305ca8adf5822408a0fc6cf3ebafb278a2d96936f55a8d2af8e880",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/unistd.h": "7167ff608601a519c99c9beba65f956d4d4d6911def339513b1f235bbd5ee49f",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/wasi/api.h": "5d877115f5a45c8765f4c31bf58499e2582446995feea4aaac00517ea881b940",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg___gnuc_va_list.h": "feca975bfdfb254d17458a8e3d51f8ad6d9bdc9fd6287727f0f8b2fb81fcb0b0",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg___va_copy.h": "f0a8d3c963338173f2d57b2cbc209dde38c90536107b15eb0cf78166d4caee1f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_header_macro.h": "7b3fbcc442af2508f36bb2dc98d9ad2b8a1f5c0f5333394fb2159c8bd5ecd5b8",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_arg.h": "274c75a1db86f649439aa3bcc1dead4170725e6f803925c3fc38a2e93307afdc",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_copy.h": "bb195f56cb08d4cee6a60bd9f62f34466e8ac4f89f6fed043b044cb2f7ead010",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_list.h": "81c3055f7033e26e7f53705653bc9d69b5202f25c2692e03b3a4f77ff44a7d76",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_header_macro.h": "4cf46e8fbb809df048eecbbd63686fa741da27afa8db4245bd1f61c1fb1611dc",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_max_align_t.h": "3c1e4de47f4f06b35e2c5890d670052e84f716760505ff51b022fc8b21a9400f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_null.h": "b1d71b08563ab3d2c22a1e4f8ddf4d9a1111c89e9404b859a45c307e8ebc6c69",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_offsetof.h": "e5f0f4ff8ff5fc6a1cc8b535f5065f1728eadd2bf1e1401f021f803ec7b4222f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_ptrdiff_t.h": "b4178a57f3711b7013cba747a72a2f178c29fa9364e77d75b2159754072ced43",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_size_t.h": "d86ddc0238da09b385846ebef814ffc50a44e40cf85d4e3793f485952b7e73ad",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_wchar_t.h": "1900d4998aef3698b06399ed686db0c21e26509b08638a25734fb97ae89b1001",
+    ".cache/emsdk/upstream/lib/clang/21/include/inttypes.h": "eb8a7b2e17d57e9321043282bf0267fedd2ca58aadb11b04929ddbf8100fc3bc",
+    ".cache/emsdk/upstream/lib/clang/21/include/limits.h": "6b59cc1b6f86c901bf41ce942b8434530e852eb16e79e6e9287f89441f71efca",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
+    ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
+    ".cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
+    ".cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",
+    ".cache/wasm64-build/tree/include/attrib.h": "f20418d80bc2983e3d9af6cc9a02d30f57aa6b54116691a8e4ebebd425de757d",
+    ".cache/wasm64-build/tree/include/botl.h": "c26c637bcb8b2615e82fbc0804175cd8c87f63a3caf35c742e0a6fa410a31009",
+    ".cache/wasm64-build/tree/include/color.h": "f7ab4cdf5113898bf58ba85217f5d693b8564c232ff706ee894fdf070a3a105b",
+    ".cache/wasm64-build/tree/include/config.h": "5585d9c88d7ea21a9a78b45616cc31ae4ea680cb7b34026f70f92b91288a499f",
+    ".cache/wasm64-build/tree/include/config1.h": "b9e97cefc8fcfe4f36a1145ebfb655099f2afd2591227fa5f93b3f4dc0071042",
+    ".cache/wasm64-build/tree/include/context.h": "e1303b7309e556c65e41ec120b704079da6a0c9ef73a08745663f7b923ad7eef",
+    ".cache/wasm64-build/tree/include/coord.h": "f8788b777ea0fc8e4f5df40ce7b9add1a255c5846bdd1393518f7ea14ef6e3d2",
+    ".cache/wasm64-build/tree/include/cstd.h": "ef5e61d5eb7d1a5194c4a4544745a45893ccbea4c1cf083792235f562e173fc2",
+    ".cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470",
+    ".cache/wasm64-build/tree/include/defsym.h": "009ae2e8921fa4c376fe0ae3b4a42407421274fc15d1a8834c6ae519dad82f87",
+    ".cache/wasm64-build/tree/include/display.h": "36e9f838d3298d047e0605abcf2deb627eb79c18aa72f770d5289c34f3692b4c",
+    ".cache/wasm64-build/tree/include/dungeon.h": "e48eaafdb22fc82121de702086c40c3245d6aeb9fe5556712ee1e2f18744a308",
+    ".cache/wasm64-build/tree/include/engrave.h": "1c5617162ea649a0305df8d997b7a1075b35c9b3b97311cdfeebbd60bb9c482e",
+    ".cache/wasm64-build/tree/include/extern.h": "385f7478000f79ff137f2b6be533eef7b518b47a00b0d8c7e35ea52c877dec2e",
+    ".cache/wasm64-build/tree/include/flag.h": "bb28a3f835f3b38119f95311d76b535ef5053f3fffa42372d9f7b1c4c917806f",
+    ".cache/wasm64-build/tree/include/fnamesiz.h": "bd41c47c66e4213835bc1f052d831f8643bc7e7cb9aae0effb27f41edf1b5c35",
+    ".cache/wasm64-build/tree/include/global.h": "8ff55a3c6ee5cc18d00f1982146080d81e9e3dc9e369ab1ffc79890c07b8a8d0",
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/include/hacklib.h": "d9bf2b0ae2003c0611d2b9a351fdbbb30d58def2ecccc1235d4ed1e7b52e3c53",
+    ".cache/wasm64-build/tree/include/integer.h": "e88805c10f195e6de63b8c5cb46049f466ef040de9987a6ab61c36ef977f515a",
+    ".cache/wasm64-build/tree/include/lint.h": "bb08d5658f43c87c2b5129a33cb4e3264693e68d3cd654c67a5ecd757c98adcc",
+    ".cache/wasm64-build/tree/include/mextra.h": "e78bdfa21d4fd7718f1a25ed8f1ef466c96c2bd49f2069af7d1ab346148a1229",
+    ".cache/wasm64-build/tree/include/mfndpos.h": "4711c0e5c67ae88a6a28c776bc542d0d06452d742456964b77913e896b5f56f5",
+    ".cache/wasm64-build/tree/include/mkroom.h": "7baf848feb30c94c196e6bee2ee7f0a83822ad92042dd855b74d212fde514f5a",
+    ".cache/wasm64-build/tree/include/monattk.h": "00c2283c2687f2dd5fa8a3088623cd621822289018c0072db9cad5a2a94883ba",
+    ".cache/wasm64-build/tree/include/mondata.h": "6f1ca3db69a5cfbe425859fe1c7decfa1da1fdac45af9d8a84be5f0f8c9c21f2",
+    ".cache/wasm64-build/tree/include/monflag.h": "89e4ef1dc1cd46fa8d81ff833351934c666420abdf902286bdacdca0bb171d88",
+    ".cache/wasm64-build/tree/include/monst.h": "08e9e2251ac5c3beedb8700dd56287f9f397b506851ceb44a37e41b6d80067a6",
+    ".cache/wasm64-build/tree/include/monsters.h": "c63db922770c96a9956d221f364ba4368a9f81f81c8d64ed28251a0506d4a906",
+    ".cache/wasm64-build/tree/include/nhlua.h": "48553ca9ab16ac2928479cabdf51d7f090fc38e1641dd5d97d819f612c6d87d9",
+    ".cache/wasm64-build/tree/include/nhregex.h": "a2936fd291537090773d861c083c3574c7a0a798c688e87dedb4405f73de653f",
+    ".cache/wasm64-build/tree/include/obj.h": "a4d1b994c5acd6fe04d411485d84491553d6df02dfbd7480181a15a7a05456e2",
+    ".cache/wasm64-build/tree/include/objclass.h": "101f92e0024e4404033845fb15171f8ed4b79374907a6a172b4eb7b026e1eb52",
+    ".cache/wasm64-build/tree/include/objects.h": "eb573ca76f7afe35d6420b958333fbb3c44911415df4e0034e6367456e2913cb",
+    ".cache/wasm64-build/tree/include/optlist.h": "23dafb109132dd63bbfe704b39fac8cccaaeee31a0dbd895c7ba928bd92af9b8",
+    ".cache/wasm64-build/tree/include/patchlevel.h": "4389b12b496c9611fb392ee509d0ebaad2f10449ff3ef697f1ad416a207b0a97",
+    ".cache/wasm64-build/tree/include/permonst.h": "bcdb24d041e3df909cf483efb576fa7fc5e18debf03d11e8e43c1aa87c655bf4",
+    ".cache/wasm64-build/tree/include/prop.h": "682e85c7ab20c1dc7b30115b2a3e850d564cc2ed341edfa782fec9d0dfea0761",
+    ".cache/wasm64-build/tree/include/quest.h": "87b6649d82b6fd4a24d004fcd48c1d9650345e719cf8dc196ae6c99b483e2a5a",
+    ".cache/wasm64-build/tree/include/rect.h": "dee168e068baa3aa15748725752d07659f8cb4e471116f7fab4acf080dc69f90",
+    ".cache/wasm64-build/tree/include/region.h": "adc4682b6a15213f71f3bb534b8705c4385153ca9db7512c118474b0fb4f1191",
+    ".cache/wasm64-build/tree/include/rm.h": "da2ae88d704a358474c6986a3f4763e62053b96a6e60a475879029e658996af7",
+    ".cache/wasm64-build/tree/include/savefile.h": "6847e12dca1eb25b38baa69f6227554669f8a64f5966a1879a5cf2b23732749e",
+    ".cache/wasm64-build/tree/include/seffects.h": "f64099054ab366a1eaccd58901a98cef49a84c1f047c5923de20b4432654de02",
+    ".cache/wasm64-build/tree/include/selvar.h": "49b8be43b8bfd7b4f18cb59d1179e8ad28a708a06c0fbc985c65b365ab9a3acf",
+    ".cache/wasm64-build/tree/include/skills.h": "d67ac10770b8aff667c163e93020b8974e53f12eede903f10bf026d351b2c238",
+    ".cache/wasm64-build/tree/include/sndprocs.h": "4d105334e499c3fb4af00fcd1acf48802a8db5ccf799bd31bfafc2afaa286654",
+    ".cache/wasm64-build/tree/include/spell.h": "dc1e454c0214ea1cc20f4ea1e19cd4447a5ca9533610769fafe8cdd60206b37f",
+    ".cache/wasm64-build/tree/include/stairs.h": "fe016a6ef8194099d504bbf48f58e1e3c6a923413a07c28377409cacc1e2b42b",
+    ".cache/wasm64-build/tree/include/sym.h": "cea14c200c9f1e90ebe890804b46af7005c889d90917cb0608ad6058614e3db4",
+    ".cache/wasm64-build/tree/include/sys.h": "e193f46309925a4b14394a503b3e9a7bc19e5745bb539137ca10ec0898e3951b",
+    ".cache/wasm64-build/tree/include/timeout.h": "5f76ff41cc5435cc8a3e30b28f51c6adbfe42e2bf4a0354ba0a9f850a5ce515a",
+    ".cache/wasm64-build/tree/include/tradstdc.h": "a1246d1acdf317c36990946e1d8bde33f63e3ba779ed5696a4ee03c7ac4f4401",
+    ".cache/wasm64-build/tree/include/trap.h": "469afec3e29d7aec1aa8efd407ad23d24ef069010820082b5596537b9290eb6b",
+    ".cache/wasm64-build/tree/include/unixconf.h": "0cbf3370472b030e8583e922e05e8e055738896954cbbdc1e1e18d0938559723",
+    ".cache/wasm64-build/tree/include/vision.h": "415b7e5751194cb7de57c192103d396a2971400e603fd62bf56330304014ac13",
+    ".cache/wasm64-build/tree/include/warnings.h": "ccf0c3e66bb442b0d8c05844103065fccf3fa7a894bba007425258e1d089f981",
+    ".cache/wasm64-build/tree/include/weight.h": "ac168750ddcde6c592ccbeaaf44c59921cc1f73ed36d269f20364b0e08b91cd1",
+    ".cache/wasm64-build/tree/include/winprocs.h": "eebf4dbb4149d3a153a1dc815795baabe33a59d13362e00089d21ee9ce89983c",
+    ".cache/wasm64-build/tree/include/wintype.h": "e5bfd60534831210bdace1ba6eaef62f65d16dab8d8ac0fcddadebd000d53698",
+    ".cache/wasm64-build/tree/include/you.h": "d19cfa0233582f1ad550b9dfc788f26166f3ff21225e3d8a0cd43b6de2094289",
+    ".cache/wasm64-build/tree/include/youprop.h": "9c4e25bc385c405226085ae3526dc165bd9397ce922b8a18a46f67de21683a2f",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lauxlib.h": "2d9e18e577a6062646268e7f7228264c28bd9b972c186e1af81b8357179c0ab4",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lua.h": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
+    ".cache/wasm64-build/tree/src/polyself.c": "2f2f3dc74c2cbdd122f7a1401bd3e4e77efbc37ff6c499371cb8e57c9e39a5c8",
+    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb",
+    "scripts/tu-polyself-layout.h": "67da0abadda5eb49b7d57d7eae746f70e930503a2826c652f676d168c18295e8"
+  }
+}

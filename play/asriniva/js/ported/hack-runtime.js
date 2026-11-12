@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // HACK live native-memory views and original header macros. No form policy in C.
 import * as core from './hack.js';
 import { withCEnvironment } from './c-runtime.js';
@@ -35,7 +36,7 @@ export function createHackEnvironment(services,layout,namespace,servicePrototype
     const decode=(d,v)=>{if(d.p!==undefined)return d.p?view(d.p,v):pointerValue(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return v;
         const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
     const read=(d,at)=>{if(d.row)return array(rowDescriptor(d.row),Number(memory().getBigUint64(at,true)));if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return bits===64?decode(d,dv.getBigUint64(at,true)):dv[(d.t[0]==='i'?'getInt':'getUint')+bits](at,true);};
-    const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
+    const write=(d,at,v)=>{return Crt.writeDescriptor(services,addr,width,memory,raw,d,at,v);};
     const arrayTypes=new WeakMap(),rowTypes=new Map(),vizDescriptor={a:[0],e:{row:'u8'}};
     const rowDescriptor=type=>{if(!rowTypes.has(type))rowTypes.set(type,{a:[0],e:{t:type}});return rowTypes.get(type);};
     function array(d,at){let type=arrayTypes.get(d);if(!type){const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e};type={key:'array:'+JSON.stringify(d),child,stride:width(child),bytes:width(d)};arrayTypes.set(d,type);}let addresses=cache.get(type.key);if(!addresses)cache.set(type.key,addresses=new Map());if(addresses.has(at))return addresses.get(at);const {child,stride}=type,target={address:at,byteLength:type.bytes,descriptor:d};
@@ -579,7 +580,7 @@ export function createHackEnvironment(services,layout,namespace,servicePrototype
     env.verysmall=(ptr)=>Number(Boolean(((ptr).msize < env.MZ_SMALL)));
     env.warning_to_glyph=(mwarnlev)=>((mwarnlev) + env.GLYPH_WARNING_OFF);
     const cString=fmt=>{if(typeof fmt==='string')return fmt;let at=addr(fmt),out='';const bytes=services.heap();while(bytes[at])out+=String.fromCharCode(bytes[at++]);return out;};
-    const formatShape=fmt=>{let shape='';for(const m of cString(fmt).matchAll(/%(?:[-+ #0]*)(\*|\d+)?(?:\.(\*|\d+))?(hh|ll|[hljztL])?([%csdiouxXpfgeEaAn])/g)){if(m[4]==='%')continue;if(m[1]==='*')shape+='i';if(m[2]==='*')shape+='i';shape+=m[4]==='s'||m[4]==='p'?'p':/[fgeEaA]/.test(m[4])?'d':m[3]==='l'||m[3]==='ll'||m[3]==='z'?'j':'i';}return shape;};
+    const formatShape=fmt=>{return Crt.formatShape(cString,fmt);};
     env.Norep=(...args)=>{const key="Norep_p"+formatShape(args[0]);const fn=services[key];if(!fn)throw Error("Review unconfigured HACK vararg ABI "+key);return invoke(fn,args);};
     env.There=(...args)=>{const key="There_p"+formatShape(args[0]);const fn=services[key];if(!fn)throw Error("Review unconfigured HACK vararg ABI "+key);return invoke(fn,args);};
     env.You=(...args)=>{const key="You_p"+formatShape(args[0]);const fn=services[key];if(!fn)throw Error("Review unconfigured HACK vararg ABI "+key);return invoke(fn,args);};

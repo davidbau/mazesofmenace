@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // POLYSELF live native-memory views and original header macros. No form policy in C.
 import * as core from './polyself.js';
 import { withCEnvironment } from './c-runtime.js';
@@ -9,12 +10,10 @@ export function createPolyselfEnvironment(services,layout) {
     const addr=v=>Number(v?.address??v??0),raw=v=>BigInt.asUintN(64,BigInt(typeof v==='string'?services.literal(v):typeof v==='boolean'?Number(v):typeof v==='number'?Math.trunc(v):v?.address??v??0));
     const memory=()=>new DataView(services.heap().buffer),cache=new Map(),names=Object.keys(schemas);
     const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.f?8:d.s?Number(layout[d.s+'Size']):d.a.reduce((a,b)=>a*b,1)*width(d.e);
-    const decode=(d,v)=>{if(d.p!==undefined)return d.p?view(d.p,v):Number(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return v;
-        const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
-    const read=(d,at)=>{if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
-    const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
-    function array(d,at){const key='array:'+JSON.stringify(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},stride=width(child),target={address:at,byteLength:width(d),descriptor:d};
-        const result=new Proxy(target,{get(o,k){return typeof k==='string'&&/^\d+$/.test(k)?read(child,at+Number(k)*stride):Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});cache.set(key,result);return result;}
+    const decode=(d,v)=>{return Crt.decodeDescriptor(view,array,addr,d,v);};
+    const read=(d,at)=>{return Crt.readDescriptor(decode,memory,d,at);};
+    const write=(d,at,v)=>{return Crt.writeDescriptor(services,addr,width,memory,raw,d,at,v);};
+    function array(d,at){return Crt.descriptorArray(cache,width,read,write,d,at);}
     function view(name,value){const at=addr(value);if(!at)return 0;const key=name+':'+at;if(cache.has(key))return cache.get(key);const result={address:at,kind:name};cache.set(key,result);const ki=names.indexOf(name);
         schemas[name].fields.forEach((f,i)=>Object.defineProperty(result,f.name,{get:()=>decode(f.d,services.read(ki,at,i)),set:v=>services.write(ki,at,i,raw(v))}));
         if(name==='obj')Object.defineProperty(result,'nexthere',{get:()=>result.v.v_nexthere,set:v=>result.v.v_nexthere=v});

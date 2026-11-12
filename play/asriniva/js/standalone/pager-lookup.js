@@ -32,6 +32,7 @@ export function enablePagerLookup(environment,layouts){
   callHelp:p=>environment.functions.indirect(address(p),'v'),
   chararray:(kind,p,i)=>{if(kind!==1&&kind!==9)throw new Error('Unknown PAGER char-array field '+kind);const[type,key]=kind===1?['struct permonst','pmnames']:['struct engr','engr_txt'];return address(views.record(type,address(p))[key][i]);},
   dlb_fopen:(name,mode)=>S.fopen(text(name),text(mode)),dlb_fclose:p=>S.fclose(address(p)),dlb_fgets:(out,size,p)=>S.fgets(address(out),size,address(p)),dlb_fseek:(p,n,how)=>S.fseek(address(p),n,how),
+  nh_snprintf:(fn,line,out,size,f,p)=>resolve('nh_snprintf')(text(fn),transport.int(line),address(out),transport.ulong(size),text(f),...packet(f,p)),
   sprintf:(out,f,p)=>S.sprintf(address(out),text(f),...packet(f,p)),sscanfRaw:(input,f,p)=>S.sscanf(text(input),text(f),...packet(f,p,true)),
   plineRaw:(f,p)=>call('pline',text(f),...packet(f,p)),impossibleRaw:(f,p)=>call('impossible',text(f),...packet(f,p)),
   Strcpy:(out,s)=>S.strcpy(address(out),text(s)),Strcat:(out,s)=>S.strcat(address(out),text(s)),

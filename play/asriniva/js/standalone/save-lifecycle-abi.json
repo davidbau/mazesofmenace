@@ -2257,14 +2257,14 @@
   ],
   "sourceSha256": {
     "scripts/export-standalone-save-lifecycle-abi.py": "fecee629a491f6d47988cf39754747bdb4203321c61c012b70b6eca634db5fad",
-    "js/ported/save-runtime.js": "50c0b0d0edf0e369916e334931dd3d9ba6d3d3dc7dc7d33e752727bbe38b8d51",
+    "js/ported/save-runtime.js": "9d5a721884d1f4f51e0d3e6121676f7f1e4db4141282366bbb4ea1cc4e1a12b5",
     "js/ported/save.js": "3f48814c1a757962b9442908e092485aecfb25b40027e6443c9c49dfbe6c189e",
     "nethack-c/wasm/tu-fragments/save-support.c": "979579d5b5a728329a08c9671f56ffe0968c324d9447568970ea57b74475a879",
     "nethack-c/wasm/tu-fragments/save-source-data.h": "d3889ab75c9011ba4f7be18503b906f7cad3af65c56b90f37e04f792e4bd68f5",
     "nethack-c/wasm/tu-libraries/save.js": "521cdeb3f068973ca027b7d13e85405572a72b7c781e44186361b4849f63c862",
     "scripts/tu-save-layout.h": "08dab733a03e1d0c5a949bcbacaea25b4f8e3fe6187cb1e6cb242bd1c1182c18",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   },
   "referenceHeaderSha256": {

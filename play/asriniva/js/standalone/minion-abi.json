@@ -409,7 +409,7 @@
     "nethack-c/upstream/src/minion.c": "41158eef7038868b75e684d36a7e492340e6809002f06c84a426c855fea2310d",
     "js/ported/minion.js": "2def6f5219ccf6a73b86977cf0f81594760ab1d64519bd0757e8858577415cf8",
     "js/ported/minion-runtime.js": "2e134be7317edaa0f8aa9562360d5fa5b2a0e593d644d16ae719b82fb384eff2",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

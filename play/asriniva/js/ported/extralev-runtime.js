@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Compiler-derived C storage views; all Rogue level logic remains in extralev.js.
 export function createExtralevEnvironment(services, layout) {
     if (layout.pointerSize !== 8 || layout.intSize !== 4 || layout.longSize !== 8
@@ -17,20 +18,7 @@ export function createExtralevEnvironment(services, layout) {
     const view = () => new DataView(services.heap().buffer);
     const signed = (at, size) => view()['getInt' + size * 8](at, true);
     const setSigned = (at, size, value) => view()['setInt' + size * 8](at, Number(value), true);
-    const indexed = (length, getter, setter) => new Proxy({}, {
-        get(target, key) {
-            if (key === 'length') return length;
-            if (typeof key === 'string' && /^\d+$/.test(key)) return getter(Number(key));
-            return Reflect.get(target, key);
-        },
-        set(target, key, value) {
-            if (setter && typeof key === 'string' && /^\d+$/.test(key)) {
-                setter(Number(key), value);
-                return true;
-            }
-            return Reflect.set(target, key, value);
-        },
-    });
+    const indexed = (length, getter, setter) => Crt.indexedArray(length,getter,setter);
     function rogue(x, y) {
         const at = global(0) + layout.rOffset + (x * layout.rRows + y) * layout.rogueSize;
         const result = { address: at };

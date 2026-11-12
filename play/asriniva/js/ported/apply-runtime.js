@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // APPLY typed native storage/dependencies/header transport; source algorithms stay in apply.js.
 import * as core from './apply.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -13,11 +14,11 @@ const CALLBACK_CONSUMERS=["askchain", "at_quick_exit", "atexit", "bhit", "bhitpi
 export function createApplyEnvironment(services,L){
  const raw=v=>BigInt.asUintN(64,BigInt(v?.address??v??0)),address=v=>Number(raw(v));
  const view=()=>new DataView(services.heap().buffer),literal=v=>typeof v==='string'?services.literal(v):address(v);
- const scalarType=t=>({'char':'Int8','signed char':'Int8','unsigned char':'Uint8','short':'Int16','unsigned short':'Uint16','int':'Int32','unsigned int':'Uint32','long':'BigInt64','long long':'BigInt64','unsigned long':'BigUint64','unsigned long long':'BigUint64'}[t]);
+ const scalarType=t=>(Crt.scalarMethod(t));
  const widths={Int8:1,Uint8:1,Int16:2,Uint16:2,Int32:4,Uint32:4,BigInt64:8,BigUint64:8};
  const size=t=>t.includes('*')?L.pointerSize:scalarType(t)?widths[scalarType(t)]:records[t]?L['R'+Object.values(records[t])[0].record+'_size']:(()=>{throw Error('Review APPLY native type '+t);})();
- const write=(t,p,v)=>{const method=scalarType(t);if(method)view()['set'+method](p,method.startsWith('Big')?BigInt(v):Number(v),true);else if(t.includes('*'))view().setBigUint64(p,raw(typeof v==='string'?literal(v):v),true);else services.heap().copyWithin(p,address(v),address(v)+size(t));return v;};
- const seq=(p,t,stride)=>new Proxy({address:p},{get:(o,k)=>/^\d+$/.test(String(k))?read(t,p+Number(k)*stride):(k in o?o[k]:records[t]?record(t,p)[k]:undefined),set:(o,k,v)=>{if(/^\d+$/.test(String(k)))write(t,p+Number(k)*stride,v);else o[k]=v;return true;}});
+ const write=(t,p,v)=>{return Crt.writeTypedValue(scalarType,view,raw,literal,services,address,size,t,p,v);};
+ const seq=(p,t,stride)=>Crt.pointerSequence(read,write,records,record,p,t,stride);
  function read(t,p){
   const method=scalarType(t);if(method)return view()['get'+method](p,true);
   const array=t.match(/^(.*?)\[(\d*)\](.*)$/);if(array){if(array[1]==='char'&&!array[3])return p;const elem=array[1]+array[3],stride=array[3]?size(array[1])*Number(array[3].match(/\d+/)[0]):size(elem);if(array[1]==='char'&&!array[3])return p;return seq(p,elem,stride);}

@@ -2050,7 +2050,7 @@
     "scripts/export-standalone-end-lifecycle-abi.py": "eb4d6704a4d4b232e415d7623b778ead308637b938f736340952a7098b8003d0",
     "js/standalone/end-lifecycle.js": "21fb10758c8b0f66b9cb2d1b38d002fcba51ae35a5f47d20fe9d36a98aaa5ec5",
     "js/standalone/killer-state.js": "40fbaeb58708fc47cba07c798e5f6f6714757ce31ea1525e4e11226a5ac6568f",
-    "js/ported/end-runtime.js": "5699956ba6558103b5908eead267b414f7f97863127d5308d7816538e9d4876d",
+    "js/ported/end-runtime.js": "62c5cde362737e8d1bcf59e1abcaea59b94639d7ddee29baca07c5c9b96eb777",
     "scripts/tu-end-layout.h": "55c4a8464a1bf741ffacb759d52a327ff8bcd91454718bb4b7fb85b329e8e464",
     "nethack-c/wasm/tu-fragments/end-support.inc": "afdab3f2d70c997e7abdcb3260b16c322a057c6e3f2e0ab3ed032867c61ece98",
     "js/ported/end.js": "f84fc00c64b2aae4af7abdf6db1a5945d1dd3c66e9e616a9eb38b6d14d455220",

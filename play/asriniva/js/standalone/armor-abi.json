@@ -1425,7 +1425,7 @@
   "records": {},
   "sourceSha256": {
     "scripts/export-standalone-armor-abi.py": "d9095db7db10f47490b6677da21608a1fd586466fec9414ca3c3e1c54d80c01a",
-    "js/ported/do_wear-runtime.js": "df01d45e24c0690d9dbe1948e61f4c3b07200ba8f452e4b1b22825a8e4d1f3b2",
+    "js/ported/do_wear-runtime.js": "3593cc93fcede7b4a26cb0bafdf7a50f6f455bf838fefef859169ab57e6bcdc4",
     "js/ported/do_wear.js": "7d8a9f25550c8763507ff501ba6fd6f9fd443f07e5eb3818801b9169b9917785",
     "scripts/tu-do_wear-layout.h": "41e959b22011f003bb20905d4ac0e00916b31159e27f9099b2db71afda5d2a98",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",

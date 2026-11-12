@@ -1,4 +1,90 @@
 {
+  "rngCallers": [
+    [
+      506,
+      "moverock_core"
+    ],
+    [
+      730,
+      "still_chewing"
+    ],
+    [
+      863,
+      "dosinkfall"
+    ],
+    [
+      870,
+      "dosinkfall"
+    ],
+    [
+      870,
+      "dosinkfall"
+    ],
+    [
+      1575,
+      "trapmove"
+    ],
+    [
+      1972,
+      "domove_attackmon_at"
+    ],
+    [
+      2032,
+      "domove_fight_web"
+    ],
+    [
+      2213,
+      "domove_swap_with_pet"
+    ],
+    [
+      2344,
+      "air_turbulence"
+    ],
+    [
+      2345,
+      "air_turbulence"
+    ],
+    [
+      2407,
+      "slippery_ice_fumbling"
+    ],
+    [
+      2420,
+      "u_maybe_impaired"
+    ],
+    [
+      2565,
+      "avoid_trap_andor_region"
+    ],
+    [
+      2664,
+      "escape_from_sticky_mon"
+    ],
+    [
+      3026,
+      "maybe_smudge_engr"
+    ],
+    [
+      3029,
+      "maybe_smudge_engr"
+    ],
+    [
+      3364,
+      "spoteffects"
+    ],
+    [
+      3428,
+      "spoteffects"
+    ],
+    [
+      3436,
+      "spoteffects"
+    ],
+    [
+      3772,
+      "check_special_room"
+    ]
+  ],
   "schemas": {
     "instance_globals_t": {
       "ctype": "struct instance_globals_t",
@@ -3859,11 +3945,13 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-hack-abi.py": "e9f6b78f30ace5f3be9868069df5ca855251b93be3c65b3207cbc80cdff6df35",
-    "js/ported/hack-runtime.js": "28c9bd4654efc153bd3cc4964c5165318c57a41991e527349f855b5fa309c259",
+    "scripts/export-standalone-hack-abi.py": "fb10bfe432225c63c2647d0267e599784b552850f2073930c087251cfaff26c2",
+    "js/ported/hack-runtime.js": "1f6fbc74b0b3604fcf7c5083ba954e73a46f3b231a4152ff9c61a42f36de2052",
     "js/ported/hack.js": "fd8f6ebac018ae471b378d597c679f3c21ce3a33d83b5b815d97433f26453abf",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "nethack-c/wasm/tu-fragments/hack-support.c": "96ac1f586baaa384f44baf031f931cdee9e27b414c24af20767b3098c382615c"
+    "nethack-c/wasm/tu-fragments/hack-support.c": "96ac1f586baaa384f44baf031f931cdee9e27b414c24af20767b3098c382615c",
+    "js/standalone/movement.js": "10927b2664102fba92f8ed5d4528e9ce38fcc61ca22e2e393f052f5761f43087",
+    "nethack-c/wasm/tu-libraries/hack.js": "6bfde9942d2b88d33da37c21c65abcb037447d4e3f507297a67532c3ac6d9f1d"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
@@ -3917,6 +4005,7 @@
     ".cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
     ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
     ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/hack-abi.c": "8190dd768af3d2a635283cf8d78f05a5a885f16a039b5a421ec5d5cf8ca88097",
     ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
     ".cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
     ".cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",

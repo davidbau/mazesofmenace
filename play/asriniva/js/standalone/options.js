@@ -17,6 +17,7 @@ export function enableOptions(environment,layouts){
  function pointer(name){const proto=S.functionTypes[name]??publicFunctions.functions[name],m=proto?.match(/^(.+?)\s*\((.*)\)$/);if(!m)throw new Error('Unknown OPTIONS callback '+name);const signature=[m[1],...m[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')].map(code).join('');return environment.functionPointer(S.private.includes(name)?'options::'+name:name,signature,typeof options[name]==='function'?((...args)=>callOptions(local,L,name,...args)):undefined);}
  local.__isspace=c=>services.isspace(c);
  local.Strlen_=p=>environment.strutil('Strlen_',typeof p==='string'?services.literal(p):environment.address(p));
+ local.strlen=p=>environment.transport.ulong(services.strlen(typeof p==='string'?services.literal(p):environment.address(p)));
  Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,layout:i=>{const key=S.layoutKeys[i];if(!key||L[key]===undefined)throw new Error('Missing OPTIONS layout '+key);return BigInt(L[key]);},
   storage:i=>storage[i],global:i=>environment.requireGlobal(S.globals[i].name),functionAddress:i=>pointer(S.functionAddresses[i]),
   address:(kind,p,index)=>{const e=field(kind,index);return ctypes.locate(e.type,environment.address(p),e.f.name).at;},

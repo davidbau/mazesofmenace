@@ -6,7 +6,9 @@ import * as files from '../ported/files.js';
 import {createFilesEnvironment} from '../ported/files-runtime.js';
 import {createCTypes} from './c-types.js';
 import {enableAddressPort} from './address-ports.js';
+import {enableSdkDirectory} from './sdk-directory.js';
 export function enableFiles(environment,layouts){
+ enableSdkDirectory(environment);
  const ctypes=createCTypes(environment.memory,{...records,records:{...records.records,...abi.records}},environment.bitfields);
  const only=Object.keys(files).filter(n=>typeof files[n]==='function'&&Object.hasOwn(publicFunctions.functions,n)&&!environment.hasFunction(n));
  const basebuf=environment.requireGlobal('files.nh_basename.basebuf');

@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Typed native storage and original-header expansions; do_wear policy remains in its original JS functions.
 import * as core from './do_wear.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -14,8 +15,7 @@ export function createDoWearEnvironment(services,layout){
         const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
     const read=(d,at)=>{if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||d.q||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
     const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||d.q||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
-    function array(d,at){const key='array:'+JSON.stringify(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},stride=width(child),target={address:at,byteLength:width(d),descriptor:d};
-        const result=new Proxy(target,{get(o,k){return typeof k==='string'&&/^\d+$/.test(k)?read(child,at+Number(k)*stride):Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});cache.set(key,result);return result;}
+    function array(d,at){return Crt.descriptorArray(cache,width,read,write,d,at);}
     function view(name,value){const at=addr(value);if(!at)return 0;const key=name+':'+at;if(cache.has(key))return cache.get(key);const result={address:at,kind:name};cache.set(key,result);const ki=names.indexOf(name);
         schemas[name].fields.forEach((f,i)=>Object.defineProperty(result,f.name,{get:()=>decode(f.d,services.read(ki,at,i)),set:v=>services.write(ki,at,i,raw(v))}));
         if(name==='rm')for(const field of ['doormask','altarmask','looted','drawbridgemask','sink'])Object.defineProperty(result,field,{get:()=>result.flags,set:v=>result.flags=v});
@@ -25,7 +25,7 @@ export function createDoWearEnvironment(services,layout){
     env=Object.assign(Object.create(services),constants,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,
         boolean:v=>Number(v)<<24>>24,samePointer:(a,b)=>addr(a)===addr(b),
         element:(a,i)=>({address:addr(a)+i*width(a.descriptor.e),descriptor:a.descriptor.e,get value(){return a[i];},set value(v){a[i]=v;}}),
-        advance:(v,n)=>{if(v?.kind)return view(v.kind,addr(v)+n*layout[v.kind+'Size']);if(v?.descriptor){if(v.descriptor.a){const child=v.descriptor.a.length===1?v.descriptor.e:{a:v.descriptor.a.slice(1),e:v.descriptor.e};return array(v.descriptor,addr(v)+n*width(child));}const d=v.descriptor,at=addr(v)+n*width(d);return {address:at,descriptor:d,get value(){return read(d,at);},set value(x){write(d,at,x);}};}return addr(v)+n;},
+        advance:(v,n)=>{return Crt.advanceDescriptor(view,addr,layout,array,width,read,write,v,n);},
 
     });
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==layout['width_'+name+'_'+f.name])throw Error('Review changed DO field width: '+name+'.'+f.name);

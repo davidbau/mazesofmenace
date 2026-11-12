@@ -16,6 +16,11 @@ export function enableMonsterInventory(environment,layouts,creation){
  const health=context(layouts.pager);health.nhUse=v=>void v;health.storeCharAt=(p,v)=>memory.view.setInt8(environment.address(p),environment.transport.char(v));environment.register('monster-health-description',{monhealthdescr},health,{prepareArgs:(_fn,args)=>[monster(args[0]),environment.transport.char(args[1]),environment.address(args[2])]});
  const wizard=context(layouts.wizard);environment.register('monster-amulet-check',{mon_has_amulet},wizard,{prepareArgs:(_fn,args)=>[monster(args[0])]});
  const equip=context(layouts.worn);
+ // Original global.h strcmpi and WORN native string argument carriers.
+ const wornText=value=>typeof value==='string'?services.literal(value):environment.address(value);
+ equip.strncmpi=(left,right,n)=>transport.int(environment.resolve('strncmpi')(wornText(left),wornText(right),transport.int(n)));
+ equip.strcmpi=(left,right)=>equip.strncmpi(left,right,-1);
+ equip.strsubst=(out,from,to)=>environment.address(environment.resolve('strsubst')(environment.address(out),wornText(from),wornText(to)));
  Object.assign(equip,{
   bool:v=>Number(Boolean(v)),charPointer:p=>typeof p==='string'?services.literal(p):environment.address(p),
   Role_if:n=>env.gu.urole.mnum===n,MON_WEP:m=>m.mw,

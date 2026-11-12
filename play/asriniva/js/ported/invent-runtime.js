@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for INVENT JS bodies.
 import * as invent from './invent.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -14,7 +15,7 @@ export function createInventEnvironment(services){
  let dataView;
  const memory=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;},type=t=>t.includes('*')?'p':t.startsWith('enum ')?'i32':types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error('Review INVENT scalar '+t);return env[d](v);};
- env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review INVENT cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){const dv=memory();return bits===64?decode(t,dv.getBigUint64(address,true)):dv[(d[0]==='i'?'getInt':'getUint')+bits](address,true);},set value(v){const dv=memory();if(bits===64)dv.setBigUint64(address,BigInt.asUintN(64,BigInt(v)),true);else dv['setUint'+bits](address,Number(v),true);}};};
+ env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review INVENT cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){const dv=memory();return bits===64?decode(t,dv.getBigUint64(address,true)):dv[(d[0]==='i'?'getInt':'getUint')+bits](address,true);},set value(v){return Crt.writeIntegerCell(memory,address,bits,v);}};};
  // Bounded ownership; eviction never retargets an accessor held by a caller.
  const fieldAccessors=new Map(),fieldBases=new WeakMap();
  env.field=(at,name,field)=>{

@@ -938,7 +938,7 @@
     "js/ported/allmain.js": "9ea50e3e567e113de8ad4e552551f68bb682cb3b6c429e0a4cd6adcc2a1f3289",
     "nethack-c/wasm/tu-libraries/allmain.js": "3c10c15649380e9e1955fdb1e07596bf6cbc011f991bfd1b986047f683a2bff2",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/window-abi.json": "feb9588671a3fd1cd35627fcc32f99709d8baf2ef191c6763f8abe5ba9bd5b95"
+    "js/standalone/window-abi.json": "30f65010df7e8193f737e07ba8c24026b121ba86687d160d89850dfc426e6502"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

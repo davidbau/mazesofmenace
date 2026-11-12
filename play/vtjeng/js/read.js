@@ -382,8 +382,12 @@ import {
 } from './light.js';
 import { digests, light_hits_gremlin } from './uhitm.js';
 import {
-    block_point, cansee, do_clear_area, does_block, unblock_point,
-    vision_recalc,
+    block_point,
+    cansee,
+    do_clear_area_async,
+    does_block,
+    unblock_point,
+    vision_recalc_async,
 } from './vision.js';
 
 import { m_at } from './monst.js';
@@ -2082,7 +2086,7 @@ export async function litroom(on, object, state) {
         // parity.
         set_lit(state.u.ux, state.u.uy, true, state, gremlins);
     } else {
-        do_clear_area(
+        await do_clear_area_async(
             state.u.ux, state.u.uy, blessedEffect ? 9 : 5,
             (x, y, value) => set_lit(x, y, value, state, gremlins),
             on ? true : null,
@@ -2091,7 +2095,7 @@ export async function litroom(on, object, state) {
     }
 
     if (!Blind(state.u)) {
-        vision_recalc(2, {
+        await vision_recalc_async(2, {
             state,
             redraw: (x, y) => newsym(x, y),
         });
@@ -2109,7 +2113,7 @@ export async function litroom(on, object, state) {
         // read.c:litroom() cannot leave the full recalculation delayed when
         // gremlins were collected. Restore visibility before light_hits_gremlin
         // chooses the monster's name for its damage message.
-        vision_recalc(0, {
+        await vision_recalc_async(0, {
             state,
             redraw: (x, y) => newsym(x, y),
         });
@@ -3135,9 +3139,13 @@ async function seffect_create_monster(scroll, state = game,
 // C ref: read.c:seffect_mail() (2157-2188). This static helper sets gk.known,
 // the effect's discovery flag, then chooses its exact message from spe and
 // the object's identifier parity. doread() later discovers the scroll type
-// through learnscroll(); this helper does not set oc_name_known. The external
-// readmail() result is discarded by C, so its default MAIL branch remains an
-// explicit void-call gap.
+// through learnscroll(); this helper does not set oc_name_known. The
+// recorder's build defines MAIL and DEF_MAILREADER "/bin/mail", so a spe 0
+// scroll reaches UNIX mail.c readmail(), which forks and execs the mail
+// reader (unixunix.c child()). What a recording then shows depends on the
+// host, not on the game: whether /bin/mail exists and reads the recorder's
+// input, and, when it does not, the forked child's own nh_terminate(), which
+// writes an extra screen capture. The call stays a gap.
 async function seffect_mail(scroll, state = game, env = {}) {
     const odd = Math.trunc(scroll.o_id ?? 0) % 2 === 1;
     const message = env.message ?? ttyPline;

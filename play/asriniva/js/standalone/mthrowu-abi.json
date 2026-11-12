@@ -1026,7 +1026,7 @@
     "nethack-c/wasm/tu-mthrowu-support.inc": "012fb18136d0316eb36a5e43bbeec21e316473850b6f3c102cff9fc98f9500c2",
     "scripts/tu-mthrowu-layout.h": "fb22d25a53f6228924dd0e758d024c7c693ebad297be9507c63a09ae14ffed37",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   }
 }

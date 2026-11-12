@@ -7015,12 +7015,12 @@
     "scripts/export-standalone-uhitm-abi.py": "e6e787a4671de93c77bf29664a7c4627436148488f22719e4b8e80765fdbbb35",
     "js/standalone/uhitm.js": "9a12a5930d2a97d2824310db8ed7fa3d14e9bf1a5c5dcbd7b4985a2f089a0257",
     "js/ported/uhitm.js": "142bff430c74481dd8caca50322fde39941a562ef8b1a0ec0d92fe26e246e4df",
-    "js/ported/uhitm-runtime.js": "8496f21feb2befd72dd6bd8e40977c298e4ae03e9e4cde78f3f605fd0614e542",
+    "js/ported/uhitm-runtime.js": "59ed73ee40eccb45a9bd6b3375dd81e7b158f4295f261bcdcfaa52fcf33b466c",
     "nethack-c/wasm/tu-libraries/uhitm.js": "733b4e9a9c6c9525c69ebd7973c68394c81264322d23edb8d6408d7bee8a0aa8",
     "nethack-c/wasm/tu-fragments/uhitm-support.inc": "7abd074ef3e67e7b854a311f8814e7fcf136f97b52b7f12c6cca33b0b7b30773",
     "nethack-c/wasm/tu-fragments/uhitm-hashes.json": "e75237984e2513d8cc7da667482afa9044a217061096f25b064f363f3a4e03a9",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   }
 }

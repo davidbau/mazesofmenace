@@ -5,7 +5,7 @@ import hungerDataAbi from './hunger-data-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as uInit from '../ported/u_init.js';
 import {createUInitBridge} from '../ported/u_init-runtime.js';
-import {callPolyself} from '../ported/polyself-runtime.js';
+import {enablePolyself} from './polyself.js';
 import * as attrib from '../ported/attrib.js';
 import {createAttribEnvironment} from '../ported/attrib-runtime.js';
 import {valid_vampshiftform} from '../ported/mon.js';
@@ -75,14 +75,7 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
  ui.objname=i=>descriptors[objects[i].oc_name_idx].oc_name;ui.objdescr=i=>descriptors[objects[i].oc_descr_idx].oc_descr;ui.spellPw=n=>transport.int(n*5);
  for(const kind of ['rnd','rn1','rne'])ui[kind]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('u_init.c'),line,services.literal(caller));return kind==='rn1'?services.rn2(args[0])+args[1]:services[kind](...args);};
  const bridge=createUInitBridge(layouts.u_init);environment.register('hero-init',Object.fromEntries(['u_init_misc','skills_for_role','u_init_inventory_attrs'].map(name=>[name,(...args)=>bridge(ui,name,...args)])));
- const poly=foreign(),polyNames=Object.keys(abi.polyself.schema);
- function polyField(kind,p,index){const type=polyNames[kind],f=abi.polyself.schema[type]?.fields[index];if(!f)throw new Error('Unknown POLYSELF field');return{type,f,p:address(p)};}
- Object.assign(poly,{
-  global:i=>environment.requireGlobal(abi.polyself.globals[i].name),
-  read:(k,p,i)=>{const e=polyField(k,p,i);return ctypes.getField(e.type,e.p,e.f.name,e.f.ctype);},
-  write:(k,p,i,v)=>{const e=polyField(k,p,i);return ctypes.setField(e.type,e.p,e.f.name,e.f.ctype,v);},
-  address:(k,p,i)=>{const e=polyField(k,p,i);return ctypes.locate(e.type,e.p,e.f.name).at;},
- });
+ const poly=enablePolyself(environment,layouts).services;
  const mon=context(layouts.mon);mon.is_vampire=p=>Number(p.mlet===mon.S_VAMPIRE);environment.register('hero-vampire-form',{valid_vampshiftform},mon);
  const biology=context(layouts.mondata);Object.assign(biology,{charPointer:p=>typeof p==='string'?services.literal(p):address(p),loadChar:p=>memory.view.getInt8(address(p)),nolimbs:p=>Number((p.mflags1&BigInt(layouts.mondata.M1_NOLIMBS))===BigInt(layouts.mondata.M1_NOLIMBS))});for(const[k,v]of Object.entries({levitate,flys,flyl,slither,ooze,immobile,crawl}))biology[k]=v.map(services.literal);Object.defineProperty(biology,'gy',{value:record('struct instance_globals_y',environment.requireGlobal('gy'))});
  Object.assign(biology,{is_undead:p=>Number(Boolean(p.mflags2&BigInt(layouts.mondata.M2_UNDEAD))),is_were:p=>Number(Boolean(p.mflags2&BigInt(layouts.mondata.M2_WERE))),is_vampshifter:m=>Number([mon.PM_VAMPIRE,mon.PM_VAMPIRE_LEADER,mon.PM_VLAD_THE_IMPALER].includes(m.cham)),
@@ -113,7 +106,7 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
  for(const[name,ids]of Object.entries({completelyburns:['PM_PAPER_GOLEM','PM_STRAW_GOLEM'],completelyrots:['PM_WOOD_GOLEM','PM_LEATHER_GOLEM'],completelyrusts:['PM_IRON_GOLEM']}))biology[name]=p=>ids.some(id=>address(p)===address(biology.mons[biology[id]]));
  environment.register('monster-gender-material',{mon_hates_silver,hates_silver,mon_hates_blessings,hates_blessings,pronoun_gender,gender,passes_bars,Resists_Elem,max_passive_dmg,can_track,noattacks,can_blow,levl_follower,can_blnd,can_chant,locomotion,msummon_environ},biology,{prepareArgs:(fn,args)=>{if(fn==='msummon_environ'){const p=address(args[1]);return [record('struct permonst',args[0]),{address:p,get value(){return Number(memory.view.getBigUint64(p,true));},set value(v){memory.view.setBigUint64(p,BigInt(biology.charPointer(v)),true);}}];}if(fn==='can_blnd')return [record('struct monst',args[0]),record('struct monst',args[1]),transport.uchar(args[2]),record('struct obj',args[3])];args[0]=record(['hates_silver','hates_blessings','passes_bars','can_track','noattacks','locomotion'].includes(fn)?'struct permonst':'struct monst',args[0]);if(fn==='locomotion')args[1]=biology.charPointer(args[1]);if(fn==='max_passive_dmg')args[1]=record('struct monst',args[1]);return args;}});
  environment.register('hero-monster-resistance-memory',{cvt_prop_to_mseenres,cvt_adtyp_to_mseenres,monstunseesu},biology);
- environment.register('hero-form',{float_vs_flight:()=>callPolyself(poly,layouts.polyself,'float_vs_flight'),poly_gender:()=>callPolyself(poly,layouts.polyself,'poly_gender'),body_part:part=>callPolyself(poly,layouts.polyself,'body_part',transport.int(part)),mbodypart:(mon,part)=>callPolyself(poly,layouts.polyself,'mbodypart',address(mon),transport.int(part)),set_uasmon:(...args)=>callPolyself(poly,layouts.polyself,'set_uasmon',...args)});
+
  const a=shadow(foreign(),['u','gu','gy','gi','svm','gm','svc','svk','flags','program_state','disp','mons','aligns','objects']);
  const ag=['u','gu.urole','gu.urace','gy.youmonst','gi.invent','svm.moves','gm.multi','svc.context.next_attrib_check','svk.killer.format','svk.killer.name','flags.initalign','flags.verbose','program_state.in_moveloop',null,'mons','aligns'];
  const count=Object.keys(attrib).filter(k=>Array.isArray(attrib[k])&&/_abil$/.test(k)).reduce((n,k)=>n+attrib[k].length,0),at=environment.allocateGlobal('attrib.innates',count*layouts.attrib.innateSize),names=environment.allocateGlobal('attrname',attrib.attrname.length*8),from=environment.allocateGlobal('attrib.fromWhat',256);
@@ -141,6 +134,12 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
   try{return environment.resolve('pline')(typeof format==='string'?services.literal(format):address(format),...values());}finally{flags.last_msg=previous;}
  };
  const attributeText=value=>typeof value==='string'?services.literal(value):address(value);
+ // Match the native ATTRIB text() boundary for literals and C string addresses.
+ a.strcmp=(left,right)=>transport.int(services.strcmp(attributeText(left),attributeText(right)));
+ a.strcpy=(out,value)=>address(services.strcpy(attributeText(out),attributeText(value)));
+ a.strlen=value=>transport.ulong(services.strlen(attributeText(value)));
+ a.strncmpi=(left,right,n)=>transport.int(environment.resolve('strncmpi')(attributeText(left),attributeText(right),transport.int(n)));
+ a.strstri=(haystack,needle)=>address(environment.resolve('strstri')(attributeText(haystack),attributeText(needle)));
  a.debugpline0=format=>attributeDebug(format,()=>[0]);
  a.debugpline1=(format,value)=>attributeDebug(format,()=>[(typeof format==='string'?format:memory.readString(address(format))).includes('%ld')?transport.long(value):transport.int(value)]);
  a.debugpline2=(format,one,two)=>attributeDebug(format,()=>[attributeText(one),transport.int(two)]);

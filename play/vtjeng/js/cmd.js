@@ -105,6 +105,7 @@ import {
     zdir,
     W_SADDLE,
     has_mgivenname,
+    FUZZER_IMPOSSIBLE_CONTINUE,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import {
@@ -142,7 +143,6 @@ import {
     doup,
     u_collide_m,
     UnsupportedDropError,
-    UnsupportedLevelChangeError,
 } from './do.js';
 import {
     doremring, doputon, dotakeoff, dowear, ia_dotakeoff, remarm_swapwep,
@@ -227,7 +227,7 @@ import {
 import { tty_putmsghistory, tty_yn_function } from './topl.js';
 import { game } from './gstate.js';
 import { getnow } from './calendar.js';
-import { getpos, getpos_menu } from './getpos.js';
+import { auto_describe, getpos, getpos_menu } from './getpos.js';
 import {
     dooverview,
     donamelevel,
@@ -306,9 +306,7 @@ import {
     dowhatdoes,
     dowhatdoes_core,
     doquickwhatis,
-    do_screen_description,
     dowhatis,
-    UnsupportedWhatisError,
 } from './pager.js';
 import { dopay, UnsupportedShopError } from './shk.js';
 import { UnsupportedVaultGuardError } from './vault.js';
@@ -354,7 +352,7 @@ import {
     wiz_detect, wiz_flip_level, wiz_genesis, wiz_identify, wiz_intrinsic, wiz_level_change, wiz_kill, wiz_smell, wiz_show_seenv, wiz_show_vision, wiz_show_stats, wiz_show_wmodes, wiz_objprobs, wiz_display_macros, wiz_mon_diff, wiz_telekinesis, wiz_custom,
     wiz_level_tele, wiz_load_lua, wiz_load_splua, wiz_makemap, wiz_map, wiz_polyself, wiz_wish, wiz_where, wiz_rumor_check, wiz_migrate_mons,
     makemap_remove_mons,
-    wiz_map_levltyp, wiz_levltyp_legend, wiz_panic, wiz_show_nhuuid,
+    wiz_map_levltyp, wiz_levltyp_legend, wiz_panic, wiz_fuzzer, wiz_show_nhuuid,
 } from './wizcmds.js';
 import {
     dozap,
@@ -380,6 +378,7 @@ import { do_write_config_file } from './cfgfiles.js';
 import { note_unported } from './unported.js';
 import { impossible } from './pline.js';
 import { dosh } from './unixunix.js';
+import { dosuspend } from './ioctl.js';
 import {
     selection_floodfill,
     selection_new,
@@ -809,8 +808,6 @@ async function yn_function_menu(query, resp, def, state = game, sharedResp = tru
 // set, tty_yn_function() returns only a character of `resp` or `def`, and both
 // ported callers pass a `def` that is in their set, so the paniclog() and
 // impossible() inside it stay unreachable.
-// include/flag.h enum debug_fuzzer_states: fuzzer_impossible_continue.
-const FUZZER_IMPOSSIBLE_CONTINUE = 2;
 
 // `sharedResp: false` marks a `resp` that C passes as a literal or local copy
 // rather than one of decl.c's shared arrays (see yn_menuable_resp()).
@@ -981,20 +978,14 @@ function externalCommandStarted(state) {
     state.urealtime.start_timing = now;
 }
 
-// C ref: cmd.c dosuspend_core(). The browser window has no suspend-capable
-// window port, so the normal tty path reports the same unavailable command.
-// A test or future window port can expose the C callback shape; its discarded
-// platform operation remains an explicit gap while the clock bookkeeping is
-// preserved here.
+// C ref: cmd.c dosuspend_core() (5660-5678), compiled with SUSPEND. The tty
+// window port's win_can_suspend is genl_can_suspend_yes (wintty.c:162), and
+// tty is this build's only interface, so C always takes the dosuspend() arm.
 export async function dosuspend_core(state = game) {
-    const canSuspend = state.windowprocs?.win_can_suspend?.() === true;
-    if (canSuspend) {
-        externalCommandStarted(state);
-        note_unported('sys/share/ioctl.c dosuspend');
-        state.urealtime.start_timing = getnow(state);
-    } else {
-        await ttyNorep("'#suspend' command not available.", state);
-    }
+    externalCommandStarted(state);
+    /* NB: SYSCF SHELLERS handled in port code. */
+    await dosuspend(state);
+    state.urealtime.start_timing = getnow(state); /* resume keeping track of time */
     return ECMD_OK;
 }
 
@@ -2943,7 +2934,6 @@ export function failClosedCommandRefusals() {
         // same two classes where a monster's attack reaches it.
         UnsupportedVaultGuardError,
         UnsupportedSearchError,
-        UnsupportedWhatisError,
         // lock.c pick_lock() stops inside doapply()'s lock-pick arm.
         UnsupportedLockError,
         // The `f` command's files: wield.c the branches ready_weapon()
@@ -2960,7 +2950,6 @@ export function failClosedCommandRefusals() {
         // or explore death can draw "Die?" before savelife() refuses.
         UnsupportedEndOfGameError,
         UnsupportedDropError,
-        UnsupportedLevelChangeError,
         // Keep the experience/attribute refusal classes recognizable at this
         // boundary. pluslvl() and setuhpmax() now handle their polymorphed
         // branches, and ordinary level loss is implemented.
@@ -4851,13 +4840,12 @@ export async function domouseaction(state = game) {
 }
 
 // C ref: cmd.c doclicklook() (5381-5390), the internal command queued by the
-// map-symbol menu. pager.c owns the description text in this port.
+// map-symbol menu.
 export async function doclicklook(state = game) {
     const cc = state.clicklook_cc ?? { x: -1, y: -1 };
     if (!isok(cc.x, cc.y)) return ECMD_OK;
     state.context.move = 0;
-    const description = do_screen_description(cc, true, 0, state);
-    if (description?.found) await ttyPline(description.firstmatch, state);
+    await auto_describe(cc.x, cc.y, state);
     return ECMD_OK;
 }
 
@@ -5217,6 +5205,7 @@ const EXTCMD_FUNCTIONS = new Map(Object.entries({
     wiz_flip_level: (key, state) => wiz_flip_level(state),
     wiz_kill: (key, state) => runKillCommand(key, state),
     wiz_panic: (key, state) => wiz_panic(state),
+    wiz_fuzzer: (key, state) => wiz_fuzzer(state),
     wiz_show_nhuuid: (key, state) => wiz_show_nhuuid(state),
     wiz_migrate_mons: (key, state) => wiz_migrate_mons(state),
     wiz_light_sources: async (key, state) => {

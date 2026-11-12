@@ -1,5 +1,6 @@
 // Unchanged NHLUA policy on shared JavaScript storage and the existing Lua VM.
 import {nh_getenv} from '../ported/options.js';
+import callbackABI from './lua-callbacks-abi.json' with {type:'json'};
 import * as nhlua from '../ported/nhlua.js';
 import * as nhlsel from '../ported/nhlsel.js';
 import {createNhlselEnvironment} from '../ported/nhlsel-runtime.js';
@@ -21,12 +22,13 @@ export function enableLuaSandbox(environment,layouts){
 
  function pointer(name){
   if(pointers.has(name))return pointers.get(name);
-  const owned=schema.functions.find(f=>f.name===name),foreign=schema.callSites.find(c=>c.name===name);
+  const owned=schema.functions.find(f=>f.name===name),foreign=schema.callSites.find(c=>c.name===name),external=callbackABI.callbacks[name];
   // Lua library openers are lua_CFunction values even when only addressed.
-  const result=owned?(owned.returnType==='void'?'void':owned.returnType.includes('*')?{pointer:'void'}:'i32'):foreign?.return??((name.startsWith('luaopen_')||['nhl_abs_coord','l_get_config_errors'].includes(name))?'i32':null);
-  const args=owned?owned.parameters.map(p=>p.type):foreign?.args??((name.startsWith('luaopen_')||['nhl_abs_coord','l_get_config_errors'].includes(name))?[{pointer:'lua_State'}]:null);
+  const result=owned?(owned.returnType==='void'?'void':owned.returnType.includes('*')?{pointer:'void'}:'i32'):foreign?.return??external?.return??((name.startsWith('luaopen_')||['nhl_abs_coord','l_get_config_errors'].includes(name))?'i32':null);
+  const args=owned?owned.parameters.map(p=>p.type):foreign?.args??external?.args??((name.startsWith('luaopen_')||['nhl_abs_coord','l_get_config_errors'].includes(name))?[{pointer:'lua_State'}]:null);
   if(!result||!args)throw new Error('Missing NHLUA callback signature '+name);
-  const id=functions.functionPointer((...args)=>resolve(name)(...args),signature(result,args));pointers.set(name,id);return id;
+  const sig=signature(result,args);if(external&&sig!==external.signature)throw Error('Review native NHLUA callback '+name);
+  const id=functions.functionPointer((...args)=>resolve(name)(...args),sig);pointers.set(name,id);return id;
  }
  Object.assign(local,{
   layout,global:i=>environment.requireGlobal(globals[i]),storage:i=>{if(!storage[i])throw new Error('Unknown NHLUA storage '+i);return storage[i];},functionPointer:pointer,

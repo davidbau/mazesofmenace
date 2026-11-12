@@ -22,12 +22,14 @@ export function enableInsight(environment,layouts){
   Sprintf:(out,format,...args)=>services.sprintf(address(out),text(format),...boundary(args)),
   Snprintf:(out,n,format,...args)=>{const index=args.pop(),site=abi.formats[index];if(!site)throw new Error('Unknown INSIGHT formatter site '+index);return resolve('nh_snprintf')(text(site.function),site.line,address(out),transport.ulong(n),text(format),...boundary(args));},
   assert:(ok,index)=>{if(ok)return;if(index!==0)throw new Error('Unknown INSIGHT assertion '+index);const row=abi.assertion;return resolve('__assert_fail')(text(row.expression),text('insight.c'),row.line,text(row.function));},
-  qsort:(p,n,z)=>services.qsort(address(p),transport.ulong(n),transport.ulong(z),environment.functionPointer('insight::vanqsort_cmp','ipp',(a,b)=>callInsight(local,L,'vanqsort_cmp',address(a),address(b)))),
+  qsort:(p,n,z)=>resolve(abi.qsort.target)(address(p),transport.ulong(n),transport.ulong(z),environment.functionPointer('insight::vanqsort_cmp','ipp',(a,b)=>callInsight(local,L,'vanqsort_cmp',address(a),address(b)))),
  });
  const callbacks={create_nhwindow:'win_create_nhwindow',destroy_nhwindow:'win_destroy_nhwindow',display_nhwindow:'win_display_nhwindow',start_menu:'win_start_menu',end_menu:'win_end_menu',putstr:'win_putstr',putmixed:'win_putmixed',raw_print:'win_raw_print'};
  for(const[name,target]of Object.entries(callbacks))local[name]=(...args)=>windowCall(target,...args);
  for(const name of ['pline','pline_The','You','Your','You_feel','You_hear','You_see','urgent_pline','verbalize','impossible','panic','livelog_printf'])local[name]=(...args)=>resolve(name)(...boundary(args));
  initializeInsight(local,L);
+ // Original exported table aliases the initialized native backing; no second copy.
+ environment.linkGlobal('vanqorders',storage[abi.publicStorage.vanqorders]);
  const names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name)),parameters=name=>abi.public[name].match(/\(([^)]*)\)/)[1].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');
  const convert=(type,value)=>type.includes('*')?text(value):['char','schar','boolean','aligntyp'].includes(type)?transport.char(value):type==='unsigned int'?transport.uint(value):type==='long'?transport.long(value):type==='coordxy'?transport.short(value):transport.int(value);
  environment.register('insight',Object.fromEntries(names.map(name=>[name,(...args)=>{const types=parameters(name),value=callInsight(local,L,name,...args.map((arg,i)=>{if(!types[i])throw new Error('Extra INSIGHT argument '+name);return convert(types[i],arg);}));const type=abi.public[name].split(' (')[0];return type==='boolean'?Number(Boolean(value)):type.includes('*')?text(value):value;}] )));

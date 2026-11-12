@@ -560,8 +560,8 @@
     "nethack-c/wasm/tu-libraries/wizard.js": "c681b4b3aec2db081ff4234ddf33c7c7f9fb3cbd35656efd696bf53ec85d5d7b",
     "nethack-c/upstream/src/wizard.c": "65f20a287adad40f033be2b93bad8fa98abd56fb6330225547864988db993845",
     "js/ported/wizard.js": "02705e3b65638b343342166d854c94e8657320b239baeb9cb7b3189440355d2a",
-    "js/ported/wizard-runtime.js": "2e9af9c5f34ab9d813ff6ffb3d7e18da0a5077229ef7ddbde2c7d5745081ec1f",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/ported/wizard-runtime.js": "c96b8744a6beee12f5c12f7b92cd8af6e11facc075b29e852b085c4a0d11d25a",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

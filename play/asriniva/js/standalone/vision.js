@@ -20,7 +20,8 @@ export function enableVision(environment,layouts){
   assert:(ok,expression,fn,line)=>{if(!ok)environment.resolve('__assert_fail')(services.literal(expression),services.literal('vision.c'),line,services.literal(fn));},
   panic:(format,n)=>environment.resolve('panic')(typeof format==='string'?services.literal(format):format,n),
  });
- const context=initializeVision(local,L),only=['vision_init','vision_recalc','vision_reset','block_point','unblock_point','recalc_block_point','clear_path','do_clear_area','does_block'];
+ for(const name of ['canseemon','detecting','mon_visible','see_with_infrared','tp_sensemon','worm_known'])local[name]=p=>environment.resolve(name)(environment.address(p));
+ const context=initializeVision(local,L),only=['vision_init','vision_recalc','vision_reset','block_point','unblock_point','recalc_block_point','clear_path','do_clear_area','does_block','get_viz_clear','howmonseen'];
  environment.register('vision',Object.fromEntries(only.map(name=>[name,(...args)=>callVision(local,L,name,...args)])));
  return {context,storage,rows};
 }

@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for FILES JS bodies.
 import * as files from './files.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -9,10 +10,10 @@ export function createFilesEnvironment(services){
  const ptr=v=>{const n=Number(v);if(!Number.isSafeInteger(n)||BigInt(n)!==BigInt(v))throw Error('FILES pointer exceeds exact address range');return n;};
  const types={char:'i8','signed char':'i8','unsigned char':'u8',short:'i16','unsigned short':'u16',int:'i32','unsigned int':'u32',unsigned:'u32',long:'i64','unsigned long':'u64','long long':'i64','unsigned long long':'u64'};
  const env=Object.assign(Object.create(services),layout,{ptr,sizes:Object.fromEntries(Object.entries(layout).filter(([k])=>k.startsWith('size:')).map(([k,v])=>[k.slice(5),v]))});
- for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{const n=BigInt[signed==='i'?'asIntN':'asUintN'](bits,BigInt(typeof v==='number'?Math.trunc(v):v));return bits===64?n:Number(n);};
+ for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{return Crt.narrowInteger(signed,bits,v);};
  const memory=()=>new DataView(services.heap().buffer),type=t=>t.includes('*')?'p':t.startsWith('enum ')?'i32':types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error('Review FILES scalar '+t);return env[d](v);};
- env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review FILES cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){const dv=memory();return decode(t,bits===64?dv.getBigUint64(address,true):dv['getUint'+bits](address,true));},set value(v){const dv=memory();if(bits===64)dv.setBigUint64(address,BigInt.asUintN(64,BigInt(v)),true);else dv['setUint'+bits](address,Number(v),true);}};};
+ env.cell=(address,t)=>{address=ptr(address);const d=type(t);if(!d)throw Error('Review FILES cell '+t);const bits=d==='p'?64:+d.slice(1);return {address,get value(){return Crt.readIntegerCell(memory,decode,t,bits,address);},set value(v){return Crt.writeIntegerCell(memory,address,bits,v);}};};
  const kinds=Object.keys(schema.schema);
  env.field=(at,name,field)=>{const kind=kinds.indexOf(name),index=schema.schema[name]?.fields.findIndex(f=>f.name===field),f=schema.schema[name]?.fields[index];if(kind<0||index<0||!f)throw Error('Review FILES field '+name+'.'+field);at=ptr(at);return {get address(){return ptr(services.address(kind,at,index));},get value(){return decode(f.canonical,services.read(kind,at,index));},set value(v){services.write(kind,at,index,BigInt.asUintN(64,BigInt(v)));}};};
  schema.globals.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>ptr(services.global(i))}));

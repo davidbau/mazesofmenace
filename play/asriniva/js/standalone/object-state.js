@@ -2,7 +2,7 @@
 // existing measured adapter. Discovery/menu functions are deliberately absent.
 import * as policy from '../ported/o_init.js';
 import {createOInitEnvironment} from '../ported/o_init-runtime.js';
-import {CPanic} from '../ported/js-runtime.js';
+import {CPanic} from '../nethack/runtime.js';
 export function enableObjectState(environment,layouts) {
     const {services,memory,bitfields,libc}=environment;
     const globals=['objects','obj_descr','svb','svd','go','iflags','flags','program_state','u','cg','gu','svc','def_oc_syms'];

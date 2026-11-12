@@ -619,7 +619,12 @@
     "relink_timers": "void (boolean)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-timeout-abi.py": "1c4d3af7a1e26bdbe99b58c1188e476fba10ad64640d4c9ba425c63821262246",
+    "scripts/export-standalone-timeout-abi.py": "b6fff582fb5e24e8ca368abc0b0a5a0664438e14d06684bad579614785997646",
+    "js/standalone/timers.js": "6765cc7b12b9bc0981a3e4be9dbb681d5e20c46856ed796770cc07d13774ea33",
+    "js/standalone/timeout-transport.js": "d23ea0030d2d6cfc15570d6144e8ea82ebccb02bf0dae7ea01cba88eeb89688c",
+    "js/standalone/record-views.js": "6bd799ba182a49c5702ffea8203bed52cb321ab7277d0d2014a60177fe79b1bc",
+    "js/c-runtime/record-views.js": "c4d56acd7b15eed199014840fcf134375a1ef075035199d33f72b33a009b9ba8",
+    "js/nethack/declarations.js": "e2bf4345aaec4fd31a2401ad0eb82e4cfc5835e8a4e6c5df0117115f85fce6da",
     "scripts/tu-timeout-layout.h": "81b03813e26cf24c1ffb7a430675ae8b01f74a50783d75c1f35c6c34d6f154ae",
     "nethack-c/wasm/tu-timeout-support.inc": "0d166810df107a8cbd991a0fbec73a126dc5720ef56b95fa7bfa89036107c718",
     "js/ported/timeout.js": "5997f356dd0f273fb5ea23aba23b099a602137928f1dd1d679938616518e6c33",
@@ -751,6 +756,7 @@
     ".cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
     ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
     ".cache/wasm64-build/tree/src/timeout.c": "779540f647749e0da11109f18a90e11c9e7bc36af44ed6455440b40fc6910596",
-    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb"
+    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb",
+    "scripts/tu-timeout-layout.h": "81b03813e26cf24c1ffb7a430675ae8b01f74a50783d75c1f35c6c34d6f154ae"
   }
 }

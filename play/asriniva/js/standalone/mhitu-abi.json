@@ -3939,12 +3939,12 @@
     "scripts/export-standalone-mhitu-abi.py": "daf030176318cde474ee03ae3b1923014cc09a220f20caa04275be0084c9fade",
     "js/standalone/mhitu.js": "96205df8efec7577dfc8daa24bfce2e38843517de4b277b356b1cc91285cc889",
     "js/ported/mhitu.js": "3f8fcb76901e5b282069b874f5c382509bd16f7f9467a4b7482263b70a3fe424",
-    "js/ported/mhitu-runtime.js": "803afa0bb357d63eb4273fec624359a852d4feaf09421f4b361c119b49699961",
+    "js/ported/mhitu-runtime.js": "9e74ef8aab7de25a57f9e31757a9ff34678805927fc52953248b4f27d18693aa",
     "nethack-c/wasm/tu-fragments/mhitu-schema.json": "74848c05985dc66f189b1428d3efd5ba2c267bf8e6fb9729f90dc3c8084da05e",
     "nethack-c/wasm/tu-fragments/mhitu-support.c": "d98412849d5a74b3215b135239e5a7a9aca564a1d355359c2140c3c575a0ab8c",
     "nethack-c/wasm/tu-libraries/mhitu.js": "beec43fe44d3a8ca8f78b3525c8be82a4bff86675ea18efb3dd3ee04e4e62640",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   }
 }

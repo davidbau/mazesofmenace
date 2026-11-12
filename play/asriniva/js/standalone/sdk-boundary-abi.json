@@ -1,0 +1,73 @@
+{
+  "profile": "Pinned Emscripten LP64/MEMFS/singlethread/-O2/default assertions/no armedSDKtimers",
+  "constants": {
+    "EPERM": 63,
+    "ENOSYS": 52,
+    "EINVAL": 28,
+    "ERANGE": 68,
+    "ENOENT": 44,
+    "EACCES": 2,
+    "EBADF": 8,
+    "ENOMEM": 48,
+    "PATH_MAX": 4096,
+    "F_SETFL": 4,
+    "F_GETFL": 3,
+    "O_RDONLY": 0,
+    "O_WRONLY": 1,
+    "O_RDWR": 2,
+    "O_CREAT": 64,
+    "O_EXCL": 128,
+    "O_TRUNC": 512,
+    "O_APPEND": 1024,
+    "O_CLOEXEC": 524288,
+    "O_LARGEFILE": 32768
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-sdk-boundary-abi.py": "b240113cc55ef105782ec52502ebba1463ef6763a0527ba6b052b579632cfc47",
+    "js/standalone/sdk-boundary.js": "7e88b049a55038197e629654f137061e794c6eb9671114aa28de78cc55b594dd",
+    "js/standalone/unix-platform-syscalls.js": "2d56778c2aa6cfeee5341bf2a936a0dd0cef089378335775f3370b57066b0d61",
+    "js/c-runtime/stdio.js": "3a28e3ff3e0b3140b1d1f30586e8f2fa22c7ea23c3b9d1e1035e2948708a10f3",
+    "js/services/c-vfs.js": "69e9c4a7dc3b3aa686859059190c10341935cc30bbb19b005da40a537ad8389d",
+    ".cache/emsdk/upstream/emscripten/src/lib/libcore.js": "bf610d3ced386c2c89f76b54890a064f9e57367975a59afeeedef02ad16a8330",
+    ".cache/emsdk/upstream/emscripten/src/lib/libstrings.js": "c8cd6dbca9ef15dab5964ca57198f097b89b4ff3b5874337a1ede399dbecc9fd",
+    ".cache/emsdk/upstream/emscripten/src/lib/libfs.js": "2c9503b250b57eade41abba1500a127877b5ea0a0c7730d9d4450f5f2eb93427",
+    ".cache/emsdk/upstream/emscripten/src/lib/libsyscall.js": "91c17685e4d60e2cb8a8de8c2f6939aefadd668b97508b494165bb214809f835",
+    ".cache/emsdk/upstream/emscripten/src/lib/libtty.js": "37a28d3808e631732292c165bc5aeeedfb9f6734ba5ce503a70a52f8cdb809e7",
+    ".cache/emsdk/upstream/emscripten/src/lib/libwasi.js": "b314c4b9800b37906c22f87b1dfe5f41a15399361bfb0ef83ab8b1ff229470fd",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/fcntl/open.c": "1b3681a3291acd898890b09a94c0fa079be8514100049219f3eacf0edcab5f24",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/syscall.h": "47d58145791b6e54ba70a15b904ae2f71c508bb012cd4c117a3a5afbdbe7c29f",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdio/freopen.c": "466649463abc18546d97ff048dd151c945c48df9ad54527ea5b7b846284f6981",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdio/fopen.c": "69a37b32d2229c1302158b2070b1a02016fd4be85cd02985c069fc6ba79607ce",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdio/__fmodeflags.c": "33b0a1af60462e61663c20180ea0d375a7cd5fb6c1da6d41716ad0046ac03344",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdio/fflush.c": "856ac1841cdeeeb3df3f47bfbea5fae0746b5c9ac67d9113588f8d1375f6eb55",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdio/fclose.c": "e6988cb0307c03aedfd2748bbdb5a1d734df728e1db8fbb248a9ff6be1b27b98",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/access.c": "35d4db9f8d1bca35a16a13fda70de8f072a98412e704eabfc55d227432b25504",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/getcwd.c": "7101e9ce4e6f16a313deab6196ce8f04ca70a0a060d40a7c5b79733e03c2bf23",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/setuid.c": "349044b6b5c4ee4f54d989475c743d45c2553071c26402f068d2632b275ab8c9",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/setgid.c": "d096b5c5585f6fcf1e06a44364964559f6355e6a36c05351ff0d994b8f919968",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/setxid.c": "d41b909d9023127a431efa3a3213c5c36e2a901fed3475591c2164b3f6fd9998",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/sleep.c": "5e8066339b94b4fae331d5fcc3f08b5bbd0948d7ad3a814049b9a12c995d6e3f",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/dup3.c": "ec099cd70e1be9012079316e406b339927cfa54876cb491974e5ea347e321fe4",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/process/wait.c": "1201894c0e45c0e0550f9c2700f15ffee542f20419f76779f42d9b8eb2a45784",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/process/waitpid.c": "e39ffad4f998751c747a5973d2660796d7207f68d0b75df89c3765cf79798a1f",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/time/nanosleep.c": "5ad9738734680a61ac941173a478374a23f9bd2297336d3013a35d51e6030ff7",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/time/clock_nanosleep.c": "65f20ad3d3049e95181d6ea59c045c7a5976521921af51c4578a849523dd8fa0",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/setitimer.c": "c4b9dd840004ed0c6a869ed3ea1382d5083fc3177591f8b23a5368bea407a603",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/emscripten_syscall_stubs.c": "36ed9a099697d4a53cde483241f11ec12c79b30be6e64b3a69f0cba3cc4884e6",
+    ".cache/emsdk/upstream/emscripten/system/lib/pthread/library_pthread_stub.c": "3635c65a1ae8cf81910934a71427ad3382870e53700860fc4a2df90fcf11b967"
+  },
+  "noGameAlarmCallerAudit": {
+    "roots": [
+      "src",
+      "sys",
+      "win"
+    ],
+    "terms": [
+      "alarm",
+      "setitimer",
+      "getitimer",
+      "ualarm"
+    ],
+    "source": "Configured original sealed game source; no occurrences of those function calls (unaccepted SDK armedtimers)."
+  }
+}

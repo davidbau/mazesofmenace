@@ -1,0 +1,41 @@
+{
+  "layout": {
+    "size": 2072,
+    "tell": 0,
+    "fd": 8,
+    "buf_pos": 12,
+    "buf_end": 16,
+    "buf": 24,
+    "capacity": 2048,
+    "entrySize": 280,
+    "ino": 0,
+    "off": 8,
+    "reclen": 16,
+    "type": 18,
+    "name": 19
+  },
+  "profile": "Actual pinned SDK MEMFS MEMORY64 O2 musl directory leaves, no replaced bodies",
+  "sourceSha256": {
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/scripts/build-standalone-sdk-directory.py": "ae836b64cacddc0745506557ea72262e7644bd0850fca6195109ce844feed9a9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/scripts/standalone-sdk-directory-probe.c": "44649cab370b8a34834bb719f52de01b3b5d42ee9e0833db222ff9791155e317",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/src/lib/libsyscall.js": "91c17685e4d60e2cb8a8de8c2f6939aefadd668b97508b494165bb214809f835",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/src/lib/libfs.js": "2c9503b250b57eade41abba1500a127877b5ea0a0c7730d9d4450f5f2eb93427",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/src/lib/libmemfs.js": "593a8567730dd12d609a37aabe1d512c50e85f473baf2d1701956e3b95cbe835",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/dirent.h": "a1c1ccd32905b6304606802aea2a417a22be848ae2a219dff3e0315d2f6aa8b5",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/dirent.h": "62f0387e896572d0360c7d696ac928a33191446ee5132cc22821bc4d0a5dbb3b",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/scandir.c": "4c1ce76cbe00ba6717e6a00212105c050d487118b01c6c520e615f739c1ad0af",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/readdir.c": "e3f239d10c9305f61949f8f70b0ff138f6d9eef19e43a89889380f3fcb6ed743",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/versionsort.c": "04e9674fb1ae7cf109d05429a2bed46bc44fe250a16731f5720b20cdf3ea32f8",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/fdopendir.c": "69ba74ce4ae269d0bb545a21be68328254b42e780f9563f138784cafb2d23201",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/dirfd.c": "7a2f2895d724ada2c6bd3c27cefff3b11a220f83b97fecdb5fad11f094a71198",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/seekdir.c": "6bdc200fb6044299e4dc545bd06ca59b9e30010da6105caa5d09817db19ad104",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/rewinddir.c": "60986885407275263940c88f158d2288e44c4a6bb9e50cc02aa4d4cbf7215fea",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/opendir.c": "3976147ff67bce338e64d745b44f7ec016221660c998454447faf54b283d8ded",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/closedir.c": "6aa80e09176c48e3f1097ca385cc3092a82b10be020ff40e874d707c3f167184",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/alphasort.c": "cd85d345137a9f313947db9030137efeab71fe97a0ef8850511566655190beb3",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/readdir_r.c": "fb1e327f1ea15fc584ce7447fcf682baf33b98b450f2e58889de1eb756c2383d",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/telldir.c": "0e882bc5497c1333505355bc74185af5a372ead0627f6286bd5482e72c814ab3",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/dirent/__dirent.h": "66e394f7f0b6921e15af4f81b6a5f9fd21345b9810272012eed6821e1b1166b3"
+  },
+  "oracleReceiptSha256": "277b3a389112b6f51c10ab30efcbecfb81bc989aad58e27240059263e18d8f12"
+}

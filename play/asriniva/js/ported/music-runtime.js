@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live native storage and header expansions; instrument effects remain in music.js.
 export function createMusicState(services, layout, namespace) {
     const my_goto_song = Number(services.storage(0));
@@ -30,10 +31,7 @@ export function createMusicEnvironment(services, layout, state) {
     const int = v => typeof v === 'bigint' ? Number(BigInt.asIntN(32, v)) : v | 0;
     const char = v => int(v) << 24 >> 24;
     const coordxy = v => int(v) << 16 >> 16;
-    const scalar = (o, key, at, kind) => Object.defineProperty(o, key, {
-        get() { return view()['get' + kind](at(), true); },
-        set(v) { view()['set' + kind](at(), kind.includes('Big') ? BigInt(v) : Number(v), true); },
-    });
+    const scalar = (o, key, at, kind) => Crt.defineScalarValue(view,o,key,at,kind);
     const indexed = (length, get, set, at) => new Proxy({ address: at }, {
         get(o, key) { if (key === 'length') return length;
             return typeof key === 'string' && /^-?\d+$/.test(key) ? get(Number(key)) : Reflect.get(o, key); },

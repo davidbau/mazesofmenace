@@ -2,7 +2,7 @@
 // in the translated owners; missing dependencies retain explicit link errors.
 import {enableSelections} from './selections.js';
 import abi from './level-abi.json' with {type:'json'};
-import {litstate_rnd,flood_fill_rm} from '../ported/mkmap.js';
+import {enableMkmap} from './mkmap.js';
 import {is_pool_or_lava,is_ice} from '../ported/dbridge.js';
 import * as stairs from '../ported/stairs.js';
 import * as region from '../ported/region.js';
@@ -11,6 +11,7 @@ import {sys_random_seed} from '../ported/unixmain.js';
 import * as bones from '../ported/bones.js';
 import {createBonesEnvironment} from '../ported/bones-runtime.js';
 import {bindBonesServices} from './bones-services.js';
+import {bindRegionServices} from './region-services.js';
 export function enableLevelStartup(environment,layouts,creation){
  enableSelections(environment,layouts,creation);
  const {services,ctypes,memory}=environment,local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
@@ -40,9 +41,7 @@ export function enableLevelStartup(environment,layouts,creation){
  env=createBonesEnvironment(local,layouts.bones,bones);
  local.Strcpy=(out,input)=>services.strcpy(environment.address(out),typeof input==='string'?services.literal(input):environment.address(input));local.Strcat=(out,input)=>services.strcat(environment.address(out),typeof input==='string'?services.literal(input):environment.address(input));
  environment.register('bones',Object.fromEntries(Object.keys(bonesServices.public).filter(name=>!environment.hasFunction(name)).map(name=>[name,bones[name]])),env,{prepareArgs:bonesServices.prepareArgs});
- const map=creation.context(layouts.mkmap);for(const kind of ['rnd','rn2'])map[kind]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('mkmap.c'),line,services.literal(caller));return services[kind](n);};for(const [name,type]of [['gm','struct instance_globals_m'],['gn','struct instance_globals_n']])Object.defineProperty(map,name,{value:creation.views.record(type,environment.requireGlobal(name))});
- map.IS_ROOM=t=>t>=layouts.mkmap.ROOM;map.IS_WALL=t=>t!==0&&t<=layouts.mkmap.DBWALL;map.IS_DOOR=t=>t===layouts.mkmap.DOOR;
- environment.register('map-lighting',{litstate_rnd,flood_fill_rm},map);
+ enableMkmap(environment,layouts);
  const water=creation.context(layouts.dbridge);water.IS_WATERWALL=t=>t===layouts.dbridge.WATER;water.Is_juiblex_level=lev=>services.on_level(lev,creation.environment.svd.dungeon_topology.d_juiblex_level);environment.register('level-water-terrain',{is_pool_or_lava,is_ice},water);
  const {views,context}=creation,stair=context(layouts.stairs),record=(type,p)=>views.record(type,p);
  Object.assign(stair,{StairwaySize:ctypes.size('stairway'),stairway:p=>record('stairway',p),assign_level:(to,from)=>memory.memmove(environment.address(to),environment.address(from),ctypes.size('d_level')),levelCopy:from=>{const p=environment.transport.stackAlloc(ctypes.size('d_level'));memory.memmove(p,environment.address(from),ctypes.size('d_level'));return record('d_level',p);},Sprintf:services.sprintf});
@@ -51,7 +50,8 @@ export function enableLevelStartup(environment,layouts,creation){
  const reg=Object.create(services),regionGlobals=['gr','gm','svn','svm','gg','u','gy','gi','svc','iflags','cg','svl','mons','gv'];
  for(const name of regionGlobals)Object.defineProperty(reg,name,{value:undefined,writable:true,configurable:true});
  Object.assign(reg,{global:i=>environment.requireGlobal(regionGlobals[i]),free:p=>services.free(environment.address(p)),alloc:n=>environment.alloc('alloc',n),memcpy:(a,b,n)=>memory.memmove(environment.address(a),environment.address(b),Number(n))});
- environment.register('region-reset',Object.fromEntries(['clear_regions','free_region'].map(name=>[name,(...args)=>callRegion(reg,layouts.region,name,...args)])),reg);
+ bindRegionServices(environment,reg,layouts.region);
+ environment.register('region-reset',Object.fromEntries(['clear_regions','free_region','region_danger','create_gas_cloud','show_region','reg_damg'].map(name=>[name,(...args)=>{const result=callRegion(reg,layouts.region,name,...args);return result?.address??result;}])),reg);
  environment.exposeAddressPort('sp_lev',['reset_xystart_size','create_des_coder']);
  environment.exposeAddressPort('dungeon',['init_mapseen','free_exclusions','Is_special','Is_branchlev'].filter(name=>!environment.hasFunction(name)));
  environment.enableAddressPort('mklev',{only:['mklev']});

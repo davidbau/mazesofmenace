@@ -416,8 +416,8 @@
     "nethack-c/wasm/tu-libraries/explode.js": "b019307c5352c30230a598eb21761ee35d92e757cc24e69b2d75fa04373017ac",
     "nethack-c/upstream/src/explode.c": "4eec158432088c93b9f48226b03305c2119532171e0840126b6b5ca6a48fb1a7",
     "js/ported/explode.js": "57a0b19366b71473b08ec0c588bbc594bb9555356bd0f1e9da5b7e02ba71944f",
-    "js/ported/explode-runtime.js": "5e2d134abe9b3161f1eb5387b687c3ca138e21d1dd19fa1b5fab5a6ccfd3fd7f",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/ported/explode-runtime.js": "77f938c6774d5d5a70dd49f95ba28a2f4a69368531b3d081686bd89d4a448605",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

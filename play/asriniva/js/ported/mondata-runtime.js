@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Fixed scalar field metadata only; offsets and ABI sizes remain checked per view.
 const mondataFields=Object.freeze({
     attack:Object.freeze([Object.freeze(["aatyp","Uint8",1]),Object.freeze(["adtyp","Uint8",1]),Object.freeze(["damn","Uint8",1]),Object.freeze(["damd","Uint8",1])]),
@@ -25,19 +26,14 @@ export function createMondataEnvironment(services, layout, namespace) {
     const int=value=>typeof value==='bigint'?Number(BigInt.asIntN(32,value)):Number(value)|0;
     const boolean=value=>Number(BigInt.asIntN(8,BigInt(value)));
     const samePtr=(a,b)=>raw(a)===raw(b);
-    const scalar=(obj,key,at,kind)=>Object.defineProperty(obj,key,{
-        get(){return view()['get'+kind](at(),true);},
-        set(value){view()['set'+kind](at(),kind.startsWith('Big')?BigInt(value):Number(value),true);},
-    });
+    const scalar=(obj,key,at,kind)=>Crt.defineScalarField(view,obj,key,at,kind);
     const fields=(obj,at,prefix,definitions)=>{
         for(const [key,kind,size] of definitions){
             if(layout[prefix+key+'_size']!==size)throw new Error('Review changed mondata field: '+prefix+key);
             scalar(obj,key,()=>at+layout[prefix+key],kind);
         }return obj;
     };
-    const pointerField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{
-        get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
-    });
+    const pointerField=(obj,key,at,wrap=value=>value)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const indexed=get=>new Proxy({}, {get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);}});
     function attack(value){const at=address(value);if(!at)return 0;
         return fields({address:identity(value)},at,'atk_',mondataFields.attack);}

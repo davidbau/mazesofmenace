@@ -1,4 +1,498 @@
 {
+  "assertions": [
+    {
+      "expression": "has_egd(mtmp2)",
+      "function": "copy_mextra",
+      "line": 2611,
+      "file": "mon.c"
+    },
+    {
+      "expression": "has_epri(mtmp2)",
+      "function": "copy_mextra",
+      "line": 2617,
+      "file": "mon.c"
+    },
+    {
+      "expression": "has_eshk(mtmp2)",
+      "function": "copy_mextra",
+      "line": 2623,
+      "file": "mon.c"
+    },
+    {
+      "expression": "has_emin(mtmp2)",
+      "function": "copy_mextra",
+      "line": 2629,
+      "file": "mon.c"
+    },
+    {
+      "expression": "has_edog(mtmp2)",
+      "function": "copy_mextra",
+      "line": 2635,
+      "file": "mon.c"
+    },
+    {
+      "expression": "has_ebones(mtmp2)",
+      "function": "copy_mextra",
+      "line": 2641,
+      "file": "mon.c"
+    },
+    {
+      "expression": "ga.animal_list != 0",
+      "function": "pick_animal",
+      "line": 4861,
+      "file": "mon.c"
+    }
+  ],
+  "argumentKinds": {
+    "pet_sanity_check": [
+      "mon",
+      "raw"
+    ],
+    "sanity_check_single_mon": [
+      "mon",
+      "",
+      "raw"
+    ],
+    "mon_sanity_check": [],
+    "m_poisongas_ok": [
+      "mon"
+    ],
+    "zombie_maker": [
+      "mon"
+    ],
+    "zombie_form": [
+      "pm"
+    ],
+    "undead_to_corpse": [
+      ""
+    ],
+    "genus": [
+      "",
+      ""
+    ],
+    "pm_to_cham": [
+      ""
+    ],
+    "make_corpse": [
+      "mon",
+      ""
+    ],
+    "minliquid": [
+      "mon"
+    ],
+    "minliquid_core": [
+      "mon"
+    ],
+    "mcalcmove": [
+      "mon",
+      ""
+    ],
+    "mcalcdistress": [],
+    "m_calcdistress": [
+      "mon"
+    ],
+    "movemon_singlemon": [
+      "mon"
+    ],
+    "movemon": [],
+    "meatbox": [
+      "mon",
+      "obj"
+    ],
+    "m_consume_obj": [
+      "mon",
+      "obj"
+    ],
+    "meatmetal": [
+      "mon"
+    ],
+    "meatobj": [
+      "mon"
+    ],
+    "meatcorpse": [
+      "mon"
+    ],
+    "mon_give_prop": [
+      "mon",
+      ""
+    ],
+    "mon_givit": [
+      "mon",
+      "pm"
+    ],
+    "mpickgold": [
+      "mon"
+    ],
+    "mpickstuff": [
+      "mon"
+    ],
+    "curr_mon_load": [
+      "mon"
+    ],
+    "max_mon_load": [
+      "mon"
+    ],
+    "can_touch_safely": [
+      "mon",
+      "obj"
+    ],
+    "can_carry": [
+      "mon",
+      "obj"
+    ],
+    "monlineu": [
+      "mon",
+      "",
+      ""
+    ],
+    "mon_allowflags": [
+      "mon"
+    ],
+    "m_in_air": [
+      "mon"
+    ],
+    "mfndpos": [
+      "mon",
+      "mfp",
+      ""
+    ],
+    "mm_2way_aggression": [
+      "mon",
+      "mon"
+    ],
+    "mm_aggression": [
+      "mon",
+      "mon"
+    ],
+    "mm_displacement": [
+      "mon",
+      "mon"
+    ],
+    "monnear": [
+      "mon",
+      "",
+      ""
+    ],
+    "dmonsfree": [],
+    "replmon": [
+      "mon",
+      "mon"
+    ],
+    "relmon": [
+      "mon",
+      "monp"
+    ],
+    "copy_mextra": [
+      "mon",
+      "mon"
+    ],
+    "dealloc_mextra": [
+      "mon"
+    ],
+    "dealloc_monst": [
+      "mon"
+    ],
+    "mon_leaving_level": [
+      "mon"
+    ],
+    "m_detach": [
+      "mon",
+      "pm",
+      ""
+    ],
+    "set_mon_min_mhpmax": [
+      "mon",
+      ""
+    ],
+    "mlifesaver": [
+      "mon"
+    ],
+    "lifesaved_monster": [
+      "mon"
+    ],
+    "vamprises": [
+      "mon"
+    ],
+    "logdeadmon": [
+      "mon",
+      ""
+    ],
+    "anger_quest_guardians": [
+      "mon"
+    ],
+    "mondead": [
+      "mon"
+    ],
+    "corpse_chance": [
+      "mon",
+      "mon",
+      ""
+    ],
+    "mondied": [
+      "mon"
+    ],
+    "mongone": [
+      "mon"
+    ],
+    "monstone": [
+      "mon"
+    ],
+    "monkilled": [
+      "mon",
+      "raw",
+      ""
+    ],
+    "set_ustuck": [
+      "mon"
+    ],
+    "unstuck": [
+      "mon"
+    ],
+    "killed": [
+      "mon"
+    ],
+    "xkilled": [
+      "mon",
+      ""
+    ],
+    "mon_to_stone": [
+      "mon"
+    ],
+    "vamp_stone": [
+      "mon"
+    ],
+    "m_into_limbo": [
+      "mon"
+    ],
+    "migrate_mon": [
+      "mon",
+      "",
+      ""
+    ],
+    "ok_to_obliterate": [
+      "mon"
+    ],
+    "elemental_clog": [
+      "mon"
+    ],
+    "mnexto": [
+      "mon",
+      ""
+    ],
+    "deal_with_overcrowding": [
+      "mon"
+    ],
+    "maybe_mnexto": [
+      "mon"
+    ],
+    "mnearto": [
+      "mon",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "m_respond_shrieker": [
+      "mon"
+    ],
+    "m_respond_medusa": [
+      "mon"
+    ],
+    "m_respond": [
+      "mon"
+    ],
+    "qst_guardians_respond": [],
+    "peacefuls_respond": [
+      "mon"
+    ],
+    "setmangry": [
+      "mon",
+      ""
+    ],
+    "wake_msg": [
+      "mon",
+      ""
+    ],
+    "wakeup": [
+      "mon",
+      ""
+    ],
+    "wake_nearby": [
+      ""
+    ],
+    "wake_nearto_core": [
+      "",
+      "",
+      "",
+      ""
+    ],
+    "wake_nearto": [
+      "",
+      "",
+      ""
+    ],
+    "seemimic": [
+      "mon"
+    ],
+    "normal_shape": [
+      "mon"
+    ],
+    "alloc_itermonarr": [
+      ""
+    ],
+    "iter_mons_safe": [
+      "callback"
+    ],
+    "iter_mons": [
+      "callback"
+    ],
+    "get_iter_mons": [
+      "callback"
+    ],
+    "get_iter_mons_xy": [
+      "callback",
+      "",
+      ""
+    ],
+    "healmon": [
+      "mon",
+      "",
+      ""
+    ],
+    "rescham": [],
+    "m_restartcham": [
+      "mon"
+    ],
+    "restartcham": [],
+    "restore_cham": [
+      "mon"
+    ],
+    "restrap": [
+      "mon"
+    ],
+    "maybe_unhide_at": [
+      "",
+      ""
+    ],
+    "hideunder": [
+      "mon"
+    ],
+    "hide_monst": [
+      "mon"
+    ],
+    "mon_animal_list": [
+      ""
+    ],
+    "pick_animal": [],
+    "decide_to_shapeshift": [
+      "mon"
+    ],
+    "pickvampshape": [
+      "mon"
+    ],
+    "isspecmon": [
+      "mon"
+    ],
+    "validspecmon": [
+      "mon",
+      ""
+    ],
+    "valid_vampshiftform": [
+      "",
+      ""
+    ],
+    "validvamp": [
+      "mon",
+      "intp",
+      ""
+    ],
+    "wiz_force_cham_form": [
+      "mon"
+    ],
+    "select_newcham_form": [
+      "mon"
+    ],
+    "accept_newcham_form": [
+      "mon",
+      ""
+    ],
+    "mgender_from_permonst": [
+      "mon",
+      "pm"
+    ],
+    "newcham": [
+      "mon",
+      "pm",
+      ""
+    ],
+    "can_be_hatched": [
+      ""
+    ],
+    "egg_type_from_parent": [
+      "",
+      ""
+    ],
+    "dead_species": [
+      "",
+      ""
+    ],
+    "kill_eggs": [
+      "obj"
+    ],
+    "kill_genocided_monsters": [],
+    "golemeffects": [
+      "mon",
+      "",
+      ""
+    ],
+    "angry_guards": [
+      ""
+    ],
+    "pacify_guard": [
+      "mon"
+    ],
+    "pacify_guards": [],
+    "mimic_hit_msg": [
+      "mon",
+      ""
+    ],
+    "usmellmon": [
+      "pm"
+    ],
+    "check_gear_next_turn": [
+      "mon"
+    ],
+    "adj_erinys": [
+      ""
+    ],
+    "see_monster_closeup": [
+      "mon",
+      ""
+    ],
+    "see_nearby_monsters": [],
+    "shieldeff_mon": [
+      "mon"
+    ],
+    "flash_mon": [
+      "mon"
+    ]
+  },
+  "numericMacros": {
+    "ALIGNLIM": {
+      "definition": "10L + (svm.moves / 200L)",
+      "projectionModulus": "34359738368",
+      "sourceUses": [
+        "C.adjalign(-(C.int((C.u.ualign.record) + (C.int((C.int(C.ALIGNLIM)) / (2))))));",
+        "C.adjalign(C.int((C.int((C.ALIGNLIM) / (4)))));",
+        "C.adjalign(-C.int((C.int((C.ALIGNLIM) / (8)))));",
+        "C.adjalign(C.int((C.int((C.ALIGNLIM) / (4))))); /* BIG bonus */"
+      ],
+      "scope": "Signed remainder preserves exactly the four guarded int/cast/division observations for all native signedlong move values; not a general long-valued macro representation."
+    }
+  },
+  "referenceHeaderSha256": {
+    ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2"
+  },
   "schema": {
     "mon": [
       "struct monst",
@@ -736,10 +1230,12 @@
     "c_obj_colors"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-mon-abi.py": "efdc42640ff8ada9cb826da28724780c0434d884d8e8d08f8531ae5f36824996",
+    "scripts/export-standalone-mon-abi.py": "be0bda1d7415868fbc317ab0635ab65af85ef6bae280ca1046408ecf3782a63f",
     "js/ported/mon-runtime.js": "7f6b8799961859dfa0e4d14d82efba8aea4744fa0786bb0e934d2bfd5755fa16",
     "nethack-c/wasm/tu-mon-support.inc": "e7638f31a72c5098cd585e3c8b3acc34d67860092c08143017624f4a8e5d7ba2",
+    "nethack-c/wasm/tu-libraries/mon.js": "61f56e2f378f8b79f09c86d6ccf6d9d361c1fc39097d156b4cf73feac669f86e",
     "js/ported/mon.js": "05f3f39643975e5f2861c8b9cbdc617eaf9b4e5ae8a644efa616a7a49a9aaa4e",
-    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/standalone/monster-lifecycle.js": "fd2b9d30c03a7ecc810c13cf9a0ac460adc06272d66332d7c2b501ed07bb2679"
   }
 }

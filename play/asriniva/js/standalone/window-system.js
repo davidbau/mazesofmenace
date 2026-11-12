@@ -21,6 +21,9 @@ export function enableWindowSystem(environment,layouts){
  const terminal=Object.hasOwn(environment.status(),'termcap')?null:environment.enableTerminal(layouts.termcap);
  const proxy=()=>new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
  const t=proxy(),w=proxy();for(const root of ['windowprocs','cg','gs','hexdd','def_monsyms','def_oc_syms',...W.globalfields.map(path=>path.split('.')[0])])Object.defineProperty(w,root,{value:undefined,writable:true,configurable:true});
+ // The native WINDOWS service materializes text operands before libc calls.
+ // Keep its MEMORY64 strlen result rather than inheriting the host Number.
+ for(const name of ['strlen','strcpy','strcat','strcmp','strncmp','strncpy','strchr','strrchr','strstr','puts','fputs'])if(typeof services[name]==='function')w[name]=(...args)=>{const count=['strncmp','strncpy','strcpy','strcat','strcmp','strstr'].includes(name)?2:1;const value=services[name](...args.map((v,i)=>i<count?text(v):v?.address??v));return name==='strlen'?environment.transport.ulong(value):value;};
  const code=type=>{type=ctypes.canonical(type);return type.includes('*')?'p':type==='void'?'v':/\b(float|double)\b/.test(type)?'d':size(type)===8?'j':'i';};
  const signature=row=>[row.result,...row.parameters].map(code).join('');
  function prototype(type){const match=type.match(/^(.+?)\s*\(\s*\*\s*\)\s*\((.*)\)$/)??type.match(/^(.+?)\s*\((.*)\)$/);if(!match)throw new Error('Unknown window callback ABI '+type);return{result:match[1].trim(),parameters:match[2].split(',').map(s=>s.trim()).filter(s=>s&&s!=='void')};}

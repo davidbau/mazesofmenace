@@ -2995,8 +2995,14 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased
      * The footer is the single-page morestr "(end) " (wintty.c:2740) and the
      * cursor sits just past it. */
     if (game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0) {
+        /* C wintty.c:1180-1194,1449-1487: full-screen menus use the same
+         * entry attributes and single-character selection updates as overlays. */
+        /* wintty.c:1188-1194,1440-1488: full-screen rows use the same entry
+         * colors and toggle marks as corner menus; consume the mark sentinel. */
+        /* wintty.c:1184-1194 toggles only the marker; consume the same
+         * internal toggle/style marker as the overlay renderer below. */
         const fsRows = body.map((t, i) => (t === null ? ''
-            : i === 0 ? ` ${menu_heading_text(t)}` : ` ${t}`));
+            : i === 0 ? ` ${menu_heading_text(t)}` : ` ${menucolor_row(t)}`));
         fsRows[fsRows.length - 1] = ' (end) ';
         game._screen_output = fsRows.join('\n');
         set_cursor('(end) '.length + 1, fsRows.length - 1);

@@ -102,6 +102,14 @@ async function read_getlin(prompt) {
                             doprev = true;
                             while (await recall(prevIdx) === 16)
                                 prevIdx = step(prevIdx);
+                            /* getline.c:108-111's two tty_doprev_message() calls
+                             * also advance the combination walk (topl.c:62-64); h
+                             * (not the filtered hist) is what the else-arm counts. */
+                            if (pw === 'c') {
+                                g._prevmsg_history_length = h.length;
+                                g._prevmsg_next = 0;
+                                g._prevmsg_combo = hist.length >= 2 ? 2 : 0;
+                            }
                         } else {
                             doprev = true;
                         }
@@ -115,6 +123,7 @@ async function read_getlin(prompt) {
                  * and buffer are re-added and the key falls through to normal
                  * processing. */
                 await doprev_message(`${prompt} ${buf}`);
+                g._prevmsg_combo = 0; /* getline.c:126 cw->maxcol = cw->maxrow */
                 doprev = false;
                 await paint();
             } else if (doprev) {

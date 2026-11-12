@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Native ABI storage and header macros; version policy and table rows live in version.js.
 export function createVersionState(services, layout, namespace) {
     if (namespace.critical_sizes.length !== layout.criticalCount || namespace.rt_opts.length !== layout.rtOptCount)
@@ -46,10 +47,7 @@ export function createVersionEnvironment(services, layout, state) {
     const int = v => typeof v === 'bigint' ? Number(BigInt.asIntN(32, v)) : v | 0;
     const char = v => int(v) << 24 >> 24;
     const ulong = v => BigInt.asUintN(64, BigInt(v));
-    const scalar = (o, key, at, kind) => Object.defineProperty(o, key, {
-        get() { return view()['get' + kind](at(), true); },
-        set(v) { view()['set' + kind](at(), kind.includes('Big') ? BigInt(v) : Number(v), true); },
-    });
+    const scalar = (o, key, at, kind) => Crt.defineScalarValue(view,o,key,at,kind);
     const box = (at, kind) => { const o = { address: at }; scalar(o, 'value', () => at, kind); return o; };
     const indexed = (length, get, set, at) => new Proxy({ address: at }, {
         get(o, key) { if (key === 'length') return length;

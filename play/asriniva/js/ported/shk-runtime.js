@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Typed native transport and private state; original SHK algorithms/data are JS.
 import * as shk from './shk.js';
 import {withCEnvironment} from './c-runtime.js';
@@ -13,7 +14,7 @@ export function createShkEnvironment(services){
  const address=v=>{const p=ptr(v);if(typeof p!=='number')throw Error('SHK unsafe pointer dereference');return p;};
  const types={char:'i8','signed char':'i8','unsigned char':'u8',short:'i16','unsigned short':'u16',int:'i32','unsigned int':'u32',unsigned:'u32',long:'i64','unsigned long':'u64','long long':'i64','unsigned long long':'u64'};
  const env=Object.assign(Object.create(services),layout,{ptr,sizes:Object.fromEntries(Object.entries(layout).filter(([k])=>k.startsWith('size:')).map(([k,v])=>[k.slice(5),v]))});
- for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{const n=BigInt[signed==='i'?'asIntN':'asUintN'](bits,BigInt(typeof v==='number'?Math.trunc(v):v));return bits===64?n:Number(n);};
+ for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{return Crt.narrowInteger(signed,bits,v);};
  const memory=()=>new DataView(services.heap().buffer),type=t=>t.includes('*')?'p':t.startsWith('enum ')?'i32':types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error('Review SHK scalar '+t);return env[d](v);};
  env.cell=(at,t)=>{at=address(at);const d=type(t);if(!d)throw Error('Review SHK cell '+t);const bits=d==='p'?64:+d.slice(1);return{address:at,get value(){const dv=memory();return decode(t,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));},set value(v){const dv=memory();if(bits===64)dv.setBigUint64(at,BigInt.asUintN(64,BigInt(v)),true);else dv['setUint'+bits](at,Number(v),true);}};};

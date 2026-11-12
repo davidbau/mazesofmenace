@@ -11,13 +11,13 @@ import { createCTime } from '../services/c-time.js';
 import { CVFS } from '../services/c-vfs.js';
 import { compilePosixRegex, execPosixRegex, freePosixRegex, posixRegexError,
     REG_EXTENDED, REG_NOSUB, REG_NOMATCH, nativeRegexError } from '../services/posix-regex.js';
-import { withCEnvironment } from './c-runtime.js';
-import * as allocation from './alloc.js';
-import * as strings from './strutil.js';
+import { withCEnvironment } from '../ported/c-runtime.js';
+import * as allocation from '../ported/alloc.js';
+import * as strings from '../ported/strutil.js';
 import * as isaac from '../isaac64.js';
-import * as md4 from './nhmd4.js';
-import * as calendar from './calendar.js';
-import * as regex from './posixregex.js';
+import * as md4 from '../ported/nhmd4.js';
+import * as calendar from '../ported/calendar.js';
+import * as regex from '../ported/posixregex.js';
 
 export const JS_RUNTIME_LAYOUTS = Object.freeze({
     strutil: Object.freeze({ size: 272, len: 0, str: 8, buf: 16, bufSize: 256, largestInt: 32767 }),

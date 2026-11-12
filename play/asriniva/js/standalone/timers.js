@@ -17,7 +17,23 @@ export function enableTimers(environment,layouts) {
         return forwards.get(key);
     }});
     Object.defineProperties(env,Object.getOwnPropertyDescriptors(transport));
-    const record=(type,p)=>views.record(type,p),bits=v=>BigInt.asUintN(64,BigInt(v?.address??v??0));
+    // TIMEOUT's native header aliases traverse the obj.v union. Keep this
+    // projection local and wrap recursive record fields on the same backing heap.
+    const projected=new Map();
+    function record(type,p){
+        const base=views.record(type,p);if(!base)return base;type=ctypes.canonical(type);
+        const key=type+':'+environment.address(base);if(projected.has(key))return projected.get(key);
+        const definition=ctypes.record(type),aliases=type==='struct obj'||type==='obj'?{ocontainer:['struct obj *',L.obj_ocontainer],ocarry:['struct monst *',L.obj_ocarry]}:{};
+        const value=new Proxy(base,{get(target,name,receiver){
+            const alias=aliases[name];if(alias)return record(alias[0].slice(0,-1).trim(),ctypes.load(alias[0],environment.address(base)+alias[1]));
+            const result=Reflect.get(target,name,receiver),field=definition.fields[name];
+            if(!field||!result||typeof result!=='object'||!('address'in result))return result;
+            const child=(field.record??field.ctype.replace(new RegExp('\\s+'+name+'$'),'')).replace(/\s*\*$/,'');
+            try{ctypes.record(child);}catch{return result;}return record(child,result);
+        },set(target,name,value,receiver){const alias=aliases[name];if(alias){ctypes.store(alias[0],environment.address(base)+alias[1],environment.address(value));return true;}return Reflect.set(target,name,value,receiver);}});
+        projected.set(key,value);return value;
+    }
+    const bits=v=>BigInt.asUintN(64,BigInt(v?.address??v??0));
     const scalarRef=(type,at,value)=>{const ref=Object.defineProperty({address:at},'value',{get:()=>ctypes.load(type,at),set:next=>ctypes.store(type,at,next)});if(value!==undefined)ref.value=value;return ref;};
     if(ctypes.size('int')!==4||ctypes.size('unsigned int')!==4||ctypes.size('unsigned long')!==8)throw new Error('Timer save scalar profile mismatch');
     Object.assign(env,L,{

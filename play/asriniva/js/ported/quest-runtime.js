@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live C fields and header macros; quest decisions remain in quest.js.
 export function createQuestEnvironment(services, layout) {
     if (layout.pointerSize !== 8 || layout.intSize !== 4 || layout.longSize !== 8
@@ -16,20 +17,7 @@ export function createQuestEnvironment(services, layout) {
     const view = () => new DataView(services.heap().buffer);
     const pointer = at => Number(view().getBigUint64(at, true));
     const int = value => typeof value === 'bigint' ? Number(BigInt.asIntN(32, value)) : value | 0;
-    const indexed = (length, getter, setter) => new Proxy({}, {
-        get(target, key) {
-            if (key === 'length') return length;
-            if (typeof key === 'string' && /^\d+$/.test(key)) return getter(Number(key));
-            return Reflect.get(target, key);
-        },
-        set(target, key, value) {
-            if (setter && typeof key === 'string' && /^\d+$/.test(key)) {
-                setter(Number(key), value);
-                return true;
-            }
-            return Reflect.set(target, key, value);
-        },
-    });
+    const indexed = (length, getter, setter) => Crt.indexedArray(length,getter,setter);
     function level(value) {
         const at = address(value);
         return {

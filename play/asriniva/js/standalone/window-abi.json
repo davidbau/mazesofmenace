@@ -3223,7 +3223,9 @@
   "sourceSha256": {
     "js/ported/windows-runtime.js": "72285746357e70a161b365fdd2c687bb6cbfd3a834a00dbe45f0b700df9f6251",
     "js/ported/wintty-runtime.js": "25acdb90e67d59092f9ec03fca4de84c2154184373a0d6d3c4d32169138fcdb8",
-    "scripts/export-standalone-window-abi.py": "cb25c220934930565ff08f2e13e6b62838aa7cf76952d808f689ae9d05304bc6",
+    "js/standalone/window-system.js": "6612a307580fe753e0d4a0978b2bb32ec8097315b228f51a4627b4d933e72838",
+    "nethack-c/wasm/tu-libraries/windows.js": "377ca25b6cd0fa61f191ccdda07fdf37fecd907c7f40f6523e4207dd33b1abcf",
+    "scripts/export-standalone-window-abi.py": "ee3f3d66b1b7425b793347d4bf539ce41e44be30f7852cf71df6ef3c35ac9b8d",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-fragments/windows-support.c": "e76baaa87b94b71fd71581e47c3f2df34f8ae5b9b23ad6a197a57a4a0496b525",
     "nethack-c/wasm/tu-wintty-support.inc": "fb57cafd4b436e5c9c481b0f4d8487e5466191509fc20bdbff72e44432a47ec2"

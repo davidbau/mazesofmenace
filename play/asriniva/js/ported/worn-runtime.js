@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live C layouts and header macros only; wearing policy remains in worn.js.
 export function createWornEnvironment(services,layout,namespace) {
     for(const[key,size]of Object.entries({pointerSize:8,longSize:8,intSize:4,shortSize:2,
@@ -12,13 +13,8 @@ export function createWornEnvironment(services,layout,namespace) {
     const int=value=>typeof value==='bigint'?Number(BigInt.asIntN(32,value)):Number(value)|0;
     const long=value=>BigInt.asIntN(64,BigInt(value));
     const samePtr=(a,b)=>raw(a)===raw(b);
-    const scalar=(obj,key,at,kind)=>Object.defineProperty(obj,key,{
-        get(){return view()['get'+kind](at(),true);},
-        set(value){view()['set'+kind](at(),kind.startsWith('Big')?BigInt(value):Number(value),true);},
-    });
-    const ptrField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{
-        get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
-    });
+    const scalar=(obj,key,at,kind)=>Crt.defineScalarField(view,obj,key,at,kind);
+    const ptrField=(obj,key,at,wrap=value=>value)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const fields=(obj,at,prefix,definitions)=>{
         for(const[key,kind]of definitions){
             if(layout[prefix+key+'_size']!==Number(kind.match(/\d+/)[0])/8)

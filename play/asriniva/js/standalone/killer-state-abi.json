@@ -3,12 +3,12 @@
     "scripts/export-standalone-killer-state-abi.py": "cacc4f84af620544aa8958468b6bc1aae9209e5625d8061504733cc2d96d60c4",
     "js/standalone/killer-state.js": "40fbaeb58708fc47cba07c798e5f6f6714757ce31ea1525e4e11226a5ac6568f",
     "js/ported/end.js": "f84fc00c64b2aae4af7abdf6db1a5945d1dd3c66e9e616a9eb38b6d14d455220",
-    "js/ported/end-runtime.js": "5699956ba6558103b5908eead267b414f7f97863127d5308d7816538e9d4876d",
+    "js/ported/end-runtime.js": "62c5cde362737e8d1bcf59e1abcaea59b94639d7ddee29baca07c5c9b96eb777",
     "nethack-c/wasm/tu-libraries/end.js": "e312b534569c11a57fe722c6106a95de96978f366ee845706d4d286a93727ab0",
     "nethack-c/wasm/tu-fragments/end-support.inc": "afdab3f2d70c997e7abdcb3260b16c322a057c6e3f2e0ab3ed032867c61ece98",
     "scripts/tu-end-layout.h": "55c4a8464a1bf741ffacb759d52a327ff8bcd91454718bb4b7fb85b329e8e464",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },
   "referenceHeaderSha256": {

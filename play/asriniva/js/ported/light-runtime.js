@@ -1,3 +1,4 @@
+import * as Crt from '../c-runtime/adapter-memory.js';
 // Live C storage and header expansions; mobile-light policy remains in light.js.
 export function createLightEnvironment(services, layout) {
     const widths = { pointerSize: 8, longSize: 8, intSize: 4, charSize: 1, charSigned: 1,
@@ -24,10 +25,7 @@ export function createLightEnvironment(services, layout) {
     const int = v => typeof v === 'bigint' ? Number(BigInt.asIntN(32, v)) : v | 0;
     const coordxy = v => int(v) << 16 >> 16;
     const long = v => BigInt.asIntN(64, BigInt(v));
-    const scalar = (o, key, at, kind) => Object.defineProperty(o, key, {
-        get() { return view()['get' + kind](at(), true); },
-        set(v) { view()['set' + kind](at(), kind.includes('Big') ? BigInt(v) : Number(v), true); },
-    });
+    const scalar = (o, key, at, kind) => Crt.defineScalarValue(view,o,key,at,kind);
     const ptrField = (o, key, at, wrap) => Object.defineProperty(o, key, {
         get() { return wrap(pointer(at())); },
         set(v) { view().setBigUint64(at(), raw(v), true); },

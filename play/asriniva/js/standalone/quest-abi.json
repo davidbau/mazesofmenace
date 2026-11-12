@@ -155,8 +155,8 @@
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/quest.js": "1f876ba91fbed94730b1d74fa421c8554563d817973879582da7eb7e979a60f5",
     "js/ported/quest.js": "9e31ce6a9cfb717036fb63160feca6553a8e60a911272da39f5812f6f5c0c796",
-    "js/ported/quest-runtime.js": "6f456ab8582d2d1d40bf7964f125263d41ec8344d1bb395444f0d6f9cadc31a5",
-    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "js/ported/quest-runtime.js": "a778adcf2534a474040b3aeabdf70d93857e26c9395b7f4e34ef51bf5a8d4551",
+    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

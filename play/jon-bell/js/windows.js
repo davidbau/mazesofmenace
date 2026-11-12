@@ -162,12 +162,21 @@ export async function getlin(prompt) {
                     doprev = true;
                     while (await _recall(prevIdx) === 16)
                         prevIdx = _step(prevIdx);
+                    /* getline.c:108-111's two tty_doprev_message() calls also
+                     * advance the combination walk (topl.c:62-64): >=2 remembered
+                     * lines leave maxcol at maxrow-2, else it resets to maxrow. */
+                    if (pw === 'c') {
+                        g._prevmsg_history_length = hist.length;
+                        g._prevmsg_next = 0;
+                        g._prevmsg_combo = hist.length >= 2 ? 2 : 0;
+                    }
                     continue;
                 }
             } else {
                 // getline.c:121-137: full/reversed history includes the live
                 // query, then restores the query and the existing input buffer.
                 await doprev_message(prompt + ' ' + buf);
+                g._prevmsg_combo = 0; /* getline.c:126 cw->maxcol = cw->maxrow */
                 g._getlin_echo_state = null; /* getline.c:126 clear_nhwindow */
                 renderPrompt();
                 await flush_screen(1);

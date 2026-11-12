@@ -39,9 +39,22 @@ export function enableHeroEquipment(environment,layouts,hero){
   classBit:(p,i)=>bit('struct objclass',p,['oc_material','oc_big'][i]),
   tethered:p=>bit('struct throw_and_return_weapon',p,'tethered'),setTethered:(p,v)=>setBit('struct throw_and_return_weapon',p,'tethered',v),
  });
+ // Original WEAPON window macros dispatch through the same live windowprocs.
+ // Keep the namespace/callback identities; only native argument carriers change.
+ const weaponWindow=(name,...args)=>{const row=abi.weapon.windows[name];if(!row||ctypes.record('struct window_procs').fields[row.field]?.ctype!==row.nativeType)throw Error('Review WEAPON native window '+name);return environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),row.field,'void *'),row.signature,...args);};
+ Object.assign(ws,{
+  create_nhwindow:type=>weaponWindow('create_nhwindow',transport.int(type)),
+  start_menu:(win,flags)=>weaponWindow('start_menu',transport.int(win),transport.ulong(flags)),
+  end_menu:(win,prompt)=>weaponWindow('end_menu',transport.int(win),typeof prompt==='string'?services.literal(prompt):address(prompt)),
+  destroy_nhwindow:win=>weaponWindow('destroy_nhwindow',transport.int(win)),
+ });
  for(const kind of ['rn2','rnd'])ws[kind]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services[kind](n);};
  ws.d=(dice,n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services.d(dice,n);};
  const wn=locals.worn,wd=locals.wield;
+ // Native hack.h ynq: yn_function(query, ynqchars, 'q', TRUE).
+ wd.ynq=prompt=>environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynqchars'),113,1);
+ wd.strcmp=(left,right)=>services.strcmp(typeof left==='string'?services.literal(left):address(left),typeof right==='string'?services.literal(right):address(right));
+ wd.commonString=index=>address(ctypes.getField('struct c_color_names',environment.requireGlobal('c_color_names'),transport.int(index)===0?'c_black':transport.int(index)===1?'c_blue':'c_amber','const char *'));
  for(const [local,fields]of [[wn,['cursed','bypass','lamplit','oeroded','oeroded2']],[wd,['cursed','bknown','lamplit','unpaid','oerodeproof','known']]])Object.assign(local,{objectBit:(p,i)=>bit('struct obj',p,fields[i]),setObjectBit:(p,i,v)=>setBit('struct obj',p,fields[i],v)});
  wn.classBit=(p,i)=>bit('struct objclass',p,['oc_merge','oc_material','oc_big'][i]);wd.classBit=p=>bit('struct objclass',p,'oc_big');
  const monBits=['perminvis','invis_blkd','minvis','wormno','permspeed','mspeed','msleeping','mcanmove','ispriest','isminion','mfrozen'];

@@ -1,0 +1,8 @@
+{
+  "profile": "Pinned SDK musl, memory64 narrow scanf",
+  "EINVAL": 28,
+  "ERANGE": 68,
+  "longBytes": 8,
+  "pointerBytes": 8,
+  "EOF": -1
+}

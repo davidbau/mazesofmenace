@@ -8713,12 +8713,15 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-command-abi.py": "99d6ca5c2267ba9bedbfc2c606aebc43d2cec481a690f00b794fc53a5161cb3e",
-    "js/ported/cmd-runtime.js": "dc67068547b98478aeba9f0eb6c8df4f480b224b6f43ba3dfd3458c83deb5f34",
+    "scripts/export-standalone-command-abi.py": "2f0e9918d1d0f8ad6b30e64561d97fa7d6ead336ddaec81750546d3c8525b327",
+    "js/standalone/commands.js": "9faa8d0969f03dc64379ca376bfd725b2a3bad829c83dca8ef1e3809b2267daf",
+    "nethack-c/wasm/tu-libraries/cmd.js": "822d5692a45556341f7c3ce26338dbe265db6f39c20002c302c4d962afe7e559",
+    "js/ported/cmd-runtime.js": "7b3d1713901a29db64c5c9a841e7d99d82b7b1b9fc8988d5597951043a2f6bbc",
     "js/ported/cmd.js": "38f30815729bca3005360af8c88da39c03d10a61ef78333327ec784c8c5909a8",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },
   "referenceHeaderSha256": {
+    ".cache/command-abi.c": "743b9f1fd4d90872966adca21671eb852105c6c2f5a85024fab14510019ce934",
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/assert.h": "477f9fcf67e8eccb59dea935f0dc7abd40829f8d61a3e73e4151ff6a18ef25f9",
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/alltypes.h": "3ff1707efd8cba950d5604298884372be259d614600fa2dfc21d8a66010cc60c",
