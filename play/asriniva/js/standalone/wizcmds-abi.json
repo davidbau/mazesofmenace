@@ -3538,14 +3538,14 @@
     "wizcustom_callback": "void (winid, int, char *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-wizcmds-abi.py": "0c2f8ed6ded357d5b0d4388716c5a62b411eeec79e31241d29696db6a9bbcdf9",
+    "scripts/export-standalone-wizcmds-abi.py": "5bf865157594d3aaf74d5beef08083837a6fcbd9cc5aef1e444e1fda8c8a028c",
     "scripts/tu-wizcmds-layout.h": "b1bbf754879490528980bcb05e842cac4f2c8f3bbbe3ec4f0fc59172e19fac64",
     "nethack-c/wasm/tu-fragments/wizcmds-support.c": "9e0e24eee918507f7c52a766829c7dd321877329a47253c9c24047c6126df83c",
-    "js/ported/wizcmds-runtime.js": "f73acf45f1453ae2d94d076e06b3bf7afd189d1f53d176912cfba34b751361ed",
+    "js/nethack/bindings/wizcmds.js": "c27e8b1f92748f949edef832cf94c2ee0d860e6065013fb72eaa5aaaabf1d446",
     "nethack-c/wasm/tu-fragments/wizcmds-schema.json": "d1752ed54358bd4e10478fec9909d07807f1983f2ded5c3be52ed7723600d035",
     "nethack-c/wasm/tu-libraries/wizcmds.js": "23bb44d1187ce35a459490c51f63a03406f5fbe3a64fffc699023d8d1731745e",
-    "js/ported/wizcmds.js": "1701968a80787d7ace31450c6acf7943196e5bbf991aa7ca48e1d1791996e080",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/wizcmds.js": "b3493090d8333b99b8b13dfb5973b50675a4c0e93a89a8fefdf1cdc1b8628599",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/upstream/src/wizcmds.c": "4611d620caedc59dc270f5d6b6f9a2497831dc88325edc90f3770e75afd9b71f",

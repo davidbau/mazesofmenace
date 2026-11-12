@@ -1,6 +1,6 @@
 // Shared native field/storage transport for unchanged SYMBOLS policies.
 import * as symbols from '../ported/symbols.js';
-import {callSymbols} from '../ported/symbols-runtime.js';
+import {callSymbols} from '../nethack/bindings/symbols.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 export function enableSymbols(environment,layouts){
  const {services,ctypes,memory,functions,transport}=environment,L=layouts.symbols;

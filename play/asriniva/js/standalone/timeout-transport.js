@@ -1,7 +1,7 @@
 // Supplement the existing timer context with unchanged native TIMEOUT macros.
 import abi from './timeout-abi.json' with {type:'json'};
 import * as source from '../ported/timeout.js';
-import {createTimeoutEnvironment} from '../ported/timeout-runtime.js';
+import {createTimeoutEnvironment} from '../nethack/bindings/timeout.js';
 
 export function extendTimeoutTransport(environment,layouts,env,views){
  const {services,memory,ctypes,transport,functions}=environment,L=layouts.timeout,address=environment.address;

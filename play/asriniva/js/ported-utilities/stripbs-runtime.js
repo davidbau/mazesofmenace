@@ -1,5 +1,5 @@
 import * as stripbs from './stripbs.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 export function createStripbsEnvironment(services) {
  if(services.charSize!==1||services.pointerSize!==8||services.sizeSize!==8)throw Error('Review STRIPBS memory64 byte ABI');
  const view=()=>new DataView(services.heap().buffer);

@@ -1,6 +1,6 @@
 // Original tombstone policy through the unchanged native RIP bridge.
 import abi from './rip-abi.json' with {type:'json'};
-import {createPortedRuntime} from '../ported/wasm-runtime.js';
+import {createPortedRuntime} from '../backends/emscripten/runtime.js';
 const owners=new WeakMap();
 export function enableRip(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

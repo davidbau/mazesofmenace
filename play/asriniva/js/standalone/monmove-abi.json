@@ -445,11 +445,11 @@
     "dirs_ord"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-monmove-abi.py": "10752320a6a21c2acbc45b49fd4d319cdb139ebe8662f7a04618c6ee1359849d",
-    "js/ported/monmove-runtime.js": "4248f7e934e189861ebf44fe565c1fff627470bfcfee9d73f3170ea0e7843001",
+    "scripts/export-standalone-monmove-abi.py": "1851aa6620cfed7d2ce140e1c5c769e0d09cb071f6c8dc3bb977e2dbd152e47d",
+    "js/nethack/bindings/monmove.js": "2e8ebb90c93813d45be30367e629a1a1149aa5cc4ca14588f27ef6da77c60f66",
     "nethack-c/wasm/tu-monmove-support.inc": "7f2865bd51620be0b1c74a37589bfaa830eb94aea195f40ce722fafcc4c22a1b",
-    "js/ported/monmove.js": "5de0a2637789797e687065ef7ebeccc336d80e3e2aa0292a55a626b83ed32f01",
+    "js/ported/monmove.js": "c15e91a573c5a8a8eda8c4d7cda18ef6966645f50ad515382a8dc027c717dc39",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/monster-movement.js": "648be65e95404c81ce4bfb3723e3258188c31e373b72acbca7d8557304832ba8"
+    "js/standalone/monster-movement.js": "2601783d13104192197ffdff14747ca611151a25e82c9706a9ba3fa8e039a0df"
   }
 }

@@ -6,12 +6,13 @@ import {fileURLToPath} from 'node:url';
 import {setStorageForTesting,vfsReadFile,vfsWriteFile} from './storage.js';
 import {recordingClockEpoch} from './wasm-replay-support.js';
 import {recordingProfile,profileSysconf} from './recording-profile.js';
+import {loadGameAssets} from './standalone/game-assets.js';
 const STATE_PATH='/teleport-standalone-state.json';let loadedData,segmentIndex=0;
 function data(){
  if(loadedData)return loadedData;
- const directory=path.resolve(process.env.STANDALONE_RECORDER_ASSETS??fileURLToPath(new URL('../.cache/full-original-c-v1/assets',import.meta.url))),assets={};
+ const override=process.env.STANDALONE_RECORDER_ASSETS,assets=override?{}:loadGameAssets();
  function visit(from,to){for(const entry of fs.readdirSync(from,{withFileTypes:true})){const source=path.join(from,entry.name),target=to+'/'+entry.name;if(entry.isDirectory())visit(source,target);else if(entry.isFile())assets[target]={bytes:new Uint8Array(fs.readFileSync(source)),mode:fs.statSync(source).mode&0o777};else throw Error('Unsupported recorder asset '+source);}}
- visit(directory,'/nethack');const layouts=JSON.parse(fs.readFileSync(process.env.STANDALONE_RECORDER_LAYOUTS??fileURLToPath(new URL('./wasm/tu-layouts.json',import.meta.url))));loadedData={assets,layouts};return loadedData;
+ if(override)visit(path.resolve(override),'/nethack');const layouts=JSON.parse(fs.readFileSync(process.env.STANDALONE_RECORDER_LAYOUTS??fileURLToPath(new URL('./wasm/tu-layouts.json',import.meta.url))));loadedData={assets,layouts};return loadedData;
 }
 export async function runSegment(input){
  if(typeof input.moves!=='string'&&input.moves!==undefined)throw TypeError('Recorder moves must be literal text');
@@ -36,6 +37,6 @@ export async function runSegment(input){
  finally{
   names.forEach((name,i)=>saved[i]?Object.defineProperty(globalThis,name,saved[i]):delete globalThis[name]);
   const directory=process.env.STANDALONE_RECORDER_STATS_DIR;
-  if(directory){fs.mkdirSync(directory,{recursive:true});const worker=process.argv.find(a=>a.startsWith('--worker-session=')),session=worker?path.basename(worker.slice('--worker-session='.length)):'direct';fs.writeFileSync(path.join(directory,session+'.'+process.pid+'.'+index+'.json'),JSON.stringify({session,pid:process.pid,segment:index,inputKeys:moves.length,consumedKeys:keyIndex,rngCalls:rng.filter(line=>/^(?:rn2|rnd|rn1|rnl|rne|rnz|d)\(/.test(line)).length,screens:screens.length,cursors:cursors.length,animationSteps:animations.length,animationFrames:animations.map(frames=>frames.length),animationTotal:animations.reduce((n,frames)=>n+frames.length,0),pendingAnimationFrames:pending.length,storage:counts,persistedFiles:state?Object.keys(state.files):[],deletedFiles:state?.deleted??[],forbiddenAttempts,error},null,2));}
+  if(directory){fs.mkdirSync(directory,{recursive:true});const worker=process.argv.find(a=>a.startsWith('--worker-session=')),session=worker?path.basename(worker.slice('--worker-session='.length)):'direct';fs.writeFileSync(path.join(directory,session+'.'+process.pid+'.'+index+'.json'),JSON.stringify({session,pid:process.pid,segment:index,inputKeys:moves.length,consumedKeys:keyIndex,rngCalls:rng.filter(line=>/^(?:rn2|rnd|rn1|rnl|rne|rnz|d)\(/.test(line)).length,screens:screens.length,cursors:cursors.length,animationSteps:animations.length,animationFrames:animations.map(frames=>frames.length),animationCursors:animations.map(frames=>frames.map(frame=>Array.isArray(frame.cursor)?[...frame.cursor]:null)),animationTotal:animations.reduce((n,frames)=>n+frames.length,0),pendingAnimationFrames:pending.length,storage:counts,persistedFiles:state?Object.keys(state.files):[],deletedFiles:state?.deleted??[],forbiddenAttempts,error},null,2));}
  }
 }

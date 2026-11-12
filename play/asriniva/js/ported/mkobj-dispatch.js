@@ -1,7 +1,7 @@
 // MKOBJ call transport. Original gameplay functions remain in mkobj.js.
 import * as mkobj from './mkobj.js';
-import {withCEnvironment} from './c-runtime.js';
-import {createMkobjEnvironment} from './mkobj-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
+import {createMkobjEnvironment} from '../nethack/bindings/mkobj.js';
 import {wideArguments,pointerReturns} from './mkobj-dispatch-data.js';
 
 const environments=new WeakMap();

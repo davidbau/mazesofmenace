@@ -1,7 +1,7 @@
 // Original PRIEST sanctuary/turn/cleanup policies on shared native records.
 import abi from './priest-abi.json' with {type:'json'};
 import * as source from '../ported/priest.js';
-import {createPriestEnvironment} from '../ported/priest-runtime.js';
+import {createPriestEnvironment} from '../nethack/bindings/priest.js';
 const owners=new WeakMap();
 export function enablePriest(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

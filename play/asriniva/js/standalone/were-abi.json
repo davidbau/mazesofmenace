@@ -142,17 +142,17 @@
     "set_ulycn": "void (int)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-were-abi.py": "9c78df5094289a940f00bd678236b8c39d16c4cdec05eff5a88e672a3e67a5d9",
-    "js/standalone/were.js": "b53aebb79d2d00c2ce2b37011363e7c8bf5905fded5f0bc3d3df9fe32b6cc4e8",
-    "js/ported/were.js": "485ff7d02750020f4c5245bb617d4962c48e83be5c17be2f6a157d83b3f8a52e",
-    "js/ported/were-runtime.js": "b5ea2fb160bdc5403722b041640b9387e8e937517192945e76e7467a4f5233ea",
-    "js/nethack/runtime.js": "fc34e7cdf72d537f5dff2d180521afd02b79e791a83db21875b9f0540698d3ec",
-    "js/ported/calendar.js": "1e475c7d82dce8bbf7bb188e4c77143b211aa53fcb264650a64cd542cc337ee9",
+    "scripts/export-standalone-were-abi.py": "e47c99efa2d782584df29b34880eaf3986f557eee139a2a49e3c39cd9bd3cb67",
+    "js/standalone/were.js": "2981003e458a5800796e81dcd11cda0530cce17249a48d62a9d18c9e8447662e",
+    "js/ported/were.js": "d29acb1b7c473d5200a73813c35fe8328cdedcb4f88100ee050737bfb853e0d6",
+    "js/nethack/bindings/were.js": "62d0c262e26fb1b206bef83a3d4b0e0f1e6e02c8da3639ae53875d4bb42a0277",
+    "js/nethack/runtime.js": "8d36f8c8e16edbaf216d0938205ffaef0f1644c7f4836cd4a740b16bd7a0aff3",
+    "js/ported/calendar.js": "1323c85ef0c0de3b5544ebaa77ebdadbc3f595e81e70e9a93c50a8e6663116dd",
     "nethack-c/wasm/tu-libraries/were.js": "371095be52dea5cb369cb6fbd1888833d46e7cad329482fa21e36ad51aa9cb82",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "scripts/tu-were-layout.h": "7d1ef5d46ea4b0b38ee6e30017e495f4111989f8ed576b52d305c5b6645d2a49",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   }
 }

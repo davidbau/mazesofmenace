@@ -423,9 +423,9 @@
     "glyph_to_swallow"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-glyph-abi.py": "46b28e422075bb61bdf70ba35ca3bcde2d9776488b310e91f4d8f547197074bf",
-    "js/ported/glyphs-runtime.js": "1157b93e6b9a9af8f4ecdca94dd722337e9e1aa8be35a62f7b6e5c481def2e62",
-    "js/ported/glyphs.js": "878ef1a2bcbd12aef6939517b5ec75f8fa480fcf9ff7e95492162e1396a5dab8",
+    "scripts/export-standalone-glyph-abi.py": "188d3f7d033bdd3aa94da9240692b0b03636142fd0ca068639d20bdd6a5a6519",
+    "js/nethack/bindings/glyphs.js": "01f456e710097eda9f906c6bd62a2377d9f13b9c9062719308c8078e946d6111",
+    "js/ported/glyphs.js": "e20dbe89de515ee33b55da19a7b3558f8413c569e58fd21b9f2989ae0bee2e5b",
     "nethack-c/wasm/tu-fragments/glyphs-support.c": "f74cb82021a7875e80b4770e2aa76bbafb6b8b1888c6622baa81542a5b7c0adb",
     "scripts/tu-glyphs-layout.h": "8371ac4843c51864abd296e728e1e173112e017d576b6cff9351a88b4146d2d2",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",

@@ -3945,12 +3945,12 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-hack-abi.py": "fb10bfe432225c63c2647d0267e599784b552850f2073930c087251cfaff26c2",
-    "js/ported/hack-runtime.js": "1f6fbc74b0b3604fcf7c5083ba954e73a46f3b231a4152ff9c61a42f36de2052",
-    "js/ported/hack.js": "fd8f6ebac018ae471b378d597c679f3c21ce3a33d83b5b815d97433f26453abf",
+    "scripts/export-standalone-hack-abi.py": "2de10831e7a8f5c1d0e55908d10e2f08a84174b3af07c5bd5418ea0fb670fc52",
+    "js/nethack/bindings/hack.js": "3a6326e2db69108f77466a168d211e486c1c79e0004b6c330d0fcebea223dfa6",
+    "js/ported/hack.js": "964931791870c712bec8724d5c1625c9143882c3b05fd88a7ede6c1e3fa18a1d",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-fragments/hack-support.c": "96ac1f586baaa384f44baf031f931cdee9e27b414c24af20767b3098c382615c",
-    "js/standalone/movement.js": "10927b2664102fba92f8ed5d4528e9ce38fcc61ca22e2e393f052f5761f43087",
+    "js/standalone/movement.js": "441d59a021ec9c67ef40af8a028c6d9f4670a2235f7bed79ada62d59e3046543",
     "nethack-c/wasm/tu-libraries/hack.js": "6bfde9942d2b88d33da37c21c65abcb037447d4e3f507297a67532c3ac6d9f1d"
   },
   "referenceHeaderSha256": {

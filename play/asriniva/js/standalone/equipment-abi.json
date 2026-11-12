@@ -38,6 +38,12 @@
         "signature": "vi",
         "nativeType": "void (*)(winid) win_destroy_nhwindow"
       }
+    },
+    "y_n": {
+      "target": "yn_function",
+      "choices": "ynchars",
+      "default": 110,
+      "logging": 1
     }
   },
   "worn": {
@@ -102,20 +108,20 @@
     ]
   },
   "sourceSha256": {
-    "scripts/export-standalone-equipment-abi.py": "31e012a7ce00b72f99d122740ad5e55aa14feaf137521994e28b279e0b71fc0d",
-    "js/standalone/hero-equipment.js": "dcba41f2f5caa2cb1ca1924de2743e1f8851b20da9772bc2578268b73482fc3f",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "scripts/export-standalone-equipment-abi.py": "d9822467b293edf890a974459fb948ce6d5d58d4f6d9275c8a7f8322e3eba2ad",
+    "js/standalone/hero-equipment.js": "7ae85ae1b2218698080f273168b2f86fe6eb0aba3019d03cc8c56d4593ba96ab",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "nethack-c/wasm/tu-libraries/weapon.js": "0303766572429519079a031676ff80f2b41f399614320d88aaaaf4edbae723a1",
     "nethack-c/wasm/tu-libraries/wield.js": "0aff7987e96c7279c83c87acd24cf09dba2a747c006584f9d1973a35a5d4febf",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-weapon-support.inc": "30c6ed5f7a06c4fa75707642626efd5a03153f8c80f113d202d155086358f60e",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/ported/weapon.js": "edd0319a89e6fcecd69f5f6962f812e5aa5ad7f71a8eeda11bee98fe13b47edd",
-    "js/ported/weapon-runtime.js": "a7fa7b16ded8ddccbf84be84529dd7e46dff6a66f43b851fd99550e554b9dd73",
-    "js/ported/worn.js": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
-    "js/ported/worn-runtime.js": "6b0c91d03fbc69b6b519247a0b7989e52f50ce54562b70cf6d2b536788743eb5",
-    "js/ported/wield.js": "7c4052a40ad20eec5b6a5918597dc800165cb77694472e7aa0b8aed112f54583",
-    "js/ported/wield-runtime.js": "64b45ffc1d0c07856e30c61a88dcb390f95385f03ceab1a3c391d224c14ff790",
+    "js/ported/weapon.js": "3c71c8f2f513530ba7dd86d07293827b2f16102368e09477f222ff57cb7d3877",
+    "js/nethack/bindings/weapon.js": "88983a8d03422af68631faabb7648fce23c7390e7458c9a97415f3d604ff4f9d",
+    "js/ported/worn.js": "8d86a4cc4cc382b319ab1ea40157e1f3e9c9ed998044f0d8c1c0f6efcf94c584",
+    "js/nethack/bindings/worn.js": "92dfabdf9eda685d61c2f912346c2f2a229086eb2118cc6cc2e01fee10343b09",
+    "js/ported/wield.js": "db1ee2213ea46e242ae770f33c066a0698df18564152b1c88af19e3fe949789a",
+    "js/nethack/bindings/wield.js": "56c52a48ff796a8c0bf524015112f6b05c5f58d0e3cd4fee452b19e384b6a01c",
     ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
     ".cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470"
   }

@@ -1,9 +1,9 @@
 // Public runtime surface. Application declarations and platform services are
 // supplied by the caller; this module never imports translated game policies.
-export {CMemory} from '../services/c-memory.js';
-export {createCStdlib} from '../services/c-stdlib.js';
-export {createCTime} from '../services/c-time.js';
-export {CVFS,VFSError} from '../services/c-vfs.js';
+export {CMemory} from './heap.js';
+export {createCStdlib} from './stdlib.js';
+export {createCTime} from './time.js';
+export {CVFS,VFSError} from './vfs.js';
 export {address,createMemoryServices} from './memory.js';
 export {createCTypes} from './types.js';
 export {createBitfields} from './bitfields.js';
@@ -18,3 +18,7 @@ export {muslQsort} from './qsort.js';
 export {createEnvironmentInputs} from './environment-inputs.js';
 export {createRuntime} from './runtime.js';
 export {descriptorArray,writeIntegerCell,narrowInteger,writeDescriptor,readIntegerCell,scalarMethod,advanceDescriptor,defineScalarField,pointerSequence,definePointerField,initializeRecord,indexedArray,typeSize,formatShape,readDescriptor,writeTypedValue,decodeDescriptor,defineScalarValue} from './adapter-memory.js';
+export {C,R,T,withCEnvironment} from './context.js';
+export {createLibraryBindings} from './library-bindings.js';
+export {createRegexAbi} from './regex-abi.js';
+export {createScalarAdapter,callWithStack} from './adapter-factories.js';

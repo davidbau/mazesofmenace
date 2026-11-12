@@ -1,6 +1,6 @@
 // Original MHITU policy on its one cached native-view environment.
 import abi from './mhitu-abi.json' with {type:'json'};
-import {callMhitu,getMhituState} from '../ported/mhitu-runtime.js';
+import {callMhitu,getMhituState} from '../nethack/bindings/mhitu.js';
 const owners=new WeakMap();
 export function enableMhitu(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

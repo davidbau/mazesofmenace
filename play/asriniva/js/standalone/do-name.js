@@ -1,8 +1,8 @@
 // Canonical original DO_NAME over the existing naming buffers and counter.
 import abi from './do-name-abi.json' with {type:'json'};
 import * as source from '../ported/do_name.js';
-import {initializeDoName,createDoNameEnvironment} from '../ported/do_name-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {initializeDoName,createDoNameEnvironment} from '../nethack/bindings/do_name.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableDoName(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

@@ -229,15 +229,15 @@
     "function": "losexp"
   },
   "sourceSha256": {
-    "scripts/export-standalone-exper-abi.py": "a912652ab654465ae895697e773a17aedd80e27d4289fdbd432350c791a27174",
-    "js/standalone/exper.js": "2b782d7611e30215c651e9d0621dafcdef00ebcdb90072010460945aca51cbb6",
-    "js/ported/exper.js": "1b9bf6ce1cf7ec4ceb924e0f4bc9ce91db95c7dbb6d6fc0a7f41eb8375ecdc8e",
-    "js/ported/exper-runtime.js": "5f6486e7b13725ab2cdd17be399c550171f37a58711d21fee475c6ee2dc259a5",
+    "scripts/export-standalone-exper-abi.py": "300f08ff80f77f1d7fb83be00d4133e96170e2754b5e6fe849d311b7d8d6e0a8",
+    "js/standalone/exper.js": "cad40554709790131e0402c83f8290583cc228073783b63d5aca1a302b28a70e",
+    "js/ported/exper.js": "a2340a4916612a131478816565cbbd2b416944a9387a856613d287210a11476e",
+    "js/nethack/bindings/exper.js": "c037a1f7188a25c6536f74cacad9e346a7199620b751efcfdcc8712c4f82a449",
     "nethack-c/wasm/tu-libraries/exper.js": "c275cfa5919eac09a10d92e77a02851b2ce925fcbc3d4fe1700abe089bd5d562",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "scripts/tu-exper-layout.h": "8dddb5801a5f35f85c71c2750f7670769c1b8d8ffa18cf915a07315013826434",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2"
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d"
   }
 }

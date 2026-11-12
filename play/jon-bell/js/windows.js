@@ -2,7 +2,7 @@
 import { putstr } from './cmd.js'; // relocate-fns
 import { cmdq_pop, doprev_message, pgetchar } from './cmd.js'; // relocate-fns
 import { CMDQ_KEY, COLNO, MAX_MSG_HISTORY } from './const.js'; // relocate-fns
-import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, tty_getlin_echo, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
+import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, tty_getlin_echo, tty_getlin_history, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
@@ -152,9 +152,14 @@ export async function getlin(prompt) {
                 const _step = (i) => (i < 0 ? hist.length - 1
                     : (i - 1 < _floor ? -1 : i - 1));
                 const _recall = (i) => tty_getlin_recall(i < 0 ? prompt + ' ' + buf : hist[i]);
-                let morc = !doprev ? await _recall(-1) : 0;
+                /* topl.c:176 leaves maxcol alone when gt.toplines is empty.
+                 * A canceled extended prompt can leave a walk in progress;
+                 * getline.c:114-116 continues it, including both initial calls. */
+                const start = g._prevmsg_history_length === hist.length
+                    && g._prevmsg_next != null ? g._prevmsg_next : -1;
+                let morc = !doprev ? await _recall(start) : 0;
                 if (hist.length) {
-                    prevIdx = doprev ? _step(prevIdx) : hist.length - 1;
+                    prevIdx = doprev ? _step(prevIdx) : _step(start);
                     while (morc === 16) {
                         morc = await _recall(prevIdx);
                         prevIdx = _step(prevIdx);
@@ -162,6 +167,9 @@ export async function getlin(prompt) {
                     doprev = true;
                     while (await _recall(prevIdx) === 16)
                         prevIdx = _step(prevIdx);
+                    g._prevmsg_history_length = hist.length;
+                    g._prevmsg_next = _step(prevIdx);
+                    g._prevmsg_cycleEmpty = true; /* live query is outside hist */
                     /* getline.c:108-111's two tty_doprev_message() calls also
                      * advance the combination walk (topl.c:62-64): >=2 remembered
                      * lines leave maxcol at maxrow-2, else it resets to maxrow. */
@@ -183,6 +191,9 @@ export async function getlin(prompt) {
                 placeCursor();
             }
         }
+        /* getline.c:85-95 breaks on ESC with empty input BEFORE the
+         * doprev redraw/reset at :132-140. Other keys restart at the query. */
+        if (doprev && !(keyCode === 27 && buf.length === 0)) g._prevmsg_next = null;
         doprev = false;
         /* ^C is not special here: it falls to the tty_nhbell() arm (getline.c:185). */
         if (keyCode === 27 /* ESC */) {
@@ -199,10 +210,7 @@ export async function getlin(prompt) {
              * the cancel break leaves it there, so the ring gets the bare prompt. */
             if (!_saved_suppress) {
                 const line = prompt + ' ';
-                if (!g._msg_history) g._msg_history = [];
-                const h = g._msg_history;
-                h.push(line);
-                g._toplEmptyAfterSuppress = false; /* gt.toplines = "query " */
+                tty_getlin_history(line);
             }
             return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
         }
@@ -232,13 +240,8 @@ export async function getlin(prompt) {
      * receives that single line (tty_getlin is not suppress_history here). */
     if (!_saved_suppress) {
         const line = prompt + ' ' + buf;
-        if (!g._msg_history) g._msg_history = [];
-        const h = g._msg_history;
-        h.push(line);
+        tty_getlin_history(line);
         (g._getlin_hist ||= new Set()).add(line); /* unwrapped gt.toplines: ^P hard-wraps it */
-        /* getline.c:223-226 empties gt.toplines only when suppress_history;
-         * otherwise ^P's first recall (topl.c:46,106) shows "query answer". */
-        g._toplEmptyAfterSuppress = false;
     }
     return buf;
     } finally {

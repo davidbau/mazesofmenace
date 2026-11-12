@@ -8713,11 +8713,11 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-command-abi.py": "2f0e9918d1d0f8ad6b30e64561d97fa7d6ead336ddaec81750546d3c8525b327",
-    "js/standalone/commands.js": "9faa8d0969f03dc64379ca376bfd725b2a3bad829c83dca8ef1e3809b2267daf",
+    "scripts/export-standalone-command-abi.py": "589e8151d4816eee8d174b6cccc8a187245572390ee4209b8cc9c3de9376c210",
+    "js/standalone/commands.js": "5e6c4743b7219e14605caf6abaa08ad61051521279fb02801d5bd8e1bbb27aa0",
     "nethack-c/wasm/tu-libraries/cmd.js": "822d5692a45556341f7c3ce26338dbe265db6f39c20002c302c4d962afe7e559",
-    "js/ported/cmd-runtime.js": "7b3d1713901a29db64c5c9a841e7d99d82b7b1b9fc8988d5597951043a2f6bbc",
-    "js/ported/cmd.js": "38f30815729bca3005360af8c88da39c03d10a61ef78333327ec784c8c5909a8",
+    "js/nethack/bindings/cmd.js": "89fce2d76b1364cffca9619dc5f025ac8f37ad902cc285f2a84f23333b5e0b39",
+    "js/ported/cmd.js": "01aefdf33f5e36c561c248367b21dc5d9a8ac2a5ece67089799ae33f65a9cf9a",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },
   "referenceHeaderSha256": {

@@ -1,6 +1,7 @@
 // Shared monster pickup/equipment/name owners; source policies are unchanged.
 import {mpickobj,findgold,mdrop_special_objs,relobj} from '../ported/steal.js';
 import * as worn from '../ported/worn.js';
+import wornTextAbi from './worn-text-abi.json' with {type:'json'};
 import {breakarm,sliparm,num_horns} from '../ported/mondata.js';
 import {can_saddle,put_saddle_on_mon,steeds,stucksteed} from '../ported/steed.js';
 import {mon_nam,Monnam,minimal_monnam,Mgender,pmname,new_oname,a_monnam,Amonnam,y_monnam,YMonnam,noit_Monnam,noit_mon_nam,obj_pmname,mon_nam_too,Adjmonnam,some_mon_nam,noname_monnam,x_monnam,hcolor,hcolors,mon_pmname,Some_Monnam,free_oname} from '../ported/do_name.js';
@@ -18,6 +19,7 @@ export function enableMonsterInventory(environment,layouts,creation){
  const equip=context(layouts.worn);
  // Original global.h strcmpi and WORN native string argument carriers.
  const wornText=value=>typeof value==='string'?services.literal(value):environment.address(value);
+ for(const [name,row]of Object.entries(wornTextAbi.commonStrings))Object.defineProperty(equip,name,{get:()=>environment.address(ctypes.getField(row.type,environment.requireGlobal(row.global),row.field,'const char *'))});
  equip.strncmpi=(left,right,n)=>transport.int(environment.resolve('strncmpi')(wornText(left),wornText(right),transport.int(n)));
  equip.strcmpi=(left,right)=>equip.strncmpi(left,right,-1);
  equip.strsubst=(out,from,to)=>environment.address(environment.resolve('strsubst')(environment.address(out),wornText(from),wornText(to)));

@@ -1,12 +1,12 @@
 // Original Unix terminal policies on shared storage and the configured SDK's
 // virtual TTY. Device layout is the SDK syscall ABI, not the game's termios ABI.
-import terminalAbi from '../services/native-terminal-abi.json' with {type:'json'};
-import {createNativeTerminal} from '../services/native-terminal.js';
+import terminalAbi from '../platform/darwin/terminal-abi.json' with {type:'json'};
+import {createNativeTerminal} from '../platform/darwin/terminal.js';
 import * as unixtty from '../ported/unixtty.js';
 import * as ioctl from '../ported/ioctl.js';
-import {createUnixttyState,createUnixttyEnvironment} from '../ported/unixtty-runtime.js';
-import {createIoctlEnvironment} from '../ported/ioctl-runtime.js';
-import {VFSError} from '../services/c-vfs.js';
+import {createUnixttyState,createUnixttyEnvironment} from '../nethack/bindings/unixtty.js';
+import {createIoctlEnvironment} from '../nethack/bindings/ioctl.js';
+import {VFSError} from '../c-runtime/vfs.js';
 import platformAbi from './unix-platform-abi.json' with {type:'json'};
 export function createTerminalDevices(environment,layouts){
  const {memory,filesystem,libc}=environment,at=environment.address;
@@ -31,7 +31,7 @@ export function createTerminalDevices(environment,layouts){
 export function enableUnixTerminal(environment,layouts){
  const {services,memory,ctypes,transport}=environment;
  const devices=createTerminalDevices(environment,layouts),nativeCall=createNativeTerminal();
- const wire={moduleKey:environment,heap:()=>memory.HEAPU8,stackSave:services.stackSave,stackRestore:services.stackRestore,stackAlloc:transport.stackAlloc,signal:services.signal,kill:(...args)=>environment.resolve('kill')(...args),invokeSignal:(handler,sig)=>environment.functions.indirect(handler,'vi',sig),...devices};
+ const wire={moduleKey:environment,heap:()=>memory.HEAPU8,stackSave:services.stackSave,stackRestore:services.stackRestore,stackAlloc:transport.stackAlloc,signal:services.signal,kill:(...args)=>environment.resolve('kill')(...args),invalidSignal:()=>{environment.libc.errno=platformAbi.errno.EINVAL;return -1;},abort:()=>environment.resolve('abort')(),invokeSignal:(handler,sig)=>environment.functions.indirect(handler,'vi',sig),...devices};
  const native=Object.fromEntries(['tcgetattr','tcsetattr','cfgetospeed','fpathconf','ioctl'].map(name=>[name,(...args)=>nativeCall(wire,name,...args)]));
  environment.register('terminal-devices',native);
  const initial=environment.allocateGlobal('inittyb',layouts.unixtty.termioSize),current=environment.allocateGlobal('curttyb',layouts.unixtty.termioSize),termio=environment.allocateGlobal('termio',layouts.ioctl.termioSize);
@@ -39,6 +39,10 @@ export function enableUnixTerminal(environment,layouts){
  const scalars=scalarNames.map((name,i)=>{try{return environment.requireGlobal(name);}catch(e){if(!e.message.startsWith('Unresolved standalone global '))throw e;return environment.allocateGlobal(name,i===0?2:1);}});
  const local=()=>new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
  const flags=['echo','cbreak','window_inited'];
+ // Original configured window macros, through the live shared procedure table.
+ const text=value=>typeof value==='string'?services.literal(value):environment.address(value);
+ const windowMacro=(field,signature,...args)=>{const row=ctypes.record('struct window_procs').fields[field];if(!row)throw Error('Unknown Unix terminal window macro '+field);return environment.functions.indirect(memory.view.getBigUint64(environment.requireGlobal('windowprocs')+row.offset,true),signature,...args);};
+
  const u=local();Object.assign(u,{
   heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,initial:()=>initial,current:()=>current,
   scalar:i=>ctypes.load(scalarTypes[i],scalars[i]),setScalar:(i,v)=>ctypes.store(scalarTypes[i],scalars[i],v),
@@ -47,6 +51,7 @@ export function enableUnixTerminal(environment,layouts){
   wpId:()=>ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'wp_id','enum wp_ids'),
   ...native,
  });
+ u.exit_nhwindows=message=>windowMacro('win_exit_nhwindows','vp',text(message));
  const state=createUnixttyState(),context=createUnixttyEnvironment(u,layouts.unixtty,state);Object.setPrototypeOf(context,u);environment.register('unixtty',unixtty,context);
  const nativeSignal=(sig,handler)=>nativeCall(wire,'signal',sig,handler);
  const i=local();Object.assign(i,{signal:nativeSignal,kill:(pid,sig)=>nativeCall(wire,'kill',pid,sig),heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,termio:()=>termio,stdin:()=>services.stdin,
@@ -54,6 +59,8 @@ export function enableUnixTerminal(environment,layouts){
   dimension:column=>ctypes.locate('struct instance_globals_t',environment.requireGlobal('gt'),'tc_gbl_data').at+ctypes.record('struct tc_gbl_data').fields[column?'tc_CO':'tc_LI'].offset,
   stackAlloc:n=>transport.stackAlloc(n),...native,
  });
+ i.suspend_nhwindows=message=>windowMacro('win_suspend_nhwindows','vp',text(message));
+ i.resume_nhwindows=()=>windowMacro('win_resume_nhwindows','v');
  const ioContext=createIoctlEnvironment(i,layouts.ioctl);Object.setPrototypeOf(ioContext,i);environment.register('ioctl',ioctl,ioContext);
  // ncurses tgetent calls baudrate(), updating its shared short ospeed.
  // The existing capability provider supplies the entry; the configured virtual

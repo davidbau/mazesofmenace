@@ -2,8 +2,8 @@
 import abi from './getpos-abi.json' with{type:'json'};
 import {getposGlyphHeaders,getposMonGlyph,getposObjGlyph} from './getpos-header-functions.js';
 import * as source from '../ported/getpos.js';
-import {createGetposEnvironment} from '../ported/getpos-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createGetposEnvironment} from '../nethack/bindings/getpos.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableGetpos(environment,layouts){
  if(owners.has(environment))return owners.get(environment);
@@ -27,7 +27,7 @@ export function enableGetpos(environment,layouts){
   callHilite:(f,b)=>functions.indirect(address(f),'vi',transport.char(b)),callValid:(f,x,y)=>functions.indirect(address(f),'iii',transport.short(x),transport.short(y)),
   commandToken:i=>{const n=abi.commands[i];if(!n)throw new Error('Unknown GETPOS command '+i);return environment.functionPointer(n,'i');},
   cmd_from_func:p=>resolve('cmd_from_func')(address(p)),do_screen_description:(coord,b,s,out,first,pm)=>resolve('do_screen_description')(address(coord),transport.char(b),transport.int(s),address(out),address(first),address(pm)),
-  qsortCoords:(p,n,z)=>services.qsort(address(p),transport.ulong(n),transport.ulong(z),callback('cmp_coord_distu')),setFloodfillCallback:()=>resolve('set_selection_floodfillchk')(callback('gloc_filter_floodfill_matcharea')),
+  qsortCoords:(p,n,z)=>resolve(abi.qsortDispatch.target)(address(p),transport.ulong(n),transport.ulong(z),callback('cmp_coord_distu')),setFloodfillCallback:()=>resolve('set_selection_floodfillchk')(callback('gloc_filter_floodfill_matcharea')),
   free:p=>services.free(address(p)),
  });
  function values(fmt,args){const f=memory.readString(text(fmt)),types=[...f.matchAll(/%(?:%|[0-9.\-]*([scd]))/g)].filter(m=>m[1]).map(m=>m[1]==='s'?'s':'i').join('');if(!['','s','ss','sss','ssss','sssss','i','ii','is','iss'].includes(types)||types.length!==args.length)throw new Error('Unknown GETPOS format '+f);return args.map((v,i)=>types[i]==='s'?text(v):transport.int(v));}

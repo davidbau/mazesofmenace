@@ -2,7 +2,7 @@
 /*      Copyright (c) 1989 by Jean-Christophe Collet */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 export const my_goto_song_initial = [67, 0];
 
 /*

@@ -59,9 +59,9 @@
     "teleport_report_storage.url"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-report-abi.py": "a550044a916c5de539ac079c4b6b5cd8c2f8401c4dfb284fa941770c375b97fc",
-    "js/ported/report.js": "f942d0386f92b9efbfdcb13ebbdadff5c2a3f52a9dab889f107b7fedee660374",
-    "js/ported/report-runtime.js": "4d6baadea7c7a0f35cf365c95e3b5ed623be5b05eb41cb9b71bbb7345863ba4e",
+    "scripts/export-standalone-report-abi.py": "968d8ad6ad09648d79f234ce57560a84e115f113be55157968bf3846583e0b82",
+    "js/ported/report.js": "72e1dd7506b7d3f311c83dd860d193d9e8677c7f5664bef4cdd25f8ec387e153",
+    "js/nethack/bindings/report.js": "8da8cd740a8dab9c7f9d12ad532883bfacc905f84ac3fe7613c157901676f7c3",
     "js/ported/nhmd4.js": "3e11542f81e16bcc786403dd10755df6eedd44888c56750e27d8bee418f8ef5a",
     "nethack-c/wasm/tu-libraries/report.js": "856d86b46324f55b8daec6250b80511f96690b15a0cbc5cb80fba31e66a5630b",
     "nethack-c/wasm/tu-fragments/report.support.c": "822af61c165febbc6ff4bea5c18170e909d8d4ceef6a397e27e6e81566f2ed7f",

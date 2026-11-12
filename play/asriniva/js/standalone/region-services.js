@@ -1,7 +1,7 @@
 // Original native REGION transport, installed on its existing services/context.
 import abi from './region-services-abi.json' with {type:'json'};
 import * as region from '../ported/region.js';
-import {callRegion} from '../ported/region-runtime.js';
+import {callRegion} from '../nethack/bindings/region.js';
 const facades=new WeakMap();
 export function enableRegion(environment,layouts){
  if(facades.has(environment))return facades.get(environment);

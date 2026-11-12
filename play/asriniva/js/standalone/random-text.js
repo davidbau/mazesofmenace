@@ -1,6 +1,6 @@
 // Original random-text policy on shared stdio, canonical RNG and C strings.
 import {get_rnd_text,get_rnd_line,unpadline,getrumor,save_oracles,restore_oracles,free_CapMons} from '../ported/rumors.js';
-import {createRumorsState,createRumorsEnvironment} from '../ported/rumors-runtime.js';
+import {createRumorsState,createRumorsEnvironment} from '../nethack/bindings/rumors.js';
 export function enableRandomText(environment,layouts){
  const {services,functions}=environment,text=p=>typeof p==='string'?services.literal(p):environment.address(p);
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});

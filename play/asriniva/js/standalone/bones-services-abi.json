@@ -745,12 +745,12 @@
     "free_ebones": "void (struct monst *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-bones-services-abi.py": "9cacdb33a4a836829932550b0da8724efee6381210337d500f0629dfe22a2893",
+    "scripts/export-standalone-bones-services-abi.py": "fba24919c209916b9e972729833f616171c5adc384395a01c3be596b50f7e110",
     "nethack-c/wasm/tu-libraries/bones.js": "484b8b26ee4433ee5b4f599e82986c2975cac12a9cdb94ab0dcffbd64fe4cc39",
-    "js/ported/bones.js": "6f2e6c16c578701bc75cc8ac83e96c0e75e9a2266fa06818636647a6c7d5711a",
-    "js/ported/bones-runtime.js": "be0792e783b0ea9af1010525bc36a291f6bc6bb67140a1a32291f20b0a39be78",
+    "js/ported/bones.js": "c83f78fa5ae2d028cec7cc020f249ce9ec8dea86d6e6cd7350b34316c4760e08",
+    "js/nethack/bindings/bones.js": "f7368dea26e24710d670d73a41dbecd2fe8e54950e063ea7fa3680f6d294bc41",
     "nethack-c/wasm/tu-fragments/bones-support.c": "cbb0e47e2e59ec2b1cc5572c64610bba26ddd0b9ff13b81cd4dafa9eb5dcdfa7",
-    "js/standalone/bones-services.js": "cbe83429fc1ee31b7951551b59a7b2e3e280c98daae767843690c22486befcaf",
+    "js/standalone/bones-services.js": "0cb7b8feb29a4bc32c73b80caeea73d0b584a4c00e83573503aaad9c5d36d325",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   }
 }

@@ -4,7 +4,7 @@ import records from './records.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import {createCTypes} from './c-types.js';
 import * as hack from '../ported/hack.js';
-import {createHackEnvironment,callHack} from '../ported/hack-runtime.js';
+import {createHackEnvironment,callHack} from '../nethack/bindings/hack.js';
 export function enableMovement(environment,layouts){
  const {services,memory,functions}=environment,L=Object.freeze({...layouts.hack});
  const ctypes=createCTypes(memory,{...records,records:{...records.records,...abi.records}},environment.bitfields);

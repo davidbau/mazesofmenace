@@ -1,7 +1,7 @@
 // Configured SDK boundary behavior on real shared CVFS metadata/descriptors.
 import abi from './unix-platform-abi.json' with {type:'json'};
 import sdk from './sdk-boundary-abi.json' with {type:'json'};
-import {VFSError} from '../services/c-vfs.js';
+import {VFSError} from '../c-runtime/vfs.js';
 export function connectUnixPlatformSyscalls(environment,ctypes){
  const {services,filesystem,memory,libc,transport}=environment,ptr=environment.address;
  const text=p=>typeof p==='string'?p:memory.readString(ptr(p));

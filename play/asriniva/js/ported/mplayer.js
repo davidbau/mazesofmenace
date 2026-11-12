@@ -2,7 +2,7 @@
 /*      Copyright (c) Izchak Miller, 1992.                        */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of mplayer.c. Six original function boundaries and
  * the original tables and decision paths remain. dev_name returns a stable

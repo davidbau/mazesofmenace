@@ -2,7 +2,7 @@
 /* Copyright (c) Michael Allison, 2021. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 export const res_nothing=0, res_dump_glyphids=1, res_fill_cache=2;
 export const find_nothing=0, find_pm=1, find_oc=2, find_cmap=3, find_glyph=4;

@@ -1,4 +1,4 @@
-import {C} from './c-runtime.js';
+import {C} from '../c-runtime/context.js';
 /* NetHack 5.0	apply.c	$NHDT-Date: 1769342601 2026/01/25 04:03:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.475 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */

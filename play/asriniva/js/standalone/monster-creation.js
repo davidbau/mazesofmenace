@@ -12,12 +12,16 @@ import {neweshk,free_eshk} from '../ported/shknam.js';
 import {quest_info} from '../ported/questpgr.js';
 import {enableLight} from './light.js';
 import {monst_to_any} from '../ported/hack.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 export function enableMonsterCreation(environment,layouts,selection){
  const {ctypes,memory,transport}=environment,{views}=selection;
  const services=new Proxy(environment.services,{get:(o,key,r)=>Reflect.has(o,key)?Reflect.get(o,key,r):typeof key==='string'?(...args)=>environment.resolve(key)(...args):undefined});
  const record=(type,p)=>views.record(type,p),raw=v=>BigInt(environment.address(v)),L=layouts.makemon;
  const env=Object.create(selection.environment);
+ env.assertFail=(condition,file,line,fn)=>environment.resolve('__assert_fail')(typeof condition==='string'?services.literal(condition):environment.address(condition),typeof file==='string'?services.literal(file):environment.address(file),transport.int(line),typeof fn==='string'?services.literal(fn):environment.address(fn));
+ env.raw_print=value=>environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'win_raw_print','void *'),'vp',typeof value==='string'?services.literal(value):environment.address(value));
+ env.Snprintf=(fn,line,out,size,format,...args)=>environment.resolve('nh_snprintf')(typeof fn==='string'?services.literal(fn):environment.address(fn),transport.int(line),environment.address(out),transport.ulong(size),typeof format==='string'?services.literal(format):environment.address(format),...args.map(v=>typeof v==='string'?services.literal(v):environment.address(v)));
+ Object.defineProperty(env,'monsdump',{get:()=>views.array('struct enum_dump',environment.requireGlobal('monsdump'),layouts.earlyarg.monsdump_count)});
  env.nhUse=value=>{void value;};
  const context=layout=>{
   const local=Object.create(env);

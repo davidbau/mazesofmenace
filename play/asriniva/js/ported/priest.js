@@ -2,7 +2,7 @@
 /* Copyright (c) Izchak Miller, Steve Linhart, 1989.              */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 
 /* these match the categorizations shown by enlightenment */

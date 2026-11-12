@@ -1,13 +1,13 @@
 // The existing JS Lua engine on JS-owned memory; no Wasm instance is created.
-import {createWasmLuaRuntime} from '../services/wasm-lua-runtime.js';
-import {createLuaBytecodeVM} from '../services/lua-bytecode-vm.js';
+import {createLuaAbi} from '../lua/abi.js';
+import {createLuaBytecodeVM} from '../lua/bytecode-vm.js';
 import metadata from './records.json' with {type:'json'};
 import recipes from './lua-api.json' with {type:'json'};
 class LuaCallbackJump {constructor(frame){this.frame=frame;}}
 const names=['table','node','value','string','proto','lclosure','cclosure','upvalue','thread','global','callinfo','userdata0','userdata'];
 export function createStandaloneLua(environment,options={}) {
     const {services,memory,functions,filesystem}=environment;
-    const runtime=createWasmLuaRuntime({vmFactory:createLuaBytecodeVM,...options}),frames=[];
+    const runtime=createLuaAbi({vmFactory:createLuaBytecodeVM,...options}),frames=[];
     const host=Object.create(services),bits=new DataView(new ArrayBuffer(8));
     const invokeCallback=(id,L,info)=>{
         const frame={L:Number(L)};frames.push(frame);

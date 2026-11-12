@@ -2669,12 +2669,12 @@
     }
   ],
   "sourceSha256": {
-    "scripts/export-standalone-zap-abi.py": "896162534f759393c8ea0e75aded9c9c91519303cddbc5cf116610f707809893",
+    "scripts/export-standalone-zap-abi.py": "37b15e708169d8fd9bf5fcb4e8bd29c523cdc73c52b0a56660ee4a996266ac66",
     "scripts/tu-zap-layout.h": "86c48c7e92111dda41982cb7953c19051f78b4489f45dace7ddf5ff23d795bf6",
     "nethack-c/wasm/tu-zap-support.inc": "66825e28e054d6b941e3392d4b4f7ab3620413e8e1c97eedfe49ca34f502dce3",
-    "js/standalone/zap.js": "d8381f7b7ececfcb3676e3958db47ab7dac5b972a0c9efacd1f801c0a6ad8e45",
-    "js/ported/zap.js": "b182dfa8e5837896cc7ed2eb7ea704e4375828a63d284d28264ce1142bd08490",
-    "js/ported/zap-runtime.js": "5273f943aecb72c02b864621145d439d3d08419227a69e102dd4393b78bc29ea",
+    "js/standalone/zap.js": "fe3dabdf2f777c3e20c0e849c1f1de1674cf01edbfd1781b1268e4168e3749da",
+    "js/ported/zap.js": "ee47ad21561c5237d35fa7a539683bd0d5a9a0ab00af2511a1782b5cd11e1b0d",
+    "js/nethack/bindings/zap.js": "45b386e46db830a851ba00bd320cbc61d9f859256a73c2256ff32d51e031ae48",
     "nethack-c/wasm/tu-libraries/zap.js": "28c13623384cf01f54671ba0fbe1efc26a0f667d90359171728e6b6722d1ac21",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",

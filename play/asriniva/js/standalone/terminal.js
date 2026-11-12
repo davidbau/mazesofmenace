@@ -2,7 +2,7 @@
 // The source port owns terminal policy; this file supplies memory and transport.
 import metadata from './terminal-metadata.json' with {type:'json'};
 import * as termcap from '../ported/termcap.js';
-import {callTermcap} from '../ported/termcap-runtime.js';
+import {callTermcap} from '../nethack/bindings/termcap.js';
 import {encodeRecorderScreen} from '../wasm-replay-support.js';
 import {address} from './memory-services.js';
 export function enableTerminal(environment,layout,{onCapture}={}) {

@@ -574,11 +574,12 @@ export function status_eval_next_unhilite() {
         }
         /* C botl.c:2305-2312 — a timed-out temporary rule forces a repaint */
         if (!g.disp?.botl && !g.multi) {
-            /* only the hitpointbar title slot clears its rule on expiry
-             * (status_hpbar_attr_eval); other slots keep h.rule, which would
-             * re-force the repaint every turn */
-            const h = hist.title;
-            if (h && h.rule && h.time > 0 && h.time < g.bl_hilite_moves) g.disp.botl = 1;
+            /* hilite_reset_needed(curr, time + 1) holds for any field still
+             * carrying a timed temporary rule; its reset clears h.rule */
+            for (const k in hist) {
+                const h = hist[k];
+                if (h && h.rule && h.time > 0 && h.time < g.bl_hilite_moves) g.disp.botl = 1;
+            }
         }
     }
     if (g._blChg) {

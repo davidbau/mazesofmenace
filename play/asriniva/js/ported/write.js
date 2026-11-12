@@ -1,7 +1,7 @@
 /* NetHack 5.0	write.c	$NHDT-Date: 1702023275 2023/12/08 08:14:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.41 $ */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* C pointers remain numeric byte addresses, with live structure views.
  * The forward goto becomes a labelled block; comp_p is an index into the

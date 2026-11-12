@@ -1,7 +1,7 @@
 // One unchanged cached SPELL context, including source startup spellbook initialization.
 import abi from './spell-abi.json' with{type:'json'};
 import * as source from '../ported/spell.js';
-import {callSpell} from '../ported/spell-runtime.js';
+import {callSpell} from '../nethack/bindings/spell.js';
 const owners=new WeakMap();
 export function enableSpell(environment,layouts){
  if(owners.has(environment))return owners.get(environment);
@@ -21,7 +21,7 @@ export function enableSpell(environment,layouts){
   commonString:i=>i<3?ctypes.getField('struct c_common_strings',environment.requireGlobal('c_common_strings'),['c_Never_mind','c_nothing_happens','c_something'][i],'const char *'):i===4?ctypes.getField('struct c_color_names',environment.requireGlobal('c_color_names'),'c_golden','const char *'):environment.requireGlobal(i===3?'quitchars':'ynchars'),
   winMessage:()=>ctypes.load('int',environment.requireGlobal('WIN_MESSAGE')),nulGlyphInfo:()=>environment.requireGlobal('nul_glyphinfo'),free:p=>services.free(address(p)),
   callbackPointer:i=>{if(i!==0)throw new Error('Unknown SPELL occupation '+i);return callback('learn');},
-  iter_mons:()=>resolve('iter_mons')(callback('deadbook_pacify_undead')),qsort:(base,n,size)=>services.qsort(address(base),transport.ulong(n),transport.ulong(size),callback('spell_cmp')),
+  iter_mons:()=>resolve('iter_mons')(callback('deadbook_pacify_undead')),qsort:(base,n,size)=>resolve(abi.qsortDispatch.target)(address(base),transport.ulong(n),transport.ulong(size),callback('spell_cmp')),
   getpos_sethilite:()=>resolve('getpos_sethilite')(callback('display_spell_target_positions'),callback('can_center_spell_location')),
   walk_path:(a,b,arg)=>resolve('walk_path')(address(a),address(b),environment.functionPointer('spell::native_aim','ipii',(p,x,y)=>call('spell_aim_step',BigInt(p),x,y)),address(arg)),
   Strcpy:(a,b)=>services.strcpy(text(a),text(b)),strcmpi:(a,b)=>resolve('strncmpi')(text(a),text(b),-1),

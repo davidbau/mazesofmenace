@@ -783,15 +783,15 @@
     "region_safety": "void (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-region-services-abi.py": "3ace89c63572cc5225438a37b0a449e332c0f715e94c2daf49378dca8be8d0aa",
+    "scripts/export-standalone-region-services-abi.py": "045bcc6a2fa8f6c2e906a14372a62720fc3b42f973fedfb97ae58b4cc1c32aab",
     "scripts/tu-region-layout.h": "8af98064b5b708b8c244cb1b5db9398a19a679ec860a92658737e52c1b29f6af",
     "nethack-c/wasm/tu-region-support.inc": "b4013edea010659f1382a7fcab85a9cfb453b1b581006803e5b0c4d77d44b080",
     "nethack-c/wasm/tu-libraries/region.js": "9316950a375daabb26529e41e5ca7138a3deb1dde2dcc7ef7f5a0594de3e4ed0",
-    "js/standalone/region-services.js": "02938cd355da63b0513b2f5f918ccc007c415480ae7b6caea0b4c7d17c501153",
-    "js/standalone/level-startup.js": "acaf0c90a65ed9c437a6cc3b2e1a6f38663b7ab539de19bbdd14ae28ce854a70",
-    "js/ported/region.js": "485cddec0667f511de5f0299488e12f8dd5f9aa071edb27a3f6e109f2291c63e",
-    "js/ported/region-runtime.js": "10cea5a999fb3cd9ad8cddf1725cb8688b6bfc4e0dfeb61f76e2fb32650d88a3",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/region-services.js": "8fa637be144a92f387076847c5eb84621a25a08e34667896ca6ca535f98107dc",
+    "js/standalone/level-startup.js": "108f712ab804c15f88bc8632b00a0399bc6c1e7b1f7c89ec4405acbab304ba32",
+    "js/ported/region.js": "4a3cd642d2dc0a7ce8613e18ac2b91ccaae006e97acf69fa023c7cdd4de88666",
+    "js/nethack/bindings/region.js": "8114c61cea770d4c709e595b5f79fa79b19756022fbf1877dd49955a3ff9fcd0",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   },

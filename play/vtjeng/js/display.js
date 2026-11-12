@@ -179,6 +179,7 @@ import {
     SYM_OFF_P,
     SYM_OFF_W,
     S_arrow_trap,
+    S_polymorph_trap,
     S_digbeam,
     S_goodpos,
     S_stone,
@@ -296,6 +297,7 @@ import { CMAP_COLORS, SYMBOL_INDEX_BY_NAME } from './symbol_data.js';
 import { t_at, unconscious } from './trap.js';
 
 import { note_unported } from './unported.js';
+import { nomux_putch_byte } from './termcap.js';
 import { Sting_effects } from './artifacts.js';
 // pray.c owns critically_low_hp(); botl.c:2555 and wintty.c:4539 are two of
 // its three C call sites, so the status line reads the one port in js/pray.js
@@ -973,7 +975,7 @@ export function hero_glyph_info(state = game) {
     );
     const glyph = glyphPresentation(
         symbol,
-        species?.mcolor ?? CLR_WHITE,
+        monsterGlyphColor(logicalGlyph, species?.mcolor ?? CLR_WHITE, state),
         state,
         numeric_glyph_customization(logicalGlyph, state),
     );
@@ -1064,7 +1066,7 @@ function actualMonsterGlyphInfo(monster, state) {
         );
     const glyph = glyphPresentation(
         symbol,
-        monster.data.mcolor,
+        monsterGlyphColor(logicalGlyph, monster.data.mcolor, state),
         state,
         numeric_glyph_customization(logicalGlyph, state),
     );
@@ -1262,7 +1264,7 @@ function presentedMonsterGlyphInfo(
         );
     const glyph = glyphPresentation(
         monster_class_symbol(species.mlet, state),
-        species.mcolor,
+        monsterGlyphColor(logicalGlyph, species.mcolor, state),
         state,
         numeric_glyph_customization(logicalGlyph, state),
     );
@@ -1305,7 +1307,7 @@ function riddenMonsterGlyphInfo(monster, state) {
     );
     const glyph = glyphPresentation(
         monster_class_symbol(species.mlet, state),
-        species.mcolor,
+        monsterGlyphColor(logicalGlyph, species.mcolor, state),
         state,
         numeric_glyph_customization(logicalGlyph, state),
     );
@@ -1349,7 +1351,7 @@ function mimickedMonsterGlyphInfo(monster, state) {
     );
     const glyph = glyphPresentation(
         monster_class_symbol(species.mlet, state),
-        species.mcolor,
+        monsterGlyphColor(logicalGlyph, species.mcolor, state),
         state,
         numeric_glyph_customization(logicalGlyph, state),
     );
@@ -1543,7 +1545,7 @@ function warningGlyphInfo(monster, state) {
         );
     const glyph = glyphPresentation(
         symbol_at(SYM_OFF_W + warningLevel, state),
-        def_warnsyms[warningLevel].color,
+        warningGlyphColor(warningLevel, state),
         state,
         numeric_glyph_customization(warningLevel + GLYPH_WARNING_OFF, state),
     );
@@ -2197,6 +2199,47 @@ function hasRogueColor(state) {
         && state.gs?.symset?.[ROGUESET]?.nocolor === 0;
 }
 
+// C ref: display.c cmap_to_roguecolor(). reset_glyphmap() calls it only
+// under has_rogue_color, for the cmap arms that have a Rogue colour.
+export function cmap_to_roguecolor(cmap, state = game) {
+    if (state.gs?.symset?.[state.gc?.currentgraphics ?? PRIMARYSET]?.nocolor)
+        return NO_COLOR;
+    if (cmap >= S_vwall && cmap <= S_hcdoor) return CLR_BROWN;
+    if (cmap >= S_arrow_trap && cmap <= S_polymorph_trap) return CLR_MAGENTA;
+    if (cmap === S_corr || cmap === S_litcorr) return CLR_GRAY;
+    if (cmap >= S_room && cmap <= S_water && cmap !== S_darkroom)
+        return CLR_GREEN;
+    return NO_COLOR;
+}
+
+// display.c reset_glyphmap()'s monster arms (2986-3065) choose a monster
+// glyph's colour: under has_rogue_color an ordinary male monster is yellow
+// and every other monster glyph (female, pet, detected, ridden) has none;
+// otherwise mon_color() or pet_color() gives the species colour. Every
+// builder of a monster glyph's presentation takes its colour from here.
+function monsterGlyphColor(glyph, mcolor, state) {
+    if (!hasRogueColor(state)) return mcolor ?? NO_COLOR;
+    return glyph >= GLYPH_MON_MALE_OFF && glyph < GLYPH_MON_FEM_OFF
+        ? CLR_YELLOW : NO_COLOR;
+}
+
+// display.c reset_glyphmap()'s warning arm (2836-2842): warn_color(), or no
+// colour under has_rogue_color.
+function warningGlyphColor(level, state) {
+    return hasRogueColor(state)
+        ? NO_COLOR : def_warnsyms[level]?.color ?? NO_COLOR;
+}
+
+// display.c reset_glyphmap()'s object arms under has_rogue_color: gold is
+// yellow, food red, and every other object bright blue.
+function objectRogueColor(otyp, state) {
+    switch (state.objects?.[otyp]?.oc_class) {
+    case COIN_CLASS: return CLR_YELLOW;
+    case FOOD_CLASS: return CLR_RED;
+    default: return CLR_BRIGHT_BLUE;
+    }
+}
+
 function isRogueLevelForState(state) {
     const level = state.u?.uz;
     const rogue = state.rogue_level;
@@ -2316,40 +2359,38 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
         } else {
             glyphflags = MG_MALE;
         }
-        if (rogueColor) {
-            color = glyph >= GLYPH_MON_MALE_OFF
-                && glyph < GLYPH_MON_FEM_OFF ? CLR_YELLOW : NO_COLOR;
-        }
+        color = monsterGlyphColor(glyph, color, state);
     } else if ((offset = glyph - GLYPH_STATUE_FEM_PILETOP_OFF) >= 0) {
         symbol = statueSymbol(offset, state);
-        color = statueColor(state);
+        color = rogueColor ? CLR_RED : statueColor(state);
         glyphflags = MG_STATUE | MG_FEMALE | MG_OBJPILE;
     } else if ((offset = glyph - GLYPH_STATUE_MALE_PILETOP_OFF) >= 0) {
         symbol = statueSymbol(offset, state);
-        color = statueColor(state);
+        color = rogueColor ? CLR_RED : statueColor(state);
         glyphflags = MG_STATUE | MG_MALE | MG_OBJPILE;
     } else if ((offset = glyph - GLYPH_BODY_PILETOP_OFF) >= 0) {
         symbol = corpseSymbol(state);
-        color = state.mons?.[offset]?.mcolor ?? NO_COLOR;
+        color = rogueColor ? CLR_RED : state.mons?.[offset]?.mcolor ?? NO_COLOR;
         glyphflags = MG_CORPSE | MG_OBJPILE;
     } else if ((offset = glyph - GLYPH_OBJ_PILETOP_OFF) >= 0) {
         symbol = objectSymbol(offset, state);
-        color = state.objects?.[offset]?.oc_color ?? NO_COLOR;
+        color = rogueColor ? objectRogueColor(offset, state)
+            : state.objects?.[offset]?.oc_color ?? NO_COLOR;
         glyphflags = MG_OBJPILE;
     } else if ((offset = glyph - GLYPH_STATUE_FEM_OFF) >= 0) {
         symbol = statueSymbol(offset, state);
-        color = statueColor(state);
+        color = rogueColor ? CLR_RED : statueColor(state);
         glyphflags = MG_STATUE | MG_FEMALE;
     } else if ((offset = glyph - GLYPH_STATUE_MALE_OFF) >= 0) {
         symbol = statueSymbol(offset, state);
-        color = statueColor(state);
+        color = rogueColor ? CLR_RED : statueColor(state);
         glyphflags = MG_STATUE | MG_MALE;
     } else if ((offset = glyph - GLYPH_WARNING_OFF) >= 0) {
         // display.c:2836-2842. Warning glyphs already carry their level;
         // map_glyphinfo resolves that stored level without rerolling the
         // hallucinated warning chosen by warningGlyphInfo().
         symbol = symbol_at(SYM_OFF_W + offset, state);
-        color = rogueColor ? NO_COLOR : def_warnsyms[offset]?.color ?? NO_COLOR;
+        color = warningGlyphColor(offset, state);
     } else if ((offset = glyph - GLYPH_EXPLODE_FROSTY_OFF) >= 0) {
         // display.c:2843-2862. Explosion glyphs use the same cmap symbol
         // sequence for each color family and choose color from explodecolors.
@@ -2378,36 +2419,45 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
         // stomach-wall symbols; the remaining bits select the engulfer's
         // monster colour.
         cmap = S_sw_tl + (offset & 0x7);
-        color = state.mons?.[offset >> 3]?.mcolor ?? NO_COLOR;
+        color = rogueColor ? NO_COLOR
+            : state.mons?.[offset >> 3]?.mcolor ?? NO_COLOR;
     } else if ((offset = glyph - GLYPH_CMAP_C_OFF) >= 0) {
         // display.c:2884-2890. region.c's gas clouds are the ported producer.
         cmap = S_digbeam + offset;
-        color = CMAP_COLORS[cmap];
+        color = rogueColor ? cmap_to_roguecolor(cmap, state)
+            : CMAP_COLORS[cmap];
     } else if ((offset = glyph - GLYPH_ZAP_OFF) >= 0) {
         // display.c:2877-2883. zapdir_to_glyph() below packs the beam
         // direction into the low two bits and the zap type above them, so the
         // mask recovers the S_vbeam..S_rslant offset and the shift recovers
         // zapcolors[]'s index.
         cmap = S_vbeam + (offset & 0x3);
-        color = zapcolors[offset >> 2];
+        color = rogueColor ? NO_COLOR : zapcolors[offset >> 2];
     } else if ((offset = glyph - GLYPH_CMAP_B_OFF) >= 0) {
         // display.c:2903-2929.
         cmap = S_grave + offset;
         color = CMAP_COLORS[cmap];
         glyphflags = cmapBlackAndWhiteFlags(cmap, state);
+        // The has_rogue_color arm is the else of C's !iflags.use_color test.
+        if (rogueColor && state.iflags?.use_color !== false)
+            color = cmap_to_roguecolor(cmap, state);
         if (cmap === S_fountain) customizationName = 'G_fountain';
     } else if ((offset = glyph - GLYPH_ALTAR_OFF) >= 0) {
         // display.c:2930-2937. Every altar draws S_altar; only the colour and
         // the customization separate the five alignments.
         cmap = S_altar;
-        color = altarcolors[offset];
+        color = rogueColor ? cmap_to_roguecolor(S_altar, state)
+            : altarcolors[offset];
         customizationName = ALTAR_CUSTOMIZATION_NAMES[offset];
     } else if ((offset = glyph - GLYPH_CMAP_A_OFF) >= 0) {
         // display.c:2938-2959.
         cmap = S_ndoor + offset;
         color = CMAP_COLORS[cmap];
         const sym = cmap_symbol_byte(cmap, state);
-        if (cmap === S_litcorr && sym === cmap_symbol_byte(S_corr, state)) {
+        if (rogueColor) {
+            color = cmap_to_roguecolor(cmap, state);
+        } else if (cmap === S_litcorr
+                   && sym === cmap_symbol_byte(S_corr, state)) {
             // A lit corridor drawn with the dark corridor's byte would be
             // invisible as a distinction; C brightens it instead.
             color = CLR_WHITE;
@@ -2434,17 +2484,19 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
     } else if ((offset = glyph - GLYPH_CMAP_MAIN_OFF) >= 0) {
         // display.c:2976-2981.
         cmap = S_vwall + offset;
-        color = wallcolors[main_walls];
+        color = rogueColor ? cmap_to_roguecolor(cmap, state)
+            : wallcolors[main_walls];
     } else if (glyph - GLYPH_CMAP_STONE_OFF >= 0) {
         // display.c:2982-2984. One glyph, so C uses SYM_OFF_P by itself.
         cmap = S_stone;
         color = CMAP_COLORS[cmap];
     } else if ((offset = glyph - GLYPH_OBJ_OFF) >= 0) {
         symbol = objectSymbol(offset, state);
-        color = state.objects?.[offset]?.oc_color ?? NO_COLOR;
+        color = rogueColor ? objectRogueColor(offset, state)
+            : state.objects?.[offset]?.oc_color ?? NO_COLOR;
     } else if ((offset = glyph - GLYPH_BODY_OFF) >= 0) {
         symbol = corpseSymbol(state);
-        color = state.mons?.[offset]?.mcolor ?? NO_COLOR;
+        color = rogueColor ? CLR_RED : state.mons?.[offset]?.mcolor ?? NO_COLOR;
         glyphflags = MG_CORPSE;
     } else {
         // display.c:3029-3035, the GLYPH_INVIS_OFF arm. It sits below every
@@ -5408,13 +5460,22 @@ function _statusVitals(u) {
 
 // C ref: botl.c bot_via_windowport()'s BL_GOLD value.  check_gold_symbol()
 // marks symbols that cannot be used as a status prefix; otherwise encglyph()
-// resolves GOLD_PIECE through the active object-class symbol table.  The
-// concrete object shares its class slot, so this does not require the full
-// object catalog during early status-layout tests.
+// encodes GOLD_PIECE and wintty.c tty_status_update()'s decode_mixed() turns
+// it back into the gs.showsyms[] byte of its symbol index, never a UTF-8
+// sequence. The concrete object shares its class slot, so this does not
+// require the full object catalog during early status-layout tests.
+// tty_putstatusfield() prints that byte through putchar(); a byte
+// nomux_putch() ignores becomes the NUL marker _newStatusRow() leaves blank.
+// The tty shows the prefix it was last sent (see _deliverStatusGold()).
 function _statusGoldSymbol() {
+    return game._statusGoldShown ?? _currentStatusGoldSymbol();
+}
+
+function _currentStatusGoldSymbol() {
     if (game.iflags?.invis_goldsym) return '$';
-    const symbol = symbol_at(SYM_OFF_O + COIN_CLASS, game);
-    return symbol.displayCh ?? symbol.ch ?? '$';
+    const byte = symbol_at(SYM_OFF_O + COIN_CLASS, game).ttychar;
+    const stored = nomux_putch_byte(byte);
+    return stored === null ? '\0' : String.fromCharCode(stored);
 }
 
 // C ref: botl.c initblstats[]'s BL_TIME entry, whose "%ld" is filled from
@@ -6221,7 +6282,22 @@ export function init_blstats(state = game) {
     gb.status_hilite_chg_banks = [Array(size).fill(false),
         Array(size).fill(false)];
     gb.status_hilite_chg = gb.status_hilite_chg_banks[0];
+    statusPercentBanks(gb);
     return true;
+}
+
+// C ref: botl.c gb.blstats[2][].percent_value and gn.now_or_before_idx. Every
+// bot() toggles the index and refills that bank's values, so the other bank
+// holds the previous bot()'s values -- which is what the port's shifted
+// status_hilite_* banks hold too. percent_value is the exception: a bank
+// stores one only when eval_notify_windowport_field() recomputes it, so each
+// bank keeps its own, possibly old, percentage, and a new one is compared
+// with the other bank's. Both banks start zeroed, and the index at 0.
+function statusPercentBanks(gb) {
+    const size = Math.max(...STATUS_FIELDS.map(row => row.fld)) + 1;
+    gb.status_percent_value ??= [Array(size).fill(0), Array(size).fill(0)];
+    gb.now_or_before_idx ??= 0;
+    return gb.status_percent_value;
 }
 
 // C ref: botl.c status_initialize(). Full initialization owns the one-time
@@ -6268,6 +6344,10 @@ function _setStatusHiliteChange(gb, fld, value) {
 function _beginStatusHilitePass(onlyField = null) {
     const gb = game.gb ??= {};
     const size = Math.max(...STATUS_FIELDS.map(row => row.fld)) + 1;
+    // bot_via_windowport() toggles gn.now_or_before_idx; stat_update_time()
+    // does not.
+    statusPercentBanks(gb);
+    if (!onlyField) gb.now_or_before_idx = 1 - gb.now_or_before_idx;
     for (const name of ['status_hilite_rule', 'status_hilite_value',
         'status_hilite_compare_value', 'status_hilite_percent',
         'status_hilite_text', 'status_hilite_type']) {
@@ -6362,7 +6442,7 @@ function _statusFieldNotice(gb, fld, data, updateAll) {
     const value = data.value ?? null;
     const compareValue = data.compareValue ?? value;
     const changed = gb.status_hilite_compare_value[1][fld] !== compareValue
-        || gb.status_hilite_percent[1][fld] !== (data.percent ?? null)
+        || Boolean(data.percentChange)
         || gb.status_hilite_text[1][fld] !== (data.text ?? null);
     const until = gb.status_hilite_times?.[0]?.[fld] ?? 0;
     const expired = !updateAll && !changed && !game.multi && until > 0
@@ -6391,6 +6471,26 @@ function _deliverStatusTime() {
     const { changed, expired } = _statusFieldNotice(gb, field.fld, data,
         updateAll);
     if (updateAll || changed || expired) game._statusTimeShown = data.value;
+}
+
+// C ref: botl.c eval_notify_windowport_field() for BL_GOLD, and the
+// status_vals[BL_GOLD] string wintty.c keeps for it. bot_via_windowport()
+// formats the gold prefix on every bot(), but compare_blstats() compares only
+// the amount, so the window port receives a new prefix only when the amount
+// changes, a highlight expires, or gu.update_all is set (which a changed
+// coin symbol or svc.context.rndencode forces). A goto_level() whose
+// check_gold_symbol() changes iflags.invis_goldsym alone leaves the tty
+// showing the earlier prefix. Call this after _beginStatusHilitePass() and
+// before laying out the status rows.
+function _deliverStatusGold() {
+    const field = STATUS_FIELDS.find(row => row.key === 'gold');
+    if (!_statusFieldEnabled(field, game)) return;
+    const updateAll = Boolean(game._statusHiliteUpdateAll
+        || game._statusGoldUpdateAll);
+    const { changed, expired } = _statusFieldNotice(game.gb, field.fld,
+        _statusFieldData('gold'), updateAll);
+    if (updateAll || changed || expired)
+        game._statusGoldShown = _currentStatusGoldSymbol();
 }
 
 // C ref: botl.c evaluate_and_notify_windowport() for BL_HD, and the
@@ -6490,8 +6590,10 @@ function _collectStatusHilites(layouts, onlyField = null) {
         // percentage field recomputes its percentage only while it has
         // highlight rules, and then only when its value changed, on
         // update_all, or (for BL_XP) always; 'hitpointbar' forces BL_HP.
-        // Otherwise the bank keeps its last percentage, 0 until one has been
-        // computed, so the first pass after a rule is added can see a change.
+        // A recomputed percentage that differs from the one the other bank
+        // of statusPercentBanks() holds sets chg to its direction, and is
+        // stored in this pass's bank. Otherwise pc is 0 for get_hilite(), and
+        // the bank keeps whatever percentage it last stored.
         if (data.percent != null) {
             const hasThresholds = (game.iflags?.status_hilites ?? []).some(
                 (rule) => rule.field === field.key,
@@ -6502,14 +6604,22 @@ function _collectStatusHilites(layouts, onlyField = null) {
                     || field.key === 'experience-level'))
                 || (field.key === 'hitpoints'
                     && Boolean(game.iflags?.wc2_hitpointbar));
-            if (!recompute) data.percent = gb.status_hilite_percent[1][fld] ?? 0;
+            const banks = statusPercentBanks(gb);
+            const idx = gb.now_or_before_idx;
+            if (recompute) {
+                const before = banks[1 - idx][fld];
+                if (data.percent !== before)
+                    data.percentChange = data.percent < before ? -1 : 1;
+                banks[idx][fld] = data.percent;
+            } else {
+                data.percent = 0;
+            }
         }
         const value = data.value ?? null;
         const compareValue = data.compareValue ?? value;
         const percent = data.percent ?? null;
         const text = data.text ?? null;
         const previousCompareValue = gb.status_hilite_compare_value[1][fld];
-        const previousPercent = gb.status_hilite_percent[1][fld];
         const previousText = gb.status_hilite_text[1][fld];
         const { changed, expired } = _statusFieldNotice(gb, fld, data,
             updateAll);
@@ -6523,9 +6633,7 @@ function _collectStatusHilites(layouts, onlyField = null) {
         if (data.value == null && text != null && previousText != null
             && text !== previousText)
             change = text < previousText ? -1 : 1;
-        if (percent != null && previousPercent != null
-            && percent !== previousPercent)
-            change = Math.sign(percent - previousPercent);
+        if (data.percentChange) change = data.percentChange;
         // BL_XP uses a percentage to decide whether to notify, then resets
         // chg to compare_blstats() on its level value.
         if (field.key === 'experience-level' && change === 1
@@ -6901,10 +7009,11 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
         display.setCursor(Math.max(0, xmin - 1), screenRow);
         display.clearToEol();
         const overStatus = screenRow >= firstStatusRow;
-        if (overStatus && game._statusMapOverlay) {
-            for (const [key, cell] of game._statusMapOverlay)
+        // cl_end() erases every overlay cell from the cursor rightwards.
+        if (state._screenOverlay) {
+            for (const [key, cell] of state._screenOverlay)
                 if (cell.row === screenRow && cell.column >= xmin - 1)
-                    game._statusMapOverlay.delete(key);
+                    state._screenOverlay.delete(key);
         }
         const mapRow = screenRow - mapOffy;
         if (mapRow < 0 || mapRow >= viewport.height) continue;
@@ -6946,7 +7055,7 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
                 : presentation.color ?? NO_COLOR;
             display.setCell(x - 1, screenRow, ch, color, attr);
             if (overStatus) {
-                recordStatusOverlay(x - 1, screenRow, ch, color, attr);
+                recordScreenOverlay(x - 1, screenRow, ch, color, attr);
             }
         }
     }
@@ -6993,32 +7102,62 @@ function writeStatusRows(
         }
     }
     game._statusOverlayBasis = { layouts, styles };
-    _applyStatusOverlay(display);
+    _applyScreenOverlay(display);
 }
 
-// Map glyphs printed over the status window.
+// Cells of recorder patch 006's shadow screen (termcap.c nomux_buf) that the
+// canonical rebuild in _buildScreenOutput() does not produce, keyed by
+// terminal cell. The rebuild applies them last; the wintty.c write that
+// covers a cell in C drops its entry. cls() discards them with the rest of
+// the screen. Two writers put cells here:
 //
-// On a 24-row terminal with three status lines the map is not clipped (see
-// mapViewport()), so wintty.c tty_print_glyph() prints map row ROWNO-1 on
-// the first status row. Nothing records that in the status window's
-// cw->data, so the glyph stays on the terminal until render_status()
-// rewrites the field covering its column: check_fields() marks a field for
-// redraw only when its own text, colour, attribute or position changes (or
-// every field, on a forced update), and tty_putstatusfield() then writes the
-// whole field. render_status() also erases the rest of a row that got
-// shorter. game._statusMapOverlay holds those glyphs by terminal cell;
-// cls() discards it with the rest of the screen.
-function _statusMapOverlay() {
-    game._statusMapOverlay ??= new Map();
-    return game._statusMapOverlay;
+// Map glyphs printed over the status window. On a 24-row terminal with three
+// status lines the map is not clipped (see mapViewport()), so wintty.c
+// tty_print_glyph() prints map row ROWNO-1 on the first status row. Nothing
+// records that in the status window's cw->data, so the glyph stays on the
+// terminal until render_status() rewrites the field covering its column:
+// check_fields() marks a field for redraw only when its own text, colour,
+// attribute or position changes (or every field, on a forced update), and
+// tty_putstatusfield() then writes the whole field. render_status() also
+// erases the rest of a row that got shorter.
+//
+// tty_raw_print() output while the map window is live (see
+// recordRawShadowCells()). Patch 006 writes it into the shadow screen
+// directly, and its nomux_enter_raw_mode() first blanks the whole shadow
+// screen. Neither goes through wintty.c, so C's gg.gbuf, the status
+// window's cw->data and tty_status[] still hold the cells as last printed,
+// and C prints over a blanked or overwritten cell only when it would print
+// there anyway: flush_screen() for a gbuf cell whose gnew bit is set, a
+// status field that check_fields() redraws, docorner()'s or cls()'s erase.
+function _screenOverlay() {
+    game._screenOverlay ??= new Map();
+    return game._screenOverlay;
 }
 
-function recordStatusOverlay(column, row, ch, color, attr) {
-    _statusMapOverlay().set(`${row}:${column}`, { column, row, ch, color, attr });
+function recordScreenOverlay(column, row, ch, color, attr) {
+    _screenOverlay().set(`${row}:${column}`, { column, row, ch, color, attr });
 }
 
-function _applyStatusOverlay(display) {
-    const overlay = game._statusMapOverlay;
+// Record shadow-screen cells that tty_raw_print() wrote behind wintty.c's
+// back; js/tty_rawprint.js calls this for the blanking of
+// nomux_enter_raw_mode() and for each character nomux_raw_putch() stores.
+// Row 0 is left out: the port projects the message line from
+// _pending_message, and C's next message write there starts with home()
+// and cl_end(), which erase the raw text. Raw output before the map window
+// exists, or after exit_nhwindows(), needs no entry: newgame()'s or
+// dorecover()'s docrt() erases the screen before the first map flush, and
+// no flush follows the farewell.
+export function recordRawShadowCells(cells, state = game) {
+    for (const { column, row, ch, color, attr } of cells) {
+        if (row < 1) continue;
+        state._screenOverlay ??= new Map();
+        state._screenOverlay.set(`${row}:${column}`,
+            { column, row, ch, color, attr });
+    }
+}
+
+function _applyScreenOverlay(display) {
+    const overlay = game._screenOverlay;
     if (!overlay?.size) return;
     for (const { column, row, ch, color, attr } of overlay.values())
         display.setCell(column, row, ch, color, attr);
@@ -7050,7 +7189,7 @@ function _clearRedrawnStatusOverlay(
     screenRow, rowIndex, oldLayout, oldStyles, newLayout, newStyles, forced,
     titleDirty = false, columns = 80,
 ) {
-    const overlay = game._statusMapOverlay;
+    const overlay = game._screenOverlay;
     if (!overlay?.size) return;
     const newText = newLayout?.text ?? '';
     const oldText = oldLayout?.text ?? '';
@@ -7246,7 +7385,7 @@ function _buildScreenOutput(cursorOnHero = true) {
             const y = viewport.top + offset;
             // An unclipped map row that lands on the status window is
             // printed there only when its glyph changes; see
-            // _statusMapOverlay().
+            // _screenOverlay().
             const overStatus = offset + 1 >= firstStatusRow;
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
@@ -7262,6 +7401,10 @@ function _buildScreenOutput(cursorOnHero = true) {
                         loc.disp_browser_attr = framed_print_attr(
                             loc.disp_browser_attr, x, y);
                     commitFlushedGlyph(loc);
+                    // tty_print_glyph()'s g_putch() covers a raw-print cell;
+                    // its UTF-8 path leaves the shadow cell as it was.
+                    if (game._screenOverlay && loc.disp_glyph?.ch !== null)
+                        game._screenOverlay.delete(`${offset + 1}:${x - 1}`);
                 }
                 const ch = browserGlyphs && loc.disp_browser_ch
                     ? loc.disp_browser_ch
@@ -7273,7 +7416,7 @@ function _buildScreenOutput(cursorOnHero = true) {
                 if (!ch) continue;
                 if (overStatus) printedOverStatus.add(`${offset + 1}:${x - 1}`);
                 if (overStatus) {
-                    recordStatusOverlay(
+                    recordScreenOverlay(
                         x - 1,
                         offset + 1,
                         ch,
@@ -7332,6 +7475,9 @@ function _buildScreenOutput(cursorOnHero = true) {
                 }
             }
         }
+        // writeStatusRows() applies the overlay; repeat it for a flush that
+        // leaves the status rows to bot_disabled.
+        if (!bufferedOnly) _applyScreenOverlay(display);
         // display.c flush_screen():2261-2263 moves the cursor only for a
         // nonzero cursor_on_u. Restore the TTY cursor after clearScreen() for
         // the mode used by getpos.c and tmp_at().
@@ -7497,7 +7643,7 @@ export async function cls() {
             }
         }
         game._pending_message = '';
-        game._statusMapOverlay = null;
+        game._screenOverlay = null;
     } finally {
         game._inCls = false;
     }
@@ -7562,6 +7708,7 @@ export async function bot({ initialTtyRefresh = false } = {}) {
     const retainInitialOverlap = initialTtyRefresh
         && !optionalFieldsChanged;
     _beginStatusHilitePass();
+    _deliverStatusGold();
     _deliverStatusTime();
     _deliverStatusHD();
     const layouts = statusLayouts({

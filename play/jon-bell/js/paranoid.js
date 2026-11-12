@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline_flush_point, force_more, force_more_lone_frame, topl_park_cursor, tty_getlin_recall, _topline_more_pending, restore_occupation_topline, putmsghistory, restore_command_topline } from './display.js';
+import { flush_screen, pline_flush_point, force_more, force_more_lone_frame, topl_park_cursor, tty_getlin_recall, tty_getlin_history, _topline_more_pending, restore_occupation_topline, putmsghistory, restore_command_topline } from './display.js';
 import { yn_function_menu, doprev_message } from './cmd.js';
 import { bot } from './botl.js';
 import { vision_recalc } from './vision.js';
@@ -32,6 +32,8 @@ async function read_getlin(prompt) {
     g._resultMessageJoins = null;
     const savedEcho = g._topl_prompt_echo;
     const savedWritten = g._topl_prompt_written;
+    const savedSuppress = g._topl_suppress_history;
+    g._topl_suppress_history = true; // getline.c:67,80: echoes are not remembered
     g._topl_prompt_echo = true;
     /* C getline.c:67 custompline -> vpline (pline.c:266-272): the prompt's pline
      * consumes a pending vision_full_recalc before its flush_screen, so the
@@ -47,6 +49,12 @@ async function read_getlin(prompt) {
         await flush_screen(1);
         if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${prompt} ${buf}`);
     };
+    const finish = (answer) => {
+        // getline.c:80,213-226 leaves only the final query+answer in gt.toplines.
+        g._pending_message = '';
+        if (!savedSuppress) tty_getlin_history(`${prompt} ${buf}`);
+        return answer;
+    };
     try {
         await paint();
         let doprev = false, prevIdx = 0;
@@ -58,7 +66,7 @@ async function read_getlin(prompt) {
                     await paint();
                     continue;
                 }
-                return '\x1b';
+                return finish('\x1b');
             }
             if (key === 16) {
                 /* ^P — C getline.c:106-119: msg_window:single (or combination
@@ -73,15 +81,7 @@ async function read_getlin(prompt) {
                 const pw = (g.iflags?.prevmsg_window || 's')[0];
                 if (pw === 's' || (pw === 'c' && !doprev)) {
                     const h = g._msg_history || [];
-                    /* C's read-loop echo goes through putsyms/addtopl and never
-                     * reaches remember_topl(); paint()'s message channel here
-                     * files "query[ buffer]" lines anyway, so drop that
-                     * trailing run before walking the ring. */
-                    let n = h.length;
-                    while (n > 0 && (h[n - 1] === prompt
-                                     || h[n - 1].startsWith(prompt + ' ')))
-                        n--;
-                    const hist = h.slice(0, n);
+                    const hist = h;
                     const ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20),
                                           MAX_MSG_HISTORY);
                     const flr = Math.max(0, hist.length - ring + 1);
@@ -134,7 +134,7 @@ async function read_getlin(prompt) {
                 await paint();
             }
             if (key === 10 || key === 13)
-                return buf;
+                return finish(buf);
             if (key === 8 || key === 127) {
                 if (buf) buf = buf.slice(0, -1);
                 await paint();
@@ -147,6 +147,7 @@ async function read_getlin(prompt) {
             }
         }
     } finally {
+        g._topl_suppress_history = savedSuppress;
         g._topl_prompt_echo = savedEcho;
         g._topl_prompt_written = savedWritten;
     }

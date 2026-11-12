@@ -827,15 +827,15 @@
     "get_atkdam_type": "int (int)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-mondata-abi.py": "9b8d79587c28c657e4cbbe22bdad1898d220c8194b64065c5f2caacf512175f3",
-    "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
+    "scripts/export-standalone-mondata-abi.py": "6e01ead48f5f051c5b6ff80c1e2e102405d82b73441aac819515c88fe96f8669",
+    "js/backends/emscripten/runtime.js": "5322fc2cb40783ef7c475861cecb9eaa68ddf26eb12f8618f1bd3e480d3e4371",
     "scripts/tu-mondata-layout.h": "aeab4859a2a71cca7dd69e644ee0088dd362c250a39cafc88b697e816aa14121",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/mondata.js": "4a23843dd5b1a536db81c009d34eb743bdf02b2dd5fab47832475a075c1c8ebe",
     "nethack-c/upstream/src/mondata.c": "c7a19d003c169fed7dde555ecad9069627f059309142b7d8104314572f90a685",
-    "js/ported/mondata.js": "8c4392e371881e3d57d8db03e42e4e4831b665bab808604eef8a7e0a0cc5ac20",
-    "js/ported/mondata-runtime.js": "74fee645727896c78f953a30e30c418747ebfd4bd887c8642cf1f08e58095917",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/mondata.js": "d8af209d055a9291ebb227d93a36941794c2b620ec54b9fa4eea07eab580eae1",
+    "js/nethack/bindings/mondata.js": "0e64096134aa26efb44209f18f7038c8d8c49265b3a1f27f039966c65fd26088",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

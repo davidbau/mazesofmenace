@@ -3843,15 +3843,15 @@
     "u_teleport_mon": "boolean (struct monst *, boolean)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-teleport-abi.py": "255aa378c5f2d6fdb34cb51a63c0840745ca200119929e0256d2b38e9c0228fe",
+    "scripts/export-standalone-teleport-abi.py": "37451364fcf2003d5980a579ff523e3b0a24112e828aa8d164fa55905656a144",
     "scripts/tu-teleport-layout.h": "1c8a5d64d70ca57cb7863815fac50a3593c271e782504ca337fedd156b03f003",
     "nethack-c/wasm/tu-fragments/teleport-support.c": "09da40577cddb8311e419f3c7d6b9755f02d79b38e657d8332227eee159ed923",
-    "js/ported/teleport-runtime.js": "ee8df2c03663b14e95950fc9657acc174a0a6552f6d372b4edca5da33c8f58a0",
+    "js/nethack/bindings/teleport.js": "025eff4d099982ed27dc9a9d6b683ec966e5a3478589ad9d70fcf77b34fab553",
     "nethack-c/wasm/tu-libraries/teleport.js": "958d5fc8ce8516cc0417e4fd14cf51b17224aacab38d3fbb2dd65d25216e1587",
-    "js/ported/teleport.js": "b0176926eadda27543ef2d890ed3a391db4fe6db7aa6a89cf4b78c9e0efd0015",
+    "js/ported/teleport.js": "e47de23fd9b94fe8b6c4db3df86cea1522b20c14a96555ae4a221aef29e8de6e",
     "nethack-c/wasm/tu-fragments/teleport-source-data.h": "2b7cc58ae7f907d55ff7e65b4e07337d857acd9a729db0326fe7de28bac8f316",
     "nethack-c/wasm/tu-fragments/teleport-source-data.json": "3aab6d72391dd03708909b9918fcb09ac4bf8eefa066e70ff6005a45091327fe",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

@@ -1,8 +1,8 @@
 // One original LIGHT environment over the existing source-owned light chain.
 import abi from './light-abi.json' with {type:'json'};
 import * as source from '../ported/light.js';
-import {createLightEnvironment} from '../ported/light-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createLightEnvironment} from '../nethack/bindings/light.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableLight(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

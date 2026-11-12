@@ -1,7 +1,7 @@
 // Pinned Emscripten/musl boundary behavior; no host filesystem or Wasm.
 import abi from './sdk-boundary-abi.json' with {type:'json'};
 import {readSdkUtf8} from '../c-runtime/stdio.js';
-import {VFSError} from '../services/c-vfs.js';
+import {VFSError} from '../c-runtime/vfs.js';
 const owners=new WeakMap();
 export class SdkAbortError extends Error{constructor(message){super(message);this.name='RuntimeError';}}
 export function enableSdkBoundary(environment,{monotonicNow=()=>performance.now(),onAbort}={}){
@@ -17,6 +17,10 @@ export function enableSdkBoundary(environment,{monotonicNow=()=>performance.now(
   sleep:seconds=>{const ms=transport.uint(seconds)*1000,start=monotonicNow();let now=start;do{now=monotonicNow();}while(now-start<ms);return 0;},
   __assert_fail:(condition,file,line,fn)=>{const message=`Assertion failed: ${text(condition)}, at: ${isNull(file)?'unknown filename':text(file)},${transport.int(line)},${isNull(fn)?'unknown function':text(fn)}`,output='Aborted('+message+')';onAbort?.(message);services.hostError(output+'\n');state.aborted=true;state.abortMessage=message;throw new SdkAbortError(output+'. Build with -sASSERTIONS for more info.');},
  };
+ // Native SDK abort and kill use the existing shared signal-table owner.
+ api.abort=()=>{onAbort?.('');services.hostError('Aborted()\n');state.aborted=true;state.abortMessage='';throw new SdkAbortError('Aborted(). Build with -sASSERTIONS for more info.');};
+ api.kill=(pid,sig)=>{pid=transport.int(pid);sig=transport.int(sig);if(pid===transport.int((typeof services.getpid==='function'?services.getpid():environment.resolve('getpid')())))return environment.resolve('raise')(sig);return failure('EPERM');};
+ const terminate=services.exit;api.exit=status=>{services.__stdio_exit();return terminate(transport.int(status));};
  if(typeof services.freopen!=='function')throw new Error('SDK boundary requires actual shared stdio freopen');api.freopen=services.freopen;
  for(const name of Object.keys(api))if(environment.hasFunction(name))throw new Error('SDK boundary would replace existing owner '+name);
  Object.assign(services,api);environment.register('sdk-boundary',api);

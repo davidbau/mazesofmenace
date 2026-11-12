@@ -1,8 +1,8 @@
 // Original READ policies on one context and its source-private gremlins head.
 import abi from './read-abi.json' with{type:'json'};
 import * as source from '../ported/read.js';
-import {createReadEnvironment} from '../ported/read-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createReadEnvironment} from '../nethack/bindings/read.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableRead(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

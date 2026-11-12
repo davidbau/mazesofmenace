@@ -1,5 +1,5 @@
 // Next level-generation owners on shared storage; source policies unchanged.
-import {callRegion} from '../ported/region-runtime.js';
+import {callRegion} from '../nethack/bindings/region.js';
 import {enableDig} from './dig.js';
 import {make_grave,random_engraving,rubouts} from '../ported/engrave.js';
 import {enableRandomText} from './random-text.js';
@@ -7,7 +7,7 @@ import {enableVision} from './vision.js';
 import abi from './trap-abi.json' with {type:'json'};
 import * as trap from '../ported/trap.js';
 import {invocation_pos,in_rooms} from '../ported/hack.js';
-import {callTrap} from '../ported/trap-runtime.js';
+import {callTrap} from '../nethack/bindings/trap.js';
 import {antholemon,courtmon,mkundead,squadprob,fill_zoo,cmap_to_type,do_mkroom,has_dnstairs,has_upstairs,inside_room,somex,somey,somexy,somexyspace,save_rooms,rest_rooms,search_special} from '../ported/mkroom.js';
 import {enableSchemaPort} from './schema-port.js';
 export function enableLevelContents(environment,layouts,creation){

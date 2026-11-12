@@ -2,8 +2,8 @@
 import abi from './terminal-input-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as getline from '../ported/getline.js';
-import {createGetlineState,createGetlineEnvironment} from '../ported/getline-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createGetlineState,createGetlineEnvironment} from '../nethack/bindings/getline.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 
 export function enableTerminalInput(environment,layouts,{readKey}={}){
  const {services,memory,ctypes,functions,transport}=environment;

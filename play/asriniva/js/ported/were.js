@@ -3,7 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of were.c. The eight function boundaries and the
  * original decision paths remain here. ABI views provide live C fields;

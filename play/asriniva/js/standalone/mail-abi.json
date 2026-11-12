@@ -236,14 +236,14 @@
   },
   "nullCStringProfile": "MAIL only: observed memory64 compiled-C null dereference/linear-memory reads without SAFE_HEAP; scan actual heap at address zero, never synthesize passwd identity.",
   "sourceSha256": {
-    "scripts/export-standalone-mail-abi.py": "49d5e4ba285ee7a4967c62f6fa4d4a3cab62d119ed1dcc180d6dbd26587b829d",
+    "scripts/export-standalone-mail-abi.py": "4c0a9561a987a0666f9e9dc109d3d12ad095d252e82a92f5578a2633c8e7b4f7",
     "nethack-c/wasm/tu-mail-support.inc": "9ebdfdde292703fdc919da7c0f1f126e95bbb32160daf1817c7e76268694b20b",
     "nethack-c/wasm/tu-libraries/mail.js": "34da3a2d8df5f2426136e573427483c5eb24cfe383b1de52e4d066433d46fcb1",
-    "js/ported/mail.js": "7c2efb585a53964738e4f4fb84f7e66a69c9221f2017095835cdd39a157eb19a",
-    "js/ported/mail-runtime.js": "bb6e3d341c384ca1abdb97727b248755330f5d507c34a92efdb92e171d3ed997",
+    "js/ported/mail.js": "658fda8bd1076535505a95d0d91e6193d02731d6baa4f21e6a5fe95b87832eaa",
+    "js/nethack/bindings/mail.js": "bfe715c629a51d061b1ec4f239049d2527efd03a8cc293b586e8af45d01cfa54",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2"
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/system/lib/libc/emscripten_libc_stubs.c": "c4e4a71fbe0d36e200cae5587b9b89c4e3e4635eb6bb1c089d1d80c62e58fbbc",

@@ -58,11 +58,11 @@
     }
   ],
   "sourceSha256": {
-    "scripts/export-standalone-role-transport-abi.py": "0ee5b05276a184c2d8ca49284113e1823608445278d72cf01451bef8a75f95e1",
+    "scripts/export-standalone-role-transport-abi.py": "550473044e5db379db58874fc0360b295d20bb4b850f024486f305d577356b45",
     "nethack-c/wasm/tu-role-support.inc": "bbb6092237ce86e71c57b63571834dfc0113903748b1aca1a521097d316e5377",
     "nethack-c/wasm/tu-libraries/role.js": "cd06d06e4a175c21db6d476f2ce9ef4af38bf8d5248155e48eb85d6fcbebc5f8",
-    "js/ported/role.js": "1e697d0482e363779442e278d9c6ccbb16b98edd8bbf52075d242bc1a7455497",
-    "js/ported/role-runtime.js": "41ba84f7064ba86e78379d711515ed5f7f84bcba680f2f493908362444ab26a3"
+    "js/ported/role.js": "fbe5118192d4609b14e96ec67c26af1ce24ad0aff7533c325e36720b697b4126",
+    "js/nethack/bindings/role.js": "eb79fdb933ed8df00061cffbc1a64becee053e9208a11a20bc31b30b80da026e"
   },
   "referenceHeaderSha256": {
     ".cache/wasm64-build/tree/include/winprocs.h": "eebf4dbb4149d3a153a1dc815795baabe33a59d13362e00089d21ee9ce89983c",

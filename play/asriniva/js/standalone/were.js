@@ -1,7 +1,7 @@
 // Original WERE policies on one live shared game context.
 import abi from './were-abi.json' with {type:'json'};
 import * as source from '../ported/were.js';
-import {createWereEnvironment} from '../ported/were-runtime.js';
+import {createWereEnvironment} from '../nethack/bindings/were.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 
 export function enableWere(environment,layouts){

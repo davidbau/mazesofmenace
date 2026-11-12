@@ -1,4 +1,10 @@
 {
+  "qsortDispatch": {
+    "target": "nh_deterministic_qsort",
+    "wrapperSha256": "b9a0bd809ac08c58371cf3e97bf9d090a468a3d1f798f045049b6327abdc33bf",
+    "nativeComparator": "teleport_spell_compare",
+    "llvmCall": "call void @nh_deterministic_qsort"
+  },
   "snprintfSite": {
     "line": 755,
     "function": "getspell"
@@ -1069,15 +1075,15 @@
     "num_spells": "int (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-spell-abi.py": "5affdfb4f0dffd650192ca0a06dd3f4fec1113ca0ab251b04f917dd4d322d8e2",
-    "js/standalone/spell.js": "dd893ef8bbed713c2ba132a17490098a88d44c40d7bf74f2cb19387c4da62475",
+    "scripts/export-standalone-spell-abi.py": "34e03842419755f80d0df0b98f817dd9bb3de42d8770a04c5ce85d7126cf7227",
+    "js/standalone/spell.js": "a4600e59480780e89e7d9bf65f96c4e49ad14b8b9a086bab74cf7525a85a52e8",
     "scripts/tu-spell-layout.h": "7a59410e77d3e038da4f04f7f01f50e603441cbb17cb8760960d51abc2a8d1a8",
     "nethack-c/wasm/tu-spell-support.inc": "6aff725be6fce3573b2ce240447ea3a4d58f568009bedfc0a418d84b2d423fd6",
     "nethack-c/wasm/tu-libraries/spell.js": "eb77c4d09d4f68975c2bf694c080cbd5b3d5ec039ede6ed5fbf0c10d138ed7c1",
-    "js/ported/spell.js": "65a7555d8f0306eea09efc48eea9b00acf554721f242d1021764111cf8ef3927",
-    "js/ported/spell-runtime.js": "92f3e61e7ddab8dcb763fd3fb7fd212a59bd3bc2275e9429badf458ca24926e8",
+    "js/ported/spell.js": "a28146336d296071a430dfb785544e009a5b851e1a6fc26d94cbbce2e589050b",
+    "js/nethack/bindings/spell.js": "6bf30d4952ab13b531ecc2ff1ab9033afb6b4b7039dd782c3f85359dd6e08b7a",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

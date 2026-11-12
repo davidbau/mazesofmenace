@@ -3,10 +3,10 @@
   "count": 7,
   "storageIndex": 0,
   "sourceSha256": {
-    "scripts/export-standalone-hunger-data-abi.py": "7fdd3dd9f77209eeac2913beb8633743d85395354e24c0ad7d2ae3fd6a6be677",
+    "scripts/export-standalone-hunger-data-abi.py": "27a63affedb25de2d5ac27b9bff14f82ecef43cac84b4012a9918fb3d780fe67",
     "nethack-c/wasm/tu-eat-support.inc": "472260b23fb3d1657f4f64a20e0819c9b02ffd1ecd620f3e290df8de7bf328a7",
-    "js/ported/eat.js": "2e15612554fdc5e2f9175a520dcfcee009a467a840389c2be344b6048de32376",
-    "js/ported/eat-runtime.js": "c66d7256447d9adff8eb3b6287c3029b99509dad52b1717c38219a59a923f8b2",
+    "js/ported/eat.js": "4ff0e309556ec587af605a01d8127f54eafb7c41e9baf60195192bf2d3f8f82a",
+    "js/nethack/bindings/eat.js": "ecb839584c2874c33ad7f9b373300c56e7916d9f2738c78e063afd2e27daced4",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   }
 }

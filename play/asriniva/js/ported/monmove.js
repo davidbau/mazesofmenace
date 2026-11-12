@@ -1,4 +1,4 @@
-import {C} from './c-runtime.js';
+import {C} from '../c-runtime/context.js';
 
 /* NetHack 5.0	monmove.c	$NHDT-Date: 1737392015 2025/01/20 08:53:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.266 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */

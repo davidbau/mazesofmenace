@@ -8,7 +8,7 @@
  *      bonuses for any given weapon used, as well as weapons selection
  *      code for monsters.
  */
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 
 /* Categories whose names don't come from OBJ_NAME(objects[type])

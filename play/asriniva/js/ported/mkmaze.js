@@ -1,4 +1,4 @@
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 /* NetHack 5.0	mkmaze.c	$NHDT-Date: 1745114235 2025/04/19 17:57:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.179 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Pasi Kallinen, 2018. */

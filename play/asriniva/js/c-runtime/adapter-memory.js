@@ -1,7 +1,7 @@
+import {createArrayView} from './records.js';
 // Shared implementations of the existing C adapter memory profiles.
 // Profiles retain their own array, conversion, initialization and field contracts.
-export function descriptorArray(cache,width,read,write,d,at){const key='array:'+JSON.stringify(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},stride=width(child),target={address:at,byteLength:width(d),descriptor:d};
-        const result=new Proxy(target,{get(o,k){return typeof k==='string'&&/^\d+$/.test(k)?read(child,at+Number(k)*stride):Reflect.get(o,k);},set(o,k,v){if(typeof k==='string'&&/^\d+$/.test(k)){write(child,at+Number(k)*stride,v);return true;}return Reflect.set(o,k,v);}});cache.set(key,result);return result;}
+export function descriptorArray(cache,width,read,write,d,at){const key='array:'+JSON.stringify(d)+':'+at;if(cache.has(key))return cache.get(key);const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},stride=width(child),target={address:at,byteLength:width(d),descriptor:d};const result=createArrayView(target,{checked:false,allowLeadingZeroes:true,read:i=>read(child,at+i*stride),write:(i,v)=>write(child,at+i*stride,v)});cache.set(key,result);return result;}
 
 export function writeIntegerCell(memory,address,bits,v){const dv=memory();if(bits===64)dv.setBigUint64(address,BigInt.asUintN(64,BigInt(v)),true);else dv['setUint'+bits](address,Number(v),true);}
 
@@ -15,12 +15,9 @@ export function scalarMethod(t){return ({'char':'Int8','signed char':'Int8','uns
 
 export function advanceDescriptor(view,addr,layout,array,width,read,write,v,n){if(v?.kind)return view(v.kind,addr(v)+n*layout[v.kind+'Size']);if(v?.descriptor){if(v.descriptor.a){const child=v.descriptor.a.length===1?v.descriptor.e:{a:v.descriptor.a.slice(1),e:v.descriptor.e};return array(v.descriptor,addr(v)+n*width(child));}const d=v.descriptor,at=addr(v)+n*width(d);return {address:at,descriptor:d,get value(){return read(d,at);},set value(x){write(d,at,x);}};}return addr(v)+n;}
 
-export function defineScalarField(view,obj,key,at,kind){return (Object.defineProperty(obj,key,{
-        get(){return view()['get'+kind](at(),true);},
-        set(value){view()['set'+kind](at(),kind.startsWith('Big')?BigInt(value):Number(value),true);},
-    }));}
+export function defineScalarField(view,obj,key,at,kind){return defineScalarProperty(view,obj,key,at,kind,'prefix');}
 
-export function pointerSequence(read,write,records,record,p,t,stride){return (new Proxy({address:p},{get:(o,k)=>/^\d+$/.test(String(k))?read(t,p+Number(k)*stride):(k in o?o[k]:records[t]?record(t,p)[k]:undefined),set:(o,k,v)=>{if(/^\d+$/.test(String(k)))write(t,p+Number(k)*stride,v);else o[k]=v;return true;}}));}
+export function pointerSequence(read,write,records,record,p,t,stride){return createArrayView({address:p},{checked:false,allowLeadingZeroes:true,read:i=>read(t,p+i*stride),write:(i,v)=>write(t,p+i*stride,v),fallbackRead:(o,k)=>k in o?o[k]:records[t]?record(t,p)[k]:undefined,fallbackWrite:(o,k,v)=>{o[k]=v;return true;}});}
 
 export function definePointerField(pointer,view,raw,obj,key,at,wrap){return (Object.defineProperty(obj,key,{
         get(){return wrap(pointer(at()));},set(value){view().setBigUint64(at(),raw(value),true);},
@@ -48,20 +45,7 @@ export function initializeRecord(address,services,sizeof,write,fieldInfo,env,ini
         return at;
     }
 
-export function indexedArray(length,getter,setter){return (new Proxy({}, {
-        get(target, key) {
-            if (key === 'length') return length;
-            if (typeof key === 'string' && /^\d+$/.test(key)) return getter(Number(key));
-            return Reflect.get(target, key);
-        },
-        set(target, key, value) {
-            if (setter && typeof key === 'string' && /^\d+$/.test(key)) {
-                setter(Number(key), value);
-                return true;
-            }
-            return Reflect.set(target, key, value);
-        },
-    }));}
+export function indexedArray(length,getter,setter){return createArrayView({},{checked:false,allowLeadingZeroes:true,length,exposeLength:true,reflectMissingWriter:true,read:i=>getter(i),write:setter?(i,v)=>setter(i,v):setter});}
 
 export function typeSize(types,env,sizeOf,t){const a=t.match(/^(.*?)\[(\d+)\](.*)$/);if(a)return +a[2]*sizeOf(a[1]+a[3]);if(t.includes('*'))return 8;if(t.startsWith('enum '))return 4;if(types[t])return +types[t].slice(1)/8;return env.sizes[t];}
 
@@ -74,7 +58,6 @@ export function writeTypedValue(scalarType,view,raw,literal,services,address,siz
 export function decodeDescriptor(view,array,addr,d,v){if(d.p!==undefined)return d.p?view(d.p,v):Number(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return v;
         const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);}
 
-export function defineScalarValue(view,o,key,at,kind){return (Object.defineProperty(o, key, {
-        get() { return view()['get' + kind](at(), true); },
-        set(v) { view()['set' + kind](at(), kind.includes('Big') ? BigInt(v) : Number(v), true); },
-    }));}
+export function defineScalarValue(view,o,key,at,kind){return defineScalarProperty(view,o,key,at,kind,'contains');}
+
+function defineScalarProperty(view,obj,key,at,kind,mode){return Object.defineProperty(obj,key,{get(){return view()['get'+kind](at(),true);},set(value){view()['set'+kind](at(),(mode==='contains'?kind.includes('Big'):kind.startsWith('Big'))?BigInt(value):Number(value),true);}});}

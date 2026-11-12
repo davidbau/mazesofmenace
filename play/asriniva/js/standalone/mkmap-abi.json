@@ -135,11 +135,11 @@
     "wallify_map": "void (coordxy, coordxy, coordxy, coordxy)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-mkmap-abi.py": "f01bf8bd8f294b0415417a78f9e5f87907a713ad99329b869c68ab3f524d71db",
+    "scripts/export-standalone-mkmap-abi.py": "11eadc9afbe101d6201eef0bc28a51e688da2f931246d881949ab108307dd107",
     "scripts/tu-mkmap-layout.h": "32f2b7a27b14c6b2b4bc21035fb6c9a45a5cc5b60e0084938a32e4d20b6fcd0d",
-    "js/standalone/mkmap.js": "d513cbcfd28a22f7e090a6ff4187080e146dea6362acb3aece891f57d108b54a",
-    "js/ported/mkmap.js": "6bc6989d007324dd052b67dc5465d38570259ec9b79b5f507e395c8ffb18fff8",
-    "js/ported/mkmap-runtime.js": "b4ee74bce9c1e08d3a905ea3a355c613fb529843b1a5f6c002e840cad0b3e673",
+    "js/standalone/mkmap.js": "2cbabb157a3ae0c837a81e9b9a14b9d06851b52232c4bb2b1018384dac7e352a",
+    "js/ported/mkmap.js": "a3579696a222189ccfe3274dab2f54c2607d28d1c982d57902ac92adfc3506ef",
+    "js/nethack/bindings/mkmap.js": "5452fd6a68910d9e428515c32eace55be89a4029d00add6c70e7487e53fc5818",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/mkmap.js": "70200ca48b905749fbd07dd86c03a44e8dd4f672401257f0a3b25049ddadeb3e",
     "nethack-c/upstream/src/mkmap.c": "25046834749be29ad3ec4b03f024189de5026b805da0129537dd5c75ca7e2f50",

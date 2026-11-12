@@ -1230,12 +1230,12 @@
     "c_obj_colors"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-mon-abi.py": "be0bda1d7415868fbc317ab0635ab65af85ef6bae280ca1046408ecf3782a63f",
-    "js/ported/mon-runtime.js": "7f6b8799961859dfa0e4d14d82efba8aea4744fa0786bb0e934d2bfd5755fa16",
+    "scripts/export-standalone-mon-abi.py": "b701238dcc7dc0e6f9f022f19ad900878c3a9ff5117c8d9d26e51a7f767571eb",
+    "js/nethack/bindings/mon.js": "e419fa0eab1f2317bf2665393237d8413961ea6200fad2ec67784ec2528c585a",
     "nethack-c/wasm/tu-mon-support.inc": "e7638f31a72c5098cd585e3c8b3acc34d67860092c08143017624f4a8e5d7ba2",
     "nethack-c/wasm/tu-libraries/mon.js": "61f56e2f378f8b79f09c86d6ccf6d9d361c1fc39097d156b4cf73feac669f86e",
-    "js/ported/mon.js": "05f3f39643975e5f2861c8b9cbdc617eaf9b4e5ae8a644efa616a7a49a9aaa4e",
+    "js/ported/mon.js": "b76ebfece2f87288bd21915219cb8db7d00652399901b58f8463958a71ca3fe0",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/monster-lifecycle.js": "fd2b9d30c03a7ecc810c13cf9a0ac460adc06272d66332d7c2b501ed07bb2679"
+    "js/standalone/monster-lifecycle.js": "5cbe195ae2e203a628c0da182583be0a73fa30b8588f626ac9e9a95139762340"
   }
 }

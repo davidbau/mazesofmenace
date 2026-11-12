@@ -886,7 +886,7 @@ export function copy_oextra(target, source) {
 // C ref: mkobj.c splitobj(). The child follows its parent in both ownership
 // chains, receives a price-compatible object id, and clears transient worn,
 // light, timer, Lua, and pickup state.
-export function splitobj(obj, quantity, env = {}) {
+export async function splitobj(obj, quantity, env = {}) {
     const normalized = objectEnv(env);
     quantity = Math.trunc(quantity);
     if (!obj || typeof obj !== 'object')
@@ -920,12 +920,12 @@ export function splitobj(obj, quantity, env = {}) {
     if (child.where === OBJ_LUAFREE) child.where = OBJ_FREE;
 
     if (obj.unpaid) {
-        // C ref: mkobj.c splitobj() calls shk.c splitbill() here and discards
-        // its void result. Preserve explicit provider hooks, then use the
-        // canonical synchronous shop billing implementation by default.
+        // C ref: mkobj.c splitobj() calls shk.c splitbill() here, which may
+        // print impossible(). Preserve explicit provider hooks, then use the
+        // canonical shop billing implementation by default.
         if (typeof normalized.hooks.splitBill === 'function')
-            normalized.hooks.splitBill(obj, child, normalized);
-        else splitbill(obj, child, normalized.state);
+            await normalized.hooks.splitBill(obj, child, normalized);
+        else await splitbill(obj, child, normalized.state);
     }
     copy_oextra(child, obj);
     // C: if (has_omid(otmp)) free_omid(otmp); /* only one association */

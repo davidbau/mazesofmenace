@@ -1,4 +1,4 @@
-import {C} from '../../ported/c-runtime.js';
+import {C} from '../../c-runtime/context.js';
 
 export const std_args = ["tilemap", "monsters.gif", "monsters.txt", "objects.gif", "objects.txt", "other.gif", "other.txt"];
 

@@ -1,7 +1,7 @@
 // Full native DBRIDGE transport on the existing terrain-query context.
 import abi from './dbridge-abi.json' with {type:'json'};
 import * as source from '../ported/dbridge.js';
-import {createDbridgeEnvironment} from '../ported/dbridge-runtime.js';
+import {createDbridgeEnvironment} from '../nethack/bindings/dbridge.js';
 const owners=new WeakMap();
 export function enableDbridge(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

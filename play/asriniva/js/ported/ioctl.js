@@ -12,7 +12,7 @@
    define the same constants, and the C preprocessor complains. */
 
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of ioctl.c for the effective POSIX game build.
  * All four active function boundaries remain unchanged. The original

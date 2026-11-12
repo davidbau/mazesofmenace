@@ -1,4 +1,4 @@
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 /* NetHack 5.0	display.c	$NHDT-Date: 1777000050 2026/04/23 19:07:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.263 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Kevin Darcy */
 /* and Dave Cohrs, 1990.                                          */

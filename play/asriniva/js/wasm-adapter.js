@@ -3,9 +3,9 @@
 import { setStorageForTesting, vfsReadFile, vfsWriteFile } from './storage.js';
 import { encodeRecorderScreen, recordingClockEpoch, shouldPersistGameFile } from './wasm-replay-support.js';
 import { recordingProfile, profileSysconf } from './recording-profile.js';
-import { createPortedRuntime } from './ported/wasm-runtime.js';
-import { createWasmDependencyRuntime } from './services/wasm-dependency-runtime.js';
-import { filesUnder, restoreGameFiles, captureGameFiles } from './services/game-files.js';
+import { createPortedRuntime } from './backends/emscripten/runtime.js';
+import { createLibraryBindings } from './c-runtime/library-bindings.js';
+import { filesUnder, restoreGameFiles, captureGameFiles } from './nethack/game-files.js';
 import tuLayouts from './wasm/tu-layouts.json' with { type: 'json' };
 import buildMetadata from './wasm/build.json' with { type: 'json' };
 
@@ -33,15 +33,15 @@ async function runWithTerminal(input) {
     let baseline;
     setStorageForTesting(input.storage || null);
     const previousState = vfsReadFile(STATE_PATH);
-    const dependencyRuntime = createWasmDependencyRuntime({ regex: true });
+    const dependencyRuntime = createLibraryBindings({ regex: true });
     const portedRuntime = createPortedRuntime(tuLayouts);
     const recordingEpoch = recordingClockEpoch();
     let luaRuntime;
     if (buildMetadata.luaBackend === 'javascript') {
-        const [{ createWasmLuaRuntime }, { createLuaBytecodeVM }] = await Promise.all([
-            import('./services/wasm-lua-runtime.js'), import('./services/lua-bytecode-vm.js'),
+        const [{ createLuaAbi }, { createLuaBytecodeVM }] = await Promise.all([
+            import('./lua/abi.js'), import('./lua/bytecode-vm.js'),
         ]);
-        luaRuntime = createWasmLuaRuntime({ vmFactory: createLuaBytecodeVM });
+        luaRuntime = createLuaAbi({ vmFactory: createLuaBytecodeVM });
     }
     const module = await createNethack({
         nethackPorted: portedRuntime,

@@ -1,8 +1,8 @@
 // Original demon/angel summons and guardian lifecycle on shared native storage.
 import abi from './minion-abi.json' with {type:'json'};
 import * as source from '../ported/minion.js';
-import {createMinionEnvironment} from '../ported/minion-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createMinionEnvironment} from '../nethack/bindings/minion.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableMinion(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

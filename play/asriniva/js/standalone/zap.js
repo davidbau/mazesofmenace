@@ -1,6 +1,6 @@
 // Shared original ZAP factory, initially exposing actual location queries.
 import abi from './zap-abi.json' with {type:'json'};
-import {callZap,initializeZap,zapState} from '../ported/zap-runtime.js';
+import {callZap,initializeZap,zapState} from '../nethack/bindings/zap.js';
 const owners=new WeakMap();
 
 export function enableZap(environment,layouts,{only=['get_obj_location','get_mon_location']}={}){

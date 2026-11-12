@@ -1,4 +1,10 @@
 {
+  "qsortDispatch": {
+    "target": "nh_deterministic_qsort",
+    "wrapperSha256": "9d87abbf4b24a930ab21829838385495c9fbbee5df2fbb190c3e747e5bbba283",
+    "nativeComparator": "teleport_getpos_cmp_coord_distu",
+    "llvmCall": "call void @nh_deterministic_qsort"
+  },
   "layout": {
     "GLYPH_CMAP_MAIN_OFF": 3930,
     "GLYPH_MON_MALE_OFF": 0,
@@ -393,16 +399,16 @@
     "getpos": "int (coord *, boolean, const char *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-getpos-abi.py": "76a60b5d078a9d51e7de1c01bd8035dd3c08df1e7f6f495ee0167696587721e3",
-    "js/standalone/getpos.js": "150c61f7c24532daa13a33d3ea9fc54144288d0eabc8f6bc9a8a56d47c68627e",
+    "scripts/export-standalone-getpos-abi.py": "8430a370a90c0f0678ccae93bf1c2b6465b694a3046513a16802d74f49c474ca",
+    "js/standalone/getpos.js": "9f53162c6896cbb7ed31dd45048992148bd84c12bbc4a47eb05de4adf9b7425f",
     "js/standalone/getpos-header-functions.js": "50686e175161f35d0bee66a466e1410c72d673b776f4d208805ce44a73665007",
     "scripts/tu-getpos-layout.h": "8c37016cd6dd0a002dbf988debd395a86d31102fb7adb1c69e8ba047ed1357bb",
     "nethack-c/wasm/tu-fragments/getpos-support.inc": "8f4999644f77b7fdd24ed790c0dbf3bd6e59dcdb86a34fac5a35fe40311827a1",
     "nethack-c/wasm/tu-libraries/getpos.js": "25c628e36e33d0048f74e2ec3d672fd78fdb67b395e3d464bfa2e28855afa475",
-    "js/ported/getpos.js": "36bb32ec0dc3c1f97e458c3ae07240a9395ae4253e5a02e31a2231a120d675a4",
-    "js/ported/getpos-runtime.js": "9d02e0c44a60a9cd4026f2d54d54ce33e7e6e7b10038537ff93ca47600aaa16c",
+    "js/ported/getpos.js": "adaffd66399861f155b2ffd84f60bb6756664f7552dd4a1e575de1a4cd6c072e",
+    "js/nethack/bindings/getpos.js": "07e1ec364cad2d01bcfa75fcfc958d4bf09acebbd6a4433898217d9a8565a0a6",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

@@ -18,6 +18,7 @@ export function enableMonsterSelection(environment,layouts) {
             int:transport.int,char:transport.char,long:transport.long,uint:transport.uint,boolean:transport.char,
             callLocal:(fn,...args)=>transport.scoped(fn,...args),abs:Math.abs,
             samePtr:(a,b)=>pointer(a)===pointer(b),monsndx:pm=>pm.pmidx,
+            showdebug:file=>environment.resolve('debugcore')(typeof file==='string'?services.literal(file):pointer(file),1),
             impossible:(format,...args)=>environment.diagnostics.push(environment.libc.format(format,...args)),
             rngSource:(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal(file),line,services.literal(caller));},
         });

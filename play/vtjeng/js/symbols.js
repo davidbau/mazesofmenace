@@ -17,6 +17,7 @@ import {
     SYM_BOULDER,
 } from './const.js';
 import { game } from './gstate.js';
+import { nomux_g_putch_byte } from './termcap.js';
 import { isDefaultSymsetName } from './files.js';
 import {
     apply_customizations,
@@ -125,6 +126,8 @@ export const S_cloud = requiredCmapSymbol('s_cloud');
 export const S_water = requiredCmapSymbol('s_water');
 export const S_poisoncloud = requiredCmapSymbol('s_poisoncloud');
 export const S_arrow_trap = requiredCmapSymbol('s_arrow_trap');
+// The last trap display.c cmap_to_roguecolor() colors magenta.
+export const S_polymorph_trap = requiredCmapSymbol('s_polymorph_trap');
 // The two ends of defsym.h's zap/effect run. display.h's enum glyph_offsets
 // spaces GLYPH_SWALLOW_OFF by ((S_goodpos - S_digbeam) + 1), so both indices
 // are inputs to js/glyph_offsets.js.
@@ -238,11 +241,24 @@ function resetSymbolSlot(set, state) {
     if (previous && Object.hasOwn(previous, 'handling')) {
         purgeSlotCustomizations(set, previous.handling, state);
     }
+    // init_primary_symbols() and init_rogue_symbols() fill the P, O, M and
+    // W slots with defaults, but each "other" slot with get_othersym(), which
+    // reads the override and then the slot's current value before falling
+    // back to a default. A symbol a previous set or override gave S_boulder,
+    // S_invisible and the rest therefore survives the reset, and a new set
+    // that does not name it keeps it: Blank's blank boulder stays blank after
+    // Enhanced2 is chosen.
+    const { base: previousBase, overrides } = slotArrays(set, state);
+    const symbols = [...(rogue ? DEFAULT_ROGUE_SYMBOLS : DEFAULT_PRIMARY_SYMBOLS)];
+    for (let index = SYM_OFF_X; index < SYM_MAX; ++index) {
+        symbols[index] = overrides?.[index] || previousBase?.[index]
+            || symbols[index];
+    }
     if (rogue) {
-        state.gr.rogue_syms = [...DEFAULT_ROGUE_SYMBOLS];
+        state.gr.rogue_syms = symbols;
         state.gr.rogue_utf8_syms = Array(SYM_MAX).fill(null);
     } else {
-        state.gp.primary_syms = [...DEFAULT_PRIMARY_SYMBOLS];
+        state.gp.primary_syms = symbols;
         state.gp.primary_utf8_syms = Array(SYM_MAX).fill(null);
     }
     state.gs.symset[set] = {
@@ -488,6 +504,10 @@ export function init_symbols(state = game) {
     state.go.ov_primary_utf8_syms = Array(SYM_MAX).fill(null);
     state.go.ov_rogue_syms = Array(SYM_MAX).fill(0);
     state.go.ov_rogue_utf8_syms = Array(SYM_MAX).fill(null);
+    // C's tables are zero-filled statics when initoptions() first runs, so
+    // get_othersym() finds no earlier symbol to keep.
+    state.gp.primary_syms = null;
+    state.gr.rogue_syms = null;
     resetSymbolSlot(PRIMARYSET, state);
     resetSymbolSlot(ROGUESET, state);
     state.gc.currentgraphics = PRIMARYSET;
@@ -630,12 +650,9 @@ function fallbackOperations(options) {
     return operations;
 }
 
-// C ref: symbols.c:switch_symbols(). A false useOverrides value is distinct
-// from clearing overrides: symset:default can hide and a later assignment can
-// reveal the same stored customization.
-export function switch_symbols(state = game, useOverrides = true) {
-    graphicsState(state);
-    const set = state.gc.currentgraphics ?? PRIMARYSET;
+// Fill gs.showsyms (and its UTF-8 shadow) from one slot's tables, each entry
+// the override when one is set, else the set's own symbol.
+function showSlotSymbols(set, state, useOverrides = true) {
     const arrays = slotArrays(set, state);
     state.gs.showsyms = arrays.base.map((symbol, index) => (
         useOverrides && arrays.overrides[index]
@@ -650,6 +667,18 @@ export function switch_symbols(state = game, useOverrides = true) {
     });
 }
 
+// C ref: symbols.c:switch_symbols(). Both arms read the primary tables
+// whatever gc.currentgraphics says: on the Rogue level, a primary symset
+// chosen through #optionsfull's do_symset(FALSE), or a SYMBOLS or
+// ROGUESYMBOLS line, puts the primary symbols on the map until the next
+// assign_graphics(). A false useOverrides value is distinct from clearing
+// overrides: symset:default can hide and a later assignment can reveal the
+// same stored customization.
+export function switch_symbols(state = game, useOverrides = true) {
+    graphicsState(state);
+    showSlotSymbols(PRIMARYSET, state, useOverrides);
+}
+
 // C ref: symbols.c assign_graphics().  A level change selects the primary or
 // Rogue symbol table, then rebuilds the active display symbols.  The JavaScript
 // renderer resolves glyphs when it draws them, so reset_glyphmap() has no
@@ -658,7 +687,7 @@ export function assign_graphics(whichSet, state = game) {
     graphicsState(state);
     state.gc.currentgraphics = whichSet === ROGUESET
         ? ROGUESET : PRIMARYSET;
-    switch_symbols(state, true);
+    showSlotSymbols(state.gc.currentgraphics, state);
 }
 
 export function initialize_symbols_from_options(options, state = game) {
@@ -784,7 +813,16 @@ export function symbol_at(
     const eightBit = Boolean(state.iflags?.wc_eight_bit_input);
     const dec = high && handling !== H_IBM && handling !== H_UTF8
         && !(eightBit && (handling !== H_DEC || low < 0x60));
-    const result = { ch: String.fromCharCode(high ? low : byte), dec };
+    // tty_print_glyph() prints the byte through g_putch(). A byte whose
+    // capture nomux_putch() ignores -- a control byte, or a high byte whose
+    // low seven bits are one, as AmigaFont's door bytes \x91-\x94 are --
+    // leaves the recorder-facing cell untouched, as a null `ch` does for
+    // g_pututf8().
+    const stored = nomux_g_putch_byte(byte);
+    const result = {
+        ch: stored === null ? null : String.fromCharCode(stored),
+        dec,
+    };
     if (high && handling === H_IBM) result.displayCh = CP437_HIGH[low];
     Object.defineProperty(result, 'ttychar', { value: byte });
     return result;

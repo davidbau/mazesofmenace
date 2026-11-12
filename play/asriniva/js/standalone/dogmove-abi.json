@@ -2645,17 +2645,17 @@
     "quickmimic"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-dogmove-abi.py": "86768e223d963e2fc78d514dbce1feec6cb2ece8f4500dad76cf509b3a99212f",
-    "js/standalone/dogmove.js": "1ece1ed90ea834537a6c6c3053a4cd4a8afe69dcc2ebf2ad2e6f95c642be2882",
-    "js/ported/dogmove.js": "c73eb4d6a4b0ea4ecb1eca0f26627fac568c0e8452a273b6c0615be0190e72fb",
-    "js/ported/dogmove-runtime.js": "4b71d3b609ebf7976e9afd1593028dcc49d21a2bce03698fa9788e42f499826c",
-    "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
+    "scripts/export-standalone-dogmove-abi.py": "23f1400c46beb724763a15e2aec725223c439db110efa461fa648759d83e90a0",
+    "js/standalone/dogmove.js": "1b35a4043eff5c56a6798cc6a12d886b0205c4f32528d1b956d20df4e4e07322",
+    "js/ported/dogmove.js": "99f617a504724aeab8aadc9088bf1ee3f6381a8fbba2eca5a9dae0f276206a0e",
+    "js/nethack/bindings/dogmove.js": "b69cfcabfe3b3e863b9d3291de6e24c2715ea658f8a7239727da569454c01c41",
+    "js/backends/emscripten/runtime.js": "5322fc2cb40783ef7c475861cecb9eaa68ddf26eb12f8618f1bd3e480d3e4371",
     "nethack-c/wasm/tu-fragments/dogmove-schema.json": "8e15a126272e0f7940c25590930a272824d51535a90221b37271098e5fc5c809",
     "nethack-c/wasm/tu-fragments/dogmove-support.c": "d56689691f09bf8b89c23c0fea016d954d4d8f64e3ab4d71e0f56112d47c00ee",
     "nethack-c/wasm/tu-fragments/dogmove-source-data.h": "1d4be7a751cfcc80744977df9d836ffe60025317b75c35c6d0a2cc51aff8600c",
     "nethack-c/wasm/tu-libraries/dogmove.js": "c44c138f79ba34618b44efc5ed1c456f3e6eb179dcb901ad78ac6a218d854a3d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   }
 }

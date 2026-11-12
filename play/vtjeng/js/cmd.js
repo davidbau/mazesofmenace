@@ -308,7 +308,7 @@ import {
     doquickwhatis,
     dowhatis,
 } from './pager.js';
-import { dopay, UnsupportedShopError } from './shk.js';
+import { dopay } from './shk.js';
 import { UnsupportedVaultGuardError } from './vault.js';
 import { dofire, dothrow } from './dothrow.js';
 import { dosit } from './sit.js';
@@ -1810,13 +1810,11 @@ export async function get_count(
                 countMessage = `Count: ${count}`;
                 backspaced = false;
             }
-            // A MSGTYPE=hide or norep rule can swallow the line; vpline()
-            // then returns before its flush_screen() and putmesg(), and the
-            // cursor stays where it was.
-            if (await ttyCustomPline(countMessage, SUPPRESS_HISTORY, state)) {
-                await flush_screen(1);
-                state.nhDisplay?.setCursor(countMessage.length, 0);
-            }
+            // vpline() flushes the screen and show_topl() leaves the cursor
+            // after the line; a MSGTYPE=hide or norep rule that swallows the
+            // line leaves it where it was, and a stop rule's --More-- leaves
+            // it at the cleared top line's start. mark_synch() moves nothing.
+            await ttyCustomPline(countMessage, SUPPRESS_HISTORY, state);
         }
     }
 
@@ -2926,12 +2924,10 @@ function restoreParsedCommand(pending, state) {
 export function failClosedCommandRefusals() {
     return [
         UnsupportedFeatureDescriptionError,
-        UnsupportedShopError,
-        // end.c really_done() calls paybill() and paygd() on every death, so
-        // a shopkeeper inherits() cannot settle with or a vault guard owed the
-        // hero's gold refuses below a killing blow. The hero's own command
-        // reaches that death through losehp(), and js/allmain.js converts the
-        // same two classes where a monster's attack reaches it.
+        // end.c really_done() calls paygd() on every death, so a vault guard
+        // owed the hero's gold refuses below a killing blow. The hero's own
+        // command reaches that death through losehp(), and js/allmain.js
+        // converts the same class where a monster's attack reaches it.
         UnsupportedVaultGuardError,
         UnsupportedSearchError,
         // lock.c pick_lock() stops inside doapply()'s lock-pick arm.

@@ -1257,8 +1257,9 @@ async function tty_get_ext_cmd_inner() {
             /* getline.c:130-131 redraws obufp after truncating at bufp;
              * any canonical case written by the completion hook is now visible. */
             literalPrefix = buf;
-        } else if (doprev) {
-            /* getline.c:130-133 — `cw->maxcol = cw->maxrow;` restarts the ^P
+        } else if (doprev && !(keyCode === ESC && buf === '')) {
+            /* getline.c:85-99 breaks first on ESC with an empty buffer.
+             * getline.c:133-135 — `cw->maxcol = cw->maxrow;` restarts the ^P
              * walk at gt.toplines, so the next ^P recalls the newest line
              * again rather than continuing from where the last walk stopped. */
             g._prevmsg_next = null;
@@ -6207,7 +6208,12 @@ async function menu_remarm(retry) {
             if ((o.oclass | 0) === oc && is_worn(o)) { any = true; break; }
         }
         if (!any) continue;
-        pushRow(`${String.fromCharCode(invlet++)} - ${OCLASS_NAME[oc] ?? ''}`,
+        let name = OCLASS_NAME[oc] ?? '';
+        // C pickup.c:1362-1364, invent.c:4825-4836: let_to_name with showsym.
+        if (g.iflags?.menu_head_objsym)
+            name += ' '.repeat(Math.max(0, 7 - name.length))
+                + `  ('${def_oc_syms_chars[oc]}')`;
+        pushRow(`${String.fromCharCode(invlet++)} - ${name}`,
                 def_oc_syms_chars[oc] ?? '', false);
     }
     /* C pickup.c:1399-1402 — the blank separator, shared by the unpaid and BUC
@@ -8934,6 +8940,26 @@ async function doextlist(restoreExtPrompt = false) {
         const pages = [];
         for (let i = 0; i < records.length; i += PAGE_LINES)
             pages.push(records.slice(i, i + PAGE_LINES));
+        // C cmd.c:693 select_menu dismisses before returning a pick, including
+        // a redisplay toggle. wintty.c:978-982 restores the map at dismissal.
+        const dismiss = async () => {
+            const savedBotDisabled = g._bot_disabled;
+            g._bot_disabled = true; // windows.c:1861-1863
+            try {
+                if (pages.length > 1 || pages[0].length + 1 >= 24) {
+                    await docrt(false, g._screen_output);
+                    await flush_screen(1);
+                    status_r1_menu_docrt();
+                    g._r1botAfterMap = g.level;
+                    g._r1textOver = true;
+                } else {
+                    const lines = pages[0].map(r => (r.raw ?? r.text).replace(/^ /, '')).concat('(end)');
+                    const col = tty_window_offx(lines, 'end') - 1;
+                    docorner_blank_utf8_captures(col - 1, lines.length + 1);
+                    docorner_status_rows(col - 1, lines.length + 1);
+                }
+            } finally { g._bot_disabled = savedBotDisabled; }
+        };
         let page = 0, redisplay = false, rowErased = -1;
         while (!redisplay) {
             const footer = pages.length > 1 ? ` (${page + 1} of ${pages.length})` : ' (end)';
@@ -8962,6 +8988,7 @@ async function doextlist(restoreExtPrompt = false) {
             const raw = await nhgetch();
             let ch = String.fromCharCode(raw | 0);
             if (raw === 27 || raw === 10 || raw === 13) {
+                await dismiss();
                 g._pending_message = restoreExtPrompt ? '#' : '';
                 await flush_screen(1);
                 return ECMD_OK;
@@ -8969,6 +8996,7 @@ async function doextlist(restoreExtPrompt = false) {
             if (raw === 32 || ch === '>') {
                 if (page < pages.length - 1) page++;
                 else if (raw === 32) {
+                    await dismiss();
                     g._pending_message = restoreExtPrompt ? '#' : '';
                     await flush_screen(1);
                     return ECMD_OK;
@@ -8996,6 +9024,7 @@ async function doextlist(restoreExtPrompt = false) {
                 if (!picked) continue;
                 ch = picked.selector;
             }
+            await dismiss();
             if (ch === 'a') { menumode = 1 - menumode; redisplay = true; }
             else if (ch === 'z') { onelist = 1 - onelist; searchbuf = ''; redisplay = true; }
             else if (ch === 's') { searchbuf = ''; redisplay = true; }
@@ -11968,12 +11997,9 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
          * Never_mind (decl.c "Never mind.") only `if (flags.verbose)`. */
         if (itemKey === 27 /* ESC */ || itemKey === 32 /* ' ' */
             || itemKey === 13 /* CR */ || itemKey === 10 /* LF */) {
-            /* Keep the prompt only for !verbose, where C suppresses the
-             * Never_mind pline.  With verbose enabled the cancellation message
-             * must remain the visible topline; a sticky prompt would overwrite
-             * it on the next paint after nhgetch clears pending_message. */
-            if (g.flags?.verbose === false)
-                g._topl_sticky = prompt;
+            /* C invent.c:1944-1953: silent cancellation retains the last
+             * painted line, including get_count's echo (cmd.c:5070-5080).
+             * The prompt/count fallback was already saved above. */
             await getobj_never_mind();
             return null;
         }
@@ -12759,13 +12785,16 @@ async function doride() {
     } else if ((await getdir(null)) && isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))) {
         let _ynPrompt = null;
         if (wizard()) {
-            _ynPrompt = "Force the mount to succeed? [yn] (n)";
+            /* C cmd.c:5459-5460: the query_menu route clears WIN_MESSAGE;
+             * only the tty route leaves an answered prompt to preserve. */
+            if (!(g.iflags?.query_menu && g.iflags?.window_inited))
+                _ynPrompt = "Force the mount to succeed? [yn] (n)";
             const c = await yn_function("Force the mount to succeed?", ynchars_st, 'n', true);
             /* topl.c:537-549 leaves a single-row tty question painted.
              * Publish that residue before mount_steed's teleds/spoteffects:
              * look_here can open a pile window over it (invent.c:4289).
              * It is physical text, not an unacknowledged pline to page. */
-            if (!g.iflags?.query_menu) g._topl_sticky = _ynPrompt;
+            if (_ynPrompt) g._topl_sticky = _ynPrompt;
             if (c === 'y') forcemount = true;
         }
         const _prevAtMount = g._prevmsg;
@@ -26925,18 +26954,7 @@ async function dopickup_body() {
     }
     let pickOrder;
     if (atTile.length >= 2) {
-        pickOrder = await _pickup_menu(atTile, count);
-        if (pickOrder === null) {
-            /* ESC-cancelled: n_tried==0, no turn, no message. */
-            game.context.move = 0;
-            return;
-        }
-        if (pickOrder.length === 0) {
-            /* Confirmed with nothing toggled: n_tried==0, no turn, and (unlike
-             * the empty-tile case) NO "nothing here" message — items remain. */
-            game.context.move = 0;
-            return;
-        }
+        pickOrder = (await _pickup_menu(atTile, count)) ?? [];
     } else {
         /* 0 or 1 object: AUTOSELECT_SINGLE lifts the lone item (no menu). */
         pickOrder = atTile.slice();
@@ -27141,12 +27159,16 @@ async function pline_xy_a11y(x, y, text) {
  * just painted and announce it (pline_xy_a11y's coordinate formatting);
  * do not mutate global a11y.accessiblemsg across async boundary. */
 set_mention_map_hook((x, y, cells, announce) => {
+    /* display.c:2060-2072 / pline.c:175-190: C announces inside show_glyph,
+     * before the caller can move the hero. Preserve that coordinate prefix
+     * before the asynchronous description lets the caller continue. */
+    const gp = game.iflags?.getpos_coords;
+    const prefix = isok(x, y)
+        ? coord_desc(x, y, (!gp || gp === GPCOORDS_NONE) ? GPCOORDS_COMFULL : gp) + ': '
+        : '';
     return _autodescribe_firstmatch(x, y).then(async (firstmatch) => {
         const text = (firstmatch || '') + '.';
-        const gp = game.iflags?.getpos_coords;
-        const msg = isok(x, y)
-            ? coord_desc(x, y, (!gp || gp === GPCOORDS_NONE) ? GPCOORDS_COMFULL : gp) + ': ' + text
-            : text;
+        const msg = prefix + text;
         /* The frame this pline freezes is the one show_glyph flushed at. */
         const release = cells && mention_map_pline_cells(msg, cells);
         try {
@@ -31951,6 +31973,14 @@ export async function dbase_display_window(srcLines, statusClipCol) {
         return;
     }
     docorner_blank_utf8_captures(winCol - 1, windowLines.length);
+    docorner_status_rows(winCol - 1, windowLines.length);
+    /* wintty.c:3715-3719: docorner() redraws status after restoring a
+     * corner that reaches it. display_nhwindow() leaves bot() enabled,
+     * unlike select_menu(), so this paint happens before checkfile returns. */
+    if (windowLines.length >= (_threeStatusLines() ? 21 : 22)) {
+        g.disp.botlx = 1;
+        await bot();
+    }
     /* A getlin prompt hard-wrapped onto row 1 was erased by clear_nhwindow;
      * docorner() repaints only offx.., so map y=0 left of the window stays blank. */
     if (spilled && g.level)
@@ -32147,9 +32177,14 @@ async function dowhatis() {
      * docorner(offx, maxrow + 1, 0); maxrow = nitems + 1 (wintty.c:2771). */
     if (queuedSel === null && !noOverlay)
         docorner_blank_utf8_captures(WIN_COL - 1, menuLines.length + 1);
+    /* C wintty.c:976-979: an offx 0 menu closes with docrt()+flush_screen(1).
+     * The vision shutdown/recalculation resets mspotted and announces monsters
+     * again (vision.c:856). select_menu holds bot_disabled (windows.c:1859-1863). */
     if (queuedSel === null && noOverlay) {
-        g._statusBlankAfterDocrt = true;
-        if (g.disp) g.disp.botlx = 1;
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try { await docrt(false, g._screen_output); await flush_screen(1); }
+        finally { g._bot_disabled = savedBotDisabled; }
     }
     const ch_sel = String.fromCharCode(k);
     /* ── Process the menu selection (C ref: pager.c:1804-1878 switch after menu) ──
@@ -32179,7 +32214,7 @@ async function dowhatis() {
      * topline (see the '/' arm below); the tail of this function otherwise
      * wipes it. */
     let keepTopline = false;
-    if (k === 27) { /* ESC → return */ g._pending_message = ''; return ECMD_OK; }
+    if (k === 27) return ECMD_OK; /* pager.c:1812-1814 leaves redraw notices standing. */
     /* The `case 'q'` arm that stood here is gone: pager.c:1812-1814's 'q' is
      * reachable only from the command queue or a clicklook, never from this
      * menu, and select_menu can no longer hand a 'q' back now that the read
@@ -32225,7 +32260,15 @@ async function dowhatis() {
             for (let o = g.invent; o; o = o.nobj)
                 if (o.invlet === invlet) { selectedObj = o; break; }
         } else {
-            ({ selectedObj, winRows, WIN_COL: invWinCol } = await inventory_menu_legacy({ displayPickinv: true, statusStaysBlank: true }));
+            let picked;
+            ({ selectedObj: picked, winRows, WIN_COL: invWinCol } = await inventory_menu_legacy({ displayPickinv: true, statusStaysBlank: true }));
+            /* pager.c:1832-1836: the menu answers an invlet, which C maps back
+             * through gi.invent.  force_invmenu's "Special ? - (list likely
+             * candidates)" (invent.c:3357-3359) answers '?', which no object
+             * carries, so out_str stays empty and C returns with no message. */
+            if (picked)
+                for (let o = g.invent; o; o = o.nobj)
+                    if (o.invlet === picked.invlet) { selectedObj = o; break; }
         }
         g._status_blanked = false;
         if (!selectedObj) {
@@ -32336,6 +32379,7 @@ async function dowhatis() {
     case 'e': await look_engrs(true); break;       /* list nearby engravings */
     case 'E': await look_engrs(false); break;      /* all engravings */
     default:
+        keepTopline = true; /* pager.c:1812-1814: no selection returns immediately. */
         break;
     }
     /* The eight map-scan arms end in either a dismissed text window (topline
@@ -34057,7 +34101,8 @@ async function cannot_push(otmp, sx, sy, dx, dy) {
         const canpickup = !_bldr_Sokoban()
             && (inv_cnt(false) < 52 || !carrying(BOULDER_OTYP));
         const willpickup = canpickup
-            && game.flags?.pickup !== false
+            // C hack.c:275: flags.pickup; autopickup defaults Off (optlist.h:184).
+            && !!game.flags?.pickup
             && !game.context?.nopick
             && await autopick_testobj(otmp, true);
         const ridingSkill = P_SKILL(37);
@@ -37645,12 +37690,41 @@ async function _ynq_cmd(query) {
     if (pcy > 0) { pline_flush_point(); g._topl_prompt_echo = true; }
     const savedPromptWritten = g._topl_prompt_written;
     g._topl_prompt_written = prompt + ' ';   /* topl.c:418 trailing space */
+    let ynDoprev = false, ynDoprevKeep = false;
     for (;;) {
-        g._pending_message = prompt;
-        await flush_screen(1);
-        set_cursor(pcy > 0 ? pcx : prompt.length + 1, pcy);
-        const raw = await nhgetch();
+        if (!ynDoprevKeep) {
+            g._pending_message = prompt;
+            await flush_screen(1);
+            set_cursor(pcy > 0 ? pcx : prompt.length + 1, pcy);
+        }
+        ynDoprevKeep = false;
+        const _savedHist = g._topl_suppress_history;
+        g._topl_suppress_history = true;
+        let raw;
+        try { raw = await nhgetch(); }
+        finally { g._topl_suppress_history = _savedHist; }
         const c = (typeof raw === 'number') ? String.fromCharCode(raw) : '';
+        /* C topl.c:432-458 ctrl-P (single msg_window): recall the history,
+         * two recalls initially; the next non-^P key only re-prompts. */
+        if (c === '\x10') {
+            const wasEmpty = g._toplEmptyAfterSuppress;
+            g._toplEmptyAfterSuppress = true;
+            if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
+                await doprev_message();
+            } else {
+                if (!ynDoprev) await doprev_message();
+                await doprev_message();
+                ynDoprev = true;
+                ynDoprevKeep = true;
+                set_cursor(String(g._pending_message ?? '').length, 0);
+            }
+            g._toplEmptyAfterSuppress = wasEmpty;
+            continue;
+        } else if (ynDoprev) {
+            ynDoprev = false;
+            g._prevmsg_next = null;
+            continue;
+        }
         if (c === '\x1b') { ch = 'q'; break; }          /* resp has 'q' -> ESC is 'q' */
         if (' \r\n'.includes(c)) { ch = 'q'; break; }   /* quitchars -> def */
         const lc = c.toLowerCase();
@@ -37736,7 +37810,8 @@ async function doherecmdmenu() {
      * tty_end_menu gives maxcol = max(strlen(item) + 2) and wintty.c:1908
      * offx = min(40, 79 - maxcol), so content = tty_window_offx(_, 'end'). */
     const CH_a = 97;
-    const itemLines = items.map((it, i) => `${String.fromCharCode(CH_a + i)} - ${it.txt}`);
+    // C cmd.c:mcmd_addmenu -> windows.c:add_menu colors the raw action text.
+    const itemLines = items.map((it, i) => `${String.fromCharCode(CH_a + i)} - ${menucolor_text(it.txt)}`);
     const windowLines = [menu_heading_text('What do you want to do?'), '', ...itemLines, '(end)'];
     const WIN_COL = tty_window_offx(windowLines, 'end');
     const endRow = windowLines.length - 1;
@@ -37950,7 +38025,8 @@ async function there_cmd_menu(x, y, click) {
     } else {
         const CH_a = 97;
         const windowLines = [menu_heading_text('What do you want to do?'), '',
-            ...items.map((it, i) => `${String.fromCharCode(CH_a + i)} - ${it.txt}`), '(end)'];
+            // C cmd.c:mcmd_addmenu -> windows.c:add_menu colors the raw action text.
+            ...items.map((it, i) => `${String.fromCharCode(CH_a + i)} - ${menucolor_text(it.txt)}`), '(end)'];
         const WIN_COL = tty_window_offx(windowLines, 'end');
         const endRow = windowLines.length - 1;
         /* C wintty.c:1704 MENU_SEARCH: tty_getlin("Search for:") erases the
@@ -41949,13 +42025,16 @@ export async function pooleffects_lava_effects() {
         let burntry;
         for (burntry = 0; burntry < 2; ++burntry) {
             u.uhp = -1; /* trap.c:6928: bot() now preserves the last paint. */
-            const frozenPaint = capture_painted_frame_with_status();
             g.svk ||= {};
             g.svk ||= {};
             g.svk.killer ||= { id: 0, format: 0, name: "", next: null };
             g.svk.killer.format = KILLED_BY;
             g.svk.killer.name = 'molten lava';
             await urgent_pline(boil_away ? 'You boil away...' : 'You burn to a crisp...');
+            /* C pline.c:273-276 flushes the map before putmesg(), including
+             * vision restored by burnt eyewear (potion.c:348).  Freeze AFTER
+             * that flush; botl.c:259 still preserves the old status at -1 HP. */
+            const frozenPaint = capture_painted_frame_with_status();
             if (frozenPaint) g._paintedSnapshot = frozenPaint;
             /* C end.c:1082 — done() joins "But wait..." onto the live
                "You burn to a crisp..." topline when life saving applies, so

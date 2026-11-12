@@ -2,7 +2,7 @@
 /*      Copyright (c) M. Stephenson 1988                          */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* spellmenu arguments; 0..n-1 used as svs.spl_book[] index when swapping */
 const SPELLMENU_DUMP = (-3);

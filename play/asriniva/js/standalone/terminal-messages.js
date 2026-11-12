@@ -2,7 +2,7 @@
 import abi from './terminal-messages-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as topl from '../ported/topl.js';
-import {callTopl} from '../ported/topl-runtime.js';
+import {callTopl} from '../nethack/bindings/topl.js';
 
 export function enableTerminalMessages(environment,layouts){
  const {services,memory,ctypes,functions,transport}=environment,L=layouts.topl;

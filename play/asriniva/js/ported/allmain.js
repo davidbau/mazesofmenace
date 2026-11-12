@@ -8,7 +8,7 @@
 
 
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /*ARGSUSED*/
 export function early_init(argc, argv)

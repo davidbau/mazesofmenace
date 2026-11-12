@@ -1,7 +1,7 @@
 // Original monster-spell policies and catalogues on one shared native context.
 import abi from './mcastu-abi.json' with {type:'json'};
 import * as source from '../ported/mcastu.js';
-import {createMcastuEnvironment} from '../ported/mcastu-runtime.js';
+import {createMcastuEnvironment} from '../nethack/bindings/mcastu.js';
 const owners=new WeakMap();
 export function enableMcastu(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

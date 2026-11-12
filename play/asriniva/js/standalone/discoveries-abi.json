@@ -267,15 +267,15 @@
     "get_sortdisco": "void (char *, boolean)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-discoveries-abi.py": "e342418c7bd0652e3c688b1f20144f3fccbee0517bd51c40618e8a4c22b084ee",
-    "js/standalone/discoveries.js": "78e84c49f5a9f35c5efa8e2407e39d3ceba0831eedd8f8ce9b96b83d40d27d2d",
-    "js/standalone/object-state.js": "8636f5ffe8459d55501f27aefd5f494ee6b973cf9036d38bafab016ee6ba09f1",
+    "scripts/export-standalone-discoveries-abi.py": "c94d859a7ef84cbe5c862e0cde65b4be448367aa10cb421e8291f15a454a50ee",
+    "js/standalone/discoveries.js": "f035d3ba6f63f7531d9c99ed55903858ebfafff405573167f1821a0baef0ab45",
+    "js/standalone/object-state.js": "ab1ae7a92d9dc729ee732a69e77c4b5604f0f0fb5d4e127bf2151ad35a7ad48c",
     "scripts/tu-o_init-layout.h": "e83ce54e32022a5ed86dbcc5acb6f79be52af3e273aab86cebee5b4dc878d4e2",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/o_init.js": "bebdacd1b24339a14e0d1de5128c84f6e747cbff5e648a571c71163b04a5efd3",
-    "js/ported/o_init.js": "7861819195bbf8f1d4655702c53955beab8c3ef7f23ee986b2b304badb5cf404",
-    "js/ported/o_init-runtime.js": "2d16d1ce4d0012a4ffaee79323abdb7c50136dab75a10918e25a190c7f7ee83b",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/o_init.js": "4619a78c20c76122c8c14f597f53d09b50f8c900cfc6de2419d38608561b9493",
+    "js/nethack/bindings/o_init.js": "21376a05fe875c8688ffdf884667ff9f91960267354b127706be6e3108ca8b9e",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

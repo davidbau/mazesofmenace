@@ -1,8 +1,8 @@
 // One original DOKICK context on shared DECL; native transport only.
 import abi from './dokick-abi.json' with {type:'json'};
 import * as source from '../ported/dokick.js';
-import {createDokickEnvironment} from '../ported/dokick-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createDokickEnvironment} from '../nethack/bindings/dokick.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap(),deliveryNames=['obj_delivery','ship_object','down_gate'];
 export function enableDokick(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

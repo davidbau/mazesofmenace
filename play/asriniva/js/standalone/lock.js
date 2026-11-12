@@ -1,8 +1,8 @@
 // Original LOCK policies on one native context and live GX occupation state.
 import abi from './lock-abi.json' with{type:'json'};
 import * as source from '../ported/lock.js';
-import{withLockEnvironment}from'../ported/lock-runtime.js';
-import{withCEnvironment}from'../ported/c-runtime.js';
+import{withLockEnvironment}from'../nethack/bindings/lock.js';
+import{withCEnvironment}from'../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableLock(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

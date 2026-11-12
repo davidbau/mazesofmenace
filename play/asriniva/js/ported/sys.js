@@ -2,7 +2,7 @@
 /* Copyright (c) Kenneth Lorber, Kensington, Maryland, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* !SYSCF configurations need '#define DEBUGFILES "foo.c bar.c"'
  * to enable debugging feedback for source files foo.c and bar.c;

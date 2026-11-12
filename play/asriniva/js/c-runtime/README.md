@@ -10,7 +10,7 @@ not a complete implementation of every C/Unix facility.
 | Files | Responsibility |
 | --- | --- |
 | `runtime.js` | Per-instance assembly; caller-injected declarations, inherited services and conversion aliases |
-| `adapter-memory.js` |18 shared legacy-profile primitives replacing132 helper bodies across58 translation adapters |
+| `adapter-memory.js`, `adapter-factories.js` | Stack scopes, explicit conversion profiles, scalar environments, descriptor memory, record/global factories and native dependency calls |
 | `memory.js` | Addresses, scalar loads/stores/conversions, allocation, stack scopes and literals |
 | `records.js` | Shared record identity, field properties and indexed-view machinery |
 | `types.js`, `bitfields.js`, `record-views.js` | Measured types, unions, arrays, pointers, bitfields and live property views |
@@ -19,7 +19,9 @@ not a complete implementation of every C/Unix facility.
 | `address-bindings.js` | Measured-schema binding of field/global/callback/dependency transport |
 | `libc.js`, `scanf.js`, `qsort.js`, `stdio.js` | Configured library operations and synchronous streams on injected CVFS |
 | `environment-inputs.js` | Caller-injected environment strings in addressable memory |
-| `../services/c-*` | Existing byte allocator, base libc/formatting, calendar and virtual filesystem implementations |
+| `heap.js`, `stdlib.js`, `time.js`, `vfs.js`, `float-format.js` | Byte allocator, base libc/formatting, calendar and virtual filesystem |
+| `context.js` | Synchronous, reentrant C/R/T scope for source-shaped translations |
+| `library-bindings.js`, `regex-abi.js` | Injected library/regex ABI bindings |
 
 The shared runtime does not own game rules, header macros, game globals or
 platform defaults. Typedefs/header field aliases are in
@@ -33,8 +35,9 @@ Required standalone entry points (`memory-services`, `functions`, `c-types`,
 `record-views`, `address-ports`, and the platform `libc` wrapper) retain existing
 interfaces and class identities. Six unused forwarding files were removed after
 migrating their consumers; the old `ported/js-runtime.js` provider path is retired. NetHack's platform `getpid` default remains in its provider wrapper.
-The synchronous `C/R/T` scope facade and translation-specific adapters remain at
-their established paths so existing pure-JS and mixed callers keep working.
+The synchronous `C/R/T` scope facade lives in `context.js`; translation-specific
+adapters live in `../nethack/bindings`. Both pure-JS and mixed callers use these
+owners directly. Header alias declarations live in `../nethack/header-aliases.js`.
 
 ## Contracts preserved by consolidation
 
@@ -61,6 +64,8 @@ field initialization, not arbitrary overlapping struct assignment.
 With the configured SDK Node and `STANDALONE_REFERENCE_ROOT` set:
 
 ```sh
+node scripts/check-services-layout.mjs
+node scripts/test-binding-infrastructure.mjs
 node scripts/check-c-runtime-boundaries.mjs
 node scripts/check-c-runtime-relocation.mjs
 node scripts/check-c-runtime-extraction.mjs

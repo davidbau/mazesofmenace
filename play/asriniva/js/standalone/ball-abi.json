@@ -225,15 +225,15 @@
     "bc_sanity_check": "void (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-ball-abi.py": "14ae3f286c8cb3185256c5a6bdf8e7cabfe9d8e60cc31148df098f19c836d110",
-    "js/standalone/ball.js": "ac6544219367b8ae4e193df5c15b6971b249a9affe13fa304c56eea7122bf8de",
+    "scripts/export-standalone-ball-abi.py": "05963a43c160203e6992671699d7ce44d13619bac9385fe8a401734024df40d1",
+    "js/standalone/ball.js": "2d93789d7b5aaeb9874438468bcb3aaa7c23084034b39588cfea96ea3e12a0ea",
     "scripts/tu-ball-layout.h": "24dda329a4ddbad51e37cb35d22fe805e6f526d5832ee54f832f06d3f13f6f14",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/ball.js": "23e429619074b514d644039d0c680de70dcf54796169af66fcadfca042274119",
-    "js/ported/ball.js": "22ea211af35ee180a290faec481a18158821fb477d7266d882394ebd7d9630bd",
-    "js/ported/ball-runtime.js": "724596dcc97bb1407d205c8385864c991107d0edc244f973bf39a7cb60359c93",
+    "js/ported/ball.js": "fd005be6b474278dd75783f5acd55ca871dfffbddbc0331353bcbcf440324d44",
+    "js/nethack/bindings/ball.js": "ce1da0b25ac6a7aa50c6af23412cd4cde0c0917072adcf9822613a55df0eed8f",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

@@ -34,10 +34,10 @@
     }
   ],
   "sourceSha256": {
-    "scripts/export-standalone-terminal-messages-abi.py": "7e98f115f156ced2da071a5f74090da7bc975932bb85ac068ec965cace6bdc4a",
-    "js/ported/topl-runtime.js": "29ee2169c061ffdafe84ed852a90b83aa0b8e50fad98d66798b61527d9af5ba9",
+    "scripts/export-standalone-terminal-messages-abi.py": "45440d68b4bc914144092acaf1fcbe73f99c7a49af59312d7dc6be5c68d83277",
+    "js/nethack/bindings/topl.js": "caa5829ff02ae54afd8289f6e5a436c193fea8f55827eb90564d034404b5c878",
     "nethack-c/wasm/tu-fragments/topl-support.inc": "e17430e222cdd8931545de79fed0a6e58f78840fe010d9b339fa548205a064ef",
-    "js/ported/topl.js": "fa561e5c18c09aab6db995c6507c0d68b5aca6380968c0cdff774bc60bbc2720",
+    "js/ported/topl.js": "0764e62a140b97fcc38d1e1b29d11444e72a389c3f670eab6f74f3f13b8ad328",
     "nethack-c/wasm/tu-libraries/topl.js": "9333b116a31049ccba3d03035afc296a82e0c0dc5e32ecf9a0617c6552930976",
     "scripts/tu-topl-layout.h": "bedaed7d470817325a8b5d4f8ce2ff81fd05f336b01b9bbf2123c966eadad9b4",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",

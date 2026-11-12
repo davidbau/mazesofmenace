@@ -1,5 +1,5 @@
 import * as core from './tile2bmp.mjs';
-import {withCEnvironment} from '../../ported/c-runtime.js';
+import {withCEnvironment} from '../../c-runtime/context.js';
 const states=new WeakMap();
 export function createUtility(m){
  const names=['bmpSize','bmfhSize','bmihSize','rgbSize','pixelSize','pointerSize','intSize','bmpnameSize','TILE_X','TILE_Y','RGBQUAD_COUNT','CM_RED','CM_GREEN','CM_BLUE','MAXCOLORMAPSIZE','EXIT_SUCCESS','EXIT_FAILURE','bmfh','bmih','bmaColors','packtile','bfType','bfSize','bfReserved1','bfReserved2','bfOffBits','biSize','biWidth','biHeight','biPlanes','biBitCount','biCompression','biSizeImage','biXPelsPerMeter','biYPelsPerMeter','biClrUsed','biClrImportant','rgbBlue','rgbGreen','rgbRed','rgbReserved','r','g','b'];

@@ -1,7 +1,7 @@
 /* NetHack 5.0	report.c	$NHDT-Date: 1777240823 2026/04/26 22:00:23 $  $NHDT-Branch: to500 $:$NHDT-Revision: 1.19 $ */
 /* Copyright (c) Kenneth Lorber, Kensington, Maryland, 2024 */
 /* NetHack may be freely redistributed.  See license for details. */
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 // Prepared memory64 configuration: the three inherited report.c platform
 // changes select nhmd4/readlink and omit libc backtraces under Emscripten.
 // C's reserved identifier `in` is spelled `in_` in JavaScript. The `skip` and

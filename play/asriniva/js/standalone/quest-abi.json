@@ -150,13 +150,13 @@
     "quest_stat_check": "void (struct monst *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-quest-abi.py": "80b0b62729717bdd60ac856eea7ead5ef5b2a76883d563faf6c1a95e152b0f1f",
+    "scripts/export-standalone-quest-abi.py": "2f6d2f5f8353cb1979fe7ba6491240cdfcbad555aa306dcefb4c0405e85dc8e9",
     "scripts/tu-quest-layout.h": "8d93195105f167402562233aecf7f3e0de573e5d63b6542e3ba1a4344539c771",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/quest.js": "1f876ba91fbed94730b1d74fa421c8554563d817973879582da7eb7e979a60f5",
-    "js/ported/quest.js": "9e31ce6a9cfb717036fb63160feca6553a8e60a911272da39f5812f6f5c0c796",
-    "js/ported/quest-runtime.js": "a778adcf2534a474040b3aeabdf70d93857e26c9395b7f4e34ef51bf5a8d4551",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/quest.js": "4a974eef5f10f2cd2bbeb4e598e7cb59d2930563f614933c0a1191bf41d0b7e1",
+    "js/nethack/bindings/quest.js": "38afdd3b3181a0bee9a8f5f46ead85053a9fd43667773c907dffbaf068d48b12",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

@@ -1,8 +1,8 @@
 // Standalone transport for the unchanged SFBASE/SFSTRUCT implementations.
 import * as sfbase from '../ported/sfbase.js';
-import {createSfbaseEnvironment} from '../ported/sfbase-runtime.js';
+import {createSfbaseEnvironment} from '../nethack/bindings/sfbase.js';
 import * as sfstruct from '../ported/sfstruct.js';
-import {initializeSfstruct} from '../ported/sfstruct-runtime.js';
+import {initializeSfstruct} from '../nethack/bindings/sfstruct.js';
 import {address} from './memory-services.js';
 import {moves_to_relative_time,relative_time_to_moves,rest_adjust_levelflags} from '../ported/restore.js';
 export function enableSerialization(environment,layouts) {

@@ -1269,10 +1269,10 @@
     "data:trapname__roletrap": 33
   },
   "sourceSha256": {
-    "scripts/export-standalone-trap-abi.mjs": "dfbd4855d2972daaae2363d06850b27f1a533f0f8080bbb459353f88bd097236",
+    "scripts/export-standalone-trap-abi.mjs": "e223e4408131c56c50ba9b5bdae28d9671fba808769a7f4843cda770c2a5b2ca",
     "scripts/tu-trap-layout.h": "c0e783636e9fa554bcd93d5a44469a8992b6188767230dde44671e814f2fd0c8",
     "nethack-c/wasm/tu-fragments/trap-support.h": "0922e9891ab5e163dea3b7996ed2974a76d7eddedd24c4078af7cd161c1f1b2d",
-    "js/ported/trap-runtime.js": "6de9245023e28d17d2db279a790ee349b191e527b3a4b42bd9612f85ea09d377"
+    "js/nethack/bindings/trap.js": "60c546b07e12f31b4d058bdf805a40ed2bd4b7eb368c9f5878b9ae410b35c173"
   },
   "referenceArtifactSha256": {
     "reference.mjs": "4ad50e0bad4be258aa3c88b1374c8a32146415a0966828a40f75f4fefdfa6fdf",

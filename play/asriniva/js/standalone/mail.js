@@ -2,7 +2,7 @@
 import abi from './mail-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/mail.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 
 export function connectMailSdk(environment){
  const {transport,libc}=environment,address=environment.address;

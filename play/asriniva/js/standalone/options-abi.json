@@ -17322,11 +17322,11 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-options-abi.py": "de32f348dacc8f9524cdc3293e1b6609703fdf17f28cb643dc7acaeed5fcc1e9",
+    "scripts/export-standalone-options-abi.py": "22b0157a2a974b5288e9d2d69e03e45d4393081450c36455b716561f6cba25ef",
     "nethack-c/wasm/tu-fragments/options-schema.json": "515e6110979f35b8cb518f03adcfb3af176c3ffe8bbe8bc4f0ae262b2d5406bb",
-    "js/ported/options.js": "033ff2db9d49f713d811f541c7e6bc7c7bdd228dc1e1b6f629d4a4262754468f",
-    "js/ported/options-runtime.js": "2a63f9e9533b40f01de1fd099d620c48be401a77ce23ac1d7644b76747cb5f5d",
-    "js/standalone/options.js": "2e077e6925a45753bcaf5578f6ec85e27e171d21db5cd6477dc5c5ef43fed2e7",
+    "js/ported/options.js": "76ac200c96105b425d1ca8e0f4c101c8fb3f226d7c6e32ef2de75805ee6c50b4",
+    "js/nethack/bindings/options.js": "c39bf0e7813e83cd3d479aaeeca8a3504e48f0cf4191ea672f9984ce7267c417",
+    "js/standalone/options.js": "cc60b3435cd6e5cdeb0cd963e5fa4b95e9589acc79021f8a7881131b655be5aa",
     "nethack-c/wasm/tu-libraries/options.js": "b6fb82aa4d6bd99208bc81289972d0b77fa32d3db2d996cf3be97dc04f96e1b3",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-options-abi.h": "f1a9e95d4ceb4353c381942fd9a3212674608e66d0b25d46bf4cd7bd2644be14"

@@ -4,7 +4,7 @@ import {glyphHeaders} from './glyph-header-functions.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as glyphs from '../ported/glyphs.js';
 import {monsdump} from '../ported/earlyarg.js';
-import {createGlyphsBridge} from '../ported/glyphs-runtime.js';
+import {createGlyphsBridge} from '../nethack/bindings/glyphs.js';
 export function enableGlyphs(environment,layouts){
  const {services,ctypes,memory,functions}=environment,L=layouts.glyphs;
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args.map(v=>v?.address??v)):undefined});

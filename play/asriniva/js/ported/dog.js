@@ -1,4 +1,4 @@
-import {C} from './c-runtime.js';
+import {C} from '../c-runtime/context.js';
 
 export const Before_you=0, With_you=1, After_you=2, Wiz_arrive=-1;
 /* NetHack 5.0	dog.c	$NHDT-Date: 1753856387 2025/07/29 22:19:47 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.190 $ */

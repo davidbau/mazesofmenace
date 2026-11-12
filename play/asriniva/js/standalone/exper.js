@@ -1,7 +1,7 @@
 // Original EXPER policies on the existing hero-energy owner and shared state.
 import abi from './exper-abi.json' with{type:'json'};
 import * as source from '../ported/exper.js';
-import{createExperEnvironment}from'../ported/exper-runtime.js';
+import{createExperEnvironment}from'../nethack/bindings/exper.js';
 export function enableExperience(environment,layouts){
  const{services,memory,ctypes,transport}=environment,L=layouts.exper,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v),resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n);
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review EXPER ABI '+k);

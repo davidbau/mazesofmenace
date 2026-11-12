@@ -5,13 +5,13 @@
  * Layouts are the configured LP64 layouts, independently checked by the native
  * runtime test. Existing translated function bodies are imported unchanged.
  */
-import { CMemory } from '../services/c-memory.js';
-import { createCStdlib } from '../services/c-stdlib.js';
-import { createCTime } from '../services/c-time.js';
-import { CVFS } from '../services/c-vfs.js';
+import { CMemory } from '../c-runtime/heap.js';
+import { createCStdlib } from '../c-runtime/stdlib.js';
+import { createCTime } from '../c-runtime/time.js';
+import { CVFS } from '../c-runtime/vfs.js';
 import { compilePosixRegex, execPosixRegex, freePosixRegex, posixRegexError,
-    REG_EXTENDED, REG_NOSUB, REG_NOMATCH, nativeRegexError } from '../services/posix-regex.js';
-import { withCEnvironment } from '../ported/c-runtime.js';
+    REG_EXTENDED, REG_NOSUB, REG_NOMATCH, nativeRegexError } from '../libraries/regex/posix.js';
+import { withCEnvironment } from '../c-runtime/context.js';
 import * as allocation from '../ported/alloc.js';
 import * as strings from '../ported/strutil.js';
 import * as isaac from '../isaac64.js';

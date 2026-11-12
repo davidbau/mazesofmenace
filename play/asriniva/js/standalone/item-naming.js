@@ -1,6 +1,6 @@
 // Source naming and artifact bookkeeping on the existing inventory heap.
 import languageAbi from './object-language-abi.json' with {type:'json'};
-import {callObjnam} from '../ported/objnam-runtime.js';
+import {callObjnam} from '../nethack/bindings/objnam.js';
 import * as objnam from '../ported/objnam.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as artifact from '../ported/artifact.js';

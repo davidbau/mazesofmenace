@@ -3,7 +3,7 @@ import abi from './status-abi.json' with {type:'json'};
 import records from './records.json' with {type:'json'};
 import {createCTypes} from './c-types.js';
 import * as botl from '../ported/botl.js';
-import {initializeBotl,callBotl} from '../ported/botl-runtime.js';
+import {initializeBotl,callBotl} from '../nethack/bindings/botl.js';
 import windowAbi from './window-abi.json' with {type:'json'};
 export function enableStatus(environment,layouts){
  const {services,memory,transport,functions}=environment,L=layouts.botl;

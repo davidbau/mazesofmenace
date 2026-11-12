@@ -2,7 +2,7 @@
 /* Copyright (c) 2024 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 
 

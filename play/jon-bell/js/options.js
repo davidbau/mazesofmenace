@@ -1336,6 +1336,30 @@ export function parseNethackrc(rc) {
                 if (result.flags.pile_limit < 0) result.flags.pile_limit = 5;
                 continue;
             }
+            // build has no TTY_PERM_INVENT, so modes 5/6 (+grid) are absent.
+            const perminv = option_state().allopt.find(r => r.name === 'perminv_mode');
+            if (menuname.length >= perminv.minmatch && perminv.name.startsWith(menuname)) {
+                if (menunegated && menuval) {
+                    config_error_add('The perminv_mode option may not both have a value and be negated.');
+                } else if (menuval) {
+                    const modes = [['none', 'off'], ['all', 'on'], ['full', 'gold'],
+                        null, null, null, null, null, ['in-use', 'inuse-only']];
+                    const op = menuval.toLowerCase();
+                    const mode = modes.findIndex((names, i) => names
+                        && (names.some(n => n.startsWith(op)) || op[0] === String(i)));
+                    if (mode < 0)
+                        config_error_add("Unknown %s parameter '%s'", 'perminv_mode', menuval);
+                    result.iflags.perminv_mode = mode < 0 ? 0 : mode;
+                    // C sets perm_invent even for an explicit 'none'/'off'.
+                    result.iflags.perm_invent = mode >= 0;
+                } else if (menunegated) {
+                    result.iflags.perminv_mode = 0;
+                    result.iflags.perm_invent = false;
+                } else {
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                }
+                continue;
+            }
             if (menuname.length >= 4 && 'map_mode'.startsWith(menuname)) {
                 compoundDuplicate('map_mode');
                 const mop = menusep < 0 ? '' : menuopts.slice(menusep + 1);
@@ -1428,7 +1452,7 @@ export function parseNethackrc(rc) {
                         else if (sk === 'o') fl.end_own = !(sneg || !inum);
                         else if (sk === 'n') { fl.end_top = fl.end_around = 0; fl.end_own = false; }
                         if (!/^[taon]/i.test(op[0] || '')) { config_error_add("Unknown %s parameter '%s'", dupName, op); break; }
-                        op = op.replace(/^[A-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
+                        op = op.replace(/^[@-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
                     }
                 }
                 continue;
@@ -4008,7 +4032,10 @@ export async function handler_disclose(preserveStatus = false) {
                    ['y', 'Prompt, with default answer of "Yes"']);
         if (vg) items.push(['?', 'Prompt, with default answer of "Ask" to request sort menu']);
         const m2 = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
-        for (const [ch, txt] of items) m2.add_menu(ch.charCodeAt(0), 0, ATR_NONE, txt, false, c === ch);
+        /* C options.c:5724-5765: alternate selectors; '-' stays the menu's
+         * deselect-all command (wintty.c:1679), not a disclosure choice. */
+        for (const [ch, txt] of items)
+            m2.add_menu(ch.charCodeAt(0), 0, ATR_NONE, txt, false, c === ch, ch === '-' ? 0 : ch);
         m2.end_menu(`Disclosure options for ${DISCLOSURE_NAMES[i]}:`);
         const r = await m2.select_menu(PICK_ONE);
         if (r.count > 0) {
@@ -5433,14 +5460,16 @@ export async function ask_do_tutorial() {
              * (wintty.c:2680-2689, windows.c:1769, options.c:5790) */
             menu_heading_text('Do you want a tutorial?'),
             '', // blank separator (add_menu_str)
-            mlist[0].str, // a_char='y' option
-            mlist[1].str, // a_char='n' option
+            // C windows.c:1803-1807 colors the raw descriptions; tty paints
+            // them after the selector (wintty.c:1449-1456).
+            menucolor_row(mlist[0].str), // a_char='y' option
+            menucolor_row(mlist[1].str), // a_char='n' option
             '', // blank separator (add_menu_str)
-            configHint, // add_menu_str(buf)
+            menucolor_text(configHint), // add_menu_str(buf)
         ];
         if (pass > 0) {
             // C ref: options.c:481-482 — after first invalid key, add retry line.
-            windowLines.push("(Please choose 'y' or 'n'.)");
+            windowLines.push(menucolor_text("(Please choose 'y' or 'n'.)"));
         }
         windowLines.push('(end)'); // tty footer line for single-page menus
         /* C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to

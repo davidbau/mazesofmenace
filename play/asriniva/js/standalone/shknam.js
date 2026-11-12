@@ -1,7 +1,7 @@
 // Original SHKNAM policy with one shared, initialized shop/name catalogue.
 import abi from './shknam-abi.json' with {type:'json'};
 import * as source from '../ported/shknam.js';
-import {createShknamState,createShknamEnvironment} from '../ported/shknam-runtime.js';
+import {createShknamState,createShknamEnvironment} from '../nethack/bindings/shknam.js';
 const catalogues=new WeakMap(),owners=new WeakMap();
 export function getShknamCatalogue(environment,layouts){
  if(catalogues.has(environment))return catalogues.get(environment);

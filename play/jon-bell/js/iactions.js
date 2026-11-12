@@ -13,6 +13,7 @@ import { cxname as _ia_cxname, simpleonames as _ia_simpleonames, the as _the_obj
 import { inhishop as shk_inhishop, shop_keeper as shk_shop_keeper } from './shk.js';
 import { in_rooms as shk_in_rooms } from './hack.js';
 import { menu_heading_text } from './tty_menu.js';
+import { menucolor_text } from './coloratt.js';
 
 /* C obj.h Is_container(o): LARGE_BOX <= otyp <= BAG_OF_TRICKS. */
 function _ia_is_container(o) {
@@ -583,7 +584,12 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
     const title = _iaTitleText;
     const uac = u.uac ?? 0;
     /* Title is row 0 (reverse video); a blank line; then the menu body. */
-    const fullLines = [menu_heading_text(title), '', ...windowLines]; /* iactions.c:698 end_menu; wintty.c:2688 */
+    /* windows.c:1803-1805 matches the raw description before tty_add_menu
+     * adds the selector or tty_end_menu clips it. wintty.c:1444-1467 paints
+     * only the description; keep geometry and search strings uncoloured. */
+    const fullLines = [menu_heading_text(title), '', ...menu.map((m, i) =>
+        windowLines[i].slice(0, 4) + menucolor_text(windowLines[i].slice(4), m.txt)),
+        '(end)']; /* iactions.c:698 end_menu; wintty.c:2688 */
     /* statusClip: only when the itemactions window is shorter than the prior
      * inventory window AND does not itself cover status line 1 (row 22).  The
      * inventory dismiss cleared the corner from priorWinCol-1; status line 1

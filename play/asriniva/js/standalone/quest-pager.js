@@ -2,7 +2,7 @@
 import abi from './quest-pager-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as questpgr from '../ported/questpgr.js';
-import {callQuestpgr} from '../ported/questpgr-runtime.js';
+import {callQuestpgr} from '../nethack/bindings/questpgr.js';
 
 export function enableQuestPager(environment,layouts){
  const {services,memory,ctypes,functions,transport}=environment,L=layouts.questpgr;

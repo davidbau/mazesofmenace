@@ -791,11 +791,11 @@
     "ppppi"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-eat-abi.py": "d7dabf605731d07136b26185abd52e06153d94b8ec648a29c8864e8dd2b19c14",
+    "scripts/export-standalone-eat-abi.py": "b9e7e0a0a68f2c2013c4fcf13fae4ab985c2b966b9fc48eb9e1dacfe012adc86",
     "nethack-c/wasm/tu-eat-support.inc": "472260b23fb3d1657f4f64a20e0819c9b02ffd1ecd620f3e290df8de7bf328a7",
     "nethack-c/wasm/tu-libraries/eat.js": "5c49ab25287014c4225a34d132e3fb1464717af1ae0db9cc9eff13876318ddac",
-    "js/ported/eat-runtime.js": "c66d7256447d9adff8eb3b6287c3029b99509dad52b1717c38219a59a923f8b2",
-    "js/ported/eat.js": "2e15612554fdc5e2f9175a520dcfcee009a467a840389c2be344b6048de32376",
+    "js/nethack/bindings/eat.js": "ecb839584c2874c33ad7f9b373300c56e7916d9f2738c78e063afd2e27daced4",
+    "js/ported/eat.js": "4ff0e309556ec587af605a01d8127f54eafb7c41e9baf60195192bf2d3f8f82a",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   },

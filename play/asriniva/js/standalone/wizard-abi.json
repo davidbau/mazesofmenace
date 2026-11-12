@@ -554,14 +554,14 @@
     "cuss": "void (struct monst *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-wizard-abi.py": "41212e18da507459bb23fee8c10fce0ad81e5af8eef9f23350d3d2327ecc08a2",
+    "scripts/export-standalone-wizard-abi.py": "9c0016384dce294405def68783de515d8fd34c937b68246ded56d73e9d98a561",
     "scripts/tu-wizard-layout.h": "ac7c8f13c2cd7de7b62ff30372826f6092ab2aa9dc9c863fae724cabe39c261e",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/wizard.js": "c681b4b3aec2db081ff4234ddf33c7c7f9fb3cbd35656efd696bf53ec85d5d7b",
     "nethack-c/upstream/src/wizard.c": "65f20a287adad40f033be2b93bad8fa98abd56fb6330225547864988db993845",
-    "js/ported/wizard.js": "02705e3b65638b343342166d854c94e8657320b239baeb9cb7b3189440355d2a",
-    "js/ported/wizard-runtime.js": "c96b8744a6beee12f5c12f7b92cd8af6e11facc075b29e852b085c4a0d11d25a",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/wizard.js": "13521e92adbcc511efeb46a03335cf4eb3f565b1b2236e6a36e003e4bf6534fe",
+    "js/nethack/bindings/wizard.js": "ba78233d7dfbd0b2cab0fb3f63641dc0b723c87ed0c9522ebd53741d8adc21ed",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

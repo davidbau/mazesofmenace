@@ -1,7 +1,7 @@
 // Complete O_INIT public transport on its existing initialized source adapter.
 import abi from './discoveries-abi.json' with {type:'json'};
 import * as source from '../ported/o_init.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableDiscoveries(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

@@ -1,7 +1,7 @@
 // Original QUEST decisions, one live native-shaped context over shared game state.
 import abi from './quest-abi.json' with {type:'json'};
 import * as source from '../ported/quest.js';
-import {createQuestEnvironment} from '../ported/quest-runtime.js';
+import {createQuestEnvironment} from '../nethack/bindings/quest.js';
 export function enableQuest(environment,layouts){
  if(environment.hasFunction('onquest'))throw new Error('QUEST owner already registered');
  const {services,memory,ctypes,transport}=environment,address=environment.address,L=layouts.quest;

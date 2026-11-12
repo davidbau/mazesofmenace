@@ -7,7 +7,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of getline.c. Five original function boundaries
  * remain; hooks are direct JavaScript function references inside this TU.

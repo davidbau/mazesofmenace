@@ -1,7 +1,7 @@
 // Actual SDK musl dirstream buffering over the shared MEMFS-compatible VFS.
 import abi from './sdk-directory-abi.json' with {type:'json'};
 import {readSdkUtf8} from '../c-runtime/stdio.js';
-import {VFSError,O_DIRECTORY,O_CLOEXEC,O_LARGEFILE} from '../services/c-vfs.js';
+import {VFSError,O_DIRECTORY,O_CLOEXEC,O_LARGEFILE} from '../c-runtime/vfs.js';
 const owners=new WeakMap();
 export function enableSdkDirectory(environment){
  if(owners.has(environment))return owners.get(environment);

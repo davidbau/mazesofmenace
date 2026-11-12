@@ -1424,9 +1424,9 @@
   ],
   "records": {},
   "sourceSha256": {
-    "scripts/export-standalone-armor-abi.py": "d9095db7db10f47490b6677da21608a1fd586466fec9414ca3c3e1c54d80c01a",
-    "js/ported/do_wear-runtime.js": "3593cc93fcede7b4a26cb0bafdf7a50f6f455bf838fefef859169ab57e6bcdc4",
-    "js/ported/do_wear.js": "7d8a9f25550c8763507ff501ba6fd6f9fd443f07e5eb3818801b9169b9917785",
+    "scripts/export-standalone-armor-abi.py": "1513b63a77490d5aee797ac6d26d87f1d064be54f8e9726059a96d567f267c7a",
+    "js/nethack/bindings/do_wear.js": "2a90140de94f97dabdcdf500920c79a7cb3127dcd9f0d963d16e3f7a8cc36a2b",
+    "js/ported/do_wear.js": "c5ff86b147f3bfd02f76f0649146472b8d247a8c70198feb7b3a1bc010ad122d",
     "scripts/tu-do_wear-layout.h": "41e959b22011f003bb20905d4ac0e00916b31159e27f9099b2db71afda5d2a98",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-do_wear-support.inc": "f90ace1b07f36b28cb3defcac7148f405a2cd36ef94269cc348ad355a64e7414"

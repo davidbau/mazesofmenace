@@ -4,7 +4,7 @@ import records from './records.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import {createCTypes} from './c-types.js';
 import * as options from '../ported/options.js';
-import {callOptions} from '../ported/options-runtime.js';
+import {callOptions} from '../nethack/bindings/options.js';
 export function enableOptions(environment,layouts){
  const {services,memory}=environment,L=layouts.options,S=abi.schema;
  const ctypes=createCTypes(memory,{...records,records:{...records.records,...abi.records},enums:{...records.enums,...abi.enums}},environment.bitfields);

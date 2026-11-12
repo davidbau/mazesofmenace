@@ -2,7 +2,7 @@
 /* Copyright (c) Robert Patrick Rankin, 1991                      */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js'; /* for config.h+extern.h */
+import { C } from '../c-runtime/context.js'; /* for config.h+extern.h */
 
 /* JavaScript translation of strutil.c: strings remain C byte pointers during
  * mixed C/JS execution. C supplies scoped memory and C function bindings;

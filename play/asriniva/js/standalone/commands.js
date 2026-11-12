@@ -3,7 +3,7 @@ import abi from './command-abi.json' with {type:'json'};
 import records from './records.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as cmd from '../ported/cmd.js';
-import {callCmd} from '../ported/cmd-runtime.js';
+import {callCmd} from '../nethack/bindings/cmd.js';
 import {createCTypes} from './c-types.js';
 import {enableAddressPort} from './address-ports.js';
 export function enableCommands(environment,layouts){

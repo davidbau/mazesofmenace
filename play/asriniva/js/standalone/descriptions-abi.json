@@ -6,9 +6,9 @@
     "A_NONE": -128
   },
   "sourceSha256": {
-    "scripts/export-standalone-descriptions-abi.py": "6845b8b8e67cc5363b1eb12becd8056ea2a1f8bff1c777595cb680a29a4c5dbc",
-    "js/ported/insight.js": "bb0e0fa98d97fe80afc975d1b5e27db1a5a1ba4a2a1befb878fa7741ecbb5e51",
-    "js/ported/insight-runtime.js": "983059ae02a635602b07c83174644cffcd0768bb52126ddc3b0d3b9d643e741f",
+    "scripts/export-standalone-descriptions-abi.py": "306355dbdb58fd043572bacb2908c03adcf95d95a03c39dae6f915695694c51b",
+    "js/ported/insight.js": "f7e05709bf18c6947202ae5b010449625e8b4dda0a093283a66566ad47ff82df",
+    "js/nethack/bindings/insight.js": "14fc0593436660288147966a3f7b75e52ce79a6faa2d207592991f0c2a57c1f5",
     "nethack-c/wasm/tu-libraries/insight.js": "033936c477d83e863880130399e7ebb91ad094665fc26bc47019b8e17f10db70",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"

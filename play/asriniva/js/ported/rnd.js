@@ -10,7 +10,7 @@
    Internal calls (e.g. rnz calling rn2) inherit the outer caller's
    context because the macros don't fire inside rnd.c. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 import { isaac64_init, isaac64_next_uint64 } from '../isaac64.js';
 
 /* JavaScript translation of the effective recorder-patched rnd.c. All twenty

@@ -2332,15 +2332,15 @@
     "ustatusline": "void (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-insight-abi.py": "6281be216eb9a04efc6ffa1218f593980d76d40839990755c492b79724f88bdc",
-    "js/standalone/insight.js": "7d7babac69cdad6d5aeda3df154658c0655df5abfdd3d0a9dc2addf8c06d9479",
-    "js/ported/insight-runtime.js": "983059ae02a635602b07c83174644cffcd0768bb52126ddc3b0d3b9d643e741f",
+    "scripts/export-standalone-insight-abi.py": "444fccffb546aa517c315a357fb0293df9e522ca2baaeec473924289cc1053d7",
+    "js/standalone/insight.js": "73dc7b37f52402c456b0f682a43dc465337c7400a7987413fbaede09a67506cd",
+    "js/nethack/bindings/insight.js": "14fc0593436660288147966a3f7b75e52ce79a6faa2d207592991f0c2a57c1f5",
     "scripts/tu-insight-layout.h": "994f11f393447db428e8defc00c4ce2ff0e8c9193fb39340ef86a5f11db7dd0c",
     "nethack-c/wasm/tu-insight-support.inc": "e377dbb5a6b1a0e5435192c35a42cd04c45aab3274eb2b3b38447e6a33501f9c",
-    "js/ported/insight.js": "bb0e0fa98d97fe80afc975d1b5e27db1a5a1ba4a2a1befb878fa7741ecbb5e51",
+    "js/ported/insight.js": "f7e05709bf18c6947202ae5b010449625e8b4dda0a093283a66566ad47ff82df",
     "nethack-c/wasm/tu-libraries/insight.js": "033936c477d83e863880130399e7ebb91ad094665fc26bc47019b8e17f10db70",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

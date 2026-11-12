@@ -1,8 +1,8 @@
 // One original POTION context/private state, projected onto the shared heap.
 import abi from './potion-abi.json' with {type:'json'};
 import * as source from '../ported/potion.js';
-import {createPotionEnvironment} from '../ported/potion-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createPotionEnvironment} from '../nethack/bindings/potion.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 
 export function enablePotion(environment,layouts){
  const {services,memory,ctypes,transport,functions}=environment,L=layouts.potion,address=environment.address;

@@ -1,8 +1,8 @@
 // Original END lifecycle on the existing killer owner and shared native state.
 import abi from './end-lifecycle-abi.json' with {type:'json'};
 import * as source from '../ported/end.js';
-import {createEndEnvironment,callEnd} from '../ported/end-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createEndEnvironment,callEnd} from '../nethack/bindings/end.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 import {enableKillerState} from './killer-state.js';
 const owners=new WeakMap();
 export function enableEndLifecycle(environment,layouts){

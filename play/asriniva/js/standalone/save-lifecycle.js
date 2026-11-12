@@ -2,7 +2,7 @@
 import abi from './save-lifecycle-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/save.js';
-import {createSaveEnvironment} from '../ported/save-runtime.js';
+import {createSaveEnvironment} from '../nethack/bindings/save.js';
 
 export function enableSaveLifecycle(environment,layouts){
  const {services,ctypes,memory,transport,functions}=environment,L=layouts.save,address=environment.address;

@@ -3,7 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* used to pick among the four basic elementals without worrying whether
    they've been reordered (difficulty reassessment?) or any new ones have

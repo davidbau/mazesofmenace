@@ -828,16 +828,16 @@
     }
   ],
   "sourceSha256": {
-    "scripts/export-standalone-mhitm-abi.py": "ed53e3a40bc21b3b724f575d67343a4c7aeefb218a820986103db552690fd588",
-    "js/standalone/mhitm.js": "8d09eaa39d845472beb726e39b4ee9c6e29aa6215c8cf918f8d2d593ea595efd",
-    "js/ported/mhitm.js": "051eb508b998c581e54f877136384a6df4b95229701a2b00bed3eeee8d7c141d",
-    "js/ported/mhitm-runtime.js": "d3591549f23fa79053bfeb8bd2571f899ffce0d4689dcbd23c12cfe96c6b8dcf",
+    "scripts/export-standalone-mhitm-abi.py": "6eda5729b40ae50e8ef89671680a021457ec111449a406cb26a912b16bb0508e",
+    "js/standalone/mhitm.js": "4301f5f7eb6539d3727a34d4762ff47991bdea1d688fc9989c9a35721ec4213f",
+    "js/ported/mhitm.js": "83c7dba5160729843d15b9e9f9675dd3561376ee622bb478d45d489f2bbd0d8e",
+    "js/nethack/bindings/mhitm.js": "d4c125cb2d37da1f3ae97984a833f80174516743a33956db9fce677e2c205379",
     "nethack-c/wasm/tu-mhitm-support.inc": "a7c440247145802fb06c718a7985e4d412c37fa2ba916c08079332d9d8bbbcdc",
     "nethack-c/wasm/tu-libraries/mhitm.js": "5683173f33a1b365149aa6675f55b6691691213d5f50590cd48a15161feb756d",
     "scripts/tu-mhitm-layout.h": "e74e4e0b33fa567faa826fd2c849a52b28df418033db1667aed12324481ae913",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2"
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d"
   },
   "referenceSourceSha256": {
     "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/src/mhitm.c": "f3674e65aca558ae7461a05463ed003a9fd755d9078a9298639a4752f44b4e22"

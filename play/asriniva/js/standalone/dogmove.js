@@ -1,8 +1,8 @@
 // One original DOGMOVE factory, shared game bytes and source-private backing.
 import abi from './dogmove-abi.json' with{type:'json'};
 import * as source from '../ported/dogmove.js';
-import{createDogmoveEnvironment}from'../ported/dogmove-runtime.js';
-import{withCEnvironment}from'../ported/c-runtime.js';
+import{createDogmoveEnvironment}from'../nethack/bindings/dogmove.js';
+import{withCEnvironment}from'../c-runtime/context.js';
 export function enableDogmove(environment,layouts){
  const{services,memory,ctypes,transport,functions}=environment,L=layouts.dogmove,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v);
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review DOGMOVE ABI '+k);

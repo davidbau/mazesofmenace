@@ -1,4 +1,4 @@
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of the effective POSIX unixtty.c. Native termios
  * storage, terminal operations and window callbacks are supplied by the ABI.

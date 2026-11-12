@@ -532,14 +532,14 @@
     "lookup_novel": "const char *(const char *, int *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-do-name-abi.py": "96738ee382961ac5f438eee0d78adbb5e0f6420aacef42d7fcf1dee4522b1665",
-    "js/standalone/do-name.js": "75df5703b0e66f56badb5577ae72c351be7b511a8ca10f03ce52ba63f2fb1b01",
+    "scripts/export-standalone-do-name-abi.py": "2cc9ce72e4b5719cc3984036ebecaaf0040ae7c176046bdfce248c07d55976c8",
+    "js/standalone/do-name.js": "1b57255906a93eb9a6c378305ba5c1133adeefbc73f3f340dca4d5de1dc498a4",
     "scripts/tu-do_name-layout.h": "6781c5afa1c602958cf2dd9e90d059d059caa569584526a28979da7a6a71f8de",
     "nethack-c/wasm/tu-do_name-support.inc": "122ed95614977c9d4c202f67618a3d6bfa395d5ee82cd5216181f67f80eeb65d",
     "nethack-c/wasm/tu-libraries/do_name.js": "9f6676f8a04572c911e78d779d1b83a819a73cd3d6ad8cd0405e3a3480f45312",
-    "js/ported/do_name.js": "62ed7c76b6e5044d8e4e2a37d1563dea9edc4317799efff0ef1d4557c06d0cae",
-    "js/ported/do_name-runtime.js": "18675faf5ed712306f26d398df8ddc3eea8e5f0c274e3e40dfa4f013150d2bdc",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/do_name.js": "1f9162df111a4edbc38c213817f6f79ec3a2c9a7e51aaa80d95f668225b7613e",
+    "js/nethack/bindings/do_name.js": "ff6fd564d5ad8f7eb7b38e5979c81bf3f55a819287d44e6d00e5135259708be3",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

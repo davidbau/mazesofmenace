@@ -9,7 +9,7 @@
  */
 
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 const checkfileflags = {
     chkfilNone: 0,

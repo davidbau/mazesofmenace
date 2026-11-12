@@ -2796,16 +2796,16 @@
     }
   ],
   "sourceSha256": {
-    "scripts/export-standalone-restore-lifecycle-abi.py": "ecfc748e56157ca7e0ed12fb95d40093f6e679b9ee2c2855618f0946ddb1c694",
-    "js/ported/restore-runtime.js": "aff166900e2ce06537d0889d14dcf61a2e887898a952dd640956c63f5bdd7006",
-    "js/ported/restore.js": "3751cba6ba26613a10bd6ec964285db04344f04d71b5ace65e082d96c8a86f1b",
+    "scripts/export-standalone-restore-lifecycle-abi.py": "3a2c0f27fe43350551e122bdc3c6832861a0096a9ef050f15db1e222f4bd5511",
+    "js/nethack/bindings/restore.js": "8e23dd074d655e1c924a38952409fb6885d6b3988781c1986454d4053bba9bb9",
+    "js/ported/restore.js": "49a47b05e85546808b076d1427606b11eb30578f7d62b4955582d02a17ee581e",
     "nethack-c/wasm/tu-restore-support.inc": "f3169e492ead040c24fcdf810576315a322b42af205ce637df8c239c69368c4b",
     "nethack-c/wasm/tu-restore-types.h": "0d7c9d6d1c5e05e77238b8d7377e0acb20915e0024df65818f0fff9c608e81e6",
     "nethack-c/wasm/tu-libraries/restore.js": "1494cfb6e7c89f796dd2dc4e32520bd4b9890a8a684ba374e790b2375c2070da",
     "scripts/tu-restore-layout.h": "15a963ff6f6585b25ac42825491a57b30fea6b1b79d03434a191e2d84376b19d",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   },
   "referenceHeaderSha256": {

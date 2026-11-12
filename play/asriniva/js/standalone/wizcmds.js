@@ -1,8 +1,8 @@
 // Original configured wizard commands on one strict native-shaped context.
 import abi from './wizcmds-abi.json' with {type:'json'};
 import * as source from '../ported/wizcmds.js';
-import {createWizcmdsEnvironment} from '../ported/wizcmds-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createWizcmdsEnvironment} from '../nethack/bindings/wizcmds.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableWizcmds(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

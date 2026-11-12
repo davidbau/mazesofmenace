@@ -1,10 +1,10 @@
 // Original COLORATT storage/context and POSIXREGEX wrapper, shared game memory.
 import abi from './color-attributes-abi.json' with {type:'json'};
-import {REG_EXTENDED,REG_NOSUB} from '../services/posix-regex.js';
+import {REG_EXTENDED,REG_NOSUB} from '../libraries/regex/posix.js';
 import * as color from '../ported/coloratt.js';
-import {createColorattState,createColorattEnvironment} from '../ported/coloratt-runtime.js';
+import {createColorattState,createColorattEnvironment} from '../nethack/bindings/coloratt.js';
 import * as regex from '../ported/posixregex.js';
-import {createPosixregexEnvironment,initializePosixregex} from '../ported/posixregex-runtime.js';
+import {createPosixregexEnvironment,initializePosixregex} from '../nethack/bindings/posixregex.js';
 const owners=new WeakMap();
 export function enableColorAttributes(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

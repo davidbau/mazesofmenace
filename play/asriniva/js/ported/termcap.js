@@ -4,7 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 // Configured source policy. Typed runtime transport is separate.
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 // Original source-owned format strings and initializers. Storage transport
 // supplies zero backing; this helper runs once per actual Module, not per reset.

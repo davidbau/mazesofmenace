@@ -2,7 +2,7 @@
 /* Copyright (c) Sean Hunt  2015.                                 */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* The nhregex interface is implemented by several source files. The
  * file to be used can be linked in by the build.

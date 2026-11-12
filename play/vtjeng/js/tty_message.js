@@ -8,6 +8,7 @@ import {
     MSGTYP_NOREP,
     MSGTYP_NORMAL,
     MSGTYP_NOSHOW,
+    MSGTYP_STOP,
     NO_CURS_ON_U,
     OVERRIDE_MSGTYPE,
     PICK_NONE,
@@ -31,6 +32,7 @@ import { YOU_BUF_FORMATS } from './you_buf_messages_data.js';
 import { youFeel, youHear, youSee } from './pline.js';
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { vision_recalc } from './vision.js';
+import { nomux_putch_byte } from './termcap.js';
 import { msgtype_type } from './options.js';
 import { sound_speak } from './sounds.js';
 import {
@@ -67,11 +69,15 @@ export const TOPLINE_NON_EMPTY = 2;
 
 function ttyByteText(value) {
     // topl.c keeps the raw byte string for wrapping and message history.
-    // Recorder patch 006 ignores signed high-bit bytes only when putchar()
-    // projects them into the shadow grid. NUL is an internal skipped-byte
-    // marker: it occupies one logical byte cell but is not a wrapping space.
+    // topl_putsym() moves the cursor for '\b' and '\n' and, for any other
+    // byte, advances it and putchar()s the byte, which recorder patch 006's
+    // nomux_putch() leaves out of the shadow grid when it is a control byte
+    // or, as a signed char, a high byte (nomux_putch_byte()). NUL is an
+    // internal skipped-byte marker: it occupies one logical byte cell but is
+    // not a wrapping space.
     return encodeUtf8ByteString(value).map((byte) => (
-        byte < 0x80 ? String.fromCharCode(byte) : '\0'
+        byte === 0x08 || byte === 0x0A || nomux_putch_byte(byte) !== null
+            ? String.fromCharCode(byte) : '\0'
     )).join('');
 }
 
@@ -506,6 +512,10 @@ async function ttyPlineCore(
         }
         if (urgentMessage && messageWin)
             messageWin.flags &= ~WIN_NOSTOP;
+        // vpline():283-284 waits for a MSGTYPE=stop line whichever way
+        // putmesg() showed it; show_topl()'s addtopl() left NEED_MORE.
+        if (msgtype === MSGTYP_STOP)
+            await displayPendingTtyMessageWindow(state);
         return true;
     }
     if (pflags & (PLINE_VERBALIZE | PLINE_SPEECH))

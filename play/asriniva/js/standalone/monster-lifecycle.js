@@ -3,8 +3,8 @@ import abi from './mon-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as mon from '../ported/mon.js';
 import {getShknamCatalogue} from './shknam.js';
-import {createMonEnvironment} from '../ported/mon-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createMonEnvironment} from '../nethack/bindings/mon.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const ALIGNMENT_MODULUS=8n*(1n<<32n);
 export function projectMonAlignmentLimit(value){if(typeof value!=='bigint')throw new TypeError('MON native alignment limit must be BigInt');return Number(value%ALIGNMENT_MODULUS);}
 const owners=new WeakMap();

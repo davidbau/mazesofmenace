@@ -927,9 +927,9 @@
     ]
   },
   "sourceSha256": {
-    "js/ported/bones-runtime.js": "be0792e783b0ea9af1010525bc36a291f6bc6bb67140a1a32291f20b0a39be78",
+    "js/nethack/bindings/bones.js": "f7368dea26e24710d670d73a41dbecd2fe8e54950e063ea7fa3680f6d294bc41",
     "nethack-c/wasm/tu-fragments/bones-support.c": "cbb0e47e2e59ec2b1cc5572c64610bba26ddd0b9ff13b81cd4dafa9eb5dcdfa7",
-    "js/ported/decl-runtime.js": "0af217623e8b759b4923d614abd4fde5bccdff12b6dbb3aaa0912f690dad909a",
-    "scripts/export-standalone-level-abi.py": "c9e25770b3bd735fe8a27c0be0c380ea8e085d851f87a5cc692ec2951b8097ba"
+    "js/nethack/bindings/decl.js": "7fba6bcd7d9431765c166024e55256bb57f1287b5eb1207b1db1fb25a55b6457",
+    "scripts/export-standalone-level-abi.py": "cd5ef63b6f2332293d90cdc95ae60be5729ddff2a235979e0a29387d77af4dca"
   }
 }

@@ -1,8 +1,8 @@
 // Original ENGRAVE policies on the shared head chain and saved occupation fields.
 import abi from './engrave-abi.json' with {type:'json'};
 import * as source from '../ported/engrave.js';
-import {createEngraveEnvironment} from '../ported/engrave-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createEngraveEnvironment} from '../nethack/bindings/engrave.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableEngrave(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

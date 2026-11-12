@@ -551,15 +551,15 @@
     "relobj": "void (struct monst *, int, boolean)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-steal-abi.py": "8e13ead025bda30a5aff00f549d866ef7e314c3714d2647482a22c4d218bf36d",
-    "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
+    "scripts/export-standalone-steal-abi.py": "e121efe8bc984d7edc4c412c32a50b62a71049eef8e691cff290c774cf3ea601",
+    "js/backends/emscripten/runtime.js": "5322fc2cb40783ef7c475861cecb9eaa68ddf26eb12f8618f1bd3e480d3e4371",
     "scripts/tu-steal-layout.h": "aecbcfe6823a3734b2dd37ea655a0c0e546dfe3f13dff4a01a8400a54a1b1353",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/steal.js": "c8d6e7633e6d7a1aeb4a73294879a1693a970988a60771bd2fd3e919d5989f21",
     "nethack-c/upstream/src/steal.c": "0aa14e4a989d4869de9b9bd223231ac559f2d6641d9bfb949d0aaff29ca8a447",
-    "js/ported/steal.js": "50dd81376bbd959730256a557cc2c51fd4849b069151cce14702abeb6ae0f00f",
-    "js/ported/steal-runtime.js": "e3990cabad4bf2af5a6dd83bbe67e7ebf156e54551ef9cd854c3d479614890ec",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/steal.js": "b21c6b0141ba863dbbe1179c87d95f8e8ab3b4992c11456585e832129673aace",
+    "js/nethack/bindings/steal.js": "f84004010a861a7b727c97cd4d9df00b22f9bd98022699ee763934336f9849ac",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

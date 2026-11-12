@@ -459,7 +459,6 @@ import {
     shop_keeper,
     stolen_value,
     subfrombill,
-    UnsupportedShopError,
 } from './shk.js';
 import {
     collectMonsterNoticeMessage,
@@ -1456,13 +1455,7 @@ export function requireSimpleHeroDestination(
             gw: { ...(state.gw ?? {}) },
             u: { ...state.u, ux: x, uy: y },
         };
-        try {
-            preflight_projected_random_arrival_pickup(projected);
-        } catch (error) {
-            if (error instanceof UnsupportedShopError)
-                throw new UnsupportedHeroMoveBoundaryError(error.branch);
-            throw error;
-        }
+        preflight_projected_random_arrival_pickup(projected);
     }
     // invent.c look_here() computes dfeature_at() unconditionally and prints
     // it before "You see here" when the square holds exactly one object.
@@ -3666,7 +3659,7 @@ async function domove_fight_ironbars(x, y, state) {
         let breakflags = BRK_BY_HERO | BRK_FROM_INV | BRK_MELEE;
         const env = { state };
         if (breaktest(obj, env)) {
-            if (obj.quan > 1) obj = splitobj(obj, 1, env);
+            if (obj.quan > 1) obj = await splitobj(obj, 1, env);
             else await setuwep(null, env);
             await freeinv(obj, env);
             breakflags |= BRK_KNOWN2BREAK;

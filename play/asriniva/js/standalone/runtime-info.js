@@ -1,7 +1,7 @@
 // Original MDLIB/DATE population on the existing VERSION nomakedefs storage.
 import abi from './runtime-info-abi.json' with {type:'json'};
 import * as mdlib from '../ported/mdlib.js';
-import {createMdlibState,createMdlibEnvironment} from '../ported/mdlib-runtime.js';
+import {createMdlibState,createMdlibEnvironment} from '../nethack/bindings/mdlib.js';
 import * as date from '../ported/date.js';
 import {early_init} from '../ported/allmain.js';
 

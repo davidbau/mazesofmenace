@@ -328,16 +328,16 @@
     "restpriest": "void (struct monst *, boolean)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-priest-abi.py": "5e4f3c596486f0c1920a27fcedb0ed44014924b3b428b66ee03ba5db501735ec",
-    "js/standalone/priest.js": "c08d9437f274dc60ecd2eae1f292d87cc9c054e746428cd1c193b3fbdffb94ef",
+    "scripts/export-standalone-priest-abi.py": "687c5af49f1f7f9bbf381f11acb0877959775e7a3e5d4bc64a3151bf3026a7d2",
+    "js/standalone/priest.js": "ae7e645739b21aac623ff84398a9258414f1b6ca7eb06687b2e099340427a73f",
     "scripts/tu-priest-layout.h": "4923d4de5c97d606017d08642c1a97033be0e23f55137a6e216d300acc0afd15",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
-    "js/ported/priest.js": "0f2e0960eb7a445f5b4dd95c6099315179e9890df4cd3a95fe3d2d7312f4d97f",
-    "js/ported/priest-runtime.js": "1d55ad4506bf795df62bfe1f3115fb014701d5480ffa8c9009fe761858b1f03e",
-    "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
+    "js/ported/priest.js": "f2258fa16bdf14a934005a4f5d1e142c0b95f777a7f004c2ab351188ed9b4390",
+    "js/nethack/bindings/priest.js": "90c5bf4c5025bada87aa88f08718348828a76239b5ce752fd5067b2f67c79bec",
+    "js/backends/emscripten/runtime.js": "5322fc2cb40783ef7c475861cecb9eaa68ddf26eb12f8618f1bd3e480d3e4371",
     "nethack-c/wasm/tu-libraries/priest.js": "987fb46392efeefbbb6d85a964ef6638ba52108e3341de21eb1a7bba465f3d9e",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

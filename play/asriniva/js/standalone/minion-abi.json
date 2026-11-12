@@ -402,14 +402,14 @@
     "gain_guardian_angel": "void (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-minion-abi.py": "812cb9246d57d959ef857a07e38f01fdf9d8f1b767fb02aa4bd82bf0bdb12540",
+    "scripts/export-standalone-minion-abi.py": "2295d78ea619a1b2d90ab56a352ddeb18376d377babf83d10a653cbe1c32f6cd",
     "scripts/tu-minion-layout.h": "dafa84088b089a4ba1ff44853f4b1281e6af6992c53bf43a28f72b06089d331a",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/minion.js": "86810701e7239d5d891c62fd2fcc3d121678713df705e8eef92fdaf968f3c6d6",
     "nethack-c/upstream/src/minion.c": "41158eef7038868b75e684d36a7e492340e6809002f06c84a426c855fea2310d",
-    "js/ported/minion.js": "2def6f5219ccf6a73b86977cf0f81594760ab1d64519bd0757e8858577415cf8",
-    "js/ported/minion-runtime.js": "2e134be7317edaa0f8aa9562360d5fa5b2a0e593d644d16ae719b82fb384eff2",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/minion.js": "563207a6cb9c87cf92bd68410c08dbda7952f23290f937440381a2c104bc6dc4",
+    "js/nethack/bindings/minion.js": "cc49b4aa5524375b26a8e3a843a56b0dbccb0a3409c1159da1cfb102144ae58d",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

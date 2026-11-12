@@ -553,16 +553,16 @@
     "feel_engraving": "void (struct engr *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-engrave-abi.py": "d9e5091b53114fe9affd84c91602562f3eb2bd29468f6542f7c368c813d1f38c",
-    "js/standalone/engrave.js": "f5215ca99739c924054c0b6d1aecc2238f1f50da88862d2400a4ef307dd1e696",
+    "scripts/export-standalone-engrave-abi.py": "4674f1fe1f1fc8c619cd618132a775d4da164dbf689498e1862d56cffab44619",
+    "js/standalone/engrave.js": "832b86cf62598dc3ff53abecc5ca4f6a4aa9a87df6bb5d6b138244c6b5f11f30",
     "scripts/tu-engrave-layout.h": "24bbdd2fbe9a1e070c97f81e6d38616071fdea4cd18ac3b29b1398830341ecf9",
     "nethack-c/wasm/tu-engrave-support.inc": "a6d7a5ad0207a1252233e8c62d43082cb68f2a28dc413d9c5aa76ca15130b654",
     "nethack-c/wasm/tu-engrave-support.h": "22135df9fe7bb933cbd437ca2ab2013bd385740d50e7d088d7e63b51ded3fceb",
     "scripts/write-tu-source-metadata.py": "d05e33ba5b44e6564e59f30dc2f9baaf7483d416e80917b41ce7c6c5b70f97d1",
     "nethack-c/wasm/tu-libraries/engrave.js": "2036160ad66bc9bc0a1cbaeffd9fda21b370545ba7c29bcb9cfe16637c9c7272",
-    "js/ported/engrave.js": "5a32254586a25a61eb64a70ed4b6f5c554056d3efc5f7b3bbfe4ffc37ed5036c",
-    "js/ported/engrave-runtime.js": "5302ab1e65187ba80f2d45e7ccda27f37479cca1adfdbbed94294bc010434c6c",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/engrave.js": "236f3bd7aa54917e03263cfd10f7d9b7c0de9146991440d891eb123787d33544",
+    "js/nethack/bindings/engrave.js": "245c9960fd602feb4fce97265ac6e1f3eccbd533b33aca3b7e1da151bc46fe26",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

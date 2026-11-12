@@ -2,7 +2,7 @@
 import abi from './do-lifecycle-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/do.js';
-import {callDo} from '../ported/do-runtime.js';
+import {callDo} from '../nethack/bindings/do.js';
 
 export function enableDoLifecycle(environment,layouts){
  const {services,ctypes,memory}=environment,L=layouts.do,address=environment.address;

@@ -1,6 +1,6 @@
 // Original pre-game window/sound startup, in the order used by Unix main.
 import {init_sound_disp_gamewindows} from '../ported/allmain.js';
-import {callSounds} from '../ported/sounds-runtime.js';
+import {callSounds} from '../nethack/bindings/sounds.js';
 import * as sounds from '../ported/sounds.js';
 import {createRecordViews} from './record-views.js';
 export function enableGameWindows(environment,layouts){

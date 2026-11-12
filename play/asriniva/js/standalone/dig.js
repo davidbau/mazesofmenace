@@ -1,7 +1,7 @@
 // Original DIG policies, occupation identity and timer callbacks on one cached owner.
 import abi from './dig-abi.json' with{type:'json'};
 import * as source from '../ported/dig.js';
-import {callDig} from '../ported/dig-runtime.js';
+import {callDig} from '../nethack/bindings/dig.js';
 const owners=new WeakMap();
 export function enableDig(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

@@ -2,7 +2,7 @@
 import abi from './pet-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as dog from '../ported/dog.js';
-import {callDog} from '../ported/dog-runtime.js';
+import {callDog} from '../nethack/bindings/dog.js';
 export function enablePets(environment,layouts){
  const {services,memory,ctypes,functions}=environment,L=layouts.dog;
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;return(...args)=>(typeof value==='function'?value:environment.resolve(k))(...args.map(v=>v?.address??v));}});

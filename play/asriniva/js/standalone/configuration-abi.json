@@ -3549,9 +3549,9 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-configuration-abi.py": "1d0c46b600e41fd626546203f044458569e0998f0e4395870a21e510a2b00a3c",
-    "js/ported/cfgfiles-runtime.js": "31e1faa8246a9f00f037ffdf9c8d1983a062152dd7147bda40cab0352ff94078",
-    "js/ported/cfgfiles.js": "f5b90ac494fa1d828ad5c5c35f0509727039f2eca3e79037b604d3b4e97c7680",
+    "scripts/export-standalone-configuration-abi.py": "49e23958c6d81c8804b6ae581ec62985e86429282c060e89e88f1d2653690811",
+    "js/nethack/bindings/cfgfiles.js": "96d7903d4df66f44ed2f27d731b6f2cf5e224bb6c53143595c94947e17dc3d24",
+    "js/ported/cfgfiles.js": "3013553e9256c50592bd062a02e9e2b0b7c8d49b03004d7726428416facf32c9",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },
   "referenceHeaderSha256": {

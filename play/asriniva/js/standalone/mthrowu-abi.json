@@ -1018,15 +1018,15 @@
     "hits_bars"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-mthrowu-abi.py": "bb06dfef2c0509b250b95659222a26808922616bb6a5c38da12c764903699c64",
-    "js/standalone/mthrowu.js": "b16346756bf526950269a32d4180ec0d607712fb7e9961dab11b8786c2fb844a",
-    "js/ported/mthrowu.js": "7f5e00d5dda0d27257e61be2418df8ab5be22f5be3c1a62b11b22b7bb3a80430",
-    "js/ported/mthrowu-runtime.js": "6f8d6ef08fe7c537e996243c9b29fd4b568cf504c3c58d2fa67dc0449bc64fda",
+    "scripts/export-standalone-mthrowu-abi.py": "c9a9ec98bd37b994d258e287890e0bb2ec5683bd85f226e3519ea0b61e6a04d1",
+    "js/standalone/mthrowu.js": "d3fdc7c454804ae043a6df584e9f6d78f3cef56224f7e57f025cd779b73b44d1",
+    "js/ported/mthrowu.js": "f59f77c68ff8be88f577f71d7cf456e3fc18dbd9d49f150442d5e5c7e2ac4d69",
+    "js/nethack/bindings/mthrowu.js": "f71e2c0e107c7b36dd6279fcc730a540c4345b7b773784a85cb4386d8a5477be",
     "nethack-c/wasm/tu-libraries/mthrowu.js": "dcafcd6cd889b762c06dc63847bad0a3c1f1f9807e782e1a5b2752d95f32bd43",
     "nethack-c/wasm/tu-mthrowu-support.inc": "012fb18136d0316eb36a5e43bbeec21e316473850b6f3c102cff9fc98f9500c2",
     "scripts/tu-mthrowu-layout.h": "fb22d25a53f6228924dd0e758d024c7c693ebad297be9507c63a09ae14ffed37",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   }
 }

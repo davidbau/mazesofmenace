@@ -5046,6 +5046,14 @@ export async function force_more_from_cls(message) {
 export async function level_transition_arrival_more(msg, oldPaint) {
     const g = game;
     if (!g || !oldPaint) return;
+    /* C do.c:1832-1840: movebubbles' show_glyph announcements complete
+     * before docrt's cls() acknowledges the topline.  Their descriptions are
+     * asynchronous here; finish them before taking the message/page snapshot,
+     * or a late announcement can land inside more() and be erased on return. */
+    if (g._mentionMapPending) {
+        await g._mentionMapPending;
+        msg = g._pending_message || g._resultMessage || msg;
+    }
     /* docrt()'s cls() flushes WIN_MESSAGE through tty_display_nhwindow, which
      * returns at once under WIN_STOP (wintty.c:2282; WIN_STOP == WIN_CANCELLED).
      * An ESC at the --More-- raised inside the last pline's own update_topl
@@ -6991,6 +6999,10 @@ function _status_temp_bot_eval() {
         : oclass_sym(COIN_CLASS_DISP);
     const encReset = !!game._blRndencodeNew || goldsym !== game._blOldGoldSym;
     game._blOldGoldSym = goldsym;
+    /* botl.c:1574-1576: BL_GOLD itself is evaluated under that update_all
+     * (chg 0, time 0), so its temporary rule is dropped and the next delivery
+     * is a fresh baseline (_status_temp_hilites tracks gold at paint). */
+    if (encReset) delete hist.gold;
     let hpChgNow = false;
     game._blRndencodeNew = false;
     for (const [fname, re, , valOf] of _STATUS_BOT_FIELDS) {
@@ -7025,7 +7037,16 @@ function _status_temp_bot_eval() {
                 h.percent = pc;
             }
         }
-        if (!chg) continue;
+        /* botl.c:1577-1582: only an unchanged field can expire, and the
+         * reset is delivered at bot(), before its physical paint is saved. */
+        if (!chg) {
+            if (h.rule && h.time && !game.multi && h.time < (game.bl_hilite_moves | 0)) {
+                h.expired = { rule: h.rule, time: h.time };
+                h.rule = null; h.time = 0; h.chg = true;
+                if (fname === 'hitpoints') hpChgNow = true; // BL_HP is re-sent on reset too
+            }
+            continue;
+        }
         h.rule = _status_updown_rule(fname, chg);
         h.expired = null;
         h.chg = true;
@@ -7135,13 +7156,22 @@ function _status_temp_hilites(row, cells) {
          * attribute values with a later bot() invents a reverse change. */
         const attrHistory = game._inMovemonMore
             ? game._paintedSnapshot?.botl?.attrHilites?.[fname] : null;
+        /* wintty.c:5213-5248: more() keeps the attributes delivered at
+         * this page's paint. Rendering it neither changes a field nor expires
+         * its temporary rule against a later status evaluation's clock. */
+        if (attrHistory) {
+            if (attrHistory.rule) {
+                const [st, len] = span(m);
+                for (let c = st; c < st + len; c++) cells.set(c, attrHistory.rule);
+            }
+            continue;
+        }
         /* a hitpointbar-owned title slot tracks the bar text, not the title
          * (status_hpbar_attr_eval); start a fresh baseline rather than read a
          * phoney change off the old bar value */
         if (hist[fname]?.barSlot)
             hist[fname] = { val, percent: pc, rule: null, time: 0 };
-        const h = attrHistory ? { ...attrHistory }
-            : (hist[fname] ||= { val, percent: pc, rule: null, time: 0 });
+        const h = hist[fname] ||= { val, percent: pc, rule: null, time: 0 };
         // BL_EXP was evaluated at bot(); rendering a held row is not a paint.
         const botField = _STATUS_BOT_FIELD_NAMES.has(fname);
         /* A frozen row (a --More-- frame holding the pline-time paint, its T:
@@ -7184,18 +7214,16 @@ function _status_temp_hilites(row, cells) {
             h.val = val;
         }
         h.lastPaintMoves = game.moves | 0;
-        /* C botl.c:1577-1582: bot()-evaluated fields expire against the
-         * count latched by status_eval_next_unhilite().  unmul() can flush
-         * a message after moves advances but before that eval runs.
-         * Fields first evaluated at a read boundary use the completed
-         * paint's live count (the driver's eval can lag that read).
-         * A stale row still carries its old highlight below. */
-        /* BL_XP is likewise evaluated at bot() (status_xp_bot_eval). */
-        const hiliteMoves = botField || fname === 'experience-level'
+        /* botl.c:1577-1582: bot()-evaluated fields already delivered their
+         * expiry in _status_temp_bot_eval(). Re-rendering the row must keep
+         * that result, including a fresh rule awaiting its next timer stamp.
+         * BL_XP uses the latched status clock; fields first evaluated at a
+         * read boundary use the completed paint's live count. */
+        const hiliteMoves = fname === 'experience-level'
             ? (game.bl_hilite_moves | 0) : (game.moves | 0);
         /* botl.c:1577: a changed field selects a fresh rule; its old
          * timeout must not immediately expire that new highlight. */
-        if (!chg && h.rule && h.time && !game.multi && h.time < hiliteMoves) {
+        if (!botField && !chg && h.rule && h.time && !game.multi && h.time < hiliteMoves) {
             h.expired = { rule: h.rule, time: h.time };
             h.rule = null; h.time = 0; h.chg = true;
             if (fname === 'experience-level')
@@ -7231,7 +7259,13 @@ function _status_condition_hilites(row) {
         /* the row carries the spelling cond_shrinklvl selected (wintty.c:4838 set_condition_length) */
         let at = null, shown = cname.trim();
         for (const sp of [cname.trim(), ...(_COND_SPELL.find((n) => n[0] === cname.trim()) || [])]) {
-            at = new RegExp(` (${sp})(?= |$)`).exec(row);
+            /* conditions follow the AC field on the second status line; a title
+             * such as "Stone Giant" on the first line is not the Stone condition */
+            const acAt = row.search(/ AC:/);
+            if (acAt < 0) break;
+            at = new RegExp(` (${sp})(?= |$)`, 'g');
+            at.lastIndex = acAt;
+            at = at.exec(row);
             if (at) { shown = sp; break; }
         }
         if (!at) return;
@@ -9738,7 +9772,7 @@ function _capture_botl(paint = false) {
          * clears temporary rules (botl.c:1564-1577). */
         /* wintty.c:5248: Dlvl/AC temp rules ride the page too (status_reassess / rndencode drop them before dismissal) */
         attrHilites: Object.fromEntries(['strength', 'dexterity', 'constitution', 'dungeon-level', 'armor-class',
-            'intelligence', 'wisdom', 'charisma'].filter(f => game._blTemp?.[f])
+            'intelligence', 'wisdom', 'charisma', 'power', 'time'].filter(f => game._blTemp?.[f])
             .map(f => [f, { ...game._blTemp[f] }])),
         multiHilites: game.multi ? Object.fromEntries(Object.entries(game._blTemp || {})
             .map(([field, h]) => [field, h.rule])) : null,
@@ -12690,6 +12724,18 @@ export function clear_glyph_buffer() {
 }
 // ── cls ──
 export async function cls() {
+    /* C display.c:2196 / wintty.c:1873-1879: WIN_MESSAGE is acknowledged
+     * before WIN_MAP is cleared.  An occupation can park that standing
+     * topline outside both message channels, including after done_eating.
+     * Page it over the last physical paint before retiring its parked copy. */
+    if (game._occ_committed_topl?.text
+        && !game._pending_message && !game._resultMessage) {
+        restore_occupation_topline();
+        const held = game._pending_message || game._occ_committed_topl?.text;
+        game._occ_committed_topl = null;
+        if (held && !game._topl_win_stop && !game._topl_win_stop_armed)
+            await force_more_from_cls(held);
+    }
     /* C display.c:2196 flushes WIN_MESSAGE before clearing the screen.
      * An ESC at that explicit more() sets WIN_STOP (tty/topl.c:232-235);
      * the next pline samples it at update_topl entry. Unlike an overflow
@@ -12828,6 +12874,21 @@ function _msg_history_arr() {
     if (!game._msg_history)
         game._msg_history = [];
     return game._msg_history;
+}
+/* getline.c:80,213-226 leaves query+answer in gt.toplines without calling
+ * remember_topl(). Unlike topl.c:189, that does not reset cw->maxcol. The
+ * array includes this live line, but an existing ^P walk must keep its place. */
+export function tty_getlin_history(line) {
+    const h = _msg_history_arr();
+    if (game._prevmsg_next != null && game._prevmsg_history_length === h.length) {
+        game._prevmsg_history_length++;
+        // A walk poised at the formerly empty gt.toplines now shows this line.
+        if (game._prevmsg_next === -1) game._prevmsg_next = h.length;
+        game._prevmsg_cycleEmpty = false;
+        game._prevmsg_emptyTopl = false;
+    }
+    h.push(line);
+    game._toplEmptyAfterSuppress = false;
 }
 export function putmsghistory(msg, _restoring) {
     if (msg == null)
@@ -15353,10 +15414,11 @@ export function swallowed(first) {
         for (let y = lasty - 1; y <= lasty + 1; y++)
             for (let x = lastx - 1; x <= lastx + 1; x++)
                 if (isok(x, y))
-                    /* cmap_to_glyph(S_stone) is cmap 0; without it show_glyph_cell
-                     * re-derives the cmap from the map cell and runs wall_angle() */
-                    show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPHCLS_CMAP,
-                                    false, null, null, null, 0);
+                    /* C display.c:1348 uses GLYPH_UNEXPLORED.  Its identity
+                     * matters: the next stomach cell is newly explored, so
+                     * mention_map describes it (and Hallucination draws a
+                     * monster name) even when WIN_STOP suppresses the text. */
+                    show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPHCLS_UNEXPLORED);
     }
 
     /* C display.c:1351 — monsndx(u.ustuck->data). */

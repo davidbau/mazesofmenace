@@ -42,11 +42,11 @@
     "pointer": 8
   },
   "sourceSha256": {
-    "scripts/export-standalone-makemon-public-abi.py": "d79a256af97f47b4ba7e84ae8829824be2821386dfe4df54b310c7e5f3ed9f23",
-    "js/standalone/monster-creation.js": "3797e59061491fafde98c020502fb8b9200e6f6565c8b3c9a92cd8c45985f1ae",
-    "js/standalone/monster-selection.js": "d69cd3d7414a1e8921f2dd5d1532d993aa59f59a8cdb0f2f1538bd1be8e07598",
-    "js/ported/makemon-runtime.js": "a9fc850998099704dc7d735972d15c2aeffdfe018083dc414a4fea6379380ad8",
-    "js/ported/makemon.js": "f88948f12832888a3352ed42ef04c71dc2cc1cbb57f8ae78a8fd895619f832f8",
+    "scripts/export-standalone-makemon-public-abi.py": "09f58ef81199f0e8360c3750a70376cccb086859e9461124ffc35fe6f24947e0",
+    "js/standalone/monster-creation.js": "12a41b3c3dd3ddb4a972bfddddc86661fdb7160ae474a60f314192c11d0411ee",
+    "js/standalone/monster-selection.js": "59852afce6cedb762b2bb5f45b0ea6bb87d7c534badca1b978705081d2447275",
+    "js/nethack/bindings/makemon.js": "bf30619fe62376524023ca82bc69e892e6892ff29eb850403ab6024dd8aea129",
+    "js/ported/makemon.js": "49ca6dbcb437b36b93fd32e1c45ef0c7a23bc905859b3adeaf983237ed7673e5",
     "nethack-c/upstream/src/makemon.c": "04bb46b793cb7a724544ed5860f57116e4661ce5d052a1321d90dc0167d3ffc3",
     "nethack-c/wasm/tu-fragments/makemon-support.inc": "de19d3be6489c15b31b7e4832f5bb64f02cb645f16a0577efc99a17571237a93",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"

@@ -309,15 +309,15 @@
     "buzzmu": "int (struct monst *, struct attack *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-mcastu-abi.py": "4ebcb73c488592d523097119b81870f78b705b9c4febeeda03b1bcd2bccd336b",
-    "js/standalone/mcastu.js": "e8aafd0ac39db0c02fe7507d262f9b8b057566e890e62d1c5bb03280b0cff19c",
+    "scripts/export-standalone-mcastu-abi.py": "cbcb81e9177c9786119d1abfb5742ab9f3f801057d4749f2b5fb145377eff72c",
+    "js/standalone/mcastu.js": "a2b63effac6e24553bbdaed3a897e7a975fae054b96cf6c4f0f4b4a080b3ee34",
     "scripts/tu-mcastu-layout.h": "6d685001f25f50924f92dcc5e0f08ba12a9cfe9edf8f17e6c2edf9185ca15f20",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/mcastu.js": "0f46bb9c9bcafc72987a7079dfae0b10e5a073732b8b35739f2d86123f21670c",
-    "js/ported/mcastu.js": "14da9c1a0ed399a9b679239c48c0c57f41ba51a5f31efba41f8751550f99700b",
-    "js/ported/mcastu-runtime.js": "9bbc89583f00cc35ad3bac25b1dbcf35fc49dc43edafa23ce8d53b31ceae935d",
+    "js/ported/mcastu.js": "e2bb13e833d19b254ba219c1669612a321d9aa3618280c4966f57d895abc6283",
+    "js/nethack/bindings/mcastu.js": "baf642e3bd5e9da1b0839048a404f728ce4c313d68fe7e0261da1ec2f486d56e",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

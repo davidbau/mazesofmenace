@@ -183,9 +183,9 @@
   },
   "sourceSha256": {
     "nethack-c/wasm/tu-libraries/objnam.js": "25bc822ec86953d00719b253e334c8db45f346ff945205a0953af9902f4adf0e",
-    "scripts/export-standalone-object-language-abi.py": "202fd8864f24a7c513f06442b9d17e6112b9190a6ee24a5d454c085b9fa50838",
-    "js/ported/objnam-runtime.js": "5e70f51aed8aba366ea67976e5cc13175e95e52aad0cf3e979be60e5be4b1dc0",
-    "js/ported/objnam.js": "deca0132d61a0dca7a72455c3d2e8fd7231ed5271f9c1cb46e0c761551aecd2a",
+    "scripts/export-standalone-object-language-abi.py": "5d0f4c7ccfd18acf133758c5898f26f32e1c7a983b3c7525dbea1dcd6a180e94",
+    "js/nethack/bindings/objnam.js": "07a49135bc6f878b242289763edff8f3097b53764160116f8b184b973ccf3098",
+    "js/ported/objnam.js": "db04124d2ca9630fb04e3503dc2f70b721efd1aa6e83983ad4567323f4a9bb98",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-objnam-support.inc": "e1392608f68a679fe1374e334a4d5bb2742f93f6c20140ea0f74680a5f2c3032"
   }

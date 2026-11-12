@@ -1,7 +1,7 @@
 // Existing vision adapter, original policy, shared measured storage.
 import abi from './vision-abi.json' with {type:'json'};
 import * as source from '../ported/vision.js';
-import {initializeVision,callVision} from '../ported/vision-runtime.js';
+import {initializeVision,callVision} from '../nethack/bindings/vision.js';
 export function enableVision(environment,layouts){
  const {services,ctypes,memory,functions}=environment,L=layouts.vision;
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});

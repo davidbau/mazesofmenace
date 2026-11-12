@@ -2652,13 +2652,13 @@
     "unfixable_trouble_count": "int (boolean)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-apply-abi.py": "cca7e05902d567a5b4c450a7e56c1a19595001a9abe22ce8e2fcc25a71d77cba",
+    "scripts/export-standalone-apply-abi.py": "aaf47f1886b514b2dd5b494bbd4ffb00b12870be50710d0679df370aaadc78d9",
     "scripts/tu-apply-layout.h": "369a18488c6f444e33f623db1cf457e0ce2d6ee2bc51c99704e57c01075c1556",
     "nethack-c/wasm/tu-fragments/apply-support.inc": "43aa1e0909a4876810882e9763c24fb0d6046e2759820357bc2b2061f40b7b56",
     "nethack-c/wasm/tu-libraries/apply.js": "1b65a6ce123b7d66064991935ec18aaaa58456ebecf8e15f619a2a2161bd9041",
-    "js/ported/apply-runtime.js": "e535d192120737498eed1d4ef617cfa743db1ee227405ec326dd69ab34cbafe5",
-    "js/ported/apply.js": "be6f62cf00537f679dd08ac4fbd01aef6e7d7f8205a331f483d14f43d2cad070",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/nethack/bindings/apply.js": "61f5e810e722eeef4961d97ccf0710aecd83b03d998291a65df48f173381082d",
+    "js/ported/apply.js": "44adf9760271187f1203395f474f7f95ba06715184b1d215f24ec344e7dc391d",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

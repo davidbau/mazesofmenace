@@ -97,7 +97,7 @@
 // #define DEC(c) (((c) - ' ') & 077)
 
 
-import { C } from '../ported/c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 export function main(argc, argv)
 {

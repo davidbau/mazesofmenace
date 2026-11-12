@@ -1,7 +1,7 @@
 // Canonical TELEPORT bridge, original policies and source-private state, shared native fields.
 import abi from './teleport-abi.json' with{type:'json'};
 import * as source from '../ported/teleport.js';
-import {createTeleportBridge} from '../ported/teleport-runtime.js';
+import {createTeleportBridge} from '../nethack/bindings/teleport.js';
 export function enableTeleport(environment,layouts,creation){
  const{services,memory,ctypes,transport,functions}=environment,address=environment.address,{views}=creation;
  for(const[k,v]of Object.entries(abi.layout))if(layouts.teleport[k]!==v)throw new Error('Review TELEPORT ABI '+k);

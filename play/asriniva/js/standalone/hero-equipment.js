@@ -1,16 +1,17 @@
 // Shared storage transport for unchanged WEAPON, WORN, WIELD and DO_WEAR.
 import abi from './equipment-abi.json' with {type:'json'};
+import wornTextAbi from './worn-text-abi.json' with {type:'json'};
 import armorAbi from './armor-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as weapon from '../ported/weapon.js';
-import {callWeapon} from '../ported/weapon-runtime.js';
+import {callWeapon} from '../nethack/bindings/weapon.js';
 import * as worn from '../ported/worn.js';
-import {createWornEnvironment} from '../ported/worn-runtime.js';
+import {createWornEnvironment} from '../nethack/bindings/worn.js';
 import * as wield from '../ported/wield.js';
-import {createWieldEnvironment} from '../ported/wield-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createWieldEnvironment} from '../nethack/bindings/wield.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 import * as armor from '../ported/do_wear.js';
-import {callDoWear} from '../ported/do_wear-runtime.js';
+import {callDoWear} from '../nethack/bindings/do_wear.js';
 import {attachEquipmentFormatting} from './equipment-format.js';
 export function enableHeroEquipment(environment,layouts,hero){
  const {services,ctypes,memory,transport}=environment,address=environment.address;
@@ -31,6 +32,7 @@ export function enableHeroEquipment(environment,layouts,hero){
   });
  }
  const W=layouts.weapon,ws=locals.weapon,arw=environment.allocateGlobal('weapon.arwep',W.arwSize*weapon.arwep.length),kebab=environment.allocateGlobal('weapon.kebabable',weapon.kebabable.length);
+ ws.y_n=prompt=>transport.char(environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynchars'),110,1));
  Object.assign(ws,{storage:i=>[arw,kebab][i],storageCount:i=>[weapon.arwep.length,weapon.kebabable.length][i],
   equipment:i=>address(ctypes.load('struct obj *',environment.requireGlobal(['uleft','uright','uwep','uswapwep'][i]))),
   hands:()=>environment.requireGlobal('hands_obj'),nulGlyphInfo:()=>environment.requireGlobal('nul_glyphinfo'),
@@ -51,6 +53,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  for(const kind of ['rn2','rnd'])ws[kind]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services[kind](n);};
  ws.d=(dice,n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services.d(dice,n);};
  const wn=locals.worn,wd=locals.wield;
+ wn.commonString=index=>{const name=['NH_BLACK','Something'][transport.int(index)],row=wornTextAbi.commonStrings[name];if(!row)throw Error('Unknown WORN common string '+index);return address(ctypes.getField(row.type,environment.requireGlobal(row.global),row.field,'const char *'));};
  // Native hack.h ynq: yn_function(query, ynqchars, 'q', TRUE).
  wd.ynq=prompt=>environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynqchars'),113,1);
  wd.strcmp=(left,right)=>services.strcmp(typeof left==='string'?services.literal(left):address(left),typeof right==='string'?services.literal(right):address(right));

@@ -2194,11 +2194,11 @@
     }
   },
   "sourceSha256": {
-    "js/ported/polyself-runtime.js": "ec4545d54e1084a33ad6c3c847fff66b2a2db250143bb87c04833fb0de7a1adf",
-    "js/ported/u_init-runtime.js": "b6c47e0c75e7e1efe8d7ac9de848f12284fa1647a46abd7cbe4bbdd9455e8c42",
-    "scripts/export-standalone-hero-abi.mjs": "2127703a403b6822676f0322e6c7d0edb0f9362de6ec6dfcd1c93cbfea37e50b",
+    "js/nethack/bindings/polyself.js": "f40e1bb9e78c8982f93c7981c762a7aa9a5bf7acf32e72877a858b80868ecdd6",
+    "js/nethack/bindings/u_init.js": "671a024697ef895fbf243e951f4e9b3fe864ba16668079c65f452df5407e6d6b",
+    "scripts/export-standalone-hero-abi.mjs": "121996fe2d9491e4a3d99b8a14a6e767a2f969c81c75524c601d498777b7c372",
     "scripts/tu-u_init-layout.h": "49854841c5e07c15768340169065f2c068780b46da69e1e7f71b2d3f655ad6e4",
-    "js/ported/attrib-runtime.js": "06b6c52c695fe31b1e89ed1760e364dd6a1f0c4060b0199f0777d7b040e4721e"
+    "js/nethack/bindings/attrib.js": "21849a083dee4eabde606fac21d7630434d741c1d87b5ecca0b69a6387f78f80"
   },
   "measurementArtifactSha256": {
     "reference.mjs": "fb43b8aeede92af807d8267a3f00b193e4efbd57ce5374325af92c645a2feeae",

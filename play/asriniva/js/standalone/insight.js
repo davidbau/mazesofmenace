@@ -1,7 +1,7 @@
 // Original INSIGHT information/disclosure policies, one native private state.
 import abi from './insight-abi.json' with {type:'json'};
 import * as source from '../ported/insight.js';
-import {initializeInsight,callInsight} from '../ported/insight-runtime.js';
+import {initializeInsight,callInsight} from '../nethack/bindings/insight.js';
 const owners=new WeakMap();
 export function enableInsight(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

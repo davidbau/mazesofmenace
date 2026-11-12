@@ -931,14 +931,14 @@
     "line": 529
   },
   "sourceSha256": {
-    "scripts/export-standalone-turn-loop-abi.py": "8923810779508eca1d76aeaa37bed72999334c87f1db0a291e42a03fbd04e0c8",
+    "scripts/export-standalone-turn-loop-abi.py": "38c8bcb447f1100d8ac5668c5206b226b70b3313904bbfa7f7737320c3a13fd2",
     "js/standalone/turn-loop.js": "2d1e19a2675304fc7c8ce5364d13e58ec0cd8a21af87488ddf74171403a1aabe",
-    "js/ported/allmain-runtime.js": "cfbf21ddaa36ce857da33310942c402e1fcadc41f9e5203d5bfe7e514a269f17",
+    "js/nethack/bindings/allmain.js": "085de55ded74d19dd751461ecc0c6fadc1caaf8ac7dd6d21591f88417d0467ed",
     "nethack-c/wasm/tu-fragments/allmain-support.c": "943b1dc7e9d2431f93facc08e660d9f35f07284b4e00d75daafc18ff5e1d451f",
-    "js/ported/allmain.js": "9ea50e3e567e113de8ad4e552551f68bb682cb3b6c429e0a4cd6adcc2a1f3289",
+    "js/ported/allmain.js": "73413c669617a45074e88a3becd607f9420d081e1672ab7ccb1a30dd3f551541",
     "nethack-c/wasm/tu-libraries/allmain.js": "3c10c15649380e9e1955fdb1e07596bf6cbc011f991bfd1b986047f683a2bff2",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/window-abi.json": "30f65010df7e8193f737e07ba8c24026b121ba86687d160d89850dfc426e6502"
+    "js/standalone/window-abi.json": "917300f2fb5242d594f764f20e8686466a83678942c0c79ef265985eab7180aa"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

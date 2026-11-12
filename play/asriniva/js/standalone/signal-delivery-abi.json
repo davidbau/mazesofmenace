@@ -1,0 +1,124 @@
+{
+  "infoSize": "128",
+  "maskSize": "128",
+  "actionSize": "152",
+  "mask": "8",
+  "flags": "136",
+  "restorer": "144",
+  "signalCount": "65",
+  "SA_SIGINFO": "4",
+  "SA_RESTART": "268435456",
+  "SIG_BLOCK": "0",
+  "SIG_UNBLOCK": "1",
+  "SIG_SETMASK": "2",
+  "SIG_IGN": "-2",
+  "SIG_ERR": "-1",
+  "SIGKILL": "9",
+  "SIGSTOP": "19",
+  "longSize": "8",
+  "defaultActions": {
+    "1": {
+      "name": "SIGHUP",
+      "action": "terminate"
+    },
+    "2": {
+      "name": "SIGINT",
+      "action": "terminate"
+    },
+    "3": {
+      "name": "SIGQUIT",
+      "action": "abort"
+    },
+    "4": {
+      "name": "SIGILL",
+      "action": "abort"
+    },
+    "5": {
+      "name": "SIGTRAP",
+      "action": "abort"
+    },
+    "6": {
+      "name": "SIGABRT",
+      "action": "abort"
+    },
+    "7": {
+      "name": "SIGBUS",
+      "action": "abort"
+    },
+    "8": {
+      "name": "SIGFPE",
+      "action": "abort"
+    },
+    "9": {
+      "name": "SIGKILL",
+      "action": "terminate"
+    },
+    "10": {
+      "name": "SIGUSR1",
+      "action": "terminate"
+    },
+    "11": {
+      "name": "SIGSEGV",
+      "action": "abort"
+    },
+    "12": {
+      "name": "SIGUSR2",
+      "action": "terminate"
+    },
+    "13": {
+      "name": "SIGPIPE",
+      "action": "terminate"
+    },
+    "14": {
+      "name": "SIGALRM",
+      "action": "terminate"
+    },
+    "15": {
+      "name": "SIGTERM",
+      "action": "terminate"
+    },
+    "24": {
+      "name": "SIGXCPU",
+      "action": "abort"
+    },
+    "25": {
+      "name": "SIGXFSZ",
+      "action": "abort"
+    },
+    "26": {
+      "name": "SIGVTALRM",
+      "action": "terminate"
+    },
+    "27": {
+      "name": "SIGPROF",
+      "action": "terminate"
+    },
+    "29": {
+      "name": "SIGPOLL",
+      "action": "terminate"
+    },
+    "31": {
+      "name": "SIGSYS",
+      "action": "abort"
+    }
+  },
+  "referenceSourceSha256": {
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/raise.c": "38b625a9a367cca608502b43b95c9fefd9e9c289553bad4dd279321c4afe3559",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/kill.c": "1b700ecd4b4f8b7baf07fc7fa728cb3fc73f9d1c55b40d95f6845ecd0bf1580a",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/pthread_sigmask.c": "70f75a83a597b1fb689ee7aa0dd80ad5129c22c7d8779d824741cc3aa77ceb20",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/sigaction.c": "5033f83e68fe8514fef2a35287bca69c87459f998ee7deb10273eda5203b8bee",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/signal.c": "5ffb46a04122de060329c46c1d3a0410db1fd9a629745bba75525365dfc01cd0",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigprocmask.c": "48c66663ec46741ef28ff42d21a6bc61cf44d65896271c3515209872e9b1f6bf",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigpending.c": "58466de259abd12ea5b0d2e6ab3d6515d48839edbea0465dc38f4cf5d15d9b87",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigemptyset.c": "9cd943f0b64dc05f8e4e6e44ed996c37c26e11a6fcbcb6c909efc74fa3fe63b3",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigfillset.c": "3816983f1aa8c19807652ab3176d0b84375c6de10415c0739754d09cb525d1e5",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigaddset.c": "cd1ca87b0c108ddb9fbb90f0fb869c9f051aacb0b483d542d2a7588873f7e558",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigdelset.c": "ee067941f4f10964594a45f2c01d626562512b41e0cb1436cd0d55d3009d688a",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigismember.c": "48f40fc6e8a1b64d54c4084a083ea177ee1c1d5779d9f2b5a26de40ab72bf21f",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigandset.c": "bcd164c99adacddff60cdba5ab1a4a89fb61a5504cc8f8631da2ef07485807f3",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/signal/sigorset.c": "0854f8628777b4838675c6d16811517333ceea4e703cd1a6458e6631cb394af7",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/exit/_Exit.c": "7a3f141fb48d3e8dec67380d7da86eac0b97cd224ec7c060d6fe15b161b4d4c9",
+    ".cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/exit/abort.c": "dab1cb2741a6890a8d16591457969c6c0d6e7b5fc34d0bf0d663593dee0ee627"
+  },
+  "profile": "Pinned SDK MEMORY64/LP64 no pthreads -O2 EXIT_RUNTIME1; shared table and synchronous virtual signals, no host process delivery."
+}

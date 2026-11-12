@@ -279,7 +279,7 @@ import { makemon_runtime } from './makemon_create.js';
 import { enexto } from './teleport.js';
 import { m_next2u } from './mhitu.js';
 import { body_part, mbodypart, poly_gender } from './polyself.js';
-import { livelog_printf, verbalize, youHear, youFeel } from './pline.js';
+import { impossible, livelog_printf, verbalize, youHear, youFeel } from './pline.js';
 import { growl, set_voice, yelp } from './sounds.js';
 import { is_izchak, saleable, shkname, Shknam } from './shknam.js';
 import { ttyNorep, ttyPline } from './tty_message.js';
@@ -323,10 +323,10 @@ export function shk_globals_init(state = game) {
     state.gs.sell_how = SELL_NORMAL;
 }
 
-// C ref: shk.c money2mon() (157-184). Transfer an exact gold stack from the
+// C ref: shk.c await money2mon() (157-184). Transfer an exact gold stack from the
 // hero's inventory to a monster. The diagnostic branches are impossible in a
 // valid payment, so their discarded pline.c result is recorded as a gap.
-export function money2mon(monster, amount, state = game) {
+export async function money2mon(monster, amount, state = game) {
     const gold = findgold(state.invent);
     const payment = Math.trunc(amount);
     if (payment <= 0) {
@@ -340,7 +340,7 @@ export function money2mon(monster, amount, state = game) {
 
     let paid = gold;
     if (gold.quan > payment)
-        paid = splitobj(gold, payment, { state });
+        paid = await splitobj(gold, payment, { state });
     else if (gold.owornmask)
         remove_worn_item(gold, false, state);
     freeinv(paid, { state });
@@ -369,7 +369,7 @@ export async function money2u(monster, amount, state = game) {
 
     let paid = gold;
     if (gold.quan > payment)
-        paid = splitobj(gold, payment, { state });
+        paid = await splitobj(gold, payment, { state });
     obj_extract_self(paid, { state });
 
     if (!merge_choice(state.invent, paid, state)
@@ -2021,7 +2021,7 @@ async function check_credit(amount, shkp, state, env) {
 async function pay(amount, shkp, state, env) {
     let robbed = shkp.mextra.eshk.robbed;
     const balance = amount <= 0 ? amount : await check_credit(amount, shkp, state, env);
-    if (balance > 0) money2mon(shkp, balance, state);
+    if (balance > 0) await money2mon(shkp, balance, state);
     else if (balance < 0) await money2u(shkp, -balance, state);
     state.disp.botl = true;
     if (robbed) {
@@ -2423,7 +2423,9 @@ export async function dopay(state = game, env = {}) {
         return ECMD_TIME;
     }
     if (shkp !== resident) {
-        note_unported('pline.c impossible');
+        // Reached when the keeper was moved out of his shop without
+        // make_angry_shk()'s setpaid(), as mhurtle() does, and is billing.
+        await impossible('dopay: not to shopkeeper?', state);
         if (resident) setpaid(resident, state);
         return ECMD_OK;
     }
@@ -2445,14 +2447,14 @@ export async function dopay(state = game, env = {}) {
             eshk.debit = eshk.loan = 0;
             await message('Your debt is covered by your credit.', state);
         } else if (!eshk.credit) {
-            money2mon(shkp, debt, state);
+            await money2mon(shkp, debt, state);
             eshk.debit = eshk.loan = 0;
             await message('You pay that debt.', state);
             state.disp.botl = true;
         } else {
             debt -= eshk.credit;
             eshk.credit = 0;
-            money2mon(shkp, debt, state);
+            await money2mon(shkp, debt, state);
             eshk.debit = eshk.loan = 0;
             await message('That debt is partially offset by your credit.', state);
             await message('You pay the remainder.', state);
@@ -3710,7 +3712,7 @@ async function litter_scatter(litter, x, y, shkp, state = game, env = {}) {
             if (costly_spot(ix, iy, state)
                 && (onbill(object, owner, true)
                     || ((owner = find_objowner(object, ix, iy, state))
-                        && onbill(object, owner, false)))) {
+                        && await onbill_async(object, owner, false, state)))) {
                 subfrombill(object, owner, state, env);
             }
         }
@@ -4137,11 +4139,14 @@ export function gem_learned(oindx, state = game) {
     }
 }
 
-// C ref: shk.c onbill() (1135-1155). C returns the bill entry; this returns it
-// or null, which is the same test for every ported caller. C's two impossible
-// calls are diagnostics: the "paid obj on bill" one cannot be reached while
-// the bill is empty, and the "unpaid obj" one is suppressed by every ported
-// caller's silent=true.
+// C ref: shk.c onbill() (1135-1155), the bill search. C returns the bill
+// entry; this returns it or null, which is the same test for every ported
+// caller. When silent is FALSE, C prints impossible() for an unpaid object it
+// does not find; the port's impossible() is async, so async callers use
+// onbill_async(), and the synchronous callers that scripts/
+// onbill-async-callers.test.mjs lists record that diagnostic as a gap. C's
+// "paid obj on bill?" impossible() is a check on bill bookkeeping that valid
+// play keeps; neither function prints it.
 export function onbill(obj, shopkeeper, silent) {
     const eshkp = shopkeeper?.mextra?.eshk;
     if (eshkp) {
@@ -4150,24 +4155,35 @@ export function onbill(obj, shopkeeper, silent) {
             if (bp && bp.bo_id === obj.o_id) return bp;
         }
     }
+    if (obj.unpaid && !silent) note_unported('pline.c impossible');
+    return null;
+}
+
+// C ref: shk.c onbill() (1135-1155), whole. An unpaid object missing from the
+// bill is reachable: a shopkeeper whom mhurtle() moved out of his shop keeps
+// his bill but no longer bills a split-off child (splitbill()), and an unpaid
+// stack carried into another shop is not on its keeper's bill.
+export async function onbill_async(obj, shopkeeper, silent, state = game) {
+    const bp = onbill(obj, shopkeeper, true);
+    if (bp) return bp;
     if (obj.unpaid && !silent) {
-        throw new UnsupportedShopError('onbill() reporting a stray unpaid item');
+        await impossible(`onbill: unpaid obj ${!shopkeeper
+            ? 'without shopkeeper' : "not on shk's bill"}?`, state);
     }
     return null;
 }
 
-// C ref: shk.c splitbill() (3623-3658). mkobj.c splitobj() calls this only
-// after reducing the parent and creating its child; keep the bill mutation
-// synchronous and in that source position.
-export function splitbill(obj, child, state = game) {
+// C ref: shk.c splitbill() (3623-3658). mkobj.c splitobj() calls this after
+// reducing the parent and creating its child, and awaits it there.
+export async function splitbill(obj, child, state = game) {
     const shopkeeper = shop_keeper(firstRoom(state.u?.ushops), state);
     if (!shopkeeper || !inhishop(shopkeeper, state)) {
-        note_unported('shk.c impossible splitbill: no resident shopkeeper');
+        await impossible('splitbill: no resident shopkeeper??', state);
         return;
     }
-    const bill = onbill(obj, shopkeeper, false);
+    const bill = await onbill_async(obj, shopkeeper, false, state);
     if (!bill) {
-        note_unported('shk.c impossible splitbill: parent not on bill');
+        await impossible('splitbill: not on bill?', state);
         return;
     }
     if (bill.bquan < child.quan)
@@ -4311,13 +4327,13 @@ export function subfrombill(obj, shkp, state = game, env = {}) {
 // C ref: shk.c stolen_container() (3713-3751). Add the shop's claim on each
 // nested item, removing billed objects from the bill so the debt is charged
 // exactly once. `ininv` selects the source's unpaid test for carried items.
-function stolen_container(obj, shkp, price, ininv, state) {
+async function stolen_container(obj, shkp, price, ininv, state) {
     for (let item = obj.cobj; item; item = item.nobj) {
         if (item.oclass === COIN_CLASS) continue;
         let billamt = 0;
         const owner = { value: shkp };
         if (!billable(owner, item, shkp.mextra.eshk.shoproom, true, state)) {
-            const bill = onbill(item, owner.value, false);
+            const bill = await onbill_async(item, owner.value, false, state);
             if (!bill) continue;
             billamt = bill.bquan * bill.price;
             sub_one_frombill(item, owner.value, state, {});
@@ -4328,7 +4344,7 @@ function stolen_container(obj, shkp, price, ininv, state) {
             price += get_pricing_units(item, state) * get_cost(item, shkp, state);
 
         if (hasContents(item))
-            price = stolen_container(item, shkp, price, ininv, state);
+            price = await stolen_container(item, shkp, price, ininv, state);
     }
     return price;
 }
@@ -4359,7 +4375,7 @@ export async function stolen_value(
     const owner = { value: shkp };
     if (!billable(owner, obj, roomno, true, state)) {
         shkp = owner.value;
-        const bill = onbill(obj, shkp, false);
+        const bill = await onbill_async(obj, shkp, false, state);
         if (bill) {
             billamt = bill.bquan * bill.price;
             sub_one_frombill(obj, shkp, state, {});
@@ -4378,7 +4394,7 @@ export async function stolen_value(
 
         if (hasContents(obj)) {
             const ininv = obj.where === OBJ_INVENT || obj.where === OBJ_FREE;
-            value += stolen_container(obj, shkp, 0, ininv, state);
+            value += await stolen_container(obj, shkp, 0, ininv, state);
             if (!ininv) gvalue += contained_gold(obj, true);
         }
     }
@@ -4490,8 +4506,8 @@ export async function globby_bill_fixup(obj_absorber, obj_absorbed, state = game
     if (!shkp) shkp = shop_keeper(firstRoom(state.u?.ushops), state);
     if (!shkp) return;
 
-    bp_absorber = onbill(obj_absorber, shkp, false);
-    bp = onbill(obj_absorbed, shkp, false);
+    bp_absorber = await onbill_async(obj_absorber, shkp, false, state);
+    bp = await onbill_async(obj_absorbed, shkp, false, state);
     const eshk = shkp.mextra?.eshk;
     if (!eshk) return;
     const per_unit_cost = set_cost(obj_absorbed, shkp, state);
@@ -4772,7 +4788,7 @@ async function inherits(shopkeeper, numsk, croaked, silently, state) {
             if (loss > umoney || !loss || uinshop) {
                 eshkp.robbed = Math.max(0, eshkp.robbed - umoney);
                 if (umoney > 0) {
-                    money2mon(shopkeeper, umoney, state);
+                    await money2mon(shopkeeper, umoney, state);
                     state.disp ??= {};
                     state.disp.botl = true;
                 }
@@ -4783,7 +4799,7 @@ async function inherits(shopkeeper, numsk, croaked, silently, state) {
                     );
                 taken = true;
             } else {
-                money2mon(shopkeeper, loss, state);
+                await money2mon(shopkeeper, loss, state);
                 state.disp ??= {};
                 state.disp.botl = true;
                 if (!silently) {
@@ -4893,18 +4909,9 @@ export async function finish_paybill(state = game) {
     unleash_all(state);
     if (shkp) {
         const umoney = money_cnt(state.invent);
-        if (umoney) money2mon(shkp, umoney, state);
+        if (umoney) await money2mon(shkp, umoney, state);
     }
     await drop_upon_death(null, null, x, y, state);
-}
-
-// Thrown where shk.c reaches shop bookkeeping this port has not ported.
-export class UnsupportedShopError extends Error {
-    constructor(branch) {
-        super(`shop handling requires ${branch}`);
-        this.name = 'UnsupportedShopError';
-        this.branch = branch;
-    }
 }
 
 // C ref: shk.c add_damage() (4399-4433). Keep the repair record in the
@@ -5111,7 +5118,7 @@ export async function pay_for_damage(
         const oldY = shopkeeper.my;
         damageCost = await check_credit(damageCost, shopkeeper, state, env);
         if (damageCost > 0) {
-            money2mon(shopkeeper, damageCost, state);
+            await money2mon(shopkeeper, damageCost, state);
             state.disp.botl = true;
         }
         await message(`Mollified, ${shkname(shopkeeper, state)} accepts your restitution.`, state, env);

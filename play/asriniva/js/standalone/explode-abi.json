@@ -410,14 +410,14 @@
     "mon_explodes": "void (struct monst *, struct attack *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-explode-abi.py": "210a8993b482628f7abe7c1fd2f4092e0b28b58328bec2491dd9fac1e24b28bb",
+    "scripts/export-standalone-explode-abi.py": "5b83ecb3c4ca92053de18566b01681a52697143a89f284a92b41ed1ecaddfb89",
     "scripts/tu-explode-layout.h": "c374294030b4f2382f148032933e4bcf0ce4f656cb07eaa66f2daa8462e3d0b2",
     "nethack-c/wasm/tu-fragments/explode-support.inc": "88b803b5ee12a62a74942804a34718ec59b2187c0df883e552e16dac159cbd84",
     "nethack-c/wasm/tu-libraries/explode.js": "b019307c5352c30230a598eb21761ee35d92e757cc24e69b2d75fa04373017ac",
     "nethack-c/upstream/src/explode.c": "4eec158432088c93b9f48226b03305c2119532171e0840126b6b5ca6a48fb1a7",
-    "js/ported/explode.js": "57a0b19366b71473b08ec0c588bbc594bb9555356bd0f1e9da5b7e02ba71944f",
-    "js/ported/explode-runtime.js": "77f938c6774d5d5a70dd49f95ba28a2f4a69368531b3d081686bd89d4a448605",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/explode.js": "6810ffa0c1a7ab78102dbe7ecef515f647d1f853272ec415bf7caa8f39e71c7c",
+    "js/nethack/bindings/explode.js": "6b6cf5ed19226bfe326c483403fb6b9a27ecd7e3f2e3884ca803bbaa63502580",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

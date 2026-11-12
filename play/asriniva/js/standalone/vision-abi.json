@@ -1003,10 +1003,10 @@
     }
   ],
   "sourceSha256": {
-    "js/ported/vision-runtime.js": "c64df5dfe113e7acf1e1664a45882b2e3fe81f57db6868ddb9f4d77a6facf8d8",
-    "scripts/export-standalone-vision-abi.py": "995e6e87f96806059aae12c6fa6c895e1a0ef6519431dd4063f3d78e46ac25a8",
+    "js/nethack/bindings/vision.js": "7b2ec6190fce21cff5e21b721277fb0109d680211579aec36127eed1bf7faf70",
+    "scripts/export-standalone-vision-abi.py": "d9ff8c2673d5d7fe76253872fca994ca0aad433441c16a3df57ac8a5a379537e",
     "nethack-c/wasm/tu-vision-support.inc": "62453eaea15a7e23f59703a101f16196dc6a30f968ed7cd02c0e81daf4354b45",
-    "js/standalone/vision.js": "dd43f560699abfe76a1d3a49a3f2bcaa2d041aa675c8b5d810c4deefa51e65c5",
+    "js/standalone/vision.js": "566732a75c750cc7dd996ef3c64bbc38fc8ac68c2eb6220364a2707e2fe2964a",
     "nethack-c/wasm/tu-libraries/vision.js": "cfb2b98bf2558e2e81753f398b2f830ea7063d6f8a9643ba1b91b7759a91277c"
   }
 }

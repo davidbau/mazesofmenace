@@ -4,7 +4,7 @@
 
 import { memoryLayout } from './wizcmds_data.js';
 import { game } from './gstate.js';
-import { note_unported } from './unported.js';
+import { finish_steps, ImpossibleCall } from './source_steps.js';
 import { isok } from './cmd_isok.js';
 import { rn2, rnd } from './rng.js';
 import { DUNGEON_DATA } from './dungeon_data.js';
@@ -105,6 +105,7 @@ import {
 import { inhishop, shop_keeper } from './shk.js';
 import { findpriest, inhistemple } from './priest.js';
 import { ttyPline } from './tty_message.js';
+import { impossible } from './pline.js';
 // js/windows.js does not import from this file, so there is no cycle.
 import { add_menu_heading, getlin, select_menu } from './windows.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
@@ -781,11 +782,11 @@ export function avoid_ceiling(level, state = game) {
 }
 
 // C ref: dungeon.c builds_up() (1477-1493). Only a level of dungeon -1 (see
-// js/dungeon_table.js) reaches the impossible() arm. impossible() is async in
-// this port and builds_up() is not, so a caller that can wait passes
-// env.impossible, which receives the message to print once builds_up()
-// returns; for any other caller the message is recorded as a gap.
-export function builds_up(level, state = game, env = {}) {
+// js/dungeon_table.js) reaches the impossible() arm; it is yielded as an
+// ImpossibleCall (js/source_steps.js), so a caller that can wait prints it
+// where C does. builds_up() is the synchronous form, which records the print
+// as a gap; scripts/level-difficulty-steps.test.mjs lists its callers.
+export function* builds_up_steps(level, state = game) {
     const dungeon = dungeon_at(level.dnum, state);
     if (dungeon.num_dunlevs > 1)
         return dungeon.entry_lev === dungeon.num_dunlevs;
@@ -793,10 +794,13 @@ export function builds_up(level, state = game, env = {}) {
         (candidate) => on_level(candidate.end2, level),
     );
     if (branch) return Boolean(branch.end1_up);
-    const text = `builds_up: can't find branch for dungeon ${level.dnum}`;
-    if (env.impossible) env.impossible(text);
-    else note_unported('pline.c impossible');
+    yield new ImpossibleCall(
+        `builds_up: can't find branch for dungeon ${level.dnum}`);
     return false;
+}
+
+export function builds_up(level, state = game) {
+    return finish_steps(builds_up_steps(level, state));
 }
 
 // C ref: dungeon.c next_level() (1496-1514), the '>' command's descent.
@@ -888,7 +892,9 @@ export function deepest_lev_reached(state, noquest = false) {
 // C ref: dungeon.c level_difficulty(). This value feeds random monster and
 // object generation, so retain the source's endgame, Amulet, and upward-branch
 // adjustments rather than treating dungeon depth as interchangeable.
-export function level_difficulty(state = game) {
+// builds_up()'s impossible() is a step (see builds_up_steps() above);
+// level_difficulty() is the synchronous form, which records it as a gap.
+export function* level_difficulty_steps(state = game) {
     const level = state.u?.uz;
     if (!level || !dungeon_at(level.dnum, state))
         throw new Error('level_difficulty requires initialized dungeon state');
@@ -909,7 +915,7 @@ export function level_difficulty(state = game) {
         result = deepest_lev_reached(state);
     } else {
         result = depth(level, state);
-        if (builds_up(level, state)) {
+        if (yield* builds_up_steps(level, state)) {
             const dungeon = dungeon_at(level.dnum, state);
             result += 2 * (dungeon.entry_lev - level.dlevel + 1);
         }
@@ -917,6 +923,10 @@ export function level_difficulty(state = game) {
     if (EAggravate_monster(state.u))
         result = result > 25 ? 50 : result * 2;
     return result;
+}
+
+export function level_difficulty(state = game) {
+    return finish_steps(level_difficulty_steps(state));
 }
 
 // C ref: dungeon.c ledger_no() (1375-1379), which returns
@@ -2331,8 +2341,10 @@ export function remdun_mapseen(dnum, state = game) {
 // fall can cross a dungeon boundary without proving that the transition used
 // the branch recorded in the source topology. Remember only a matching
 // forward branch on the level being left; reverse travel and non-branch
-// transitions leave the overview unchanged.
-export function recbranch_mapseen(source, dest, state = game) {
+// transitions leave the overview unchanged. A forward branch from a level
+// with no overview record, or a second branch on one level, is reported
+// through impossible(); `env.impossible` replaces pline.c impossible().
+export async function recbranch_mapseen(source, dest, state = game, env = {}) {
     if (!source || !dest || source.dnum === dest.dnum) return;
 
     let branch = state.svb?.branches ?? null;
@@ -2347,15 +2359,19 @@ export function recbranch_mapseen(source, dest, state = game) {
         }
     }
 
-    // No matching branch means this was not a real dungeon branch. C's
-    // impossible() diagnostics here have no gameplay-visible effect.
+    /* branch not found, so not a real branch. */
     if (!branch) return;
 
+    const report = env.impossible ?? ((text) => impossible(text, state));
     const mapseen = find_mapseen(source, state);
-    if (!mapseen) return;
-    // C reports an impossible diagnostic when a different branch was already
-    // remembered, then assigns the newly observed forward branch anyway.
-    mapseen.br = branch;
+    if (mapseen) {
+        if (mapseen.br && branch !== mapseen.br)
+            await report('Two branches on the same level?');
+        mapseen.br = branch;
+    } else {
+        await report(`Can't note branch for unseen level (${source.dnum}, `
+            + `${source.dlevel})`);
+    }
 }
 
 // C ref: dungeon.c get_annotation() (2478-2485). Return the custom name for

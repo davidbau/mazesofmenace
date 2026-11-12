@@ -16,7 +16,7 @@
   "SIGINT": 2,
   "sourceSha256": {
     "scripts/export-standalone-display-abi.mjs": "e7b92843fe642ef5d230dc98497c05f403f90505d57a8a116677bea74a89fa4a",
-    "js/ported/windows.js": "323ae84da525bd76208b340c3ef4325afde505c85ff97b59eff4d73288da6c06",
+    "js/ported/windows.js": "3cc33db5309c1df903d1499c940df160bdaf23cb24ba685ef118cd5422dcf210",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },
   "referenceArtifactSha256": {

@@ -3,7 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 import layouts from '../wasm/tu-layouts.json' with { type: 'json' };
 const constants = { ...layouts.shknam, VEGETARIAN_CLASS: layouts.shknam.MAXOCLASSES + 1 };
 

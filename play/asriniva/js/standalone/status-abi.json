@@ -2372,13 +2372,13 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-status-abi.py": "6758aa7ec73f2d3c1123060d093451ef3efea5759b4fe97484735669128a90ed",
-    "js/ported/botl-runtime.js": "c727759cef7fb2f74c63996bc8417b3196025f1017313aee4120a273424bc77c",
-    "js/ported/botl.js": "b9fe8833e7b8a8ad06790c6bb1ddbd75cbf8a3d0129d8150aefba25e85358c25",
+    "scripts/export-standalone-status-abi.py": "b1e70ce4e96e7c28cc3518356b166503a5a2ccba5c0ce89b941506403f86418d",
+    "js/nethack/bindings/botl.js": "7861b0980798c406ea5bd695d9e9c7634fd75e585094ebf2d7d5015028ecad4d",
+    "js/ported/botl.js": "f1172afd9ae2f1050c15b1ade52def2953d44c6401dd02a86076f1e700147f39",
     "js/ported/botl-data.js": "1d00fed5ec599653eb634e4222387b3f5683c0b275a4b9fad1aa7bddaee96206",
     "nethack-c/wasm/tu-botl-abi.h": "664c424eb43bc768f544e23dc7b675986a9786ead51be627bac58ee594e9b0ad",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/ported/sounds-runtime.js": "b96a39d7802cb063476980d578969c71eca5a7ce58e9e1b90a0bc6216c039a61",
+    "js/nethack/bindings/sounds.js": "a891c00f96a874f5f7d7bd390a3d69f643a89adfffd04e2b020d899b66c92634",
     "nethack-c/wasm/tu-sounds-support.inc": "99b433346e319b2d72ca6c573087c41c502cce279ae7b554aa6156351cc19916"
   },
   "referenceHeaderSha256": {

@@ -2493,9 +2493,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
              * whole collect_coords shuffle) mnexto() runs a SECOND enexto. */
             let moved = false;
             if (!rn2(2)) {
-                /* C do.c:1427 enexto(&cc, u.ux, u.uy, gy.youmonst.data): the
-                 * hero's own form matters (an eel draws goodpos' rn2(13)). */
-                const cc = enexto_out(ux, uy, { pmidx: u.umonnum | 0 });
+                /* C do.c:1429 uses gy.youmonst.data, the current form.  Wizard
+                 * polymorph can leave u.umonnum describing the original form. */
+                const cc = enexto_out(ux, uy, g.youmonst.data);
                 if (cc && ((cc.x - ux) ** 2 + (cc.y - uy) ** 2) <= 2) {
                     await u_on_newpos(cc.x, cc.y);
                     moved = true;

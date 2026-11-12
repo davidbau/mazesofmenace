@@ -1,6 +1,6 @@
 // One original projectile/line-check context and private state on shared bytes.
 import abi from './mthrowu-abi.json' with {type:'json'};
-import {callMthrowu} from '../ported/mthrowu-runtime.js';
+import {callMthrowu} from '../nethack/bindings/mthrowu.js';
 import {createRecordViews} from './record-views.js';
 const owners=new WeakMap();
 export function enableMthrowu(environment,layouts){

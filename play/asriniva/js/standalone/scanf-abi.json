@@ -10,9 +10,9 @@
     "js/standalone/libc.js": "098638b3aeddafdb54b7b54cb470f8de1bb5ab176625bd2fab2fa98622379e76",
     "js/c-runtime/scanf.js": "a18c2548d566723374e227fb978c8927aef3334141637095d010a39d5dae417d",
     "js/c-runtime/libc.js": "d34ae87cb41caa8132448cc63c1a17dcff032d430344eabe932c14822c52e556",
-    "js/c-runtime/stdio.js": "3a28e3ff3e0b3140b1d1f30586e8f2fa22c7ea23c3b9d1e1035e2948708a10f3",
+    "js/c-runtime/stdio.js": "6f305e60541c75710095718c6bb37a5cb8be1d5608eef8aa03c523256df16227",
     "js/c-runtime/memory.js": "ab6ee12e2a976ab5b47bfab6939d98e4ea01a638fe238f67ce28ed4d23996562",
-    "js/c-runtime/records.js": "0bc1a8704fd2eedd74cd12b98f8c5f567f40467a58c820818e5c931d40bbce4c",
+    "js/c-runtime/records.js": "3fa3684e7ac4a35a644aa9521b0427438c3e8f01974c181744608452d4fd77fa",
     "js/c-runtime/qsort.js": "b900e5f0cf14d079dde0cea2fa80b8c9ac68bdc277402cdd1eaebe48a8707d9a",
     "js/c-runtime/libc-profile.json": "e9cb03fc7f234ee78d5943279a04969d684ef1f718b93b8782ff89010a4f78c3"
   },

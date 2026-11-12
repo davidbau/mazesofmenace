@@ -1,8 +1,8 @@
 // Original player-monster creation/naming/gear policy on one native-shaped context.
 import abi from './mplayer-abi.json' with {type:'json'};
 import * as source from '../ported/mplayer.js';
-import {createMplayerEnvironment} from '../ported/mplayer-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createMplayerEnvironment} from '../nethack/bindings/mplayer.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableMplayer(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

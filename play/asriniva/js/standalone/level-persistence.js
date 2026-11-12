@@ -1,6 +1,6 @@
 // Original level serializers on the existing gameplay owners and storage.
 import {save_engravings,rest_engravings} from '../ported/engrave.js';
-import {callRegion} from '../ported/region-runtime.js';
+import {callRegion} from '../nethack/bindings/region.js';
 import {createRecordViews} from './record-views.js';
 
 export function enableLevelPersistence(environment,layouts){

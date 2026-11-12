@@ -1,7 +1,7 @@
 // Native entry conversion and shared storage only. Algorithms remain in SELVAR.
 import * as source from '../ported/selvar.js';
-import {createSelvarState,withSelvarEnvironment} from '../ported/selvar-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createSelvarState,withSelvarEnvironment} from '../nethack/bindings/selvar.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 export function enableSelections(environment,layouts,creation){
  const {services,functions}=environment,L=Object.freeze(layouts.selvar),state=createSelvarState();
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...a)=>environment.resolve(k)(...a):undefined});

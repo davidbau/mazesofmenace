@@ -1,6 +1,6 @@
 // Source game-startup policies and role tables on the standalone shared heap.
 import * as role from '../ported/role.js';
-import {createRoleEnvironment} from '../ported/role-runtime.js';
+import {createRoleEnvironment} from '../nethack/bindings/role.js';
 import {newgame,welcome} from '../ported/allmain.js';
 import {align_str} from '../ported/insight.js';
 import descriptions from './descriptions-abi.json' with {type:'json'};

@@ -6,7 +6,7 @@
  * Support code for "rogue"-style level.
  */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of extralev.c. All six original function boundaries
  * remain. The C here/doorhere macros expand at each use so changes to x/y

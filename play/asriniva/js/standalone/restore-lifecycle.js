@@ -3,7 +3,7 @@ import abi from './restore-lifecycle-abi.json' with {type:'json'};
 import records from './records.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/restore.js';
-import {callRestore} from '../ported/restore-runtime.js';
+import {callRestore} from '../nethack/bindings/restore.js';
 import {createCTypes} from './c-types.js';
 
 export function enableRestoreLifecycle(environment,layouts){

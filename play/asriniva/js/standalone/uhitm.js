@@ -1,8 +1,8 @@
 // Whole original UHITM factory; record identity and private backing stay shared.
 import abi from './uhitm-abi.json' with{type:'json'};
 import * as source from '../ported/uhitm.js';
-import{createUhitmEnvironment}from'../ported/uhitm-runtime.js';
-import{withCEnvironment}from'../ported/c-runtime.js';
+import{createUhitmEnvironment}from'../nethack/bindings/uhitm.js';
+import{withCEnvironment}from'../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableUhitm(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

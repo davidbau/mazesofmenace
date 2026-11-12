@@ -3,11 +3,11 @@ import {nh_getenv} from '../ported/options.js';
 import callbackABI from './lua-callbacks-abi.json' with {type:'json'};
 import * as nhlua from '../ported/nhlua.js';
 import * as nhlsel from '../ported/nhlsel.js';
-import {createNhlselEnvironment} from '../ported/nhlsel-runtime.js';
+import {createNhlselEnvironment} from '../nethack/bindings/nhlsel.js';
 import * as nhlobj from '../ported/nhlobj.js';
-import {createNhlobjEnvironment} from '../ported/nhlobj-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
-import {createNhluaEnvironment} from '../ported/nhlua-runtime.js';
+import {createNhlobjEnvironment} from '../nethack/bindings/nhlobj.js';
+import {withCEnvironment} from '../c-runtime/context.js';
+import {createNhluaEnvironment} from '../nethack/bindings/nhlua.js';
 export function enableLuaSandbox(environment,layouts){
  const {services,functions}=environment,schema=nhlua.nhluaSchema,lua=environment.enableLua();
  const layout=layouts.nhlua;
@@ -38,7 +38,8 @@ export function enableLuaSandbox(environment,layouts){
   longjmp:(buffer,status)=>{const scope=jumps.get(environment.address(buffer));if(!scope)throw new Error('Expired NHLUA jump target');return functions.longjmp(scope,status);},
  });
  const env=createNhluaEnvironment(local,{initialized:false});
- environment.register('nhlua',Object.fromEntries(schema.functions.map(f=>[f.name,nhlua[f.name]])),env);
+ const parameters=new Map(schema.functions.map(f=>[f.name,f.parameters]));
+ environment.register('nhlua',Object.fromEntries(schema.functions.map(f=>[f.name,nhlua[f.name]])),env,{prepareArgs:(name,args)=>args.map((value,i)=>{const type=parameters.get(name)[i]?.type;return typeof type==='object'?(typeof value==='string'&&type.pointer==='char'?services.literal(value):environment.address(value)):value;})});
  environment.register('lua-api',lua.api);
  enableLuaRegistrations(environment,layouts,lua);
  return {environment:env,lua,storage};
@@ -54,7 +55,7 @@ function enableLuaRegistrations(environment,layouts,lua){
  const L=layouts.nhlsel,storage=[nhlsel.l_selection_methods.length*L.luaRegSize,nhlsel.l_selection_meta.length*L.luaRegSize,7*8,3*8].map((n,i)=>environment.allocateGlobal('nhlsel.table'+i,n));
  Object.assign(select,{global:i=>globals[i],tableStorage:i=>storage[i],callbackToken:i=>functions.functionPointer((...args)=>environment.resolve(nhlsel.callbackNames[i])(...args),'ip'),lua_newuserdata:(state,n)=>lua.api.lua_newuserdatauv(state,BigInt(n),1)});
  const text=p=>typeof p==='string'?services.literal(p):environment.address(p);
- Object.assign(select,{dupstr:p=>environment.libc.strdup(text(p)),rectBounds:(...args)=>environment.call('rect','rect_bounds',...args),
+ Object.assign(select,{dupstr:p=>environment.libc.strdup(text(p)),rectBounds:(...args)=>environment.call('rect','rect_bounds',...args.map(environment.address)),
   nhl_pcall_handle:(L,n,r,name,flags)=>environment.resolve('nhl_pcall_handle')(L,n,r,text(name),flags),
   nhl_error:(L,message)=>environment.resolve('nhl_error')(L,text(message)),
   check_mapchr:p=>environment.resolve('check_mapchr')(text(p)),
@@ -73,6 +74,14 @@ function enableLuaRegistrations(environment,layouts,lua){
  const objectStorage=[nhlobj.l_obj_methods.length,nhlobj.l_obj_meta.length].map((n,i)=>environment.allocateGlobal('nhlobj.table'+i,n*O.regSize));
  const callbacks=['l_obj_new_readobjnam','l_obj_isnull','l_obj_at','l_obj_nextobj','l_obj_to_table','l_obj_objects_to_table','l_obj_placeobj','l_obj_container','l_obj_getcontents','l_obj_add_to_container','l_obj_timer_has','l_obj_timer_peek','l_obj_timer_stop','l_obj_timer_start','l_obj_bury','l_obj_gc'];
  Object.assign(object,{global:i=>objectGlobals[i],storage:i=>objectStorage[i],callbackPointer:i=>functions.functionPointer((...args)=>environment.resolve(callbacks[i])(...args),'ip')});
+ // Original native packed-field helpers use the same measured shared records.
+ const packed=callbackABI.nhlobj,field=(kind,index)=>packed[kind][environment.transport.int(index)];
+ Object.assign(object,{
+  classBit:(p,i)=>{const key=field('classBits',i);return key?ctypes.getField('struct objclass',environment.address(p),key,'unsigned int'):0;},
+  objectBit:(p,i)=>{const key=field('objectBits',i);return key?ctypes.getField('struct obj',environment.address(p),packed.aliases[key]??key,'unsigned int'):0;},
+  setObjectBit:(p,i,value)=>{const key=field('objectBits',i);if(key)ctypes.setField('struct obj',environment.address(p),packed.aliases[key]??key,'unsigned int',environment.transport.uint(value));},
+  Sprintf:(out,format,value)=>services.sprintf(environment.address(out),text(format),text(value)),
+ });
  const objects=createNhlobjEnvironment(object,O,{initialized:false});
  environment.register('nhlobj',Object.fromEntries(Object.entries(nhlobj).filter(([,v])=>typeof v==='function').map(([name,fn])=>[name,(...args)=>{if(['l_obj_push','nhl_push_obj'].includes(name))args[1]=objects.object(args[1]);const result=withCEnvironment(objects,fn,...args);return result?.address??result??0;}])));
  environment.enableAddressPort('sp_lev',{only:['l_register_des']});

@@ -2,7 +2,7 @@
 /* Copyright (c) Michael Allison, 2021.                           */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* these are in extern.h but we don't include hack.h */
 

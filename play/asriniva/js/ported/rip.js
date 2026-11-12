@@ -3,7 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* Defining TEXT_TOMBSTONE causes genl_outrip() to exist, but it doesn't
    necessarily have to be used by a binary with multiple window-ports */

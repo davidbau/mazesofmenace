@@ -437,6 +437,12 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * columns) clears the screen in process_menu_window (wintty.c:1407). */
     const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0
         || 77 - maxLen <= 0;
+    /* C wintty.c:1939-1941 -> 1047-1058: an overlay clears a non-EMPTY
+     * message window, including an answered yn prompt (topl.c:544).
+     * EMPTY-window residue survives; a full-screen menu erases it too. */
+    if (fullScreen || g._topl_sticky !== g._topl_empty_sticky)
+        g._topl_sticky = null;
+    if (fullScreen) g._topl_empty_sticky = null;
     const paint = () => (fullScreen
         ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
         /* wintty.c:3684-3687: use this getobj window's offx and ymax.

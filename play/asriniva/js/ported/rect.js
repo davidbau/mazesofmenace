@@ -2,7 +2,7 @@
 /* Copyright (c) 1990 by Jean-Christophe Collet                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C, R } from './c-runtime.js';
+import { C, R } from '../c-runtime/context.js';
 
 /*
  * In this file, we will handle the various rectangle functions we

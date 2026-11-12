@@ -1,7 +1,7 @@
 // One cached original APPLY context; all mutable tool/occupation state stays shared.
 import abi from './apply-abi.json' with{type:'json'};
 import * as source from '../ported/apply.js';
-import {callApply} from '../ported/apply-runtime.js';
+import {callApply} from '../nethack/bindings/apply.js';
 const owners=new WeakMap();
 export function enableApply(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

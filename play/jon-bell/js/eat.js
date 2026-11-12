@@ -4451,8 +4451,9 @@ export async function cpostfx(pm) {
             await flush_screen(1);
             let _mimicTopl = `You can't resist the temptation to mimic ${shape}.`;
             if (u.usteed) {
-                /* the dismount's pline (steed.c:608) replaces the topline */
-                _mimicTopl = `You fall off of ${mon_nam(u.usteed)}!`;
+                /* C eat.c:1205-1206 calls dismount_steed, whose pline owns the
+                 * message.  Naming the steed here too consumes an extra
+                 * hallucination draw before steed.c:608 names it. */
                 await dismount_steed(DISMOUNT_FELL);
                 /* float_down()'s pickup(1) may have appended more to the topline
                    (describe_decor: "A staircase up out of the dungeon.") */

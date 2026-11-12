@@ -2218,12 +2218,12 @@
     "nethack-c/wasm/tu-do_wear-varargs.inc": "0bbc44b0dfda5e996fceb82eb2ce24c71188db05cb5b83d0a492df3480866684",
     "scripts/write-tu-source-metadata.py": "d05e33ba5b44e6564e59f30dc2f9baaf7483d416e80917b41ce7c6c5b70f97d1",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/ported/weapon.js": "edd0319a89e6fcecd69f5f6962f812e5aa5ad7f71a8eeda11bee98fe13b47edd",
-    "js/ported/worn.js": "43624f0cf7f2fa808f0bba08d0bc123d693bf951570f8872298d7670a7a00008",
-    "js/ported/wield.js": "7c4052a40ad20eec5b6a5918597dc800165cb77694472e7aa0b8aed112f54583",
-    "js/ported/do_wear.js": "7d8a9f25550c8763507ff501ba6fd6f9fd443f07e5eb3818801b9169b9917785",
-    "js/ported/hacklib.js": "308c32f2c959a8aadcb816d333ea5faf2aad90c9325523ae6a5551bd9d4963e3",
-    "js/ported/strutil.js": "06ec150305c339f2bb3fe574eaa4878b9b3b4f049c66541a390ac17add33a57f"
+    "js/ported/weapon.js": "3c71c8f2f513530ba7dd86d07293827b2f16102368e09477f222ff57cb7d3877",
+    "js/ported/worn.js": "8d86a4cc4cc382b319ab1ea40157e1f3e9c9ed998044f0d8c1c0f6efcf94c584",
+    "js/ported/wield.js": "db1ee2213ea46e242ae770f33c066a0698df18564152b1c88af19e3fe949789a",
+    "js/ported/do_wear.js": "c5ff86b147f3bfd02f76f0649146472b8d247a8c70198feb7b3a1bc010ad122d",
+    "js/ported/hacklib.js": "dcc20877428e4903dc354128e9c17e5b38101d41a3bbba3b8c904ec29a8b4272",
+    "js/ported/strutil.js": "7c0fb75d4ad83eabd22e9e3f66d53726aea62b6902ca0f2744c8717749b9624b"
   },
   "referenceHeaderSha256": {
     ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",

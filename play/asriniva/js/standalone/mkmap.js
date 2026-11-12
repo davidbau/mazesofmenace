@@ -1,7 +1,7 @@
 // Original cave generation and map helpers on one native shared-memory context.
 import abi from './mkmap-abi.json' with {type:'json'};
 import * as source from '../ported/mkmap.js';
-import {createMkmapEnvironment} from '../ported/mkmap-runtime.js';
+import {createMkmapEnvironment} from '../nethack/bindings/mkmap.js';
 const cache=new WeakMap();
 export function enableMkmap(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

@@ -1,7 +1,7 @@
 // Object startup and name persistence, using unchanged O_INIT policy and its
 // existing measured adapter. Discovery/menu functions are deliberately absent.
 import * as policy from '../ported/o_init.js';
-import {createOInitEnvironment} from '../ported/o_init-runtime.js';
+import {createOInitEnvironment} from '../nethack/bindings/o_init.js';
 import {CPanic} from '../nethack/runtime.js';
 export function enableObjectState(environment,layouts) {
     const {services,memory,bitfields,libc}=environment;

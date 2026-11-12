@@ -1,8 +1,8 @@
 // Original BALL policies/private restriction state over the shared live gear.
 import abi from './ball-abi.json' with {type:'json'};
 import * as source from '../ported/ball.js';
-import {createBallState,createBallEnvironment} from '../ported/ball-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createBallState,createBallEnvironment} from '../nethack/bindings/ball.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableBall(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

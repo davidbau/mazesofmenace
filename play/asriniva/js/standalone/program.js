@@ -10,7 +10,7 @@ export function createStandaloneProgram({layouts,runtime={},stdio:stdioOptions={
  const stdio=env.enableStdio(stdioOptions);
  env.enableSdkBoundary();
  env.enableDecl(layouts.decl);env.enableDrawing(layouts.drawing);env.enableObjects(layouts.objects);env.enableMonst(layouts.monst);
- env.enableSerialization(layouts);env.enableRnd(layouts.rnd,{seed:BigInt(runtime.environment?.NETHACK_SEED??1)});
+ env.enableSerialization(layouts);env.enableRnd(layouts.rnd,{initialize:false,seed:BigInt(runtime.environment?.NETHACK_SEED??1)});
  env.enableAddressPort('dungeon',{only:['ledger_no','maxledgerno']});env.enableObjectState(layouts);env.enableObjectRecords(layouts);env.enableItemInventory(layouts);env.enableTimers(layouts);env.enableItemNaming(layouts);env.enableMonsterSelection(layouts);env.enableMonsterCreation(layouts);
  env.enableGameStartup(layouts);env.enableHeroStartup(layouts);env.enableWorldPosition(layouts);env.enableLuaSandbox(layouts);env.enableDisplayStartup(layouts);
  env.enableLevelStartup(layouts);env.enableLevelContents(layouts);const window=env.enableWindowSystem(layouts);

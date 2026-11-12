@@ -3337,17 +3337,17 @@
     "udeadinside": "const char *(void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-polyself-abi.py": "05d671b0839584afd8456535ada136431b7525cdd0ddebdd532d51fd41fa82c9",
-    "js/standalone/polyself.js": "8eb74e67e1d16c63ea951621c78509403d05ad008b8084e1e10f476f87c23b4f",
-    "js/standalone/hero-startup.js": "ede908dc5667db890e49b0dbd673a9c7164bf02b04acaca6b6d61ffde400e78e",
+    "scripts/export-standalone-polyself-abi.py": "6040a8d496e3293b3662cbbdeb792e521a0154c22e627d97e3ac600320856c6e",
+    "js/standalone/polyself.js": "64e6cc42a8680dd34b55618c8b6dc4e17de7737145067a9c2140c87d9bc9fb35",
+    "js/standalone/hero-startup.js": "0c45baf01a762be03d6b134b3cdc09feeb621ae2fce1264e17ed46f875cb646d",
     "scripts/tu-polyself-layout.h": "67da0abadda5eb49b7d57d7eae746f70e930503a2826c652f676d168c18295e8",
     "nethack-c/wasm/tu-fragments/polyself-schema.json": "b1635d05f03da9f5897ccec59e69730d5a8caa3eac30320ab4abc716f5bbc2ad",
     "nethack-c/wasm/tu-libraries/polyself.js": "97bfe618d0c0f0f006cc49bf2fb4f72d667662245961c857583b7146e4e8fabc",
     "nethack-c/wasm/tu-fragments/polyself-support.c": "74333e4d6121793b8603fc0b54b11900383b214ed92172e188434d9a5759b49e",
     "nethack-c/wasm/tu-fragments/polyself-source-data.h": "e12a578f30087febc05846af33be53e4778dacc72a6ae17ad469f0708508cef1",
-    "js/ported/polyself.js": "ba3f6d670dbcf21ab86be5f9d12c71d69b4b7562e6242a19e930da17c115bd55",
-    "js/ported/polyself-runtime.js": "ec4545d54e1084a33ad6c3c847fff66b2a2db250143bb87c04833fb0de7a1adf",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/polyself.js": "47c052d853f62dce0b1c17feb5817fd1ce78f6c562bdc9a69f153b18925ae40d",
+    "js/nethack/bindings/polyself.js": "f40e1bb9e78c8982f93c7981c762a7aa9a5bf7acf32e72877a858b80868ecdd6",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

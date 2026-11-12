@@ -3,7 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 
 // #define C.newseg() (struct wseg *) C.alloc(C.segmentSize)

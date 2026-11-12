@@ -1,8 +1,8 @@
 // One original STEAL context, live equipment cells and delayed callback identities.
 import abi from './steal-abi.json' with {type:'json'};
 import * as source from '../ported/steal.js';
-import {createStealEnvironment} from '../ported/steal-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createStealEnvironment} from '../nethack/bindings/steal.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableSteal(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

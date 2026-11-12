@@ -1,4 +1,4 @@
-import * as core from './gifread.js';import{withCEnvironment}from'../../ported/c-runtime.js';
+import * as core from './gifread.js';import{withCEnvironment}from'../../c-runtime/context.js';
 const environments=new WeakMap();
 export function createGifreadEnvironment(s){
  const view=()=>new DataView(s.heap().buffer),sizes={Int8:1,Uint8:1,Int16:2,Uint16:2,Int32:4,Uint32:4,Pointer:8,BigInt64:8,BigUint64:8},staticCells=new Map(),literals=new Map();

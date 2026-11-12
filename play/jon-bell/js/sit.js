@@ -993,7 +993,10 @@ async function analyze_throne() {
         game._pickupEncMorePending = null;
     }
     const ans = await y_n_default("Analyze throne?", 'n');
-    game._resultMessage = game._ynStaleTopline = "Analyze throne? [yn] (n)";
+    /* C cmd.c:5459-5460: the query menu logs the answer, then clears
+     * WIN_MESSAGE. Only tty_yn_function leaves a painted prompt behind. */
+    if (!(game.iflags?.query_menu && game.iflags?.window_inited))
+        game._resultMessage = game._ynStaleTopline = "Analyze throne? [yn] (n)";
     return ans;
 }
 export async function throne_sit_effect() {

@@ -1,7 +1,7 @@
 // Original TOPTEN record/log/ranking policies on real shared files and state.
 import abi from './topten-abi.json' with {type:'json'};
 import * as source from '../ported/topten.js';
-import {createToptenEnvironment} from '../ported/topten-runtime.js';
+import {createToptenEnvironment} from '../nethack/bindings/topten.js';
 const owners=new WeakMap();
 export function enableTopten(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

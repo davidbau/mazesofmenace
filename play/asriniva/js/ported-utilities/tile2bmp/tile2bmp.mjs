@@ -41,7 +41,7 @@ export function lelong(x)
 /* monsters must be first because main uses it twice */
 export const relative_tiledir = "../win/share/";
 export const tilefilenames = [["monsters.txt", "objects.txt", "other.txt"]];
-import { C } from '../../ported/c-runtime.js';
+import { C } from '../../c-runtime/context.js';
 
 export function main(argc, argv)
 {

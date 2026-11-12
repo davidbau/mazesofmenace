@@ -5,7 +5,7 @@ import records from './records.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import {build_english_list} from '../ported/end.js';
 import * as cfgfiles from '../ported/cfgfiles.js';
-import {createCfgfilesEnvironment} from '../ported/cfgfiles-runtime.js';
+import {createCfgfilesEnvironment} from '../nethack/bindings/cfgfiles.js';
 import {createCTypes} from './c-types.js';
 import {enableAddressPort} from './address-ports.js';
 export function enableConfiguration(environment,layouts){

@@ -219,15 +219,15 @@
     "wiz_light_sources": "int (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-light-abi.py": "444872a09d3872720dfd8a53f597c93509583a0601c944d196b63ff46abb7570",
-    "js/standalone/light.js": "71ed87cdfe0666971492649b1b06ccd087653bb4699ccafd5a93a2e3166f5fc2",
+    "scripts/export-standalone-light-abi.py": "6f90976d3d9c649b381317b8d999a4d2c904e29cb7f75a6bf51e7818d7afdf8f",
+    "js/standalone/light.js": "982d886b7a93d1389a1fce1cca25b44b01c28b122da786fde9d93093d184f24a",
     "scripts/tu-light-layout.h": "a8cc2cff42416881044aa92717432ffdd82c2219de68c76d58034777215a3946",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/light.js": "b3ce644e4f9620600f9cc4e68c3fa59295de9e4c78918045d4a53595249dfaa1",
-    "js/ported/light.js": "15c865998d790ffcd3558aabee5df472f28823f55adf214171dba9b54e72a6f4",
-    "js/ported/light-runtime.js": "8009743140af1e2b8a7139d82f48f1261fe79163a2b8a86ab66618b62139b7d6",
+    "js/ported/light.js": "daf3138dd8d21ad00cc10367ed4aa72f65d6b8cc921a27401528a2daae93f019",
+    "js/nethack/bindings/light.js": "5f988389de4341a7699d373b402467298f17d5c9f9612814ebef82ef5d8e9572",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

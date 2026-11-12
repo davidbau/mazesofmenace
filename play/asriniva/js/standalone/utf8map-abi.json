@@ -70,17 +70,17 @@
     "reset_customsymbols": "void (void)"
   },
   "sourceSha256": {
-    "scripts/test-standalone-utf8map.mjs": "bdfbad08c9e10b5d5d8e315f743bd995ad4f6358226c2c1d7e8966e7a21a89bc",
+    "scripts/test-standalone-utf8map.mjs": "11a57eefd0dcf8ef30487430a5538a83f95fb14d01ce55d7335d1eb506b57509",
     "scripts/check-standalone-utf8map.mjs": "a62cd8f620aea3fd857d08403d345374974f6a7e98fad98a8b319aa6c4eb9221",
-    "scripts/export-standalone-utf8map-abi.py": "600dffc1515cc0b05761d9e1dea0b748aa9fe17f8f694e1eb3742356dc46ea07",
-    "js/standalone/utf8map.js": "feb26244ec3e02e5a51e943e7a55f2efbe2fb5a29f414070b6b44c97e4e90c02",
-    "js/ported/utf8map.js": "23f36c5324929dcdc6353a23921cdbc483998fe002b8d8edc74edd988ae256b3",
-    "js/ported/utf8-runtime.js": "0e3d938ece5a681508fb386c5c0d348b1be5262c71fed748f33fcf66927e2737",
+    "scripts/export-standalone-utf8map-abi.py": "9b0bcc6b11db82d442b71c8d6c2d1a973abe5b0767d938818eed607954e956fb",
+    "js/standalone/utf8map.js": "a01aaeb66236f1a8e0e235a52cf3d510efe3f954adb0e4314746b316e783753c",
+    "js/ported/utf8map.js": "323b78d737653d89d784f1c26c578c1dcf44591418f3837c7258bbaaf74a8f79",
+    "js/nethack/bindings/utf8.js": "21c7f213a6db31f31c0b6d59a321d999e2c041e25a12533c72f5dcb67f190431",
     "scripts/tu-utf8map-layout.h": "276f9c176abbb4d29c08f65a1177e8eef2e6b92f1c0732a0dd41eaf5e8d3a0d6",
     "nethack-c/wasm/tu-libraries/utf8map.js": "4da404c46bf3c5c6fbd58014b030714c939a98b918c39311ae830f8ca5a4ac2a",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
   },

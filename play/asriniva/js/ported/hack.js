@@ -4,7 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 // Configured source policy. Typed runtime transport is separate.
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 const TRAVP_TRAVEL = 0, TRAVP_GUESS = 1, TRAVP_VALID = 2;
 

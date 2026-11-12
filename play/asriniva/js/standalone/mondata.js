@@ -1,8 +1,8 @@
 // Canonical MONDATA native context; original policies and catalogues stay unchanged.
 import abi from './mondata-abi.json' with {type:'json'};
 import * as source from '../ported/mondata.js';
-import {createMondataEnvironment} from '../ported/mondata-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createMondataEnvironment} from '../nethack/bindings/mondata.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableMondata(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

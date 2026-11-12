@@ -3,7 +3,7 @@ import abi from './files-abi.json' with {type:'json'};
 import records from './records.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as files from '../ported/files.js';
-import {createFilesEnvironment} from '../ported/files-runtime.js';
+import {createFilesEnvironment} from '../nethack/bindings/files.js';
 import {createCTypes} from './c-types.js';
 import {enableAddressPort} from './address-ports.js';
 import {enableSdkDirectory} from './sdk-directory.js';

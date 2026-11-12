@@ -2,7 +2,7 @@
 import abi from './eat-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/eat.js';
-import {initializeEat,callEat,eatState} from '../ported/eat-runtime.js';
+import {initializeEat,callEat,eatState} from '../nethack/bindings/eat.js';
 
 export function enableEating(environment,layouts,hungerTable){
  const {services,memory,ctypes,transport,functions}=environment,L=layouts.eat,address=environment.address;

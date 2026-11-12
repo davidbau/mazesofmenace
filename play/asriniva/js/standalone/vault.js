@@ -1,8 +1,8 @@
 // Original whole VAULT context on measured shared DECL/record transport.
 import abi from './vault-abi.json' with {type:'json'};
 import * as source from '../ported/vault.js';
-import {createVaultEnvironment} from '../ported/vault-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createVaultEnvironment} from '../nethack/bindings/vault.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 import {createRecordViews} from './record-views.js';
 const owners=new WeakMap();
 export function enableVault(environment,layouts){

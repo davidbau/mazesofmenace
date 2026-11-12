@@ -478,17 +478,17 @@
     "tt_doppel": "int (struct monst *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-topten-abi.py": "4fe83623214bcfea311c77a5f2453997b1e0eba33a234b8e0bf70210daefb232",
-    "js/standalone/topten.js": "c652dfe5bff465f0e227a68b8c04dbdcfe3aa7aa347df385af705fcfece878b7",
+    "scripts/export-standalone-topten-abi.py": "81032580ec27b681c201c427143ee46609cf7279f7ef8f1c1014832fb5cb8139",
+    "js/standalone/topten.js": "61fbd5eb9f3bd6516d9d1d444e4f9af2af98bff40a2594e3df164361cd9acf2c",
     "scripts/tu-topten-layout.h": "4883c362377d5a56892931c7ce1109d1fe9441d8221b661da7f6a1857dbc9902",
     "nethack-c/wasm/tu-fragments/topten-support.inc": "422e40b0dd822a4c136beabda02fe13078b52402502f891f6d8ae7e89a6785f9",
     "nethack-c/wasm/tu-fragments/topten-types.h": "6ac7d31ca8f165ce5305436db1de52537abb7d518d5f59eb90ce62790ba1c42d",
     "nethack-c/wasm/tu-fragments/topten-runtime-method.inc": "54e796a3d362a4eec623169ca1333f920ebaaa4865dadac7993d552193cb5a7c",
-    "js/ported/topten.js": "7feb42adaaff7b1e04c523e9cd5aa1bbdd48d90b415a71eafe7c1d49cc25c742",
-    "js/ported/topten-runtime.js": "829f9a5721a43df42f634f6fa0a3b17ae56826644fde0daaffdf13f183ab5491",
+    "js/ported/topten.js": "87096584cd1eda0bfc1ce1f658a9221351eb4661b315ccc4844731b804f037c3",
+    "js/nethack/bindings/topten.js": "c2fbb96c576596b7746fd56c500d425060de8f00fd43db1b8b05c3f53cfa8603",
     "nethack-c/wasm/tu-libraries/topten.js": "2912506805d23c07bf646a02fe644097afec17bf582ca67d8b582695df815c19",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
   },

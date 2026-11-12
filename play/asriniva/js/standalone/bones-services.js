@@ -2,7 +2,7 @@
 // Decisions, object mutation, callbacks and serialization remain original source.
 import abi from './bones-services-abi.json' with {type:'json'};
 import * as bones from '../ported/bones.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 export function bindBonesServices(environment,local,getContext){
  const {services,memory,ctypes,transport}=environment,address=environment.address;
  const text=v=>typeof v==='string'?services.literal(v):address(v);

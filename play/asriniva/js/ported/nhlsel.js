@@ -1,4 +1,4 @@
-import { C } from "./c-runtime.js";
+import { C } from "../c-runtime/context.js";
 
 /* NetHack 5.0	nhlua.c	$NHDT-Date: 1769840272 2026/01/30 22:17:52 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.69 $ */
 

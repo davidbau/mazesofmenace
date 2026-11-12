@@ -4,7 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 /* track.c - version 1.0.2 */
 
-import { C, T } from './c-runtime.js';
+import { C, T } from '../c-runtime/context.js';
 
 const UTSZ = 100;
 

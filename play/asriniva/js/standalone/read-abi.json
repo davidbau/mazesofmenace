@@ -2047,14 +2047,14 @@
     "create_particular": "boolean (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-read-abi.py": "e934b2ab148e007414f06ff72d29d55e11948368ef171740d19e77ca617a7d0b",
+    "scripts/export-standalone-read-abi.py": "97bc8ab1c36b6fd3ee3e80f954dc87c1c8ac2cb10cd0822c3044ade8bff44ef9",
     "scripts/tu-read-layout.h": "595462ecea02cab7c266aa44db7f112a9b5cbb5f9685d4153b485fa369c1f107",
     "nethack-c/wasm/tu-fragments/read-support.inc": "f531ef2adefa7ec8d00b44df156c092bcf0b66fcc6b41400b6ce83e4c64d78ad",
     "nethack-c/wasm/tu-libraries/read.js": "93779716e6e3e50235ba64deb32cc45ca0bfaa8742c27410ba26aeab4cd59dff",
-    "js/ported/read-runtime.js": "6cd44d6d27a14b5bfc497e2d546d59641c14b0ecb28868b6a35f353d417b7960",
-    "js/ported/read.js": "f15b547aabc66b6c46015eb3cc9e156d10542c032c57eafaaf261ce354c20a92",
-    "js/standalone/read.js": "1a4c5bf525726933539b493f6d825410d405cd7300c1d736f4e18be6598706cf",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/nethack/bindings/read.js": "cd5d29d445e92a8cc840afa57d6c64d44609b11b523db479cbd683d6e590eaf1",
+    "js/ported/read.js": "afa49ca22280958b343d560fe02e30a0c802daeaed40b2f87483532a0a5319b3",
+    "js/standalone/read.js": "bf25212e6273b5c8e46e38c9f0cf5b5f7903e9d0ae39c9e1a61ab389f3173215",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

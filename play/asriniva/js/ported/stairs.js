@@ -2,7 +2,7 @@
 /* Copyright (c) 2024 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of stairs.c: pointer-backed views preserve the
  * linked list, C struct fields and per-game globals. C supplies allocation,

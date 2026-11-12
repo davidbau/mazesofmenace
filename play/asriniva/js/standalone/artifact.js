@@ -2,8 +2,8 @@
 import abi from './artifact-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/artifact.js';
-import {createArtifactEnvironment} from '../ported/artifact-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createArtifactEnvironment} from '../nethack/bindings/artifact.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 
 export function upgradeArtifact(environment,layouts,legacy){
  const {services,memory,ctypes,transport,functions}=environment,L=layouts.artifact,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v);

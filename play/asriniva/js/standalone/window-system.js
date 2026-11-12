@@ -5,9 +5,9 @@ import {createCTypes} from './c-types.js';
 import abi from './window-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as tty from '../ported/wintty.js';
-import {initializeWintty,callWintty} from '../ported/wintty-runtime.js';
+import {initializeWintty,callWintty} from '../nethack/bindings/wintty.js';
 import * as windows from '../ported/windows.js';
-import {initializeWindows,callWindows} from '../ported/windows-runtime.js';
+import {initializeWindows,callWindows} from '../nethack/bindings/windows.js';
 export function enableWindowSystem(environment,layouts){
  const {services,memory,functions}=environment,ctypes=createCTypes(memory,{...records,records:{...records.records,...abi.records},enums:{...records.enums,...abi.enums}},environment.bitfields),W=abi.windows,T=abi.wintty,schema=T.schema,L=layouts.wintty;
  const address=environment.address,text=p=>typeof p==='string'?services.literal(p):address(p);

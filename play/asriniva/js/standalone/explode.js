@@ -1,8 +1,8 @@
 // Original EXPLODE policies, one native-shaped context on the shared game heap.
 import abi from './explode-abi.json' with {type:'json'};
 import * as source from '../ported/explode.js';
-import {createExplodeEnvironment} from '../ported/explode-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createExplodeEnvironment} from '../nethack/bindings/explode.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableExplode(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

@@ -220,5 +220,10 @@ export async function runJsSegment(input) {
 }
 
 
-// The scoring contract stays unchanged; the engine now runs in wasm64.
-export { runWasmSegment as runSegment } from "./wasm-adapter.js";
+// The contest runner uses the pure-JavaScript standalone engine.
+// Load its Node recorder boundary only when scoring; browser play keeps
+// the NethackGame API above. No Wasm backend is imported by this path.
+export async function runSegment(input) {
+    const { runSegment } = await import("./standalone-recorder-adapter.js");
+    return runSegment(input);
+}

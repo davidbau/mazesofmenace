@@ -1397,11 +1397,11 @@
     "speed_up": "void (long)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-potion-abi.py": "b3c65841fa2e25729c567ce484a64e8c2086bfcaecafb2377345ab44611f9c1c",
+    "scripts/export-standalone-potion-abi.py": "4bd7c893ed8ee9d384bfb875c4a39f560da64e6bb5164e153f31e801d5535905",
     "scripts/tu-potion-layout.h": "5f1080b201861cd352b1ec04799c14c1590ae1c8495c94a7420dc30f7de08304",
     "nethack-c/wasm/tu-potion-support.inc": "5566b733353c355ad84ce1c324cf12bbce291b418638378f6d28d29bffa8b30d",
-    "js/ported/potion.js": "08141047d4eb379414c6678cf6b2bf8ffcbfd732d2f121ae7b3cddb3b7e36363",
-    "js/ported/potion-runtime.js": "ad76873d4b37a66c927ce90d746b18ba56821a7a763bdb6dbf6eefbe76e7a212",
+    "js/ported/potion.js": "862f85adb6947ed618d90831e4e2b1fba37c7108466709267e398c5f5b9f9d6d",
+    "js/nethack/bindings/potion.js": "73f183a078bf675255ad65d6da774e91dc1cf9590973b51dcf442dca2003cac7",
     "nethack-c/wasm/tu-libraries/potion.js": "c142ced8df3b6c22629cbc62b221e256fc19075884d73e548150668e15316fc9",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",

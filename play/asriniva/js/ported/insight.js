@@ -12,7 +12,7 @@
  * And some came from priest.c that had once been in pline.c.
  */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 
   /* hunger status from eat.c */

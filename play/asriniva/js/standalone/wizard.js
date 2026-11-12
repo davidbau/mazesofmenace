@@ -1,8 +1,8 @@
 // One original Wizard-of-Yendor context over the shared game state.
 import abi from './wizard-abi.json' with {type:'json'};
 import * as source from '../ported/wizard.js';
-import {createWizardEnvironment} from '../ported/wizard-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createWizardEnvironment} from '../nethack/bindings/wizard.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const cache=new WeakMap();
 export function enableWizard(environment,layouts){
  if(cache.has(environment))return cache.get(environment);

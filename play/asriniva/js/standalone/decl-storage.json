@@ -1,6 +1,6 @@
 {
-  "source": "js/ported/decl-runtime.js",
-  "sha256": "0af217623e8b759b4923d614abd4fde5bccdff12b6dbb3aaa0912f690dad909a",
+  "source": "js/nethack/bindings/decl.js",
+  "sha256": "7fba6bcd7d9431765c166024e55256bb57f1287b5eb1207b1db1fb25a55b6457",
   "globals": [
     {
       "name": "nhcb_name",

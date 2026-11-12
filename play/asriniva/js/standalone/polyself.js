@@ -1,8 +1,8 @@
 // One original POLYSELF source context for initial helpers and full form policy.
 import abi from './polyself-abi.json' with {type:'json'};
 import * as source from '../ported/polyself.js';
-import {createPolyselfEnvironment} from '../ported/polyself-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createPolyselfEnvironment} from '../nethack/bindings/polyself.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enablePolyself(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

@@ -4,7 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 // Configured UNIX/MAIL path. Inactive platform branches are not translated.
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 export function free_maildata()
 {

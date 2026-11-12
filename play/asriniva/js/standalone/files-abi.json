@@ -1997,12 +1997,12 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-files-abi.py": "62943121494628104c70d247d4ae7a0864a40f21fce22546c6122396cbb3c0ce",
-    "js/ported/files-runtime.js": "9dcd7addcce56437a208a2c5e8e1b04080f41e994dff1be870d9e79cbd5588bb",
-    "js/ported/files.js": "3c8cf03fd7727673facb5404e171670378710938a9eb93de0693476fe7930e35",
+    "scripts/export-standalone-files-abi.py": "777f9ba57d4d1bccb58bdf132db0d41eb3bda6191ab82a055ad0965da3192e3d",
+    "js/nethack/bindings/files.js": "944d93c2ff2044bc28a2697a2e1d9ce6f1931df9d269e227c320ee31116edac1",
+    "js/ported/files.js": "18b8fadd2f3aa73cc010f8e67c0dcb17bf975e0bef85e0d9e0297307cc4f9565",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-fragments/files-support.c": "a4bb22d3b88c6bd766099739ab0dea282898962c21cae14ec4d337113d790d7c",
-    "js/standalone/files.js": "1834d27e1d3a21333cb01230c1c7066dc46b5a7d8f73cfa63fcfecd563adb4c1"
+    "js/standalone/files.js": "5f8ab039a11a8a135ce6585078407f3dec97413db0cf4272a06fe6fef7aa0aaa"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

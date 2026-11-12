@@ -1,8 +1,8 @@
 // Original Unicode symbol policies on the existing standalone symbol storage.
 import abi from './utf8map-abi.json' with {type:'json'};
 import * as source from '../ported/utf8map.js';
-import {createUtf8Environment} from '../ported/utf8-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createUtf8Environment} from '../nethack/bindings/utf8.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 const owners=new WeakMap();
 export function enableUtf8map(environment,layouts){
  if(owners.has(environment))return owners.get(environment);

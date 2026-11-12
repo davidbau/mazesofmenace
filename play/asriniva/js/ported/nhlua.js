@@ -1,6 +1,6 @@
 // Source-faithful configured NHLUA policy; typed C ABI/memory helpers are injected.
 
-import { C } from "./c-runtime.js";
+import { C } from "../c-runtime/context.js";
 
 /* NetHack 5.0	nhlua.c	$NHDT-Date: 1744963460 2025/04/18 00:04:20 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.153 $ */
 /*      Copyright (c) 2018 by Pasi Kallinen */

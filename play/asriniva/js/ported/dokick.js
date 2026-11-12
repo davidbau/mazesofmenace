@@ -2,7 +2,7 @@
 /* Copyright (c) Izchak Miller, Mike Stephenson, Steve Linhart, 1989. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 // Original is_bigfoot and martial C.TU macros expand at each source expression.
 

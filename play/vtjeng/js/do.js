@@ -188,14 +188,14 @@ import {
     assign_level,
     assign_rnd_level,
     at_dgn_entrance,
-    builds_up,
+    builds_up_steps,
     depth,
     dunlev,
     dunlev_reached,
     dunlevs_in_dungeon,
     ledger_to_dnum,
     ledger_no,
-    level_difficulty,
+    level_difficulty_steps,
     level_info,
     maxledgerno,
     next_level,
@@ -215,7 +215,10 @@ import { floating_above } from './fountain.js';
 import { artifact_has_invprop } from './artifacts.js';
 import { record_achievement } from './insight.js';
 import { game } from './gstate.js';
-import { impossible, livelog_printf, youFeel, youSee } from './pline.js';
+import {
+    impossible, impossible_printer, livelog_printf, youFeel, youSee,
+} from './pline.js';
+import { finish_steps } from './source_steps.js';
 import { dist2, s_suffix, upstart } from './hacklib.js';
 import { get_obj_location } from './light.js';
 import {
@@ -1767,7 +1770,7 @@ export async function menudrop_split(obj, count, state = game) {
         } else if (obj.otyp === LOADSTONE && obj.cursed) {
             obj.corpsenm = count;
         } else {
-            obj = splitobj(obj, count, { state });
+            obj = await splitobj(obj, count, { state });
         }
     }
     return drop(obj, state);
@@ -2496,9 +2499,14 @@ export async function doup(state = game) {
 // and the startup tutorial assign u.uz before this block. Keep the update in
 // the do.c owner so dungeon.c show_overview()/print_mapseen() sees one
 // source-ordered reached-depth value regardless of which caller performed the
-// assignment.
-export function updateDunlevReached(level, state = game, env = {}) {
-    if (!builds_up(level, state, env)) {
+// assignment. builds_up()'s impossible() prints where C prints it when the
+// caller passes impossible_printer() as onImpossible.
+export function updateDunlevReached(level, state = game, onImpossible) {
+    return finish_steps(updateDunlevReachedSteps(level, state), onImpossible);
+}
+
+function* updateDunlevReachedSteps(level, state) {
+    if (!(yield* builds_up_steps(level, state))) {
         if (dunlev(level) > dunlev_reached(level, state))
             set_dunlev_reached(level, dunlev(level), state);
     } else if (dunlev_reached(level, state) === 0
@@ -2757,7 +2765,7 @@ export async function goto_level(
     // arrival flags and therefore cannot mark a branch as seen.
     if ((at_stairs || falling || portal)
         && u.uz.dnum !== newlevel.dnum) {
-        recbranch_mapseen(u.uz, newlevel, state);
+        await recbranch_mapseen(u.uz, newlevel, state);
     }
 
     // dungeon.c assign_level() copies the two fields into the destination
@@ -2767,12 +2775,7 @@ export async function goto_level(
     assign_level(u.uz, newlevel);
     assign_level(u.utolev, newlevel);
     u.utotype = UTOTYPE_NONE;
-    // builds_up()'s impossible() for dungeon -1 prints here; nothing between
-    // it and the end of the reached-depth update draws or uses the RNG.
-    const impossibles = [];
-    updateDunlevReached(u.uz, state,
-        { impossible: (text) => impossibles.push(text) });
-    for (const text of impossibles) await impossible(text, state);
+    await updateDunlevReached(u.uz, state, impossible_printer(state));
 
     stairway_free_all(state);
     // do.c:1688-1690 clears the default arrival areas a special level may
@@ -3129,7 +3132,8 @@ export async function goto_level(
             // calls run after docrt() and flush_screen(-1) above, so neither
             // draws: more_experienced() only asks for a status redraw, which
             // the next flush_screen() or the command loop's own bot() serves.
-            more_experienced(level_difficulty(state), 0, state);
+            more_experienced(await finish_steps(level_difficulty_steps(state),
+                impossible_printer(state)), 0, state);
             await newexplevel(state, { message: ttyPline });
         }
     }

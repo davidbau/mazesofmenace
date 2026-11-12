@@ -2191,15 +2191,15 @@
     "down_gate": "schar (coordxy, coordxy)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-dokick-abi.py": "6052a41f58a014de5d868ba77cf0e68125e79d8a9fac1ea0baea69d64e44f90e",
-    "js/standalone/dokick.js": "de3549a7034d067704f2bb63d6da525b3966f7c6c6c63a0e2dd9920e72bcf37b",
+    "scripts/export-standalone-dokick-abi.py": "f25820e2b444b97bb22add3cdaebc3c1d6fde778007d7530c35bdbe5f36168d1",
+    "js/standalone/dokick.js": "cba8da0d898b5ca4b8cbc8ccf2f426bc305aa822ce21fbfe553b96550ab33fef",
     "scripts/tu-dokick-layout.h": "44b32c609f32e96b5204198bd0169b803d3f5d73c9ac937453c7818cca30e334",
     "nethack-c/wasm/tu-dokick-support.inc": "ea69659ed918a7ed3656e406178f4733f216aaa133c3d958ff125f73a11b8642",
     "nethack-c/wasm/tu-libraries/dokick.js": "b15a5e9f09a803e590d236906304be5e84da370b1cd5f560f0487d5bca1e2cfe",
-    "js/ported/dokick-runtime.js": "343bea36a77c82120f94fd4e1d01718e69211fff6b3490f7980506fb852b1127",
-    "js/ported/dokick.js": "df3d28847c2f3f4d8e7a830e1802a69d42473fb62f0849f96e5f14c0c1edb486",
-    "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/nethack/bindings/dokick.js": "24ddc9d3d2d44eb19110756746ea8bfcac9aa5e8909c1c1806612983733efec8",
+    "js/ported/dokick.js": "ada16f4234293d4e5205ed04d798ef1db54d9705e677ea0033d6ade0a6b4d186",
+    "js/backends/emscripten/runtime.js": "5322fc2cb40783ef7c475861cecb9eaa68ddf26eb12f8618f1bd3e480d3e4371",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

@@ -1,6 +1,6 @@
 // Shared original PAGER inspection/help/lookup bridge; no policy or text is copied.
 import abi from './special-interactions-abi.json' with {type:'json'};
-import {createPagerBridge} from '../ported/pager-runtime.js';
+import {createPagerBridge} from '../nethack/bindings/pager.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 import nativeAbi from './pager-target-abi.json' with {type:'json'};
 import {pagerNativeGet,pagerNativeSet,pagerNativeAddress,pagerNativeHero,pagerNativeDep} from './pager-target-header-functions.js';

@@ -2,7 +2,7 @@
 import abi from './monmove-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as monmove from '../ported/monmove.js';
-import {callMonmove} from '../ported/monmove-runtime.js';
+import {callMonmove} from '../nethack/bindings/monmove.js';
 export function enableMonsterMovement(environment,layouts){
  const {services,memory,ctypes}=environment,L=layouts.monmove;
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;return(...args)=>(typeof value==='function'?value:environment.resolve(k))(...args.map(v=>v?.address??v));}});
@@ -16,6 +16,10 @@ export function enableMonsterMovement(environment,layouts){
  for(const name of ['d','rn1'])local[name]=(n,x,line,caller)=>{if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MONMOVE RNG site '+name);if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('monmove.c'),line,services.literal(caller));return services[name](n,x);};
  local.assert=condition=>{if(!condition){const a=abi.assertion;return environment.resolve('__assert_fail')(services.literal(a.condition),services.literal(a.file),a.line,services.literal(a.function));}};
  const text=v=>typeof v==='string'?services.literal(v):environment.address(v);
+ // Original MONMOVE header helpers share the active strings and window owner.
+ local.winMessage=()=>ctypes.load('int',environment.requireGlobal('WIN_MESSAGE'));
+ local.commonString=()=>environment.address(ctypes.getField('struct c_common_strings',environment.requireGlobal('c_common_strings'),'c_something','const char *'));
+ local.display_nhwindow=(win,blocking)=>environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'win_display_nhwindow','void *'),'vii',environment.transport.int(win),environment.transport.char(blocking));
  for(const name of ['strlen','strcpy','strcat','strcmp','strchr','strncmpi'])local[name]=(...args)=>services[name](text(args[0]),...args.slice(1).map(v=>typeof v==='string'?text(v):v?.address??v));
  const names=Object.keys(monmove).filter(name=>typeof monmove[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  environment.register('monster-movement',Object.fromEntries(names.map(name=>[name,(...args)=>callMonmove(local,L,name,...args)])));

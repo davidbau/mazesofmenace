@@ -139,16 +139,16 @@
   },
   "devteamEmail": "devteam@nethack.org",
   "sourceSha256": {
-    "scripts/export-standalone-messages-abi.py": "8b993726da8ead668979e5d05bc0f88b138738f7d3082e6c3bd9806f7430c690",
-    "js/ported/pline-runtime.js": "936d24a971f92e8b1351c0c63b5aa3a078236c51c51c1c0e26f6455421d3d5c6",
+    "scripts/export-standalone-messages-abi.py": "f69f165665794e985041945b89406b0309a5e9a56064d0ba15cfee66ac351030",
+    "js/nethack/bindings/pline.js": "00fe03e6dbb7e8dac3851f06a0995851f93fc0cc5cd03ca8bde398913a1c4ef7",
     "nethack-c/wasm/tu-fragments/pline-support.c": "1ee00727dfcb5dd54c3b03a38105df25d6bca4272ecf141dcb833f4a5483dca4",
-    "js/ported/pline.js": "897aa9c1cf207d6de4a3703d1f0d94d3c97f4c7c65b0733637e0a9947db7e9d7",
+    "js/ported/pline.js": "7cbac35f6b62010423a4b630025296a47bc152bc54e05bdc21513f7654871caf",
     "nethack-c/wasm/tu-libraries/pline.js": "8c906b24eb33ef80f4ab6c3e62f5d6aaa4358db331bb720e364fc18d9e11a587",
     "scripts/tu-pline-layout.h": "62a23d2bbe2241e99f6dd082b53d04a69fdd0cc35cb681b386a6c4ab414abe37",
     "nethack-c/wasm/tu-fragments/pline-source-data.h": "77442d6c314cf717cc9bdf8310f65b3d71d51b6a0a3004b82852d5a0b49453b3",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2"
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d"
   },
   "referenceHeaderSha256": {
     ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",

@@ -1,8 +1,8 @@
 // Whole original MHITM owner on one live native-view context.
 import abi from './mhitm-abi.json' with{type:'json'};
 import * as source from '../ported/mhitm.js';
-import{createMhitmEnvironment}from'../ported/mhitm-runtime.js';
-import{withCEnvironment}from'../ported/c-runtime.js';
+import{createMhitmEnvironment}from'../nethack/bindings/mhitm.js';
+import{withCEnvironment}from'../c-runtime/context.js';
 export function enableMhitm(environment,layouts){
  const{services,memory,ctypes,transport}=environment,L=layouts.mhitm,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v);
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review MHITM ABI '+k);

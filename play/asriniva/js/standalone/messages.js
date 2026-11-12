@@ -2,8 +2,8 @@
 import abi from './messages-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as pline from '../ported/pline.js';
-import {createPlineEnvironment} from '../ported/pline-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createPlineEnvironment} from '../nethack/bindings/pline.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 
 export function enableMessages(environment,layouts){
  const {services,memory,ctypes,functions,transport}=environment,L=layouts.pline;

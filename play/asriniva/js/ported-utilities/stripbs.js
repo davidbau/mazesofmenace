@@ -7,7 +7,7 @@
  * from stdin and write the final character to stdout.
  */
 
-import { C } from '../ported/c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* Native includes stdio/stdlib/string/errno and inert UNUSED annotation. */
 export function main(argc, argv)

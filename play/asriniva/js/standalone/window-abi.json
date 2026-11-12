@@ -3221,11 +3221,11 @@
     }
   },
   "sourceSha256": {
-    "js/ported/windows-runtime.js": "72285746357e70a161b365fdd2c687bb6cbfd3a834a00dbe45f0b700df9f6251",
-    "js/ported/wintty-runtime.js": "25acdb90e67d59092f9ec03fca4de84c2154184373a0d6d3c4d32169138fcdb8",
-    "js/standalone/window-system.js": "6612a307580fe753e0d4a0978b2bb32ec8097315b228f51a4627b4d933e72838",
+    "js/nethack/bindings/windows.js": "fa1ab9ee173fd56a21f528c396eb05f8d38bfa1263e0439a00980f273b929684",
+    "js/nethack/bindings/wintty.js": "17015390be8a1043082c7727ce3c1840f218c599fdc0512c9f9b7145c23d43f7",
+    "js/standalone/window-system.js": "6a4db514fc086bed95e75821f76cfc44b646aa402aa7949374eddded82b34a3e",
     "nethack-c/wasm/tu-libraries/windows.js": "377ca25b6cd0fa61f191ccdda07fdf37fecd907c7f40f6523e4207dd33b1abcf",
-    "scripts/export-standalone-window-abi.py": "ee3f3d66b1b7425b793347d4bf539ce41e44be30f7852cf71df6ef3c35ac9b8d",
+    "scripts/export-standalone-window-abi.py": "a0409dd2586631ca6cb1f1c3a557552ca313bad920be653d57ca99a3cde32720",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
     "nethack-c/wasm/tu-fragments/windows-support.c": "e76baaa87b94b71fd71581e47c3f2df34f8ae5b9b23ad6a197a57a4a0496b525",
     "nethack-c/wasm/tu-wintty-support.inc": "fb57cafd4b436e5c9c481b0f4d8487e5466191509fc20bdbff72e44432a47ec2"

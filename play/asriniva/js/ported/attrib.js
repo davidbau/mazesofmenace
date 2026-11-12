@@ -4,7 +4,7 @@
 
 /*  attribute modification routines. */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 /* part of the output on gain or loss of attribute */
 export const plusattr = [ "strong", "smart", "wise",

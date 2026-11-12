@@ -1202,8 +1202,10 @@ export async function study_book_learn(spellbook) {
                     const qbuf = `This spellbook is ${read_ability < 12 ? 'very ' : ''}difficult to comprehend.  Continue?`;
                     const ans = await yn_function(qbuf, 'yn', 'n');
                     if (ans !== 'y') {
-                        /* tty_yn_function leaves the prompt painted. */
-                        g._topl_sticky = `${qbuf} [yn] (n)`;
+                        /* tty_yn_function leaves the prompt painted; the menu
+                         * path clears WIN_MESSAGE (C cmd.c:5458-5459). */
+                        if (!g.iflags?.query_menu)
+                            g._topl_sticky = `${qbuf} [yn] (n)`;
                         spellbook.in_use = false;
                         return true;   /* C spell.c:594-595 return 1 */
                     }

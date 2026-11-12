@@ -81,6 +81,8 @@ import {
 } from './startup_skills.js';
 import { reroll_menu } from './startup_reroll.js';
 import { ttyLegacyIntroduction } from './legacy_startup.js';
+import { read_wizkit } from './files.js';
+import { obj_delivery } from './dokick.js';
 import { cmdq_clear, dolookaround, failClosedCommandRefusals, rhack } from './cmd.js';
 import { next_to_u } from './apply_next_to_u.js';
 import { canletgo, deferred_goto, dropx, save_currentstate } from './do.js';
@@ -149,7 +151,6 @@ import {
     reset_eat,
 } from './eat.js';
 import { UnsupportedEndOfGameError } from './end.js';
-import { UnsupportedShopError } from './shk.js';
 import { UnsupportedVaultGuardError, gd_move, invault } from './vault.js';
 import { fightm } from './mhitm.js';
 import {
@@ -289,6 +290,12 @@ export async function newgame() {
     });
     finalize_startup_skills(g);
     find_ac(g);
+
+    // C ref: allmain.c newgame() (826-829).
+    if (g.wizard) {
+        await read_wizkit(g);
+        await obj_delivery(false, { state: g }); /* finish wizkit */
+    }
 
     // C ref: allmain.c newgame() -> com_pager("legacy").
     await ttyLegacyIntroduction(g);
@@ -1048,11 +1055,6 @@ function elapsedTurnRefusals() {
         // injected refusal. Without it a split refusal discards the segment
         // instead of stopping on its last matching screen.
         UnsupportedObjectOperationError,
-        // dogmove.c dog_invent() may split an unpaid stack through
-        // mkobj.c splitobj() (whose splitbill result is discarded), then
-        // reach shk.c onbill() while distant_name() names the returned child.
-        // The live-scan catch already converts this same shop refusal.
-        UnsupportedShopError,
     ];
 }
 
@@ -1172,7 +1174,7 @@ async function advanceElapsedTurn(state) {
             // and death entry are set. Below that entry, end.c really_done()
             // settles with the level's shopkeepers, vault guard and priests
             // through paybill(), paygd() and clearpriests(), whose unported
-            // arms raise UnsupportedEndOfGameError, UnsupportedShopError and
+            // arms raise UnsupportedEndOfGameError and
             // UnsupportedVaultGuardError. The scan also reaches every owner
             // elapsedTurnRefusals() names.
             const liveScanRefusals = [

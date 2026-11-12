@@ -1,5 +1,5 @@
 import * as core from './uudecode.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 export function createUudecodeEnvironment(s){
  const view=()=>new DataView(s.heap().buffer),p=x=>Number(x),literalMap=new Map();
  const literal=x=>{if(typeof x!=='string')return p(x);if(!literalMap.has(x)){const bytes=new TextEncoder().encode(x),at=p(s.malloc(bytes.length+1));s.heap().set(bytes,at);s.heap()[at+bytes.length]=0;literalMap.set(x,at);}return literalMap.get(x);};

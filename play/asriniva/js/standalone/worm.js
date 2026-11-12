@@ -1,7 +1,7 @@
 // Boundary transport only; original WORM owns algorithms and private chains.
 import * as worm from '../ported/worm.js';
-import {createWormState,withWormEnvironment} from '../ported/worm-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
+import {createWormState,withWormEnvironment} from '../nethack/bindings/worm.js';
+import {withCEnvironment} from '../c-runtime/context.js';
 import abi from './worm-abi.json' with {type:'json'};
 
 export function enableWorms(environment,layouts){

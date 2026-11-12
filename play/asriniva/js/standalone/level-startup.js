@@ -6,10 +6,10 @@ import {enableMkmap} from './mkmap.js';
 import {is_pool_or_lava,is_ice} from '../ported/dbridge.js';
 import * as stairs from '../ported/stairs.js';
 import * as region from '../ported/region.js';
-import {callRegion} from '../ported/region-runtime.js';
+import {callRegion} from '../nethack/bindings/region.js';
 import {sys_random_seed} from '../ported/unixmain.js';
 import * as bones from '../ported/bones.js';
-import {createBonesEnvironment} from '../ported/bones-runtime.js';
+import {createBonesEnvironment} from '../nethack/bindings/bones.js';
 import {bindBonesServices} from './bones-services.js';
 import {bindRegionServices} from './region-services.js';
 export function enableLevelStartup(environment,layouts,creation){
@@ -44,7 +44,7 @@ export function enableLevelStartup(environment,layouts,creation){
  enableMkmap(environment,layouts);
  const water=creation.context(layouts.dbridge);water.IS_WATERWALL=t=>t===layouts.dbridge.WATER;water.Is_juiblex_level=lev=>services.on_level(lev,creation.environment.svd.dungeon_topology.d_juiblex_level);environment.register('level-water-terrain',{is_pool_or_lava,is_ice},water);
  const {views,context}=creation,stair=context(layouts.stairs),record=(type,p)=>views.record(type,p);
- Object.assign(stair,{StairwaySize:ctypes.size('stairway'),stairway:p=>record('stairway',p),assign_level:(to,from)=>memory.memmove(environment.address(to),environment.address(from),ctypes.size('d_level')),levelCopy:from=>{const p=environment.transport.stackAlloc(ctypes.size('d_level'));memory.memmove(p,environment.address(from),ctypes.size('d_level'));return record('d_level',p);},Sprintf:services.sprintf});
+ Object.assign(stair,{StairwaySize:ctypes.size('stairway'),stairway:p=>record('stairway',p),assign_level:(to,from)=>memory.memmove(environment.address(to),environment.address(from),ctypes.size('d_level')),levelCopy:from=>{const p=environment.transport.stackAlloc(ctypes.size('d_level'));memory.memmove(p,environment.address(from),ctypes.size('d_level'));return record('d_level',p);},Sprintf:(out,format,...args)=>services.sprintf(environment.address(out),typeof format==='string'?services.literal(format):environment.address(format),...(format.includes('%d')?[environment.transport.int(args[0])]:args.map(v=>typeof v==='string'?services.literal(v):environment.address(v)))),strsubst:(out,from,to)=>environment.resolve('strsubst')(environment.address(out),typeof from==='string'?services.literal(from):environment.address(from),typeof to==='string'?services.literal(to):environment.address(to))});
  for(const name of ['earth','air','fire','water'])Object.defineProperty(stair,name+'_level',{get:()=>creation.environment.svd.dungeon_topology['d_'+name+'_level']});
  environment.register('stairs',Object.fromEntries(Object.entries(stairs).filter(([,v])=>typeof v==='function')),stair,{prepareArgs:(fn,args)=>{if(fn==='stairway_add'){args[0]=environment.transport.short(args[0]);args[1]=environment.transport.short(args[1]);args[2]=environment.transport.char(args[2]);args[3]=environment.transport.char(args[3]);args[4]=record('d_level',args[4]);}else if(['stairway_find','stairway_find_from'].includes(fn))args[0]=record('d_level',args[0]);else if(['known_branch_stairs','stairs_description'].includes(fn))args[0]=record('stairway',args[0]);return args;}});
  const reg=Object.create(services),regionGlobals=['gr','gm','svn','svm','gg','u','gy','gi','svc','iflags','cg','svl','mons','gv'];

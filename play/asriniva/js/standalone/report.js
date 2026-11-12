@@ -2,9 +2,9 @@
 import abi from './report-abi.json' with {type:'json'};
 import * as report from '../ported/report.js';
 import * as md4 from '../ported/nhmd4.js';
-import {createReportState,createReportEnvironment} from '../ported/report-runtime.js';
-import {withCEnvironment} from '../ported/c-runtime.js';
-import {VFSError} from '../services/c-vfs.js';
+import {createReportState,createReportEnvironment} from '../nethack/bindings/report.js';
+import {withCEnvironment} from '../c-runtime/context.js';
+import {VFSError} from '../c-runtime/vfs.js';
 
 export function enableReport(environment,layouts){
  const {memory,services,ctypes,transport}=environment,address=environment.address;

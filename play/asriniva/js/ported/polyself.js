@@ -19,7 +19,7 @@
  *    polymon (called directly)             usually golem petrification
  */
 
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 
 export const no_longer_petrify_resistant =

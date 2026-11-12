@@ -573,14 +573,14 @@
     "mplayer_talk": "void (struct monst *)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-mplayer-abi.py": "68a1d2cd70456298c15e335132aaa07e670b7eeec12d618906a5606be196e924",
+    "scripts/export-standalone-mplayer-abi.py": "89e4cac77ce3df3dbcdcc095e3dd711342d7cb22541b217a70d2ceba86bc21b0",
     "scripts/tu-mplayer-layout.h": "70d01b2ffc2897b4ab59e3956e213a28eb1c477345cb1b2621741a2c80424b26",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/mplayer.js": "3795687fe46979a1235eed046deec4b354eeee52fc2dbc613f1a3be0b362e4b6",
     "nethack-c/upstream/src/mplayer.c": "ddd09ef2c6c39e862554ee899307eb2f7e60a869dea364656f6b3e23681fb259",
-    "js/ported/mplayer.js": "cf80113e926cc26d5fa31a5df5c63601f573e95f3b25efec67135b04636faf0d",
-    "js/ported/mplayer-runtime.js": "9a81d6638b2aa17913cbb5548fa03568429fc09177b0b12cc324e1d9ecf8e7b0",
-    "js/standalone/records.json": "b0e9d94ad00af9838c21971dc7f682ea87634c8d19000e6c1940208ee1ed01b2",
+    "js/ported/mplayer.js": "bdbb923bf9aca8a2330d28482a7f7bcdf40cdaffc05cd5ee79feadc0962cf826",
+    "js/nethack/bindings/mplayer.js": "650c2fca1db26eab3a5d0ac24ad185a6d5108782dd7dfd750c156a987d9f23c3",
+    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"

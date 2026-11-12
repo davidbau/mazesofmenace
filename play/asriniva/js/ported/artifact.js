@@ -4,7 +4,7 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 // Source-faithful configured artifact.c policy; the runtime owns only typed transport.
-import { C } from './c-runtime.js';
+import { C } from '../c-runtime/context.js';
 
 const FATAL_DAMAGE_MODIFIER = 200;
 const MB_MAX_DIEROLL = 8;
