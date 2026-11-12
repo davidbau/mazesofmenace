@@ -581,6 +581,7 @@ export function init_oracles(fp)
 {
     let i;
     let line = C.stackAlloc(C.BUFSZ);
+    C.storeChar(line, 0); // Empty/truncated input must not scan a reused stack buffer.
     let cnt = C.intLocal();
     cnt.value = 0;
 

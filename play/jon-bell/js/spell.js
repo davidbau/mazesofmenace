@@ -13,7 +13,7 @@ import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { cast_chain_lightning, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now } from './display.js';
+import { cast_chain_lightning, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
 import { pline } from './pline.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { d } from './rng.js';
@@ -1638,7 +1638,10 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             return { count: hit.sel && !(counting && count > 0) ? 0 : 1, picked: hit.a_int };
         if (how === 'PICK_NONE')
             /* C ref: a PICK_NONE picklist is display-only — any other key just
-             * re-reads (the dismiss keys above already returned). */
+             * re-reads (the dismiss keys above already returned).  A key
+             * outside resp (wintty.c:1533-1535) is swallowed inside
+             * xwaitforspace, so a live count survives it. */
+            if (!'^><|.,@~'.includes(ch)) reset_count = false;
             continue;
         /* Unrecognised accelerator: bell, no redraw, read again. */
         reset_count = false;
@@ -1647,6 +1650,15 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
         /* spell.c:2153 destroy_nhwindow -> wintty.c:982 erase_menu_or_text:
          * docorner(offx, maxrow + 1, 0); row_refresh skips GLYPH_UNEXPLORED. */
         if (!noOverlay) docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
+        else {
+            /* wintty.c:966-983 erase_menu_or_text with offx 0: docrt();
+             * flush_screen(1) — vision_recalc re-notices monsters
+             * (vision.c:856).  windows.c:1859-1863 keeps bot disabled. */
+            const savedBotDisabled = g._bot_disabled;
+            g._bot_disabled = true;
+            try { await docrt(); await flush_screen(1); }
+            finally { g._bot_disabled = savedBotDisabled; }
+        }
     }
 }
 

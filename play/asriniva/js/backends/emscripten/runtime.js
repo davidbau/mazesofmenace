@@ -344,7 +344,8 @@ function configuredFields(services, pointer, fields, intSize) {
     return result;
 }
 
-export function createPortedRuntime(layouts) {
+export function createPortedRuntime(layouts, {pointerFormat='caller'}={}) {
+    if (!['caller','native'].includes(pointerFormat)) throw new TypeError('Unknown pointer formatting profile '+pointerFormat);
     const hackLayout=layouts.hack&&Object.freeze({...layouts.hack});
     const selvarLayout=layouts.selvar&&Object.freeze({...layouts.selvar});
     const wormLayout=layouts.worm&&Object.freeze({...layouts.worm});
@@ -1020,7 +1021,9 @@ zapState(services) {return zapState(services);},
         },
         light(services, name, ...args) {
             const environment = createLightEnvironment(services, layouts.light);
-            environment.fmt_ptr = value => {
+            // Preserve the configured caller profile unless the embedding
+            // explicitly requests native formatting for a native-C comparison.
+            if (pointerFormat === 'native') environment.fmt_ptr = value => {
                 const out = services.fmt_ptr(value);
                 writeNativePointer(services.heap(), out, value);
                 return out;

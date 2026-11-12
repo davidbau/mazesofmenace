@@ -23,7 +23,6 @@ import {
     LARGEST_INT,
     MAGIC_PORTAL,
     M_AP_MONSTER,
-    M_AP_NOTHING,
     M_AP_TYPMASK,
     MAX_NUM_WORMS,
     MON_ARRIVE_WITH_YOU,
@@ -70,7 +69,7 @@ import {
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import {
-    In_W_tower,
+    In_W_tower_steps,
     depth,
     ledger_no,
     ledger_to_dlev,
@@ -116,7 +115,8 @@ import {
 import {
     m_at, mon_track_clear, place_monster,
 } from './monst.js';
-import { livelog_printf, pline_mon } from './pline.js';
+import { impossible_printer, livelog_printf, pline_mon } from './pline.js';
+import { finish_steps } from './source_steps.js';
 import {
     AT_WEAP,
     M2_DOMESTIC,
@@ -998,47 +998,17 @@ export async function keepdogs(pets_only, rawEnv = {}) {
             mtmp.wormno = num_segs;
             mtmp.mlstmv = state.moves;
         } else if (keep_mon_accessible(mtmp, state)) {
-            const appearance = mtmp.m_ap_type & M_AP_TYPMASK;
-            let onLevelChain = false;
-            const seen = new Set();
-            for (let current = state.level.monlist;
-                current && !seen.has(current);
-                current = current.nmon) {
-                seen.add(current);
-                if (current === mtmp) {
-                    onLevelChain = true;
-                    break;
-                }
-            }
-            const trackAvailable = Array.isArray(mtmp.mtrack)
-                && mtmp.mtrack.length >= 3
-                && mtmp.mtrack.slice(0, 3).every(Boolean);
-            // dog.c keys accessibility on retained Wizard identity, including
-            // forms reached through the normal newcham() transition.
-            const ordinaryAccessible = (mtmp.iswiz === true
-                || mtmp.isshk || mtmp.ispriest || mtmp.isgd)
-                && !mtmp.wormno
-                && (appearance === M_AP_NOTHING
-                    || appearance === M_AP_MONSTER)
-                && mtmp !== u.ustuck
-                && onLevelChain
-                && m_at(mtmp.mx, mtmp.my, state) === mtmp
-                && trackAvailable
-                && (mtmp.mstate & (MON_LIMBO | MON_MIGRATING
-                    | MON_STILL_ARRIVING)) === 0;
-            if (ordinaryAccessible) {
-                await migrate_to_level(
-                    mtmp,
-                    ledger_no(u.uz, state),
-                    MIGR_EXACT_XY,
-                    null,
-                    env,
-                );
-            } else {
-                // Preserve the discarded C call marker where the existing
-                // migration adapter does not yet support this state.
-                note_unported('dog.c migrate_to_level');
-            }
+            // C ref: dog.c keepdogs() 866-876. The Wizard, and a shopkeeper,
+            // priest or vault guard away from home, migrate to come back to
+            // this spot in whatever form they have, a long worm's tail
+            // included (mon_leave() counts it).
+            await migrate_to_level(
+                mtmp,
+                ledger_no(u.uz, state),
+                MIGR_EXACT_XY,
+                null,
+                env,
+            );
         } else if (mtmp.mleashed) {
             const message = env.message ?? ttyPline;
             await message(
@@ -1327,9 +1297,9 @@ export async function mon_arrive(monster, when, rawEnv = {}) {
         if (!whenIsWizard) {
             await relmon(monster, 'failed_arrivals', state, env);
         } else {
-            // mon.c m_into_limbo() delegates to the still-partial
-            // dog.c:migrate_to_level() adapter; C discards the void result.
-            note_unported('dog.c migrate_to_level');
+            // C ref: dog.c:613-616. A resurrected Wizard with no room is
+            // not called from losedogs(), so he goes straight into limbo.
+            await m_into_limbo(monster, state, env);
         }
     }
     monster.mstate &= ~MON_STILL_ARRIVING;
@@ -1429,7 +1399,10 @@ export async function migrate_to_level(
         state.wiz3_level,
     ].some((level) => sameLevel(level, state.u.uz));
     const inWizardTower = onWizardTowerLevel
-        ? migratingOperation(env, 'inWizardTower', In_W_tower)
+        ? migratingOperation(env, 'inWizardTower',
+            (x, y, level, towerState) => finish_steps(
+                In_W_tower_steps(x, y, level, towerState),
+                impossible_printer(towerState)))
         : null;
     const isOnMap = m_at(monster.mx, monster.my, state) === monster;
     const isOffMapLimbo = monster.mx === 0
@@ -1464,7 +1437,7 @@ export async function migrate_to_level(
         ? 1
         : 0;
     if (inWizardTower
-        && inWizardTower(oldX, oldY, state.u.uz, state)) {
+        && await inWizardTower(oldX, oldY, state.u.uz, state)) {
         xyFlags |= 2;
     }
     monster.wormno = num_segs;

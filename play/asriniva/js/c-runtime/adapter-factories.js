@@ -9,7 +9,7 @@ export function exactAddress(value,errorText,coalesceNull=false){if(coalesceNull
 
 export function signedInt(value,coerceNumber=false){return typeof value==='bigint'?Number(BigInt.asIntN(32,value)):coerceNumber?Number(value)|0:value|0;}
 
-export function currentDataView(services){return new DataView(services.heap().buffer);}
+export function currentDataView(services){return 'dataView' in services?services.dataView():new DataView(services.heap().buffer);}
 
 export function currentInt8View(services){return new Int8Array(services.heap().buffer);}
 
@@ -89,7 +89,7 @@ export function createScalarAdapter(services,layout,schema,ptr,options){
   return Crt.narrowInteger(signed,bits,v);
  };
  let dataView;
- const memory=cached?()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;}:()=>new DataView(services.heap().buffer);
+ const memory='dataView' in services?()=>services.dataView():cached?()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;}:()=>new DataView(services.heap().buffer);
  const type=t=>t.includes('*')?'p':t.startsWith('enum ')?(declaredEnum?(layout['enumSigned:'+t.slice(5)]?'i32':'u32'):'i32'):types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error(errors[0]+t);return env[d](v);};
  const cellAddress=addressCells?address:ptr;

@@ -16,6 +16,14 @@ export function createStandaloneLua(environment,options={}) {
         finally{frames.pop();}
     };
     Object.assign(host,{
+        ioServices:()=>({stdin:services.stdin,stdout:services.stdout,stderr:services.stderr,
+            store:(p,value)=>memory.view.setBigUint64(p,BigInt(value),true),
+            open:(path,mode)=>services.fopen(path,mode),close:services.fclose,flush:services.fflush,tmpfile:services.tmpfile,
+            get:services.fgetc,unget:(p,ch)=>services.ungetc(ch,p),eof:services.feof,failed:services.ferror,clearerr:services.clearerr,
+            seek:services.fseek,tell:services.ftell,setvbuf:(p,mode,size)=>services.setvbuf(p,0,mode,size),
+            write:(p,text)=>{const bytes=Uint8Array.from(text,c=>c.charCodeAt(0)),at=memory.malloc(bytes.length||1);try{memory.HEAPU8.set(bytes,at);return Number(services.fwrite(at,1,bytes.length,p))===bytes.length;}finally{memory.free(at);}},
+            errno:()=>environment.libc.errno,error:()=>memory.readString(services.strerror(environment.libc.errno)),
+        }),
         callback:functions.callback,call:invokeCallback,hook:invokeCallback,
         debugLayout:i=>{if(!Number.isInteger(i)||i<0||i>=metadata.lua.debug.length)throw new Error('Unknown Lua debug layout');return metadata.lua.debug[i];},
         stringHeader:()=>metadata.lua.memory[3],
@@ -58,6 +66,13 @@ export function createStandaloneLua(environment,options={}) {
         if(recipe.return==='lua_Number'){bits.setBigUint64(0,result,true);return bits.getFloat64(0,true);}
         return recipe.return.includes('*')||['lua_Alloc','lua_CFunction'].includes(recipe.return)?Number(result):Number(BigInt.asIntN(32,result));
     };
+    // Original lua.h: lua_CFunction lua_tocfunction(lua_State*,int);
+    api.luaL_testudata=(L,index,name)=>Number(dispatch(L,'luaL_testudata',index,typeof name==='string'?services.literal(name):name));
+    api.luaL_error_text=(L,message)=>dispatch(L,'luaL_error_text',typeof message==='string'?services.literal(message):message);
+    api.luaopen_io=L=>Number(dispatch(L,'luaopen_io'));
+    api.lua_tocfunction=(L,index)=>Number(dispatch(L,'lua_tocfunction',index));
+    // Original lua.h: void lua_setallocf(lua_State*,lua_Alloc,void*).
+    api.lua_setallocf=(L,allocator,userdata)=>{dispatch(L,'lua_setallocf',allocator,userdata);};
     api.lua_isuserdata=(L,i)=>[2,7].includes(api.lua_type(L,i))?1:0;
     api.lua_gc=(L,what,...args)=>Number(BigInt.asIntN(32,dispatch(L,'lua_gc',what,args[0]??0,args[1]??0,args[2]??0)));
     return {api,dispatch,counters:runtime.counters};

@@ -3,19 +3,24 @@ import {address} from './memory.js';
 // read/write helpers. The adapter supplies canonical scalar types.
 export function createCTypes(memory,metadata,bitfields,aliases={}) {
     const scalars={'char':'Int8','signed char':'Int8','unsigned char':'Uint8','short':'Int16','unsigned short':'Uint16','int':'Int32','unsigned int':'Uint32','unsigned':'Uint32','long':'BigInt64','unsigned long':'BigUint64','long long':'BigInt64','unsigned long long':'BigUint64','float':'Float32','double':'Float64'};
+    // Declarations are fixed for this type environment; no memory views are cached.
+    const canonicalTypes=new Map(),typeSizes=new Map();
     function canonical(type){
+        const input=type,cached=canonicalTypes.get(input);if(cached!==undefined)return cached;
         type=type.replace(/\b(const|volatile|restrict)\b/g,'').trim().replace(/\s+/g,' ');
         const seen=new Set();
         while(!seen.has(type)){seen.add(type);const next=metadata.aliases?.[type]??aliases[type];if(!next)break;type=next;}
         const nested=type.replace(/\s+/g,'').match(/^(?:__typeof__|typeof)\(\(\((\w+)\*\)0\)->(\w+)\)$/);
-        if(nested){const field=record(nested[1]).fields[nested[2]];if(!field?.record)throw new Error('Unmeasured nested C record '+type);return field.record;}
+        if(nested){const field=record(nested[1]).fields[nested[2]];if(!field?.record)throw new Error('Unmeasured nested C record '+type);canonicalTypes.set(input,field.record);return field.record;}
         const anonymous=type.match(/^(?:struct|union) (?:\w+::)?\(unnamed(?: struct| union)? at .*\/([^/]+):(\d+):(\d+)\)$/);
-        if(anonymous)return '@'+anonymous[1]+':'+anonymous[2]+':'+anonymous[3];
-        return type;
+        if(anonymous)type='@'+anonymous[1]+':'+anonymous[2]+':'+anonymous[3];
+        canonicalTypes.set(input,type);return type;
     }
     function record(type){type=canonical(type).replace(/^(struct|union) /,'');const result=metadata.records[type];if(!result)throw new Error('Unmeasured C record '+type);return{type,...result};}
-    function size(type) {
-        type=canonical(type);const array=type.match(/^(.*?)\[(\d+)\](.*)$/);
+    function isRecord(type){return Boolean(metadata.records[canonical(type).replace(/^(struct|union) /,'')]);}
+    function size(type){type=canonical(type);const cached=typeSizes.get(type);if(cached!==undefined)return cached;const bytes=measureSize(type);typeSizes.set(type,bytes);return bytes;}
+    function measureSize(type) {
+        const array=type.match(/^(.*?)\[(\d+)\](.*)$/);
         if(array)return Number(array[2])*size(array[1]+array[3]);
         if(type.includes('*'))return 8;
         if(type.startsWith('enum ')){if(!metadata.enums[type])throw new Error('Unmeasured C enum '+type);return metadata.enums[type].size;}
@@ -55,5 +60,5 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
         if(entry.field.record)return memory.memmove(entry.at,address(value),record(entry.field.record).size);
         return entry.field.bits!==undefined?bitfields.set(entry.definition.type,key,at,value):store(scalar,entry.at,value);
     }
-    return{canonical,record,size,load,store,locate,getField,setField};
+    return{canonical,record,isRecord,size,load,store,locate,getField,setField};
 }

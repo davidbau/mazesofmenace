@@ -696,7 +696,12 @@ function diggingCtx() {
         g.context.digging = { pos: { x: 0, y: 0 }, level: { dnum: 0, dlevel: 0 },
                               down: false, chew: false, warned: false, effort: 0 };
     }
-    return g.context.digging;
+    /* C zeroes svc.context.digging (memset / reset); pos and level are embedded
+     * structs there, so they are never absent. */
+    const dg = g.context.digging;
+    if (!dg.pos) dg.pos = { x: 0, y: 0 };
+    if (!dg.level) dg.level = { dnum: 0, dlevel: 0 };
+    return dg;
 }
 
 
@@ -2269,6 +2274,13 @@ const WOOD = 8; /* objclass.h oc_material */
 // W_CHAIN owornmask bit — mirrors js/ball.js's findBallChain(), reproduced
 // locally per the established per-file convention (js/ball.js:74-91).
 function findBallChain() {
+    /* C's uball/uchain stay pointing at the objects while they are unlinked
+     * (OBJ_FREE between move_bc halves, or buried); js/read.js setworn_bc
+     * writes them as u.uball/u.uchain, so prefer those (as js/ball.js does)
+     * and keep the scan as the fixture fallback. */
+    const gu = game.u;
+    if (gu && gu.uball && gu.uchain)
+        return { uball: gu.uball, uchain: gu.uchain };
     let uball = null, uchain = null;
     for (let o = game.invent; o; o = o.nobj) {
         if ((o.owornmask | 0) & W_BALL) uball = o;
@@ -2360,14 +2372,17 @@ export async function bury_an_obj(otmp, dealloced) {
     if (dealloced)
         dealloced.value = 0;
 
-    const { uball, uchain } = findBallChain();
-    if (otmp === uball) {
+    if (otmp === findBallChain().uball) {
         await unpunish();
         set_utrap(rn1(50, 20), TT_BURIEDBALL);
         await pline_The('iron ball gets buried!');
     }
     /* after unpunish(), or might get deallocated chain */
     const otmp2 = otmp.nexthere;
+    /* C dig.c:2007 reads the uchain global AFTER unpunish() has set it to
+     * null (setworn(0, W_CHAIN)); re-read it here rather than reusing a
+     * pre-unpunish copy that would still name the deleted chain. */
+    const { uchain } = findBallChain();
     /*
      * obj_resists(,0,0) prevents Rider corpses from being buried.
      * It also prevents The Amulet and invocation tools from being
@@ -2406,9 +2421,9 @@ export async function bury_an_obj(otmp, dealloced) {
         const roll = rnd(250);
         start_timer((under_ice ? 0 : 250) + roll, TIMER_OBJECT, ROT_ORGANIC, obj_to_any(otmp));
     }
-    /* rusting of buried metal (is_rustprone branch) is #if 0'd out in C —
-     * never compiled, so it is not ported here (Cardinal Rule 1: port
-     * what C does, including what it deliberately does not do). */
+    /* C dig.c:2036-2043: the is_rustprone RUST_METAL timer arm sits inside
+     * #if 0 ("rusting of buried metal not yet implemented"), so the compiled
+     * C has no third arm here and neither does this body. */
     add_to_buried(otmp);
     return otmp2;
 }

@@ -629,23 +629,28 @@ export function find_hell(level, state = game) {
 // The tower's boundary is the exclusion area of the level's
 // des.teleport_region(), which mkmaze.c fixup_special() stores in svd.dndest.
 // savelev() and getlev() carry dndest with the level, including a bones
-// level, so a tower level always has it in C.
+// level. A debug command that loads another level file onto a tower level
+// (#wizloaddes) leaves the level claiming the tower without a boundary, and
+// C's In_W_tower() then prints impossible("No boundary for Wizard's
+// Tower?") and returns FALSE.
 export function On_W_tower_level(level, state = game) {
     return Boolean(on_level(level, state.wiz1_level)
         || on_level(level, state.wiz2_level)
         || on_level(level, state.wiz3_level));
 }
 
-export function In_W_tower(x, y, level, state = game) {
+// The impossible() is yielded as an ImpossibleCall (js/source_steps.js), so
+// a caller that can wait drives In_W_tower_steps() with finish_steps(...,
+// impossible_printer(state)) and prints it where C does. In_W_tower() is the
+// synchronous form, which records the print as a gap;
+// scripts/in-w-tower-callers.test.mjs lists its callers.
+export function* In_W_tower_steps(x, y, level, state = game) {
     if (!On_W_tower_level(level, state))
         return false;
     const dndest = state.dndest ?? {};
     if (!dndest.nlx) {
-        // C's impossible("No boundary for Wizard's Tower?") reports a level
-        // that claims the tower without carrying its exclusion region. The
-        // port reaching this means its level state lost dndest; impossible()
-        // is async and every caller here is synchronous, so fail closed.
-        throw new Error("No boundary for Wizard's Tower?");
+        yield new ImpossibleCall("No boundary for Wizard's Tower?");
+        return false;
     }
     /*
      * Both of the exclusion regions for arriving via level teleport
@@ -653,6 +658,10 @@ export function In_W_tower(x, y, level, state = game) {
      */
     return within_bounded_area(x, y, dndest.nlx, dndest.nly,
                                dndest.nhx, dndest.nhy);
+}
+
+export function In_W_tower(x, y, level, state = game) {
+    return finish_steps(In_W_tower_steps(x, y, level, state));
 }
 
 // C ref: dungeon.c single_level_branch() (1966-1975). C's own comment calls
@@ -735,8 +744,9 @@ export function Can_fall_thru(level, state = game) {
 //
 // In_endgame, In_sokoban, and Is_wiz1_level are spelled out against `state`
 // rather than imported from js/const.js, following the same reasoning as
-// has_ceiling below.
-export function Can_rise_up(x, y, lev, state = game) {
+// has_ceiling below. In_W_tower() can print an impossible(), so this is a
+// step generator (js/source_steps.js); both callers in js/ can wait.
+export function* Can_rise_up_steps(x, y, lev, state = game) {
     const stway = stairway_find_special_dir(false, state);
 
     const inEndgame = lev?.dnum != null
@@ -746,12 +756,18 @@ export function Can_rise_up(x, y, lev, state = game) {
     const isWiz1 = on_level(lev, state.wiz1_level);
 
     if (inEndgame || inSokoban
-        || (isWiz1 && In_W_tower(x, y, lev, state)))
+        || (isWiz1 && (yield* In_W_tower_steps(x, y, lev, state))))
         return false;
     return lev.dlevel > 1
         || (dungeon_at(lev.dnum, state).entry_lev === 1
             && ledger_no(lev, state) !== 1
             && stway && stway.up);
+}
+
+// The synchronous form of Can_rise_up_steps(), which records In_W_tower()'s
+// impossible() as a gap. Only tests call it.
+export function Can_rise_up(x, y, lev, state = game) {
+    return finish_steps(Can_rise_up_steps(x, y, lev, state));
 }
 
 // C ref: dungeon.c has_ceiling() (1689-1698). Every level has a ceiling
@@ -1822,6 +1838,26 @@ export function surface(x, y, state = game) {
 
 // C ref: dungeon.c update_lastseentyp(). The caller supplies canseemon()
 // because dungeon topology does not own hero sensing.
+// C ref: svl.lastseentyp[COLNO][ROWNO], the terrain type the hero last saw at
+// each square. It is one game-wide grid, not part of the level structure:
+// init_mapseen() clears it for a newly made level, savelev() and getlev()
+// write and read it with each level (js/save.js, js/restore.js, bones), and
+// bones.c clears the squares it forgets. Replacing the level structure, as
+// clear_level_structures() does for #wizloaddes, leaves it alone.
+// scripts/lastseentyp-grid.test.mjs keeps every use on this definition.
+export function new_lastseentyp_grid() {
+    return Array.from({ length: COLNO }, () => new Array(ROWNO).fill(STONE));
+}
+
+export function lastseentyp_grid(state = game) {
+    return state.lastseentyp ??= new_lastseentyp_grid();
+}
+
+// A copy for savelev()/getlev(), which write and read the grid by value.
+export function copy_lastseentyp_grid(grid) {
+    return grid ? grid.map((column) => [...column]) : new_lastseentyp_grid();
+}
+
 export function update_lastseentyp(
     x,
     y,
@@ -1837,11 +1873,7 @@ export function update_lastseentyp(
         && canSeeMonster(monster)) {
         typ = cmap_to_type(monster.mappearance);
     }
-    state.level.lastseentyp ??= Array.from(
-        { length: COLNO },
-        () => new Array(ROWNO).fill(STONE),
-    );
-    state.level.lastseentyp[x][y] = typ;
+    lastseentyp_grid(state)[x][y] = typ;
     return typ;
 }
 
@@ -2417,6 +2449,38 @@ export function rm_mapseen(ledgerNumber, state = game) {
     }
 }
 
+// C ref: dungeon.c save_mapseen() (2694-2717) and load_mapseen() (2721-2731)
+// share this walk of svb.branches. It stops at the first branch `stop`
+// accepts. When none does, curr is null and brindx is the number of
+// branches, so a mapseen with no branch saves that count and loads as null.
+function walk_branches(stop, state) {
+    let brindx = 0;
+    let curr = state.svb?.branches ?? null;
+    for (; curr; curr = curr.next, ++brindx)
+        if (stop(curr, brindx)) break;
+    return { curr, brindx };
+}
+
+// C ref: dungeon.c save_mapseen() (2694-2717). C writes mptr->br as its
+// position in svb.branches, not the branch itself, so that load_mapseen()
+// can point the restored node at the restored branch. Every other field is
+// saved by value.
+export function save_mapseen(mptr, state) {
+    const { br, ...fields } = mptr;
+    const { brindx } = walk_branches((curr) => curr === br, state);
+    return { branch_index: brindx, ...fields };
+}
+
+// C ref: dungeon.c load_mapseen() (2721-2760). The caller restores
+// svb.branches first, as restore_dungeon() does, so that `br` is one of the
+// restored branches and recbranch_mapseen()'s identity check holds.
+export function load_mapseen(saved, state) {
+    const { branch_index: branchnum, ...fields } = saved;
+    const { curr } = walk_branches(
+        (_curr, brindx) => brindx === branchnum, state);
+    return { br: curr, ...fields };
+}
+
 // C ref: dungeon.c init_mapseen() (2834-2872). An array represents C's linked
 // list while preserving its sorted dungeon-and-level order.
 export function init_mapseen(lev, state = game) {
@@ -2442,10 +2506,9 @@ export function init_mapseen(lev, state = game) {
     if (after < 0) state.svm.mapseenchn.push(entry);
     else state.svm.mapseenchn.splice(after, 0, entry);
 
-    // C clears the separate live svl.lastseentyp grid for the destination.
-    // The port's destination GameMap is newly allocated and starts clear;
-    // mutating state.level here would instead erase the departing GameMap
-    // that savelev() has already retained by reference.
+    /* svl.lastseentyp[][] is reused for each level, so get rid of
+       previous level's data */
+    state.lastseentyp = new_lastseentyp_grid();
     return entry;
 }
 
@@ -2457,7 +2520,7 @@ function incrementMapseenFeature(feat, key) {
 // remembered location into the current level's mapseen features. C's
 // `#if 0` arms for ice, water and lava are not compiled.
 function count_feat_lastseentyp(mapseen, x, y, state) {
-    switch (state.level?.lastseentyp?.[x]?.[y] ?? STONE) {
+    switch (lastseentyp_grid(state)[x][y]) {
     case TREE:
         incrementMapseenFeature(mapseen.feat, 'ntree');
         break;
@@ -2686,7 +2749,7 @@ export function recalc_mapseen(state = game) {
     // A past hero's death becomes known once the current hero has seen the
     // map location where it happened.
     for (let bp = mapseen.final_resting_place; bp; bp = bp.next) {
-        if (state.level.lastseentyp?.[bp.frpx]?.[bp.frpy]) {
+        if (lastseentyp_grid(state)[bp.frpx]?.[bp.frpy]) {
             bp.bonesknown = true;
             mapseen.flags.knownbones = 1;
         }
@@ -2718,7 +2781,7 @@ export function room_discovered(roomno, state = game) {
 // C ref: dungeon.c update_mapseen_for() (2942-2947).
 export function update_mapseen_for(x, y, state = game) {
     recalc_mapseen(state);
-    return state.level?.lastseentyp?.[x]?.[y] ?? STONE;
+    return lastseentyp_grid(state)[x]?.[y] ?? STONE;
 }
 
 // C ref: dungeon.c induced_align(). Special-level and dungeon alignment masks

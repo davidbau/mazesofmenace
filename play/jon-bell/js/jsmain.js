@@ -243,6 +243,10 @@ export class NethackGame {
             g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
             g.go.opt_symset_changed = true;
         }
+        if (opts.opt_need_redraw) {
+            g.go = g.go || {};
+            g.go.opt_need_redraw = true; // options.c:5024 pfxfn_cond_ (rc cond_*)
+        }
         // C options.c:7347 initoptions_finish fixes the active S_darkroom
         // alias after reading the RC, before a bound toggle can change flags.
         reglyph_darkroom();

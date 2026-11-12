@@ -17,7 +17,7 @@ export function readSdkUtf8(memory,p){
 }
 export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readStdin,stdout,stderr}={}) {
     if(readStdin!==undefined&&typeof readStdin!=='function')throw new TypeError('Expected synchronous readStdin callback');
-    const files=new Map(),output=[[],[]],closedStandard=new Set(),standardFlags=[0,O_WRONLY|O_CREAT,O_WRONLY|O_CREAT];let inputOffset=0;
+    const files=new Map(),output=[[],[]],closedStandard=new Set(),standardFlags=[0,O_WRONLY|O_CREAT,O_WRONLY|O_CREAT];let inputOffset=0,temporarySequence=0;
     const text=v=>typeof v==='string'?v:memory.readString(address(v));
     const pathText=v=>readSdkUtf8(memory,v);
     const fail=(error,value)=>{if(!(error instanceof VFSError))throw error;libc.errno=error.errno;return value;};
@@ -102,6 +102,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
         mkdir:(p,mode)=>capture(()=>{filesystem.mkdir(pathText(p),Number(mode));return 0;},-1),
         chdir:p=>capture(()=>{filesystem.chdir(pathText(p));return 0;},-1),
         fopen:(path,mode)=>capture(()=>{mode=text(mode);if(!validMode(mode))throw new VFSError('EINVAL');const fd=openDescriptor(pathText(path),modeFlags(mode),0o666);try{return allocate(fd,0,mode);}catch(error){closeDescriptor(fd);throw error;}},0),
+        tmpfile:()=>capture(()=>{let path,fd;for(;;){path='/.tmpfile-'+temporarySequence++;try{fd=openDescriptor(path,O_RDWR|O_CREAT|O_EXCL,0o600);break;}catch(error){if(error.code!=='EEXIST')throw error;}}try{filesystem.unlink(path);return allocate(fd,0,'w+');}catch(error){closeDescriptor(fd);throw error;}},0),
         fdopen:(fd,mode)=>capture(()=>{fd=Number(fd);validateDescriptor(fd);mode=text(mode);if(!validMode(mode))throw new VFSError('EINVAL');if(mode[0]==='a')api.addDescriptorFlags(fd,O_APPEND);return allocate(fd,0,mode);},0),
         fclose:p=>operation(p,f=>{let result=0;try{flush(f);discardInput(f,Boolean(readStdin&&f.fd===0&&!regular(0)));}catch(error){result=fail(error,-1);}try{closeDescriptor(f.fd);}catch(error){result=fail(error,-1);}files.delete(address(p));if(f.ownsBuffer&&f.buffer)memory.free(f.buffer);memory.free(address(p));return result;},-1),
         fileno:p=>operation(p,f=>f.fd,-1),
@@ -127,9 +128,11 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
         __fpending:p=>operation(p,f=>f.writeEnd,0),
         fread:(p,size,count,file)=>operation(file,f=>{size=Number(size);count=Number(count);if(!size||!count)return 0;return Math.floor(fileRead(f,p,size*count)/size);},0),
         fwrite:(p,size,count,file)=>operation(file,f=>{size=Number(size);count=Number(count);if(!size||!count)return 0;return Math.floor(fileWrite(f,p,size*count)/size);},0),
-        fgetc:p=>operation(p,f=>{const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{return fileRead(f,at,1)?memory.HEAPU8[at]:-1;}finally{memory.free(at);}},-1),
+        // Buffered bytes need no scratch allocation; refill/error paths stay shared.
+        fgetc:p=>operation(p,f=>{if(f.readable&&!f.writeEnd){if(f.unget.length)return f.unget.pop();if(f.readPos<f.readEnd)return memory.HEAPU8[f.buffer+f.readPos++];if(f.eof)return -1;}const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{return fileRead(f,at,1)?memory.HEAPU8[at]:-1;}finally{memory.free(at);}},-1),
         ungetc:(c,p)=>operation(p,f=>{if(Number(c)===-1)return -1;if(!f.readable){f.error=true;return -1;}if(f.unget.length>=8+f.readPos)return -1;f.eof=false;f.unget.push(Number(c)&255);return Number(c)&255;},-1),
-        fputc:(c,p)=>operation(p,f=>{const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{memory.HEAPU8[at]=Number(c)&255;return fileWrite(f,at,1)===1?Number(c)&255:-1;}finally{memory.free(at);}},-1),
+        // Allocate the FILE buffer before obtaining a view: allocation may grow memory.
+        fputc:(c,p)=>operation(p,f=>{if(f.writable&&f.writeEnd<f.capacity){const byte=Number(c)&255;if(f.mode!==1||byte!==10){discardInput(f);const at=buffer(f)+f.writeEnd;memory.HEAPU8[at]=byte;f.writeEnd++;return Number(c)&255;}}const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{memory.HEAPU8[at]=Number(c)&255;return fileWrite(f,at,1)===1?Number(c)&255:-1;}finally{memory.free(at);}},-1),
         feof:p=>operation(p,f=>Number(f.eof),0),ferror:p=>operation(p,f=>Number(f.error),0),clearerr:p=>operation(p,f=>{f.eof=f.error=false;},undefined),
         fseek:(p,n,whence)=>operation(p,f=>{try{flush(f);}catch(e){f.error=true;throw e;}discardInput(f);seekDescriptor(f.fd,Number(n),Number(whence));f.eof=false;return 0;},-1,false),
         ftell:p=>operation(p,f=>BigInt(seekDescriptor(f.fd,0,1)-f.readEnd+f.readPos-f.unget.length+f.writeEnd),-1n,false),

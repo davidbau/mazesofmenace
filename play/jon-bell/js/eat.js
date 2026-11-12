@@ -51,7 +51,7 @@ import { getObjFromGetobj, costly_alteration, costly_spot, obj_extract_self_gene
 import { wield_tool } from './wield.js';
 import { sellobj_state, safe_qbuf, safe_qbuf as safe_qbuf_real } from './shk.js';
 import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
-import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed } from './display.js';
+import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed, msgtype_is_stop } from './display.js';
 import { more_experienced, newexplevel } from './uhitm.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
@@ -2340,7 +2340,10 @@ async function eatcorpse(otmp) {
      * The dragon armor/form tail uses mondata.c:91 defended(). */
     } else if ((rotted > 5 || (rotted > 3 && rn2(5))) && !_eat_Sick_resistance()) {
         tp++;
-        _emit_eat_pline(`You feel ${_uprop_on(SICK) ? 'very ' : ''}sick.`);
+        /* pline.c:283-284: a MSGTYPE=stop match blocks in --More-- before losehp's rnd(8). */
+        const _sickMsg = `You feel ${_uprop_on(SICK) ? 'very ' : ''}sick.`;
+        if (msgtype_is_stop(_sickMsg)) await pline(_sickMsg);
+        else _emit_eat_pline(_sickMsg);
         await losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN); /* eat.c:1942 */
     }
 

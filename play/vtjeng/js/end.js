@@ -25,7 +25,7 @@ import { lift_covet_and_placebc, override_restriction } from './ball.js';
 // urgent_pline("You die..."), so a segment that runs out of input at the
 // query ends on the "Die? [yn] (n)" this file draws.
 
-// js/cmd.js imports UnsupportedEndOfGameError back from this file. Both cycle
+// js/cmd.js imports done2() and nh_terminate() back from this file. Both cycle
 // edges are safe because their imported bindings are read only inside
 // functions, after module initialization; neither belongs in a module-scope
 // value initializer while the cycle remains.
@@ -206,7 +206,7 @@ import { shkname, shkname_is_pname } from './shknam.js';
 import { accessible } from './monmove.js';
 import { note_unported } from './unported.js';
 import { keepdogs } from './dog.js';
-import { make_sick, set_itimeout } from './potion.js';
+import { make_sick, peffects, set_itimeout } from './potion.js';
 import { coreRandom } from './rng.js';
 import { d } from './rng.js';
 import {
@@ -223,13 +223,6 @@ import {
     Blind, Hallucination, Lifesaved, Sick,
 } from './youprop.js';
 import { dungeon_at } from './dungeon_table.js';
-
-export class UnsupportedEndOfGameError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = 'UnsupportedEndOfGameError';
-    }
-}
 
 // C ref: end.c deaths[] (44-50), "the array of death". Its index is a
 // game_end_types value, so the rows are in include/hack.h:483-498 order.
@@ -363,8 +356,8 @@ async function savelife(how, state = game) {
 // C ref: end.c fuzzer_savelife() (945-1016).  The debug fuzzer calls this
 // before done() initializes the killer or mortality fields.  It is a
 // return-valued source helper: TRUE returns from done(), while FALSE lets the
-// ordinary death path continue.  peffects() has a discarded result here and
-// remains a named gap. The source-required wiz_makemap command-queue mutation
+// ordinary death path continue.  C discards both peffects() results. The
+// source-required wiz_makemap command-queue mutation
 // below reaches cmd.c's queued callback without reading another command.
 async function fuzzer_savelife(how, state = game, source = {}) {
     const programState = state.program_state ?? {};
@@ -382,16 +375,15 @@ async function fuzzer_savelife(how, state = game, source = {}) {
         let remedies = 0;
         let potion;
 
-        // Both peffects() return values are discarded by C.  Its effect
-        // implementation remains an explicit gap, but mksobj/bless/obfree
-        // still execute in source order around that call boundary.
+        // Both peffects() return values are discarded by C.
+        const effectEnv = source.random ? { random: source.random } : {};
         if (ismnum(u.ulycn) && !random.rn2(3)) {
             const objectEnv = source.random
                 ? { state, random: source.random }
                 : { state };
             potion = mksobj(POT_WATER, true, false, objectEnv);
             bless(potion, { state });
-            note_unported('potion.c peffects');
+            await peffects(potion, state, effectEnv);
             obfree(potion, null, { state });
             ++remedies;
         }
@@ -401,7 +393,7 @@ async function fuzzer_savelife(how, state = game, source = {}) {
                 : { state };
             potion = mksobj(POT_RESTORE_ABILITY, true, false, objectEnv);
             bless(potion, { state });
-            note_unported('potion.c peffects');
+            await peffects(potion, state, effectEnv);
             obfree(potion, null, { state });
             ++remedies;
         }
@@ -639,18 +631,18 @@ export async function done2(state = game) {
         return ECMD_OK;
     }
 
-    // The recorder is a UNIX build, where wizard mode offers a core dump
-    // query before done(QUIT). A core dump cannot be represented in the
-    // browser runner, so retain an explicit boundary after consuming the
-    // source prompt; 'n' and 'q' continue into done(QUIT) as C does.
+    // C ref: end.c done2() 119-145. The recorder is a UNIX build, where
+    // wizard mode offers a core dump query before done(QUIT). On 'y' C
+    // resets SIGINT to done1() (the port has no signals), skips the absent
+    // sound library's exit hook, shuts the windows down and aborts, so the
+    // recorder captures no screen after the answer.
     if (state.wizard) {
         const coreAnswer = await yn_function(
             'Dump core?', 'ynq', 'q', true, state,
         );
         if (coreAnswer === 'y') {
-            throw new UnsupportedEndOfGameError(
-                'done2() requested the unavailable core-dump path',
-            );
+            tty_exit_nhwindows(null, state);
+            await NH_abort(state);
         }
         if (coreAnswer === 'q') {
             state.program_state ??= {};

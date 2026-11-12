@@ -118,7 +118,7 @@ import {
     flash_glyph_at,
     under_water,
 } from './display.js';
-import { depth, on_level, room_discovered } from './dungeon.js';
+import { depth, on_level, room_discovered, lastseentyp_grid } from './dungeon.js';
 import {
     engr_at,
 } from './engrave.js';
@@ -219,7 +219,7 @@ import {
 import { tty_display_nhwindow_map_blocking } from './wintty.js';
 import {
     cansee,
-    do_clear_area_async,
+    do_clear_area,
     recalc_block_point,
     unblock_point,
     vision_recalc,
@@ -351,7 +351,7 @@ export function reveal_terrain_getglyph(
                 glyph = trap?.tseen ? trap_to_glyph(trap, state)
                     : cmap_to_glyph(region.glyph_cmap, state);
             } else {
-                const lastSeenType = state.level.lastseentyp[x][y];
+                const lastSeenType = lastseentyp_grid(state)[x][y];
                 if (lastSeenType === location.typ) {
                     glyph = back_to_glyph(x, y, state);
                 } else {
@@ -2543,7 +2543,7 @@ export async function findit(state = game, rawEnv = {}) {
         num_kept_invis: 0,
         num_cleared_invis: 0,
     };
-    await do_clear_area_async(
+    await do_clear_area(
         state.u.ux,
         state.u.uy,
         BOLT_LIM,
@@ -2618,7 +2618,7 @@ export async function openit(state = game, rawEnv = {}) {
         return -1;
     }
     const counter = { value: 0 };
-    await do_clear_area_async(
+    await do_clear_area(
         state.u.ux,
         state.u.uy,
         BOLT_LIM,

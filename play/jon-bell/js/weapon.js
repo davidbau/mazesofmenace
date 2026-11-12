@@ -1,4 +1,5 @@
 // weapon.js — C ref: weapon.c.
+import { menucolor_row } from './coloratt.js';
 import { is_ammo } from './cmd.js';
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
 import { ECMD_OK, OBJ_INVENT, OBJ_MINVENT, P_ATTACK_SPELL, P_BARE_HANDED_COMBAT, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_FIRST_H_TO_H, P_FIRST_SPELL, P_FIRST_WEAPON, P_HEALING_SPELL, P_ISRESTRICTED, P_LAST_H_TO_H, P_LAST_SPELL, P_LAST_WEAPON, P_MATTER_SPELL, P_NONE, P_NUM_SKILLS, P_RIDING, P_SKILL_LIMIT, P_UNSKILLED } from './const.js';
@@ -323,7 +324,7 @@ async function enhance_menu(items, prompt, pickOne) {
             const wl = page.map((it, i) => {
                 const a = accel[start + i];
                 const body = (a ? `${a} - ${it.text}` : it.text).replace(/\t/g, ' ');
-                return it.heading ? menu_heading_text(body) : body;
+                return it.heading ? menu_heading_text(body) : menucolor_row(body);
             });
             wl.push('(end)');
             overlayRows = wl.length;
@@ -338,7 +339,7 @@ async function enhance_menu(items, prompt, pickOne) {
             const a = accel[start + i];
             const body = (a ? `${a} - ${it.text}` : it.text).replace(/\t/g, ' ');
             /* Headings are drawn with iflags.menu_headings (wintty.c:2688). */
-            rows[i] = ' ' + (it.heading ? menu_heading_text(body) : body);
+            rows[i] = ' ' + (it.heading ? menu_heading_text(body) : menucolor_row(body)); /* windows.c:1803 add_menu */
         }
         rows[page.length] = ` ${morestr}`;
         g._screen_output = rows.join('\n');

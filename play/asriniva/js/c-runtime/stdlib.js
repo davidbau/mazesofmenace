@@ -221,7 +221,7 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
                 if (signed) prefix = number < 0 ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
                 if (flags.includes('#')) {
                     if (conversion === 'o' && !body.startsWith('0')) prefix += '0';
-                    if (/[xXp]/.test(conversion) && (magnitude !== 0n || conversion === 'p')) prefix += conversion === 'X' ? '0X' : '0x';
+                    if (/[xXp]/.test(conversion) && (magnitude !== 0n || conversion === 'p' && floatPolicy==='darwin')) prefix += conversion === 'X' ? '0X' : '0x';
                 }
             }
             const padding = Math.max(0, width - prefix.length - body.length);
@@ -232,9 +232,10 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
         return output;
     };
     api.snprintf = (destination, size, format, ...args) => {
-        if (!Number.isSafeInteger(size) || size < 0) throw new RangeError('Invalid snprintf capacity');
-        const output = api.format(format, ...args);
-        if (size) memory.writeString(destination, output.slice(0, size - 1));
+        if(typeof size!=='bigint'&&(!Number.isSafeInteger(size)||size<0))throw new RangeError('Invalid snprintf capacity');
+        const capacity=BigInt(size);if(capacity<0n||capacity>0xffffffffffffffffn)throw new RangeError('Invalid snprintf capacity');
+        const output=api.format(format,...args),count=capacity>BigInt(output.length+1)?output.length+1:Number(capacity);
+        if(count)memory.writeString(destination,output.slice(0,count-1));
         return output.length;
     };
     api.sprintf = (destination, format, ...args) => {

@@ -1,7 +1,7 @@
 // allmain.js - the browser's move loop (index.html, frozen/playability_runner).
 //
 // Scoring enters through js/jsmain.js runSegment().  In the browser the
-// compiled engine (js/generated) runs the real moveloop_core(); this
+// engine (js/src) runs the real moveloop_core(); this
 // loop only waits for a key and hands it to the engine, which resumes
 // from its last command-boundary snapshot (see jsmain.js).
 

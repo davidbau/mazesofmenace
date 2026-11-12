@@ -25,6 +25,7 @@ import { pline, Norep, You_see, You, Your, You_cant } from './pline.js';
 import { pline_with_more, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
 import { money_cnt } from './hack.js';
 import { menu_heading_text } from './tty_menu.js';
+import { menucolor_text } from './coloratt.js';
 import { autokey, pick_lock, getdir, u_have_forceable_weapon } from './lock.js';
 import { boxlock } from './lock.js';
 import { nomul } from './allmain.js';
@@ -1027,7 +1028,8 @@ async function _select_menu(items, how, paint = null) {
                 lastHeading = it.heading;
                 const showGlyph = it.glyph && game.iflags?.use_menu_glyphs
                     && !((game.iflags.menuobjsyms | 0) & 4);
-                all.push(`${it.sel} ${menu_item_marker(it, page, showGlyph)} ${it.text}`);
+                const styled = menucolor_text(it.text);
+                all.push(`${it.sel} ${menu_item_marker(it, page, showGlyph, styled)} ${styled}`); /* windows.c:1803 add_menu() */
                 rowItems.push(it);
             }
             all.push('(end)');
@@ -1230,11 +1232,6 @@ function _pu_loot_classify(obj) {
     const k = classorder.indexOf(obj.oclass | 0);
     return (k >= 0) ? (1 + k) : (1 + classorder.length + ((obj.oclass | 0) !== 17 ? 1 : 0));
 }
-/* C invent.c:391 invletter_value — the one port is js/cmd.js; this adapts the
- * string invlet the pickup sorter may carry. */
-function _pu_invletter_value(c) {
-    return invletter_value_cmd(typeof c === 'string' ? c.charCodeAt(0) : c);
-}
 function _pu_sortloot(eligible, qflags) {
     const sl = game.flags?.sortloot ?? 'l';
     const lootMode = sl === 'f' || (sl === 'l' && !(qflags & USE_INVLET));
@@ -1261,8 +1258,9 @@ function _pu_sortloot(eligible, qflags) {
                 if ((cmp = a.disco - b.disco)) return cmp;
             }
         }
-        if (invletMode && (cmp = _pu_invletter_value(a.obj.invlet)
-                               - _pu_invletter_value(b.obj.invlet))) return cmp;
+        /* C invent.c:471-476 invletter_value() — the port in js/cmd.js */
+        if (invletMode && (cmp = invletter_value_cmd(a.obj.invlet | 0)
+                               - invletter_value_cmd(b.obj.invlet | 0))) return cmp;
         if (lootMode) {
             a.str ??= _pu_loot_xname(a.obj);
             b.str ??= _pu_loot_xname(b.obj);

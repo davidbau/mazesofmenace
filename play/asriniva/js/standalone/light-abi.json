@@ -220,7 +220,7 @@
   },
   "sourceSha256": {
     "scripts/export-standalone-light-abi.py": "6f90976d3d9c649b381317b8d999a4d2c904e29cb7f75a6bf51e7818d7afdf8f",
-    "js/standalone/light.js": "982d886b7a93d1389a1fce1cca25b44b01c28b122da786fde9d93093d184f24a",
+    "js/standalone/light.js": "01ded568351b4736354eaf3aa5af27d2aebd04d18ac2061d40bd05e679e55aa1",
     "scripts/tu-light-layout.h": "a8cc2cff42416881044aa92717432ffdd82c2219de68c76d58034777215a3946",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/light.js": "b3ce644e4f9620600f9cc4e68c3fa59295de9e4c78918045d4a53595249dfaa1",

@@ -3,6 +3,7 @@ import {createRecordStore,createArrayView} from './records.js';
 // Only C memory transport lives here; no game initialization or policy.
 export function createRecordViews(environment,fieldAliases={}) {
     const {ctypes,memory}=environment;
+    const hasRecord=type=>{try{return ctypes.isRecord(type);}catch{return false;}};
     function value(type,p) {
         type=ctypes.canonical(type);p=environment.address(p);
         const array=type.match(/^(.*?)\[(\d+)\](.*)$/);
@@ -14,10 +15,10 @@ export function createRecordViews(environment,fieldAliases={}) {
         });}
         if(type.endsWith('*')){
             const target=type.slice(0,-1).trim(),ptr=ctypes.load(type,p);
-            try{ctypes.record(target);}catch{return ptr<=BigInt(Number.MAX_SAFE_INTEGER)?Number(ptr):ptr;}
+            if(!hasRecord(target))return ptr<=BigInt(Number.MAX_SAFE_INTEGER)?Number(ptr):ptr;
             return record(target,ptr);
         }
-        try{ctypes.record(type);}catch{return ctypes.load(type,p);}
+        if(!hasRecord(type))return ctypes.load(type,p);
         return record(type,p);
     }
     const records=createRecordStore({memory,address:environment.address,

@@ -117,11 +117,12 @@ import {
     rndmonnam,
 } from './do_name.js';
 import { night, midnight } from './calendar.js';
-import { on_level } from './dungeon.js';
+import { on_level, lastseentyp_grid } from './dungeon.js';
 import { game } from './gstate.js';
 import { could_seduce, doseduce } from './mhitu.js';
 import { nomul } from './hack.js';
-import { youHear } from './pline.js';
+import { impossible_printer, youHear } from './pline.js';
+import { finish_steps } from './source_steps.js';
 import { mplayer_talk } from './mplayer.js';
 import {
     decodeUtf8ByteString,
@@ -198,7 +199,7 @@ import {
 } from './priest.js';
 import { demon_talk } from './minion.js';
 import { coreRandom, rn2 } from './rng.js';
-import { aggravate, cuss } from './wizard.js';
+import { aggravate_steps, cuss } from './wizard.js';
 import { genders } from './roles.js';
 
 import {
@@ -1158,7 +1159,8 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
         break;
     case MS_SHRIEK:
         plineMsg = 'shrieks.';
-        aggravate(state, coreRandom);
+        await finish_steps(aggravate_steps(state, coreRandom),
+            impossible_printer(state));
         break;
     case MS_IMITATE:
         plineMsg = 'imitates you.';
@@ -1516,7 +1518,7 @@ async function dochat(state) {
                like a wall; IS_WALL() test excludes solid rock even when
                that serves as a wall bordering a corridor */
             if (Blind(state.u)
-                && !IS_WALL(state.level.lastseentyp?.[tx]?.[ty] ?? STONE)) {
+                && !IS_WALL(lastseentyp_grid(state)[tx]?.[ty] ?? STONE)) {
                 /* when blind, you can only talk to a wall if it has
                    already been mapped as a wall */
                 /* (C's empty statement: the arm prints nothing) */

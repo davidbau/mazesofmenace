@@ -2914,8 +2914,15 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
         if (mode === TRAVP_TRAVEL) state.context.run = 8;
     }
 
-    if (state.u.tx === state.u.ux && state.u.ty === state.u.uy)
+    // C ref: hack.c:1291 and 1518-1522. With the hero already on the
+    // target (a Plane of Water or Air bubble can carry him there mid-travel)
+    // C skips the search and reaches `found:`, which stops the travel.
+    if (state.u.tx === state.u.ux && state.u.ty === state.u.uy) {
+        state.u.dx = 0;
+        state.u.dy = 0;
+        nomul(0, state);
         return false;
+    }
 
     const travel = new Uint16Array(COLNO * ROWNO);
     const travelStepX = [[], []];
@@ -4877,12 +4884,11 @@ function domove_monster_trap_env(state, env = {}) {
                 },
             )
         ),
-        // hack.c:2198-2199 consumes minliquid()'s return to choose
-        // Trap_Killed_Mon. Only the later deal_with_overcrowding() result is
-        // discarded when rloc() fails; keep that owner explicit instead of
-        // swallowing an exception.
-        dealWithOvercrowding: env.dealWithOvercrowding
-            ?? (() => note_unported('mon.c deal_with_overcrowding')),
+        // minliquid() reaches mon.js deal_with_overcrowding() itself when no
+        // caller seam is given. From these two swaps C never gets there:
+        // goodpos() admits the swapped monster to the hero's old square only
+        // where it can fly, float, swim or like lava, so minliquid_core()
+        // takes no drowning or burning arm.
     };
     return trapEnv;
 }

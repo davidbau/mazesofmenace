@@ -376,7 +376,7 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
      * `canon` is what in_or_out_menu hands back to menu_loot. */
     const items = [];
     const additem = (idx, text, selected = false, attr = ATR_NONE, itemflags = MENU_ITEMFLAGS_NONE) => {
-        lines.push(`${sel[idx]} ${selected ? '*' : '-'} ${text}`);
+        lines.push(`${sel[idx]} ${selected ? '*' : '-'} ${menucolor_text(text)}`); /* windows.c:1803 add_menu */
         items.push({ disp: sel[idx], canon: LOOTCHARS[idx] });
     };
     additem(1, `Look inside ${boxname}`, false, ATR_NONE, MENU_ITEMFLAGS_NONE);
@@ -393,7 +393,7 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
     if (more_containers) additem(7, 'loot next container', true);
     /* 'q' default-selected when no next container: shown with '*'. */
     const qDefault = !more_containers;
-    lines.push(`${sel[8]} ${qDefault ? '*' : '-'} ${alreadyused ? 'done' : 'do nothing'}`);
+    lines.push(`${sel[8]} ${qDefault ? '*' : '-'} ${menucolor_text(alreadyused ? 'done' : 'do nothing')}`);
     items.push({ disp: sel[8], canon: LOOTCHARS[8] });
     lines.push('(end)');
 

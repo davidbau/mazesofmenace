@@ -95,7 +95,7 @@ import { LS_MONSTER } from './const.js';
 import { newsym, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages, mon_visible, canseemon, canspotmon, map_invisible, glyph_is_invisible_at, GLYPHCLS_INVIS, unmap_object, Deaf, sensemon, impossible_sync, Unaware } from './display.js';
 import { pline, pline_xy, Your, You_hear } from './pline.js';
 import { W_ARMG, ACID_RES, COLD_RES, FIRE_RES, SHOCK_RES, STRAT_WAITMASK } from './const.js';
-import { Japanese_item_name, xname_scroll, xname_armor, doname_potion, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
+import { Japanese_item_name, xname_scroll, xname_armor, xname, doname, distant_name, in_distant_name, is_quest_artifact } from './objnam.js';
 /* C o_init.c:441-452 observe_object(obj) — the ONE side effect a formatting
  * call has, and the reason distant_name() exists at all.  Imported here
  * because _dm_doname() below reproduces xname_flags()'s prologue for the
@@ -1336,8 +1336,6 @@ async function _dm_doname(obj) {
     /* C dogmove.c:457 uses doname for corpses too.  Let the shared formatter
      * below supply the count, prefixes and personal name (objnam.c:998-1006,
      * 1505-1527), rather than reducing the object to its species. */
-    if ((obj.oclass | 0) === POTION_CLASS_DM)
-        return doname_potion(obj);
     /* C dogmove.c:457 passes doname for coins too: its objnam.c:1696-1702
      * wizweight suffix participates in update_topl's paging decision. */
     const generic = await doname(obj);

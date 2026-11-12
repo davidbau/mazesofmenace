@@ -3,6 +3,7 @@
 // C ref: nethack-c/src/shk.c
 
 import { verbalize } from './pline.js';
+import { menucolor_text } from './coloratt.js';
 import { y_monnam as y_monnam_shk, a_monnam } from './mhitm.js';
 import { growl, yelp } from './sounds.js';
 import { pronoun_gender } from './mondata.js';
@@ -640,16 +641,29 @@ async function menu_pick_pay_items(ibillct, ibill) {
             if (h !== undefined)
                 out.push(menu_heading_text(h));
             const e = entries[i];
-            out.push(`${e.selector} ${e.mark} ${e.text}`);
+            /* C windows.c:1796-1816 add_menu() menucolors the entry's RAW str
+             * (shk.c:1717's "%*ld Zm, %s" buf) before tty_add_menu composes
+             * "%c - %s" (wintty.c:2604-2611); add_menu_heading passes
+             * MENU_ITEMFLAGS_SKIPMENUCOLORS (windows.c:1820-1832), so the
+             * headings stay plain — same funnel as pickup_container's
+             * query_objlist. */
+            out.push(`${e.selector} ${e.mark} ${menucolor_text(e.text)}`);
+        }
+        for (let i = 0; i < out.length; i++) {
+            let col = 0;
+            out[i] = out[i].replace(/\x1b\[[0-9;]*m|[\s\S]/g,
+                ch => ch.startsWith('\x1b') || col++ < 78 ? ch : '');
         }
         return out;
     };
     const uac = g.u?.uac ?? 0;
     /* wintty.c:1908-1921 offx = min(40, cols - maxcol - 1) clamps to 0 for a
-     * widest line of 77+ columns (maxcol = len + 2 >= 79): full-screen too. */
+     * widest line of 77+ columns (maxcol = len + 2 >= 79): full-screen too.
+     * The width is the VISIBLE line — menucolor/heading SGR never reaches
+     * C's curr->str. */
     const FULL_SCREEN = renderLines().length + 1 >= SCREEN_ROWS
         || g.iflags?.menu_overlay === false
-        || renderLines().some(l => l.length >= 77);
+        || renderLines().some(l => l.replace(/\x1b\[[0-9;]*m/g, '').length >= 77);
     const pageCount = Math.max(1, Math.ceil(renderLines().length / PAGE_CONTENT));
     const WIN_COL = FULL_SCREEN ? 1 : tty_window_offx([...renderLines(), '(end)'], 'end');
     let page = 0;
@@ -673,7 +687,10 @@ async function menu_pick_pay_items(ibillct, ibill) {
             return { footer, footerRow, rows: build_window_screen(
                 [...pageLines, footer], WIN_COL, uac).split('\n') };
         const rows = new Array(SCREEN_ROWS).fill('');
-        pageLines.forEach((ln, i) => { rows[i] = ` ${ln}`.slice(0, 79); });
+        /* renderLines already cut every line to the 78 cells C stores, so the
+         * margin space lands each row at column 1..79 without a re-clip (a
+         * raw slice here would cut a menucolor SGR pair mid-escape). */
+        pageLines.forEach((ln, i) => { rows[i] = ` ${ln}`; });
         rows[footerRow] = ` ${footer}`;
         return { rows, footer, footerRow };
     };

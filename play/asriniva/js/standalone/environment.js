@@ -1,3 +1,4 @@
+import {createEnvironmentServices} from '../c-runtime/environment.js';
 import {address} from '../c-runtime/memory.js';
 import {createNetHackRuntime} from '../nethack/runtime-bindings.js';
 // Independent environment for existing translated modules. Ports are unmodified.
@@ -126,6 +127,8 @@ export function createStandaloneEnvironment(options={}) {
     const base=createJsRuntime(options),{memory}=base;
     const inputs=createEnvironmentInputs(base,options.environment);
     const {transport,functions,bitfields,ctypes,services}=createNetHackRuntime(base,records,inputs.getenv);
+    const variables=createEnvironmentServices(base.memory,{get:inputs.getenv,set:inputs.setEnvironment},base.libc);
+    Object.assign(services,{setenv:variables.setenv,unsetenv:variables.unsetenv});if(typeof services.getenv!=='function')services.getenv=variables.getenv;
     const ENV={...options.environment},diagnostics=[];
     Object.assign(services,{ENV,FS:base.FS,printErr:message=>diagnostics.push(String(message))});
     Object.assign(services,createStandaloneLibc(memory,base.libc,transport,functions),{
@@ -277,6 +280,8 @@ export function createStandaloneEnvironment(options={}) {
         return runtime;
     }
     const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,extend,deferFunctions,start,call,functionPointer,allocateGlobal,requireGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
+        // Reuse the public native-width boundary for standalone allocation callers.
+        alloc:(name,...args)=>(name==='alloc'||name==='re_alloc')?resolve(name)(...args):base.alloc(name,...args),
         setEnvironment:(name,value)=>{inputs.setEnvironment(name,value);if(value===null||value===undefined)delete ENV[name];else ENV[name]=String(value);},
         captureFiles:baseline=>captureGameFiles(base.filesystem,baseline,shouldPersistGameFile),
         restoreFiles:state=>restoreGameFiles(base.filesystem,state),
@@ -369,7 +374,7 @@ export function createStandaloneEnvironment(options={}) {
     register('runtime-public-allocation',{
         alloc:n=>base.alloc('alloc',transport.uint(n)),
         re_alloc:(p,n)=>base.alloc('re_alloc',address(p),transport.uint(n)),
-        fmt_ptr:p=>base.alloc('fmt_ptr',address(p)),
+        fmt_ptr:p=>base.alloc('fmt_ptr',p?.address??p??0),
         FITSint_:(n,file,line)=>base.alloc('FITSint_',transport.long(n),typeof file==='string'?services.literal(file):address(file),transport.int(line)),
         FITSuint_:(n,file,line)=>base.alloc('FITSuint_',transport.ulong(n),typeof file==='string'?services.literal(file):address(file),transport.int(line)),
     });

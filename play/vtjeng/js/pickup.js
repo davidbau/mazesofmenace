@@ -144,7 +144,7 @@ import {
 } from './lock.js';
 import { bot, flush_screen, newsym, obj_to_glyph } from './display.js';
 import { hliquid } from './do_name.js';
-import { ceiling, surface, surface_typ } from './dungeon.js';
+import { ceiling, surface, surface_typ, lastseentyp_grid } from './dungeon.js';
 import { doaltarobj, dropCommandEnv, dropx, dropy, revive_corpse, trycall } from './do.js';
 import { exercise } from './attrib.js';
 import {
@@ -520,9 +520,7 @@ export async function force_decor(
         state.decor_fumble_override = false;
         state.gd.decor_levitate_override = false;
     }
-    state.level.lastseentyp ??= [];
-    state.level.lastseentyp[ux] ??= [];
-    state.level.lastseentyp[ux][uy] = state.level.at(ux, uy)?.typ ?? STONE;
+    lastseentyp_grid(state)[ux][uy] = state.level.at(ux, uy)?.typ ?? STONE;
 }
 
 // C ref: pickup.c u_safe_from_fatal_corpse() (272-281). The tests are ORed in
@@ -2644,8 +2642,9 @@ export function allow_all() {
 // for the ':' look choice and traverses the same object-chain link as C.
 async function simple_look(objs, here, state) {
     if (!objs) {
-        // C reaches this diagnostic-only case only after a stale or malformed
-        // object list; impossible() has no gameplay return value here.
+        // C reaches this case only after a stale or malformed object list,
+        // and prints "simple_look(null)" through impossible(), which this
+        // build shows in every mode; the port records the gap.
         note_unported('pline.c impossible');
         return;
     }

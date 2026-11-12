@@ -236,6 +236,13 @@ export function hilite_status_config_error(op) {
              * config_error_add("Unknown condition '%s'") (parse_condition,
              * botl.c:3243-3256, only reached once the condition field exists). */
             const cs = hsbuf[1] || '';
+            /* botl.c:3250-3254 "Missing condition(s)"; :3286-3289 each
+             * condition set needs a following how, else "Missing
+             * color+attribute". */
+            if (!cs)
+                return ["Missing condition(s)"];
+            if (!hsbuf[2])
+                return ["Missing color+attribute"];
             if (cs) {
                 for (const sub of cs.split(/[+&]/)) {
                     if (sub && !match_str2conditionbitmask(sub))
@@ -849,7 +856,6 @@ export function parseNethackrc(rc) {
     }]));
     const alignmentState = facetStates.align;
     const compoundSeen = new Set();
-    const wcolorsSeen = [0, 0, 0, 0]; // C options.c:4901-4903 do_init.
     const compoundDuplicate = (name, alias = '') => {
         if (compoundSeen.has(name))
             config_error_add('compound option specified multiple times: %s%s', name, alias ? ` (via alias: ${alias})` : '');
@@ -1071,7 +1077,7 @@ export function parseNethackrc(rc) {
                 continue;
             }
             // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
-            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'sortvanquished', 'msg_window', 'menu_headings'].includes(r.name)
+            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'sortvanquished', 'msg_window', 'menu_headings', 'perminv_mode'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
             if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
             // C options.c:3971-3990,4912: no-value forms still run the handler.
@@ -1239,6 +1245,10 @@ export function parseNethackrc(rc) {
                  * matched condtests[].useroption; bl_bareh is opt_in (botl.c:820),
                  * so cond_barehanded turns the "Bare" condition on. */
                 else {
+                    /* options.c:5024 pfxfn_cond_() sets go.opt_need_redraw even
+                     * while go.opt_initial; nothing clears it before the first
+                     * reset_needed_visuals() (a bound toggle(), e.g.). */
+                    result.opt_need_redraw = true;
                     const cu = menuname.slice(5);
                     for (let ci = 0; ci < CONDTESTS.length; ci++) {
                         const cname = CONDTESTS[ci][0];
@@ -1748,6 +1758,9 @@ export function parseNethackrc(rc) {
                         gs.symset[1].name = (!entry && defsyms) ? null : val;
                         gs.symset[1].handling = entry ? entry[1] : 0;
                     }
+                    /* options.c:3565-3566: an accepted roguesymset leaves
+                     * go.opt_need_redraw set until a later toggle() docrt()s. */
+                    if (val) result.opt_need_redraw = true;
                 }
                 /* C options.c:1815-1838 optfn_glyph do_set: mungspaces, then
                  * glyphrep_to_custom_map_entries files the G_ customization. */
@@ -1875,29 +1888,6 @@ export function parseNethackrc(rc) {
                         result.iflags.wc2_statuslines = itmp;
                 }
                 else if (key === 'windowcolors') {
-                    if (val) {
-                        const wcn = ['menu', 'message', 'status', 'text'];
-                        const wcs = ['mnu', 'msg', 'sts', 'txt'];
-                        const seen = wcolorsSeen;
-                        let rest = mungspaces(val);
-                        let ok = true;
-                        while (rest.length) {
-                            const m = /^(\S+) ([^/]*\/) ?(\S+) ?/.exec(rest);
-                            if (!m) { ok = false; break; }
-                            const wn = m[1].toLowerCase();
-                            let j = wcn.indexOf(wn);
-                            if (j < 0) j = wcs.indexOf(wn);
-                            if (j >= 0) {
-                                if (seen[j])
-                                    config_error_add("windowcolors for %s windows specified multiple times", wcn[j]);
-                                seen[j]++;
-                            } else
-                                config_error_add("windowcolors for unrecognized window type: %s", m[1]);
-                            rest = rest.slice(m[0].length);
-                        }
-                        if (!ok)
-                            config_error_add("Could not set %s '%s'", 'windowcolors', val);
-                    }
                     if (!val)
                         config_error_add("Missing parameter for '%s'", menuopts);
                     else if (!wc_set_window_colors(val))
@@ -4817,7 +4807,7 @@ export async function doset() {
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'statuslines') {
                         /* C options.c:4067-4098 optfn_statuslines(do_set) */
-                        const message = optfn_statuslines_set(mungspaces(abuf));
+                        const message = optfn_statuslines_set(abuf);
                         /* options.c:8685-8688 preference_update -> wintty.c:603 */
                         new_status_window();
                         newclipping();

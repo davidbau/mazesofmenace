@@ -42,6 +42,7 @@ import { NH_BLACK, NH_BLUE, NH_GOLDEN, NH_PURPLE, NH_RED, NH_SILVER } from './re
 import { NON_PM } from './const.js'; // relocate-fns
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './pm.generated.js'; // relocate-fns
 import { m_at as monster_at } from './uhitm.js'; // relocate-fns
+import { menucolor_text } from './coloratt.js'; // windows.c:1796 add_menu menucolor
 export { read_tribute } from './files.js'; // relocate-fns
 
 // C do_name.c:16-27: names share five reusable buffers; retain the cell
@@ -283,7 +284,8 @@ export async function docallcmd() {
     const windowLines = [
         menu_heading_text('What do you want to name?'), /* do_name.c:550 end_menu; wintty.c:2688 */
         '',
-        ...rows.map((r, i) => shown[i] + ' - ' + r[1]),
+        /* windows.c:1796-1816 add_menu menucolors the raw str before tty composes "%c - %s" */
+        ...rows.map((r, i) => shown[i] + ' - ' + menucolor_text(r[1])),
         '(end)'];
     /* Build the screen with the window overlay using the game map.
      * uac: use game.u.uac (post-find_ac value) for status line 2.       */
@@ -311,6 +313,8 @@ export async function docallcmd() {
         screenOutput = ['', ...screenOutput.split('\n').slice(1)].join('\n');
         return finished;
     };
+    /* wintty.c:1921 tty_display_nhwindow(NHW_MENU) more()s a standing topline */
+    if (g._pending_message) await force_more_pages(g._pending_message);
     await showCallMenu();
     /* Read user selection — C ref: do_name.c:551 select_menu(win, PICK_ONE, ...)
      * -> win/tty/wintty.c process_menu_window.  This was a BARE nhgetch(), which

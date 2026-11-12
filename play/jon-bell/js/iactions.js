@@ -1,6 +1,6 @@
 // iactions.js — C ref: iactions.c.
 import { ARMOR_DATA } from './armor_data.js';
-import { FINGER, GETOBJ_SUGGEST, HAND, IA_ADJUST_OBJ, IA_ADJUST_STACK, IA_APPLY_OBJ, IA_BUY_OBJ, IA_DIP_OBJ, IA_DROP_OBJ, IA_EAT_OBJ, IA_ENGRAVE_OBJ, IA_FIRE_OBJ, IA_INVOKE_OBJ, IA_NAME_OBJ, IA_NAME_OTYP, IA_NONE, IA_QUAFF_OBJ, IA_QUIVER_OBJ, IA_READ_OBJ, IA_RUB_OBJ, IA_SACRIFICE, IA_SWAPWEAPON, IA_TAKEOFF_OBJ, IA_THROW_OBJ, IA_TIP_CONTAINER, IA_TWOWEAPON, IA_UNWIELD, IA_WEAR_OBJ, IA_WHATIS_OBJ, IA_WIELD_OBJ, IA_ZAP_OBJ, OCLASS_ARMOR, OCLASS_COIN, OCLASS_GEM, OCLASS_POTION, OCLASS_RING, OCLASS_SCROLL, OCLASS_SPBOOK, OCLASS_WAND, OCLASS_WEAPON, SPE_NOVEL_OTYP, W_AMUL_C, W_ARMC_C, W_ARMF_C, W_ARMG_C, W_ARMH_C, W_ARMS_C, W_ARMU_C, W_ARM_C, W_RINGL_C, W_RINGR_C, W_TOOL_C, _IA_ALCHEMY_SMOCK_OTYP, _IA_BAG_OF_TRICKS_OTYP, _IA_BEARTRAP_OTYP, _IA_BELL_OF_OPENING_OTYP, _IA_BELL_OTYP, _IA_BLINDFOLD_OTYP, _IA_BRASS_LANTERN_OTYP, _IA_BULLWHIP_OTYP, _IA_CANDELABRUM_OTYP, _IA_CAN_OF_GREASE_OTYP, _IA_CREAM_PIE_OTYP, _IA_CREDIT_CARD_OTYP, _IA_CRYSTAL_BALL_OTYP, _IA_DRUM_OF_EARTHQUAKE_OTYP, _IA_DWARVISH_MATTOCK_OTYP, _IA_EUCALYPTUS_LEAF_OTYP, _IA_EXPENSIVE_CAMERA_OTYP, _IA_FIGURINE_OTYP, _IA_FORTUNE_COOKIE_OTYP, _IA_GRAPPLING_HOOK_OTYP, _IA_HAWAIIAN_SHIRT_OTYP, _IA_HEAVY_IRON_BALL_OTYP, _IA_HORN_OF_PLENTY_OTYP, _IA_LAND_MINE_OTYP, _IA_LARGE_BOX_OTYP, _IA_LEASH_OTYP, _IA_LENSES_OTYP, _IA_LOCK_PICK_OTYP, _IA_MAGIC_LAMP_OTYP, _IA_MAGIC_MARKER_OTYP, _IA_MAGIC_WHISTLE_OTYP, _IA_MEAT_RING_OTYP, _IA_MIRROR_OTYP, _IA_OIL_LAMP_OTYP, _IA_PICK_AXE_OTYP, _IA_POT_OIL_OTYP, _IA_SADDLE_OTYP, _IA_SCR_BLANK_PAPER_OTYP, _IA_SCR_MAIL_OTYP, _IA_SKELETON_KEY_OTYP, _IA_SPE_BLANK_PAPER_OTYP, _IA_SPE_BOOK_OF_THE_DEAD_OTYP, _IA_STETHOSCOPE_OTYP, _IA_TALLOW_CANDLE_OTYP, _IA_TINNING_KIT_OTYP, _IA_TIN_OPENER_OTYP, _IA_TIN_OTYP, _IA_TIN_WHISTLE_OTYP, _IA_TOWEL_OTYP, _IA_T_SHIRT_OTYP, _IA_UNICORN_HORN_OTYP, _IA_WAX_CANDLE_OTYP, _IA_WOODEN_FLUTE_OTYP, _OCLASS_AMULET, _hero_youmonst, _levlAt, _wt_cantwield, ammo_and_launcher, bimanual_tw, body_part, carrying, cmdq_add_ec, cmdq_add_key, could_twoweap, impossible, is_ammo, is_blade, is_graystone, is_launcher, is_missile, is_plural_obj, is_weptool, set_cursor, singular_xname, surface } from './cmd.js';
+import { FINGER, GETOBJ_SUGGEST, HAND, IA_ADJUST_OBJ, IA_ADJUST_STACK, IA_APPLY_OBJ, IA_BUY_OBJ, IA_DIP_OBJ, IA_DROP_OBJ, IA_EAT_OBJ, IA_ENGRAVE_OBJ, IA_FIRE_OBJ, IA_INVOKE_OBJ, IA_NAME_OBJ, IA_NAME_OTYP, IA_NONE, IA_QUAFF_OBJ, IA_QUIVER_OBJ, IA_READ_OBJ, IA_RUB_OBJ, IA_SACRIFICE, IA_SWAPWEAPON, IA_TAKEOFF_OBJ, IA_THROW_OBJ, IA_TIP_CONTAINER, IA_TWOWEAPON, IA_UNWIELD, IA_WEAR_OBJ, IA_WHATIS_OBJ, IA_WIELD_OBJ, IA_ZAP_OBJ, OCLASS_ARMOR, OCLASS_COIN, OCLASS_GEM, OCLASS_POTION, OCLASS_RING, OCLASS_SCROLL, OCLASS_SPBOOK, OCLASS_WAND, OCLASS_WEAPON, SPE_NOVEL_OTYP, W_AMUL_C, W_ARMC_C, W_ARMF_C, W_ARMG_C, W_ARMH_C, W_ARMS_C, W_ARMU_C, W_ARM_C, W_RINGL_C, W_RINGR_C, W_TOOL_C, _IA_ALCHEMY_SMOCK_OTYP, _IA_BAG_OF_TRICKS_OTYP, _IA_BEARTRAP_OTYP, _IA_BELL_OF_OPENING_OTYP, _IA_BELL_OTYP, _IA_BLINDFOLD_OTYP, _IA_BRASS_LANTERN_OTYP, _IA_BULLWHIP_OTYP, _IA_CANDELABRUM_OTYP, _IA_CAN_OF_GREASE_OTYP, _IA_CREAM_PIE_OTYP, _IA_CREDIT_CARD_OTYP, _IA_CRYSTAL_BALL_OTYP, _IA_DRUM_OF_EARTHQUAKE_OTYP, _IA_DWARVISH_MATTOCK_OTYP, _IA_EUCALYPTUS_LEAF_OTYP, _IA_EXPENSIVE_CAMERA_OTYP, _IA_FIGURINE_OTYP, _IA_FORTUNE_COOKIE_OTYP, _IA_GRAPPLING_HOOK_OTYP, _IA_HAWAIIAN_SHIRT_OTYP, _IA_HEAVY_IRON_BALL_OTYP, _IA_HORN_OF_PLENTY_OTYP, _IA_LAND_MINE_OTYP, _IA_LARGE_BOX_OTYP, _IA_LEASH_OTYP, _IA_LENSES_OTYP, _IA_LOCK_PICK_OTYP, _IA_MAGIC_LAMP_OTYP, _IA_MAGIC_MARKER_OTYP, _IA_MAGIC_WHISTLE_OTYP, _IA_MEAT_RING_OTYP, _IA_MIRROR_OTYP, _IA_OIL_LAMP_OTYP, _IA_PICK_AXE_OTYP, _IA_POT_OIL_OTYP, _IA_SADDLE_OTYP, _IA_SCR_BLANK_PAPER_OTYP, _IA_SCR_MAIL_OTYP, _IA_SKELETON_KEY_OTYP, _IA_SPE_BLANK_PAPER_OTYP, _IA_SPE_BOOK_OF_THE_DEAD_OTYP, _IA_STETHOSCOPE_OTYP, _IA_TALLOW_CANDLE_OTYP, _IA_TINNING_KIT_OTYP, _IA_TIN_OPENER_OTYP, _IA_TIN_OTYP, _IA_TIN_WHISTLE_OTYP, _IA_TOWEL_OTYP, _IA_T_SHIRT_OTYP, _IA_UNICORN_HORN_OTYP, _IA_WAX_CANDLE_OTYP, _IA_WOODEN_FLUTE_OTYP, _OCLASS_AMULET, _hero_youmonst, _levlAt, _wt_cantwield, ammo_and_launcher, bimanual_tw, body_part, carrying, check_invent_gold, cmdq_add_ec, cmdq_add_key, could_twoweap, impossible, is_ammo, is_blade, is_graystone, is_launcher, is_missile, is_plural_obj, is_weptool, set_cursor, singular_xname, surface } from './cmd.js';
 import { build_window_screen, menu_search_case } from './com_pager.js';
 import { CQ_CANNED, ECMD_OK, HANDS_SYM, Has_contents, IS_ALTAR, ONAME, PICK_ONE, ROOMOFFSET, SHOPBASE, has_oname } from './const.js';
 import { ia_checkfile } from './pager.js';
@@ -163,9 +163,8 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
     /* C ref: iactions.c:286 already_worn = owornmask & (W_ARMOR | W_ACCESSORY).
      * W_ARMOR = all armor slots; W_ACCESSORY = amulet|ring|eyewear-tool
      * (obj.h W_ACCESSORY = W_RING | W_AMUL | W_TOOL, W_RING = both fingers).
-     * This read `W_ACCESSORY = W_QUIVER_C` under a "placeholder; refined below"
-     * comment and was never refined, so a WORN amulet/ring/blindfold counted as
-     * not-worn and kept the 'd'/'t'/'w' rows C suppresses for it. */
+     * W_RING is both fingers, so a worn amulet/ring/blindfold suppresses the
+     * 'd'/'t'/'w' rows exactly as C does. */
     const W_ARMOR_MASK = W_ARM_C | W_ARMC_C | W_ARMH_C | W_ARMS_C | W_ARMG_C | W_ARMF_C | W_ARMU_C;
     const W_ACCESSORY_MASK = W_RINGL_C | W_RINGR_C | W_AMUL_C | W_TOOL_C;
     const already_worn = (mask & (W_ARMOR_MASK | W_ACCESSORY_MASK)) !== 0;
@@ -344,10 +343,9 @@ export async function itemactions(otmp, priorWinCol, priorWinRows) {
             + (_shoot ? ` with your wielded ${_ia_simpleonames(u.uwep)}` : ''));
     }
 
-    /* i: #adjust inventory letter (iactions.c:462-466) — everything but gold.
-     * (C's gold arm also admits check_invent_gold("item-action"), which can only
-     * be true when gold sits in a non-'$' slot; that is unreachable in play.) */
-    if (oclass !== OCLASS_COIN)
+    /* i: #adjust inventory letter (iactions.c:462-466); gold only when
+     * check_invent_gold() finds it outside '$' or split into several stacks. */
+    if (oclass !== OCLASS_COIN || check_invent_gold('item-action'))
         add('i', IA_ADJUST_OBJ, 'Adjust inventory by assigning new letter');
 
     if (quan > 1 && oclass !== OCLASS_COIN)

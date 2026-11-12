@@ -53,6 +53,10 @@ export class LuaBytecodeVM extends LuaVM {
  }
  *callG(fn,args=[],stack=null) {
   if(fn?.luaBytecode)return yield* this.bytecodeCallG(fn,args,stack);
+  if(typeof fn!=='function'&&!fn?.luaYieldable&&!fn?.luaClosure&&this.metamethod(fn,'__call')===null){
+   const value=fn,{name,namewhat}=this.callName(this.currentThread);
+   fn=()=>{const detail=name&&namewhat?` (${namewhat} '${name}')`:'',error=new LuaError(this.debug.where(this.currentThread,1)+`attempt to call a ${luaType(value)} value`+detail);error.luaExplicit=true;throw error;};
+  }
   // C/host callbacks need real debug frames as well. AST execution retains its
   // own frame integration; it is never counted as fetched Lua bytecode here.
   if(typeof fn==='function'||fn?.luaYieldable){

@@ -1,6 +1,7 @@
 /* Standalone filesystem for the JavaScript runtime. The generic constructor
  * supplies regular files/directories; the SDK profile additionally installs a
  * typed null character device with actual discard/EOF/zero-seek behavior.
+ * Explicit callback devices deliver real bytes and errors and reject seeks.
  * Core descriptors are numeric; .FS supplies the stream-object facade used by
  * the replay adapter and codec bridge. All bytes/inodes/descriptors/cwd belong
  * to one instance. Open descriptors retain inode identity after unlink/rename.
@@ -9,7 +10,7 @@
  * Configured Emscripten/WASI errno and Linux-style O_* values are explicit.
  * Directory stat metadata follows MEMFS (size4096/nlink1/uid0/gid0). Creation,
  * traversal and open enforce MEMFS's any-user read/write/execute bit checks;
- * user identities, chmod/chown/ACLs, sockets/other devices/symlinks/hard links,
+ * user identities, chmod/chown/ACLs, sockets/other device kinds/symlinks/hard links,
  * locks and mounts are outside this service. Descriptor duplicates share their
  * open-file position and flags, matching the configured SDK. Unknown
  * flags and unsupported operations fail explicitly. File/descriptor limits
@@ -17,13 +18,13 @@
  *
  * Snapshots preserve linked directory/file/null-device state and cwd (the null
  * kind has no byte payload), not live descriptors
- * or unlinked open files. Storage is injected and persistence is explicit.
+ * or unlinked open files. Callback devices reject snapshot export. Storage is injected and persistence is explicit.
  * The adapter's baseline diff, transient filtering and save/bones policy stay
  * outside this filesystem. Default timestamps are deterministic zero; inject
  * a millisecond clock when timestamp progression is needed.
  */
 
-export const VFS_ERRNO = Object.freeze({ EACCES: 2, EBADF: 8, EBUSY: 10,
+export const VFS_ERRNO = Object.freeze({ EACCES: 2, EAGAIN:6, EBADF: 8, EBUSY: 10,
   EEXIST: 20, EFBIG: 22, EINVAL: 28, EIO: 29, EISDIR: 31, EMFILE: 33,
   ENAMETOOLONG: 37, ENOENT: 44, ENOMEM: 48, ENOSPC: 51, ENOTDIR: 54,
   ENOTEMPTY: 55, ENOTSUP: 58, EPERM: 63, EROFS: 69, ESPIPE: 70 });
@@ -98,7 +99,7 @@ export class CVFS {
   _node(type, mode, parent, name) {
     if (!integer(mode) || mode < 0 || mode > 0o777) fail('ENOTSUP');
     const time = this._now();
-    return { type, ino: this.nextInode++, mode: (type === 'dir' ? S_IFDIR : type === 'null' ? S_IFCHR : S_IFREG) | mode,
+    return { type, ino: this.nextInode++, mode: (type === 'dir' ? S_IFDIR : ['null','device'].includes(type) ? S_IFCHR : S_IFREG) | mode,
       parent, name, children: type === 'dir' ? new Map() : null,
       bytes: type === 'file' ? new Uint8Array(0) : null, atime: time, mtime: time, ctime: time };
   }
@@ -152,7 +153,7 @@ export class CVFS {
     return descriptor;
   }
   _stat(node) {
-    const size = node.type === 'dir' ? 4096 : node.type === 'null' ? 0 : node.bytes.length;
+    const size = node.type === 'dir' ? 4096 : ['null','device'].includes(node.type) ? 0 : node.bytes.length;
     return { dev: 1, ino: node.ino, mode: node.mode, nlink: 1, uid: 0, gid: 0, rdev: node.type === 'null' ? 259 : 0,
       size, blksize: 4096, blocks: Math.ceil(size / 4096),
       atime: new Date(node.atime), mtime: new Date(node.mtime), ctime: new Date(node.ctime) };
@@ -165,6 +166,14 @@ export class CVFS {
     if (existing) { if (existing.type !== 'null') fail('ENOTSUP', path); return; }
     const { parent, name } = this._parent(path); this._permissions(parent, 'wx');
     parent.children.set(name, this._node('null', mode, parent, name)); this._changed(parent);
+  }
+  createDevice(parent, name, input, output) {
+    if(input!==null&&input!==undefined&&typeof input!=='function'||output!==null&&output!==undefined&&typeof output!=='function')throw new TypeError('Device callbacks must be functions');
+    const path=parent.replace(/\/$/,'')+'/'+name,{parent:directory,name:entry}=this._parent(path);
+    if(directory.children.has(entry))fail('EEXIST',path);
+    this._permissions(directory,'wx');
+    const node=this._node('device',(input?0o444:0)|(output?0o222:0),directory,entry);
+    node.input=input;node.output=output;directory.children.set(entry,node);this._changed(directory);return node;
   }
   stat(path) { return this._stat(this._lookup(path)); }
   fstat(fd) { return this._stat(this._descriptor(fd).node); }
@@ -291,7 +300,7 @@ export class CVFS {
     this.descriptors.set(fd, { node, flags: flags & ~(O_EXCL | O_TRUNC), position: 0 });
     return fd;
   }
-  close(fd) { this._descriptor(fd); this.descriptors.delete(fd); }
+  close(fd) { const {node}=this._descriptor(fd);if(node.type==='device'&&node.output?.buffer?.length)node.output(10); this.descriptors.delete(fd); }
   dup(fd, target) {
     const descriptor = this._descriptor(fd);
     if (target === undefined) { target = 3; while (this.descriptors.has(target)) ++target; }
@@ -315,6 +324,10 @@ export class CVFS {
     if ((stream.flags & 3) === O_WRONLY) fail('EBADF');
     if (stream.node.type === 'dir') fail('EISDIR');
     if (stream.node.type === 'null') return 0;
+    if(stream.node.type==='device'){
+      let count=0;for(;count<length;count++){let value;try{value=stream.node.input();}catch{fail('EIO');}if(value===undefined&&!count)fail('EAGAIN');if(value===null||value===undefined)break;buffer[offset+count]=value;}
+      if(count)stream.node.atime=this._now();stream.position+=count;return count;
+    }
     const at = position === undefined ? stream.position : position;
     const count = Math.max(0, Math.min(length, stream.node.bytes.length - at));
     buffer.set(stream.node.bytes.subarray(at, at + count), offset);
@@ -327,6 +340,10 @@ export class CVFS {
     if ((stream.flags & 3) === O_RDONLY) fail('EBADF');
     if (node.type === 'dir') fail('EISDIR');
     if (node.type === 'null') { if (stream.flags & O_APPEND) stream.position = 0; if (position === undefined) stream.position += length; return length; }
+    if(node.type==='device'){
+      for(let i=0;i<length;i++)try{node.output(buffer[offset+i]);}catch{fail('EIO');}
+      if(length)this._changed(node);stream.position+=length;return length;
+    }
     // Match FS.write: O_APPEND first updates the stream position to EOF even
     // when an explicit positional write then overrides the actual destination.
     if (stream.flags & O_APPEND) stream.position = node.bytes.length;
@@ -359,6 +376,7 @@ export class CVFS {
   lseek(fd, offset, whence = SEEK_SET) {
     const stream = this._descriptor(fd);
     if (!integer(offset) || ![SEEK_SET, SEEK_CUR, SEEK_END].includes(whence)) fail('EINVAL');
+    if(stream.node.type==='device')fail('ESPIPE');
     if (stream.node.type === 'null') { stream.position = 0; return 0; }
     const position = offset + (whence === SEEK_CUR ? stream.position : whence === SEEK_END && stream.node.type === 'file' ? stream.node.bytes.length : 0);
     if (!integer(position) || position < 0) fail('EINVAL');
@@ -400,6 +418,13 @@ export class CVFS {
         set: value => { fs.lseek(descriptor(stream), value, SEEK_SET); } });
       streams.set(fd, stream); return stream;
     };
+    facade.analyzePath = path => {
+      const result={isRoot:false,exists:false,error:0,name:null,path:null,object:null,parentExists:false,parentPath:null,parentObject:null};
+      try{const {parent,name}=fs._parent(path);Object.assign(result,{parentExists:true,parentPath:fs._path(parent),parentObject:parent,name});}catch(error){if(!(error instanceof VFSError))throw error;result.error=error.errno;}
+      try{const node=fs._lookup(path),canonical=fs._path(node);Object.assign(result,{isRoot:node===fs.root,exists:true,error:0,name:node.name,path:canonical,object:node});}catch(error){if(!(error instanceof VFSError))throw error;result.error=error.errno;}
+      return result;
+    };
+    facade.createDevice = (...args)=>fs.createDevice(...args);
     facade.open = (...args) => wrap(fs.open(...args));
     facade.close = stream => {
       const fd = descriptor(stream); fs.close(fd); streams.delete(fd);
@@ -419,6 +444,7 @@ export class CVFS {
   exportSnapshot() {
     const entries = [];
     const visit = node => {
+      if(node.type==='device')fail('ENOTSUP',this._path(node));
       entries.push({ path: this._path(node), type: node.type, mode: node.mode & 0o777,
         atime: node.atime, mtime: node.mtime, ctime: node.ctime,
         ...(node.type === 'file' ? { base64: encode(node.bytes) } : {}) });

@@ -4,6 +4,7 @@
  * Logical GC/counts/finalizers/close are explicit, allocator-owned lifecycle.
  * Native allocation cadence and C continuation/debug convenience APIs remain.
  */
+import {luaTypeError,luaArgErrorFormat,luaCheckInteger,luaCheckString} from './aux-error.js';
 import { LuaVM } from './lvm.js';
 import { createLua } from './lua.js';
 import { parse } from './lparser.js';
@@ -180,12 +181,12 @@ export class LuaState {
     } catch(error) { if(!(error instanceof LuaError))throw error; this.push(error.value);this.vm.heap.shrinkThread(this.vm.currentThread);return error.status??LUA_ERRSYNTAX; }
   }
   luaL_loadstring(source) { return this.luaL_loadbuffer(source.split('\0')[0], source.split('\0')[0].length, source); }
-  luaL_checktype(index, tag) { if (this.lua_type(index) !== tag) throw new LuaError(`${this.lua_typename(tag)} expected, got ${this.luaL_typename(index)}`); }
-  luaL_checkinteger(index) { const n = toInteger(this.value(index)); if (n === null) throw new LuaError('integer expected'); return n; }
+  luaL_checktype(index, tag) { if (this.lua_type(index) !== tag) return luaTypeError(this.vm,index,this.lua_typename(tag),this.has(index)?this.value(index):undefined); }
+  luaL_checkinteger(index) { return luaCheckInteger(this.vm,this.has(index)?this.value(index):undefined,index); }
   luaL_optinteger(index, fallback) { return this.lua_isnoneornil(index) ? fallback : this.luaL_checkinteger(index); }
-  luaL_checkstring(index) { const value = this.lua_tostring(index); if (value === null) throw new LuaError('string expected'); return value; }
+  luaL_checkstring(index) { const value = this.lua_tostring(index); if (value === null) return luaTypeError(this.vm,index,'string',this.has(index)?this.value(index):undefined); return value; }
   luaL_optstring(index, fallback) { return this.lua_isnoneornil(index) ? fallback : this.luaL_checkstring(index); }
-  luaL_checkoption(index, fallback, options) { const value = this.luaL_optstring(index, fallback); const at = options.indexOf(value); if (at < 0) throw new LuaError('invalid option'); return at; }
+  luaL_checkoption(index, fallback, options) { const value = this.luaL_optstring(index, fallback); const at = options.indexOf(value); if (at < 0) return luaArgErrorFormat(this.vm,index,"invalid option '%s'",value); return at; }
   luaL_newmetatable(name) {
     const current = this.registry.rawget(name); if (current !== null) { this.push(current); return 0; }
     const mt = new LuaTable([['__name', name]]); this.registry.rawset(name, mt); this.push(mt); return 1;
@@ -193,7 +194,7 @@ export class LuaState {
   luaL_getmetatable(name) { this.push(this.registry.rawget(name)); return this.lua_type(-1); }
   luaL_checkudata(index, name) {
     const value = this.value(index), expected = this.registry.rawget(name);
-    if (!(value instanceof LuaUserdata) || expected === null || value.metatable === null || value.metatable !== expected) throw new LuaError(`${name} expected`);
+    if (!(value instanceof LuaUserdata) || expected === null || value.metatable === null || value.metatable !== expected) return luaTypeError(this.vm,index,name,this.has(index)?value:undefined);
     return value.value;
   }
   luaL_setfuncs(functions, count = 0) {

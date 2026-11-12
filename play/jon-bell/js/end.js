@@ -881,6 +881,9 @@ export async function do_death_sequence(opts) {
         pd.alreadySaidYouDie = true;
         _winStopHere = false;
         _suppressDeathPage = false;
+        /* wintty.c:2277-2283: the urgent line cleared WIN_STOP and sets WIN_NOSTOP,
+         * so no ESC-suppression survives into the Die?/disclosure prompt. */
+        _escStopAfterDeathLine = false;
     }
     if (!pd.prejoinButWait) {
         if (!_earlyBot) {
@@ -1299,6 +1302,15 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
      * 80 chars, and topl_putsym's wrap + cl_end (topl.c:331,350) clears row 1. */
     g._topl_prompt_written = qbuf + ' ';
     g._topl_prompt_echo = true; // TOPLINE_SPECIAL_PROMPT wraps without more().
+    /* C topl.c:547-548 clean_up — `if (wins[WIN_MESSAGE]->cury)
+     * tty_clear_nhwindow(WIN_MESSAGE);`: cw->cury is the row the prompt's last
+     * putstr landed on, so a prompt that WRAPPED (e.g. ggetobj's
+     * "<doname>? [ynaq] (n)" over 80 columns) is physically erased (home/cl_end
+     * plus docorner(1, cury+1, 0), wintty.c:1040-1054; toplin = TOPLINE_EMPTY)
+     * when the read finishes and never survives as dead topline text.  A
+     * single-row prompt stays painted until parse()'s clear_nhwindow instead.
+     * Exposed for callers that re-file the answered prompt as sticky text. */
+    const wrapRow = topl_park_cursor(null, qbuf + ' ')[1];
     try {
         if (choices === null) {
             // C topl.c: NULL responses bypass case/default/retry filtering.
@@ -1412,7 +1424,14 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
     } finally {
         g._topl_prompt_echo = savedEcho;
         g._topl_prompt_written = savedWritten;
-        if (g._pending_message === qbuf) {
+        g._topl_yn_wraprow = wrapRow;
+        if (wrapRow > 0) {
+            /* topl.c:547-548: the wrapped prompt was physically erased, so it
+             * must not linger as dead topline text on row 0 either. */
+            if (g._pending_message === qbuf) g._pending_message = '';
+            g._topl_sticky = null;
+            g._topl_empty_sticky = null;
+        } else if (g._pending_message === qbuf) {
             g._pending_message = '';
             g._topl_sticky = qbuf;
             g._topl_empty_sticky = qbuf;

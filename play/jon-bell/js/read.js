@@ -978,6 +978,7 @@ export async function doread() {
             g._topl_suppress_history = true;
             try { raw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
             finally { g._topl_suppress_history = savedSuppress; }
+            g._toplEmptyAfterSuppress = false; /* topl.c:537-539 gt.toplines is now prompt + answer */
             putmsghistory(prompt + ' ' + key2txt((typeof raw === 'number'
                 ? raw : (raw?.charCodeAt(0) ?? 0)) & 0xff), false);
         }

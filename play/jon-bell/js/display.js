@@ -929,6 +929,10 @@ export function rogue_graphics() {
      * there is drawn over a terminal still holding the OLD level's bytes. */
     if (game?._levelgenPaintFreeze && game._botlUzFrozen)
         return !!Is_rogue_level(game._botlUzFrozen);
+    /* mklev() arm of the same window (do.c:1713): bot() has repainted the NEW
+     * Dlvl, but the map still holds the frozen OLD level's bytes. */
+    if (game?._levelgenPaintFreeze && game._levelgenFreezeUz)
+        return !!Is_rogue_level(game._levelgenFreezeUz);
     return !!Is_rogue_level(game?.u?.uz);
 }
 /* C symbols.c:570-579,629-635 loads dat/symbols:56-239 (Blank),
@@ -2194,9 +2198,8 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         if (cc && (cc & NH_BASIC_COLOR)) color = cc & 0xff;
         else if (cc && (game.iflags?.colorcount ?? 256) >= 256) color = NO_COLOR;
     }
-    /* dat/symbols Blank does not redefine S_trapped_door/S_trapped_chest. */
-    if (blank_symbols() && (cls === GLYPHCLS_INVIS
-        || (cls === GLYPHCLS_TRAP && trapType >= 1 && trapType <= 23))) {
+    if (blank_symbols()
+        && (cls === GLYPHCLS_TRAP && trapType >= 1 && trapType <= 23)) {
         ch = ' ';
         decgfx = false;
     }
@@ -7250,7 +7253,11 @@ function _status_condition_hilites(row) {
      * attributes are the union over every attribute slot holding it. */
     const ch = _cond_hilites_array();
     const _CA = [[18, ATR_BOLD], [19, 8], [20, 16], [21, 4], [22, 32], [23, ATR_INVERSE]];
-    COND_NAMES.forEach((cname, i) => {
+    /* botl.c:1584+ conditions (BL_CONDITION) live on the last status line only;
+     * the title/attribute line (it carries St:) can echo a condition word, e.g.
+     * the rank title "Green Slime" after polymorph. */
+    const titleRow = / St:\d/.test(row);
+    if (!titleRow) COND_NAMES.forEach((cname, i) => {
         const bit = 1 << i;
         let color = NO_COLOR, attr = 0;
         for (let k = 0; k < 16; k++) if (ch[k] & bit) { color = k; break; }
@@ -7261,8 +7268,8 @@ function _status_condition_hilites(row) {
         for (const sp of [cname.trim(), ...(_COND_SPELL.find((n) => n[0] === cname.trim()) || [])]) {
             /* conditions follow the AC field on the second status line; a title
              * such as "Stone Giant" on the first line is not the Stone condition */
-            const acAt = row.search(/ AC:/);
-            if (acAt < 0) break;
+            /* statuslines:3 puts the conditions on a third row with no AC: */
+            const acAt = Math.max(0, row.search(/ AC:/));
             at = new RegExp(` (${sp})(?= |$)`, 'g');
             at.lastIndex = acAt;
             at = at.exec(row);
@@ -8254,7 +8261,14 @@ export async function tty_getlin_recall(text) {
     g._getlin_echo_state = null;
     g._topl_prompt_echo = false;
     g._topl_prompt_written = undefined;
-    g._topl_recall_hardwrap = true;
+    /* Only a getlin line was never word-wrapped; a stored pline already went
+     * through update_topl's wrap (topl.c:284-297), which this port's history
+     * keeps unsplit (and, for a farlook line, with a cursor-forward escape).
+     * The wrap test is `n0 = strlen(bp) >= CO` on C's stored bytes, where the
+     * farlook glyph pad is 8 literal spaces (pager.c:1271-1273); this port's
+     * ESC[8C compression makes .length 4 shorter, so measure visual columns —
+     * the same units C's strlen counts here — not raw .length. */
+    g._topl_recall_hardwrap = !(_topl_visualLen(text) > 79 && !text.includes('\n') && !g._getlin_hist?.has(text));
     g._pending_message = g._topl_history_recall = text;
     try {
         if (text.includes('\n') || _topl_visualLen(text) > TOPL_CO - 1) {
@@ -8921,7 +8935,10 @@ export function _status_row1_whole_with_tail(status1) {
             const m = isMap(x);
             let e = x;
             while (e + 1 < COLNO && isMap(e + 1) === m) e++;
-            out += m ? render_map_row(y, x, e, true) : cells.slice(x - 1, e).join('');
+            out += m ? render_map_row(y, x, e, true)
+                : cells.slice(x - 1, e).join('')
+                    .replace(/(?:\x1b\[[0-9;]*m \x1b\[0m){5,}/g,
+                        (r) => `\x1b[${r.split(' ').length - 1}C`);
             x = e + 1;
         }
         return out.replace(/ +$/, '');
@@ -9138,7 +9155,9 @@ export function _status_row1_map_overlay(status1) {
         while (e + 1 < COLNO && mapAt(e + 1) === isMap)
             e++;
         out += isMap ? render_map_row(y, x, e, true)
-            : plainT.slice(x - 1, e).join('').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
+            : plainT.slice(x - 1, e).join('').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`)
+                .replace(/(?:\x1b\[[0-9;]*m \x1b\[0m){5,}/g,
+                    (m) => `\x1b[${m.split(' ').length - 1}C`);
         x = e + 1;
     }
     return out.replace(/(?: +|\x1b\[\d+C)+$/, '');
@@ -9309,6 +9328,51 @@ export function topl_park_cursor(disp, written) {
     }
     if (disp) { disp.cursorCol = curx; disp.cursorRow = cury; }
     return [curx, cury];
+}
+
+/* C ref: win/tty/topl.c:305-344 topl_putsym — the ttyDisplay CURSOR walk for a
+ * topline that is edited in place character by character (getlin echo,
+ * getline.c:79-212).  topl_park_cursor above lays a FINISHED string out from
+ * column 0; the live cursor during the read loop is HISTORY-DEPENDENT, and the
+ * two diverge exactly where C's edit sequence and a fresh layout disagree.
+ *
+ * put(): the default arm — writing at column CO-1 first takes the '\n' arm
+ *     (cl_end, curx = 0, cury++), so the 80th visual column of a row is never
+ *     painted and the character lands at column 0 of the next row, leaving the
+ *     cursor at column 1 of that row.
+ * back(): the '\b' arm — from column 0 of a wrapped row, tty_curs(BASE, CO,
+ *     cury - 1) parks at column 79 of the row above (wintty.c:2138 does
+ *     `cw->curx = --x` with x = CO), and backsp() plus `curx--` land at 78;
+ *     otherwise a plain one-column backspace.
+ * puts(n)/backs(n): that many of the above (spaces, echoed expansions).
+ * removetopl(n): topl.c:353-359 — n × putsyms("\b \b").
+ * rewrite(s): home() + putsyms(s) — where a full repaint (tty_clear_nhwindow
+ *     + addtopl chain, getline.c:91-95/126-131) leaves the cursor. */
+export function topl_cursor_walker([sx, sy] = [0, 0]) {
+    let curx = sx, cury = sy;
+    const w = {
+        get: () => [curx, cury],
+        set(x, y) { curx = x; cury = y; return w; },
+        put() {
+            if (curx === 79) { curx = 0; cury++; } /* topl_putsym('\n') */
+            curx++;
+            return w;
+        },
+        back() {
+            if (curx === 0 && cury > 0) { curx = 79; cury--; } /* tty_curs(CO,...) */
+            curx--;
+            return w;
+        },
+        puts(n) { for (let i = 0; i < n; i++) w.put(); return w; },
+        backs(n) { for (let i = 0; i < n; i++) w.back(); return w; },
+        removetopl(n) { for (let i = 0; i < n; i++) w.back().put().back(); return w; },
+        rewrite(s) {
+            curx = 0; cury = 0;
+            for (let i = 0; i < _topl_visualLen(s); i++) w.put();
+            return w;
+        },
+    };
+    return w;
 }
 
 /* C topl.c:194-202 addtopl, :305-343 topl_putsym and :354-360
@@ -11356,7 +11420,7 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
         /* A LAST page raised by the next prompt rather than a later pline: if
          * moveloop's guarded bot() + curs_on_u() flush (allmain.c:474-480) ran
          * after its own pline's flush, the terminal shows the post-turn map. */
-        const _ownFlushSuperseded = !_nextPlineFrame && !_lastFromCls && _pf && i > 0 && i === _pages.length - 1
+        const _ownFlushSuperseded = !_nextPlineFrame && !_lastFromCls && _pf && (i > 0 || _loneFramePrefixOnly) && i === _pages.length - 1
             && _pf.statusSeq !== undefined && _pf.statusSeq !== (g._statusPaintSeq | 0);
         /* tty_yn_function's more() precedes its prompt flush (topl.c:390-420).
          * The final page therefore keeps its own pline's map even without an

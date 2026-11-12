@@ -340,7 +340,7 @@ import {
 } from './hack.js';
 import { nhgetch } from './input.js';
 import { doride, Punished } from './steed.js';
-import { done2, nh_terminate, UnsupportedEndOfGameError } from './end.js';
+import { done2, nh_terminate } from './end.js';
 import { UnsupportedAbilityChangeError } from './attrib.js';
 import { UnsupportedExperienceChangeError } from './exper.js';
 import { doread } from './read.js';
@@ -366,7 +366,7 @@ import {
     cantwield,
 } from './wield.js';
 import { coreRandom, rn1, rn2, rnd } from './rng.js';
-import { aggravate } from './wizard.js';
+import { aggravate_steps } from './wizard.js';
 import { dotalk, UnsupportedChatError } from './sounds.js';
 import {
     clearTtyMessageWindow,
@@ -376,7 +376,8 @@ import {
 } from './tty_message.js';
 import { do_write_config_file } from './cfgfiles.js';
 import { note_unported } from './unported.js';
-import { impossible } from './pline.js';
+import { impossible, impossible_printer } from './pline.js';
+import { finish_steps } from './source_steps.js';
 import { dosh } from './unixunix.js';
 import { dosuspend } from './ioctl.js';
 import {
@@ -2938,13 +2939,7 @@ export function failClosedCommandRefusals() {
         // opens.
         UnsupportedWieldError,
         UnsupportedTransientDisplayError,
-        // A killing blow reaches the next two classes.
-        // UnsupportedEndOfGameError now has
-        // several source-ordered endpoints: a return-capable paranoid query
-        // is preflighted before done() paints or mutates, an ordinary death
-        // stops above really_done() after the forced status work, and a debug
-        // or explore death can draw "Die?" before savelife() refuses.
-        UnsupportedEndOfGameError,
+        // A killing blow reaches the next class.
         UnsupportedDropError,
         // Keep the experience/attribute refusal classes recognizable at this
         // boundary. pluslvl() and setuhpmax() now handle their polymorphed
@@ -3581,7 +3576,8 @@ export async function domonability(state = game) {
                 'Unfortunately sound does not carry well through rock.',
                 state,
             );
-        else aggravate(state, coreRandom);
+        else await finish_steps(aggravate_steps(state, coreRandom),
+            impossible_printer(state));
     } else if (is_vampire(uptr) || is_vampshifter(state.youmonst)) {
         return dopoly(state);
     } else if (state.u.usteed && can_breathe(state.u.usteed?.data)) {

@@ -77,7 +77,7 @@ import { wizcustom_glyphids, region_glyph, glyph_is_gascloud, glyph_cmap_at, get
 import { You_feel } from './pline.js';
 import { rogue_graphics, ibm_mode } from './display.js';
 import { pager_water_classes, pager_mixed_text, pager_description_mbufs, tty_yn_count_echo } from './display.js';
-import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_background, reglyph_darkroom, trap_glyph_char, trap_glyph_entry, newsym, newsym_force, flush_screen, nh_sprintf, mon_visible, sensemon, docrt, canspotmon, canseemon, level_transition_capture_old_paint, level_transition_arrival_more, canspotself, _topl_record_join, force_more, topl_force_break_now, await_more_dismiss, await_topl_more_dismiss, await_menu_key, see_nearby_objects, terrain_glyph, _topl_visualLen, map_trap, map_engraving, _topl_merge_result, _topl_joins_snapshot, _topl_snapshot_result, _topl_stash_result, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_painted_frame, map_object, map_invisible, feel_location, unmap_object, feel_newsym, unmap_invisible, under_water, under_ground, GLYPHCLS_INVIS, GLYPHCLS_SWALLOW, GLYPHCLS_OBJ, GLYPHCLS_MON, show_glyph_cell, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR, GLYPHCLS_UNEXPLORED, display_self, glyph_is_this_trap, glyph_is_invisible_at, glyph_is_warning_at, last_flush_forced_cursor, last_flush_status_end, topl_park_cursor, getobj_never_mind, putmsghistory, warning_of as warning_of_real, pager_boulder_symbol, pager_showsyms, pager_text_glyph, pager_glyph_prefix, pager_obj_glyph_utf8, pager_cmap_description } from './display.js';
+import { reset_glyphmap, use_last_flush_snapshot, cls as display_cls, map_background, reglyph_darkroom, trap_glyph_char, trap_glyph_entry, newsym, newsym_force, flush_screen, nh_sprintf, mon_visible, sensemon, docrt, canspotmon, canseemon, level_transition_capture_old_paint, level_transition_arrival_more, canspotself, _topl_record_join, force_more, topl_force_break_now, await_more_dismiss, await_topl_more_dismiss, await_menu_key, see_nearby_objects, terrain_glyph, _topl_visualLen, map_trap, map_engraving, _topl_merge_result, _topl_joins_snapshot, _topl_snapshot_result, _topl_stash_result, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_painted_frame, map_object, map_invisible, feel_location, unmap_object, feel_newsym, unmap_invisible, under_water, under_ground, GLYPHCLS_INVIS, GLYPHCLS_SWALLOW, GLYPHCLS_OBJ, GLYPHCLS_MON, show_glyph_cell, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR, GLYPHCLS_UNEXPLORED, display_self, glyph_is_this_trap, glyph_is_invisible_at, glyph_is_warning_at, last_flush_forced_cursor, last_flush_status_end, topl_park_cursor, topl_cursor_walker, getobj_never_mind, putmsghistory, warning_of as warning_of_real, pager_boulder_symbol, pager_showsyms, pager_text_glyph, pager_glyph_prefix, pager_obj_glyph_utf8, pager_cmap_description } from './display.js';
 import { update_lastseentyp } from './dungeon.js';
 import { pline, livelog_printf, You_hear, You_see } from './pline.js';
 import { docorner_status_rows } from './display.js';
@@ -1216,7 +1216,12 @@ async function tty_get_ext_cmd_inner() {
     g._topl_prompt_echo = true;
     await flush_screen(1);
     set_cursor(2, 0); /* override cursor after flush_screen resets it */
+    /* C ref: getline.c:79-212 — every edit is echoed through putsyms(), so the
+     * live cursor is wherever topl_putsym left it, not a fresh layout; see
+     * topl_cursor_walker (display.js) and df-xcbf72dfdf9 steps 117-122. */
+    const cur = topl_cursor_walker([2, 0]);
     let doprev = false;
+    let lastPark = [0, 0];
     while (true) {
         let keyCode = await pgetchar();
         if (keyCode < 0) keyCode += 256;
@@ -1257,6 +1262,7 @@ async function tty_get_ext_cmd_inner() {
             /* getline.c:130-131 redraws obufp after truncating at bufp;
              * any canonical case written by the completion hook is now visible. */
             literalPrefix = buf;
+            cur.rewrite('# ' + buf); /* clear + addtopl chain paints from home */
         } else if (doprev && !(keyCode === ESC && buf === '')) {
             /* getline.c:85-99 breaks first on ESC with an empty buffer.
              * getline.c:133-135 — `cw->maxcol = cw->maxrow;` restarts the ^P
@@ -1266,6 +1272,7 @@ async function tty_get_ext_cmd_inner() {
             /* getline.c:139-140 also truncates and redraws the backing buffer. */
             buf = buf.slice(0, typed);
             literalPrefix = buf;
+            cur.rewrite('# ' + buf); /* getline.c:137-140 redraws from home */
         }
         doprev = false;
         const ch = typeof keyCode === 'number' ? String.fromCharCode(keyCode) : '';
@@ -1275,6 +1282,7 @@ async function tty_get_ext_cmd_inner() {
                 typed = 0;
                 literalPrefix = '';
                 /* fall through to the redraw below: '# ' with cursor at col 2 */
+                cur.set(2, 0); /* getline.c:91-95 clear + re-add from home */
             } else {
                 g._pending_message = '';
                 g._topl_prompt_echo = false;
@@ -1293,25 +1301,50 @@ async function tty_get_ext_cmd_inner() {
          * i.e. the typed length AND the buffer both shrink to `typed`, taking
          * the autocompleted tail with them.  (erase_char on a Linux pty is
          * ^? = 127, and the '\b' test accepts 8, so both land here.) */
+        let physBs = null;
         if (keyCode === 8 || keyCode === 127) {
             if (typed > 0) {
+                /* C ref: topl.c:310-318 topl_putsym('\b') moves the REAL tty
+                 * cursor left one cell (up to row-1 col CO-1 only when already
+                 * at column 0), so after a wrapped line the cursor is not the
+                 * walk of the shortened text. */
+                const d = g.nhDisplay;
+                if (d) {
+                    let cx = d.cursorCol, cy = d.cursorRow;
+                    if (cx === 0 && cy > 0) { cy--; cx = 79; } /* tty_curs(CO) clips to CO-1 */
+                    physBs = [cx - 1, cy];
+                }
+                const oldLen = buf.length; /* strlen before `*bufp = 0` */
                 typed--;
                 buf = buf.slice(0, typed);
                 literalPrefix = literalPrefix.slice(0, typed);
+                /* getline.c:152-156: "\b", a space per surviving old-tail
+                 * character (the deleted char and any guess), that many "\b"s. */
+                cur.backs(1).puts(oldLen - typed).backs(oldLen - typed);
             }
         }
         else if (keyCode >= 32 && keyCode !== 127 && typed < COLNO) {
+            /* getline.c:171 `i = eos(bufp)`: the old guess length to blank. */
+            const oldLen = buf.length;
+            const guess = oldLen - typed - 1;
             literalPrefix = literalPrefix.slice(0, typed) + ch;
             buf = buf.slice(0, typed) + ch;
             typed++;
+            cur.put(); /* getline.c:174 putsyms(bufp): the one typed byte */
             /* C ref: getline.c:271 ext_cmd_getlin_hook() — `Strcpy(base,
              * ec->ef_txt)` replaces the WHOLE buffer with the canonical command
              * name when the typed prefix matches exactly one entry.  The typed
              * length is untouched, so the next keystroke overwrites the
              * expansion from index `typed` onwards. */
             const expanded = extcmd_autocomplete(buf);
-            if (expanded !== null)
+            if (expanded !== null) {
                 buf = expanded;
+                /* getline.c:178-185: echo the expansion, "\b" over all of it. */
+                cur.puts(expanded.length - typed).backs(expanded.length - typed);
+            } else if (guess > 0) {
+                /* getline.c:186-193: erase the rest of the prior guess. */
+                cur.puts(guess).backs(guess);
+            }
         }
         /* C ref: win/tty/getline.c:196-202 `else if (c == kill_char || c == '\177')`
          * (tested last): the pty's VKILL is ^U, so it erases the whole line,
@@ -1319,9 +1352,12 @@ async function tty_get_ext_cmd_inner() {
          * fuzzer-typed `...^UU` kept the stale prefix instead of autocompleting
          * "U" to #untrap (rn2(20) @ getdir(cmd.c:3996) follows in C). */
         else if (keyCode === 21) {
+            /* getline.c:203-208 — spaces over the guess tail, "\b \b" per typed. */
+            const oldLen = buf.length, typedLen = typed;
             buf = '';
             typed = 0;
             literalPrefix = '';
+            cur.puts(oldLen - typedLen).removetopl(typedLen);
         }
         g._pending_message = '# ' + literalPrefix + buf.slice(typed);
         /* The per-character echo.  C does this with putsyms() (getline.c:107,
@@ -1334,7 +1370,26 @@ async function tty_get_ext_cmd_inner() {
          * topl_park_cursor() walks it the way topl_putsym does, so a prompt
          * that has run past column 79 lands on row 1 rather than off the edge
          * of row 0. */
+        const prevRow = lastPark[1], prevCol = lastPark[0];
+        const [pcx, pcy] = topl_park_cursor(g.nhDisplay, '# ' + buf.slice(0, typed));
+        /* C ref: topl.c:313-319 topl_putsym('\b') — the reverse wrap onto
+         * the row above happens only when curx is ALREADY 0 on a lower row;
+         * a backspace from curx 1 just leaves the cursor at column 0 of the
+         * wrapped row. */
+        lastPark = [pcx, pcy];
+        if (keyCode === 8 || keyCode === 127) {
+            if (prevRow > 0 && prevCol === 1 && pcy < prevRow && g.nhDisplay) {
+                g.nhDisplay.cursorCol = 0; g.nhDisplay.cursorRow = prevRow;
+                lastPark = [0, prevRow];
+            }
+        }
         topl_park_cursor(g.nhDisplay, '# ' + buf.slice(0, typed));
+        if (physBs && g.nhDisplay) { g.nhDisplay.cursorCol = physBs[0]; g.nhDisplay.cursorRow = physBs[1]; }
+        /* Cursor at the end of the TYPED text (the NEWAUTOCOMP hook arm
+         * backspaces over everything it echoed) — via the live putsym walk,
+         * which also holds a wrapped-row position a relayout would lose. */
+        if (g.nhDisplay)
+            [g.nhDisplay.cursorCol, g.nhDisplay.cursorRow] = cur.get();
     }
     g._topl_prompt_echo = false;
     /* C ref: win/tty/getline.c:312 `(void) mungspaces(buf);` — runs of blanks
@@ -2294,7 +2349,7 @@ export async function inventory_menu_legacy(opts) {
     }
     if (special) {
         windowLines.push(menu_heading_text('Special'),
-            `${String.fromCharCode(special.invlet)} - ${special.text}`);
+            menucolor_row(`${String.fromCharCode(special.invlet)} - ${special.text}`));
         lineItems.push(null, special);
     }
     // invent.c:4019; pickup.c:1134; wintty.c:2715: !USE_INVLET assigns
@@ -3074,7 +3129,7 @@ async function dispinv_inuse_menu(lets, altLabel, want_reply = true) {
     const special = inventory_special_choice(lets, want_reply);
     if (special) {
         windowLines.push(menu_heading_text('Special'),
-            `${String.fromCharCode(special.invlet)} - ${special.text}`);
+            menucolor_row(`${String.fromCharCode(special.invlet)} - ${special.text}`));
         lineItems.push(null, special);
     }
     windowLines.push('(end)');
@@ -3552,6 +3607,7 @@ async function wiz_identify() {
         windowLines.push(`_ - ${sel}`);
         /* selection payload per rendered line; null for headings/title. */
         const lineObj = [null, WIZID_ALL];
+        const wizGlyph = new Map();
         const hand = (g.u?.uhandedness === RIGHT_HANDED) ? 'right' : 'left';
         /* C invent.c:3274 `if (wizid && !not_fully_identified(otmp)) continue;`
          * — only unidentified items are listed, but the class walk is the same
@@ -3572,7 +3628,22 @@ async function wiz_identify() {
             if (!flatWiz)
             lineObj.push(null);
             for (const obj of group) {
-                windowLines.push((await _pickinv_item_text(obj, hand)));
+                const og = {};
+                let txt = await _pickinv_item_text(obj, hand, false, og);
+                /* C wintty.c:1383-1390,1475-1483 show_obj_syms: the object
+                 * glyph replaces the "-" separator; menu_objsyms:conditional
+                 * (bit 4) suppresses it when the menu has class headings. */
+                if (g.iflags?.use_menu_glyphs
+                    && (!((g.iflags.menuobjsyms | 0) & 4) || flatWiz)) {
+                    const gc = g.iflags?.use_color === false ? 8 : og.color | 0;
+                    const sym = og.ch;
+                    const symTxt = gc === 0 ? `\x1b[${(g.iflags?.wc2_darkgray ?? true) ? 90 : 34}m${sym}\x1b[39m`
+                        : (gc >= 1 && gc <= 6) ? `\x1b[${30 + gc}m${sym}\x1b[39m`
+                        : (gc >= 9 && gc <= 15) ? `\x1b[${90 + gc - 8}m${sym}\x1b[39m` : sym;
+                    wizGlyph.set(obj, symTxt);
+                    txt = txt.replace(/^(.) - /, (_m, c) => `${c} ${symTxt} `);
+                }
+                windowLines.push(txt);
                 lineObj.push(obj);
             }
         }
@@ -3596,7 +3667,7 @@ async function wiz_identify() {
             const plist = windowLines.map((ln, i) => {
                 const o = lineObj[i];
                 if (!o) return { str: stripSgr(ln), selectable: false, inverse: i > 0 };
-                return { str: ln.replace(/^. - /, ''), selectable: true,
+                return { str: ln.slice(4 + (wizGlyph.has(o) ? wizGlyph.get(o).length - 1 : 0)), glyphTxt: wizGlyph.get(o), selectable: true,
                          selector: ln[0], groupacc: o === WIZID_ALL ? String.fromCharCode(g.iflags.override_ID) : def_oc_syms_chars[o.oclass], payload: o };
             });
             const picked = await tty_menu_pick_any(plist, '', { noPrompt: true });
@@ -3657,7 +3728,9 @@ async function wiz_identify() {
             for (let i = 0; i < lineObj.length; i++) {
                 const o = lineObj[i];
                 if (o && selected.has(o))
-                    rows[i] = rows[i].replace(' - ', ' + ');
+                    rows[i] = wizGlyph.has(o)
+                        ? rows[i].replace(` ${wizGlyph.get(o)} `, ' + ')
+                        : rows[i].replace(' - ', ' + ');
             }
             if (titleErased) rows[0] = '';
             return build_window_screen(rows, WIN_COL_W, uacW).split('\n');
@@ -3879,7 +3952,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
         it.mark = !it.selected ? '-' : (it.count === -1 ? '+' : '#');
     };
     const draw_item_state = (it) => {
-        it.mark = !it.selected ? '-' : (it.count === -1 ? '*' : '#');
+        it.mark = !it.selected ? (it.glyphTxt ?? '-') : (it.count === -1 ? '*' : '#');
     };
     /* C process_menu_window's per-line paint: putchar(' ') then the item's str,
      * with the attribute starting at str[0] for a header/prompt line and at
@@ -4826,7 +4899,11 @@ async function dotypeinv() {
      * C ref: pickup.c:1350-1370 — invlet starts at 'a', increments per class. */
     let invlet = 97; /* 'a' */
     for (const oc of carried) {
-        windowLines.push(menucolor_row(`${String.fromCharCode(invlet++)} - ${OCLASS_NAME[oc]}`));
+        /* C pickup.c:1362-1364: let_to_name(.., how != PICK_NONE && menu_head_objsym) */
+        let cname = OCLASS_NAME[oc];
+        if (g.iflags?.menu_head_objsym)
+            cname += ' '.repeat(Math.max(0, 7 - cname.length)) + `  ('${def_oc_syms_chars[oc]}')`;
+        windowLines.push(menucolor_row(`${String.fromCharCode(invlet++)} - ${cname}`));
     }
     /* BUC cluster: separated by a blank line, in alphabetical B/C/U/X order
      * but C emits B, then C, then U, then X (pickup.c:1405-1433).             */
@@ -5877,7 +5954,19 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
                 do {
                     yn_number = 0;
                     sym = await yn_function(q, rs, 'n', false);
-                    game._topl_sticky = `${q} [${rs}] (n)`;
+                    /* topl.c:549-550: a wrapped prompt (cury != 0) is cleared. */
+                    if (q.length + rs.length + 8 <= 79) game._topl_sticky = `${q} [${rs}] (n)`;
+                    /* topl.c:549 clean_up clears WIN_MESSAGE when the prompt wrapped
+                     * onto a second row (cury != 0). */
+                    game._topl_sticky = (q.length + rs.length + 8 <= 79)
+                        ? `${q} [${rs}] (n)` : null;
+                    /* C topl.c:547-548 clears WIN_MESSAGE when the prompt wrapped (cury != 0). */
+                    game._topl_sticky = topl_park_cursor(null, `${q} [${rs}] (n) `)[1] > 0 ? null : `${q} [${rs}] (n)`;
+                    /* C topl.c:547-548 — a WRAPPED prompt is erased by
+                     * clean_up's tty_clear_nhwindow(WIN_MESSAGE); only a
+                     * single-row prompt survives as dead topline text. */
+                    game._topl_sticky = game._topl_yn_wraprow > 0
+                        ? null : `${q} [${rs}] (n)`;
                     if (sym === '#') yn_number = await yn_count_tail(`${q} [${rs}] (n)`);
                 } while (yn_number < 0);
             }
@@ -7222,12 +7311,12 @@ async function print_dungeon_menu() {
             deadAccel[lines.length] = letter;
             const full = ' ' + '    ' + entry;
             const lead = full.length - full.replace(/^ +/, '').length;
-            const text = full.slice(lead);
+            const text = menucolor_text(full.slice(lead), full); /* windows.c:1803 add_menu */
             lines.push(lead > 0 ? `\x1b[${lead}C${text}` : text);
         } else {
             accel.set(letter, lchoices.idx);
             lineAccel[lines.length] = letter;
-            lines.push(` ${letter} - ${entry}`);
+            lines.push(` ${letter} - ${menucolor_text(entry)}`); /* windows.c:1803 add_menu */
             mlist.push({ str: `${letter} - ${entry}`, idx: lchoices.idx });
         }
         lchoices.idx++;
@@ -7871,9 +7960,19 @@ export async function level_tele() {
             }
             // C teleport.c:1248 — (newlev = lev_by_name(buf)) == 0 → newlev = atoi(buf)
             // lev_by_name returns 0 for a numeric string.
-            newlev = lev_by_name(buf) || parseInt(buf, 10) || 0;
-            // C teleport.c:1248-1249: use atoi only when name lookup returns 0.
-            if (!newlev) newlev = parseInt(buf, 10) || 0;
+            // atoi() is (int)strtol(): strtol saturates at LONG_MAX/LONG_MIN
+            // (64-bit), then the int cast keeps the low 32 bits (so an
+            // over-long digit string becomes -1 and falls into the
+            // "high above the clouds" arm).
+            const _atoi = (str) => {
+                const m = /^\s*([+-]?\d+)/.exec(str);
+                if (!m) return 0;
+                let v = BigInt(m[1]);
+                const lmax = (1n << 63n) - 1n, lmin = -(1n << 63n);
+                if (v > lmax) v = lmax; else if (v < lmin) v = lmin;
+                return Number(BigInt.asIntN(32, v));
+            };
+            newlev = lev_by_name(buf) || _atoi(buf);
         } while (!newlev && !(buf.length > 0 && (buf[0] === '-' ? (buf.length > 1 && buf[1] >= '0' && buf[1] <= '9') : (buf[0] >= '0' && buf[0] <= '9'))) && trycnt < 10);
         // C teleport.c:1254 — if (newlev == 0) { if trycnt>=10 goto random; ynq "Go to Nowhere" ... }
         if (newlev === 0 && trycnt >= 10)
@@ -8248,8 +8347,12 @@ async function doterrain() {
      * with '*' in place of the '-' separator. */
     let preselected = true;   /* MENU_UNSELECT_ALL/_PAGE clear it (wintty.c:1654,1679) */
     const mkWindowLines = () => {
+        /* C add_menu's entries go through windows.c:1803-1806 get_menu_coloring
+         * on the RAW str (the tty then paints the text after the "x - "
+         * selector in the matched colour), so the description carries any
+         * MENUCOLOR rule and the selector prefix stays plain (wintty.c:1449-1456). */
         const itemLines = items.map((s, i) =>
-            `${String.fromCharCode(CH_a + i)} ${i === 0 && preselected ? '*' : '-'} ${s}`);
+            `${String.fromCharCode(CH_a + i)} ${i === 0 && preselected ? '*' : '-'} ${menucolor_text(s)}`);
         /* tty_end_menu prepends "" and then the prompt, so the prompt is row 0 and
          * the blank row 1 (wintty.c:2680-2689). */
         return [menu_heading_text('View which?'), '', ...itemLines, '(end)'];
@@ -9125,7 +9228,16 @@ export async function doprev_message(liveTopline) {
              * echo); the second is data[maxrow-1], the last remembered line.
              * The recall itself clears _toplEmptyAfterSuppress, so remember it
              * for the rest of the sequence. */
-            if (k === 0) g._prevmsg_emptyTopl = liveTopline === undefined && !!g._toplEmptyAfterSuppress;
+            if (k === 0) {
+                g._prevmsg_emptyTopl = liveTopline === undefined && !!g._toplEmptyAfterSuppress;
+                g._prevmsg_emptyLen = history.length;
+            } else if (g._prevmsg_emptyTopl && history.length !== g._prevmsg_emptyLen) {
+                /* topl.c:176 remember_topl() leaves maxcol alone while gt.toplines is
+                 * empty, so a pline between two ^Ps refills gt.toplines (this port
+                 * files it in the array) without moving the walk: the standing
+                 * line is no longer the blank one. */
+                g._prevmsg_emptyTopl = false;
+            }
             /* a live-appended call carries gt.toplines as its own last entry */
             const _empty = liveTopline === undefined && !!g._prevmsg_emptyTopl;
             /* topl.c:62-64: with one remembered line the wrap reset sends maxcol
@@ -9178,7 +9290,13 @@ export async function doprev_message(liveTopline) {
             g._pending_message = text;
             g._topl_history_recall = text;
             g._topl_unacknowledged = true;
-            if (text.includes('\n') || text.length > 79) {
+            /* redotoplin pages iff the painted string reached row 1 (cury!=0,
+             * topl.c:139-140): a stored pline whose original strlen >= CO
+             * (topl.c:264-285) — which for a farlook line's ESC[8C glyph pad is
+             * its VISUAL length, not raw .length — or any line putsyms
+             * hard-wraps at CO-1.  Getlin lines are plain text, so for them
+             * visual == .length and nothing changes. */
+            if (text.includes('\n') || _topl_visualLen(text) > 79) {
                 morc = await force_more(text, 16); // ^P may acknowledge and continue
                 paged = true;
             } else {
@@ -9210,6 +9328,14 @@ export async function doprev_message(liveTopline) {
         g._ttyDismissMore = 0;
         return ECMD_OK;
     }
+    /* wintty.c:1921: a getlin ^P whose earlier recall (topl.c:136 redotoplin) left
+     * TOPLINE_NEED_MORE makes display_nhwindow() run more() over that topline
+     * before the history window appears; dismiss_more is 0 here (topl.c:78), so
+     * only space/Enter/ESC answer it and a ^P is swallowed (xwaitforspace). */
+    if (g._getlin_toplines != null && g._topl_unacknowledged && g._topl_history_recall != null) {
+        await force_more(g._topl_history_recall);
+        g._topl_unacknowledged = false;
+    }
     // C topl.c:27-41 full / 75-96 reversed: 'f' (and the combination window)
     // lists oldest-first; only 'r' is newest-first.
     /* C topl.c:170-191 remember_topl() — the history is a RING of cw->rows
@@ -9235,8 +9361,16 @@ export async function doprev_message(liveTopline) {
             === g._ckptToplSlot.replace(/\s+/g, ' ').trim())
         reversed = [g._ckptToplSlot, ...(history.length > _ring ? _recent.slice(1) : _recent)];
     /* C topl.c:39,72,84: gt.toplines is included even when empty; full and
-     * combination put it last, reversed puts it first. */
-    if (_noLiveTopl) reversed = _pmw === 'r' ? ['', ...reversed] : [...reversed, ''];
+     * combination put it last, reversed puts it first.  Inside
+     * hooked_tty_getlin() gt.toplines is NOT the blank a SUPPRESS_HISTORY
+     * line leaves behind but the live query line rebuilt before every read
+     * (getline.c:82 `Strcat(strcat(strcpy(gt.toplines, query), " "), obufp)`)
+     * — "# tip" at the extcmd prompt, whose two-call combination walk
+     * (getline.c:108-111) opens the window with that as the last putstr. */
+    if (_noLiveTopl) {
+        const _liveTopl = g._getlin_toplines ?? '';
+        reversed = _pmw === 'r' ? [_liveTopl, ...reversed] : [...reversed, _liveTopl];
+    }
     // C ref: tty_doprev_message builds "Message History", blank line, then the
     // recalled lines.  WIN_COL=7 matches the recorded reference (col-7 indent).
     /* wintty.c:2196-2222,2253 compress_str() runs before tty_putstr measures
@@ -9900,7 +10034,7 @@ async function dohelp() {
             ? item.text.replace('%s', setopt_cmd())
             : item.text;
         const letter = String.fromCharCode(nextLetter++);
-        helpLines.push(`${letter} - ${helpbuf}`);
+        helpLines.push(menucolor_row(`${letter} - ${helpbuf}`)); /* windows.c:1803 add_menu menucolors */
         survivors.push(item);
         /* C ref: wintty.c tty_add_menu stores str as "%c - %s" — the form
          * MENU_SEARCH's pmatchi() matches against (wintty.c:1700-1730). */
@@ -11224,7 +11358,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
             windowLines.push(menu_heading_text("Miscellaneous"));
             lineItems.push(null);
         }
-        windowLines.push(`- - ${xtraChoice}`);
+        windowLines.push(menucolor_row(`- - ${xtraChoice}`)); /* windows.c:1803 add_menu */
         lineItems.push(xtraItem);
         items.push(xtraItem);
     }
@@ -11306,7 +11440,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         const more = (allowxtra && !xtraChoice) || (allowedLets && allowedLets.length < inv_cnt(true));
         if (more || allowedLets == null) {
             const special = { invlet: more ? 42 : 63 };
-            windowLines.push(menu_heading_text('Special'), `${String.fromCharCode(special.invlet)} - (list ${more ? 'everything' : 'likely candidates'})`);
+            windowLines.push(menu_heading_text('Special'), menucolor_row(`${String.fromCharCode(special.invlet)} - (list ${more ? 'everything' : 'likely candidates'})`));
             lineItems.push(null, special);
             items.push(special);
         }
@@ -11468,7 +11602,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         set_cursor(endCursorCol, endRow);
         const raw = await nhgetch();
         const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-        if (k >= 48 /* '0' */ && k <= 57 /* '9' */ && countRef) {
+        if (k >= 48 /* '0' */ && k <= 57 /* '9' */) {
             const digit = BigInt(k - 48);
             const next = (menuCount * 10n) + digit;
             if (next <= 9223372036854775807n) {
@@ -11954,6 +12088,7 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
          * arm (cmd.c:5217-5219) never enters tty_nhgetch. */
         try { itemRaw = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
         finally { g._topl_suppress_history = _sh; }
+        g._toplEmptyAfterSuppress = false; /* topl.c:537-539 gt.toplines is now prompt + answer */
         putmsghistory(prompt + ' ' + key2txt((typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
         }
         // tty_yn_function leaves a one-line prompt physically painted after
@@ -16448,6 +16583,7 @@ export async function doapply() {
             try { itemRaw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); /* C: getobj's yn_function nhgetch */ }
             finally { g._topl_suppress_history = _sh; }
             itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);
+            game._toplEmptyAfterSuppress = false; /* topl.c:537-539 */
             putmsghistory(qbuf + ' ' + key2txt(itemKey & 0xff), false);
             /* topl.c:547-549 clears a prompt that wrapped onto another row. */
             answeredApplyPrompt = topl_park_cursor(null, qbuf + ' ')[1] === 0 ? qbuf : null;
@@ -21621,6 +21757,10 @@ export async function show_overview(why, reason) {
         await menu.select_menu(PICK_NONE);
         return;
     }
+    /* C windows.c:1803-1807 add_menu(): MENUCOLOR colours each non-heading
+     * entry; the heading keeps its inverse attribute only. */
+    for (let i = 0; i < lines.length; ++i)
+        if (!headingRows.has(i)) lines[i] = menucolor_text(lines[i]);
     lines.push('(end)');
     /* C win/tty/wintty.c:1926-1932: a menu whose maxrow reaches the
      * terminal height is full-screen.  `lines` includes the `(end)` row,
@@ -25361,12 +25501,33 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
      * describe_decor() (pickup.c:436-438) drops the line and its blank. */
     const _dfline = (skipDfeature || (_blindHere && _blindMenuSkipDf)) ? null
         : _look_here_dfeature_line(u.ux | 0, u.uy | 0, knownDfeature);
-    const windowLines = [
+    const _putstrSrc = [
         ...(_dfline ? [_dfline, ''] : []),
         `${pickedSome ? 'Other things' : 'Things'} that `
             + `${_blindHere ? 'you feel' : 'are'} here:`,
-        ...objLines, '--More--',
+        ...objLines,
     ];
+    /* C wintty.c:2406-2418 tty_putstr(NHW_MENU): maxcol takes the unbroken
+     * length + 1, then a line longer than CO is broken at the last blank and
+     * the tail putstr()ed as the next line. */
+    let _maxcol = 0;
+    const _putLines = [];
+    for (const src of _putstrSrc) {
+        let str = String(src);
+        for (;;) {
+            _maxcol = Math.max(_maxcol, str.length + 1);
+            let i = 79;
+            if (str.length > 79)
+                while (i && str[i] !== ' ' && str[i] !== '\n') i--;
+            if (str.length <= 79 || !i) { _putLines.push(str); break; }
+            _putLines.push(str.slice(0, i));
+            str = str.slice(i + 1);
+        }
+    }
+    /* wintty.c:1907-1921 — cols - maxcol - 1 <= 0 gives offx 0, where
+     * process_text_window prints no leading blank and dmore sits at col 1. */
+    const _offx0 = 80 - _maxcol - 1 <= 0;
+    const windowLines = [..._putLines, _offx0 ? ' --More--' : '--More--'];
     /* wintty.c:1924 `cw->maxrow >= rows` -> offx 0, cleared screen, 23-line
      * pages: the same fullscreen pager look-window.js implements. */
     if (windowLines.length - 1 >= 24) {
@@ -25380,7 +25541,7 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
     /* C wintty.c:1925-1928 — `!iflags.menu_overlay` drops the window to offx 0
      * and term_clear_screen()s (map and status included). */
     const _fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
-    const WIN_COL = _fullScreen ? 1 : tty_window_offx(windowLines, 'more');
+    const WIN_COL = _fullScreen ? 1 : _offx0 ? 0 : tty_window_offx(windowLines, 'more');
     /* C topl.c:257-301: WIN_STOP can leave buffered text unpainted.
      * Save the same physical topline as build_window_screen, so dismissing
      * the corner window cannot restore text that never showed beneath it. */
@@ -25398,7 +25559,7 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
     /* Cursor at end of the "--More--" line (C tty positions it past --More--). */
     const disp = g?.nhDisplay;
     if (disp) {
-        disp.cursorCol = WIN_COL + '--More--'.length;
+        disp.cursorCol = (_offx0 ? 1 : WIN_COL) + '--More--'.length;
         disp.cursorRow = windowLines.length - 1;
     }
     /* Blocking --More-- page-ack: consume keys until a dismiss (space/CR/ESC),
@@ -25408,13 +25569,13 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
         if (key === 32 || key === 10 || key === 13 || key === 27) break;
         g._screen_output = screenOutput;
         if (disp) {
-            disp.cursorCol = WIN_COL + '--More--'.length;
+            disp.cursorCol = (_offx0 ? 1 : WIN_COL) + '--More--'.length;
             disp.cursorRow = windowLines.length - 1;
         }
     }
     g._pending_message = '';
     /* wintty.c:982 tty_dismiss_nhwindow -> docorner(offx, maxrow + 1); windowLines already counts the --More-- row (maxrow + 1) */
-    if (!_fullScreen) docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length);
+    if (!_fullScreen) docorner_blank_utf8_captures(_offx0 ? 0 : WIN_COL - 1, windowLines.length);
     /* see _toplUnderWindow above — docorner() leaves row 0's left half alone. */
     g._topl_sticky = _toplUnderWindow.slice(0, Math.max(0, WIN_COL - 2));
     /* display_nhwindow(WIN_MESSAGE, FALSE) above left toplin EMPTY without
@@ -26506,6 +26667,8 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
              * the insert path (invent.c:1120), never on the `goto added` merge
              * path. */
             let _freshInvNode = false;
+            /* !fixinv tail-append arm: a new node, but no reorder_invent. */
+            let _linkedTail = false;
             if ((obj.oclass | 0) === OCLASS_COIN) {
                 /* C: gold merges into the single existing gold pile (one node). */
                 let coinNode = null;
@@ -26602,6 +26765,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                         while (_tail.nobj) _tail = _tail.nobj;
                         _tail.nobj = obj;
                         obj.nobj = null;
+                        _linkedTail = true;
                     }
                 }
             }
@@ -26644,7 +26808,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                 obj.where = 3; /* OBJ_INVENT */
             /* C invent.c:1128-1140 addinv_core0 — fill an empty quiver if obj was
              * thrown (fresh-node arm only; the merge arm jumps to `added:`). */
-            if (_freshInvNode && _objWasThrown
+            if ((_freshInvNode || _linkedTail) && _objWasThrown
                 && (game.flags?.pickup_thrown ?? true) && !game.u.uquiver
                 && (obj.oartifact | 0) !== 3 /* ART_MJOLLNIR */
                 && (obj.otyp | 0) !== OTYP_AKLYS
@@ -26771,7 +26935,10 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
         const newcap = near_capacity();
         // pickup.c:1883,1999: retain the prinv paint before encumber_msg
         // flags the next status update. Artifact damage may have repainted it.
-        const prinvCap = game._botlPaintedCap ?? _oldcap;
+        /* A botl already pending (goto_level's losehp fall damage before
+         * pickup(1)) makes the prinv pline's flush_screen run bot() AFTER the
+         * addinv: the page shows the post-add capacity (flush_screen display.c:2286). */
+        const prinvCap = (game.disp?.botl | 0) ? newcap : (game._botlPaintedCap ?? _oldcap);
         const encMsg = _encumber_msg_text(_oldcap, newcap);
         if (game.u)
             game.u._oldcap = newcap;
@@ -27523,7 +27690,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "doddrop": {
         // C ref: cmd.c — 'D' dispatches to doddrop() (do.c:924)
-        await doddrop();
+        outcome.value = _rhack_cmd_move(await doddrop()); // cmd.c:3814 ECMD_OK -> reset_cmd_vars zeroes multi
     }
         return true;
     case "docallcmd": {
@@ -29781,7 +29948,7 @@ async function _getpos_menu(gloc) {
     for (;;) {
         const pg = pages[curPage];
         const footer = pages.length > 1 ? `(${curPage + 1} of ${pages.length})` : '(end)';
-        const rawLines = [...pg.map((r) => (r.e ? `${r.e.accel} - ${r.text}` : r.text)), footer];
+        const rawLines = [...pg.map((r) => (r.e ? `${r.e.accel} - ${menucolor_text(r.text)}` : r.text)), footer];
         const windowLines = rawLines.map((ln, i) => (pg[i]?.head && i === 0 ? menu_heading_text(ln) : ln));
         if (titleErased) windowLines[0] = '';
         /* C wintty.c:1927 — `cw->maxrow >= rows || !iflags.menu_overlay` drops the
@@ -30156,6 +30323,7 @@ export async function getpos(ccp, force, goal) {
         } else if (c === key(12) /* NHKF_GETPOS_AUTODESC */) {
             g.iflags.autodescribe = !_autodescribe();
             await pline(`Automatic description ${g.flags.verbose ? 'of features under cursor ' : ''}is ${_autodescribe() ? 'on' : 'off'}.`);
+            g._getpos_last_autodescribe = g._pending_message; /* line now physically on the topline */
             if (!_autodescribe())
                 show_goal_msg = true;
             msg_given = true;
@@ -30168,6 +30336,7 @@ export async function getpos(ccp, force, goal) {
             g.iflags.getloc_filter = ((g.iflags.getloc_filter | 0) + 1) % NUM_GFILTER;
             for (let i = 0; i < _NUM_GLOCS; i++) { garr[i] = null; gidx[i] = 0; }
             await pline(`${_GETPOS_VIEW_FILTERS[g.iflags.getloc_filter | 0]}.`);
+            g._getpos_last_autodescribe = g._pending_message;
             msg_given = true;
             await flush_screen(0);
             handled = true;
@@ -30185,6 +30354,9 @@ export async function getpos(ccp, force, goal) {
             g.iflags.getloc_moveskip = !(g.iflags.getloc_moveskip);
             await pline(`${g.iflags.getloc_moveskip ? 'S' : 'Not s'}kipping`
                 + ' over similar terrain when fastmoving the cursor.');
+            /* the next key read drops msg_given (getpos.c:889-890), so a pick
+             * leaves this line standing on the topline */
+            g._getpos_last_autodescribe = g._pending_message;
             msg_given = true;
             await flush_screen(0);
             handled = true;
@@ -30653,7 +30825,7 @@ async function _do_look_lookat(x, y) {
     if (cell) {
         const rgb = cell.remembered_glyph;
         if ((dglyph?.cls === GLYPHCLS_CMAP && dglyph.cmap === 0)
-            || (rgb && rgb.ch === ' ' && !rgb.decgfx)
+            || (!dglyph && rgb && rgb.ch === ' ' && !rgb.decgfx)
             /* GLYPH_NOTHING stays glyph_is_nothing (pager.c:727) when SYMBOLS=S_nothing:^
              * remaps its character off blank. */
             || rgb?.nothing) {
@@ -31191,7 +31363,7 @@ function _glyph_at(x, y) {
     if (!loc) return null;
     const ch = loc.disp_ch;
     if ((!ch || ch === ' ')
-        && (!loc.disp_cls || (loc.disp_cls === GLYPHCLS_CMAP && !(loc.disp_cmap === 0 || loc.disp_cmap === 46)))) return null;
+        && (!loc.disp_cls || (loc.disp_cls === GLYPHCLS_CMAP && loc.disp_cmap == null))) return null;
     /* GLYPH_UNEXPLORED keeps its identity when SYMBOLS=S_unexplored paints it non-blank. */
     if (loc.disp_cls === GLYPHCLS_UNEXPLORED) return null;
     return { ch, symbol: loc.disp_ttychar, dec: !!loc.disp_decgfx, cls: loc.disp_cls ?? 'cmap',
@@ -31906,6 +32078,10 @@ export async function dbase_display_window(srcLines, statusClipCol) {
         : Math.max(0, Math.min(40, 80 - (maxcol + 1) - 1));
     const winCol = offx ? offx + 1 : 0;
     const winRows = lines.length + 1; /* + the --More-- row */
+    /* C ref: wintty.c:1921-1922 tty_display_nhwindow — a standing topline
+     * (TOPLINE_NEED_MORE) is paged out with --More-- before the window opens. */
+    if (g._pending_message)
+        await force_more(g._pending_message);
     if (winRows > 24) {
         g._pending_message = '';
         for (let start = 0; start < lines.length; start += 23) {
@@ -32094,7 +32270,7 @@ async function dowhatis() {
             if (id === '') return '';
             const sh = abc ? String.fromCharCode(97 + abcN++) : id;
             abcShown[sh] = id;
-            return sh + ' - ' + txt;
+            return sh + ' - ' + menucolor_text(txt); // windows.c:1803 add_menu menucolors raw text
         }),
     ];
     menuLines.push('(end)');
@@ -32493,8 +32669,10 @@ async function _do_look_from_screen(quick) {
             g._pending_message = instrMsg;
             await flush_screen(1);
         } else if (goalMsg) {
-            g._prevmsg = goalMsg; // getpos.c:861 pline -> pline.c:282.
-            g._pending_message = goalMsg;
+            /* getpos.c:861 pline() appends to a standing topline (update_topl),
+             * e.g. the "You see your kitten." docrt() noticed when the tip
+             * window closed. */
+            await pline(goalMsg);
             await flush_screen(1);
         }
         /* else: no further pline followed preMsg this round (tip already
@@ -32566,7 +32744,7 @@ async function _do_look_from_screen(quick) {
             /* C getpos.c:898-920 — the command-bound `g`/`G` keys are
              * prefixes inside getpos.  Read the direction immediately, then
              * route an ordinary walk direction through do_rushrun below. */
-            if (c === 0x47 /* 'G' do_run */ || c === 0x67 /* 'g' do_rush */) {
+            if (c === cmd_from_func('do_run') || c === cmd_from_func('do_rush')) {
                 c = await readchar_poskey({ x: cx, y: cy, mod: 0 });
                 rushrun = true;
             }
@@ -34193,8 +34371,7 @@ async function moverock(dx, dy) {
     const ret = await moverock_core(sx, sy, dx, dy);
     moverock_done(sx, sy);
     if (game._pending_message && !game._resultMessage) {
-        game._resultMessage = game._pending_message;
-        game._pending_message = '';
+        _topl_stash_result();
     }
     return ret;
 }
@@ -37734,6 +37911,14 @@ async function _ynq_cmd(query) {
     g._topl_prompt_echo = savedPromptEcho;
     g._topl_prompt_written = savedPromptWritten;
     g._pending_message = '';
+    /* C topl.c:533-539: clean_up rewrites gt.toplines as prompt + key2txt(q), so
+     * a later ^P recalls the ANSWERED prompt (as yn_function's _answered does). */
+    g._toplEmptyAfterSuppress = false;
+    putmsghistory(`${prompt} ${ch}`);
+    /* C topl.c:531-536 clean_up: gt.toplines = prompt + key2txt(q); the prompt
+     * was SUPPRESS_HISTORY, so the next remember_topl() files the ANSWERED line. */
+    g._toplEmptyAfterSuppress = false;
+    putmsghistory(`${prompt} ${key2txt(ch.charCodeAt(0))}`);
     /* C win/tty/topl.c:547-548 clears WIN_MESSAGE when cw->cury is nonzero. */
     g._topl_sticky = pcy > 0 ? null : prompt;
     return ch;
@@ -40460,7 +40645,7 @@ const _ADJ_QUITCHARS = ' \r\n\x1b';/* C decl.c:96 const char quitchars[] */
  * for a state this port cannot construct (there is exactly one coin stack and
  * addinv forces it into '$'), so the diagnostic is named here rather than
  * guessed at. */
-function check_invent_gold(_why) {
+export function check_invent_gold(why) {
     let goldstacks = 0, wrongslot = 0;
 
     for (let otmp = game.invent; otmp; otmp = otmp.nobj)
@@ -40470,8 +40655,14 @@ function check_invent_gold(_why) {
                 ++wrongslot;
         }
 
-    if (goldstacks > 1 || wrongslot > 0)
+    if (goldstacks > 1 || wrongslot > 0) {
+        impossible('%s: %s%s%s', why,
+                   (wrongslot > 1) ? 'gold in wrong slots'
+                      : (wrongslot > 0) ? 'gold in wrong slot' : '',
+                   (wrongslot > 0 && goldstacks > 1) ? ' and ' : '',
+                   (goldstacks > 1) ? 'multiple gold stacks' : '');
         return true;  /* gold can be #adjusted */
+    }
 
     return false;     /* gold can't be #adjusted */
 }

@@ -1,7 +1,7 @@
 // Narrow scanf conversions over a byte reader; no seeking or whole-stream copy.
 // Integer consumption and failure rules follow the pinned musl vfscanf/intscan.
 import abi from './libc-profile.json' with {type:'json'};
-export function scanFormatted(memory,libc,reader,format,outputs){
+export function scanFormatted(memory,libc,reader,format,outputs,{signedSaturation=false}={}){
  if(abi.longBytes!==8||abi.pointerBytes!==8||abi.EOF!==-1)throw new Error('Review scanf target ABI');
  let position=0,assigned=0,out=0;
  const space=c=>c===32||(c>=9&&c<=13),get=()=>{const c=reader.get();if(c>=0)position++;return c;},unget=c=>{if(c>=0){reader.unget(c);position--;}};
@@ -49,6 +49,7 @@ export function scanFormatted(memory,libc,reader,format,outputs){
   const max=(1n<<64n)-1n;let overflow=false;
   while(c>=0&&digit(c)<base){if(!overflow){value=value*BigInt(base)+BigInt(digit(c));if(value>max)overflow=true;}digits++;c=take();}back(c);
   if(!digits){libc.errno=abi.EINVAL;return assigned;}
+  if(signedSaturation&&'di'.includes(kind)){const limit=negative?1n<<63n:(1n<<63n)-1n;if(overflow||value>limit){value=limit;overflow=false;libc.errno=abi.ERANGE;}}
   if(overflow){value=max;negative=false;libc.errno=abi.ERANGE;}if(negative)value=-value;
   if(!suppress){store(destination,length,value);assigned++;}
  }

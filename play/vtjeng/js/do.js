@@ -183,7 +183,7 @@ import { fruitname, makeplural } from './fruit.js';
 import {
     Can_fall_thru,
     In_hell,
-    In_W_tower,
+    In_W_tower_steps,
     On_W_tower_level,
     assign_level,
     assign_rnd_level,
@@ -1154,7 +1154,11 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
                 );
             }
             let survivalChance = obj.blessed ? 70 : 50;
-            if (obj.invlet) survivalChance += Math.trunc(state.u?.luck ?? 0) * 2;
+            // Luck is u.uluck + u.moreluck (you.h).
+            if (obj.invlet) {
+                survivalChance += ((state.u.uluck ?? 0)
+                    + (state.u.moreluck ?? 0)) * 2;
+            }
             if (obj.otyp === POT_OIL) survivalChance = 100;
             const random = rawEnv.random ?? coreRandom;
             if (!obj_resists(obj, survivalChance, 100, {
@@ -2589,7 +2593,8 @@ export async function goto_level(
     let new_ledger;
     // C captures this before anything runs, so it reads the level being left.
     const prev_temperature = state.level.flags.temperature;
-    const was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz, state);
+    const was_in_W_tower = await finish_steps(
+        In_W_tower_steps(u.ux, u.uy, u.uz, state), impossible_printer(state));
 
     if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel, state))
         newlevel.dlevel = dunlevs_in_dungeon(newlevel, state);
@@ -2724,7 +2729,8 @@ export async function goto_level(
         await keepdogs(false, {
             state,
             inWizardTower: (x, y, level, callbackState) =>
-                In_W_tower(x, y, level, callbackState),
+                finish_steps(In_W_tower_steps(x, y, level, callbackState),
+                    impossible_printer(callbackState)),
         });
     }
 

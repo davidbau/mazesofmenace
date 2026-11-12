@@ -84,6 +84,7 @@ import { induced_align } from './dungeon.js';
 import {
     discard_minvent,
     makemon,
+    makemon_runtime,
     m_dowear,
     restore_waiting_vampire,
     set_mimic_sym,
@@ -618,7 +619,10 @@ function createMonsterBody(m, croom, env) {
         )
         : PM_ARCHEOLOGIST <= m.id && m.id <= PM_WIZARD
             ? mk_mplayer(pm, coordinate.x, coordinate.y, false, monsterEnv)
-        : makemon(
+        // A level program that #wizloadlua runs (nhlua.c load_lua()) makes
+        // its monsters outside level creation, so makemon() runs its runtime
+        // tail there, as in mk_roamer().
+        : (state.in_mklev || env._specialRoomFill ? makemon : makemon_runtime)(
             pm,
             coordinate.x,
             coordinate.y,
@@ -895,6 +899,8 @@ export function sp_amask_to_amask(sp_amask, rawEnv = {}) {
 // slot is cleared. It deliberately consults the shared carrier rather than a
 // saved local, so a nested descriptor that replaced or cleared it wins.
 export function spo_end_moninvent(context, env) {
+    // Level creation runs this, where vision_recalc() does nothing, so
+    // m_dowear() never has notices to print and returns synchronously.
     if (context.inventCarryingMonster)
         m_dowear(context.inventCarryingMonster, true, env);
     context.inventCarryingMonster = null;

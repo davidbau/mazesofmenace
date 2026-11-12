@@ -25,6 +25,9 @@ export function enableGameWindows(environment,layouts){
  local.equipment=i=>ctypes.load('struct obj *',environment.requireGlobal(['uwep','uarm','uarmc','uarmh','uarms','uarmg','uarmf','uarmu'][i]));
  local.commonString=i=>{if(i!==0)throw new Error('Unknown SOUNDS common string');return ctypes.getField('struct c_common_strings',environment.requireGlobal('c_common_strings'),'c_nothing_happens','char *');};
  local.rn2=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('sounds.c'),line,services.literal(caller));return environment.resolve('rn2')(n);};
+ // The binding passes a source-predicate index, not a native callback address.
+ const predicates=['throne_mon_sound','beehive_mon_sound','morgue_mon_sound','zoo_mon_sound','temple_priest_sound','oracle_sound'];
+ local.get_iter_mons=i=>{const name=predicates[environment.transport.int(i)];if(!name)throw new Error('Unknown SOUNDS predicate '+i);return environment.resolve('get_iter_mons')(environment.functionPointer('sounds::'+name,'ip',m=>callSounds(local,layouts.sounds,name,m)));};
  callSounds(local,layouts.sounds,'nosoundAddress');
  environment.register('sounds',Object.fromEntries(Object.entries(sounds).filter(([name,v])=>typeof v==='function'&&!environment.hasFunction(name)).map(([name])=>[name,(...args)=>callSounds(local,layouts.sounds,name,...args)])));
  const context=environment.state('game-startup-context');if(!context)throw new Error('Enable game startup before windows');

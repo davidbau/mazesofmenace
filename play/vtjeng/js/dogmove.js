@@ -141,7 +141,7 @@ import {
     remove_monster,
 } from './monst.js';
 import {
-    mfndpos,
+    mfndpos_steps,
     mon_track_add,
     monnear,
     onscary,
@@ -199,7 +199,8 @@ import { which_armor } from './worn.js';
 import { unpaid_cost } from './shk.js';
 import { canseemon, canspotmon, mon_visible } from './display.js';
 import { goodpos } from './teleport.js';
-import { pline_mon, youFeel } from './pline.js';
+import { impossible_printer, pline_mon, youFeel } from './pline.js';
+import { finish_steps } from './source_steps.js';
 import { beg, domonnoise } from './sounds.js';
 import { stop_occupation } from './allmain.js';
 import { mattacku } from './mhitu.js';
@@ -290,15 +291,19 @@ function normalizePetMoveEnv(rawEnv) {
         droppables: rawEnv.droppables ?? droppables,
         couldReachItem: rawEnv.couldReachItem ?? could_reach_item,
         cursedObjectAt: rawEnv.cursedObjectAt ?? cursed_object_at,
-        findPositions: rawEnv.findPositions ?? mfndpos,
+        // C's mfndpos(); a test's replacement returns the count directly.
+        findPositions: rawEnv.findPositions
+            ?? ((monster, data, flags, env) => finish_steps(
+                mfndpos_steps(monster, data, flags, env),
+                impossible_printer(state))),
         monAllowFlags: rawEnv.monAllowFlags ?? mon_allowflags,
     };
 }
 
-function nearestVisibleGoal(monster, state, clearArea) {
+async function nearestVisibleGoal(monster, state, clearArea) {
     let distance = FARAWAY * FARAWAY;
     let goal = null;
-    clearArea(
+    await clearArea(
         monster.mx,
         monster.my,
         9,
@@ -900,7 +905,7 @@ export async function dog_invent(monster, edog, heroDistance, rawEnv = {}) {
 // the hero goal first. Goal fallback may also update the persistent edog.ogoal.
 // Food classification, droppable selection, carry capacity, and the fallback
 // clear-area scan retain source control flow.
-export function dog_goal(
+export async function dog_goal(
     monster,
     edog,
     after,
@@ -1053,7 +1058,8 @@ export function dog_goal(
             goal.gy = edog.ogoal.y;
             edog.ogoal.x = 0;
         } else {
-            const found = nearestVisibleGoal(monster, state, clearArea);
+            const found = await nearestVisibleGoal(
+                monster, state, clearArea);
             if (!found
                 || (found.x === originX && found.y === originY)) {
                 goal.gx = hero.ux;
@@ -1389,7 +1395,7 @@ export async function dog_move(monster, after, rawEnv = {}) {
         whistleApproach = state.moves - edog.whistletime < 5;
     }
 
-    const approach = dog_goal(
+    const approach = await dog_goal(
         monster,
         edog,
         after,
@@ -1410,7 +1416,7 @@ export async function dog_move(monster, after, rawEnv = {}) {
 
     const data = { cnt: 0, poss: [], info: [] };
     const allowflags = env.monAllowFlags(monster, env);
-    const count = env.findPositions(monster, data, allowflags, env);
+    const count = await env.findPositions(monster, data, allowflags, env);
     let uncursedCount = 0;
     for (let index = 0; index < count; ++index) {
         const { x, y } = data.poss[index];

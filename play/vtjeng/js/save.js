@@ -48,6 +48,7 @@ import { dmonsfree } from './makemon_create.js';
 import { change_luck } from './moveloop_preamble.js';
 import {
     free_exclusions, ledger_no, level_info, maxledgerno, save_exclusions,
+    copy_lastseentyp_grid, lastseentyp_grid, save_mapseen,
 } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
 import { maybe_write_timer, save_timers } from './timeout.js';
@@ -284,6 +285,8 @@ export function savelev(ledger, state = game, options = {}) {
         state._savedLevels ??= {};
         state._savedLevels[ledger] = {
             level: state.level,
+            // save.c:510-513 writes svl.lastseentyp[][] by value.
+            lastseentyp: copy_lastseentyp_grid(lastseentyp_grid(state)),
             // save.c:547 saves the used-up unpaid objects with the level.
             billobjs: state.gb?.billobjs ?? null,
             stairs: state.stairs,
@@ -560,6 +563,8 @@ function serializeGameState(state) {
         urace: state.urace,
         // Level and dungeon state
         level: state.level,
+        // savelev() of the hero's level writes svl.lastseentyp[][].
+        lastseentyp: lastseentyp_grid(state),
         // C ref: save.c savelev_core():547 saveobjchn(&gb.billobjs) writes
         // the hero's level's used-up unpaid objects; getlev() reads them
         // back at restore.c:1173.
@@ -629,7 +634,10 @@ function serializeGameState(state) {
         // C ref: save.c savegamestate():317-319 writes svs.spl_book[].
         spl_book: state.svs?.spl_book,
         mvitals: state.mvitals,
-        mapseenchn: state.svm?.mapseenchn,
+        // C ref: dungeon.c save_dungeon():179-186 writes each mapseen with
+        // save_mapseen(), which stores its branch as an index.
+        mapseenchn: (state.svm?.mapseenchn ?? []).map((mptr) =>
+            save_mapseen(mptr, state)),
         // C savegamestate() writes global timers and light sources before the
         // inventory chains. Keep timer/light object arguments aliased to those
         // saved objects so callbacks such as end_burn() find their source.

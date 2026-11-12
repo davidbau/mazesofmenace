@@ -4563,7 +4563,11 @@ async function peffect_gain_ability(otmp) {
         for (let ii = A_MAX; ii > 0; --ii) {
             i = otmp.blessed ? i + 1 : rn2(A_MAX);
             const msgflg = (otmp.blessed || ii === 1) ? 0 : -1;
-            if (await adjattrib(i, 1, msgflg) && !otmp.blessed)
+            const gained = await adjattrib(i, 1, msgflg);
+            /* adjattrib()'s You_feel pline blocks in more() (topl.c:274) before the
+             * next iteration's message; let it finish first (as gainstr does). */
+            if (game._blockingPline) await game._blockingPline;
+            if (gained && !otmp.blessed)
                 break;
         }
     }

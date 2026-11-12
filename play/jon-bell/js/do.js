@@ -2011,6 +2011,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // getlev/revisit arm raises no in-window pline, and after do.c:1720 the
         // delay makes these flushes early-return.  DISPLAY-ONLY; no RNG.
         g._levelgenWindowOpen = true;
+        if (oldUz) g._levelgenFreezeUz = { dnum: oldUz.dnum, dlevel: oldUz.dlevel };
         try {
             if (newInfo.flags & VISITED) {
                 await real_impossible('goto_level: returning to discarded level?');
@@ -2020,6 +2021,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         } finally {
             g._levelgenPaintFreeze = null;
             g._levelgenWindowOpen = false;
+            g._levelgenFreezeUz = null;
         }
         newInfo.flags |= LFILE_EXISTS;
         newInfo.flags &= ~VISITED;

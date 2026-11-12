@@ -48,6 +48,7 @@ import { reg_damg, visible_region_at } from './region.js'; // relocate-fns
 import { t_at } from './trap.js'; // relocate-fns
 import { mon_nam } from './uhitm.js'; // relocate-fns
 import { _COIN_CLASS, _is_cleric } from './pickup.js'; // relocate-fns
+import { menucolor_row } from './coloratt.js';
 
 /* ---------------------------------------------------------------------------
  * Constants, each with the C header it comes from.
@@ -834,7 +835,12 @@ async function _identify_objlist_menu_body(promptText) {
     const frameRows = () => {
         const lines = buildLines();
         const pageCount = Math.max(1, Math.ceil(lines.length / PAGE_CONTENT));
-        const pageLines = lines.slice(pageIndex * PAGE_CONTENT, (pageIndex + 1) * PAGE_CONTENT);
+        /* C windows.c:1803 add_menu() applies MENUCOLOR to each item row (not headings/prompt);
+         * wintty.c:1449 paints it from char 4 on. */
+        const pageLines = lines.slice(pageIndex * PAGE_CONTENT, (pageIndex + 1) * PAGE_CONTENT)
+            .map(l => (/^. [-+#] /.test(l)
+                /* a selected marker is coloured too (recorded: `n \x1b[36m+\x1b[39m ...`) */
+                ? menucolor_row(/^. [+#*] /.test(l) ? `${l.slice(0, 2)}\x01${l.slice(2)}` : l) : l));
         const footer = (pageCount > 1) ? `(${pageIndex + 1} of ${pageCount})` : '(end)';
         const footerRow = pageLines.length;
         if (FULL_SCREEN) {

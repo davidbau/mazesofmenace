@@ -20,6 +20,16 @@ export function enableLight(environment,layouts){
   free:p=>S.free(address(p)),nh_delay_output:()=>resolve('nh_delay_output')(),
  };
  for(const[n,proto]of Object.entries(abi.dependencies)){const m=proto.match(/^(.+?)\s*\((.*)\)$/),types=m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void');local[n]=(...args)=>value(m[1],resolve(n)(...args.map((v,i)=>value(types[i],v))));}
+ // Formatting an opaque pointer does not dereference it; retain all64bits.
+ local.fmt_ptr=p=>address(resolve('fmt_ptr')(p?.address??p??0));
+ const windowCall=(field,signature,...args)=>environment.functions.indirect(
+  ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),field,'void *'),signature,...args);
+ Object.assign(local,{
+  create_nhwindow:type=>windowCall('win_create_nhwindow','ii',transport.int(type)),
+  putstr:(win,attr,s)=>windowCall('win_putstr','viip',transport.int(win),transport.int(attr),text(s)),
+  display_nhwindow:(win,b)=>windowCall('win_display_nhwindow','vii',transport.int(win),transport.char(b)),
+  destroy_nhwindow:win=>windowCall('win_destroy_nhwindow','vi',transport.int(win)),
+ });
  local.alloc=n=>environment.alloc('alloc',transport.uint(n));
  for(const n of ['panic','impossible'])local[n]=(f,...a)=>resolve(n)(text(f),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.Sprintf=(p,f,...a)=>S.sprintf(address(p),text(f),...a.map(v=>typeof v==='string'?text(v):v?.address??v));

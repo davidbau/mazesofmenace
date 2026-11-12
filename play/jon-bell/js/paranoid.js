@@ -244,6 +244,7 @@ async function read_yn(prompt, acceptQ) {
     /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q) and
      * remember_topl() files THAT: the answered prompt, never the bare one. */
     const answered = (a) => {
+        g._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
         putmsghistory(`${shown} ${a}`, false);
         /* the bare prompt still on the topline is already filed as prompt + answer */
         g._topl_prompt_filed = shown;

@@ -2,6 +2,8 @@
  * Only the supplied linear-memory/function-table services touch the host VM.
  * Instances own state handles, callback errors and C string storage. Native
  * strings are byte strings, never implicit UTF-8 conversions. */
+import {luaAuxError} from './aux-error.js';
+import {openLuaIO} from './io-library.js';
 import { createLuaCState } from './lapi.js';
 import { LuaError, LuaTable, LuaUserdata, LuaLightUserdata, LuaThread, byteString, isLuaString, luaStringBytes, toInteger, numberToString } from './lobject.js';
 import { openBase, openTable } from './lbaselib.js';
@@ -213,8 +215,8 @@ export function createLuaAbi(options = {}) {
     const handle = address(services.malloc(8)); if (!handle) return 0;
     const record = { handle, handles: new Set([handle]), threadHandles: new WeakMap(), allocator, allocatorData, strings: new Map(), owned: [], transportBytes: 0, allocations: new Map(), identities: new WeakMap(), nativeFunctions: new Map(), debugAddresses: new Map(), debugTokens: new Map(), panic: 0, warn: 0, warnData: 0 };
     const memoryAllocator = (ud, pointer, oldSize, newSize) => {
-      const result = allocator
-        ? address(services.callback(allocator)(BigInt(ud ?? 0), BigInt(pointer ?? 0), BigInt(oldSize), BigInt(newSize))) || null
+      const result = record.allocator
+        ? address(services.callback(record.allocator)(BigInt(record.allocatorData ?? 0), BigInt(pointer ?? 0), BigInt(oldSize), BigInt(newSize))) || null
         : address(services.realloc(pointer ?? 0, newSize)) || null;
       if (!newSize || result !== null) {
         if (pointer !== null) record.allocations.delete(pointer);
@@ -222,6 +224,7 @@ export function createLuaAbi(options = {}) {
       }
       return result;
     };
+    record.memoryAllocator=memoryAllocator;
     const userdataFactory = (size, count, state) => {
       const offset = services.userdataHeader(count), total = offset + size, tracker = state.vm.heap.memoryTracker;
       const block = tracker ? address(tracker.realloc(null, 0, total)) : allocate(record, total);
@@ -266,6 +269,7 @@ export function createLuaAbi(options = {}) {
       case 'utf8': state.push(openUtf8(vm,{publish:false})); break;
       case 'coroutine': state.push(openCoroutine(vm,{publish:false})); break;
       case 'os': state.push(openLuaOS(vm, options.os ?? createLuaOSServices(services),{publish:false,nativeRegistration:true})); break;
+      case 'io': state.push(openLuaIO(state,services.ioServices()));break;
       case 'debug': state.push(openDebugLibrary(vm, { registry: state.registry,publish:false,filtered:false })); break;
       default: throw new LuaError(`luaopen_${name} is not implemented for this Lua configuration`);
     }
@@ -276,6 +280,7 @@ export function createLuaAbi(options = {}) {
     if (operation === 'luaL_newstate') return create(0, 0);
     const record = get(handle), state = record.state, index = i32(a);
     switch (operation) {
+      case 'luaL_error_text':return luaAuxError(record.state.vm,'%s',cstring(a));
       case 'lua_pushinteger': state.lua_pushinteger(i64(a)); return 0;
       case 'lua_pushnumber': state.lua_pushnumber(decodeNumber(a)); return 0;
       case 'lua_pushboolean': state.lua_pushboolean(index !== 0); return 0;
@@ -311,6 +316,7 @@ export function createLuaAbi(options = {}) {
         return state.luaL_checkoption(index, cstring(b), list);
       }
       case 'luaL_newmetatable': return state.luaL_newmetatable(cstring(a));
+      case 'luaL_testudata': {const value=state.value(index),metatable=state.registry.rawget(cstring(b));return value instanceof LuaUserdata&&metatable!==null&&value.metatable===metatable?userdataPointer(value.value):0;}
       case 'luaL_checkudata': return userdataPointer(state.luaL_checkudata(index, cstring(b)));
       case 'lua_pushlightuserdata': state.lua_pushlightuserdata(BigInt.asUintN(64,a)); return 0;
       case 'lua_touserdata': return state.value(index) instanceof LuaLightUserdata ? valuePointer(record,state.value(index)) : userdataPointer(state.lua_touserdata(index));
@@ -349,6 +355,8 @@ export function createLuaAbi(options = {}) {
       case 'luaL_checkversion_':
         if (decodeNumber(a) !== 504 || address(b) !== 136) throw new LuaError('Lua version/number size mismatch');
         return 0;
+      case 'lua_tocfunction': {const value=state.value(index);if(!state.lua_iscfunction(index))return 0;const pointer=value?.luaAbiCFunctionPointer??value?.luaNativeCallback?.luaCFunctionPointer;if(!pointer)throw new LuaError('Lua C function has no registered ABI address');return pointer;}
+      case 'lua_setallocf': record.allocator=address(a);record.allocatorData=address(b);record.state.vm.heap.memoryTracker.setallocf(record.memoryAllocator,record.allocatorData);return 0;
       case 'lua_getallocf': writePointer(address(a), record.allocatorData); return record.allocator;
       case 'lua_atpanic': {
         const previous = record.panic; record.panic = address(a); return previous;
