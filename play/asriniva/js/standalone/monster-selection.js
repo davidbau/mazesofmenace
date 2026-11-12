@@ -2,6 +2,7 @@
 // and static storage follow the original adapter; all selection policy stays
 // in MAKEMON/MON/MONDATA and dungeon policy stays in DUNGEON.
 import * as makemon from '../ported/makemon.js';
+import privateAbi from './makemon-private-abi.json' with {type:'json'};
 import {zombie_form,undead_to_corpse,can_be_hatched,dead_species} from '../ported/mon.js';
 import {grownups,little_to_big,big_to_little} from '../ported/mondata.js';
 import {obj_no_longer_held} from '../ported/do.js';
@@ -47,6 +48,10 @@ export function enableMonsterSelection(environment,layouts) {
     environment.register('candy-wrapper',{assign_candy_wrapper},candy,{prepareArgs:(_fn,args)=>[record('struct obj',args[0])]});
     const env=base(layouts.makemon,'makemon.c'),L=layouts.makemon;
     const oldmoves=environment.allocateGlobal('makemon.oldmoves',8),lev=environment.allocateGlobal('makemon.lev',8);
+    for(const[k,v]of Object.entries(privateAbi.constants))if(L[k]!==v)throw new Error('Review MAKEMON private extent '+k);
+    const order=environment.allocateGlobal('makemon.mongen_order',privateAbi.storageBytes.mongen_order),maxf=environment.allocateGlobal('makemon.mclass_maxf',privateAbi.storageBytes.mclass_maxf),ready=environment.allocateGlobal('makemon.mongen_order_init',privateAbi.storageBytes.mongen_order_init);
+    Object.defineProperties(env,{mongen_order:{value:views.array('int',order,L.NUMMONS)},mclass_maxf:{value:views.array('signed char',maxf,L.MAXMCLASSES)},mongen_order_init:{get:()=>memory.view.getInt8(ready),set:v=>memory.view.setInt8(ready,transport.char(v))}});
+    env.mongenOrderAt=i=>env.mongen_order[transport.int(i)];env.intLoad=p=>memory.view.getInt32(pointer(p),true);
     // Actual source statics are initialized to 0L and NULL, respectively.
     Object.defineProperties(env,{
         oldmoves:{get:()=>memory.view.getBigInt64(oldmoves,true),set:v=>memory.view.setBigInt64(oldmoves,BigInt(v),true)},

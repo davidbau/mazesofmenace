@@ -48,7 +48,7 @@ import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmnam
 import { makemon, engravings_list } from './mklev.js';
 import { newcham, mongone } from './mon.js';
 import { count_wsegs } from './worm.js';
-import { tamedog, migrate_to_level } from './dog.js';
+import { tamedog, migrate_to_level, panic } from './dog.js';
 import { monster_census } from './sit.js';
 import { MM_NOMSG, MIGR_RANDOM } from './const.js';
 import { put_saddle_on_mon } from './steed.js';
@@ -793,7 +793,7 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
     if (!msg) return;
     const _botlOwed = !!(g.disp && (g.disp.botl || g.disp.botlx)) || g._wishBotlOwedAtPrinv === true;
     g._wishBotlOwedAtPrinv = false;
-    const prev = g._resultMessage;
+    let prev = g._resultMessage;
     if (g._topl_win_stop) {
         /* topl.c:257 skip: the pline is buffered in gt.toplines, never painted
          * or paged (:262-270 join, :289-291 replace). */
@@ -801,6 +801,13 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
         g._topl_win_stop_buf = (hidden && hidden.length + 2 + msg.length < TOPL_LIMIT)
             ? hidden + '  ' + msg : msg;
     } else if (prev) {
+        /* C topl.c:262-274: addinv's plines, prinv, and encumber_msg share
+         * one topline. Fold the live prefix in before recording this join;
+         * otherwise it overwrites the prefix's per-pline page boundaries. */
+        if (g._pending_message) {
+            prev = _topl_merge_result(g._pending_message, prev);
+            g._pending_message = '';
+        }
         const joined = prev + '  ' + msg;
         _topl_record_join(prev, joined);
         g._resultMessage = joined;
@@ -1118,6 +1125,17 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
      * prinv line goes through game._resultMessage, which does not page a
      * predecessor.  Same treatment invent.c:941's compare-items line already
      * gets in the merge branch above. */
+    /* C has ONE topline: refusal messages a fifth-try wish left standing
+     * ("Nothing fitting...", "That's enough tries!") are still gt.toplines
+     * when invent.c:1040's pline arrives, so they page IN FRONT of it
+     * (topl.c:257-301).  Fold them ahead of the decipher line, keeping their
+     * message boundaries, instead of leaving them to be dropped. */
+    if (_core2msgs.length && g._pending_message) {
+        const _pend = g._pending_message;
+        _core2msgs[0] = _topl_merge_result(_pend, _core2msgs[0],
+                                           _topl_joins_snapshot(_pend) || undefined);
+        g._pending_message = '';
+    }
     let _c2last = _core2msgs.pop();
     for (const m of _core2msgs)
         await force_more(m);
@@ -1857,7 +1875,7 @@ export async function wiz_makemap() {
 /* C ref: wizcmds.c:1832-1868 wiz_objprobs(void) — #wizobjprobs: an NHW_TEXT
  * window listing each object's oc_prob against its class total; no turn, no RNG. */
 export async function wiz_objprobs() {
-    const NUM_OBJECTS = 480;
+    const NUM_OBJECTS = 481;
     const probsum = new Array(18).fill(0);
     for (let otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++)
         probsum[MKOBJ_OC_CLASS[otyp]] += MKOBJ_OC_PROB[otyp];
@@ -1872,7 +1890,7 @@ export async function wiz_objprobs() {
         const prob = MKOBJ_OC_PROB[otyp];
         /* %6.2f of a float (single-precision) quotient */
         const pct = Math.fround(Math.fround(prob * 100) / probsum[oclass]).toFixed(2);
-        lines.push(`${String(prob).padStart(4)} / ${String(probsum[oclass]).padStart(4)} (${pct.padStart(6)}%): ${OC_NAME[otyp]}`);
+        lines.push(`${String(prob).padStart(4)} / ${String(probsum[oclass]).padStart(4)} (${pct.padStart(6)}%): ${otyp === 285 ? 'fruit' : OC_NAME[otyp]}`);
     }
     await display_text_window(lines);
     return ECMD_OK;
@@ -1965,15 +1983,42 @@ export async function wiz_migrate_mons() {
         await pline("Can't get there from here.");
     }
     if (!inbuf || inbuf[0] === '\x1b') return ECMD_OK;
-    const count = parseInt(inbuf, 10) || 0;
+    /* C atoi() = (int) strtol(): a 64-bit long that saturates on
+       overflow, then truncated to int (so "4294967297" is 1). */
+    const m = /^[ \t\n\v\f\r]*([+-]?\d+)/.exec(inbuf);
+    let lval = m ? BigInt(m[1]) : 0n;
+    if (lval > 0x7fffffffffffffffn) lval = 0x7fffffffffffffffn;
+    else if (lval < -0x8000000000000000n) lval = -0x8000000000000000n;
+    let mcount = Number(BigInt.asIntN(32, lval));
+    let use_random_mon = true;
+    if (mcount < 0) {
+        use_random_mon = false;
+        mcount = Math.imul(mcount, -1); /* INT_MIN stays INT_MIN */
+    }
+    if (mcount < 1) mcount = 0;
+    else if (mcount > (COLNO - 1) * ROWNO) mcount = (COLNO - 1) * ROWNO;
     const mongen_saved = g.iflags.debug_mongen;
     g.iflags.debug_mongen = false;
-    for (let n = Math.min(Math.abs(count), (COLNO - 1) * ROWNO); n > 0; --n) {
-        const mon = count < 0 ? g.fmon : await makemon(rndmonst(), 0, 0, MM_NOMSG);
+    for (; mcount > 0; --mcount) {
+        const mon = !use_random_mon ? g.fmon : await makemon(rndmonst(), 0, 0, MM_NOMSG);
         if (mon) await migrate_to_level(mon,
             tolevel.dlevel + g.dungeons[tolevel.dnum].ledger_start, MIGR_RANDOM, null);
     }
     g.iflags.debug_mongen = mongen_saved;
+    return ECMD_OK;
+}
+
+/* C wizcmds.c:533 wiz_panic() — #panic command - test program's panic
+ * handling.  ECMD_OK on every path that returns: no turn, no RNG. */
+export async function wiz_panic() {
+    if (game.iflags?.debug_fuzzer) {
+        game.u.uhp = game.u.uhpmax = 1000;
+        game.u.uen = game.u.uenmax = 1000;
+        return ECMD_OK;
+    }
+    if (await paranoid_query(true,
+                             "Do you want to call panic() and end your game?"))
+        await panic("Crash test (#panic).");
     return ECMD_OK;
 }
 

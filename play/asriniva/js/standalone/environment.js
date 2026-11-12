@@ -1,9 +1,11 @@
 // Independent environment for existing translated modules. Ports are unmodified.
+import {enableSpecialInteractions} from './special-interactions.js';
 import {createJsRuntime,CPanic} from '../ported/js-runtime.js';
 import {withCEnvironment} from '../ported/c-runtime.js';
 import * as rect from '../ported/rect.js';
 import {createMemoryServices,address} from './memory-services.js';
 import {createFunctions} from './functions.js';
+import publicFunctions from './public-functions.json' with {type:'json'};
 import {createStandaloneLibc} from './libc.js';
 import * as hacklib from '../ported/hacklib.js';
 import {createHacklibState,createHacklibEnvironment} from '../ported/hacklib-runtime.js';
@@ -66,6 +68,45 @@ import {enableQuestPager} from './quest-pager.js';
 import {enableDoLifecycle} from './do-lifecycle.js';
 import {enableTerminalInput} from './terminal-input.js';
 import {enableSaveLifecycle} from './save-lifecycle.js';
+import {enableRestoreLifecycle} from './restore-lifecycle.js';
+import {enableKillerState} from './killer-state.js';
+import {enableEndLifecycle} from './end-lifecycle.js';
+import {enablePotion} from './potion.js';
+import {enableZap} from './zap.js';
+import {enableWere} from './were.js';
+import {enableDogmove} from './dogmove.js';
+import {enableMhitu} from './mhitu.js';
+import {enableMhitm} from './mhitm.js';
+import {enableColorAttributes} from './color-attributes.js';
+import {enableVault} from './vault.js';
+import {enableUhitm} from './uhitm.js';
+import {enableMthrowu} from './mthrowu.js';
+import {enableMcastu} from './mcastu.js';
+import {enableRead} from './read.js';
+import {enableSpell} from './spell.js';
+import {enableExplode} from './explode.js';
+import {enableDig} from './dig.js';
+import {enableWizard} from './wizard.js';
+import {enableMplayer} from './mplayer.js';
+import {enableMinion} from './minion.js';
+import {enableGetpos} from './getpos.js';
+import {enableMondata} from './mondata.js';
+import {enableSteal} from './steal.js';
+import {enableDokick} from './dokick.js';
+import {enableLight} from './light.js';
+import {enableDetect} from './detect.js';
+import {enableRip} from './rip.js';
+import {enableShknam} from './shknam.js';
+import {enableInsight} from './insight.js';
+import {enableTopten} from './topten.js';
+import {enablePriest} from './priest.js';
+import {enableQuest} from './quest.js';
+import {enableLock} from './lock.js';
+import {enableApply} from './apply.js';
+import {enableLevelPersistence} from './level-persistence.js';
+import {enableWorms} from './worm.js';
+import {enableReport} from './report.js';
+import {enableUnixPlatform} from './unix-platform.js';
 import {enableTerminalMessages} from './terminal-messages.js';
 import {enableMessages} from './messages.js';
 import {enableRuntimeInfo} from './runtime-info.js';
@@ -92,12 +133,23 @@ export function createStandaloneEnvironment(options={}) {
     });
     const modules=new Map(),owners=new Map(),globals=new Map(),states=new Map();
     const deferredFunctions=new Map(),symbolPointers=new Map();
-    const addressAdapters=new Map();let itemInventory,monsterSelection,monsterCreation,heroStartup;
+    const addressAdapters=new Map();let itemInventory,monsterSelection,monsterCreation,heroStartup,were,dogmove,mhitm,vault,quest;
     function functionPointer(name,signature,invoke) {
         const previous=symbolPointers.get(name);
         if(previous){if(previous.signature!==signature)throw new Error('Conflicting C function prototype '+name);return previous.id;}
         const id=functions.functionPointer(invoke??((...args)=>environment.resolve(name)(...args)),signature);
         symbolPointers.set(name,{id,signature});return id;
+    }
+    function publishFunction(module,name){
+        if(name in services)return;
+        const invoke=(...args)=>call(module,name,...args),prototype=publicFunctions.functions[name];
+        if(prototype)Object.defineProperty(invoke,'address',{get(){
+            const match=prototype.match(/^(.+?)\s*\((.*)\)$/);if(!match)throw new Error('Unknown C function address prototype '+name);
+            const args=[];let depth=0,start=0;for(let i=0;i<match[2].length;i++){const ch=match[2][i];if(ch==='('||ch==='[')depth++;else if(ch===')'||ch===']')depth--;else if(ch===','&&!depth){args.push(match[2].slice(start,i).trim());start=i+1;}}args.push(match[2].slice(start).trim());
+            const code=t=>{t=ctypes.canonical(t);if(t.includes('*')||t.includes('['))return'p';if(t==='void')return'v';if(t==='...')throw new Error('Variadic C callback address requires an explicit ABI '+name);if(t==='double')return'd';if(t==='float')return'f';if(t.startsWith('struct ')||t.startsWith('union '))throw new Error('C aggregate callback address requires an explicit ABI '+name);return ctypes.size(t)===8?'j':'i';};
+            return functionPointer(name,[match[1],...args.filter(t=>t&&t!=='void')].map(code).join(''));
+        }});
+        services[name]=invoke;
     }
     function deferFunctions(module,namespace){for(const [name,callback]of Object.entries(namespace)){const candidates=deferredFunctions.get(name)??new Map();candidates.set(module,callback);deferredFunctions.set(name,candidates);}}
     function resolve(name){
@@ -112,14 +164,14 @@ export function createStandaloneEnvironment(options={}) {
         const entry=modules.get(name);if(!entry)throw new Error('Unknown standalone module '+name);
         const exports=Object.entries(namespace);
         for(const [fn,value]of exports)if(typeof value!=='function'||owners.has(fn))throw new Error('Duplicate or invalid standalone export '+fn);
-        for(const [fn,value]of exports){entry.namespace[fn]=value;owners.set(fn,name);if(!(fn in services))services[fn]=(...args)=>call(name,fn,...args);}
+        for(const [fn,value]of exports){entry.namespace[fn]=value;owners.set(fn,name);publishFunction(name,fn);}
     }
     function register(name,namespace,environment=services,{initialize,dependencies=[],prepareArgs}={}) {
         if(modules.has(name))throw new Error('Duplicate standalone module '+name);
         const exports=Object.entries(namespace).filter(([,v])=>typeof v==='function');
         for(const [fn] of exports)if(owners.has(fn))throw new Error('Ambiguous standalone symbol '+fn);
         const entry={namespace,environment,initialize,dependencies,prepareArgs,status:'registered'};modules.set(name,entry);
-        for(const [fn] of exports){owners.set(fn,name);if(!(fn in services))services[fn]=(...args)=>call(name,fn,...args);}
+        for(const [fn] of exports){owners.set(fn,name);publishFunction(name,fn);}
         return entry;
     }
     function start(name) {
@@ -280,7 +332,7 @@ export function createStandaloneEnvironment(options={}) {
     }
     function enableCommandGeometry(){register('cmd-geometry',{isok},Object.assign(Object.create(services),{i16:transport.short,i32:transport.int}));}
     function enableDependencies() {
-        const runtime=createWasmDependencyRuntime({regex:true});
+        const runtime=createWasmDependencyRuntime({regex:true,regexDialect:'sdk'});
         for(const name of ['tgetent','tgetflag','tgetnum','tgetstr','tparm','tgoto','tputs','regcomp','regexec','regerror','regfree','compressFile'])services[name]=(...args)=>runtime[name](services,...args);
         services.tgetent=(_buffer,name)=>runtime.tgetent(services,name);
         return runtime;
@@ -292,6 +344,7 @@ export function createStandaloneEnvironment(options={}) {
         fileBaseline:()=>filesUnder(base.filesystem,'/nethack'),
         enableAddressPort:(name,options)=>{const adapter=enableAddressPort(environment,name,options);addressAdapters.set(name,adapter);return adapter;},
         exposeAddressPort:(name,names)=>{const adapter=addressAdapters.get(name);if(!adapter)throw new Error('Address adapter not enabled: '+name);return adapter.expose(names);},
+        enableSpecialInteractions:(layouts,options)=>enableSpecialInteractions(environment,layouts,options),
         enableObjectState:layouts=>enableObjectState(environment,layouts),
         enableObjectRecords:layouts=>enableObjectRecords(environment,layouts),
         enableItemInventory:layouts=>itemInventory=enableItemInventory(environment,layouts),
@@ -311,6 +364,45 @@ export function createStandaloneEnvironment(options={}) {
         enableDoLifecycle:layouts=>enableDoLifecycle(environment,layouts),
         enableTerminalInput:(layouts,options)=>enableTerminalInput(environment,layouts,options),
         enableSaveLifecycle:layouts=>enableSaveLifecycle(environment,layouts),
+        enableRestoreLifecycle:layouts=>enableRestoreLifecycle(environment,layouts),
+        enableKillerState:layouts=>enableKillerState(environment,layouts),
+        enableEndLifecycle:layouts=>enableEndLifecycle(environment,layouts),
+        enablePotion:layouts=>enablePotion(environment,layouts),
+        enableZap:(layouts,options)=>enableZap(environment,layouts,options),
+        enableWere:layouts=>were??=enableWere(environment,layouts),
+        enableDogmove:layouts=>dogmove??=enableDogmove(environment,layouts),
+        enableMhitu:layouts=>enableMhitu(environment,layouts),
+        enableMhitm:layouts=>mhitm??=enableMhitm(environment,layouts),
+        enableColorAttributes:layouts=>enableColorAttributes(environment,layouts),
+        enableVault:layouts=>vault??=enableVault(environment,layouts),
+        enableUhitm:layouts=>enableUhitm(environment,layouts),
+        enableMthrowu:layouts=>enableMthrowu(environment,layouts),
+        enableMcastu:layouts=>enableMcastu(environment,layouts),
+        enableRead:layouts=>enableRead(environment,layouts),
+        enableSpell:layouts=>enableSpell(environment,layouts),
+        enableExplode:layouts=>enableExplode(environment,layouts),
+        enableDig:layouts=>enableDig(environment,layouts),
+        enableWizard:layouts=>enableWizard(environment,layouts),
+        enableMplayer:layouts=>enableMplayer(environment,layouts),
+        enableMinion:layouts=>enableMinion(environment,layouts),
+        enableGetpos:layouts=>enableGetpos(environment,layouts),
+        enableMondata:layouts=>enableMondata(environment,layouts),
+        enableSteal:layouts=>enableSteal(environment,layouts),
+        enableDokick:layouts=>enableDokick(environment,layouts),
+        enableLight:layouts=>enableLight(environment,layouts),
+        enableDetect:layouts=>enableDetect(environment,layouts),
+        enableRip:layouts=>enableRip(environment,layouts),
+        enableShknam:layouts=>enableShknam(environment,layouts),
+        enableInsight:layouts=>enableInsight(environment,layouts),
+        enableTopten:layouts=>enableTopten(environment,layouts),
+        enablePriest:layouts=>enablePriest(environment,layouts),
+        enableQuest:layouts=>quest??=enableQuest(environment,layouts),
+        enableLock:layouts=>enableLock(environment,layouts),
+        enableApply:layouts=>enableApply(environment,layouts),
+        enableLevelPersistence:layouts=>enableLevelPersistence(environment,layouts),
+        enableWorms:layouts=>enableWorms(environment,layouts),
+        enableReport:layouts=>enableReport(environment,layouts),
+        enableUnixPlatform:layouts=>enableUnixPlatform(environment,layouts),
         enableTerminalMessages:layouts=>enableTerminalMessages(environment,layouts),
         enableMessages:layouts=>enableMessages(environment,layouts),
         enableRuntimeInfo:layouts=>enableRuntimeInfo(environment,layouts),
@@ -324,5 +416,6 @@ export function createStandaloneEnvironment(options={}) {
         resolve,
         status:()=>Object.fromEntries([...modules].map(([k,v])=>[k,v.status])),
         record:transport.record,array:transport.array,address};
+    register('runtime-string-helpers',{__isspace:c=>services.isspace(c),Strlen_:(value,caller,line)=>base.strutil('Strlen_',typeof value==='string'?services.literal(value):address(value),typeof caller==='string'?services.literal(caller):address(caller),transport.int(line))});
     return environment;
 }

@@ -1,0 +1,243 @@
+{
+  "layout": {
+    "size": 2760,
+    "pointerSize": 8,
+    "intSize": 4,
+    "longSize": 8,
+    "charSize": 1,
+    "charSigned": 1,
+    "CHAR_BIT": 8,
+    "booleanSize": 1,
+    "booleanSigned": 1,
+    "hero_ulevel": 48,
+    "hero_ulevel_size": 4,
+    "hero_ulevelmax": 52,
+    "hero_ulevelmax_size": 4,
+    "hero_ulevelpeak": 56,
+    "hero_ulevelpeak_size": 4,
+    "hero_uhp": 2092,
+    "hero_uhp_size": 4,
+    "hero_uhpmax": 2096,
+    "hero_uhpmax_size": 4,
+    "hero_uhppeak": 2100,
+    "hero_uhppeak_size": 4,
+    "hero_uen": 2104,
+    "hero_uen_size": 4,
+    "hero_uenmax": 2108,
+    "hero_uenmax_size": 4,
+    "hero_uenpeak": 2112,
+    "hero_uenpeak_size": 4,
+    "hero_mh": 1812,
+    "hero_mh_size": 4,
+    "hero_mhmax": 1816,
+    "hero_mhmax_size": 4,
+    "hero_umonnum": 1808,
+    "hero_umonnum_size": 4,
+    "hero_umonster": 1804,
+    "hero_umonster_size": 4,
+    "hero_uexp": 2272,
+    "hero_uexp_size": 8,
+    "hero_urexp": 2280,
+    "hero_urexp_size": 8,
+    "hero_uhpinc": 2116,
+    "hero_ueninc": 2176,
+    "incrementSize": 2,
+    "incrementCount": 30,
+    "heroProps": 112,
+    "propSize": 24,
+    "propIntrinsic": 16,
+    "propExtrinsic": 0,
+    "propValueSize": 8,
+    "roleMonster": 216,
+    "roleMonsterSize": 2,
+    "roleXlev": 284,
+    "roleXlevSize": 2,
+    "roleEnergy": 272,
+    "raceEnergy": 418,
+    "advanceFieldSize": 2,
+    "advance_infix": 0,
+    "advance_inrnd": 2,
+    "advance_lofix": 4,
+    "advance_lornd": 6,
+    "advance_hifix": 8,
+    "advance_hirnd": 10,
+    "youmonst": 8,
+    "monsterSize": 192,
+    "monsterData": 8,
+    "monsterDataSize": 8,
+    "monsterLevel": 26,
+    "monsterLevelSize": 1,
+    "permonstSize": 96,
+    "permonstMove": 30,
+    "permonstMoveSize": 1,
+    "permonstLetter": 28,
+    "permonstLetterSize": 1,
+    "permonstFlags1": 72,
+    "permonstFlags2": 80,
+    "permonstFlagsSize": 8,
+    "permonstAttacks": 36,
+    "attackSize": 4,
+    "attackType": 0,
+    "attackDamageType": 1,
+    "attackDice": 2,
+    "attackSides": 3,
+    "attackFieldSize": 1,
+    "flagShowexp": 38,
+    "flagShowscore": 39,
+    "flagBeginner": 5,
+    "flagFieldSize": 1,
+    "displayBotl": 0,
+    "displayBotlSize": 1,
+    "killerFormat": 12,
+    "killerFormatSize": 4,
+    "killerName": 16,
+    "killerNameSize": 256,
+    "ASSERT_ENABLED": 1,
+    "MAIL_STRUCTURES": 1,
+    "SCORE_ON_BOTL": 0,
+    "LONG_MAX": "9223372036854775807",
+    "LARGEST_INT": 32767,
+    "MAGICAL_BREATHING": 52,
+    "M1_AMPHIBIOUS": 512,
+    "M2_NASTY": 33554432,
+    "NUMMONS": 383,
+    "MAXULEV": 30,
+    "NATTK": 6,
+    "NORMAL_SPEED": 12,
+    "AT_BUTT": 4,
+    "AT_WEAP": 254,
+    "AT_MAGC": 255,
+    "AD_PHYS": 0,
+    "AD_BLND": 11,
+    "AD_DRLI": 15,
+    "AD_STON": 18,
+    "AD_SLIM": 40,
+    "AD_WRAP": 28,
+    "S_EEL": 57,
+    "A_WIS": 2,
+    "DIED": 0,
+    "KILLED_BY": 1,
+    "LL_MINORAC": 4096,
+    "PM_CLERIC": 337,
+    "PM_WIZARD": 343,
+    "PM_HEALER": 334,
+    "PM_KNIGHT": 335,
+    "PM_BARBARIAN": 332,
+    "PM_VALKYRIE": 342,
+    "PM_MAIL_DAEMON": 314
+  },
+  "globals": [
+    "u",
+    "gu",
+    "gy",
+    "flags",
+    "disp",
+    "svk",
+    "mons"
+  ],
+  "bits": [
+    "mrevived",
+    "mcloned"
+  ],
+  "calls": {
+    "acurr": {
+      "target": "acurr",
+      "prototype": "schar (int)"
+    },
+    "find_mac": {
+      "target": "find_mac",
+      "prototype": "int (struct monst *)"
+    },
+    "exp_percent_changing": {
+      "target": "exp_percent_changing",
+      "prototype": "boolean (void)"
+    },
+    "resists_drli": {
+      "target": "resists_drli",
+      "prototype": "boolean (struct monst *)"
+    },
+    "Goodbye": {
+      "target": "Goodbye",
+      "prototype": "const char *(void)"
+    },
+    "adjabil": {
+      "target": "adjabil",
+      "prototype": "void (int, int)"
+    },
+    "done": {
+      "target": "done",
+      "prototype": "void (int)"
+    },
+    "minuhpmax": {
+      "target": "minuhpmax",
+      "prototype": "int (int)"
+    },
+    "setuhpmax": {
+      "target": "setuhpmax",
+      "prototype": "void (int, boolean)"
+    },
+    "monhp_per_lvl": {
+      "target": "monhp_per_lvl",
+      "prototype": "int (struct monst *)"
+    },
+    "rehumanize": {
+      "target": "rehumanize",
+      "prototype": "void (void)"
+    },
+    "newhp": {
+      "target": "newhp",
+      "prototype": "int (void)"
+    },
+    "xlev_to_rank": {
+      "target": "xlev_to_rank",
+      "prototype": "int (int)"
+    },
+    "count_achievements": {
+      "target": "count_achievements",
+      "prototype": "int (void)"
+    },
+    "achieve_rank": {
+      "target": "achieve_rank",
+      "prototype": "schar (int)"
+    },
+    "record_achievement": {
+      "target": "record_achievement",
+      "prototype": "void (schar)"
+    },
+    "strcmp": {
+      "target": "strcmp",
+      "prototype": "int (const char *, const char *)"
+    },
+    "Strcpy": {
+      "target": "strcpy",
+      "prototype": "char *(char *, const char *)"
+    }
+  },
+  "public": {
+    "newuexp": "long (int)",
+    "newpw": "int (void)",
+    "experience": "int (struct monst *, int)",
+    "more_experienced": "void (int, int)",
+    "losexp": "void (const char *)",
+    "newexplevel": "void (void)",
+    "pluslvl": "void (boolean)",
+    "rndexp": "long (boolean)"
+  },
+  "assertion": {
+    "condition": "u.ulevel >= 0 && u.ulevel < MAXULEV",
+    "line": 247,
+    "function": "losexp"
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-exper-abi.py": "a912652ab654465ae895697e773a17aedd80e27d4289fdbd432350c791a27174",
+    "js/standalone/exper.js": "2b782d7611e30215c651e9d0621dafcdef00ebcdb90072010460945aca51cbb6",
+    "js/ported/exper.js": "1b9bf6ce1cf7ec4ceb924e0f4bc9ce91db95c7dbb6d6fc0a7f41eb8375ecdc8e",
+    "js/ported/exper-runtime.js": "0084f11f1db52660e25892f241831b74c21ab106a4f383c65be37893cdb77634",
+    "nethack-c/wasm/tu-libraries/exper.js": "c275cfa5919eac09a10d92e77a02851b2ce925fcbc3d4fe1700abe089bd5d562",
+    "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
+    "scripts/tu-exper-layout.h": "8dddb5801a5f35f85c71c2750f7670769c1b8d8ffa18cf915a07315013826434",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52"
+  }
+}

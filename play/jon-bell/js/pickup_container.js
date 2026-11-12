@@ -40,7 +40,7 @@ import { game } from './gstate.js';
 import { update_inventory } from './inventory_refresh.js';
 import { chest_trap } from './trap.js';
 import { nomul } from './allmain.js';
-import { obj_to_glyph, flush_screen, force_more, canspotmon, docorner_blank_utf8_captures, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS, _threeStatusLines } from './display.js';
+import { obj_to_glyph, flush_screen, force_more, canspotmon, docorner_blank_utf8_captures, docrt, status_r1_menu_docrt, DEFAULT_MENU_CMDS, _threeStatusLines, menu_item_marker } from './display.js';
 import { bot } from './botl.js';
 import { pline, urgent_pline, Norep, livelog_printf } from './pline.js';
 import { impossible } from './pline.js';
@@ -48,8 +48,9 @@ import { topl_force_break_now, flush_pending_messages } from './display.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_window } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { menu_heading_text, ATR_NONE } from './tty_menu.js';
-import { menucolor_row } from './coloratt.js';
+import { menucolor_row, menucolor_text } from './coloratt.js';
 import { nhgetch } from './input.js';
+import { map_menu_cmd } from './options.js';
 import { weight } from './weight.js';
 import { doname, doname_with_price, simpleonames, thesimpleoname, minimal_xname, cxname, getObjDescr, Tobjnam, xname, the, The, otense, oname } from './objnam.js';
 /* C ref: pickup.c in_container's freeinv/add_to_container/weight trio. */
@@ -88,7 +89,7 @@ import { MENU_TRADITIONAL } from './const.js';
 import { query_classes, add_valid_menu_class, allow_category } from './pickup.js';
 import { askchain, invletter_value } from './cmd.js';
 import { container_contents } from './end.js'; // relocate-fns
-export { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor }; // relocate-fns
+export { Is_container, _Upstart, _sortloot, set_cursor }; // relocate-fns
 
 
 function set_cursor(col, row) {
@@ -273,9 +274,6 @@ async function boh_loss(container, held) {
     return 0;
 }
 
-function _box_xname(obj) {
-    return simpleonames(obj);
-}
 /* C ref: obj.h:332 carried(o) := ((o)->where == OBJ_INVENT).  Same resolution
  * js/do_wear.js:4023 yname() settled on: this port does not maintain obj.where
  * on every inventory path, so walk the gi.invent chain, which it does maintain. */
@@ -298,10 +296,6 @@ function _yname_box(o, simple = false) {
 function _Yname_box(o, simple = false) {
     if (simple) return Ysimple_name2(o);
     return _Upstart(_yname_box(o, simple));
-}
-
-async function _item_doname(obj) {
-    return await doname_with_price(obj);
 }
 
 /* ---------------------------------------------------------------------------
@@ -473,6 +467,7 @@ async function in_or_out_menu(promptText, box, outokay, inokay, alreadyused, mor
             if (pendingCount > 0x7fffffffffffffffn) pendingCount = 0n;
             continue;
         }
+        if (k === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
         if (k === 27 && pendingCount) { pendingCount = 0n; continue; }
         pendingCount = 0n;
         if (k === 27 /* ESC */) { chosen = 'q'; break; }
@@ -811,15 +806,17 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         }
     };
     for (;;) {
-        const allLines = renderLines();
+        const allLines = renderLines(page);
         /* tty_end_menu fits 23 menu rows above the page indicator on a
          * 24-row terminal.  Short menus retain their ordinary `(end)` row;
          * tall ones replace that synthetic row with `(N of M)`. */
         const tall = allLines.length > 24;
         /* wintty.c:1907-1918 (H2344_BROKEN): offx = min(40, cols - maxcol - 1),
          * clamped at 0; offx 0 (a line of 77+ columns) clears the map in
-         * process_menu_window (wintty.c:1407). */
-        const wide = allLines.some((ln) => ln && 77 - ln.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length <= 0);
+         * process_menu_window (wintty.c:1407).
+         * wintty.c:1927 `!iflags.menu_overlay` forces the same offx-0 layout. */
+        const wide = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0
+            || allLines.some((ln) => ln && 77 - ln.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length <= 0);
         const body = tall && allLines[allLines.length - 1] === '(end)'
             ? allLines.slice(0, -1) : allLines;
         const pageSize = 23;
@@ -874,12 +871,17 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
             : WIN_COL + 6,
             tall ? footerRow : (wide ? footerRow : lines.length - 1));
         const raw = await nhgetch();
-        const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-        const ch = String.fromCharCode(k);
+        const rawk = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+        const rawch = String.fromCharCode(rawk);
         /* C wintty.c:1552-1558 — explicit menu selection outranks a mapped
          * menu command with the same spelling. */
-        const hit = items.find((it) => it.sel === ch
+        const hit = items.find((it) => it.sel === rawch
             && (!tall || visibleItems.has(it)));
+        /* C wintty.c:1560 — non-explicit keys drive the switch through
+         * map_menu_cmd() (BINDINGS alias -> its command's key). */
+        const k = hit || items.some((it) => it.gsel === rawch)
+            ? rawk : map_menu_cmd(rawk);
+        const ch = String.fromCharCode(k);
         /* C wintty.c:1529-1537, getline.c:230-257: xwaitforspace(resp)
          * re-reads unaccepted keys without returning to process_menu_window.
          * In particular, invalid input must preserve an unfinished count. */
@@ -913,6 +915,7 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
             continue;
         }
         if (k === 27) { /* ESC cancels a count first, then the whole menu */
+            g._ttyDismissMore = 1; /* getline.c:245-247 */
             if (counting) {
                 count = 0;
                 counting = false;
@@ -1139,10 +1142,11 @@ async function _query_category(contents, action, withJustPicked) {
         addrow(c, txt, 'BUCX', undefined, true, 0);
     /* C:1435-1449 the JUSTPICKED row.  count_justpicked/find_justpicked
      * (pickup.c:635-657) walk the list for obj->pickup_prev; one such item
-     * names itself, several become "Items you just picked up".  SKIPINVERT. */
+     * names itself, several become "Items you just picked up".  SKIPINVERT.
+     * C:1438 names it with plain doname(), not doname_with_price(). */
     if (justPicked.length) {
         addrow('P', justPicked.length === 1
-                    ? `Just picked up: ${(await _item_doname(justPicked[0]))}`
+                    ? `Just picked up: ${(await doname(justPicked[0]))}`
                     : 'Items you just picked up',
                'P', undefined, true, 0);
     }
@@ -1250,12 +1254,11 @@ async function _query_category(contents, action, withJustPicked) {
 
 const _BUCX_KEYS = new Set(['B', 'C', 'U', 'X']);
 function _qc_allow(obj, sel) {
-    /* C:958-963 gp.picked_filter — 'P' restricts to objects the hero just
-     * picked up.  It is an AND with the other filter types, like every other. */
-    if (sel.classes.has('P') && !obj.pickup_prev) return false;
-    /* C:3297-3300 — 'A' (loot_everything) and ALL_TYPES both reach
-     * query_objlist as allow_all, not as allow_category. */
+    /* C pickup.c:3362-3365: All types selects allow_all instead of
+     * allow_category, bypassing every filter, including just-picked. */
     if (sel.allCategories) return true;
+    /* C pickup.c:588-589: otherwise 'P' requires a just-picked object. */
+    if (sel.classes.has('P') && !obj.pickup_prev) return false;
     const classFilter = [...sel.classes].some((c) => typeof c === 'number');
     const bucxFilter = [...sel.classes].some((c) => _BUCX_KEYS.has(c));
     const shopFilter = sel.classes.has('u');
@@ -1333,12 +1336,12 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
              *     : (first && curr->oclass == COIN_CLASS) ? '$' : 0 */
             /* C:1131 tmpglyph = obj_to_glyph(curr, rn2_on_display_rng): under
              * Hallucination each listed row draws on the DISPLAY rng. */
-            obj_to_glyph(o);
+            const glyph = obj_to_glyph(o);
             const explicitSel = useInvlet
                 ? (o.invlet ? String.fromCharCode(o.invlet | 0) : 0)
                 : ((first && oc === COIN_CLASS) ? '$' : 0);
             const item = { sel: explicitSel, gsel: _QC_CLASS_SYM[oc] || 0,
-                           skipinvert: false, selected: false, count: -1, obj: o };
+                           skipinvert: false, selected: false, count: -1, obj: o, glyph };
             entries.push({ item });
             items.push(item);
             first = false;
@@ -1364,7 +1367,7 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
      * dknown, and cached so the row text cannot change mid-menu. */
     for (const e of entries)
         if (e.item) {
-            e.text = (await _item_doname(e.item.obj));
+            e.text = (await doname_with_price(e.item.obj));
             /* What tty_add_menu stores as the entry's str: "%c - %s" of the
              * FINAL selector (wintty.c:2596-2604, str[0] fixed up to the
              * assigned accelerator at :2718-2722).  MENU_SEARCH's pmatchi
@@ -1372,7 +1375,7 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
             e.item.str = `${e.item.sel} - ${e.text}`;
         }
 
-    const renderLines = () => {
+    const renderLines = (page) => {
         const out = [menu_heading_text(`${action} what?`), ''];
         const itemByLine = [null, null];
         for (const e of entries) {
@@ -1380,11 +1383,22 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
                 out.push(menu_heading_text(e.heading));
                 itemByLine.push(null);
             } else {
-                /* wintty.c:2730-2732 tty_end_menu cuts str to cols - 2 = 78 */
-                out.push(`${e.item.sel} ${e.item.selected
-                    ? (e.item.count > 0 ? '#' : '+') : '-'} ${e.text}`.slice(0, 78));
+                /* C windows.c:1796-1809 add_menu() menucolors the entry's RAW
+                 * doname str (query_objlist's doname_with_price, pickup.c:1140)
+                 * before tty_add_menu prefixes "%c - " (wintty.c:2604-2611),
+                 * so the funnel matches the pre-clip text — same as the
+                 * query_category twin above. */
+                const showGlyph = game.iflags?.use_menu_glyphs && !((game.iflags.menuobjsyms | 0) & 4);
+                out.push(`${e.item.sel} ${menu_item_marker(e.item, page, showGlyph, menucolor_text(e.text))} ${menucolor_text(e.text)}`);
                 itemByLine.push(e.item);
             }
+        }
+        /* wintty.c:2728-2734 tty_end_menu cuts each entry to cols - 2 = 78
+         * cells (SGR is JS rendering metadata, not part of C's curr->str). */
+        for (let i = 0; i < out.length; i++) {
+            let col = 0;
+            out[i] = out[i].replace(/\x1b\[[0-9;]*m|[\s\S]/g,
+                ch => ch.startsWith('\x1b') || col++ < 78 ? ch : '');
         }
         out.push('(end)');
         itemByLine.push(null);

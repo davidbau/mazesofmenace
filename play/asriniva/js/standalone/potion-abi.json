@@ -1,0 +1,1534 @@
+{
+  "layout": {
+    "size": 112,
+    "pointerSize": 8,
+    "intSize": 4,
+    "longSize": 8,
+    "coordxySize": 2,
+    "booleanSize": 1,
+    "objSize": 112,
+    "dipPromptSize": 78,
+    "monSize": 192,
+    "mon_cham": 22,
+    "mon_cham_size": 2,
+    "mon_data": 8,
+    "mon_data_size": 8,
+    "mon_m_ap_type": 64,
+    "mon_m_ap_type_size": 1,
+    "mon_mappearance": 60,
+    "mon_mappearance_size": 4,
+    "mon_mhp": 52,
+    "mon_mhp_size": 4,
+    "mon_mhpmax": 56,
+    "mon_mhpmax_size": 4,
+    "mon_misc_worn_check": 168,
+    "mon_misc_worn_check_size": 8,
+    "mon_mx": 28,
+    "mon_mx_size": 2,
+    "mon_my": 30,
+    "mon_my_size": 2,
+    "youSize": 2760,
+    "you_acurr": 2032,
+    "you_acurr_size": 6,
+    "you_aexe": 2038,
+    "you_aexe_size": 6,
+    "you_amax": 2050,
+    "you_amax_size": 6,
+    "you_mh": 1812,
+    "you_mh_size": 4,
+    "you_mhmax": 1816,
+    "you_mhmax_size": 4,
+    "you_mtimedone": 1820,
+    "you_mtimedone_size": 4,
+    "you_ualign": 2068,
+    "you_ualign_size": 12,
+    "you_uconduct": 1864,
+    "you_uconduct_size": 144,
+    "you_ucreamed": 1840,
+    "you_ucreamed_size": 4,
+    "you_uen": 2104,
+    "you_uen_size": 4,
+    "you_uenmax": 2108,
+    "you_uenmax_size": 4,
+    "you_uenpeak": 2112,
+    "you_uenpeak_size": 4,
+    "you_uexp": 2272,
+    "you_uexp_size": 8,
+    "you_uhave": 1860,
+    "you_uhave_size": 4,
+    "you_uhp": 2092,
+    "you_uhp_size": 4,
+    "you_uhpmax": 2096,
+    "you_uhpmax_size": 4,
+    "you_uhppeak": 2100,
+    "you_uhppeak_size": 4,
+    "you_uhs": 108,
+    "you_uhs_size": 4,
+    "you_uhunger": 104,
+    "you_uhunger_size": 4,
+    "you_ulevel": 48,
+    "you_ulevel_size": 4,
+    "you_ulevelmax": 52,
+    "you_ulevelmax_size": 4,
+    "you_ulevelpeak": 56,
+    "you_ulevelpeak_size": 4,
+    "you_ulycn": 1836,
+    "you_ulycn_size": 4,
+    "you_umonnum": 1808,
+    "you_umonnum_size": 4,
+    "you_umonster": 1804,
+    "you_umonster_size": 4,
+    "you_uprops": 112,
+    "you_uprops_size": 1656,
+    "you_uroleplay": 2008,
+    "you_uroleplay_size": 24,
+    "you_ushops": 83,
+    "you_ushops_size": 5,
+    "you_usteed": 2320,
+    "you_usteed_size": 8,
+    "you_ustuck": 2312,
+    "you_ustuck_size": 8,
+    "you_ux": 0,
+    "you_ux_size": 2,
+    "you_uy": 2,
+    "you_uy_size": 2,
+    "you_uz": 24,
+    "you_uz_size": 4,
+    "you_weapon_skills": 2484,
+    "you_weapon_skills_size": 228,
+    "propSize": 24,
+    "prop_blocked": 8,
+    "prop_blocked_size": 8,
+    "prop_extrinsic": 0,
+    "prop_extrinsic_size": 8,
+    "prop_intrinsic": 16,
+    "prop_intrinsic_size": 8,
+    "obj_age": 80,
+    "obj_age_size": 8,
+    "obj_cobj": 16,
+    "obj_cobj_size": 8,
+    "obj_corpsenm": 64,
+    "obj_corpsenm_size": 4,
+    "obj_invlet": 50,
+    "obj_invlet_size": 1,
+    "obj_nexthere": 8,
+    "obj_nexthere_size": 8,
+    "obj_nobj": 0,
+    "obj_nobj_size": 8,
+    "obj_o_id": 24,
+    "obj_o_id_size": 4,
+    "obj_oartifact": 51,
+    "obj_oartifact_size": 1,
+    "obj_oclass": 49,
+    "obj_oclass_size": 1,
+    "obj_otyp": 32,
+    "obj_otyp_size": 2,
+    "obj_owornmask": 88,
+    "obj_owornmask_size": 8,
+    "obj_quan": 40,
+    "obj_quan_size": 8,
+    "obj_spe": 48,
+    "obj_spe_size": 1,
+    "obj_where": 52,
+    "obj_where_size": 1,
+    "colorsSize": 88,
+    "colors_c_amber": 8,
+    "colors_c_amber_size": 8,
+    "colors_c_black": 0,
+    "colors_c_black_size": 8,
+    "colors_c_light_blue": 24,
+    "colors_c_light_blue_size": 8,
+    "colors_c_orange": 80,
+    "colors_c_orange_size": 8,
+    "colors_c_red": 32,
+    "colors_c_red_size": 8,
+    "iflagsSize": 424,
+    "iflags_last_msg": 40,
+    "iflags_last_msg_size": 4,
+    "iflags_menu_requested": 135,
+    "iflags_menu_requested_size": 1,
+    "stringsSize": 112,
+    "strings_c_Something": 48,
+    "strings_c_Something_size": 8,
+    "strings_c_You_can_move_again": 56,
+    "strings_c_You_can_move_again_size": 8,
+    "strings_c_nothing_happens": 0,
+    "strings_c_nothing_happens_size": 8,
+    "strings_c_nothing_seems_to_happen": 8,
+    "strings_c_nothing_seems_to_happen_size": 8,
+    "strings_c_something": 40,
+    "strings_c_something_size": 8,
+    "strings_c_the_your": 80,
+    "strings_c_the_your_size": 16,
+    "strings_c_vision_clears": 72,
+    "strings_c_vision_clears_size": 8,
+    "conductSize": 144,
+    "conduct_polypiles": 56,
+    "conduct_polypiles_size": 8,
+    "flagsSize": 208,
+    "flags_beginner": 5,
+    "flags_beginner_size": 1,
+    "flags_female": 13,
+    "flags_female_size": 1,
+    "flags_pickup_burden": 88,
+    "flags_pickup_burden_size": 4,
+    "flags_verbose": 48,
+    "flags_verbose_size": 1,
+    "topologySize": 114,
+    "topology_d_air_level": 72,
+    "topology_d_air_level_size": 4,
+    "topology_d_earth_level": 60,
+    "topology_d_earth_level_size": 4,
+    "topology_d_water_level": 64,
+    "topology_d_water_level_size": 4,
+    "gvSize": 200,
+    "gv_vision_full_recalc": 144,
+    "gv_vision_full_recalc_size": 1,
+    "gv_viz_array": 120,
+    "gv_viz_array_size": 8,
+    "svmSize": 1552,
+    "svm_mvitals": 16,
+    "svm_mvitals_size": 1532,
+    "roleSize": 312,
+    "role_mnum": 208,
+    "role_mnum_size": 2,
+    "clsSize": 72,
+    "cls_oc_descr_idx": 2,
+    "cls_oc_descr_idx_size": 2,
+    "cls_oc_skill": 19,
+    "cls_oc_skill_size": 1,
+    "cls_oc_subtyp": 19,
+    "cls_oc_subtyp_size": 1,
+    "cls_oc_uname": 8,
+    "cls_oc_uname_size": 8,
+    "pmSize": 96,
+    "pm_geno": 34,
+    "pm_geno_size": 2,
+    "pm_mattk": 36,
+    "pm_mattk_size": 24,
+    "pm_mflags1": 72,
+    "pm_mflags1_size": 8,
+    "pm_mflags2": 80,
+    "pm_mflags2_size": 8,
+    "pm_mflags3": 88,
+    "pm_mflags3_size": 2,
+    "pm_mlet": 28,
+    "pm_mlet_size": 1,
+    "pm_mlevel": 29,
+    "pm_mlevel_size": 1,
+    "pm_mmove": 30,
+    "pm_mmove_size": 1,
+    "pm_msize": 67,
+    "pm_msize_size": 1,
+    "pm_msound": 66,
+    "pm_msound_size": 1,
+    "pm_pmidx": 24,
+    "pm_pmidx_size": 4,
+    "pm_pmnames": 0,
+    "pm_pmnames_size": 24,
+    "vitalSize": 4,
+    "vital_born": 0,
+    "vital_born_size": 1,
+    "vital_mvflags": 2,
+    "vital_mvflags_size": 1,
+    "gpSize": 536,
+    "gp_potion_nothing": 500,
+    "gp_potion_nothing_size": 4,
+    "gp_potion_unkn": 504,
+    "gp_potion_unkn_size": 4,
+    "gmSize": 384,
+    "gm_mentioned_water": 376,
+    "gm_mentioned_water_size": 1,
+    "gm_multi": 8,
+    "gm_multi_size": 8,
+    "gm_multi_reason": 16,
+    "gm_multi_reason_size": 8,
+    "attribsSize": 6,
+    "attribs_a": 0,
+    "attribs_a_size": 6,
+    "levelSize": 4,
+    "level_dlevel": 2,
+    "level_dlevel_size": 2,
+    "level_dnum": 0,
+    "level_dnum_size": 2,
+    "rmSize": 8,
+    "rm_glyph": 0,
+    "rm_glyph_size": 4,
+    "rm_typ": 4,
+    "rm_typ_size": 1,
+    "svlSize": 42568,
+    "svl_level": 1680,
+    "svl_level_size": 40376,
+    "descrSize": 16,
+    "descr_oc_descr": 8,
+    "descr_oc_descr_size": 8,
+    "skillSize": 6,
+    "skill_skill": 0,
+    "skill_skill_size": 2,
+    "roleplaySize": 24,
+    "roleplay_deaf": 2,
+    "roleplay_deaf_size": 1,
+    "gnSize": 152,
+    "gn_nomovemsg": 8,
+    "gn_nomovemsg_size": 8,
+    "gn_notonhead": 62,
+    "gn_notonhead_size": 1,
+    "svcSize": 704,
+    "svc_context": 0,
+    "svc_context_size": 704,
+    "genderSize": 48,
+    "gender_he": 8,
+    "gender_he_size": 8,
+    "gender_him": 16,
+    "gender_him_size": 8,
+    "gender_his": 24,
+    "gender_his_size": 8,
+    "stairSize": 24,
+    "stair_up": 8,
+    "stair_up_size": 1,
+    "alignSize": 12,
+    "align_type": 0,
+    "align_type_size": 1,
+    "contextSize": 704,
+    "context_mon_moving": 77,
+    "context_mon_moving_size": 1,
+    "gySize": 224,
+    "gy_youmonst": 8,
+    "gy_youmonst_size": 192,
+    "guSize": 440,
+    "gu_urace": 320,
+    "gu_urace_size": 112,
+    "gu_urole": 8,
+    "gu_urole_size": 312,
+    "svdSize": 2584,
+    "svd_dungeon_topology": 1472,
+    "svd_dungeon_topology_size": 114,
+    "cgSize": 320,
+    "cg_zeroobj": 0,
+    "cg_zeroobj_size": 112,
+    "haveSize": 4,
+    "dispSize": 3,
+    "disp_botl": 0,
+    "disp_botl_size": 1,
+    "raceSize": 112,
+    "race_attrmax": 74,
+    "race_attrmax_size": 12,
+    "race_attrmin": 62,
+    "race_attrmin_size": 12,
+    "giSize": 72,
+    "gi_invent": 8,
+    "gi_invent_size": 8,
+    "attackSize": 4,
+    "attack_aatyp": 0,
+    "attack_aatyp_size": 1,
+    "attack_adtyp": 1,
+    "attack_adtyp_size": 1,
+    "attack_damd": 3,
+    "attack_damd_size": 1,
+    "attack_damn": 2,
+    "attack_damn_size": 1,
+    "coordSize": 4,
+    "coord_x": 0,
+    "coord_x_size": 2,
+    "coord_y": 2,
+    "coord_y_size": 2,
+    "killerSize": 272,
+    "killer_format": 12,
+    "killer_format_size": 4,
+    "killer_name": 16,
+    "killer_name_size": 256,
+    "dlevelSize": 40376,
+    "dlevel_locations": 0,
+    "dlevel_locations_size": 13440,
+    "dlevel_monlist": 40336,
+    "dlevel_monlist_size": 8,
+    "dlevel_monsters": 26880,
+    "dlevel_monsters_size": 13440,
+    "dlevel_objects": 13440,
+    "dlevel_objects_size": 13440,
+    "ACID_RES": 7,
+    "AD_ACID": 8,
+    "AD_DISE": 33,
+    "AD_PEST": 38,
+    "ALCHEMY_SMOCK": 144,
+    "AMETHYST": 455,
+    "ANTIMAGIC": 12,
+    "ARMOR_CLASS": 3,
+    "ARM_BOOTS": 4,
+    "ARM_GLOVES": 3,
+    "ARTICLE_THE": 1,
+    "ART_EYES_OF_THE_OVERWORLD": 26,
+    "A_CHAOTIC": -1,
+    "A_CON": 4,
+    "A_DEX": 3,
+    "A_INT": 1,
+    "A_LAWFUL": 1,
+    "A_MAX": 6,
+    "A_STR": 0,
+    "A_WIS": 2,
+    "BLINDED": 15,
+    "BOLT_LIM": 8,
+    "BUFSZ": 256,
+    "COIN_CLASS": 12,
+    "COLD_RES": 2,
+    "COLNO": 80,
+    "CONFUSION": 14,
+    "COPPER": 13,
+    "CORPSE": 265,
+    "COULD_SEE": 1,
+    "CQ_CANNED": 0,
+    "DEAF": 16,
+    "DETECT_MONSTERS": 37,
+    "DISP_ALWAYS": -5,
+    "DISP_END": -7,
+    "ECMD_CANCEL": 2,
+    "ECMD_FAIL": 4,
+    "ECMD_OK": 0,
+    "ECMD_TIME": 1,
+    "EF_GREASE": 1,
+    "ENL_GAMEINPROGRESS": 0,
+    "ERODE_CORRODE": 3,
+    "ER_DESTROYED": 3,
+    "ER_NOTHING": 0,
+    "EXPL_FIERY": 5,
+    "EYE": 1,
+    "FACE": 2,
+    "FAST": 64,
+    "FIRE_RES": 1,
+    "FIXED_ABIL": 67,
+    "FLYING": 49,
+    "FOOT": 5,
+    "FOUNTAIN": 28,
+    "FREE_ACTION": 66,
+    "FROMOUTSIDE": 67108864,
+    "FUMBLING": 25,
+    "GEM_CLASS": 13,
+    "GETOBJ_DOWNPLAY": 1,
+    "GETOBJ_EXCLUDE": -3,
+    "GETOBJ_EXCLUDE_INACCESS": -1,
+    "GETOBJ_EXCLUDE_NONINVENT": -2,
+    "GETOBJ_NOFLAGS": 0,
+    "GETOBJ_PROMPT": 2,
+    "GETOBJ_SUGGEST": 2,
+    "GLIB": 21,
+    "GLYPH_INVISIBLE": 1532,
+    "G_GONE": 3,
+    "HALF_PHDAM": 56,
+    "HALF_SPDAM": 55,
+    "HALLUC": 23,
+    "HALLUC_RES": 24,
+    "HAND": 6,
+    "HEAD": 8,
+    "INFRAVISION": 36,
+    "INTRINSIC": 117440512,
+    "INVIS": 40,
+    "IN_SIGHT": 2,
+    "IRON": 11,
+    "I_SPECIAL": 536870912,
+    "KILLED_BY": 1,
+    "KILLED_BY_AN": 0,
+    "LAST_PROP": 68,
+    "LEG": 9,
+    "LENSES": 232,
+    "LEVITATION": 48,
+    "LL_CONDUCT": 32,
+    "LONG_SWORD": 54,
+    "LOW_PM": 0,
+    "M1_AMORPHOUS": "4",
+    "M1_AMPHIBIOUS": "512",
+    "M1_BREATHLESS": "1024",
+    "M1_FLY": "1",
+    "M1_NOEYES": "4096",
+    "M1_NOHANDS": "8192",
+    "M1_NOHEAD": "32768",
+    "M1_NOLIMBS": "24576",
+    "M1_REGEN": "8388608",
+    "M1_SWIM": "2",
+    "M1_UNSOLID": "1048576",
+    "M1_WALLWALK": "8",
+    "M2_DEMON": "256",
+    "M2_DWARF": "32",
+    "M2_ELF": "16",
+    "M2_GNOME": "64",
+    "M2_HUMAN": "8",
+    "M2_MINION": "4096",
+    "M2_ORC": "128",
+    "M2_STRONG": "67108864",
+    "M2_UNDEAD": "2",
+    "M2_WERE": "4",
+    "MAGICAL_BREATHING": 52,
+    "MAGICENLIGHTENMENT": 2,
+    "MAGIC_LAMP": 228,
+    "MM_NOMSG": 131072,
+    "MS_SILENT": 0,
+    "MUMMY_WRAPPING": 138,
+    "M_AP_MONSTER": 3,
+    "M_AP_NOTHING": 0,
+    "M_AP_TYPMASK": 7,
+    "M_SEEN_SLEEP": 8,
+    "NEUTRAL": 2,
+    "NON_PM": -1,
+    "NOTELL": 0,
+    "NUMMONS": 383,
+    "NUM_OBJECTS": 481,
+    "OBJ_FLOOR": 1,
+    "OBJ_FREE": 0,
+    "OBJ_INVENT": 3,
+    "OIL_LAMP": 227,
+    "PLNMSG_OBJ_GLOWS": 5,
+    "PM_BAT": 126,
+    "PM_CHICKATRICE": 9,
+    "PM_COCKATRICE": 10,
+    "PM_CYCLOPS": 360,
+    "PM_DJINNI": 315,
+    "PM_FIRE_ELEMENTAL": 155,
+    "PM_FIRE_VORTEX": 111,
+    "PM_FLAMING_SPHERE": 30,
+    "PM_FLOATING_EYE": 28,
+    "PM_GHOST": 287,
+    "PM_GREEN_SLIME": 208,
+    "PM_GREMLIN": 40,
+    "PM_HEALER": 334,
+    "PM_HUMAN": 260,
+    "PM_IRON_GOLEM": 259,
+    "PM_LICHEN": 158,
+    "PM_PESTILENCE": 312,
+    "PM_RED_DRAGON": 146,
+    "PM_SALAMANDER": 329,
+    "PM_VAMPIRE": 226,
+    "PM_VAMPIRE_LEADER": 227,
+    "PM_VLAD_THE_IMPALER": 228,
+    "POISON_RES": 6,
+    "POLY_CONTROLLED": 1,
+    "POLY_LOW_CTRL": 8,
+    "POLY_NOFLAGS": 0,
+    "POOL": 16,
+    "POTHIT_HERO_THROW": 1,
+    "POTHIT_OTHER_THROW": 3,
+    "POTION_CLASS": 8,
+    "POT_ACID": 320,
+    "POT_BLINDNESS": 300,
+    "POT_BOOZE": 317,
+    "POT_CONFUSION": 299,
+    "POT_ENLIGHTENMENT": 310,
+    "POT_EXTRA_HEALING": 308,
+    "POT_FRUIT_JUICE": 319,
+    "POT_FULL_HEALING": 315,
+    "POT_GAIN_ABILITY": 297,
+    "POT_GAIN_ENERGY": 313,
+    "POT_GAIN_LEVEL": 309,
+    "POT_HALLUCINATION": 304,
+    "POT_HEALING": 307,
+    "POT_INVISIBILITY": 305,
+    "POT_LEVITATION": 303,
+    "POT_MONSTER_DETECTION": 311,
+    "POT_OBJECT_DETECTION": 312,
+    "POT_OIL": 321,
+    "POT_PARALYSIS": 301,
+    "POT_POLYMORPH": 316,
+    "POT_RESTORE_ABILITY": 298,
+    "POT_SEE_INVISIBLE": 306,
+    "POT_SICKNESS": 318,
+    "POT_SLEEPING": 314,
+    "POT_SPEED": 302,
+    "POT_WATER": 322,
+    "PRONOUN_HALLU": 2,
+    "PROT_FROM_SHAPE_CHANGERS": 60,
+    "P_BASIC": 2,
+    "P_BOW": 20,
+    "P_CROSSBOW": 22,
+    "P_NONE": 0,
+    "P_RIDING": 37,
+    "P_SHURIKEN": 24,
+    "QBUFSZ": 128,
+    "ROOM": 25,
+    "ROWNO": 21,
+    "SEE_INVIS": 29,
+    "SHOCK_RES": 5,
+    "SHOPBASE": 14,
+    "SICK": 17,
+    "SICK_ALL": 3,
+    "SICK_RES": 10,
+    "SINK": 30,
+    "SLEEP_RES": 3,
+    "SLIMED": 22,
+    "SPBOOK_CLASS": 10,
+    "SPE_DETECT_MONSTERS": 373,
+    "SPE_DETECT_TREASURE": 394,
+    "SPE_HASTE_SELF": 388,
+    "SPE_INVISIBILITY": 393,
+    "SPE_LEVITATION": 390,
+    "SPE_RESTORE_ABILITY": 392,
+    "STONED": 18,
+    "STRANGE_OBJECT": 0,
+    "STRANGLED": 19,
+    "STUNNED": 13,
+    "SUPPRESS_IT": 1,
+    "SUPPRESS_SADDLE": 8,
+    "SWIMMING": 51,
+    "S_EYE": 5,
+    "S_LIGHT": 25,
+    "TELEPAT": 30,
+    "TIMEOUT": 16777215,
+    "TOOL_CLASS": 6,
+    "TOWEL": 234,
+    "UNCHANGING": 63,
+    "UNICORN_HORN": 261,
+    "VOMITING": 20,
+    "WARN_OF_MON": 32,
+    "WEAPON_CLASS": 2,
+    "WOUNDED_LEGS": 26,
+    "W_ART": "4096",
+    "W_ARTI": "8192",
+    "W_SADDLE": "1048576",
+    "W_WEP": "256",
+    "COST_UNCURS": 4,
+    "COST_UNBLSS": 3,
+    "COST_NUTRLZ": 10
+  },
+  "globals": [
+    "u",
+    "svc",
+    "svm",
+    "svl",
+    "gy",
+    "gv",
+    "gm",
+    "gn",
+    "gi",
+    "gp",
+    "gu",
+    "svd",
+    "flags",
+    "iflags",
+    "disp",
+    "mons",
+    "objects",
+    "genders",
+    "obj_descr",
+    "cg"
+  ],
+  "equipment": [
+    "uwep",
+    "uarm",
+    "uarmg",
+    "uarmh",
+    "uarmf",
+    "uarmc",
+    "uarmu",
+    "ublindf",
+    "uamul",
+    "uswapwep",
+    "uball",
+    "uchain"
+  ],
+  "schema": {
+    "mon": [
+      "struct monst",
+      {
+        "cham": "Int16",
+        "data": "ptr:pm",
+        "m_ap_type": "Uint8",
+        "mappearance": "Uint32",
+        "mhp": "Int32",
+        "mhpmax": "Int32",
+        "misc_worn_check": "BigInt64",
+        "mx": "Int16",
+        "my": "Int16"
+      }
+    ],
+    "you": [
+      "struct you",
+      {
+        "acurr": "nested:attribs",
+        "aexe": "nested:attribs",
+        "amax": "nested:attribs",
+        "mh": "Int32",
+        "mhmax": "Int32",
+        "mtimedone": "Int32",
+        "ualign": "nested:align",
+        "uconduct": "nested:conduct",
+        "ucreamed": "Uint32",
+        "uen": "Int32",
+        "uenmax": "Int32",
+        "uenpeak": "Int32",
+        "uexp": "BigInt64",
+        "uhave": "nested:have",
+        "uhp": "Int32",
+        "uhpmax": "Int32",
+        "uhppeak": "Int32",
+        "uhs": "Uint32",
+        "uhunger": "Int32",
+        "ulevel": "Int32",
+        "ulevelmax": "Int32",
+        "ulevelpeak": "Int32",
+        "ulycn": "Int32",
+        "umonnum": "Int32",
+        "umonster": "Int32",
+        "uprops": "array:prop:69",
+        "uroleplay": "nested:roleplay",
+        "ushops": "array:Int8:5",
+        "usteed": "ptr:mon",
+        "ustuck": "ptr:mon",
+        "ux": "Int16",
+        "uy": "Int16",
+        "uz": "nested:level",
+        "weapon_skills": "array:skill:38"
+      }
+    ],
+    "prop": [
+      "struct prop",
+      {
+        "blocked": "BigInt64",
+        "extrinsic": "BigInt64",
+        "intrinsic": "BigInt64"
+      }
+    ],
+    "obj": [
+      "struct obj",
+      {
+        "age": "BigInt64",
+        "cobj": "ptr:obj",
+        "corpsenm": "Int32",
+        "invlet": "Int8",
+        "nexthere": "ptr:obj",
+        "nobj": "ptr:obj",
+        "o_id": "Uint32",
+        "oartifact": "Int8",
+        "oclass": "Int8",
+        "otyp": "Int16",
+        "owornmask": "BigInt64",
+        "quan": "BigInt64",
+        "spe": "Int8",
+        "where": "Int8"
+      }
+    ],
+    "colors": [
+      "struct c_color_names",
+      {
+        "c_amber": "ptr:raw",
+        "c_black": "ptr:raw",
+        "c_light_blue": "ptr:raw",
+        "c_orange": "ptr:raw",
+        "c_red": "ptr:raw"
+      }
+    ],
+    "iflags": [
+      "struct instance_flags",
+      {
+        "last_msg": "Int32",
+        "menu_requested": "Int8"
+      }
+    ],
+    "strings": [
+      "struct c_common_strings",
+      {
+        "c_Something": "ptr:raw",
+        "c_You_can_move_again": "ptr:raw",
+        "c_nothing_happens": "ptr:raw",
+        "c_nothing_seems_to_happen": "ptr:raw",
+        "c_something": "ptr:raw",
+        "c_the_your": "array:ptr:raw:2",
+        "c_vision_clears": "ptr:raw"
+      }
+    ],
+    "conduct": [
+      "struct u_conduct",
+      {
+        "polypiles": "BigInt64"
+      }
+    ],
+    "flags": [
+      "struct flag",
+      {
+        "beginner": "Int8",
+        "female": "Int8",
+        "pickup_burden": "Int32",
+        "verbose": "Int8"
+      }
+    ],
+    "topology": [
+      "struct dgn_topology",
+      {
+        "d_air_level": "nested:level",
+        "d_earth_level": "nested:level",
+        "d_water_level": "nested:level"
+      }
+    ],
+    "gv": [
+      "struct instance_globals_v",
+      {
+        "vision_full_recalc": "Int8",
+        "viz_array": "ptr:raw"
+      }
+    ],
+    "svm": [
+      "struct instance_globals_saved_m",
+      {
+        "mvitals": "array:vital:383"
+      }
+    ],
+    "role": [
+      "struct Role",
+      {
+        "mnum": "Int16"
+      }
+    ],
+    "cls": [
+      "struct objclass",
+      {
+        "oc_descr_idx": "Int16",
+        "oc_skill": "Int8",
+        "oc_subtyp": "Int8",
+        "oc_uname": "ptr:raw"
+      }
+    ],
+    "pm": [
+      "struct permonst",
+      {
+        "geno": "Uint16",
+        "mattk": "array:attack:6",
+        "mflags1": "BigUint64",
+        "mflags2": "BigUint64",
+        "mflags3": "Uint16",
+        "mlet": "Int8",
+        "mlevel": "Int8",
+        "mmove": "Int8",
+        "msize": "Uint8",
+        "msound": "Uint8",
+        "pmidx": "Int32",
+        "pmnames": "array:ptr:raw:3"
+      }
+    ],
+    "vital": [
+      "struct mvitals",
+      {
+        "born": "Uint8",
+        "mvflags": "Uint8"
+      }
+    ],
+    "gp": [
+      "struct instance_globals_p",
+      {
+        "potion_nothing": "Int32",
+        "potion_unkn": "Int32"
+      }
+    ],
+    "gm": [
+      "struct instance_globals_m",
+      {
+        "mentioned_water": "Int8",
+        "multi": "BigInt64",
+        "multi_reason": "ptr:raw"
+      }
+    ],
+    "attribs": [
+      "struct attribs",
+      {
+        "a": "array:Int8:6"
+      }
+    ],
+    "level": [
+      "struct d_level",
+      {
+        "dlevel": "Int16",
+        "dnum": "Int16"
+      }
+    ],
+    "rm": [
+      "struct rm",
+      {
+        "glyph": "Int32",
+        "typ": "Int8"
+      }
+    ],
+    "svl": [
+      "struct instance_globals_saved_l",
+      {
+        "level": "nested:dlevel"
+      }
+    ],
+    "descr": [
+      "struct objdescr",
+      {
+        "oc_descr": "ptr:raw"
+      }
+    ],
+    "skill": [
+      "struct skills",
+      {
+        "skill": "Int16"
+      }
+    ],
+    "roleplay": [
+      "struct u_roleplay",
+      {
+        "deaf": "Int8"
+      }
+    ],
+    "gn": [
+      "struct instance_globals_n",
+      {
+        "nomovemsg": "ptr:raw",
+        "notonhead": "Int8"
+      }
+    ],
+    "svc": [
+      "struct instance_globals_saved_c",
+      {
+        "context": "nested:context"
+      }
+    ],
+    "gender": [
+      "struct Gender",
+      {
+        "he": "ptr:raw",
+        "him": "ptr:raw",
+        "his": "ptr:raw"
+      }
+    ],
+    "stair": [
+      "struct stairway",
+      {
+        "up": "Int8"
+      }
+    ],
+    "align": [
+      "struct align",
+      {
+        "type": "Int8"
+      }
+    ],
+    "context": [
+      "struct context_info",
+      {
+        "mon_moving": "Int8"
+      }
+    ],
+    "gy": [
+      "struct instance_globals_y",
+      {
+        "youmonst": "nested:mon"
+      }
+    ],
+    "gu": [
+      "struct instance_globals_u",
+      {
+        "urace": "nested:race",
+        "urole": "nested:role"
+      }
+    ],
+    "svd": [
+      "struct instance_globals_saved_d",
+      {
+        "dungeon_topology": "nested:topology"
+      }
+    ],
+    "cg": [
+      "struct const_globals",
+      {
+        "zeroobj": "nested:obj"
+      }
+    ],
+    "have": [
+      "struct u_have",
+      {}
+    ],
+    "disp": [
+      "struct display_hints",
+      {
+        "botl": "Int8"
+      }
+    ],
+    "race": [
+      "struct Race",
+      {
+        "attrmax": "array:Int16:6",
+        "attrmin": "array:Int16:6"
+      }
+    ],
+    "gi": [
+      "struct instance_globals_i",
+      {
+        "invent": "ptr:obj"
+      }
+    ],
+    "attack": [
+      "struct attack",
+      {
+        "aatyp": "Uint8",
+        "adtyp": "Uint8",
+        "damd": "Uint8",
+        "damn": "Uint8"
+      }
+    ],
+    "coord": [
+      "struct nhcoord",
+      {
+        "x": "Int16",
+        "y": "Int16"
+      }
+    ],
+    "killer": [
+      "struct kinfo",
+      {
+        "format": "Int32",
+        "name": "array:Int8:256"
+      }
+    ],
+    "dlevel": [
+      "__typeof__(svl.level)",
+      {
+        "locations": "array:rm:80,21",
+        "monlist": "ptr:mon",
+        "monsters": "array:ptr:mon:80,21",
+        "objects": "array:ptr:obj:80,21"
+      }
+    ]
+  },
+  "bits": {
+    "mon": [
+      "mblinded",
+      "mcanmove",
+      "mcansee",
+      "mconf",
+      "minvis",
+      "mpeaceful",
+      "msleeping"
+    ],
+    "you": [
+      "uinwater",
+      "usick_type",
+      "uswallow"
+    ],
+    "prop": [],
+    "obj": [
+      "bknown",
+      "blessed",
+      "cursed",
+      "dknown",
+      "in_use",
+      "lamplit",
+      "oeroded",
+      "oeroded2",
+      "otrapped",
+      "pickup_prev",
+      "unpaid"
+    ],
+    "colors": [],
+    "iflags": [],
+    "strings": [],
+    "conduct": [],
+    "flags": [],
+    "topology": [],
+    "gv": [],
+    "svm": [],
+    "role": [],
+    "cls": [
+      "oc_magic",
+      "oc_material",
+      "oc_name_known"
+    ],
+    "pm": [],
+    "vital": [],
+    "gp": [],
+    "gm": [],
+    "attribs": [],
+    "level": [],
+    "rm": [],
+    "svl": [],
+    "descr": [],
+    "skill": [],
+    "roleplay": [],
+    "gn": [],
+    "svc": [],
+    "gender": [],
+    "stair": [],
+    "align": [],
+    "context": [],
+    "gy": [],
+    "gu": [],
+    "svd": [],
+    "cg": [],
+    "have": [
+      "amulet"
+    ],
+    "disp": [],
+    "race": [],
+    "gi": [],
+    "attack": [],
+    "coord": [],
+    "killer": [],
+    "dlevel": []
+  },
+  "types": {
+    "itimeout": [
+      ""
+    ],
+    "itimeout_incr": [
+      "",
+      ""
+    ],
+    "set_itimeout": [
+      "longp",
+      ""
+    ],
+    "incr_itimeout": [
+      "longp",
+      ""
+    ],
+    "make_confused": [
+      "",
+      ""
+    ],
+    "make_stunned": [
+      "",
+      ""
+    ],
+    "make_sick": [
+      "",
+      "",
+      "",
+      ""
+    ],
+    "make_slimed": [
+      "",
+      ""
+    ],
+    "make_stoned": [
+      "",
+      "",
+      "",
+      ""
+    ],
+    "make_vomiting": [
+      "",
+      ""
+    ],
+    "make_blinded": [
+      "",
+      ""
+    ],
+    "toggle_blindness": [],
+    "make_hallucinated": [
+      "",
+      "",
+      ""
+    ],
+    "make_deaf": [
+      "",
+      ""
+    ],
+    "make_glib": [
+      ""
+    ],
+    "self_invis_message": [],
+    "ghost_from_bottle": [],
+    "drink_ok": [
+      "obj"
+    ],
+    "dodrink": [],
+    "dopotion": [
+      "obj"
+    ],
+    "peffect_restore_ability": [
+      "obj"
+    ],
+    "peffect_hallucination": [
+      "obj"
+    ],
+    "peffect_water": [
+      "obj"
+    ],
+    "peffect_booze": [
+      "obj"
+    ],
+    "peffect_enlightenment": [
+      "obj"
+    ],
+    "peffect_invisibility": [
+      "obj"
+    ],
+    "peffect_see_invisible": [
+      "obj"
+    ],
+    "peffect_paralysis": [
+      "obj"
+    ],
+    "peffect_sleeping": [
+      "obj"
+    ],
+    "peffect_monster_detection": [
+      "obj"
+    ],
+    "peffect_object_detection": [
+      "obj"
+    ],
+    "peffect_sickness": [
+      "obj"
+    ],
+    "peffect_confusion": [
+      "obj"
+    ],
+    "peffect_gain_ability": [
+      "obj"
+    ],
+    "peffect_speed": [
+      "obj"
+    ],
+    "peffect_blindness": [
+      "obj"
+    ],
+    "peffect_gain_level": [
+      "obj"
+    ],
+    "peffect_healing": [
+      "obj"
+    ],
+    "peffect_extra_healing": [
+      "obj"
+    ],
+    "peffect_full_healing": [
+      "obj"
+    ],
+    "peffect_levitation": [
+      "obj"
+    ],
+    "peffect_gain_energy": [
+      "obj"
+    ],
+    "peffect_oil": [
+      "obj"
+    ],
+    "peffect_acid": [
+      "obj"
+    ],
+    "peffect_polymorph": [
+      "obj"
+    ],
+    "peffects": [
+      "obj"
+    ],
+    "healup": [
+      "",
+      "",
+      "",
+      ""
+    ],
+    "strange_feeling": [
+      "obj",
+      ""
+    ],
+    "bottlename": [],
+    "H2Opotion_dip": [
+      "obj",
+      "obj",
+      "",
+      ""
+    ],
+    "impact_arti_light": [
+      "obj",
+      "",
+      ""
+    ],
+    "potionhit": [
+      "mon",
+      "obj",
+      ""
+    ],
+    "potionbreathe": [
+      "obj"
+    ],
+    "mixtype": [
+      "obj",
+      "obj"
+    ],
+    "dip_ok": [
+      "obj"
+    ],
+    "dip_hands_ok": [
+      "obj"
+    ],
+    "hold_potion": [
+      "obj",
+      "",
+      "",
+      ""
+    ],
+    "dodip": [],
+    "dip_into": [],
+    "poof": [
+      "obj"
+    ],
+    "dip_potion_explosion": [
+      "obj",
+      ""
+    ],
+    "potion_dip": [
+      "obj",
+      "obj"
+    ],
+    "mongrantswish": [
+      "monp"
+    ],
+    "djinni_from_bottle": [
+      "obj"
+    ],
+    "split_mon": [
+      "mon",
+      "mon"
+    ],
+    "speed_up": [
+      ""
+    ]
+  },
+  "common": [
+    [
+      "c_common_strings",
+      "c_nothing_happens"
+    ],
+    [
+      "c_common_strings",
+      "c_nothing_seems_to_happen"
+    ],
+    [
+      "c_common_strings",
+      "c_Something"
+    ],
+    [
+      "c_common_strings",
+      "c_vision_clears"
+    ],
+    [
+      "c_common_strings",
+      "c_You_can_move_again"
+    ],
+    [
+      "c_common_strings",
+      "c_something"
+    ]
+  ],
+  "colors": [
+    [
+      "c_color_names",
+      "c_black"
+    ],
+    [
+      "c_color_names",
+      "c_orange"
+    ],
+    [
+      "c_color_names",
+      "c_light_blue"
+    ],
+    [
+      "c_color_names",
+      "c_amber"
+    ],
+    [
+      "c_color_names",
+      "c_red"
+    ]
+  ],
+  "formats": [
+    {
+      "function": "potionhit",
+      "line": 1718
+    },
+    {
+      "function": "dodip",
+      "line": 2299
+    },
+    {
+      "function": "dodip",
+      "line": 2316
+    },
+    {
+      "function": "dodip",
+      "line": 2327
+    },
+    {
+      "function": "dodip",
+      "line": 2339
+    },
+    {
+      "function": "dodip",
+      "line": 2367
+    },
+    {
+      "function": "dip_into",
+      "line": 2398
+    }
+  ],
+  "assertion": {
+    "condition": "mon->mhpmax >= mon->mhp",
+    "line": 2904,
+    "function": "split_mon"
+  },
+  "public": {
+    "set_itimeout": "void (long *, long)",
+    "incr_itimeout": "void (long *, int)",
+    "make_confused": "void (long, boolean)",
+    "make_stunned": "void (long, boolean)",
+    "make_sick": "void (long, const char *, boolean, int)",
+    "make_slimed": "void (long, const char *)",
+    "make_stoned": "void (long, const char *, int, const char *)",
+    "make_vomiting": "void (long, boolean)",
+    "make_blinded": "void (long, boolean)",
+    "toggle_blindness": "void (void)",
+    "make_hallucinated": "boolean (long, boolean, long)",
+    "make_deaf": "void (long, boolean)",
+    "make_glib": "void (int)",
+    "self_invis_message": "void (void)",
+    "dodrink": "int (void)",
+    "dopotion": "int (struct obj *)",
+    "peffects": "int (struct obj *)",
+    "healup": "void (int, int, boolean, boolean)",
+    "strange_feeling": "void (struct obj *, const char *)",
+    "bottlename": "const char *(void)",
+    "impact_arti_light": "void (struct obj *, boolean, boolean)",
+    "potionhit": "void (struct monst *, struct obj *, int)",
+    "potionbreathe": "void (struct obj *)",
+    "dodip": "int (void)",
+    "dip_into": "int (void)",
+    "mongrantswish": "void (struct monst **)",
+    "djinni_from_bottle": "void (struct obj *)",
+    "split_mon": "struct monst *(struct monst *, struct monst *)",
+    "speed_up": "void (long)"
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-potion-abi.py": "b3c65841fa2e25729c567ce484a64e8c2086bfcaecafb2377345ab44611f9c1c",
+    "scripts/tu-potion-layout.h": "5f1080b201861cd352b1ec04799c14c1590ae1c8495c94a7420dc30f7de08304",
+    "nethack-c/wasm/tu-potion-support.inc": "5566b733353c355ad84ce1c324cf12bbce291b418638378f6d28d29bffa8b30d",
+    "js/ported/potion.js": "08141047d4eb379414c6678cf6b2bf8ffcbfd732d2f121ae7b3cddb3b7e36363",
+    "js/ported/potion-runtime.js": "ad76873d4b37a66c927ce90d746b18ba56821a7a763bdb6dbf6eefbe76e7a212",
+    "nethack-c/wasm/tu-libraries/potion.js": "c142ced8df3b6c22629cbc62b221e256fc19075884d73e548150668e15316fc9",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+  },
+  "referenceHeaderSha256": {
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/assert.h": "477f9fcf67e8eccb59dea935f0dc7abd40829f8d61a3e73e4151ff6a18ef25f9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/alltypes.h": "3ff1707efd8cba950d5604298884372be259d614600fa2dfc21d8a66010cc60c",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/ioctl.h": "a1ef9fa70d6d1f14e1a370b21c428b27c5f89e88ebe7500174d60683b096219e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/ioctl_fix.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/limits.h": "b9358162a3bdf8a203cc3e24195fe3a0b3f27ec58669a596cbba96ba0c855e70",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/posix.h": "1518ec6b108557044f70590eeabfb55f419360d2bc93e503f7d24efaf0b8bded",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/resource.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/signal.h": "efc3603f0b1d17a4802c1b5ff7f38d763b85e40eb8bfc8d3eceb212a305abc55",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/stdint.h": "0211357ac8bc3e08fae6703be5502e3cd917b4c02d6b51ac5f22a2473b0a2b03",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/termios.h": "9d2247d093e9ed7b6dd2c4305f500987d0bbb8a5b1c4df10d51154d2e41d133a",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/ctype.h": "0bf45ee657538bf2033a9a17f286f5a4cbcba22a19667deb28d43ac8952c6d30",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/features.h": "078acf7161200b03710cdf93f039f6dbfed993ec619f16ea902a41871c228603",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/inttypes.h": "68064c64ec3303bd27ee6ff514b945bcf910b82c3d63c5ddd6c351a836d78543",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/limits.h": "54d66aac63111f27a6b6584ee91711ecdcfbb26b730ab0cf744d8a05503b27c7",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/regex.h": "4acf94cf0e0f14b2eb50accac93fee886fcc4f821a9b7bb5347a5d035a027ad3",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/signal.h": "18a55cd40db16c4ee993521d53f288e1a4537b9ccb31ab43c35c9a1e2a24f947",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdarg.h": "20b903cf4ddd7e0244e0bee6e615e24e1921bab2f0986957fe4f7869c608890a",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stddef.h": "b1e3361a23c44b7d7e9b5911b5d87fe822f172192c2bae816f14e64431ff701b",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdint.h": "b6e77f1611e56cf499233172cab8bc09c0f7d937f3daa5ad552e1712fc6663e5",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdio.h": "14d89974ef0227b6ea8f000ef93a283efcdc8c852b511c00a9850b5b0a1689b9",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/stdlib.h": "8f732c241f6d2f0a56dbaeb98ea044d5c2aec8e78fb5e734bb67c910cb954632",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/string.h": "75aabfb7b9dc14788dcb2a89bf21b371eeb2b29eb4af6b8374f1ffd682447ccf",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/strings.h": "b8fde0a141ac481de1f88abafbf5678ddfd8d89b309e3253adea1fa0ecb8d9e4",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/ioctl.h": "18cc2b9eee923943e198f03f77cae411bd8f34d9a3fc2202851a1e95dc73532e",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/resource.h": "72450db0aa279bc66100654c177e1d16475a52cc32848156f1c6cff44a3fc836",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/select.h": "cda463ae12b5b189bea17a69b403d6f53949f013d926d92fb325be11f95db3ae",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/time.h": "2199cd4c44b3ebc8a18ca2ff146983e43b8747cc4ed2b4c2f71b583895b4e3cb",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/wait.h": "acde94b89d03174f7ae945e3fe671f5fefc3beb815c99cbff0b596958377d36f",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/termios.h": "09b969e2fc65d080cd77a889cc728fa464de38a1edabbed145d9cbf1d567da51",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/time.h": "57b4e7a312305ca8adf5822408a0fc6cf3ebafb278a2d96936f55a8d2af8e880",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/unistd.h": "7167ff608601a519c99c9beba65f956d4d4d6911def339513b1f235bbd5ee49f",
+    ".cache/emsdk/upstream/emscripten/cache/sysroot/include/wasi/api.h": "5d877115f5a45c8765f4c31bf58499e2582446995feea4aaac00517ea881b940",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg___gnuc_va_list.h": "feca975bfdfb254d17458a8e3d51f8ad6d9bdc9fd6287727f0f8b2fb81fcb0b0",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg___va_copy.h": "f0a8d3c963338173f2d57b2cbc209dde38c90536107b15eb0cf78166d4caee1f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_header_macro.h": "7b3fbcc442af2508f36bb2dc98d9ad2b8a1f5c0f5333394fb2159c8bd5ecd5b8",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_arg.h": "274c75a1db86f649439aa3bcc1dead4170725e6f803925c3fc38a2e93307afdc",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_copy.h": "bb195f56cb08d4cee6a60bd9f62f34466e8ac4f89f6fed043b044cb2f7ead010",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_list.h": "81c3055f7033e26e7f53705653bc9d69b5202f25c2692e03b3a4f77ff44a7d76",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_header_macro.h": "4cf46e8fbb809df048eecbbd63686fa741da27afa8db4245bd1f61c1fb1611dc",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_max_align_t.h": "3c1e4de47f4f06b35e2c5890d670052e84f716760505ff51b022fc8b21a9400f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_null.h": "b1d71b08563ab3d2c22a1e4f8ddf4d9a1111c89e9404b859a45c307e8ebc6c69",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_offsetof.h": "e5f0f4ff8ff5fc6a1cc8b535f5065f1728eadd2bf1e1401f021f803ec7b4222f",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_ptrdiff_t.h": "b4178a57f3711b7013cba747a72a2f178c29fa9364e77d75b2159754072ced43",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_size_t.h": "d86ddc0238da09b385846ebef814ffc50a44e40cf85d4e3793f485952b7e73ad",
+    ".cache/emsdk/upstream/lib/clang/21/include/__stddef_wchar_t.h": "1900d4998aef3698b06399ed686db0c21e26509b08638a25734fb97ae89b1001",
+    ".cache/emsdk/upstream/lib/clang/21/include/inttypes.h": "eb8a7b2e17d57e9321043282bf0267fedd2ca58aadb11b04929ddbf8100fc3bc",
+    ".cache/emsdk/upstream/lib/clang/21/include/limits.h": "6b59cc1b6f86c901bf41ce942b8434530e852eb16e79e6e9287f89441f71efca",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
+    ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
+    ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
+    ".cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
+    ".cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",
+    ".cache/wasm64-build/tree/include/attrib.h": "f20418d80bc2983e3d9af6cc9a02d30f57aa6b54116691a8e4ebebd425de757d",
+    ".cache/wasm64-build/tree/include/botl.h": "c26c637bcb8b2615e82fbc0804175cd8c87f63a3caf35c742e0a6fa410a31009",
+    ".cache/wasm64-build/tree/include/color.h": "f7ab4cdf5113898bf58ba85217f5d693b8564c232ff706ee894fdf070a3a105b",
+    ".cache/wasm64-build/tree/include/config.h": "5585d9c88d7ea21a9a78b45616cc31ae4ea680cb7b34026f70f92b91288a499f",
+    ".cache/wasm64-build/tree/include/config1.h": "b9e97cefc8fcfe4f36a1145ebfb655099f2afd2591227fa5f93b3f4dc0071042",
+    ".cache/wasm64-build/tree/include/context.h": "e1303b7309e556c65e41ec120b704079da6a0c9ef73a08745663f7b923ad7eef",
+    ".cache/wasm64-build/tree/include/coord.h": "f8788b777ea0fc8e4f5df40ce7b9add1a255c5846bdd1393518f7ea14ef6e3d2",
+    ".cache/wasm64-build/tree/include/cstd.h": "ef5e61d5eb7d1a5194c4a4544745a45893ccbea4c1cf083792235f562e173fc2",
+    ".cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470",
+    ".cache/wasm64-build/tree/include/defsym.h": "009ae2e8921fa4c376fe0ae3b4a42407421274fc15d1a8834c6ae519dad82f87",
+    ".cache/wasm64-build/tree/include/display.h": "36e9f838d3298d047e0605abcf2deb627eb79c18aa72f770d5289c34f3692b4c",
+    ".cache/wasm64-build/tree/include/dungeon.h": "e48eaafdb22fc82121de702086c40c3245d6aeb9fe5556712ee1e2f18744a308",
+    ".cache/wasm64-build/tree/include/engrave.h": "1c5617162ea649a0305df8d997b7a1075b35c9b3b97311cdfeebbd60bb9c482e",
+    ".cache/wasm64-build/tree/include/extern.h": "385f7478000f79ff137f2b6be533eef7b518b47a00b0d8c7e35ea52c877dec2e",
+    ".cache/wasm64-build/tree/include/flag.h": "bb28a3f835f3b38119f95311d76b535ef5053f3fffa42372d9f7b1c4c917806f",
+    ".cache/wasm64-build/tree/include/fnamesiz.h": "bd41c47c66e4213835bc1f052d831f8643bc7e7cb9aae0effb27f41edf1b5c35",
+    ".cache/wasm64-build/tree/include/global.h": "8ff55a3c6ee5cc18d00f1982146080d81e9e3dc9e369ab1ffc79890c07b8a8d0",
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    ".cache/wasm64-build/tree/include/hacklib.h": "d9bf2b0ae2003c0611d2b9a351fdbbb30d58def2ecccc1235d4ed1e7b52e3c53",
+    ".cache/wasm64-build/tree/include/integer.h": "e88805c10f195e6de63b8c5cb46049f466ef040de9987a6ab61c36ef977f515a",
+    ".cache/wasm64-build/tree/include/lint.h": "bb08d5658f43c87c2b5129a33cb4e3264693e68d3cd654c67a5ecd757c98adcc",
+    ".cache/wasm64-build/tree/include/mextra.h": "e78bdfa21d4fd7718f1a25ed8f1ef466c96c2bd49f2069af7d1ab346148a1229",
+    ".cache/wasm64-build/tree/include/mfndpos.h": "4711c0e5c67ae88a6a28c776bc542d0d06452d742456964b77913e896b5f56f5",
+    ".cache/wasm64-build/tree/include/mkroom.h": "7baf848feb30c94c196e6bee2ee7f0a83822ad92042dd855b74d212fde514f5a",
+    ".cache/wasm64-build/tree/include/monattk.h": "00c2283c2687f2dd5fa8a3088623cd621822289018c0072db9cad5a2a94883ba",
+    ".cache/wasm64-build/tree/include/mondata.h": "6f1ca3db69a5cfbe425859fe1c7decfa1da1fdac45af9d8a84be5f0f8c9c21f2",
+    ".cache/wasm64-build/tree/include/monflag.h": "89e4ef1dc1cd46fa8d81ff833351934c666420abdf902286bdacdca0bb171d88",
+    ".cache/wasm64-build/tree/include/monst.h": "08e9e2251ac5c3beedb8700dd56287f9f397b506851ceb44a37e41b6d80067a6",
+    ".cache/wasm64-build/tree/include/monsters.h": "c63db922770c96a9956d221f364ba4368a9f81f81c8d64ed28251a0506d4a906",
+    ".cache/wasm64-build/tree/include/nhlua.h": "48553ca9ab16ac2928479cabdf51d7f090fc38e1641dd5d97d819f612c6d87d9",
+    ".cache/wasm64-build/tree/include/nhregex.h": "a2936fd291537090773d861c083c3574c7a0a798c688e87dedb4405f73de653f",
+    ".cache/wasm64-build/tree/include/obj.h": "a4d1b994c5acd6fe04d411485d84491553d6df02dfbd7480181a15a7a05456e2",
+    ".cache/wasm64-build/tree/include/objclass.h": "101f92e0024e4404033845fb15171f8ed4b79374907a6a172b4eb7b026e1eb52",
+    ".cache/wasm64-build/tree/include/objects.h": "eb573ca76f7afe35d6420b958333fbb3c44911415df4e0034e6367456e2913cb",
+    ".cache/wasm64-build/tree/include/optlist.h": "23dafb109132dd63bbfe704b39fac8cccaaeee31a0dbd895c7ba928bd92af9b8",
+    ".cache/wasm64-build/tree/include/patchlevel.h": "4389b12b496c9611fb392ee509d0ebaad2f10449ff3ef697f1ad416a207b0a97",
+    ".cache/wasm64-build/tree/include/permonst.h": "bcdb24d041e3df909cf483efb576fa7fc5e18debf03d11e8e43c1aa87c655bf4",
+    ".cache/wasm64-build/tree/include/prop.h": "682e85c7ab20c1dc7b30115b2a3e850d564cc2ed341edfa782fec9d0dfea0761",
+    ".cache/wasm64-build/tree/include/quest.h": "87b6649d82b6fd4a24d004fcd48c1d9650345e719cf8dc196ae6c99b483e2a5a",
+    ".cache/wasm64-build/tree/include/rect.h": "dee168e068baa3aa15748725752d07659f8cb4e471116f7fab4acf080dc69f90",
+    ".cache/wasm64-build/tree/include/region.h": "adc4682b6a15213f71f3bb534b8705c4385153ca9db7512c118474b0fb4f1191",
+    ".cache/wasm64-build/tree/include/rm.h": "da2ae88d704a358474c6986a3f4763e62053b96a6e60a475879029e658996af7",
+    ".cache/wasm64-build/tree/include/savefile.h": "6847e12dca1eb25b38baa69f6227554669f8a64f5966a1879a5cf2b23732749e",
+    ".cache/wasm64-build/tree/include/seffects.h": "f64099054ab366a1eaccd58901a98cef49a84c1f047c5923de20b4432654de02",
+    ".cache/wasm64-build/tree/include/selvar.h": "49b8be43b8bfd7b4f18cb59d1179e8ad28a708a06c0fbc985c65b365ab9a3acf",
+    ".cache/wasm64-build/tree/include/skills.h": "d67ac10770b8aff667c163e93020b8974e53f12eede903f10bf026d351b2c238",
+    ".cache/wasm64-build/tree/include/sndprocs.h": "4d105334e499c3fb4af00fcd1acf48802a8db5ccf799bd31bfafc2afaa286654",
+    ".cache/wasm64-build/tree/include/spell.h": "dc1e454c0214ea1cc20f4ea1e19cd4447a5ca9533610769fafe8cdd60206b37f",
+    ".cache/wasm64-build/tree/include/stairs.h": "fe016a6ef8194099d504bbf48f58e1e3c6a923413a07c28377409cacc1e2b42b",
+    ".cache/wasm64-build/tree/include/sym.h": "cea14c200c9f1e90ebe890804b46af7005c889d90917cb0608ad6058614e3db4",
+    ".cache/wasm64-build/tree/include/sys.h": "e193f46309925a4b14394a503b3e9a7bc19e5745bb539137ca10ec0898e3951b",
+    ".cache/wasm64-build/tree/include/timeout.h": "5f76ff41cc5435cc8a3e30b28f51c6adbfe42e2bf4a0354ba0a9f850a5ce515a",
+    ".cache/wasm64-build/tree/include/tradstdc.h": "a1246d1acdf317c36990946e1d8bde33f63e3ba779ed5696a4ee03c7ac4f4401",
+    ".cache/wasm64-build/tree/include/trap.h": "469afec3e29d7aec1aa8efd407ad23d24ef069010820082b5596537b9290eb6b",
+    ".cache/wasm64-build/tree/include/unixconf.h": "0cbf3370472b030e8583e922e05e8e055738896954cbbdc1e1e18d0938559723",
+    ".cache/wasm64-build/tree/include/vision.h": "415b7e5751194cb7de57c192103d396a2971400e603fd62bf56330304014ac13",
+    ".cache/wasm64-build/tree/include/warnings.h": "ccf0c3e66bb442b0d8c05844103065fccf3fa7a894bba007425258e1d089f981",
+    ".cache/wasm64-build/tree/include/weight.h": "ac168750ddcde6c592ccbeaaf44c59921cc1f73ed36d269f20364b0e08b91cd1",
+    ".cache/wasm64-build/tree/include/winprocs.h": "eebf4dbb4149d3a153a1dc815795baabe33a59d13362e00089d21ee9ce89983c",
+    ".cache/wasm64-build/tree/include/wintype.h": "e5bfd60534831210bdace1ba6eaef62f65d16dab8d8ac0fcddadebd000d53698",
+    ".cache/wasm64-build/tree/include/you.h": "d19cfa0233582f1ad550b9dfc788f26166f3ff21225e3d8a0cd43b6de2094289",
+    ".cache/wasm64-build/tree/include/youprop.h": "9c4e25bc385c405226085ae3526dc165bd9397ce922b8a18a46f67de21683a2f",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lauxlib.h": "2d9e18e577a6062646268e7f7228264c28bd9b972c186e1af81b8357179c0ab4",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lua.h": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
+    ".cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
+    ".cache/wasm64-build/tree/src/potion.c": "05176768623072e3e1337fc23b91e1f3991980dbefb4ca2fc44c0fe6d1115aa9",
+    "nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb"
+  }
+}

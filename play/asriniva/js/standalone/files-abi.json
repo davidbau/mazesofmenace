@@ -1997,11 +1997,12 @@
     }
   },
   "sourceSha256": {
-    "scripts/export-standalone-files-abi.py": "35056894ffac24a5e3e86b0a5e832256d70e161859a81f54c819b6f0a11198ac",
+    "scripts/export-standalone-files-abi.py": "62943121494628104c70d247d4ae7a0864a40f21fce22546c6122396cbb3c0ce",
     "js/ported/files-runtime.js": "999d3dde75cd6535fb0bfb38be1d08f9a58110d5ab840000a326d9b3a3afbf72",
     "js/ported/files.js": "3c8cf03fd7727673facb5404e171670378710938a9eb93de0693476fe7930e35",
     "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
-    "nethack-c/wasm/tu-fragments/files-support.c": "a4bb22d3b88c6bd766099739ab0dea282898962c21cae14ec4d337113d790d7c"
+    "nethack-c/wasm/tu-fragments/files-support.c": "a4bb22d3b88c6bd766099739ab0dea282898962c21cae14ec4d337113d790d7c",
+    "js/standalone/files.js": "7195a39afdbe5d9dc3b837333c18b01f1063664d104f0ee8fffc64913686acb3"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
@@ -2065,6 +2066,7 @@
     ".cache/emsdk/upstream/lib/clang/21/include/stdbool.h": "48655faf4ebd4ca0af26a1ee8e3e16f8dc68385c9cd550ffb3629320681305b3",
     ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
     ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/files-abi.c": "98fef78fef9b04b72bbabe5150f450d1d0caabb4411970e35d78aed63d9d659f",
     ".cache/ncurses-wasm64-build/include/curses.h": "a2d32dcf9eb6b630cd3d9e14161ff2c378c922c1282e342b70e49fedee5db82c",
     ".cache/ncurses-wasm64-build/include/ncurses_dll.h": "8ce112a66482f18fa5e0378b46a4f028b21a80f8e6c43815c562ad0d6b7ed727",
     ".cache/ncurses-wasm64-build/include/term.h": "bb3cc663684daf037a3d179f07a547e1c3a7b31f8520c19f000c992f4dbf63bc",

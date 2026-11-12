@@ -1,0 +1,3842 @@
+{
+  "schemas": {
+    "Align": {
+      "ctype": "struct Align",
+      "fields": [
+        {
+          "name": "value",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "aligntyp",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "flag": {
+      "ctype": "struct flag",
+      "fields": [
+        {
+          "name": "initalign",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "verbose",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "female",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "artifact": {
+      "ctype": "struct artifact",
+      "fields": [
+        {
+          "name": "otyp",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "role",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "alignment",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "aligntyp",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "name",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "spfx",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "gift_value",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "race",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "gen_spe",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "cspfx",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mtype",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "attk",
+          "d": {
+            "s": "attack"
+          },
+          "ctype": "struct attack",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "defn",
+          "d": {
+            "s": "attack"
+          },
+          "ctype": "struct attack",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "cary",
+          "d": {
+            "s": "attack"
+          },
+          "ctype": "struct attack",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "inv_prop",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "cost",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "acolor",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "Role": {
+      "ctype": "struct Role",
+      "fields": [
+        {
+          "name": "mnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "questarti",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_u": {
+      "ctype": "struct instance_globals_u",
+      "fields": [
+        {
+          "name": "urole",
+          "d": {
+            "s": "Role"
+          },
+          "ctype": "struct Role",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "urace",
+          "d": {
+            "s": "Race"
+          },
+          "ctype": "struct Race",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "obj": {
+      "ctype": "struct obj",
+      "fields": [
+        {
+          "name": "otyp",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oeroded",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "oeroded2",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "oartifact",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "spe",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "otrapped",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "age",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "where",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "xint8",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ox",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oy",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "owornmask",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "quan",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "nobj",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "known",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "blessed",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "cursed",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "bknown",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "owt",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oclass",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "lamplit",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "corpsenm",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "cobj",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "v",
+          "d": {
+            "s": "vptrs"
+          },
+          "ctype": "union vptrs",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "objclass": {
+      "ctype": "struct objclass",
+      "fields": [
+        {
+          "name": "oc_unique",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "oc_class",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oc_subtyp",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oc_material",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "oc_name_known",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "oc_descr_idx",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oc_oprop",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "oc_cost",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "arti_info": {
+      "ctype": "struct arti_info",
+      "fields": [
+        {
+          "name": "exists",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "found",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "wish",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "gift",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "viadip",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "named",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "lvldef",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "bones",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "rndm",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        }
+      ]
+    },
+    "permonst": {
+      "ctype": "struct permonst",
+      "fields": [
+        {
+          "name": "mflags2",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mflags3",
+          "d": {
+            "t": "u16"
+          },
+          "ctype": "unsigned short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mlet",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "char",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mflags1",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "maligntyp",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "aligntyp",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mr",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "msize",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "msound",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "Race": {
+      "ctype": "struct Race",
+      "fields": [
+        {
+          "name": "hatemask",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "selfmask",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "short",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "skills": {
+      "ctype": "struct skills",
+      "fields": [
+        {
+          "name": "max_skill",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "skill",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "you": {
+      "ctype": "struct you",
+      "fields": [
+        {
+          "name": "weapon_skills",
+          "d": {
+            "a": [
+              38
+            ],
+            "e": {
+              "s": "skills"
+            }
+          },
+          "ctype": "struct skills[38]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ugifts",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uprops",
+          "d": {
+            "a": [
+              69
+            ],
+            "e": {
+              "s": "prop"
+            }
+          },
+          "ctype": "struct prop[69]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "xray_range",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ualign",
+          "d": {
+            "s": "align"
+          },
+          "ctype": "align",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ulycn",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "umonnum",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "umonster",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uenmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uen",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uenpeak",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ustuck",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ux",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uy",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uswallow",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mh",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhp",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhpmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "ucreamed",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mhmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uz",
+          "d": {
+            "s": "d_level"
+          },
+          "ctype": "d_level",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "uhave",
+          "d": {
+            "s": "u_have"
+          },
+          "ctype": "struct u_have",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dx",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dy",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dz",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "twoweap",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "usteed",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "objdescr": {
+      "ctype": "struct objdescr",
+      "fields": [
+        {
+          "name": "oc_descr",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_b": {
+      "ctype": "struct instance_globals_saved_b",
+      "fields": [
+        {
+          "name": "bases",
+          "d": {
+            "a": [
+              20
+            ],
+            "e": {
+              "t": "i32"
+            }
+          },
+          "ctype": "int[20]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "attack": {
+      "ctype": "struct attack",
+      "fields": [
+        {
+          "name": "aatyp",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "adtyp",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "damn",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "damd",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "prop": {
+      "ctype": "struct prop",
+      "fields": [
+        {
+          "name": "extrinsic",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "intrinsic",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "blocked",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_i": {
+      "ctype": "struct instance_globals_i",
+      "fields": [
+        {
+          "name": "invent",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "sinfo": {
+      "ctype": "struct sinfo",
+      "fields": [
+        {
+          "name": "restoring",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "warntype_info": {
+      "ctype": "struct warntype_info",
+      "fields": [
+        {
+          "name": "obj",
+          "d": {
+            "t": "u64"
+          },
+          "ctype": "unsigned long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "context_info": {
+      "ctype": "struct context_info",
+      "fields": [
+        {
+          "name": "warntype",
+          "d": {
+            "s": "warntype_info"
+          },
+          "ctype": "struct warntype_info",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_c": {
+      "ctype": "struct instance_globals_saved_c",
+      "fields": [
+        {
+          "name": "context",
+          "d": {
+            "s": "context_info"
+          },
+          "ctype": "struct context_info",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_v": {
+      "ctype": "struct instance_globals_v",
+      "fields": [
+        {
+          "name": "vision_full_recalc",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "viz_array",
+          "d": {
+            "p": ""
+          },
+          "ctype": "seenV **",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_y": {
+      "ctype": "struct instance_globals_y",
+      "fields": [
+        {
+          "name": "youmonst",
+          "d": {
+            "s": "monst"
+          },
+          "ctype": "struct monst",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "align": {
+      "ctype": "struct align",
+      "fields": [
+        {
+          "name": "type",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "aligntyp",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "record",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "monst": {
+      "ctype": "struct monst",
+      "fields": [
+        {
+          "name": "data",
+          "d": {
+            "p": "permonst"
+          },
+          "ctype": "struct permonst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mx",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "my",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "coordxy",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mhp",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mstun",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mconf",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "minvent",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "m_lev",
+          "d": {
+            "t": "u8"
+          },
+          "ctype": "uchar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mhpmax",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "nmon",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "msleeping",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "mtame",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mpeaceful",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_s": {
+      "ctype": "struct instance_globals_s",
+      "fields": [
+        {
+          "name": "spec_dbon_applies",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "window_procs": {
+      "ctype": "struct window_procs",
+      "fields": [
+        {
+          "name": "win_putstr",
+          "d": {
+            "f": true
+          },
+          "ctype": "void (*)(winid, int, const char *)",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "win_create_nhwindow",
+          "d": {
+            "f": true
+          },
+          "ctype": "winid (*)(int)",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "win_start_menu",
+          "d": {
+            "f": true
+          },
+          "ctype": "void (*)(winid, unsigned long)",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "win_end_menu",
+          "d": {
+            "f": true
+          },
+          "ctype": "void (*)(winid, const char *)",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "win_destroy_nhwindow",
+          "d": {
+            "f": true
+          },
+          "ctype": "void (*)(winid)",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "color_and_attr": {
+      "ctype": "struct color_and_attr",
+      "fields": [
+        {
+          "name": "attr",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_flags": {
+      "ctype": "struct instance_flags",
+      "fields": [
+        {
+          "name": "menu_headings",
+          "d": {
+            "s": "color_and_attr"
+          },
+          "ctype": "color_attr",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "display_hints": {
+      "ctype": "struct display_hints",
+      "fields": [
+        {
+          "name": "botl",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_m": {
+      "ctype": "struct instance_globals_m",
+      "fields": [
+        {
+          "name": "multi_reason",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "mkot_trap_warn_count",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_n": {
+      "ctype": "struct instance_globals_n",
+      "fields": [
+        {
+          "name": "nomovemsg",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "notonhead",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "boolean",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "c_common_strings": {
+      "ctype": "struct c_common_strings",
+      "fields": [
+        {
+          "name": "c_fakename",
+          "d": {
+            "a": [
+              2
+            ],
+            "e": {
+              "p": ""
+            }
+          },
+          "ctype": "const char *const[2]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "c_Never_mind",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        },
+        {
+          "name": "c_nothing_seems_to_happen",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        },
+        {
+          "name": "c_nothing_happens",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        }
+      ]
+    },
+    "c_color_names": {
+      "ctype": "struct c_color_names",
+      "fields": [
+        {
+          "name": "c_black",
+          "d": {
+            "p": ""
+          },
+          "ctype": "const char *const",
+          "bit": false,
+          "const": true
+        }
+      ]
+    },
+    "const_globals": {
+      "ctype": "struct const_globals",
+      "fields": [
+        {
+          "name": "zeroobj",
+          "d": {
+            "s": "obj"
+          },
+          "ctype": "const struct obj",
+          "bit": false,
+          "const": true
+        },
+        {
+          "name": "zeroany",
+          "d": {
+            "s": "any"
+          },
+          "ctype": "const anything",
+          "bit": false,
+          "const": true
+        }
+      ]
+    },
+    "instance_globals_saved_n": {
+      "ctype": "struct instance_globals_saved_n",
+      "fields": [
+        {
+          "name": "n_dgns",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "dungeon": {
+      "ctype": "struct dungeon",
+      "fields": [
+        {
+          "name": "dunlev_ureached",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dname",
+          "d": {
+            "a": [
+              24
+            ],
+            "e": {
+              "t": "i8"
+            }
+          },
+          "ctype": "char[24]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "depth_start",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "entry_lev",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_d": {
+      "ctype": "struct instance_globals_saved_d",
+      "fields": [
+        {
+          "name": "dungeons",
+          "d": {
+            "a": [
+              16
+            ],
+            "e": {
+              "s": "dungeon"
+            }
+          },
+          "ctype": "dungeon[16]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dungeon_topology",
+          "d": {
+            "s": "dgn_topology"
+          },
+          "ctype": "struct dgn_topology",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "dgn_topology": {
+      "ctype": "struct dgn_topology",
+      "fields": [
+        {
+          "name": "d_tutorial_dnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "d_astral_level",
+          "d": {
+            "s": "d_level"
+          },
+          "ctype": "d_level",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "any": {
+      "ctype": "union any",
+      "fields": [
+        {
+          "name": "a_int",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "mi": {
+      "ctype": "struct mi",
+      "fields": [
+        {
+          "name": "item",
+          "d": {
+            "s": "any"
+          },
+          "ctype": "anything",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "d_level": {
+      "ctype": "struct d_level",
+      "fields": [
+        {
+          "name": "dnum",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "dlevel",
+          "d": {
+            "t": "i16"
+          },
+          "ctype": "xint16",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "u_have": {
+      "ctype": "struct u_have",
+      "fields": [
+        {
+          "name": "amulet",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        }
+      ]
+    },
+    "dlevel_t": {
+      "ctype": "dlevel_t",
+      "fields": [
+        {
+          "name": "monlist",
+          "d": {
+            "p": "monst"
+          },
+          "ctype": "struct monst *",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "locations",
+          "d": {
+            "a": [
+              80,
+              21
+            ],
+            "e": {
+              "s": "rm"
+            }
+          },
+          "ctype": "struct rm[80][21]",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "objects",
+          "d": {
+            "a": [
+              80,
+              21
+            ],
+            "e": {
+              "p": "obj"
+            }
+          },
+          "ctype": "struct obj *[80][21]",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_l": {
+      "ctype": "struct instance_globals_saved_l",
+      "fields": [
+        {
+          "name": "level",
+          "d": {
+            "s": "dlevel_t"
+          },
+          "ctype": "dlevel_t",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "q_score": {
+      "ctype": "struct q_score",
+      "fields": [
+        {
+          "name": "killed_nemesis",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_q": {
+      "ctype": "struct instance_globals_saved_q",
+      "fields": [
+        {
+          "name": "quest_status",
+          "d": {
+            "s": "q_score"
+          },
+          "ctype": "struct q_score",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_saved_m": {
+      "ctype": "struct instance_globals_saved_m",
+      "fields": [
+        {
+          "name": "moves",
+          "d": {
+            "t": "i64"
+          },
+          "ctype": "long",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "rm": {
+      "ctype": "struct rm",
+      "fields": [
+        {
+          "name": "lit",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "waslit",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        },
+        {
+          "name": "typ",
+          "d": {
+            "t": "i8"
+          },
+          "ctype": "schar",
+          "bit": false,
+          "const": false
+        },
+        {
+          "name": "flags",
+          "d": {
+            "t": "u32"
+          },
+          "ctype": "unsigned int",
+          "bit": true,
+          "const": false
+        }
+      ]
+    },
+    "instance_globals_w": {
+      "ctype": "struct instance_globals_w",
+      "fields": [
+        {
+          "name": "warn_obj_cnt",
+          "d": {
+            "t": "i32"
+          },
+          "ctype": "int",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "vptrs": {
+      "ctype": "union vptrs",
+      "fields": [
+        {
+          "name": "v_nexthere",
+          "d": {
+            "p": "obj"
+          },
+          "ctype": "struct obj *",
+          "bit": false,
+          "const": false
+        }
+      ]
+    },
+    "glyphinfo": {
+      "ctype": "struct glyphinfo",
+      "fields": []
+    },
+    "nhcoord": {
+      "ctype": "struct nhcoord",
+      "fields": []
+    }
+  },
+  "globals": [
+    {
+      "name": "aligns",
+      "d": {
+        "a": [
+          0
+        ],
+        "e": {
+          "s": "Align"
+        }
+      }
+    },
+    {
+      "name": "flags",
+      "d": {
+        "s": "flag"
+      }
+    },
+    {
+      "name": "artilist",
+      "d": {
+        "a": [
+          35
+        ],
+        "e": {
+          "s": "artifact"
+        }
+      }
+    },
+    {
+      "name": "gu",
+      "d": {
+        "s": "instance_globals_u"
+      }
+    },
+    {
+      "name": "artiexist",
+      "d": {
+        "a": [
+          34
+        ],
+        "e": {
+          "s": "arti_info"
+        }
+      }
+    },
+    {
+      "name": "artidisco",
+      "d": {
+        "a": [
+          33
+        ],
+        "e": {
+          "t": "i16"
+        }
+      }
+    },
+    {
+      "name": "objects",
+      "d": {
+        "a": [
+          482
+        ],
+        "e": {
+          "s": "objclass"
+        }
+      }
+    },
+    {
+      "name": "mons",
+      "d": {
+        "a": [
+          384
+        ],
+        "e": {
+          "s": "permonst"
+        }
+      }
+    },
+    {
+      "name": "u",
+      "d": {
+        "s": "you"
+      }
+    },
+    {
+      "name": "zero_artiexist",
+      "d": {
+        "s": "arti_info"
+      }
+    },
+    {
+      "name": "obj_descr",
+      "d": {
+        "a": [
+          482
+        ],
+        "e": {
+          "s": "objdescr"
+        }
+      }
+    },
+    {
+      "name": "svb",
+      "d": {
+        "s": "instance_globals_saved_b"
+      }
+    },
+    {
+      "name": "gi",
+      "d": {
+        "s": "instance_globals_i"
+      }
+    },
+    {
+      "name": "program_state",
+      "d": {
+        "s": "sinfo"
+      }
+    },
+    {
+      "name": "svc",
+      "d": {
+        "s": "instance_globals_saved_c"
+      }
+    },
+    {
+      "name": "gv",
+      "d": {
+        "s": "instance_globals_v"
+      }
+    },
+    {
+      "name": "gy",
+      "d": {
+        "s": "instance_globals_y"
+      }
+    },
+    {
+      "name": "gs",
+      "d": {
+        "s": "instance_globals_s"
+      }
+    },
+    {
+      "name": "windowprocs",
+      "d": {
+        "s": "window_procs"
+      }
+    },
+    {
+      "name": "iflags",
+      "d": {
+        "s": "instance_flags"
+      }
+    },
+    {
+      "name": "disp",
+      "d": {
+        "s": "display_hints"
+      }
+    },
+    {
+      "name": "gm",
+      "d": {
+        "s": "instance_globals_m"
+      }
+    },
+    {
+      "name": "gn",
+      "d": {
+        "s": "instance_globals_n"
+      }
+    },
+    {
+      "name": "c_common_strings",
+      "d": {
+        "s": "c_common_strings"
+      }
+    },
+    {
+      "name": "c_color_names",
+      "d": {
+        "s": "c_color_names"
+      }
+    },
+    {
+      "name": "cg",
+      "d": {
+        "s": "const_globals"
+      }
+    },
+    {
+      "name": "svn",
+      "d": {
+        "s": "instance_globals_saved_n"
+      }
+    },
+    {
+      "name": "svd",
+      "d": {
+        "s": "instance_globals_saved_d"
+      }
+    },
+    {
+      "name": "nul_glyphinfo",
+      "d": {
+        "s": "glyphinfo"
+      }
+    },
+    {
+      "name": "svl",
+      "d": {
+        "s": "instance_globals_saved_l"
+      }
+    },
+    {
+      "name": "svq",
+      "d": {
+        "s": "instance_globals_saved_q"
+      }
+    },
+    {
+      "name": "svm",
+      "d": {
+        "s": "instance_globals_saved_m"
+      }
+    },
+    {
+      "name": "uwep",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "gw",
+      "d": {
+        "s": "instance_globals_w"
+      }
+    },
+    {
+      "name": "uarmg",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uleft",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uright",
+      "d": {
+        "p": "obj"
+      }
+    },
+    {
+      "name": "uswapwep",
+      "d": {
+        "p": "obj"
+      }
+    }
+  ],
+  "argumentViews": {
+    "mk_artifact": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "dispose_of_orig_obj": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "artifact_name": [
+      {
+        "index": 1,
+        "method": "scalarPointer",
+        "type": "short"
+      }
+    ],
+    "artifact_exists": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "find_artifact": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "artifact_origin": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "spec_ability": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "confers_luck": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "arti_reflects": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "shade_glare": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "restrict_name": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "attacks": [
+      {
+        "index": 1,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "defends": [
+      {
+        "index": 1,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "defends_when_carried": [
+      {
+        "index": 1,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "protects": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "set_artifact_intrinsic": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "touch_artifact": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      }
+    ],
+    "arti_immune": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "bane_applies": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "artifact"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      }
+    ],
+    "spec_applies": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "artifact"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      }
+    ],
+    "spec_m2": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "spec_abon": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      }
+    ],
+    "spec_dbon": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      }
+    ],
+    "Mb_hit": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "monst"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      },
+      {
+        "index": 2,
+        "method": "view",
+        "type": "obj"
+      },
+      {
+        "index": 3,
+        "method": "scalarPointer",
+        "type": "int"
+      }
+    ],
+    "artifact_hit": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "monst"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "monst"
+      },
+      {
+        "index": 2,
+        "method": "view",
+        "type": "obj"
+      },
+      {
+        "index": 3,
+        "method": "scalarPointer",
+        "type": "int"
+      }
+    ],
+    "invoke_ok": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "nothing_special": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_taming": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_healing": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_energy_boost": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_untrap": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_charge_obj": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_create_portal": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_create_ammo": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_banish": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_fling_poison": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_storm_spell": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "invoke_blinding_ray": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "arti_invoke_cost_pw": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "arti_invoke_cost": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "arti_invoke": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "finesse_ahriman": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "artifact_light": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "arti_speak": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "artifact_has_invprop": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "arti_cost": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "abil_to_adtyp": [
+      {
+        "index": 0,
+        "method": "scalarPointer",
+        "type": "long"
+      }
+    ],
+    "abil_to_spfx": [
+      {
+        "index": 0,
+        "method": "scalarPointer",
+        "type": "long"
+      }
+    ],
+    "what_gives": [
+      {
+        "index": 0,
+        "method": "scalarPointer",
+        "type": "long"
+      }
+    ],
+    "retouch_object": [
+      {
+        "index": 0,
+        "method": "scalarPointer",
+        "type": "struct obj *"
+      }
+    ],
+    "untouchable": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "is_magic_key": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "monst"
+      },
+      {
+        "index": 1,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "has_magic_key": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "monst"
+      }
+    ],
+    "is_art": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "get_artifact": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ],
+    "permapoisoned": [
+      {
+        "index": 0,
+        "method": "view",
+        "type": "obj"
+      }
+    ]
+  },
+  "calls": {
+    "In_hell": {
+      "target": "In_hell",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "In_quest": {
+      "target": "In_quest",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "Monnam": {
+      "target": "Monnam",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "On_stairs": {
+      "target": "On_stairs",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "Resists_Elem": {
+      "target": "Resists_Elem",
+      "arguments": [
+        "pointer",
+        "int"
+      ]
+    },
+    "The": {
+      "target": "The",
+      "arguments": [
+        "text"
+      ]
+    },
+    "Tobjnam": {
+      "target": "Tobjnam",
+      "arguments": [
+        "pointer",
+        "text"
+      ]
+    },
+    "__assert_fail": {
+      "target": "__assert_fail",
+      "arguments": [
+        "text",
+        "text",
+        "int",
+        "text"
+      ]
+    },
+    "abs": {
+      "target": "abs",
+      "arguments": [
+        "int"
+      ]
+    },
+    "add_menu": {
+      "target": "add_menu",
+      "arguments": [
+        "int",
+        "pointer",
+        "pointer",
+        "byte",
+        "byte",
+        "int",
+        "int",
+        "text",
+        "uint"
+      ]
+    },
+    "align_str": {
+      "target": "align_str",
+      "arguments": [
+        "byte"
+      ]
+    },
+    "aobjnam": {
+      "target": "aobjnam",
+      "arguments": [
+        "pointer",
+        "text"
+      ]
+    },
+    "attacktype": {
+      "target": "attacktype",
+      "arguments": [
+        "pointer",
+        "int"
+      ]
+    },
+    "bare_artifactname": {
+      "target": "bare_artifactname",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "bcsign": {
+      "target": "bcsign",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "body_part": {
+      "target": "body_part",
+      "arguments": [
+        "int"
+      ]
+    },
+    "burn_away_slime": {
+      "target": "burn_away_slime",
+      "arguments": []
+    },
+    "bypass_obj": {
+      "target": "bypass_obj",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "cancel_monst": {
+      "target": "cancel_monst",
+      "arguments": [
+        "pointer",
+        "pointer",
+        "byte",
+        "byte",
+        "byte"
+      ]
+    },
+    "canseemon": {
+      "target": "canseemon",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "charge_ok": {
+      "target": "charge_ok",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "clear_bypasses": {
+      "target": "clear_bypasses",
+      "arguments": []
+    },
+    "clr2colorname": {
+      "target": "clr2colorname",
+      "arguments": [
+        "int"
+      ]
+    },
+    "d": {
+      "target": "d",
+      "arguments": [
+        "int",
+        "int"
+      ]
+    },
+    "defended": {
+      "target": "defended",
+      "arguments": [
+        "pointer",
+        "int"
+      ]
+    },
+    "depth": {
+      "target": "depth",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "destroy_items": {
+      "target": "destroy_items",
+      "arguments": [
+        "pointer",
+        "int",
+        "int"
+      ]
+    },
+    "dismount_steed": {
+      "target": "dismount_steed",
+      "arguments": [
+        "int"
+      ]
+    },
+    "distant_name": {
+      "target": "distant_name",
+      "arguments": [
+        "pointer",
+        "text"
+      ]
+    },
+    "do_blinding_ray": {
+      "target": "do_blinding_ray",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "dropx": {
+      "target": "dropx",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "dunlevs_in_dungeon": {
+      "target": "dunlevs_in_dungeon",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "enlightenment": {
+      "target": "enlightenment",
+      "arguments": [
+        "int",
+        "int"
+      ]
+    },
+    "eos": {
+      "target": "eos",
+      "arguments": [
+        "text"
+      ]
+    },
+    "exercise": {
+      "target": "exercise",
+      "arguments": [
+        "int",
+        "byte"
+      ]
+    },
+    "find_hell": {
+      "target": "find_hell",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "flashburn": {
+      "target": "flashburn",
+      "arguments": [
+        "long",
+        "byte"
+      ]
+    },
+    "float_down": {
+      "target": "float_down",
+      "arguments": [
+        "long",
+        "long"
+      ]
+    },
+    "float_up": {
+      "target": "float_up",
+      "arguments": []
+    },
+    "free": {
+      "target": "free",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "freeinv": {
+      "target": "freeinv",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "fuzzymatch": {
+      "target": "fuzzymatch",
+      "arguments": [
+        "text",
+        "text",
+        "text",
+        "byte"
+      ]
+    },
+    "getdir": {
+      "target": "getdir",
+      "arguments": [
+        "text"
+      ]
+    },
+    "getobj": {
+      "target": "getobj",
+      "arguments": [
+        "text",
+        "pointer",
+        "uint"
+      ]
+    },
+    "getrumor": {
+      "target": "getrumor",
+      "arguments": [
+        "int",
+        "text",
+        "byte"
+      ]
+    },
+    "glyph_at": {
+      "target": "glyph_at",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "goto_level": {
+      "target": "goto_level",
+      "arguments": [
+        "pointer",
+        "byte",
+        "byte",
+        "byte"
+      ]
+    },
+    "hates_silver": {
+      "target": "hates_silver",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "hcolor": {
+      "target": "hcolor",
+      "arguments": [
+        "text"
+      ]
+    },
+    "healmon": {
+      "target": "healmon",
+      "arguments": [
+        "pointer",
+        "int",
+        "int"
+      ]
+    },
+    "healup": {
+      "target": "healup",
+      "arguments": [
+        "int",
+        "int",
+        "byte",
+        "byte"
+      ]
+    },
+    "hitfloor": {
+      "target": "hitfloor",
+      "arguments": [
+        "pointer",
+        "byte"
+      ]
+    },
+    "hold_another_object": {
+      "target": "hold_another_object",
+      "arguments": [
+        "pointer",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "ignite_items": {
+      "target": "ignite_items",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "inside_shop": {
+      "target": "inside_shop",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "invocation_pos": {
+      "target": "invocation_pos",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "isok": {
+      "target": "isok",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "killer_xname": {
+      "target": "killer_xname",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "ledger_no": {
+      "target": "ledger_no",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "level_tele": {
+      "target": "level_tele",
+      "arguments": []
+    },
+    "lightdamage": {
+      "target": "lightdamage",
+      "arguments": [
+        "pointer",
+        "byte",
+        "int"
+      ]
+    },
+    "litroom": {
+      "target": "litroom",
+      "arguments": [
+        "byte",
+        "pointer"
+      ]
+    },
+    "losehp": {
+      "target": "losehp",
+      "arguments": [
+        "int",
+        "text",
+        "byte"
+      ]
+    },
+    "losexp": {
+      "target": "losexp",
+      "arguments": [
+        "text"
+      ]
+    },
+    "make_blinded": {
+      "target": "make_blinded",
+      "arguments": [
+        "long",
+        "byte"
+      ]
+    },
+    "make_confused": {
+      "target": "make_confused",
+      "arguments": [
+        "long",
+        "byte"
+      ]
+    },
+    "make_hallucinated": {
+      "target": "make_hallucinated",
+      "arguments": [
+        "long",
+        "byte",
+        "long"
+      ]
+    },
+    "make_sick": {
+      "target": "make_sick",
+      "arguments": [
+        "long",
+        "text",
+        "byte",
+        "int"
+      ]
+    },
+    "make_slimed": {
+      "target": "make_slimed",
+      "arguments": [
+        "long",
+        "text"
+      ]
+    },
+    "make_stunned": {
+      "target": "make_stunned",
+      "arguments": [
+        "long",
+        "byte"
+      ]
+    },
+    "map_invisible": {
+      "target": "map_invisible",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "maybe_lvltport_feedback": {
+      "target": "maybe_lvltport_feedback",
+      "arguments": []
+    },
+    "mbodypart": {
+      "target": "mbodypart",
+      "arguments": [
+        "pointer",
+        "int"
+      ]
+    },
+    "memset": {
+      "target": "memset",
+      "arguments": [
+        "pointer",
+        "int",
+        "ulong"
+      ]
+    },
+    "migrate_mon": {
+      "target": "migrate_mon",
+      "arguments": [
+        "pointer",
+        "short",
+        "short"
+      ]
+    },
+    "mksobj": {
+      "target": "mksobj",
+      "arguments": [
+        "int",
+        "byte",
+        "byte"
+      ]
+    },
+    "mon_aligntyp": {
+      "target": "mon_aligntyp",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "mon_nam": {
+      "target": "mon_nam",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "monflee": {
+      "target": "monflee",
+      "arguments": [
+        "pointer",
+        "int",
+        "byte",
+        "byte"
+      ]
+    },
+    "monhp_per_lvl": {
+      "target": "monhp_per_lvl",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "newsym": {
+      "target": "newsym",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "next_to_u": {
+      "target": "next_to_u",
+      "arguments": []
+    },
+    "nomul": {
+      "target": "nomul",
+      "arguments": [
+        "int"
+      ]
+    },
+    "nxt_unbypassed_obj": {
+      "target": "nxt_unbypassed_obj",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "nxtobj": {
+      "target": "nxtobj",
+      "arguments": [
+        "pointer",
+        "int",
+        "byte"
+      ]
+    },
+    "obfree": {
+      "target": "obfree",
+      "arguments": [
+        "pointer",
+        "pointer"
+      ]
+    },
+    "obj_extract_self": {
+      "target": "obj_extract_self",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "obj_shuffle_range": {
+      "target": "obj_shuffle_range",
+      "arguments": [
+        "int",
+        "pointer",
+        "pointer"
+      ]
+    },
+    "observe_object": {
+      "target": "observe_object",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "oname": {
+      "target": "oname",
+      "arguments": [
+        "pointer",
+        "text",
+        "uint"
+      ]
+    },
+    "otense": {
+      "target": "otense",
+      "arguments": [
+        "pointer",
+        "text"
+      ]
+    },
+    "probe_monster": {
+      "target": "probe_monster",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "recalc_telepat_range": {
+      "target": "recalc_telepat_range",
+      "arguments": []
+    },
+    "recharge": {
+      "target": "recharge",
+      "arguments": [
+        "pointer",
+        "int"
+      ]
+    },
+    "remove_worn_item": {
+      "target": "remove_worn_item",
+      "arguments": [
+        "pointer",
+        "byte"
+      ]
+    },
+    "resist": {
+      "target": "resist",
+      "arguments": [
+        "pointer",
+        "byte",
+        "int",
+        "int"
+      ]
+    },
+    "resists_drli": {
+      "target": "resists_drli",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "rn2": {
+      "target": "rn2",
+      "arguments": [
+        "int"
+      ]
+    },
+    "rnd": {
+      "target": "rnd",
+      "arguments": [
+        "int"
+      ]
+    },
+    "rnz": {
+      "target": "rnz",
+      "arguments": [
+        "int"
+      ]
+    },
+    "s_suffix": {
+      "target": "s_suffix",
+      "arguments": [
+        "text"
+      ]
+    },
+    "see_monsters": {
+      "target": "see_monsters",
+      "arguments": []
+    },
+    "seffects": {
+      "target": "seffects",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "select_menu": {
+      "target": "select_menu",
+      "arguments": [
+        "int",
+        "int",
+        "pointer"
+      ]
+    },
+    "selftouch": {
+      "target": "selftouch",
+      "arguments": [
+        "text"
+      ]
+    },
+    "sensemon": {
+      "target": "sensemon",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "set_ustuck": {
+      "target": "set_ustuck",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "sfi_arti_info": {
+      "target": "sfi_arti_info",
+      "arguments": [
+        "pointer",
+        "pointer",
+        "text"
+      ]
+    },
+    "sfi_short": {
+      "target": "sfi_short",
+      "arguments": [
+        "pointer",
+        "pointer",
+        "text"
+      ]
+    },
+    "sfo_arti_info": {
+      "target": "sfo_arti_info",
+      "arguments": [
+        "pointer",
+        "pointer",
+        "text"
+      ]
+    },
+    "sfo_xint16": {
+      "target": "sfo_xint16",
+      "arguments": [
+        "pointer",
+        "pointer",
+        "text"
+      ]
+    },
+    "sgn": {
+      "target": "sgn",
+      "arguments": [
+        "int"
+      ]
+    },
+    "shieldeff": {
+      "target": "shieldeff",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "simple_typename": {
+      "target": "simple_typename",
+      "arguments": [
+        "int"
+      ]
+    },
+    "spell_skilltype": {
+      "target": "spell_skilltype",
+      "arguments": [
+        "int"
+      ]
+    },
+    "spelleffects": {
+      "target": "spelleffects",
+      "arguments": [
+        "int",
+        "byte",
+        "byte"
+      ]
+    },
+    "spoteffects": {
+      "target": "spoteffects",
+      "arguments": [
+        "byte"
+      ]
+    },
+    "sticks": {
+      "target": "sticks",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "strcat": {
+      "target": "strcat",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "strcmp": {
+      "target": "strcmp",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "strcpy": {
+      "target": "strcpy",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "strncmpi": {
+      "target": "strncmpi",
+      "arguments": [
+        "text",
+        "text",
+        "int"
+      ]
+    },
+    "surface": {
+      "target": "surface",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "t_at": {
+      "target": "t_at",
+      "arguments": [
+        "short",
+        "short"
+      ]
+    },
+    "the": {
+      "target": "the",
+      "arguments": [
+        "text"
+      ]
+    },
+    "throwit": {
+      "target": "throwit",
+      "arguments": [
+        "pointer",
+        "long",
+        "byte",
+        "pointer"
+      ]
+    },
+    "u_teleport_mon": {
+      "target": "u_teleport_mon",
+      "arguments": [
+        "pointer",
+        "byte"
+      ]
+    },
+    "uncurse": {
+      "target": "uncurse",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "untrap": {
+      "target": "untrap",
+      "arguments": [
+        "byte",
+        "short",
+        "short",
+        "pointer"
+      ]
+    },
+    "update_inventory": {
+      "target": "update_inventory",
+      "arguments": []
+    },
+    "upstart": {
+      "target": "upstart",
+      "arguments": [
+        "text"
+      ]
+    },
+    "use_crystal_ball": {
+      "target": "use_crystal_ball",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "vtense": {
+      "target": "vtense",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "wake_nearto": {
+      "target": "wake_nearto",
+      "arguments": [
+        "short",
+        "short",
+        "int"
+      ]
+    },
+    "weight": {
+      "target": "weight",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "which_armor": {
+      "target": "which_armor",
+      "arguments": [
+        "pointer",
+        "long"
+      ]
+    },
+    "xname": {
+      "target": "xname",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "yname": {
+      "target": "yname",
+      "arguments": [
+        "pointer"
+      ]
+    },
+    "impossible_pi": {
+      "target": "impossible",
+      "arguments": [
+        "text",
+        "int"
+      ]
+    },
+    "livelog_printf_jppp": {
+      "target": "livelog_printf",
+      "arguments": [
+        "long",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "You_pp": {
+      "target": "You",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "sprintf_ppp": {
+      "target": "sprintf",
+      "arguments": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "pline_pp": {
+      "target": "pline",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "impossible_p": {
+      "target": "impossible",
+      "arguments": [
+        "text"
+      ]
+    },
+    "sprintf_ppppp": {
+      "target": "sprintf",
+      "arguments": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "nh_snprintf_pipjpppppppppp": {
+      "target": "nh_snprintf",
+      "arguments": [
+        "text",
+        "int",
+        "text",
+        "ulong",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "nh_snprintf_pipjppp": {
+      "target": "nh_snprintf",
+      "arguments": [
+        "text",
+        "int",
+        "text",
+        "ulong",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "pline_The_ppp": {
+      "target": "pline_The",
+      "arguments": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "You_p": {
+      "target": "You",
+      "arguments": [
+        "text"
+      ]
+    },
+    "pline_The_pp": {
+      "target": "pline_The",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "pline_ppp": {
+      "target": "pline",
+      "arguments": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "pline_ppppi": {
+      "target": "pline",
+      "arguments": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "int"
+      ]
+    },
+    "pline_The_pppi": {
+      "target": "pline_The",
+      "arguments": [
+        "text",
+        "text",
+        "text",
+        "int"
+      ]
+    },
+    "pline_pppp": {
+      "target": "pline",
+      "arguments": [
+        "text",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "pline_p": {
+      "target": "pline",
+      "arguments": [
+        "text"
+      ]
+    },
+    "pline_The_pppp": {
+      "target": "pline_The",
+      "arguments": [
+        "text",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "You_feel_ppp": {
+      "target": "You_feel",
+      "arguments": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "You_feel_p": {
+      "target": "You_feel",
+      "arguments": [
+        "text"
+      ]
+    },
+    "You_feel_pp": {
+      "target": "You_feel",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "Your_pp": {
+      "target": "Your",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "Your_p": {
+      "target": "Your",
+      "arguments": [
+        "text"
+      ]
+    },
+    "verbalize_pp": {
+      "target": "verbalize",
+      "arguments": [
+        "text",
+        "text"
+      ]
+    },
+    "You_cant_ppp": {
+      "target": "You_cant",
+      "arguments": [
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "pline_The_ppi": {
+      "target": "pline_The",
+      "arguments": [
+        "text",
+        "text",
+        "int"
+      ]
+    }
+  },
+  "callbacks": {
+    "37": "invoke_ok"
+  },
+  "foreignCallbacks": {
+    "0": "charge_ok",
+    "1": "xname"
+  },
+  "resbufBytes": 20,
+  "sourceSha256": {
+    "scripts/export-standalone-artifact-abi.py": "f99b534540a9950bf96de40b29b4bd3b5fbf8883c48c2d7fea41aa25d25379bf",
+    "js/ported/artifact-runtime.js": "05a9f1acb105ee666af1b70ca0168a388f35692b95681164365ab63811ba4075",
+    "nethack-c/wasm/tu-libraries/artifact.js": "fbfed5dcfaa07212cc24cb405a362113f0832d02bfa5bd32145c25c6c47211a0",
+    "nethack-c/wasm/tu-fragments/artifact-support.c": "11f284826404caf3c6103721e4ceaed74fb25e33f8b33af0f631305bbf23c495",
+    "nethack-c/wasm/tu-fragments/artifact-schema.json": "104e854af8cc717d86143b90eac62c8e80e761be6bf1478bfc6a19178d6bd913",
+    "js/ported/artifact.js": "0820cec461c8f0de3c7b115788e00b6ff5a567d9dec9c2f32966c8afe0c434c3",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52"
+  }
+}

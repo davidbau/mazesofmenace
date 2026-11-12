@@ -5,7 +5,7 @@ import { ACID_RES, ANTIMAGIC, A_CHA, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, 
 import { canspotmon, impossible_sync } from './display.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
-import { attacktype_fordmg, dmgtype_fromattack, hates_silver, humanoid, is_demon, monPmname, permonstTemplate, sliparm } from './makemon.js';
+import { attacktype_fordmg, dmgtype_fromattack, hates_silver, humanoid, is_demon, monPmname, permonstTemplate } from './makemon.js';
 import { which_armor } from './worn.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { AD_ACID, AD_COLD, AD_ELEC, AD_FIRE, AD_RUST, ARMOR_CLASS, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TUCH, AT_WEAP, CREAM_PIE, M1_ANIMAL, M1_MINDLESS, NON_PM, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_WATCHMAN, haseyes, is_undead, is_weptool, is_youmonst, mindless, xm_Blind, xm_Hallucination } from './mhitm.js';
@@ -1919,4 +1919,15 @@ export function sticks(ptr) {
     return Boolean(dmgtype(ptr, AD_STCK)
                    || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
                    || attacktype(ptr, AT_HUGS));
+}
+
+/* C mondata.c:632 sliparm(ptr) — creature slips out of/through armor: whirly,
+ * size <= MZ_SMALL, or noncorporeal (mondata.h:31 mlet == S_GHOST). */
+export function sliparm(ptr) {
+    const MZ_SMALL = 1;
+    const S_VORTEX = 22;
+    const S_GHOST = 54;
+    /* C mondata.h:57 is_whirly(ptr) = mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL]. */
+    const is_whirly = (ptr.mlet === S_VORTEX || ptr.pmidx === PM_AIR_ELEMENTAL);
+    return is_whirly || ptr.msize <= MZ_SMALL || ptr.mlet === S_GHOST;
 }

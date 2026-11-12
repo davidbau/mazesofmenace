@@ -1,0 +1,16 @@
+{
+  "profile": "Pinned SDK musl, memory64 narrow scanf",
+  "EINVAL": 28,
+  "ERANGE": 68,
+  "longBytes": 8,
+  "pointerBytes": 8,
+  "EOF": -1,
+  "sourceSha256": {
+    "scripts/export-standalone-scanf-abi.py": "693426ec64f7f3c5ac601cd72fe050137cff13e525b4eed308d10cf08020aa2c",
+    "js/standalone/scanf.js": "a327d0b512760aca151ac066708ac50769381304969bb77d009ce6273b1f34da",
+    "js/standalone/libc.js": "a9499db3b7960af4e546095c49993d2559109885ab063f8e2912dd38de8094da",
+    "js/standalone/stdio.js": "051933cd18aa7b40800ed1132724732a1ae1681c213b0a23d9cdb98f54e5b602"
+  },
+  "referenceReceiptSha256": "fc4ea75ad5eb59bf2720be60363910509b15944825f3302c9bfd8574cef2688e",
+  "compilerSha256": "bd9853e455a7ad4b6c0ad3a5b5347b700563762fc4c686c62979fd615e18ccc7"
+}

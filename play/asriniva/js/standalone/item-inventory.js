@@ -3,7 +3,7 @@ import * as artifact from '../ported/artifact.js';
 import {erosion_matters,rnd_class} from '../ported/objnam.js';
 import {safe_oname} from '../ported/do_name.js';
 import {stone_luck,set_moreluck} from '../ported/attrib.js';
-import {book_cursed,book_disappears,learn} from '../ported/spell.js';
+import {enableSpell} from './spell.js';
 import {food_disappears} from '../ported/eat.js';
 import {obj_sheds_light} from '../ported/light.js';
 import {maybe_reset_pick} from '../ported/lock.js';
@@ -37,8 +37,6 @@ export function enableItemInventory(environment,layouts) {
         Object.defineProperty(legacy,name,{value:views.record('struct '+type,environment.requireGlobal(name))});
     Object.defineProperty(legacy,'objects',{value:views.array('struct objclass',environment.requireGlobal('objects'),layouts.o_init.NUM_OBJECTS)});
     Object.defineProperty(legacy,'carrying',{value:type=>object(environment.resolve('carrying')(type))});
-    const learnId=environment.functions.functionPointer((...args)=>environment.resolve('learn')(...args),'i');
-    legacy.sameFunction=(a,b)=>BigInt(a?.address??a??0)===(b===learn?learnId:BigInt(b??0));
     legacy.artilist=views.array('struct artifact',environment.allocateGlobal('artilist',35*ctypes.size('struct artifact')),35);
     legacy.artiexist=views.array('struct arti_info',environment.allocateGlobal('artiexist',34*ctypes.size('struct arti_info')),34);
     legacy.sizes={artilist:35*ctypes.size('struct artifact')};legacy.state={initialized:false};
@@ -46,7 +44,8 @@ export function enableItemInventory(environment,layouts) {
     environment.register('artifact-properties',Object.fromEntries(['is_art','get_artifact','spec_ability','confers_luck','permapoisoned','nartifact_exist'].map(k=>[k,artifact[k]])),legacy,{prepareArgs:(fn,args)=>{if(!['nartifact_exist','exist_artifact'].includes(fn))args[0]=object(args[0]);return args;}});
     environment.register('object-selection',{erosion_matters,rnd_class},legacy);
     environment.register('object-safe-name',{safe_oname},legacy,{prepareArgs:(_fn,args)=>[object(args[0])]});
-    environment.register('inventory-luck',{stone_luck,set_moreluck},legacy);
+    environment.register('inventory-luck',{stone_luck,set_moreluck},legacy,{prepareArgs:(name,args)=>name==='stone_luck'?[transport.char(args[0])]:args});
+    const book_cursed=obj=>enableSpell(environment,layouts).call('book_cursed',obj),book_disappears=obj=>enableSpell(environment,layouts).call('book_disappears',obj);
     environment.register('inventory-context',{book_cursed,book_disappears,food_disappears,obj_sheds_light,maybe_reset_pick},legacy,{prepareArgs:(_fn,args)=>[object(args[0])]});
     environment.exposeAddressPort('dungeon',['on_level','In_hell','In_quest']);
     environment.exposeAddressPort('mkobj',['mksobj','mkobj','mksobj_init','unknow_object','clear_dknown','bless','unbless','curse','uncurse','blessorcurse','mkobj_erosions','may_generate_eroded','obj_extract_self','dealloc_obj','dobjsfree','add_to_container']);

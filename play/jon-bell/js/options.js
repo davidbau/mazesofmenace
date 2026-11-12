@@ -27,12 +27,12 @@ import { parseautocomplete } from './cmd.js';
 import { config_error_add } from './cfgfiles.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
-import { sym_val_real, apply_pending_s_utf8 } from './symbols.js';
-import { config_line_error, config_statement, choose_random_part, config_error_nextline, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
-import { add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './coloratt.js';
+import { sym_val_real, apply_pending_s_utf8, symset_defined_in_file, SYM_OFFSETS } from './symbols.js';
+import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
+import { menucolor_row, menucolor_text, add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin } from './windows.js';
-import { mungspaces } from './hacklib.js';
+import { mungspaces, fuzzymatch } from './hacklib.js';
 import { nh_sprintf, docorner_status_rows, _threeStatusLines } from './display.js';
 import { pline } from './pline.js';
 import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
@@ -219,7 +219,7 @@ export const COND_NAMES = ['Bare', 'Blind', 'Busy', 'Conf', 'Deaf', 'Iron', 'Fly
 
 
 /* C ref: botl.c:2593-2650 parse_status_hl1() tokenisation + botl.c:2468
- * fldname_to_bl_indx() + the first-threshold classification of
+ * fldname_to_bl_indx() + the threshold classification of
  * parse_status_hl2() (botl.c:2814-2975).  Returns [fmt, arg] for the first
  * config_error_add() C would make, or null. */
 export function hilite_status_config_error(op) {
@@ -246,12 +246,16 @@ export function hilite_status_config_error(op) {
         }
         if (f === 'characteristics')
             return null;
-        const e = check_behavior(f);
-        if (e) return e;
         /* botl.c:3036-3063 parse_status_hl2(): each rule's "how" is a
          * '+'/'&' list of attributes and at most one colour; match_str2clr()
          * complains (coloratt.c:367), then "bad color '%d %d'". */
         for (let k = 2; k < hsbuf.length; k += 2) {
+            const e = check_behavior(f, hsbuf[k - 1], hsbuf[k] || '');
+            if (e) {
+                // C botl.c:3099: thresholds preceding an error stay installed.
+                e.accepted = hsbuf.slice(0, k - 1).join('/');
+                return e;
+            }
             const how = hsbuf[k] || '';
             if (!how) break;
             let coloridx = -1;
@@ -267,9 +271,7 @@ export function hilite_status_config_error(op) {
         }
         return null;
     };
-    const check_behavior = f => {
-        const t = hsbuf[1] || '';
-        const next = hsbuf[2] || '';
+    const check_behavior = (f, t, next) => {
         if (!next || t === 'always' || t === 'up' || t === 'down' || t === 'changed'
             || (f === 'hitpoints' && t === 'criticalhp'))
             return null;
@@ -277,6 +279,23 @@ export function hilite_status_config_error(op) {
             && !['power', 'experience-level', 'hitpoints', 'experience'].includes(f))
             /* botl.c:2999 initblstats[fld].idxmax < 0 (only INIT_BLSTATP fields have one) */
             return ["Cannot use percent with '%s'", f];
+        if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) && !BL_STRFLDS.has(f)) {
+            /* botl.c:2927-2964 parse_status_hl2(): reject out-of-range numbers */
+            const percent = t.endsWith('%');
+            const grt = t[0] === '>' && t[1] !== '=', gte = t[0] === '>' && t[1] === '=';
+            const lt = t[0] === '<' && t[1] !== '=', le = t[0] === '<' && t[1] === '=';
+            const num = parseInt(t.replace(/[%<>=+]/g, ''), 10);
+            if (num < (f === 'armor-class' ? -128 : grt ? -1 : lt ? 1 : 0)
+                || num > (percent ? (lt ? 101 : 100) : 2147483647))
+                return ["hilite_status threshold '%s' is out of range",
+                    (grt ? '>' : gte ? '>=' : lt ? '<' : le ? '<=' : '=') + num + (percent ? '%' : '')];
+            /* C botl.c:3004-3023 compares the VALUE to GT_VALUE (4) and
+             * LT_VALUE (1) at -1 and 101; preserve that bug. */
+            if (percent && (num < -1 || num === -1 || (num === 0 && lt)
+                || (num === 100 && grt) || num === 101 || num > 101))
+                return ["hilite_status: invalid percentage value '%s'",
+                    (grt ? '>' : gte ? '>=' : lt ? '<' : le ? '<=' : '=') + num + '%'];
+        }
         if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) || BL_STRFLDS.has(f))
             return null;
         if (f === 'carrying-capacity' || f === 'hunger')
@@ -322,22 +341,32 @@ export function parse_paranoid_confirmation(existing, val, negated) {
     } else {
         bits = 0; /* new (non-augmenting) value: clear all old bits first */
     }
-    for (const rawToken of op.split(' ')) {
-        if (!rawToken)
-            continue;
-        let token = rawToken;
+    /* options.c:2956-3016 scans rather than splits: a '!' may be separated
+     * from its token by one space ("+attack ! pray" — options.c:2965-2966
+     * skips the space after '!' so "! pray" never looks up ""), and the
+     * "nofoo"=="!foo" prefix test (options.c:2968-2974) needs a third char
+     * that is neither 'n' (case-sensitive, to spare "none") nor the token's
+     * end.  A residue that comes up empty (a lone '+', or "no foo") is an
+     * unknown-parameter error in C, not a skip. */
+    let pos = 0;
+    for (;;) {
         let fieldNegated = lineNegated;
-        if (token.charAt(0) === '!') {
+        let tokStart = pos;
+        if (op.charAt(pos) === '!') {
             fieldNegated = true;
-            token = token.slice(1);
-        } else if (token.length >= 3 && token.charAt(0).toLowerCase() === 'n'
-                   && token.charAt(1).toLowerCase() === 'o'
-                   && token.charAt(2).toLowerCase() !== 'n') {
-            /* "nofoo" == "!foo" (options.c:2965-2972), unless it would be
-             * confused with "none". */
+            if (op.charAt(++pos) === ' ') /* skip '!', maybe whitespace */
+                ++pos;
+            tokStart = pos;
+        } else if (op.charAt(pos).toLowerCase() === 'n'
+                   && op.charAt(pos + 1).toLowerCase() === 'o'
+                   && op.charAt(pos + 2) !== 'n' && op.charAt(pos + 2) !== '') {
+            /* "nofoo" == "!foo" (options.c:2968-2974), unless it would be
+             * confused with "none" or run out of token. */
             fieldNegated = true;
-            token = token.slice(2);
+            tokStart = pos + 2;
         }
+        const sp = op.indexOf(' ', tokStart);
+        const token = sp === -1 ? op.slice(tokStart) : op.slice(tokStart, sp);
         let matched = null;
         for (const p of PARANOIA_OPTS) {
             if (_match_paranoia_optname(token, p.name, p.minLen)
@@ -359,6 +388,9 @@ export function parse_paranoid_confirmation(existing, val, negated) {
         } else {
             bits |= matched.mask;
         }
+        if (sp === -1)
+            break; /* no next token */
+        pos = sp + 1;
     }
     return bits;
 }
@@ -471,17 +503,27 @@ function* rc_fgets_lines(rc) {
 function* rc_logical_lines(rc) {
     const errors = () => (game._config_errors || []).filter(m => typeof m === 'string').length;
     const initialErrors = errors();
-    let chosen = null, current = null, buf = null;
+    const secure = config_error_secure();
+    let chosen = null, current = null, buf = null, line_num = 0;
+    try {
     for (let line of rc_fgets_lines(rc)) {
-        if (errors() > initialErrors) return; // config_error_nextline(), secure rc
+        if (secure && errors() > initialErrors) return; // config_error_nextline(), secure rc
         const more = line.endsWith('\\');
         if (more) line = line.slice(0, -1);
-        line = line.replace(/[ \t\r]+$/, '');
+        // C cfgfiles.c:1720-1728: ep stays on the removed backslash's NUL,
+        // so the whitespace loop does not run for a continued line.
+        else line = line.replace(/[ \t\r]+$/, '');
         if (game.config_error_data && !config_error_nextline(line)) return;
+        game._rc_errctx = { line_num: ++line_num, origline: line.slice(0, 1023) };
         const ep = line.replace(/^[ \t]+/, '');
         const ignore = !ep || ep[0] === '#';
         const old = buf !== null;
-        if (!ignore) buf = old ? buf + ' ' + ep : ep;
+        if (!ignore) {
+            buf = old ? buf + ' ' + ep : ep;
+            // C cfgfiles.c:1760-1762 bounds each merged line, before CHOOSE
+            // or the statement parser sees it (including OPTIONS' origbuf).
+            buf = buf.slice(0, CNF_INBUFSZ - 1);
+        }
         if (more || (ignore && !old)) continue;
         const b = buf;
         buf = null;
@@ -516,12 +558,17 @@ function* rc_logical_lines(rc) {
         }
         yield b;
     }
+    } finally {
+        game._rc_errctx = null;
+    }
 }
 
 /* C options.c:4025-4032 optfn_statushilites(do_set). */
 export function optfn_statushilites_set(iflags, op, negated = false) {
     const n = op ? (parseInt(op, 10) || 0) : 3;
     iflags.hilite_delta = negated ? 0 : n < 0 ? 1 : n;
+    // C options.c:4034-4035; startup parses into a separate iflags object.
+    if (iflags === game.iflags && !game.go.opt_from_file) reset_status_hilites();
 }
 
 // C options.c:1065-1143 optfn_autounlock(do_set). Commit only after the
@@ -594,6 +641,12 @@ function set_boulder_symbol(target, opts, op, negated, report) {
     (target.symbolOverrides ||= {}).S_boulder = sym;
     /* options.c:1213-1214 sets ov_rogue_syms too */
     target.symbolOverrides.S_boulder_rogue = sym;
+    if (target === game) {
+        const idx = SYM_OFFSETS.X + SYM_BOULDER;
+        game.go ||= {};
+        (game.go.ov_primary_syms ||= [])[idx] = sym.charCodeAt(0);
+        (game.go.ov_rogue_syms ||= [])[idx] = sym.charCodeAt(0);
+    }
     return true;
 }
 
@@ -656,7 +709,21 @@ export const BURDENTYPE = burdentype;
 
 // C options.c:884/1789/3519/3601 and parse_role_opt(:7905). Only the rc-file phase enters
 // parseNethackrc; saved values here preserve that phase's duplicate/filter
-// semantics. Configuration-file export and C string ownership are separate.
+// semantics. Keep the strings until freedynamicdata(), as C does.
+const roleoptNames = ['role', 'race', 'gender', 'alignment'];
+// C options.c:776-782: discard only the requested option/phase's string.
+function unsaveoptstr(optidx, ophase) {
+    const name = option_state().allopt[optidx]?.name;
+    const i = Math.max(0, roleoptNames.indexOf(name)); // opt2roleopt's default is role.
+    const vals = game.roleoptvals?.[i];
+    if (vals?.[ophase] != null) vals[ophase] = null;
+}
+// C options.c:787-794; global.h:592-600 has seven phases, including phase_not_set.
+export function freeroleoptvals() {
+    for (const name of roleoptNames)
+        for (let phase = 0; phase < 7; ++phase)
+            unsaveoptstr(option_state().allopt.findIndex(row => row.name === name), phase);
+}
 function optfn_role_facet(result, opts, op, negated, state, facet = 'align') {
     const fullname = facet === 'align' ? 'alignment' : facet;
     const mask = { role: 0, race: 0x0ff8, gender: 0xf000, align: 7 }[facet];
@@ -731,15 +798,58 @@ function optfn_role_facet(result, opts, op, negated, state, facet = 'align') {
     }
 }
 
+function wc_set_window_colors(op) {
+    const wcn = ['menu', 'message', 'status', 'text'];
+    const wcs = ['mnu', 'msg', 'sts', 'txt'];
+    game.wcolors_opt ||= [0, 0, 0, 0];
+    let s = mungspaces(op);
+    while (s.length) {
+        if (s[0] === ' ') s = s.slice(1);
+        if (!s.length) return false;
+        let sp = s.indexOf(' ');
+        if (sp < 0) return false; /* the window name is not followed by a fg */
+        const wn = s.slice(0, sp);
+        s = s.slice(sp + 1);
+        if (s[0] === ' ') s = s.slice(1);
+        if (!s.length) return false;
+        const slash = s.indexOf('/');
+        if (slash < 0) return false; /* no background separator */
+        s = s.slice(slash + 1); /* tfg = s[0..slash), the skipped foreground */
+        if (s[0] === ' ') s = s.slice(1);
+        if (!s.length) return false;
+        sp = s.indexOf(' ');
+        s = sp < 0 ? '' : s.slice(sp + 1); /* tbg = the skipped background */
+        const lower = wn.toLowerCase();
+        const j = wcn.findIndex((n, i) => n === lower || wcs[i] === lower);
+        if (j >= 0) {
+            if (game.wcolors_opt[j] !== 0)
+                config_error_add("windowcolors for %s windows specified multiple times", wcn[j]);
+            game.wcolors_opt[j]++;
+        } else {
+            config_error_add("windowcolors for unrecognized window type: %s", wn);
+        }
+    }
+    /* options_set_window_colors_flag = 1 (:10108) only feeds the colour
+     * display, which this port does not paint. */
+    return true;
+}
+
 export function parseNethackrc(rc) {
     // C startup zeros gr.rfilter before reading any options. Keep the filter
     // available to both role_init and the played character-selection menu.
     roleGlobals.rfilter.roles.fill(false);
     roleGlobals.rfilter.mask = 0;
     game.rc_rolefilter = roleGlobals.rfilter;
-    const alignmentState = { saved: null, duplicate: false };
-    const facetStates = { role: {}, race: {}, gender: {} };
+    const vals = (game.roleoptvals ||= Array.from({ length: 4 }, () => Array(7).fill(null)));
+    // C options.c:758-771: this parser handles rc_file_opt (phase 3).
+    const facetStates = Object.fromEntries(['role', 'race', 'gender', 'align'].map((facet, i) => [facet, {
+        get saved() { return vals[i][3]; },
+        set saved(value) { vals[i][3] = value; },
+        duplicate: false,
+    }]));
+    const alignmentState = facetStates.align;
     const compoundSeen = new Set();
+    const wcolorsSeen = [0, 0, 0, 0]; // C options.c:4901-4903 do_init.
     const compoundDuplicate = (name, alias = '') => {
         if (compoundSeen.has(name))
             config_error_add('compound option specified multiple times: %s%s', name, alias ? ` (via alias: ${alias})` : '');
@@ -752,7 +862,7 @@ export function parseNethackrc(rc) {
         gender: '',
         align: '',
         // C optlist.h:687-688, options.c:7164-7167: sortpack defaults to On.
-        flags: { autounlock: 2, sortpack: true, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076
+        flags: { autounlock: 2, sortpack: true, vanq_sortmode: 0, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076,3967
         // C options.c:7181 initoptions_init: tty message history defaults to single.
         iflags: { hilite_delta: 0, prevmsg_window: 's',
             // C options.c:7188-7189: default headings are inverse, no color.
@@ -765,7 +875,8 @@ export function parseNethackrc(rc) {
     const bool_dup_seen = new Set();
     const cfgerr_base = (game._config_errors || []).filter(m => typeof m === 'string').length;
     for (const rawLine of rc_logical_lines(rc)) {
-        if ((game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
+        if (config_error_secure()
+            && (game._config_errors || []).filter(m => typeof m === 'string').length > cfgerr_base)
             break;
         const line = config_statement(rawLine, result);
         if (!line || line.startsWith('#'))
@@ -889,6 +1000,7 @@ export function parseNethackrc(rc) {
         if (hlMatch && 'HILITE_STATUS'.startsWith(hlMatch[1].toUpperCase())) {
             const hlop = hlMatch[2].trim();
             const hlerr = hilite_status_config_error(hlop);
+            if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
             if (hlerr)
                 { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
             else if (hlop.includes('/') && status_fieldname(hlop.split('/')[0]) === 'condition')
@@ -959,9 +1071,19 @@ export function parseNethackrc(rc) {
                 continue;
             }
             // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
-            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'msg_window', 'menu_headings'].includes(r.name)
+            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'sortvanquished', 'msg_window', 'menu_headings'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
             if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
+            // C options.c:3971-3990,4912: no-value forms still run the handler.
+            if (menuname === 'sortvanquished' && !menuval) {
+                config_error_add("Missing parameter for '%s'", menuopts);
+                if (menunegated) result.flags.vanq_sortmode = 0;
+                continue;
+            }
+            if (menuname === 'windowcolors' && !menuval) {
+                config_error_add("Missing parameter for '%s'", menuopts);
+                continue;
+            }
             // C options.c:2559 optfn_name -> string_for_opt(:6665): a
             // missing value reports an error and leaves plname unchanged.
             if (menuname === 'name' && !menunegated && !menuval) {
@@ -1159,12 +1281,19 @@ export function parseNethackrc(rc) {
             }
             /* C options.c:688-695 parseoptions(): an unmatched S_ name falls to
              * parsesymbols(opts, PRIMARYSET) and is accepted when it names a symbol. */
-            if (menuname.startsWith('s_') && parsesymbols_ok(menuopts)) {
-                const pm = menuopts.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
-                if (pm) (result.symbolPairs ||= []).push([pm[1], pm[2]]);
-                continue;
+            if (menuname.startsWith('s_')) {
+                parsesymbols_cut = -1;
+                if (parsesymbols_ok(menuopts)) {
+                    const pm = menuopts.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
+                    if (pm) (result.symbolPairs ||= []).push([pm[1], pm[2]]);
+                    continue;
+                }
+                /* C symbols.c:817-828 NULs the separator and mungspaces()
+                 * the name even on failure; options.c:689 prints that buffer. */
+                if (parsesymbols_cut >= 0)
+                    menuopts = menuopts.slice(0, parsesymbols_cut).trim().replace(/\s+/g, ' ');
             }
-            if (menuname && !ALLOPT.some(r => r[0].toLowerCase().startsWith(menuname))) {
+            if (menuname && !ALLOPT.some(r => r[0].toLowerCase().startsWith(menuname)) && menuname !== 'permadeaf') {
                 config_error_add("Unknown option '%s'", menuopts);
                 continue;
             }
@@ -1175,6 +1304,55 @@ export function parseNethackrc(rc) {
                 && !menunegated && (menusep < 0 || !menuopts.slice(menusep + 1))) {
                 config_error_add("Missing parameter for '%s'", menuopts);
                 config_error_add("'%s' requires a value; defaulting to %d", 'versinfo', 1);
+                continue;
+            }
+            if (menuname.length >= 4 && 'versinfo'.startsWith(menuname)) {
+                // options.c:4504-4510: reject invalid bitmasks without storing them.
+                const val = parseInt(menuopts.slice(menusep + 1), 10) || 0;
+                if (menunegated)
+                    config_error_add('The versinfo option may not both have a value and be negated.');
+                else if (!val || (val & ~7) !== 0)
+                    config_error_add("'versinfo' must be one of 1, 2, 4, or the sum of two or all three of those");
+                else result.flags.versinfo = val;
+                continue;
+            }
+            if (menuname.length >= 4 && 'petattr'.startsWith(menuname) && (menunegated || !menuval)) {
+                config_error_add(menunegated ? 'The petattr option may not both have a value and be negated.'
+                    : "Missing parameter for '%s'", menuopts);
+                if (!menunegated) result.iflags.wc_hilite_pet = (result.iflags.wc2_petattr ?? 7) !== 0;
+                continue;
+            }
+            if (menuname.length >= 3 && 'pile_limit'.startsWith(menuname)) {
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                if ((menunegated && !op) || (!menunegated && op)) {
+                    result.flags.pile_limit = menunegated ? 0 : (parseInt(op, 10) || 0);
+                } else if (menunegated) {
+                    config_error_add('The pile_limit option may not both have a value and be negated.');
+                    continue; /* bad_negation -> optn_err, nothing stored */
+                } else {
+                    if (!op) config_error_add("Missing parameter for '%s'", menuopts);
+                    result.flags.pile_limit = 5;
+                }
+                if (result.flags.pile_limit < 0) result.flags.pile_limit = 5;
+                continue;
+            }
+            if (menuname.length >= 4 && 'map_mode'.startsWith(menuname)) {
+                compoundDuplicate('map_mode');
+                const mop = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                if (menunegated)
+                    config_error_add('The map_mode option may not both have a value and be negated.');
+                else if (mop) {
+                    const opl = mop.toLowerCase();
+                    const hit = opl === 'tiles'
+                        || ['ascii4x6', 'ascii6x8', 'ascii8x8', 'ascii16x8',
+                            'ascii7x12', 'ascii8x12', 'ascii16x12', 'ascii12x16',
+                            'ascii10x18', 'fit_to_screen', 'ascii_fit_to_screen',
+                            'tiles_fit_to_screen'].some(k => opl.startsWith(k));
+                    if (!hit)
+                        config_error_add("Unknown %s parameter '%s'", 'map_mode', mop);
+                } else {
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                }
                 continue;
             }
             if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)
@@ -1189,6 +1367,7 @@ export function parseNethackrc(rc) {
             if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)
                 && !menunegated && menusep >= 0) {
                 const hlerr = hilite_status_config_error(menuopts.slice(menusep + 1));
+                if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
                 if (hlerr) {
                     { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
                     continue;
@@ -1247,7 +1426,7 @@ export function parseNethackrc(rc) {
                         if (sk === 't') fl.end_top = sneg ? 0 : inum;
                         else if (sk === 'a') fl.end_around = sneg ? 0 : inum;
                         else if (sk === 'o') fl.end_own = !(sneg || !inum);
-                        else if (sk === 'n') fl.end_top = fl.end_around = 0;
+                        else if (sk === 'n') { fl.end_top = fl.end_around = 0; fl.end_own = false; }
                         if (!/^[taon]/i.test(op[0] || '')) { config_error_add("Unknown %s parameter '%s'", dupName, op); break; }
                         op = op.replace(/^[A-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
                     }
@@ -1297,8 +1476,10 @@ export function parseNethackrc(rc) {
                 /* C options.c:5315-5320 optfn_boolean(): no IDLECHECKPOINT
                  * build, so this plines before any window exists (raw_print,
                  * in file order with the config errors). */
-                if (boolRow[0] === 'idlecheckpoint')
+                if (boolRow[0] === 'idlecheckpoint') {
                     (game._config_errors ||= []).push({ pline: "There is no underlying support for 'idlecheckpoint' compiled in." });
+                    option_state().give_opt_msg = false; /* C options.c:5318 */
+                }
             }
             if (menuname.length >= 3 && 'number_pad'.startsWith(menuname)) {
                 if (number_pad_seen)
@@ -1526,15 +1707,21 @@ export function parseNethackrc(rc) {
                  * IBM sets (dat/symbols "Handling: IBM", "Color: Yes") are the only
                  * ones HAS_ROGUE_IBM_GRAPHICS (display.c:2582) accepts. */
                 else if (key === 'roguesymset') {
-                    /* options.c:3560 optfn_roguesymset: read_sym_file fails for a name
-                     * dat/symbols does not define. */
-                    const entry = SYMSET_LIST.find(e => e[0].toLowerCase() === val.toLowerCase());
-                    if (val && !entry) {
+                    /* options.c:3558-3563 optfn_roguesymset: read_sym_file(ROGUESET)
+                     * fails for a name dat/symbols does not define — unless it is
+                     * "Default symbols" (fuzzymatch " -_") or "default", which
+                     * files.c:2653-2657 clears and reports as success. */
+                    const entry = symset_in_file(val);
+                    const defsyms = fuzzymatch(String(val), 'Default symbols', ' -_', true)
+                        || String(val).toLowerCase() === 'default';
+                    if (val && !entry && !defsyms) {
                         config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
                         continue;
                     }
                     if (val && gs.symset && gs.symset[1]) {
-                        gs.symset[1].name = val;
+                        /* files.c:2657 clear_symsetentry(ROGUESET, TRUE) nulls the
+                         * accepted default-ish name instead of recording it. */
+                        gs.symset[1].name = (!entry && defsyms) ? null : val;
                         gs.symset[1].handling = entry ? entry[1] : 0;
                     }
                 }
@@ -1545,10 +1732,31 @@ export function parseNethackrc(rc) {
                         glyphrep_to_custom_map_entries(val.replace(/\s+/g, ' ').trim(), { value: 0 });
                 }
                 else if (key === 'symset') {
+                    /* C options.c:4181-4190 optfn_symset: the line names the set as
+                     * soon as it is parsed (so a later SYMBOLS=G_x:...color finds a
+                     * named symset, glyphs.c:to_custom_symset_entry_callback), then
+                     * read_sym_file() validates it.  A name dat/symbols does not
+                     * define — and that is not "Default symbols" (fuzzymatch " -_")
+                     * or "default" (files.c:2653-2657) — fails the load and is a
+                     * config error. */
+                    if (val
+                        && !SYMSET_LIST.some(e => e[0].toLowerCase() === val.toLowerCase())
+                        && !symset_defined_in_file(String(val))
+                        /* dat/symbols also defines MACgraphics (H_MAC); only the
+                         * do_symset() pick-list (SYMSET_LIST) hides it off-Mac. */
+                        /* dat/symbols:778 defines MACgraphics (Handling: MAC); only
+                         * the 'O' picker skips it (symbols.c:942), read_sym_file loads it. */
+                        && val.toLowerCase() !== 'macgraphics'
+                        && !symset_in_file(val)
+                        /* dat/symbols defines MACgraphics (Handling: MAC); only the
+                         * do_symset() pick-list hides it off-Mac (symbols.c:943). */
+                        && String(val).toLowerCase() !== 'macgraphics'
+                        && !fuzzymatch(String(val), 'Default symbols', ' -_', true)
+                        && String(val).toLowerCase() !== 'default') {
+                        config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
+                        continue;
+                    }
                     result.symset = val;
-                    /* C options.c optfn_symset names the set as soon as the line is
-                     * parsed, so a later SYMBOLS=G_x:...color finds a named symset
-                     * (glyphs.c:to_custom_symset_entry_callback) and does not nag. */
                     if (val && gs.symset && gs.symset[0]) gs.symset[0].name = val;
                 }
                 else if (key === 'fruit') {
@@ -1608,6 +1816,7 @@ export function parseNethackrc(rc) {
                         if (vi >= 0) result.flags.vanq_sortmode = vi;
                         else if ('01234567'.includes(val[0]))
                             result.flags.vanq_sortmode = val.charCodeAt(0) - 48;
+                        else config_error_add("Unknown sortvanquished parameter '%s'", val);
                     }
                 }
                 else if (key === 'pickup_burden') {
@@ -1641,18 +1850,15 @@ export function parseNethackrc(rc) {
                     if (!negated && itmp >= 2 && itmp <= 3)
                         result.iflags.wc2_statuslines = itmp;
                 }
-                /* C options.c:4905-4916 optfn_windowcolors(do_set) with
-                 * wc_set_window_colors (:10023-10112), parse/error arms only
-                 * (colours are not displayed by the replay terminal). */
                 else if (key === 'windowcolors') {
                     if (val) {
                         const wcn = ['menu', 'message', 'status', 'text'];
                         const wcs = ['mnu', 'msg', 'sts', 'txt'];
-                        const seen = [0, 0, 0, 0];
-                        let rest = val.replace(/ +/g, ' ').replace(/^ | $/g, '');
+                        const seen = wcolorsSeen;
+                        let rest = mungspaces(val);
                         let ok = true;
                         while (rest.length) {
-                            const m = /^(\S+) ([^/ ]*\/) ?(\S+) ?/.exec(rest);
+                            const m = /^(\S+) ([^/]*\/) ?(\S+) ?/.exec(rest);
                             if (!m) { ok = false; break; }
                             const wn = m[1].toLowerCase();
                             let j = wcn.indexOf(wn);
@@ -1668,6 +1874,10 @@ export function parseNethackrc(rc) {
                         if (!ok)
                             config_error_add("Could not set %s '%s'", 'windowcolors', val);
                     }
+                    if (!val)
+                        config_error_add("Missing parameter for '%s'", menuopts);
+                    else if (!wc_set_window_colors(val))
+                        config_error_add("Could not set %s '%s'", 'windowcolors', val);
                 }
                 /* C options.c:2396-2425 optfn_mouse_support(do_set), the rc arm:
                  * atoi(op) must be 0..2 (and a zero must be spelled '0'), else
@@ -1684,13 +1894,13 @@ export function parseNethackrc(rc) {
                             result.iflags.wc_mouse_support = mode;
                     }
                 }
-                else if (key === 'petattr') {
+                else if (key.length >= 4 && 'petattr'.startsWith(key)) {
                     const PETATTRS = { none: 0, normal: 0, bold: 1, dim: 2, italic: 3,
                                        underline: 4, uline: 4, blink: 5, inverse: 7, reverse: 7 };
                     const lv = (val || '').toLowerCase().replace(/[ _-]/g, ''); // C coloratt.c:374-382 fuzzymatch
                     const itmp = negated ? 0
                         : Object.hasOwn(PETATTRS, lv) ? PETATTRS[lv] : -1;
-                    if (itmp === -1) config_error_add("Unknown %s parameter '%s'", key, stripped);
+                    if (itmp === -1) config_error_add("Unknown %s parameter '%s'", 'petattr', stripped);
                     if (itmp !== -1) {
                         result.iflags.wc2_petattr = itmp;
                         result.iflags.wc_hilite_pet = itmp !== 0;
@@ -1709,7 +1919,8 @@ export function parseNethackrc(rc) {
             }
             else {
                 // Boolean flag
-                const lname = stripped.toLowerCase();
+                /* optlist.h:268 NHOPTB(deaf) alias "permadeaf" */
+                const lname = stripped.toLowerCase() === 'permadeaf' ? 'deaf' : stripped.toLowerCase();
                 const value = !negated;
                 if (lname.length >= 3 && ('female'.startsWith(lname) || 'male'.startsWith(lname))) {
                     const fem = 'female'.startsWith(lname) ? value : negated;
@@ -1919,9 +2130,9 @@ import { assign_graphics, load_primary_symset_from_file, clear_symsetentry } fro
 import { classifyTerrain } from './terrain-status.js'; // relocate-fns
 import { menu_heading_sgr, menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { vision_recalc } from './vision.js'; // relocate-fns
-import { ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT } from './const.js'; // relocate-fns
+import { ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT, SYM_BOULDER } from './const.js'; // relocate-fns
 import { reglyph_darkroom, reset_glyphmap, use_last_flush_snapshot } from './display.js';
-import { bot, check_gold_symbol } from './botl.js'; // relocate-fns
+import { bot, check_gold_symbol, reset_status_hilites } from './botl.js'; // relocate-fns
 import { reset_customcolors } from './glyphs.js'; // relocate-fns
 import { reassign } from './inventory_refresh.js'; // relocate-fns
 import { do_init, do_set, get_cnf_val, get_val, option_value, optn_err, optn_ok, optn_silenterr, set_option_value } from './options_runtime.js'; // relocate-fns
@@ -2008,10 +2219,9 @@ export async function option_help() {
     const datawin = [];
     const putstr = (s) => datawin.push(s);
     const next_opt = make_next_opt(putstr);
-    /* C ref: cmd.c:3687 precedent — the `wizard` global is flags.debug.
-     * iflags.debug_fuzzer is never set in this port (no fuzzer build). */
+    /* C ref: cmd.c:3687 precedent — the `wizard` global is flags.debug. */
     const wizard = !!(game.flags && game.flags.debug);
-    const debug_fuzzer = false;
+    const debug_fuzzer = !!game.iflags.debug_fuzzer;
     /* C: (allopt[i].setwhere == set_wizonly && !wizard)
      *  || (allopt[i].setwhere == set_wiznofuz && (!wizard || iflags.debug_fuzzer)) */
     const wizskip = (o) =>
@@ -2241,7 +2451,7 @@ export function fruitadd(str, replace_fruit, user_specified) {
     } else {
         /* C options.c:8258-8262: copynchars(altname, str, …); sanitize_name(altname);
          * flags.made_fruit = TRUE. */
-        altname = sanitize_name(name);
+        altname = sanitize_name(name.split(/[\0\n]/, 1)[0].slice(0, PL_FSIZ - 1));
         if (!g.flags) g.flags = {};
         g.flags.made_fruit = true;
     }
@@ -2323,13 +2533,30 @@ export function optfn_fruit_set(op) {
 
 
 function store_status_hilite(op) {
-    /* C botl.c:2610-2644: without a slash, fldnum stays zero and
-     * parse_status_hl1() succeeds without calling parse_status_hl2(). */
-    if (!op.includes('/')) return;
-    if (status_fieldname(op.split('/')[0]) === 'condition')
-        (game.status_condition_hilites ||= []).push(op);
-    else
-        push_status_field_hilite(op);
+    /* C botl.c:2605-2639 parse_status_hl1(): a space ends one rule and starts
+     * the next ("hitpoints/always/red&bold condition/blind/blue"), except in
+     * a title's second field; a token without a slash (fldnum 0) is
+     * dropped without calling parse_status_hl2(). */
+    let tok = '', fldnum = 0;
+    const flush = () => {
+        if (fldnum >= 1) {
+            if (status_fieldname(tok.split('/')[0]) === 'condition')
+                (game.status_condition_hilites ||= []).push(tok);
+            else
+                push_status_field_hilite(tok);
+        }
+        tok = ''; fldnum = 0;
+    };
+    for (const c of op) {
+        if (c === ' ') {
+            if (fldnum === 1 && tok.split('/')[0].toLowerCase() === 'title') { tok += c; continue; }
+            flush();
+        } else {
+            if (c === '/') fldnum++;
+            tok += c;
+        }
+    }
+    flush();
 }
 /* C botl.c:2846-2856 parse_status_hl2(): "characteristics" is parsed again
  * once per field from BL_STR through BL_CH, each with its own rule chain. */
@@ -2350,6 +2577,7 @@ function push_status_field_hilite(op) {
 export function optfn_hilite_status_set(op) {
     if (!op) return "Value is mandatory for hilite_status";
     const hlerr = hilite_status_config_error(op);
+    if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
     if (hlerr) return hlerr[0].replace('%s', hlerr[1]);
     /* botl.c:2593-2640 parse_status_hl1(): parse_status_hl2() (which stores a
      * rule) only runs for a token with at least one '/'; "1" stores nothing. */
@@ -2358,6 +2586,9 @@ export function optfn_hilite_status_set(op) {
         return null;
     }
     store_status_hilite(op);
+    /* botl.c:3099 status_hilite_add_threshold() runs no reset_status_hilites():
+     * the tty keeps each field's delivered colour until its value changes. */
+    game._statusRulesPending = true;
     if (!game.iflags.hilite_delta) game.iflags.hilite_delta = 3;
     return null;
 }
@@ -2579,9 +2810,21 @@ function entryLine(entry, acc) {
     const prefix = ' ' + label;           // 1-space margin + label
     const prefixLen = prefix.length;       // visible length (no escapes here)
     const tail = `[${valueStr(entry)}]` + (entry.suffix || '');
+    /* C options.c:8592-8619 adds the fmtstr str through windows.c:1795-1810
+     * add_menu(), which runs get_menu_coloring() on the RAW str (name, pad
+     * and value all part of the match); wintty.c:1449-1456 then paints the
+     * match from char 4 -- past the "a - " selector -- through end of str.
+     * menucolor_text() takes the RAW str as matchText; a paint over the pad
+     * blanks is unobservable (painted cells are glyphs only). */
     // C fmtstr_tab_doset_simple uses an unpadded name and a literal tab.
-    return game.iflags?.menu_tab_sep ? prefix + '\x1b[1C' + tail
-           : padTo(prefix, prefixLen, VALUE_COL, tail);
+    if (game.iflags?.menu_tab_sep)
+        return ' ' + label.slice(0, 4)
+            + menucolor_text(`${entry.name}\t${tail}`).replace(/\t/g, '\x1b[1C');
+    const gap = VALUE_COL - prefixLen;
+    const fill = gap <= 0 ? '' : gap > 4 ? `\x1b[${gap}C` : ' '.repeat(gap);
+    return ' ' + label.slice(0, 4)
+        + menucolor_text(entry.name + fill + tail,
+                         entry.name + ' '.repeat(Math.max(0, gap)) + tail);
 }
 
 /* C options.c:8566-8639 with gs.simple_options_help set: the flat menu line list
@@ -2591,7 +2834,12 @@ function entryLine(entry, acc) {
 function helpPages() {
     const items = [
         { line: ' ' + menu_heading_text('Options') }, { line: '' },
-        { line: HELP_NOTE }, { line: ' ? - hide help' },
+        /* add_menu_str note and the '?' row both go through windows.c add_menu()
+         * and are menucolored whole-str; the tty paints the '?' row from char 4
+         * (wintty.c:1449-1456), i.e. after the "? - " selector.  HELP_NOTE's
+         * leading space is our margin; C's buf starts at "Use". */
+        { line: menucolor_text(HELP_NOTE, HELP_NOTE.slice(1)) },
+        { line: ' ? - ' + menucolor_text('hide help') },
     ];
     for (const page of PAGES) {
         for (const entry of page) {
@@ -2602,7 +2850,10 @@ function helpPages() {
             items.push({ entry });
             /* C options.c:8635: help still uses the original allopt[i].descr. */
             const d = OPT_DESCR[entry.name === 'roguesymset' ? 'symset' : entry.name];
-            if (d) { items.push({ line: '\x1b[5C' + d }); items.push({ line: '' }); }
+            /* add_menu_str("    <descr>") -- menucolored on the RAW 4-space
+             * indent str (windows.c:1803); only the descr glyphs are painted. */
+            if (d) { items.push({ line: '\x1b[5C' + menucolor_text(d, `    ${d}`) });
+                     items.push({ line: '' }); }
         }
     }
     const pages = [];
@@ -2637,7 +2888,9 @@ function buildPageLines(pageIdx) {
     if (pageIdx === 0) {
         lines.push(' ' + menu_heading_text('Options'));
         lines.push('');
-        lines.push(' ? - show help');
+        /* C options.c:8580-8583 add_menu(..., '?', "show help") -- menucolored
+         * on the bare str, painted from char 4 (wintty.c:1449-1456). */
+        lines.push(' ? - ' + menucolor_text('show help'));
     }
     let letter = 'a'.charCodeAt(0);
     for (const entry of page) {
@@ -2775,10 +3028,10 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased
     }
     const pre = `\x1b[${col}C`;
     const lines = body.map((t, i) => (t === null ? ''
-        : i === 0 ? `${pre}${menu_heading_text(t)}` : `${pre}${t}`));
+        : i === 0 ? `${pre}${menu_heading_text(t)}` : `${pre}${menucolor_row(t)}`));
     if (!bgRows) {
         const winLines = body.map((t, i) => (t === null ? ''
-            : i === 0 ? menu_heading_text(t) : t));
+            : i === 0 ? menu_heading_text(t) : menucolor_row(t)));
         game._screen_output = build_window_screen(
             winLines, col, undefined, preserveStatus ? undefined : 0);
         set_cursor(col + '(end)'.length + 1, winLines.length - 1);
@@ -2796,7 +3049,7 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased
     game._pending_message = '';
 }
 
-async function numberPadSubmenu() {
+async function numberPadSubmenu(preserveStatus = false) {
     const rows = [
         menu_heading_text('Select number_pad mode:'), '',
         'a -  0 (off)', 'b -  1 (on)',
@@ -2807,7 +3060,15 @@ async function numberPadSubmenu() {
         '(end)',
     ];
     let idx = -1;
-    game._screen_output = build_window_screen(rows, 24, undefined, 0);
+    /* Same overlay contract as handler_msg_window/handler_autounlock: a corner
+     * submenu cl_end()s only from its own offx rightward, so the status rows
+     * keep whatever the last paint left there.  From doset_simple() the
+     * dismissed full-screen Options menu left them blank (bot() never ran);
+     * from the doset() pick walk the toggled-option plines just flushed the
+     * screen and both status rows are standing (options.c:8909-8959 ->
+     * handler_number_pad, options.c:5893-5915). */
+    game._screen_output = build_window_screen(rows, 24, undefined,
+        preserveStatus ? undefined : 0);
     while (idx < 0) {
         /* C wintty.c:1549-1552: an existing page only restores the footer
          * cursor. MENU_SEARCH's getlin erased the title; do not redraw it. */
@@ -2953,14 +3214,21 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
             mlist.push({ str: `${String.fromCharCode(acc++)} - ${c.sym}  ${c.name}`, sym: c.sym });
         mlist.push({ str: 'A - All classes of objects', sym: 'A' });
     }
-    let titleErased = false;
+    let titleErased = false, counting = false, count = 0, reset_count = true;
     while (true) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
         // No flush_screen (it would rebuild _screen_output from the map).
         renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased);
         const frame = game._screen_output;
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
+        if (ch >= '0' && ch <= '9' && (counting || !symSet.has(ch))) {
+            count = count * 10 + (key - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
         if (key === 27 /* ESC */) {
+            if (counting) continue;
             pickupMenuDismissCorner();
             return; // cancel: leave flag unchanged
         }
@@ -2972,11 +3240,11 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
             await menu_search_case('ANY', mlist, () => frame.split('\n'), (curr) => {
                 if (curr.sym === 'A') {
                     allPicked = !allPicked;
-                    marks.set('A', allPicked ? '+' : '-');
+                    marks.set('A', allPicked ? '\x01+' : '\x01-');
                     return;
                 }
                 if (cur.has(curr.sym)) cur.delete(curr.sym); else cur.add(curr.sym);
-                marks.set(curr.sym, cur.has(curr.sym) ? '+' : '-');
+                marks.set(curr.sym, cur.has(curr.sym) ? '\x01+' : '\x01-');
             });
             titleErased = true;   /* getline.c:213 blanked row 0; menu not repainted */
             continue;
@@ -2994,14 +3262,15 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
              * autopickup behaviour but a different menu and a different
              * "[all]" vs "[$\"…]" value on the parent Options page. */
             allPicked = !allPicked;
-            marks.set('A', allPicked ? '+' : '-');
+            marks.set('A', allPicked ? '\x01+' : '\x01-');
             continue;
         }
         if (ch === '.' || ch === '-' || ch === '@') {
             for (const c of classes) {
                 const selected = ch === '.' || (ch === '@' && !cur.has(c.sym));
+                if (selected === cur.has(c.sym)) continue;
                 if (selected) cur.add(c.sym); else cur.delete(c.sym);
-                marks.set(c.sym, selected ? '+' : '-');
+                marks.set(c.sym, selected ? '\x01+' : '\x01-');
             }
             continue;
         }
@@ -3009,13 +3278,13 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
             const sym = symByAcc.get(ch);
             if (cur.has(sym)) cur.delete(sym); else cur.add(sym);
             /* set_item_state, not the initial paint: always '+', never '*'. */
-            marks.set(sym, cur.has(sym) ? '+' : '-');
+            marks.set(sym, cur.has(sym) ? '\x01+' : '\x01-');
             continue;
         }
         if (symSet.has(ch)) {
             // typed the class symbol directly
             if (cur.has(ch)) cur.delete(ch); else cur.add(ch);
-            marks.set(ch, cur.has(ch) ? '+' : '-');
+            marks.set(ch, cur.has(ch) ? '\x01+' : '\x01-');
             continue;
         }
         // ignore any other key (menu stays displayed)
@@ -3163,6 +3432,7 @@ export async function doset_simple() {
             if (count !== 0) { counting = true; reset_count = false; }
             continue;
         }
+        if (key === 27 /* ESC */) g._ttyDismissMore = 1; /* getline.c:245-247 */
         if (key === 27 /* ESC */ && counting) continue;
         if (key === 27 /* ESC */) break;
         if (key === 10 || key === 13 /* Enter: exit */) break;
@@ -3377,6 +3647,17 @@ export async function doset_simple() {
             titleErased = false;
             continue;
         }
+        /* C ref: wintty.c:1519-1535,1553 + getline.c:230-257 xwaitforspace(resp)
+         * -- a key outside resp (this page's selectors, ' ', digits, ESC, \n,
+         * \r, mapped_menu_cmds, default_menu_cmds) rings the bell and is
+         * re-read INSIDE the wait, so process_menu_window's loop never turns
+         * over and a live count survives it ("5s" then ESC only stops the
+         * count).  A key inside resp that does nothing here still turns the
+         * loop over and drops the count. */
+        if (!(ch === '?' && pageIdx === 0)
+            && '<>^|,\\~.-@:'.indexOf(ch) < 0
+            && (g.mapped_menu_cmds || '').indexOf(ch) < 0)
+            reset_count = false;
         // any other key: ignore, menu stays displayed.
     }
     /* C options.c:8724-8731: the do-while runs reset_needed_visuals() after the
@@ -3483,7 +3764,11 @@ export async function handler_menu_objsyms(preserveStatus = false) {
     for (let i = 0; i < objsymvals.length; i++) {
         const [num, nam, descr] = objsymvals[i];
         const buf = nam.slice(0, 12).padEnd(12) + sep + descr.slice(0, 60);
-        m.add_menu(i + 1, String(i), ATR_NONE, buf, false, num === cur);
+        /* C options.c:5810-5813: ch = '0' + i, gch = *buf (the row's first
+         * char, i.e. objsymvals[i].nam[0]) — 'n'/'h'/'e'/'b'/'c'/'o' are the
+         * group accelerators, so 'h' picks "headers" through wintty.c:1739-1748
+         * group_accel and finishes this PICK_ONE menu. */
+        m.add_menu(i + 1, String(i), ATR_NONE, buf, false, num === cur, buf[0]);
     }
     m.end_menu('Set object symbols in menus to what?');
     const { count, picks } = await m.select_menu(PICK_ONE);
@@ -3614,16 +3899,23 @@ export async function handler_menu_colors(preserveStatus = false) {
             if (count > 0) {
                 for (let k = 0; k < count; k++) game.menu_colorings.splice(picks[k] - 1 - k, 1);
             }
-            if (count < 0) break;
+            if (count < 0) return optn_ok;
             continue;
         }
         game._status_blanked = !preserveStatus;
-        const mcbuf = mungspaces(await getlin('What new menucolor pattern?'));
+        const mcbuf = await getlin('What new menucolor pattern?');
         game._status_blanked = false;
         if (mcbuf[0] === '\x1b') break;
         if (!mcbuf) continue;
         let re;
-        try { re = regcomp(mcbuf); } catch (e) { continue; }
+        try { re = regcomp(mcbuf); } catch (e) {
+            game._statusBlankAfterDocrt = false;
+            game.disp.botlx = 1;
+            await flush_screen(1);
+            await force_more(`MENUCOLORS regex: ${regex_error_desc(e)}.`);
+            preserveStatus = true;
+            continue;
+        }
         const mcclr = await query_color(null, 8, true);
         if (mcclr === -1) continue;
         const mcattr = await query_attr_one(null, 0, true);
@@ -3634,14 +3926,18 @@ export async function handler_menu_colors(preserveStatus = false) {
     }
     /* C options.c:6417-6424 */
     if (game.iflags?.use_menu_color && game.iflags?.perm_invent) update_inventory();
+    return optn_ok;
 }
 
-/* C options.c:4067-4098 optfn_statuslines(do_set); returns the error text. */
+/* C options.c:4067-4098 optfn_statuslines(do_set); returns the error texts
+ * (config_error_add calls, in order), or null. */
 function optfn_statuslines_set(text) {
+    /* options.c:4080 string_for_opt(opts, FALSE): options.c:6675-6676 */
+    const errs = text ? [] : ["Missing parameter for 'statuslines:'."];
     const match = text.match(/^[\t\n\r\f\v ]*([+-]?\d+)/);
     const n = match ? Number(match[1]) : 0;
     if (n < 2 || n > 3)
-        return `'statuslines:${text}' is invalid; must be 2 or 3.`;
+        return [...errs, `'statuslines:${text}' is invalid; must be 2 or 3.`];
     game.iflags ||= {};
     game.iflags.wc2_statuslines = n;
     if (game.disp) game.disp.botl = 1;
@@ -3768,21 +4064,7 @@ export async function handler_petattr(preserveStatus = false) {
         /* C: iflags.hilite_pet = (wc2_petattr != ATR_NONE); the port's storage
          * is the wc_hilite_pet spelling (optlist.h:366, flag.h:508 alias). */
         iflags.wc_hilite_pet = tmp !== 0;
-        /* go.opt_initial is never set when handlers run (rc parsing calls
-         * optfn do_set, not do_handler), so the redraw is unconditional. */
         (game.go ||= {}).opt_need_redraw = true;
-        if (game.level) {
-            const attr = tmp === 7 ? 1 : tmp === 1 ? 2 : tmp === 4 ? 4 : 0;
-            for (let y = 0; y < 21; y++) {
-                for (let x = 1; x < 80; x++) {
-                    const loc = game.level.at(x, y);
-                    if (loc?.disp_mon_kind === 'pet') {
-                        loc.disp_attr = attr;
-                        if (loc.disp_flushed_cell) loc.disp_flushed_cell.attr = attr;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -3919,11 +4201,10 @@ function autounlockStr() {
     return unlocktypes.filter((_, i) => f & (1 << i)).map(t => t[0]).join(' + ');
 }
 
-/* C dat/symbols pick-list: [name, handling, description, restriction].  The
- * file is not vendored under js/dat (V5_DIVERGENT), so the symset headers
- * read_sym_file() collects with gs.symset[].name == NULL (symbols.c:497-552)
- * are tabled here.  MACgraphics (H_MAC) is skipped by do_symset() on non-Mac
- * builds; Rogue* sets carry the "rogue" restriction. */
+/* C dat/symbols headers: [name, handling, description, restriction].
+ * read_sym_file() accepts every named set; do_symset() separately filters
+ * MACgraphics (H_MAC) from the picker on non-Mac builds (symbols.c:943-945).
+ * Rogue* sets carry the "rogue" restriction. */
 const SYMSET_LIST = [
     ['plain', 0, "same as default symbols, except '+' for corner walls", ''],
     ['Blank', 0, 'completely blank symbols', ''],
@@ -3935,16 +4216,30 @@ const SYMSET_LIST = [
     ['RogueWindows', 1, '', 'rogue'],
     ['curses', 2, 'approximation of IBMgraphics using DECgraphics', 'primary'],
     ['DECgraphics', 2, 'special line-drawing characters used for walls', 'primary'],
+    ['MACgraphics', 4, '', ''],
+    ['MACgraphics', 4, '(pre-OSX: obsolete?)', 'primary'],
     ['Enhanced1', 5, 'Enhanced with Unicode glyphs and 24-bit color', 'primary'],
     ['Enhanced2', 5, 'Enhanced with more Unicode glyphs and 24-bit color', 'primary'],
+    ['MACgraphics', 4, '', ''],
     ['AmigaFont', 0, 'Amiga hack.font line-drawing and effect characters', ''],
 ];
+
+/* read_sym_file() finds every dat/symbols set, including MACgraphics (H_MAC),
+ * which only the do_symset() pick-list skips (symbols.c:942, no MAC_GRAPHICS_ENV). */
+function symset_in_file(name) {
+    const n = String(name).toLowerCase();
+    return SYMSET_LIST.find(e => e[0].toLowerCase() === n)
+        ?? (n === 'macgraphics' ? ['MACgraphics', 4, '', 'primary'] : undefined);
+}
 
 /* C symbols.c:909 do_symset(): both pickers share the restriction filter. */
 export async function handler_symset(preserveStatus = false, rogueflag = false) {
     const cur = gs.symset[rogueflag ? 1 : 0];
     const symset_name = cur.name;
-    const sets = SYMSET_LIST.filter((s) => s[3] !== (rogueflag ? 'primary' : 'rogue'));
+    /* symbols.c:942-945: H_MAC is valid in config, but the picker omits it
+     * when MAC_GRAPHICS_ENV is not compiled (as in the tty build). */
+    const sets = SYMSET_LIST.filter((s) => s[1] !== 4
+        && s[3] !== (rogueflag ? 'primary' : 'rogue'));
     let biggest = 'Default Symbols'.length;
     for (const s of sets) biggest = Math.max(biggest, s[0].length);
     let defindx = 0;
@@ -4224,7 +4519,7 @@ export async function doset() {
                     await handler_autopickup_exception(statusRefreshed);
                 } else if (ent.row.name === 'number_pad') {
                     await drainTopline();
-                    await numberPadSubmenu();
+                    await numberPadSubmenu(statusRefreshed);
                     statusRefreshed = true;
                 } else if (ent.row.name === 'autounlock') {
                     await drainTopline();
@@ -4341,7 +4636,14 @@ export async function doset() {
                     await handler_symset(statusRefreshed, ent.row.name === 'roguesymset');
                     g.go.opt_need_redraw = true;
                     needVisuals = true;
-                    statusRefreshed = false;
+                    /* handler_symset plines/bot()s nothing: symbols.c:909
+                     * do_symset only loads tables (switch_symbols ->
+                     * decgraphics_mode_callback = init_hilite, termcap.c:388;
+                     * tty_preference_update("symset") is tty-inert), so the
+                     * status rows keep whatever state they had — pass the
+                     * flag through like handler_menu_objsyms above.  The
+                     * pickers are short windows (rows 0..13); their dismissal
+                     * docorner never reaches rows 22/23. */
                 } else if (ent.row.hasHandler === false) {
                     /* C ref: options.c:8944-8953 — no handler, so getlin.  The
                      * pending mention's --More-- (opening the getlin window)
@@ -4381,12 +4683,12 @@ export async function doset() {
                         /* C options.c:1274-1290 / 1300-1316 optfn_crash_email/name(do_set):
                          * string_for_opt() then gc.crash_* = dupstr(op); an empty
                          * answer is optn_err and leaves it unchanged. */
-                        const op = mungspaces(abuf);
+                        const op = await string_for_opt(`${ent.row.name}:${mungspaces(abuf)}`, false);
                         if (op) game.gc[ent.row.name] = op;
                     } else if (abuf !== '\x1b' && ent.row.name === 'crash_urlmax') {
                         /* C options.c:1311-1331 optfn_crash_urlmax(do_set):
                          * atoi(op); below 75 is optn_err, else gc.crash_urlmax. */
-                        const op = mungspaces(abuf);
+                        const op = await string_for_opt(`crash_urlmax:${mungspaces(abuf)}`, false);
                         if (op) {
                             const temp = parseInt(op, 10) || 0;
                             if (temp >= 75) game.gc.crash_urlmax = temp;
@@ -4399,11 +4701,12 @@ export async function doset() {
                         if (op) {
                             const mode = parseInt(op, 10) || 0;
                             if (mode >= 0 && mode <= 2) g.iflags.menuinvertmode = mode;
+                            else await pline("Illegal menuinvertmode parameter '%s'.", op);
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'scores') {
                         /* C options.c:3676-3733 optfn_scores(do_set): "5t[op] 5a[round] o[wn]" */
                         // C :3679 rejects a missing value before changing flags.
-                        let op = await string_for_opt(`scores:${mungspaces(abuf)}`, false);
+                        let op = await string_for_opt(`scores:${abuf}`, false);
                         const fl = g.flags;
                         if (op) { fl.end_top = fl.end_around = 0; fl.end_own = false; }
                         scoresParse: while (op.length) {
@@ -4418,13 +4721,20 @@ export async function doset() {
                             case 'a': fl.end_around = neg ? 0 : inum; break;
                             case 'o': fl.end_own = !(neg || !inum); break;
                             case 'n': fl.end_top = fl.end_around = 0; fl.end_own = false; break;
+                            case '-':
+                                if (/^\d/.test(op[1] || '')) {
+                                    await pline('Values for scores:top and scores:around must not be negative.');
+                                    break scoresParse;
+                                }
+                                /* FALLTHROUGH */
                             default:
                                 /* C options.c:3727-3729 -> config_erradd (cfgfiles.c:1557-1563):
                                  * interactive 'O' prints the message via pline + period. */
                                 await pline("Unknown scores parameter '%s'.", op);
                                 break scoresParse;
                             }
-                            op = op.replace(/^[A-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
+                            /* C :3735 while (letter(*op)) -- hacklib.c:71 counts '@' as a letter */
+                            op = op.replace(/^[@-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'pile_limit') {
                         /* C options.c:3404-3428 optfn_pile_limit(do_set):
@@ -4484,13 +4794,12 @@ export async function doset() {
                             needVisuals = true;
                         }
                         if (message) {
-                            /* getline.c leaves bot() disabled: the --More-- is raised
-                             * with the status rows still blank. */
-                            g._pending_message = message;
-                            g._status_blanked = true;
-                            await drainTopline();
-                            g._status_blanked = false;
-                            statusRefreshed = false;
+                            /* cfgfiles.c:1557-1563 config_erradd: pline + wait_synch
+                             * per error.  pline's flush_screen repaints the status
+                             * rows; tty_wait_synch (wintty.c:3624) only displays
+                             * WIN_MAP — no --More-- unless a later pline needs the
+                             * topline (the "Missing parameter" + "invalid" pair). */
+                            for (const m of message) await pline('%s', m);
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'boulder') {
                         needVisuals = (await optfn_boulder_set(mungspaces(abuf))) || needVisuals;
@@ -4835,9 +5144,9 @@ function reset_customsymbols() {
 export async function reset_needed_visuals() {
     const go = game.go;
     /* C options.c: reset_glyphmap(gm_optionchange) before the redraw. */
+    if (go.opt_need_glyph_reset) reset_glyphmap(3); /* gm_optionchange */
     if (go.opt_reset_customcolors || go.opt_update_basic_palette || go.opt_reset_customsymbols || go.opt_need_redraw) {
         if (go.opt_update_basic_palette) { missing('change_palette'); go.opt_update_basic_palette = false; }
-        if (go.opt_need_glyph_reset) reset_glyphmap(3); /* gm_optionchange */
         if (go.opt_reset_customcolors) reset_customcolors();
         if (go.opt_reset_customsymbols) reset_customsymbols();
         if (go.opt_need_redraw) { check_gold_symbol(); reglyph_darkroom(); }
@@ -4861,7 +5170,8 @@ export async function reset_needed_visuals() {
         game._status_blanked = false;
         await docrt();
     }
-    if (go.opt_need_promptstyle) missing('adjust_menu_promptstyle');
+    // C windows.c:1769-1776; tty prompts read iflags.menu_headings directly.
+    if (go.opt_need_promptstyle) go.opt_need_promptstyle = false;
     if (game.disp.botl || game.disp.botlx) await bot();
     go.opt_need_redraw = go.opt_need_glyph_reset = false;
     go.opt_reset_customcolors = go.opt_reset_customsymbols = go.opt_update_basic_palette = false;
@@ -5182,6 +5492,7 @@ export async function ask_do_tutorial() {
             if (!explicit && keyCode === 27) {
                 /* C ref: wintty.c:1602-1613 — cancel, unless a count is live,
                  * in which case ESC only stops the count. */
+                g._ttyDismissMore = 1; /* getline.c:245-247 — dmore's xwaitforspace */
                 if (!counting) { n = -1; finished = true; }
                 continue;
             }

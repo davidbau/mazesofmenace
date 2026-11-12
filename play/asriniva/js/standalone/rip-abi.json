@@ -1,0 +1,55 @@
+{
+  "layout": {
+    "size": 8,
+    "pointerSize": 8,
+    "BUFSZ": 256,
+    "DUMPLOG": 0,
+    "NH320_DEDICATION": 0
+  },
+  "fields": {
+    "head": {
+      "type": "struct instance_globals_r",
+      "global": "gr",
+      "field": "rip",
+      "offset": 352,
+      "ctype": "char ** rip"
+    },
+    "name": {
+      "type": "struct instance_globals_saved_p",
+      "global": "svp",
+      "field": "plname",
+      "offset": 0,
+      "ctype": "char[32] plname"
+    },
+    "money": {
+      "type": "struct instance_globals_d",
+      "global": "gd",
+      "field": "done_money",
+      "offset": 8,
+      "ctype": "long done_money"
+    }
+  },
+  "formats": {
+    "%.*s": [
+      "int",
+      "pointer"
+    ],
+    "%ld Au": [
+      "long"
+    ],
+    "%4d": [
+      "int"
+    ]
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-rip-abi.py": "5e2cd638b33a95fe0bd97521b46a00c6c35d71fe7d9b37c12ba65ed921cf63b2",
+    "js/standalone/rip.js": "9febfab3474508c4eff04b8e851f6461d7e617dfab5ba341db74b7d5b878e431",
+    "js/ported/rip.js": "e3228a9aa4f7ca9e7f0e8532cc0695d1865cbe13b5f57bef397f59f4d4ccb2c7",
+    "js/ported/wasm-runtime.js": "73030532670eaaf8740f50d4556a89a62faf70cde679c19af22285d52286d6d4",
+    "nethack-c/wasm/tu-libraries/rip.js": "cdfcf3b0ad2fc5b46f4b63252cb10862dc17309e2a22a6adc8b54d817e547d19",
+    "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52"
+  }
+}

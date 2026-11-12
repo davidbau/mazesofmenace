@@ -118,7 +118,7 @@ export async function nhgetch() {
     /* A SUPPRESS_HISTORY line goes through remember_topl() (wintty.c:2294), which
      * returns early on an EMPTY gt.toplines (topl.c:176) — no maxcol reset. */
     if (game._pending_message && game._pending_message !== game._topl_history_recall
-        && !(_suppressHist && _wasToplEmpty))
+        && !_wasToplEmpty)
         game._prevmsg_next = null;
     if (game._pending_message && !_suppressHist) {
         let text = String(game._pending_message);
@@ -132,6 +132,10 @@ export async function nhgetch() {
                 game._msg_history = [];
             const h = game._msg_history;
             // C ref: topl.c:170-191 remember_topl — exact repeats are kept.
+            /* topl.c:176 remember_topl() returned early (gt.toplines was empty), so the
+             * ^P walk position was not reset; keep the walk valid across this push. */
+            if (_wasToplEmpty && game._prevmsg_next != null && game._prevmsg_history_length === h.length)
+                game._prevmsg_history_length++;
             h.push(text);
         }
     }

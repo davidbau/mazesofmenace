@@ -12,7 +12,7 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd_binds.js';
 import { set_configfile_for_session } from './cfgfiles.js';
-import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP } from './const.js';
+import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY } from './const.js';
 import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colors } from './glyphs.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
@@ -23,7 +23,7 @@ import { generateChargenFrames, chargenShallAnswer, playChargen } from './charge
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { nh_terminate } from './end.js';
-import { exit_nhwindows } from './rawterm.js';
+import { exit_nhwindows, raw_print } from './rawterm.js';
 import { worm_seg_at } from './worm.js';
 import { worms_rest_snapshot } from './worm.js';
 import { bubbles_reset_process_state } from './mkmaze.js';
@@ -192,6 +192,10 @@ export class NethackGame {
             montelecontrol_pos: null,
             ...opts.iflags,
         };
+        /* C options.c:7177 / wintty.c:889-893: initialize the unsigned history
+         * size, then clamp it when creating the message window. */
+        g.iflags.msg_history = Math.min(MAX_MSG_HISTORY,
+            Math.max(20, (g.iflags.msg_history ?? 20) >>> 0));
         if (opts.flags && opts.flags.color !== undefined)
             g.iflags.wc_color = !!opts.flags.color;
         g.iflags.use_color = g.iflags.wc_color;   /* flag.h:507 alias */
@@ -420,7 +424,13 @@ export class NethackGame {
             // C wintty.c:634-640 -> bail():344-350 exits the process;
             // returning here would let the caller enter moveloop without a hero.
             if (played.quit) {
-                exit_nhwindows(null);
+                /* tty_askname's bail("Giving up after 10 tries.\n"): settty()
+                 * puts() it, so the message row is followed by a blank one. */
+                exit_nhwindows(played.bail);
+                if (played.bail) {
+                    raw_print('');
+                    await g._preNhgetchHook?.();   // as for 'Until next time then...' above
+                }
                 await nh_terminate(0);
             }
             game._screen_output = '';

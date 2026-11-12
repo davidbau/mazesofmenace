@@ -5,7 +5,7 @@ import * as dog from '../ported/dog.js';
 import {callDog} from '../ported/dog-runtime.js';
 export function enablePets(environment,layouts){
  const {services,memory,ctypes,functions}=environment,L=layouts.dog;
- const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
+ const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;return(...args)=>(typeof value==='function'?value:environment.resolve(k))(...args.map(v=>v?.address??v));}});
  const fields={monster:['female','isgd','isminion','ispriest','isshk','iswiz','mavenge','mblinded','mcanmove','mconf','mflee','mfleetim','mfrozen','mleashed','mpeaceful','msleeping','mstun','mtrapped','wormno','mcansee'],object:['blessed','cursed','no_charge','oerodeproof','otrapped'],edog:['killed_by_u'],eshk:['dismiss_kops'],trap:['ttyp']},types={monster:'struct monst',object:'struct obj',edog:'struct edog',eshk:'struct eshk',trap:'struct trap'};
  function access(type,p,path,value){let at=environment.address(p),keys=path.split('.');for(const key of keys.slice(0,-1)){const e=ctypes.locate(type,at,key);at=e.at;type=e.field.record??e.field.ctype.replace(new RegExp(' '+key+'$'),'');}const key=keys.at(-1),f=ctypes.record(type).fields[key],scalar=f.ctype.replace(new RegExp(' '+key+'$'),'');return value===undefined?ctypes.getField(type,at,key,scalar):ctypes.setField(type,at,key,scalar,value);}
  Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,
@@ -14,7 +14,7 @@ export function enablePets(environment,layouts){
   classBit:(n,i)=>{if(i!==0)throw new Error('Unknown DOG class field');return access('struct objclass',environment.requireGlobal('objects')+n*ctypes.size('struct objclass'),'oc_material');},
   free:p=>services.free(environment.address(p)),alloc:n=>environment.alloc('alloc',n),memset:(p,v,n)=>services.memset(environment.address(p),v,n),
   assert:ok=>{if(!ok)environment.resolve('__assert_fail')(services.literal('ismnum(mndx)'),services.literal('dog.c'),111,services.literal('pick_familiar_pm'));},
-  iter_mons:()=>environment.resolve('iter_mons')(environment.functionPointer('set_mon_lastmove','vp')),
+  iter_mons:()=>environment.resolve('iter_mons')(environment.functionPointer('set_mon_lastmove','vp',p=>callDog(local,L,'set_mon_lastmove',p))),
  });
  for(const [kind,names]of Object.entries(fields)){
   local[kind+'Bit']=(p,i)=>{if(!names[i])throw new Error('Unknown DOG '+kind+' field');return access(types[kind],p,names[i]);};

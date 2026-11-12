@@ -739,6 +739,10 @@ function rogue_vision(next, rmin, rmax) {
     }
 }
 
+/* C vision.c:856 finishes notice_all_mons(TRUE) before returning. Keep the
+ * glyph updates synchronous, but return the notices' completion so an async
+ * redraw can wait for their pline flushes before clearing or overlaying them.
+ * notice_mon_off() suppresses these until newgame (allmain.c:771-844). */
 export function vision_recalc(control = 0) {
     const u = game.u;
     if (!u || !game.level)
@@ -809,9 +813,9 @@ export function vision_recalc(control = 0) {
             newsym(u.ux | 0, u.uy | 0);
         game._viz_rmin = next_rmin;
         game._viz_rmax = next_rmax;
-        if (game._notice_mon_ready) notice_all_mons(true); /* vision.c:856; notice_mon_off() until newgame (allmain.c:771-844) */
+        const notices = game._notice_mon_ready ? notice_all_mons(true) : undefined;
         _visionTrace('exit', control, u, game.viz_array);
-        return;
+        return notices;
     }
     if (!see_nothing) {
         // C ref: vision.c:608-623 — if the hero is in a pit, vision is reduced to
@@ -1019,8 +1023,11 @@ export function vision_recalc(control = 0) {
     }
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
-    if (game._notice_mon_ready) notice_all_mons(true); /* vision.c:856; notice_mon_off() until newgame (allmain.c:771-844) */
+    /* C vision.c:856 finishes notice_all_mons before returning.  Keep the
+     * geometry update synchronous, but let async callers wait for its plines. */
+    const notices = game._notice_mon_ready ? notice_all_mons(true) : undefined;
     _visionTrace('exit', control, u, game.viz_array);
+    return notices;
 }
 // C ref: vision.c:1602 clear_path(col1, row1, col2, row2)
 // m_cansee(mtmp, x2, y2) expands to clear_path(mtmp->mx, mtmp->my, x2, y2)

@@ -1,0 +1,71 @@
+{
+  "assertSites": [
+    {
+      "expression": "IndexOkT(rolenum, roles)",
+      "file": "role.c",
+      "line": 1543,
+      "function": "root_plselection_prompt"
+    },
+    {
+      "expression": "IndexOkT(r, roles)",
+      "file": "role.c",
+      "line": 1739,
+      "function": "role_selection_prolog"
+    },
+    {
+      "expression": "IndexOkT(c, races)",
+      "file": "role.c",
+      "line": 1758,
+      "function": "role_selection_prolog"
+    },
+    {
+      "expression": "which == RS_ROLE || r == ROLE_NONE || r == ROLE_RANDOM || IndexOkT(r, roles)",
+      "file": "role.c",
+      "line": 1777,
+      "function": "role_selection_prolog"
+    },
+    {
+      "expression": "which == RS_RACE || c == ROLE_NONE || c == ROLE_RANDOM || IndexOkT(c, races)",
+      "file": "role.c",
+      "line": 1794,
+      "function": "role_selection_prolog"
+    }
+  ],
+  "strlenSites": [
+    {
+      "function": "str2role",
+      "line": 756
+    },
+    {
+      "function": "str2race",
+      "line": 822
+    },
+    {
+      "function": "str2gend",
+      "line": 889
+    },
+    {
+      "function": "str2align",
+      "line": 952
+    },
+    {
+      "function": "build_plselection_prompt",
+      "line": 1601
+    },
+    {
+      "function": "plnamesuffix",
+      "line": 1680
+    }
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-role-transport-abi.py": "0ee5b05276a184c2d8ca49284113e1823608445278d72cf01451bef8a75f95e1",
+    "nethack-c/wasm/tu-role-support.inc": "bbb6092237ce86e71c57b63571834dfc0113903748b1aca1a521097d316e5377",
+    "nethack-c/wasm/tu-libraries/role.js": "cd06d06e4a175c21db6d476f2ce9ef4af38bf8d5248155e48eb85d6fcbebc5f8",
+    "js/ported/role.js": "1e697d0482e363779442e278d9c6ccbb16b98edd8bbf52075d242bc1a7455497",
+    "js/ported/role-runtime.js": "41ba84f7064ba86e78379d711515ed5f7f84bcba680f2f493908362444ab26a3"
+  },
+  "referenceHeaderSha256": {
+    ".cache/wasm64-build/tree/include/winprocs.h": "eebf4dbb4149d3a153a1dc815795baabe33a59d13362e00089d21ee9ce89983c",
+    ".cache/wasm64-build/tree/include/extern.h": "385f7478000f79ff137f2b6be533eef7b518b47a00b0d8c7e35ea52c877dec2e"
+  }
+}

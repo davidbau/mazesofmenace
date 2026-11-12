@@ -1,6 +1,6 @@
 // Monster construction on shared measured records; policies remain in ports.
 import * as makemon from '../ported/makemon.js';
-import {set_mon_data,mon_learns_traps,attacktype} from '../ported/mondata.js';
+import {set_mon_data,mon_learns_traps,attacktype,attacktype_fordmg} from '../ported/mondata.js';
 import {pm_to_cham,dealloc_monst,check_gear_next_turn} from '../ported/mon.js';
 import {place_monster} from '../ported/steed.js';
 import {christen_monst,new_mgivenname,free_mgivenname} from '../ported/do_name.js';
@@ -10,7 +10,7 @@ import {newepri,free_epri,mon_aligntyp} from '../ported/priest.js';
 import {newegd,free_egd} from '../ported/vault.js';
 import {neweshk,free_eshk} from '../ported/shknam.js';
 import {quest_info} from '../ported/questpgr.js';
-import {new_light_source,del_light_source,do_light_sources,save_light_sources,restore_light_sources,relink_light_sources,find_mid} from '../ported/light.js';
+import {enableLight} from './light.js';
 import {monst_to_any} from '../ported/hack.js';
 import {withCEnvironment} from '../ported/c-runtime.js';
 export function enableMonsterCreation(environment,layouts,selection){
@@ -100,11 +100,14 @@ export function enableMonsterCreation(environment,layouts,selection){
  env.cansee=(x,y)=>Number(Boolean(transport.read('Uint8',transport.read('ptr',env.gv.viz_array+y*8)+x)&L.IN_SIGHT));
  for(const[name,type]of Object.entries({mksobj:'struct obj',mkobj:'struct obj',mkobj_at:'struct obj',which_armor:'struct obj',findgold:'struct obj',oname:'struct obj',christen_monst:'struct monst',Is_special:'struct s_level',qt_montype:'struct permonst'}))env[name]=(...args)=>record(type,environment.resolve(name)(...args));
  env.zeromextra=record('struct mextra',environment.allocateGlobal('makemon.zeromextra',ctypes.size('struct mextra')));
- const names=['makemon','propagate','mbirth_limit','monhp_per_lvl','newmonhp','init_mextra','newmextra','adj_lev','golemhp','peace_minded','set_malign','newmcorpsenm','freemcorpsenm','mongets','m_initweap','m_initinv','m_initthrow','mkmonmoney'];
+ const names=['makemon','propagate','mbirth_limit','monhp_per_lvl','newmonhp','init_mextra','newmextra','adj_lev','golemhp','peace_minded','set_malign','newmcorpsenm','freemcorpsenm','mongets','m_initweap','m_initinv','m_initthrow','mkmonmoney','grow_up','create_critters','mkclass','mkclass_aligned'];
  environment.register('monster-creation',Object.fromEntries(names.map(n=>[n,makemon[n]])),env,{prepareArgs:(fn,args)=>{
+  if(fn==='mkclass'||fn==='mkclass_aligned')return [transport.char(args[0]),transport.int(args[1]),...(fn==='mkclass_aligned'?[transport.char(args[2])]:[])];
+  if(fn==='create_critters')return [transport.int(args[0]),record('struct permonst',args[1]),transport.char(args[2])];
   if(fn==='makemon'||fn==='adj_lev'||fn==='peace_minded')args[0]=record('struct permonst',args[0]);
   else if(fn==='init_mextra')args[0]=record('struct mextra',args[0]);
   else if(!['mbirth_limit','propagate','newmextra','golemhp'].includes(fn))args[0]=record('struct monst',args[0]);
+  if(fn==='grow_up')args[1]=record('struct monst',args[1]);
   if(fn==='makemon_rnd_goodpos')args[2]=record('coord',args[2]);
   return args;
  }});
@@ -114,7 +117,7 @@ export function enableMonsterCreation(environment,layouts,selection){
   shortRef:(o,k)=>Object.defineProperty({},'value',{get:()=>o[k],set:v=>{o[k]=transport.short(v);}}),
   attackBefore:(a,b)=>environment.address(a)<environment.address(b),attackNext:a=>views.advance(a,1),
  });
- environment.register('monster-data',{set_mon_data,mon_learns_traps,attacktype},biology,{prepareArgs:(fn,args)=>{args[0]=record(fn==='attacktype'?'struct permonst':'struct monst',args[0]);if(fn==='set_mon_data')args[1]=record('struct permonst',args[1]);return args;}});
+ environment.register('monster-data',{set_mon_data,mon_learns_traps,attacktype,attacktype_fordmg},biology,{prepareArgs:(fn,args)=>{args[0]=record(['attacktype','attacktype_fordmg'].includes(fn)?'struct permonst':'struct monst',args[0]);if(fn==='set_mon_data')args[1]=record('struct permonst',args[1]);return args;}});
  const mon=context(layouts.mon);Object.assign(mon,{
   ismnum:n=>Number(n>=L.LOW_PM&&n<L.NUMMONS),is_shapeshifter:env.is_shapeshifter,
   ptrOffset:(p,n)=>environment.address(p)+Number(n),copyStruct:env.copyRecord,monSize:ctypes.size('struct monst'),
@@ -128,31 +131,7 @@ export function enableMonsterCreation(environment,layouts,selection){
  Object.assign(extras,{epriSize:ctypes.size('struct epri'),egdSize:ctypes.size('struct egd'),eshkSize:ctypes.size('struct eshk'),epri:p=>record('struct epri',p),eshk:p=>record('struct eshk',p),ESHK:m=>m.mextra.eshk});
  environment.register('monster-companion-extra',{newedog,free_edog,newemin,free_emin,newepri,free_epri,newegd,free_egd,neweshk,free_eshk,mon_aligntyp},extras,{prepareArgs:(_fn,args)=>{args[0]=record('struct monst',args[0]);return args;}});
  environment.register('monster-quest-info',{quest_info},context(layouts.questpgr));
- const light=context(layouts.light);Object.assign(light,{
-  lightSource:p=>record('struct ls_t',p),lightSourceSize:ctypes.size('struct ls_t'),
-  intLocal:(value=0)=>{const at=transport.stackAlloc(ctypes.size('int'));ctypes.store('int',at,value);return Object.defineProperty({address:at},'value',{get:()=>ctypes.load('int',at),set:next=>ctypes.store('int',at,next)});},
-  uintLocal:(value=0)=>{const at=transport.stackAlloc(ctypes.size('unsigned int'));ctypes.store('unsigned int',at,value);return Object.defineProperty({address:at},'value',{get:()=>ctypes.load('unsigned int',at),set:next=>ctypes.store('unsigned int',at,next)});},
-  update_file:nhfp=>nhfp.mode&(layouts.light.COUNTING|layouts.light.WRITING),release_data:nhfp=>nhfp.mode&layouts.light.FREEING,
-  obj_is_local:obj=>environment.resolve('obj_is_local')(environment.address(obj)),
-  // LIGHT owns this source-local macro; TIMEOUT's private traversal is distinct.
-  mon_is_local:mon=>Number(mon.mx>0),
-  find_oid:id=>record('struct obj',environment.resolve('find_oid')(transport.uint(id))),
-  lookup_id_mapping:(id,ref)=>environment.resolve('lookup_id_mapping')(transport.uint(id),environment.address(ref)),
-  anyLocal:()=>record('union any',transport.stackAlloc(ctypes.size('union any'))),
-  copyAny:(to,from)=>env.copyRecord(to,from,ctypes.size('union any')),
-  assert:condition=>{if(!condition)throw new Error('Light owner assertion failed');},
-  coordRef:(o,k)=>{const p=environment.address(o)+ctypes.record('struct ls_t').fields[k].offset;return Object.defineProperty({address:p},'value',{get:()=>ctypes.load('short',p),set:v=>ctypes.store('short',p,v)});},
-  circle_ptr:r=>{const start=ctypes.load('short',environment.requireGlobal('vision.circle_start')+r*2);return views.array('short',environment.requireGlobal('vision.circle_data')+start*2,r+1);},
-  get_obj_location:(o,x,y,f)=>environment.resolve('get_obj_location')(environment.address(o),x.address,y.address,f),
-  get_mon_location:(m,x,y,f)=>environment.resolve('get_mon_location')(environment.address(m),x.address,y.address,f),
-
- });
- Object.defineProperty(light,'gy',{value:record('struct instance_globals_y',environment.requireGlobal('gy'))});
- const lightLink=at=>Object.defineProperty({address:at},'value',{get:()=>record('struct ls_t',ctypes.load('struct ls_t *',at)),set:value=>ctypes.store('struct ls_t *',at,value)});
- light.lightHeadRef=()=>lightLink(ctypes.locate('struct instance_globals_l',environment.requireGlobal('gl'),'light_base').at);
- light.lightNextRef=ls=>lightLink(environment.address(ls)+ctypes.record('struct ls_t').fields.next.offset);
- for(const direction of ['sfo','sfi'])for(const type of ['int','ls_t'])light[(direction==='sfo'?'Sfo_':'Sfi_')+type]=(file,data,tag)=>environment.resolve(direction+'_'+type)(environment.address(file),environment.address(data),typeof tag==='string'?services.literal(tag):environment.address(tag));
- environment.register('monster-lights',{new_light_source,del_light_source,do_light_sources,save_light_sources,restore_light_sources,relink_light_sources,find_mid},light,{prepareArgs:(fn,args)=>{if(fn==='do_light_sources'){const p=environment.address(args[0]);args[0]=new Proxy({address:p},{get:(o,k)=>/^\d+$/.test(String(k))?views.array('unsigned char',ctypes.load('void *',p+Number(k)*8),layouts.vision.COLNO):Reflect.get(o,k)});}else if(['save_light_sources','restore_light_sources'].includes(fn))args[0]=record('struct nh_file',args[0]);else if(['new_light_source','del_light_source'].includes(fn))args[fn==='new_light_source'?4:1]=record('union any',args[fn==='new_light_source'?4:1]);return args;}});
+ enableLight(environment,layouts);
  environment.register('monster-anything',{monst_to_any},Object.assign(Object.create(env),{sizes:{any:ctypes.size('union any')}}),{prepareArgs:(_fn,args)=>[record('struct monst',args[0])]});
  environment.exposeAddressPort('dungeon',['In_V_tower','In_mines']);
  if(!Object.hasOwn(environment.status(),'cmd-geometry'))environment.enableCommandGeometry();

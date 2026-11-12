@@ -157,7 +157,7 @@ import { is_were as is_were_real, new_were as new_were_real,
 import { you_were, you_unwere } from './were.js';
 /* The real canseemon — this file also declares a file-local
  * `canseemon() { return false; }` stub, which the older arms below still use. */
-import { canseemon as canseemon_mu, tp_sensemon as tp_sensemon_mu, sensemon as sensemon_mu } from './display.js';
+import { canseemon, canseemon as canseemon_mu, tp_sensemon as tp_sensemon_mu, sensemon as sensemon_mu } from './display.js';
 /* C vision.h:50-53 m_canseeu(m) — the real port lives in dochug.js. dochug.js
  * already imports mattacku etc. from this file, so this closes an existing
  * cycle; both sides only use the other's export inside a function body, never
@@ -231,7 +231,8 @@ import { failed_grab as failed_grab_mu } from './dogmove.js';
 import monMsizePack_mu from './makemon_msize.json' with { type: 'json' };
 const MONS_MSIZE_MU = monMsizePack_mu.msize;
 import { place_monster as place_monster_mu } from './steed.js';
-import { unstuck as unstuck_mu, sticks as sticks_mu } from './dog.js';
+import { unstuck as unstuck_mu } from './dog.js';
+import { sticks as sticks_mu } from './mondata.js';
 import { attacktype as attacktype_mu } from './mondata.js';
 import { dismount_steed as dismount_steed_mu, number_leashed as number_leashed_mu } from './cmd.js';
 import { DISMOUNT_ENGULFED } from './const.js';
@@ -309,7 +310,7 @@ import { weight as weight_mu } from './weight.js';
 import { calc_capacity } from './hack.js';
 import { obj_is_burning } from './light.js';
 import { is_flammable as is_flammable_mu } from './mklev.js';
-import { bhp_is_lava as bhp_is_lava_mu } from './cmd.js';
+import { bhp_is_lava as bhp_is_lava_mu, thit_is_unicorn as is_unicorn } from './cmd.js';
 import { rnl } from './rng.js';
 import { BLINDED, STUNNED, FUMBLING, A_INT, A_DEX, A_CON } from './const.js';
 /* prop ids for the youprop.h macro block above (const.js:2310-2361). */
@@ -350,7 +351,8 @@ function m_seenres(mon, mask) {
  * Stub helpers — side-effects not yet ported; no RNG inside these stubs.
  * ---------------------------------------------------------------------------
  */
-function canseemon(mon) { return canseemon_mu(mon); }
+/* C mhitu.c: canseemon(mon) — imported directly from display.js (also aliased
+ * as `canseemon_mu`). */
 function couldsee(x, y) { return couldsee_mu(x, y); }
 function m_canseeu(mon) { return m_canseeu_dh(mon); }
 // C ref: allmain.c:755 stop_occupation() — interrupt the current occupation:
@@ -3807,6 +3809,9 @@ const distmin = distmin_mu;
 const poisoned = poisoned_u;
 const mondied = mondied_dm;
 const monkilled = monkilled_mu;
+const eyecount = eyecount_mu;
+const ammo_and_launcher = ammo_and_launcher_mu;
+const obj_sheds_light = obj_is_burning;
 
 export async function spitmm(mtmp, mattk, mtarg) {
     /* C mthrowu.c:1020-1032 — a cancelled spitter just rattles.  RNG-free. */
@@ -3986,7 +3991,7 @@ export async function thrwmu(mtmp) {
     if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^thrwmu_enter[id=${mtmp.m_id|0} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0}]`);
     const u = game.u || (game.u = {});
-    /* C mthrowu.c:1188-1192 — "Rearranged beginning so monsters can use
+    /* C mthrowu.c:1183-1189 — "Rearranged beginning so monsters can use
      * polearms not in a line". */
     if ((mtmp.weapon_check | 0) === MHU_NEED_WEAPON || !MON_WEP(mtmp)) {
         mtmp.weapon_check = MHU_NEED_RANGED_WEAPON;
@@ -3995,7 +4000,7 @@ export async function thrwmu(mtmp) {
             return;
     }
 
-    /* C mthrowu.c:1195: otmp = select_rwep(mtmp); if (!otmp) return; */
+    /* C mthrowu.c:1192-1194: otmp = select_rwep(mtmp); if (!otmp) return; */
     const otmp = await select_rwep(mtmp);
     if (!otmp)
         return;
@@ -4168,7 +4173,7 @@ export async function monshoot(mtmp, otmp, mwep) {
             onm = (await singular(otmp, xname));
             onm = obj_is_pname(otmp) ? the(onm) : an(onm);
         }
-        gm.m_shot.s = ammo_and_launcher_mu(otmp, mwep) ? true : false;
+        gm.m_shot.s = ammo_and_launcher(otmp, mwep) ? true : false;
         /* C:288 Strcpy(trgbuf, mtarg ? some_mon_nam(mtarg) : "") — the thrwmu
          * path always has mtarg == 0, and the monster-vs-monster caller
          * (thrwmm) is not wired to monshoot in this port. */
@@ -4951,7 +4956,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         await pline(`There's something sticky all over your ${mbodypart_mu(_hero_monst_mu(), FACE_MU)}.`);
                 } else if ((singleobj.otyp | 0) === BLINDING_VENOM_MU) {
                     let eyes = mbodypart_mu(_hero_monst_mu(), EYE_MU);
-                    if (eyecount_mu(_hero_monst_mu()) !== 1)
+                    if (eyecount(_hero_monst_mu()) !== 1)
                         eyes = makeplural(eyes);
                     /* venom in the eyes */
                     if (!Blind(game))
@@ -5192,7 +5197,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                     await pline((weight_mu(otmp) > 9) ? 'Splash!' : 'Plop!');
                 }
             }
-            if (obj_is_burning(otmp)) game.vision_full_recalc = 1;
+            if (obj_sheds_light(otmp)) game.vision_full_recalc = 1;
         }
     }
     /* C:959-960 */
@@ -5214,9 +5219,7 @@ const POTHIT_OTHER_THROW_MU = 3;
 /* C mthrowu.c:506-529: unicorns catch gems, but reject glass after identifying it. */
 async function ucatchgem(gem, mon) {
     const ptr = _hero_permonst_mu();
-    // mondata.h:149 is_unicorn = S_UNICORN && likes_gems (M2_JEWELS).
-    if (gem.otyp <= LAST_GLASS_GEM && ptr && (ptr.mlet | 0) === 21
-        && ((ptr.mflags2 >>> 0) & 0x20000000)) {
+    if (gem.otyp <= LAST_GLASS_GEM && is_unicorn(ptr)) {
         const gem_xname = await xname(gem);
         const mon_s_name = s_suffix(mon_nam_uh(mon));
         if (gem.otyp > LAST_REAL_GEM) {
@@ -5581,7 +5584,7 @@ export async function expels_gu(mtmp, mndx, message) {
     /* C mon.c:3478-3480 — still inside unstuck(): `gv.vision_full_recalc = 1;
      * docrt();`.  The whole level was cls()'d by swallowed(1), and this is the
      * repaint that puts it back; it runs BEFORE expels' mnexto, as in C. */
-    docrt_flags_mu(0);
+    await docrt_flags_mu(0);
     /* C mon.c:3462-3465: holder/engulfer cooldown roll follows docrt() */
     const hold = dmgtype(mtmp.data, AD_STCK_)
         || attacktype_mu(mtmp.data, AT_ENGL_)
@@ -5734,6 +5737,8 @@ async function gulpmu(mtmp, mattk) {
         /* C: u.uswldtim always set > 1 */
         u.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
         swallowed_mu(1); /* update the map display, shows hero swallowed */
+        /* display.c:2060-2072: stomach descriptions finish before damage. */
+        if (game._mentionMapPending) await game._mentionMapPending;
         /* C mhitu.c:1396-1401 — a non-flaming engulfer snuffs every lit light. */
         if (!flaming_gu(mndx)) {
             let nextobj;
@@ -5761,12 +5766,14 @@ async function gulpmu(mtmp, mattk) {
             u.uswldtim = 0;
             tmp = 0;
         } else if ((u.uswldtim | 0) === 0) {
-            pline(`${Monnam(mtmp)} totally digests you!`);
+            await pline(`${Monnam(mtmp)} totally digests you!`);
             tmp = u.uhp | 0;
             if (_half_phys_prop_mu())
                 tmp *= 2; /* C mhitu.c:1429: sorry */
         } else {
-            pline(`${Monnam(mtmp)}${(u.uswldtim | 0) === 2 ? ' thoroughly'
+            /* C mhitu.c:1431: finish the pline (including pending
+             * show_glyph announcements) before applying digestion damage. */
+            await pline(`${Monnam(mtmp)}${(u.uswldtim | 0) === 2 ? ' thoroughly'
                    : (u.uswldtim | 0) === 1 ? ' utterly' : ''} digests you!`);
             /* mhitu.c:1432 — a nonfatal digestion exercises Strength. */
             exercise(A_STR_AD, false);

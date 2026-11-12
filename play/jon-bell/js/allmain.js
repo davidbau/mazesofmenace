@@ -186,11 +186,11 @@ import { which_armor } from './worn.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
-import { get_configfile } from './cfgfiles.js';
+import { get_configfile, config_error_secure } from './cfgfiles.js';
 import { dobjsfree, clear_splitobjs } from './mklev.js';
 import { see_nearby_monsters } from './mon.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
-import { topl_force_break_now, force_more_pages, report_raw_print_waits } from './display.js';
+import { topl_force_break_now, force_more_pages, raw_print_wait_one } from './display.js';
 import { friday_13th, getnow, phase_of_the_moon } from './calendar.js'; // relocate-fns
 import { pooleffects_breathless } from './cmd.js'; // relocate-fns
 import { A_INT, A_WIS, ENERGY_REGENERATION, EXT_ENCUMBER, HALF_PHDAM, HVY_ENCUMBER, MAXULEV, MOD_ENCUMBER, NO_MM_FLAGS, REGENERATION, SLT_ENCUMBER, UNENCUMBERED, Upolyd } from './const.js'; // relocate-fns
@@ -217,30 +217,69 @@ const NEW_MOON_PHASE = 0; /* const.js NEW_MOON */
 
 // C ref: cfgfiles.c config_error_done() at the end of initoptions()
 export async function report_config_errors() {
-    await report_raw_print_waits();
     const g = game;
     /* C cfgfiles.c:1544-1590 config_erradd() / :1596-1620 config_error_done():
      * the rc errors collected while parsing are reported before any window
      * exists, so pline() takes its raw_print() arm — one "Error: <msg>." row
      * per error (secure rc, so no origline / "Line N:" prefix), then
      * pline("\n%d error%s in %s.\n") (two blank-line rows around the count) —
-     * and wait_synch() blocks for a key. */
+     * and wait_synch() blocks for a key.
+     * config_erradd() plines and the raw_printf+wait_synch sites (cmd.c:3289
+     * parseautocomplete, cfgfiles.c:429 get_uchars) leave rows on the SAME
+     * raw stream in rc FILE order — e.g. df-x1bb6f035f9's BIND block (4 rows)
+     * precedes its AUTOCOMPLETE message — so the {rawwait} entries filed on
+     * _config_errors are emitted inside the walk, not drained before it. */
     const cfgerrs = g._config_errors;
     const nerrs = cfgerrs ? cfgerrs.filter(m => typeof m === 'string').length : 0;
-    if (nerrs) {
+    const hasRawWait = cfgerrs ? cfgerrs.some(m => m && m.rawwait !== undefined) : false;
+    if (nerrs || hasRawWait) {
         const n = nerrs;
-        for (const msg of cfgerrs) {
-            if (typeof msg !== 'string') { raw_print(msg.pline); continue; }
-            raw_print(`Error: ${msg}${'.!?'.includes(msg.slice(-1)) ? '' : '.'}`);
+        const secure = config_error_secure();
+        let shown_line = -1;
+        for (let i = 0; i < cfgerrs.length; i++) {
+            const msg = cfgerrs[i];
+            if (typeof msg !== 'string') {
+                if (msg.rawwait !== undefined)
+                    await raw_print_wait_one(msg.rawwait);
+                else
+                    raw_print(msg.pline);
+                continue;
+            }
+            const punct = '.!?'.includes(msg.slice(-1)) ? '' : '.';
+            if (secure) {
+                raw_print(`Error: ${msg}${punct}`);
+                continue;
+            }
+            /* non-secure frame: the offending line once per line, then
+             * " * Line N: msg." (cfgfiles.c:1578-1588) */
+            const ctx = g._config_error_ctx?.[i] ?? { line_num: 0, origline: '' };
+            if (ctx.line_num !== shown_line) {
+                raw_print('');
+                raw_print(ctx.origline);
+                shown_line = ctx.line_num;
+            }
+            raw_print(` * ${ctx.line_num > 0 ? `Line ${ctx.line_num}: ` : ''}${msg}${punct}`);
+        }
+        if (!nerrs) {
+            /* raw_printf+wait_synch sites only (cmd.c:3289): config_error_done()
+             * has no count to report, and each row already waited for a key. */
+            g._config_errors = [];
+            return;
         }
         raw_print('');
         raw_print(`${n} error${n === 1 ? '' : 's'} in ${get_configfile()}.`);
         raw_print('');
         g._config_errors = [];
+        g._config_error_ctx = [];
         /* The recorded tty cursor never leaves where the raw_print() report
          * parked it: every step of a game that opened with a config-error
-         * report records that one position. */
-        g._rawCursorFrozen = [g.nhDisplay?.cursorCol ?? 0, Math.max(g.nhDisplay?.cursorRow ?? 0, cfgerrs.length + 3), 1]; // raw rows scroll past the 24-row screen
+         * report records that one position.  nomux_get_cursor() reports the
+         * raw row counter itself (patch 006 termcap.c), so freeze the rows
+         * this report actually emitted — every entry's row above plus each
+         * line-change's blank+origline pair (cfgfiles.c:1578-1581) plus the
+         * blank/count/blank tail — which rawterm's row counter has been
+         * tallying, not a guess at it (cfgerrs.length + 3 lost the pairs). */
+        g._rawCursorFrozen = [0, g._rawterm ? g._rawterm.row : 0, 1];
         for (;;) {
             const c = await nhgetch();
             if (c === 10 || c === 13 || c === undefined || c < 0)
@@ -347,13 +386,19 @@ export async function newgame() {
      * purges dead monsters (e.g. a statue trap's mk_trap_statue leftover on
      * Dlvl 1) so a no-time level teleport into the endgame cannot trip
      * dmonsfree's pending-count impossible(). */
-    if ((g.iflags.purge_monsters | 0))
+    g.program_state.saving++;
+    if ((g.flags.ins_chkpt ?? true) && (g.iflags.purge_monsters | 0))
         await dmonsfree();
-    engr_reset_text_pointers(); /* allmain.c:838 save_currentstate() -> save_engravings */
+    if (g.flags.ins_chkpt ?? true) engr_reset_text_pointers(); /* allmain.c:838 checkpoint */
     /* allmain.c:838 save_currentstate() -> savelev(WRITING), save.c:487-488:
      *     if (iflags.purge_monsters) dmonsfree(); */
-    if ((g.iflags?.purge_monsters | 0))
-        await dmonsfree();
+    if ((g.flags.ins_chkpt ?? true) && g.objs_deleted) dobjsfree();
+    if (g.flags.ins_chkpt ?? true) { // save.c:493-494, startup checkpoint
+        const lev = g.dungeons[g.u.uz.dnum].ledger_start + g.u.uz.dlevel;
+        g.level_info ||= {};
+        (g.level_info[lev] ||= { flags: 0 }).flags |= PROPS.VISITED;
+    }
+    g.program_state.saving--;
     // Hero state (u.uhp/uhpmax/uen/uenmax/uac/uhunger/ulevel/acurr/amax/ualign)
     // is now set by u_init_misc(), called via fastforward_pre_mklev() →
     // consumeUInitMiscHeroInitRng() → u_init_misc() (src/u_init.ts).  That ran
@@ -644,7 +689,7 @@ export async function newgame() {
             && preambleMsgs.length > 0 && !(g._ff_preamble_rng_deferred && (g.a11y?.glyph_updates || g.flags?.mention_map || g.u?.uroleplay?.reroll));
         /* mention_map: dolookaround (allmain.c:844-846) runs before moveloop_preamble's
          * moon/Friday plines (allmain.c:57-68), so they follow it (emitted below). */
-        const preambleAfterLook = FF_FAITHFUL && !chargenIncomplete && !tutorialWillRun
+        const preambleAfterLook = FF_FAITHFUL && !chargenIncomplete
             && preambleMsgs.length > 0 && !noticeBeforePreamble && g._ff_preamble_rng_deferred
             && (g.a11y?.glyph_updates || g.flags?.mention_map);
         g._preambleAfterLook = preambleAfterLook ? preambleMsgs : null;
@@ -684,7 +729,15 @@ export async function newgame() {
                         skipStartupMessage = true;
                 }
                 startupPaged = false;
-                if (!skipStartupMessage) {
+                if (skipStartupMessage) {
+                    /* topl.c:280-282: with skip set update_topl still runs
+                     * remember_topl() on the ESC'd line and copies this message
+                     * into gt.toplines (never drawn), so ^P recalls it. */
+                    const h = (g._msg_history ||= []);
+                    const prev = startupMsgs[mi - 1];
+                    if (prev && h[h.length - 1] !== prev) h.push(prev);
+                    h.push(startupMsgs[mi]);
+                } else {
                     g._pending_message = startupMsgs[mi];
                     /* A message of CO (80) or more columns wraps onto row 1 and
                      * redotoplin() raises its OWN more() (topl.c:131-137: cury != 0),
@@ -743,13 +796,13 @@ export async function newgame() {
          * the starting pet is announced ("You see your kitten.") right after
          * the welcome line.  The moveloop_preamble messages follow it in C. */
         g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
-        if (!chargenIncomplete) {
+        if (!chargenIncomplete && !(g.a11y?.glyph_updates || g.flags?.mention_map)) {
             if (noticeBeforePreamble) {
                 if (g.flags?.spot_monsters) (g.a11y ||= {}).mon_notices = true;
                 await notice_all_mons(true);
                 for (const m of preambleMsgs) await pline(m);
             } else
-                notice_all_mons(true);
+                await notice_all_mons(true);
         }
     }
     /* C ref: allmain.c:844-846 newgame() — if (a11y.glyph_updates) dolookaround();
@@ -757,7 +810,17 @@ export async function newgame() {
      * (allmain.c:72,79), which fastforward_post_mklev deferred for this case. */
     if (g._ff_preamble_rng_deferred) {
         if (g.a11y?.glyph_updates || g.flags?.mention_map) await dolookaround_cmd();
-        if (g._preambleAfterLook) for (const m of g._preambleAfterLook) await pline(m);
+        if (g._preambleAfterLook) for (const m of g._preambleAfterLook) {
+            await pline(m);
+            await flush_screen(1, false); /* topl.c:274, before preamble RNG */
+        }
+        /* C allmain.c:844-846,57-68: lookaround and the preamble precede
+         * the tutorial flush.  Its standing line is now their last message,
+         * rather than the welcome saved before dolookaround ran. */
+        if (deferredLastStartupMsg !== null && (g.a11y?.glyph_updates || g.flags?.mention_map)) {
+            deferredLastStartupMsg = g._pending_message || '';
+            startupEscStop = !!g._topl_win_stop;
+        }
         g._preambleAfterLook = null;
         g._ff_preamble_rng_deferred = false;
         rnd(9000);
@@ -771,7 +834,7 @@ export async function newgame() {
         g.a11y = g.a11y || {};
         if (g.flags?.spot_monsters) g.a11y.mon_notices = true;
         g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
-        notice_all_mons(true);
+        await notice_all_mons(true);
     }
     /* A welcome that already paged itself (>= 80 columns) leaves no standing
      * line, but pickup(1)'s describe_decor pline is still flushed by the
@@ -779,6 +842,28 @@ export async function newgame() {
      * arm), i.e. paged with --More-- before the menu is drawn. */
     const tutorialFlushesDecor = deferredLastStartupMsg === null && !chargenIncomplete
         && !g.tutorial_set_in_config;
+    /* C allmain.c:846-847 notice_all_mons() ran before this point: each "You see
+     * ..." pline went through update_topl against the standing startup line
+     * (join if it fits, else more()).  They were accumulated onto the pending
+     * text with the welcome; peel them off so they take part in the fit test
+     * below instead of being dropped with the pending clear. */
+    let noticeParts = [];
+    if (deferredLastStartupMsg !== null && g.a11y?.mon_notices) {
+        const pending = g._pending_message || '';
+        /* allmain.c:843-848: notices follow welcome even when redotoplin()
+         * already paged that wrapped welcome (topl.c:139-140).  The tutorial
+         * still flushes their standing text (wintty.c:1873-1878). */
+        if (!deferredLastStartupMsg || pending.startsWith(deferredLastStartupMsg + '  ')) {
+            let start = deferredLastStartupMsg ? deferredLastStartupMsg.length + 2 : 0;
+            /* Use pline boundaries: accessiblemsg prefixes the notice with
+             * coordinates (pline.c:162-190), and names can contain spaces. */
+            const joins = (_topl_joins_snapshot(pending) || []).filter(off => off >= start);
+            for (const end of [...joins, pending.length]) {
+                if (end > start) noticeParts.push(pending.slice(start, end));
+                start = end + 2;
+            }
+        }
+    }
     if (deferredLastStartupMsg !== null || tutorialFlushesDecor)
         g._pending_message = '';
     /* topl.c:257/:262 — ESC at a startup --More-- left WIN_STOP live, so
@@ -802,7 +887,7 @@ export async function newgame() {
          * more() pages the standing line.  pickup(1)'s plines are accumulated
          * "  "-joined in _pending_message, so re-split them at the "You read:"
          * boundary (read_engr_at's second pline, engrave.c:332/396). */
-        const decorParts = decorMsg ? decorMsg.split(/  (?=You (?:read|feel the words):)/) : [];
+        const decorParts = [...noticeParts, ...(decorMsg ? decorMsg.split(/  (?=You (?:read|feel the words):)/) : [])];
         let standing = deferredLastStartupMsg;
         for (const part of decorParts) {
             if (standing === '') {
@@ -810,7 +895,13 @@ export async function newgame() {
             } else if (part.length + standing.length + 3 < 80 - 8 && !part.startsWith('You die')) {
                 standing += '  ' + part;
             } else {
-                await topl_more_page(standing, g.u?.uac ?? 0);
+                /* topl.c:232 more(): ESC sets WIN_STOP, so update_topl's skip
+                 * test (topl.c:257) swallows this pline and any that follow. */
+                if (await topl_more_page(standing, g.u?.uac ?? 0) === 27) {
+                    g._topl_win_stop = true;
+                    standing = '';
+                    break;
+                }
                 standing = part;
             }
         }
@@ -1063,7 +1154,7 @@ export function faithful_input_redraw() {
         }
         /* C allmain.c:465-466 */
         if (g.vision_full_recalc)
-            vision_recalc(0);
+            return vision_recalc(0);
     }
 }
 
@@ -3249,7 +3340,7 @@ async function moveloop_core_faithful() {
         g._ff_input_tail_done = false;
     else if (!g._pendingDeath) {
         g._ff_input_tail_done = false;
-        faithful_input_redraw();
+        await faithful_input_redraw();
     }
     if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=after_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
@@ -3314,7 +3405,7 @@ async function moveloop_core_faithful() {
         // moveloop_core call, which runs AFTER that call's world block.  See the
         const redoVision = !(g.context && g.context.mv) || Blind();
         find_ac();
-        faithful_input_redraw();
+        await faithful_input_redraw();
         if (redoVision && g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
@@ -3359,7 +3450,11 @@ async function moveloop_core_faithful() {
     // prompt's more() then shows the map as the last pline flushed it.
     const cannedCmd = !g.occupation && (g.multi | 0) === 0
         && !!cmdq_peek(g.gi?.in_doagain ? CQ_REPEAT : CQ_CANNED);
-    await flush_screen(1, (g.occupation !== eatfood || (g.multi | 0) < 0) && !cannedCmd);
+    // C allmain.c:516-530 repeats without parse()'s map flush (cmd.c:5104).
+    // A getobj more() in that command still sees the last physical paint.
+    const repeatCmd = !g.occupation && (g.multi | 0) > 0;
+    await flush_screen(1, (g.occupation !== eatfood || (g.multi | 0) < 0)
+                       && !cannedCmd && !repeatCmd);
     const preMoveUz = g.u && g.u.uz
         ? { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel }
         : null;
@@ -3554,6 +3649,7 @@ async function moveloop_core_faithful() {
     // before the next invocation advances monsters or an occupation.
     if (g.vision_full_recalc)
         vision_recalc(0);
+    run_tport_botl(); // C allmain.c:547-555
     // ===================== go.occupation DRIVER — DIG (faithful) =====================
     // C allmain.c:558: end-turn callbacks follow command and vision effects,
     // before the next invocation's occupation/world block.
@@ -3597,7 +3693,7 @@ async function moveloop_core_faithful() {
             while (g.occupation === dig && digGuard++ < 4096) {
                 // C allmain.c:453-470 precedes each occupation callback,
                 // including the first horizontal dig before its world block.
-                faithful_input_redraw();
+                await faithful_input_redraw();
                 const r = await dig();
                 if (r === 0) g.occupation = null;
                 // C allmain.c:504-507 — the occupation branch runs
@@ -3638,7 +3734,7 @@ async function moveloop_core_faithful() {
             // C allmain.c:453-480 precedes the occupation callback, including
             // the hallucination redraw before consuming pending vision changes.
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (!(g.context && g.context.mv) || Blind()) {
                 if (g.vision_full_recalc) vision_recalc(0);
             }
@@ -3700,7 +3796,7 @@ async function moveloop_core_faithful() {
         if (!_digHorizontal && !digInterrupted) {
             await faithful_moveloop_turn();
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
         }
         // This invocation's input tail has already run, including on interrupt.
         g._ff_input_tail_done = true;
@@ -3785,7 +3881,7 @@ async function moveloop_core_faithful() {
              * stream draws (see_monsters/see_objects/see_traps) after EVERY study
              * turn, not once after the whole study (cf. the engrave driver). */
             find_ac(); // C allmain.c:453, every moveloop_core invocation
-            faithful_input_redraw();
+            await faithful_input_redraw();
             // C allmain.c:471-472: update visibility before the occupation
             // callback and monster_nearby(), including after moving bubbles.
             if (g.vision_full_recalc) {
@@ -3874,14 +3970,20 @@ async function moveloop_core_faithful() {
              * vision_full_recalc) is still lighting its old squares while
              * see_objects() newsym()s them.  Run the tail here, ahead of the
              * recalc, and keep the next invocation from repeating it. */
-            faithful_input_redraw();
+            await faithful_input_redraw();
             g._ff_input_tail_done = true;
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
             }
             await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
-            await flush_screen(1);
+            // C allmain.c:473-480 flushes through curs_on_u() only when
+            // status is pending; moveloop_status_paint() already does that.
+            // A following prompt's more() must retain that last physical map.
+            // C allmain.c:473-509: only the guarded curs_on_u() above flushes
+            // the map before rhack. Drain deferred pages without painting later
+            // monster moves over the standing study message (tty/topl.c:390).
+            await flush_screen(1, false);
         }
         /* An interrupted study falls through to rhack() inside the SAME C
          * moveloop_core call (allmain.c:494-496), so the once-per-input
@@ -3933,7 +4035,7 @@ async function moveloop_core_faithful() {
              * redraw tail (see_monsters/see_objects/see_traps when hallucinating)
              * runs after the world block and before the occupation callback; each
              * is a run of DISPLAY-stream draws (the engrave driver does the same). */
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -4010,7 +4112,7 @@ async function moveloop_core_faithful() {
              * invocation; for a continuing one, the tail after the previous
              * world block.  Hallucinating, each is a run of DISPLAY-stream
              * draws, so omitting it shifts every later hallucinated name. */
-            if (engrGuard === 1) faithful_input_redraw();
+            if (engrGuard === 1) await faithful_input_redraw();
             const r = await engrave();
             if (r === 0) g.occupation = null;
             // C allmain.c:485-509 checks interruption after the callback,
@@ -4025,7 +4127,7 @@ async function moveloop_core_faithful() {
              * vision_recalc(0); a recalc newsym() ahead of the hallucinatory
              * redraw spends a DISPLAY-rng draw out of order.  The occupation
              * return (allmain.c:507) never reaches the post-rhack recalc. */
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -4091,7 +4193,7 @@ async function moveloop_core_faithful() {
              * first paint was the success pline's flush_screen->bot() a turn
              * later (T:66). */
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (!(g.context && g.context.mv) || Blind()) {
                 if (g.vision_full_recalc) vision_recalc(0);
             }
@@ -4133,7 +4235,7 @@ async function moveloop_core_faithful() {
          * vision_recalc(), which can itself draw hallucinated objects.
          * The next JS invocation resumes at rhack, past this tail. */
         /* an interrupted pick already ran this moveloop_core's tail in the loop */
-        if (!pickInterrupted) faithful_input_redraw();
+        if (!pickInterrupted) await faithful_input_redraw();
         g._ff_input_tail_done = true;
         if (g.vision_full_recalc) {
             vision_recalc(0);
@@ -4172,7 +4274,7 @@ async function moveloop_core_faithful() {
             // C allmain.c:453-470 — each occupation iteration is its own
             // moveloop_core, so the once-per-input hallucination redraw runs
             // (display-RNG draws) before the callback at :493.
-            faithful_input_redraw();
+            await faithful_input_redraw();
             // C allmain.c:493 — (*go.occupation)() == set_trap(); 0 ends it.
             const r = await setTrapFn();
             g.context.move = 1; // the callback's return is not an ECMD_* code
@@ -4232,7 +4334,7 @@ async function moveloop_core_faithful() {
             // C allmain.c:453-483: every invocation redraws and paints status
             // after the world block, even when that block stopped the occupation.
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
             await moveloop_status_paint();
             g.context.move = 1;
             // C allmain.c:493-556 — the head world block may itself have interrupted
@@ -4302,7 +4404,7 @@ async function moveloop_core_faithful() {
         if (!forceInterrupted) {
             await faithful_moveloop_turn();
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
         }
         // This invocation resumes at rhack; its redraw tail has already run.
         g._ff_input_tail_done = true;
@@ -4506,7 +4608,7 @@ async function moveloop_core_faithful() {
             // C allmain.c:453-474 — the once-per-invocation tail: find_ac() (the
             // ONLY place the AC of a just-removed piece lands), vision, botl.
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -4718,7 +4820,7 @@ async function moveloop_core_faithful() {
              * context.move skipped the actual-time-passed world block. */
             const redoVision = !(g.context && g.context.mv) || Blind();
             find_ac();
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (redoVision && g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -4853,7 +4955,7 @@ async function moveloop_core_faithful() {
         if (g._ff_input_tail_done)
             g._ff_input_tail_done = false;
         else
-            faithful_input_redraw();
+            await faithful_input_redraw();
         if (redoVision && g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
@@ -4911,7 +5013,7 @@ async function moveloop_core_faithful() {
          * turn would be repainted twice. */
         if ((g.multi | 0) < 0) {
             const redoVision = !(g.context && g.context.mv) || Blind();
-            faithful_input_redraw();
+            await faithful_input_redraw();
             if (redoVision && g.vision_full_recalc) {
                 vision_recalc(0);
                 g.vision_full_recalc = 0;
@@ -4976,7 +5078,7 @@ async function moveloop_core_faithful() {
         g.context.move = 0;
     if (countdownGuard && (g.multi | 0) >= 0 && g.occupation === timed_occupation) {
         find_ac();
-        faithful_input_redraw();
+        await faithful_input_redraw();
         g._ff_input_tail_done = true;
         g.context.move = 1;
         const r = await timed_occupation();
@@ -5069,7 +5171,7 @@ async function moveloop_core_faithful() {
          * see_monsters/see_objects/see_traps, which under Hallucination draws
          * on the DISPLAY rng for every monster) runs after EVERY world block,
          * not only after the run's last iteration. */
-        if ((g.multi | 0) !== 0) faithful_input_redraw();
+        if ((g.multi | 0) !== 0) await faithful_input_redraw();
         // When the world block stopped the repeat, its input redraw is
         // deferred to the next invocation above. Defer this recalc with it:
         // C allmain.c:454-471 redraws hallucinations BEFORE updating vision.
@@ -5399,7 +5501,8 @@ export async function moveloop_core() {
         throw over;
     }
     try {
-        return await moveloop_core_impl();
+        if (await moveloop_core_impl()) return await moveloop_core_faithful();
+        return;
     } catch (e) {
         if (e?.nhPanic) return await panic(e.message);
         if (game?.program_state?.exiting
@@ -5485,7 +5588,7 @@ async function moveloop_core_impl() {
     // g.moves-indexed calibrated step table.  Everything OUTSIDE the per-turn
     // block (vision, bot, flush_screen, rhack, occupation/multi loops) is shared
     // with the calibrated path; only the head world-block emission differs.
-    if (FF_FAITHFUL) return await moveloop_core_faithful();
+    if (FF_FAITHFUL) return true;
     // Fast-forward per-step RNG (monster movement, regen, sounds, hunger).
     // C ref: allmain.c:243 — the monster-movement + new-turn block (mcalcmove,
     // makemon, dosounds, gethungry, exerchk) only runs when svc.context.move
@@ -5977,7 +6080,13 @@ export function u_calc_moveamt(wtcap = UNENCUMBERED) {
     const _riding = !!(u.usteed && (u.umoved | 0));
     const umnum = u.umonnum;
     /* A replay path that never reached u_init (u.umonnum unset) keeps the old
-     * NORMAL_SPEED reading rather than indexing mons[0]. */
+     * NORMAL_SPEED reading rather than indexing mons[0].
+     * youmonst.data and u.umonnum can DISAGREE: leaving the tutorial,
+     * nhl_gamestate (nhlua.c:1752) memcpy's the saved `u` back — u.umonnum
+     * included — but never touches gy.youmonst.data, so a hero who polymorphed
+     * inside the tutorial keeps the new form's speed (df-xbef9564f22: xorn,
+     * mmove 9, after restoring a human u.umonnum).  Read the form, as C does. */
+    const ydata = g.youmonst && g.youmonst.data;
     let moveamt;
     if (_riding) {
         /* C allmain.c:120-121 — "your speed doesn't augment steed's speed":
@@ -5985,7 +6094,8 @@ export function u_calc_moveamt(wtcap = UNENCUMBERED) {
          * no rn2(3) either. */
         moveamt = mcalcmove(u.usteed, true);
     } else {
-    moveamt = (umnum == null)
+    moveamt = (ydata && ydata.mmove != null) ? (ydata.mmove | 0)
+        : (umnum == null)
         ? NORMAL_SPEED
         : (((umnum | 0) >= 0 && (umnum | 0) < MONS.length)
             ? ((MONS[umnum | 0][9] ?? 0) | 0)

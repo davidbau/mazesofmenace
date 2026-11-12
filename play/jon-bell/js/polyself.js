@@ -16,6 +16,8 @@ import { There, pline_The } from './pline.js';
 //   rn2(10)              gender dochange   polyself.c:792
 //   rn1(500,500)         poly timeout      polyself.c:813   (u.mtimedone)
 //   d(mlvl,8)            new-form maxHP    polyself.c:868
+import { FROMRACE, WARN_OF_MON, NO_KILLER_PREFIX } from './const.js';
+import { VIA_WINDOWPORT } from './display.js';
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { game } from './gstate.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
@@ -34,7 +36,7 @@ import { mnexto } from './teleport.js';
 import { rndexp } from './exper.js';
 import { newhp, newpw } from './exper.js';
 import {
-    find_ac, donning, encumber_msg, takeoff_slot_noac, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
+    find_ac, donning, encumber_msg, Shield_off, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
 import { useup, could_twoweap, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment } from './cmd.js';
 import { instapetrify } from './trap.js';
@@ -62,7 +64,7 @@ import {
     TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, MAXULEV, FROMFORM,
     PROT_FROM_SHAPE_CHANGERS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES,
     SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, DRAIN_RES, ANTIMAGIC,
-    SICK_RES, SICK, STONED, SLIMED, STUNNED, HALLUC_RES, SEE_INVIS, TELEPAT, INFRAVISION, INVIS,
+    SICK_RES, SICK, SICK_ALL, STONED, SLIMED, STUNNED, HALLUC_RES, SEE_INVIS, TELEPAT, INFRAVISION, INVIS,
     TELEPORT, TELEPORT_CONTROL, POLYMORPH_CONTROL, LEVITATION, FLYING, SWIMMING, PASSES_WALLS,
     REGENERATION, REFLECTING, BLINDED, BLND_RES, STRANGLED,
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, In_endgame, KILLED_BY_AN,
@@ -71,7 +73,7 @@ import {
     I_SPECIAL, G_GENOD, ismnum,
     UNCHANGING as UNCHANGING_PS,
     MAGICAL_BREATHING,
-    IS_FOUNTAIN,
+    IS_FOUNTAIN, STAIRS, BZ_OFS_AD, BZ_U_BREATH,
 } from './const.js';
 import { getdir, b_trapped } from './lock.js';
 import { ubuzz, ubreatheu, make_blinded, set_HBlinded, bury_objs } from './zap.js';
@@ -83,7 +85,7 @@ import { yn_function } from './cmd.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { dmgtype } from './dogmove.js';
 import { float_vs_flight, update_inventory, hliquid, Some_Monnam } from './mhitm.js';
-import { breakarm, num_horns, defended, poly_when_stoned, can_be_strangled } from './mondata.js';
+import { breakarm, num_horns, defended, poly_when_stoned, can_be_strangled, attacktype } from './mondata.js';
 import { is_pool } from './look.js';
 /* Shared trap timer/status bookkeeping (C trap.c:set_utrap). */
 import { unpunish } from './read.js';
@@ -121,7 +123,10 @@ import { set_mimic_blocking } from './sit.js';
 import { sticks } from './dog.js';
 import { were_summon, were_beastie } from './were.js';
 import {
-    PM_BABY_GRAY_DRAGON, PM_GHOUL, PM_STALKER, PM_BLACK_LIGHT, PM_SILVER_DRAGON,
+    PM_BABY_GRAY_DRAGON, PM_GHOUL, PM_STALKER, PM_BLACK_LIGHT,
+    PM_GRAY_DRAGON, PM_GOLD_DRAGON, PM_SILVER_DRAGON, PM_RED_DRAGON,
+    PM_WHITE_DRAGON, PM_ORANGE_DRAGON, PM_BLACK_DRAGON, PM_BLUE_DRAGON,
+    PM_GREEN_DRAGON, PM_YELLOW_DRAGON,
     PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_DEATH, PM_VAMPIRE,
     PM_VLAD_THE_IMPALER, PM_BAT, PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_PURPLE_WORM,
     PM_BABY_PURPLE_WORM, PM_SHRIEKER, PM_AIR_ELEMENTAL, PM_WINGED_GARGOYLE,
@@ -133,8 +138,9 @@ import {
     PM_WERERAT, PM_WEREJACKAL, PM_WEREWOLF, PM_WOLF,
     PM_HUMAN_WERERAT, PM_HUMAN_WEREJACKAL, PM_HUMAN_WEREWOLF,
     PM_STONE_GIANT, PM_HILL_GIANT, PM_MEDUSA,
+    PM_OWLBEAR, PM_INCUBUS, PM_MUMAK, PM_MASTODON, PM_SHARK,
+    PM_JELLYFISH, PM_KRAKEN, PM_RAVEN, PM_KI_RIN, PM_ROTHE,
 } from './pm.generated.js';
-import { mbodypart as mbodypart_real } from './cmd.js'; // relocate-fns
 import { youhiding } from './insight.js'; // relocate-fns
 export { M1_CLING, M1_FLY, M_AP_FURNITURE_local, M_AP_NOTHING_local, M_AP_OBJECT_local, S_EEL, _hides_under, an }; // relocate-fns
 
@@ -161,8 +167,9 @@ const SPECIAL_PM = /** @type {number} */ (monsPack.special_pm);
 const S_GOLEM = 55;
 const S_DRAGON = 30;
 const PM_GIANT = 169;
-const PM_GRAY_DRAGON = 143;   /* first adult dragon (mons[] "gray dragon"); the
-                              * S_DRAGON adult-HP boundary in polymon (>= this idx) */
+/* PM_GRAY_DRAGON (143, imported from pm.generated.js) is the first adult dragon
+ * (mons[] "gray dragon"); the S_DRAGON adult-HP boundary in polymon (>= this idx). */
+const M2_HUMAN = 0x00000008, M2_ELF = 0x00000010; // monflag.h:126-127
 const M2_NOPOLY = 0x00000001;
 const M2_MALE = 0x00010000;              /* monflag.h M2_MALE */
 const M2_FEMALE = 0x00020000;            /* monflag.h M2_FEMALE */
@@ -222,7 +229,7 @@ function your_race(ptr) { return (ptr.mflags2 & selfmask()) !== 0; }
 // R = character_race(form): NULL for ordinary (non-player-race) monsters, in
 // which case strongmonst→ (live giant ? STR19(19) : STR18(100)), else 18.
 export function uasmon_maxStr(pmidx, ptr) {
-    // is_orc/elf/dwarf/gnome remap mndx, then R = character_race(mndx).
+    // Remap mndx by race, then look up its STR cap with character_race_attrmax_str().
     // This is keyed on the FORM (mndx), never on the hero's own race — a
     // non-orc hero polymorphed into an orc mummy still gets the orc cap.
     let mndx = pmidx;
@@ -276,19 +283,19 @@ function polysense(mndx) {
     warntype.species = null;
     warntype.polyd = 0;
     const u = g.u;
-    if (!u.uprops[32 /* WARN_OF_MON */]) u.uprops[32] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    u.uprops[32].intrinsic = (u.uprops[32].intrinsic | 0) & ~0x02000000; /* ~FROMRACE */
+    if (!u.uprops[WARN_OF_MON]) u.uprops[WARN_OF_MON] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    u.uprops[WARN_OF_MON].intrinsic = (u.uprops[WARN_OF_MON].intrinsic | 0) & ~FROMRACE;
     if (mndx === PM_PURPLE_WORM || mndx === PM_BABY_PURPLE_WORM) {
         warnidx = PM_SHRIEKER;
     } else if (mndx === PM_VAMPIRE || mndx === PM_VAMPIRE_LEADER) {
-        warntype.polyd = 0x00000008 /* M2_HUMAN */ | 0x00000010 /* M2_ELF */;
-        u.uprops[32].intrinsic = (u.uprops[32].intrinsic | 0) | 0x02000000; /* FROMRACE */
+        warntype.polyd = M2_HUMAN | M2_ELF;
+        u.uprops[WARN_OF_MON].intrinsic = (u.uprops[WARN_OF_MON].intrinsic | 0) | FROMRACE;
         return;
     }
     if (warnidx >= LOW_PM) {
         warntype.speciesidx = warnidx;
         warntype.species = permonstTemplate(warnidx);
-        u.uprops[32].intrinsic = (u.uprops[32].intrinsic | 0) | 0x02000000; /* FROMRACE */
+        u.uprops[WARN_OF_MON].intrinsic = (u.uprops[WARN_OF_MON].intrinsic | 0) | FROMRACE;
     }
 }
 
@@ -421,7 +428,7 @@ export function set_uasmon() {
     // pline's flush_screen() repaints status with the new form BEFORE
     // polymon's later botl flag (polyself.c:1016).  The first pline after
     // set_uasmon (break_armor's) freezes its --More-- frame on that paint.
-    status_reassess();
+    if (VIA_WINDOWPORT()) status_reassess();
 
     g.gw = g.gw || {};
     g.gw.were_changes = 0;
@@ -560,7 +567,7 @@ export async function polymon(mntmp) {
         const vr = u.uprops?.[SICK_RES], vk = u.uprops?.[SICK];
         if (((vr?.intrinsic | 0) || (vr?.extrinsic | 0)
              || defended(g.youmonst, 33 /* AD_DISE */)) && (vk?.intrinsic | 0)) {
-            await make_sick(0, null, false, 3 /* SICK_ALL */);
+            await make_sick(0, null, false, SICK_ALL);
             await pline('You no longer feel sick.');
         }
     }
@@ -876,7 +883,7 @@ async function break_armor() {
                 await pline(`Your ${cloak_simple_name(otmp)} falls, unsupported!`);
             else
                 await pline(`You shrink out of your ${cloak_simple_name(otmp)}!`);
-            await Cloak_off();   /* C polyself.c:1186,1210 Cloak_off() — runs the otyp switch (toggle_displacement etc.) */
+            await Cloak_off();   /* C polyself.c:1186,1217 Cloak_off() — runs the otyp switch (toggle_displacement etc.) */
             await dropp(otmp);
         }
         otmp = u.uarmu;
@@ -903,7 +910,7 @@ async function break_armor() {
             } else {
                 if (donning(otmp)) cancel_don();
                 await pline(`Your ${helm_simple_name(otmp)} falls to the ${surface(u.ux, u.uy)}!`);
-                await Helmet_off();   /* C polyself.c:1237,1269: Helmet_off() (fedora change_luck(-1), do_wear.c:523) */
+                await Helmet_off();   /* C polyself.c:1243,1269: Helmet_off() (fedora change_luck(-1), do_wear.c:523) */
                 await dropp(otmp);
             }
         }
@@ -921,15 +928,15 @@ async function break_armor() {
         otmp = u.uarms;
         if (otmp) {
             await pline('You can no longer hold your shield!');
-            await takeoff_slot_noac('uarms'); /* C: Shield_off() — no find_ac */
+            await Shield_off(); /* C polyself.c:1261: also clears the pending takeoff mask. */
             await dropp(otmp);
         }
         otmp = u.uarmh;
         if (otmp) {
-            /* C polyself.c:1256-1261 */
+            /* C polyself.c:1264-1271 */
             if (donning(otmp)) cancel_don();
             await pline(`Your ${helm_simple_name(otmp)} falls to the ${surface(u.ux, u.uy)}!`);
-            await Helmet_off();   /* C polyself.c:1237,1269: Helmet_off() (fedora change_luck(-1), do_wear.c:523) */
+            await Helmet_off();   /* C polyself.c:1243,1269: Helmet_off() (fedora change_luck(-1), do_wear.c:523) */
             await dropp(otmp);
         }
     }
@@ -941,7 +948,7 @@ async function break_armor() {
                 await pline('Your boots fall away!');
             else
                 await pline(`Your boots ${_verysmall(uptr) ? 'slide' : 'are pushed'} off your feet!`);
-            await Boots_off(); /* C polyself.c:1285 Boots_off() — speed boots' "slow down" pline (do_wear.c:274-280) precedes polymon's find_ac() */
+            await Boots_off(); /* C polyself.c:1283 Boots_off() — speed boots' "slow down" pline (do_wear.c:274-280) precedes polymon's find_ac() */
             await dropp(otmp);
         }
     }
@@ -952,7 +959,7 @@ async function break_armor() {
         // C polyself.c:1295-1297: omit the lenses' "pair of" prefix.
         if (eyewear.startsWith('pair of ')) eyewear = eyewear.slice(8);
         await pline(`Your ${eyewear} ${vtense(eyewear, 'fall')} off!`);
-        await Blindf_off(null); /* C polyself.c:1299: Null skips the usual off mesg */
+        await Blindf_off(null); /* C polyself.c:1298: Null skips the usual off mesg */
         await dropp(eyewearObj);
     }
     /* rings stay worn even when no hands */
@@ -1295,7 +1302,7 @@ export async function rehumanize() {
             if (!g.svk) g.svk = {};
             if (!g.svk.killer)
                 g.svk.killer = { id: 0, format: 0, name: '', next: null };
-            g.svk.killer.format = 2; /* NO_KILLER_PREFIX */
+            g.svk.killer.format = NO_KILLER_PREFIX;
             g.svk.killer.name = 'killed while stuck in creature form';
             await done(0 /* DIED */);
             return;
@@ -1326,8 +1333,7 @@ export async function rehumanize() {
             g.svk.killer = { id: 0, format: 0, name: '', next: null };
         g.svk.killer.name = `reverting to unhealthy ${g.urace?.adj || 'human'} form`;
         g.svk.killer.format = KILLED_BY;
-        deadhero(0 /* end.h DIED */);
-        await do_death_sequence({ inPlace: true });
+        await done(DIED);
     }
     nomul(0);
 
@@ -1477,7 +1483,7 @@ export async function newman() {
      * killers and partial sickness types; direct property assignment would
      * silently discard that state. */
     if (u.uprops?.[SICK]?.intrinsic)
-        await make_sick(0, null, false, 3 /* SICK_ALL */);
+        await make_sick(0, null, false, SICK_ALL);
     if (u.uprops?.[STONED]?.intrinsic)
         await make_stoned(0, null, 0, null);
     if ((u.uhp | 0) <= 0) {
@@ -1585,7 +1591,7 @@ async function polyself_body(psflags, st) {
     // has polymorph control or is already polymorphed.
     const armor = u.uarm || null;
     const armorOtyp = armor?.otyp | 0;
-    const draconian = armorOtyp >= 101 && armorOtyp <= 120;
+    const draconian = armorOtyp >= GRAY_DRAGON_SCALE_MAIL && armorOtyp <= YELLOW_DRAGON_SCALES;
     const iswere = ismnum(u.ulycn ?? NON_PM);
     // C is_vampire() tests the current monster letter; is_vampshifter() tests
     // the true form kept in cham.  Vampire polymorph is a special path and
@@ -1655,14 +1661,14 @@ async function polyself_body(psflags, st) {
 
         const wasLit = !!suit.lamplit;
         const arm_light = artifact_light(suit) ? arti_light_radius(suit) : 0;
-        if (ot >= 111 && ot <= 120) {
+        if (ot >= GRAY_DRAGON_SCALES && ot <= YELLOW_DRAGON_SCALES) {
             await pline('You merge with your scaly armor.');
         } else {
             // C simpleonames() is evaluated before the mail becomes scales.
             let name = simpleonames(suit);
             name = name.replace(/ dragon /, ' ');
             await pline(`Your ${name} reverts to scales as you merge with them.`);
-            suit.otyp = ot + (111 - 101);
+            suit.otyp = ot + (GRAY_DRAGON_SCALES - GRAY_DRAGON_SCALE_MAIL);
             observe_object(suit);
             if (g.disp) g.disp.botl = true;
         }
@@ -2039,11 +2045,53 @@ export async function uunstick() {
     await pline('%s is no longer in your clutches.', Monnam(mtmp));
 }
 
-// C polyself.c:2191 — mail and scales have the same order as adult dragons.
+// C polyself.c:2191-2232 — armor_to_dragon(int atyp)
+const GRAY_DRAGON_SCALE_MAIL = 101, GOLD_DRAGON_SCALE_MAIL = 102,
+      SILVER_DRAGON_SCALE_MAIL = 103, RED_DRAGON_SCALE_MAIL = 104,
+      WHITE_DRAGON_SCALE_MAIL = 105, ORANGE_DRAGON_SCALE_MAIL = 106,
+      BLACK_DRAGON_SCALE_MAIL = 107, BLUE_DRAGON_SCALE_MAIL = 108,
+      GREEN_DRAGON_SCALE_MAIL = 109, YELLOW_DRAGON_SCALE_MAIL = 110,
+      GRAY_DRAGON_SCALES = 111, GOLD_DRAGON_SCALES = 112,
+      SILVER_DRAGON_SCALES = 113, RED_DRAGON_SCALES = 114,
+      WHITE_DRAGON_SCALES = 115, ORANGE_DRAGON_SCALES = 116,
+      BLACK_DRAGON_SCALES = 117, BLUE_DRAGON_SCALES = 118,
+      GREEN_DRAGON_SCALES = 119, YELLOW_DRAGON_SCALES = 120;
+
 function armor_to_dragon(atyp) {
-    if (atyp >= 101 && atyp <= 110) return PM_GRAY_DRAGON + atyp - 101;
-    if (atyp >= 111 && atyp <= 120) return PM_GRAY_DRAGON + atyp - 111;
-    return NON_PM;
+    switch (atyp | 0) {
+    case GRAY_DRAGON_SCALE_MAIL:
+    case GRAY_DRAGON_SCALES:
+        return PM_GRAY_DRAGON;
+    case SILVER_DRAGON_SCALE_MAIL:
+    case SILVER_DRAGON_SCALES:
+        return PM_SILVER_DRAGON;
+    case GOLD_DRAGON_SCALE_MAIL:
+    case GOLD_DRAGON_SCALES:
+        return PM_GOLD_DRAGON;
+    case RED_DRAGON_SCALE_MAIL:
+    case RED_DRAGON_SCALES:
+        return PM_RED_DRAGON;
+    case ORANGE_DRAGON_SCALE_MAIL:
+    case ORANGE_DRAGON_SCALES:
+        return PM_ORANGE_DRAGON;
+    case WHITE_DRAGON_SCALE_MAIL:
+    case WHITE_DRAGON_SCALES:
+        return PM_WHITE_DRAGON;
+    case BLACK_DRAGON_SCALE_MAIL:
+    case BLACK_DRAGON_SCALES:
+        return PM_BLACK_DRAGON;
+    case BLUE_DRAGON_SCALE_MAIL:
+    case BLUE_DRAGON_SCALES:
+        return PM_BLUE_DRAGON;
+    case GREEN_DRAGON_SCALE_MAIL:
+    case GREEN_DRAGON_SCALES:
+        return PM_GREEN_DRAGON;
+    case YELLOW_DRAGON_SCALE_MAIL:
+    case YELLOW_DRAGON_SCALES:
+        return PM_YELLOW_DRAGON;
+    default:
+        return NON_PM;
+    }
 }
 
 // C polyself.c:2265 — the original role and race, not the current form.
@@ -2131,9 +2179,8 @@ export async function dobreathe() {
     } else if (!(u.dx | 0) && !(u.dy | 0) && !(u.dz | 0)) {
         await ubreatheu(mattk);
     } else {
-        // BZ_U_BREATH(BZ_OFS_AD(adtyp)) = 20 + abs(adtyp - AD_MAGM) % 10
-        // (hack.h:1481/1489).  AD_FIRE=2 → 20 + 1 = 21 ("blast of fire").
-        await ubuzz(20 + Math.abs((mattk.adtyp | 0) - AD_MAGM) % 10, mattk.damn | 0);
+        // C polyself.c:1445 ubuzz(BZ_U_BREATH(BZ_OFS_AD(mattk->adtyp)), (int) mattk->damn)
+        await ubuzz(BZ_U_BREATH(BZ_OFS_AD(mattk.adtyp)), mattk.damn | 0);
     }
     await flush_screen(1);
     if (g._pending_message) {
@@ -2162,12 +2209,21 @@ export async function dospit() {
 
     const mattk = attacktype_fordmg(g.youmonst.data, AT_SPIT, AD_ANY);
     if (!mattk) {
-        // C: impossible("bad spit attack?") — falls through to ECMD_TIME.
+        await impossible('bad spit attack?');
     } else {
-        const adtyp = mattk.adtyp | 0;
-        const otyp = (adtyp === AD_BLND || adtyp === AD_DRST_PS)
-            ? BLINDING_VENOM_PS
-            : ACID_VENOM_PS; /* default arm: impossible() then FALLTHRU to AD_ACID */
+        let otyp;
+        switch (mattk.adtyp | 0) {
+        case AD_BLND:
+        case AD_DRST_PS:
+            otyp = BLINDING_VENOM_PS;
+            break;
+        default:
+            await impossible('bad attack type in dospit');
+            /* FALLTHRU */
+        case AD_ACID_PS:
+            otyp = ACID_VENOM_PS;
+            break;
+        }
         const otmp = await mksobj(otyp, true, false);
         otmp.spe = 1; /* to indicate it's yours */
         const throwit = cmdNS.throwit;
@@ -2265,7 +2321,7 @@ export async function dospinweb() {
         }
     } else if (On_stairs(x, y)) {
         /* cop out: don't let them hide the stairs */
-        await pline(`Your web fails to impede access to the ${levtyp === 26 /* STAIRS */ ? 'stairs' : 'ladder'}.`);
+        await pline(`Your web fails to impede access to the ${levtyp === STAIRS ? 'stairs' : 'ladder'}.`);
         return ECMD_TIME;
     }
     const ttmp = await maketrap(x, y, 18 /* WEB */);
@@ -2291,8 +2347,8 @@ export async function dosummon() {
     if (game.disp) game.disp.botl = 1;
     await pline('You call upon your brethren for help!');
     exercise(A_WIS, true);
-    const placeholder = { value: 0 };
-    if (!(await were_summon(game.youmonst.data, true, placeholder, null)))
+    const yours = { value: 0 };
+    if (!(await were_summon(game.youmonst.data, true, yours, null)))
         await pline('But none arrive.');
     return ECMD_TIME;
 }
@@ -2358,8 +2414,10 @@ export async function dogaze() {
                     const qbuf = `Really ${verb} ${mon_nam(mtmp)}?`;
                     if (await yn_function(qbuf, 'yn', 'n', true) !== 'y') {
                         /* tty_yn_function leaves the prompt on the topline until
-                         * parse()'s clear_nhwindow after the next command key */
-                        if (!g.gi?.in_doagain) /* a queued ^A reply paints nothing */
+                         * parse()'s clear_nhwindow after the next command key.
+                         * Not under query_menu: the menu arm clears
+                         * WIN_MESSAGE itself (cmd.c:5459) — no residue. */
+                        if (!g.gi?.in_doagain && !g.iflags?.query_menu)
                             g._topl_sticky = `${qbuf} [yn] (n)`;
                         continue;
                     }
@@ -2706,27 +2764,183 @@ export async function still_chewing(x, y) {
     return false;
 }
 
-/* C polyself.c:1956-2046 mbodypart(mon, part) — the real general port lives
- * in js/cmd.js (mbodypart_real, imported above). */
-export function mbodypart(shkp, part) { return mbodypart_real(shkp, part); }
+/* C ref: hack.h:129-150 enum bodypart_types — indices into mbodypart()'s
+ * name tables (polyself.c:1972-2146). */
+const ARM = 0, EYE = 1, FACE = 2, FINGER = 3, FINGERTIP = 4, FOOT = 5,
+    HAND = 6, HANDED = 7, HEAD = 8, LEG = 9, LIGHT_HEADED = 10,
+    SPINE = 12, TOE = 13, HAIR = 14, LUNG = 16, NOSE = 17, STOMACH = 18;
+const MBP_humanoid_parts = ["arm", "eye", "face", "finger", "fingertip",
+    "foot", "hand", "handed", "head", "leg", "light headed", "neck",
+    "spine", "toe", "hair", "blood", "lung", "nose", "stomach"];
+const MBP_jelly_parts = ["pseudopod", "dark spot", "front",
+    "pseudopod extension", "pseudopod extremity", "pseudopod root", "grasp",
+    "grasped", "cerebral area", "lower pseudopod", "viscous", "middle",
+    "surface", "pseudopod extremity", "ripples", "juices", "surface",
+    "sensor", "stomach"];
+const MBP_animal_parts = ["forelimb", "eye", "face", "foreclaw", "claw tip",
+    "rear claw", "foreclaw", "clawed", "head", "rear limb", "light headed",
+    "neck", "spine", "rear claw tip", "fur", "blood", "lung", "nose",
+    "stomach"];
+const MBP_bird_parts = ["wing", "eye", "face", "wing", "wing tip", "foot",
+    "wing", "winged", "head", "leg", "light headed", "neck", "spine", "toe",
+    "feathers", "blood", "lung", "bill", "stomach"];
+const MBP_horse_parts = ["foreleg", "eye", "face", "forehoof", "hoof tip",
+    "rear hoof", "forehoof", "hooved", "head", "rear leg", "light headed",
+    "neck", "backbone", "rear hoof tip", "mane", "blood", "lung", "nose",
+    "stomach"];
+const MBP_sphere_parts = ["appendage", "optic nerve", "body", "tentacle",
+    "tentacle tip", "lower appendage", "tentacle", "tentacled", "body",
+    "lower tentacle", "rotational", "equator", "body", "lower tentacle tip",
+    "cilia", "life force", "retina", "olfactory nerve", "interior"];
+const MBP_fungus_parts = ["mycelium", "visual area", "front", "hypha",
+    "hypha", "root", "strand", "stranded", "cap area", "rhizome",
+    "sporulated", "stalk", "root", "rhizome tip", "spores", "juices", "gill",
+    "gill", "interior"];
+const MBP_vortex_parts = ["region", "eye", "front", "minor current",
+    "minor current", "lower current", "swirl", "swirled", "central core",
+    "lower current", "addled", "center", "currents", "edge", "currents",
+    "life force", "center", "leading edge", "interior"];
+const MBP_snake_parts = ["vestigial limb", "eye", "face", "large scale",
+    "large scale tip", "rear region", "scale gap", "scale gapped", "head",
+    "rear region", "light headed", "neck", "length", "rear scale", "scales",
+    "blood", "lung", "forked tongue", "stomach"];
+const MBP_worm_parts = ["anterior segment", "light sensitive cell",
+    "clitellum", "setae", "setae", "posterior segment", "segment",
+    "segmented", "anterior segment", "posterior", "over stretched",
+    "clitellum", "length", "posterior setae", "setae", "blood", "skin",
+    "prostomium", "stomach"];
+const MBP_spider_parts = ["pedipalp", "eye", "face", "pedipalp", "tarsus",
+    "claw", "pedipalp", "palped", "cephalothorax", "leg", "spun out",
+    "cephalothorax", "abdomen", "claw", "hair", "hemolymph", "book lung",
+    "labrum", "digestive tract"];
+const MBP_fish_parts = ["fin", "eye", "premaxillary", "pelvic axillary",
+    "pelvic fin", "anal fin", "pectoral fin", "finned", "head", "peduncle",
+    "played out", "gills", "dorsal fin", "caudal fin", "scales", "blood",
+    "gill", "nostril", "stomach"];
+const MBP_S_BLOB = 2, MBP_S_COCKATRICE = 3, MBP_S_DOG = 4, MBP_S_EYE = 5,
+    MBP_S_FELINE = 6, MBP_S_JELLY = 10, MBP_S_LEPRECHAUN = 12,
+    MBP_S_NYMPH = 14, MBP_S_ORC = 15, MBP_S_RODENT = 18, MBP_S_SPIDER = 19,
+    MBP_S_UNICORN = 21, MBP_S_VORTEX = 22, MBP_S_WORM = 23, MBP_S_LIGHT = 25,
+    MBP_S_ANGEL = 27, MBP_S_CENTAUR = 29, MBP_S_DRAGON = 30,
+    MBP_S_ELEMENTAL = 31, MBP_S_FUNGUS = 32, MBP_S_GIANT = 34,
+    MBP_S_MUMMY = 39, MBP_S_PUDDING = 42, MBP_S_QUANTMECH = 43,
+    MBP_S_VAMPIRE = 48, MBP_S_YETI = 51, MBP_S_ZOMBIE = 52, MBP_S_HUMAN = 53,
+    MBP_S_EEL = 57;
+const MBP_NOT_CLAWS = new Set([MBP_S_HUMAN, MBP_S_MUMMY, MBP_S_ZOMBIE,
+    MBP_S_ANGEL, MBP_S_NYMPH, MBP_S_LEPRECHAUN, MBP_S_QUANTMECH,
+    MBP_S_VAMPIRE, MBP_S_ORC, MBP_S_GIANT]);
+const AT_CLAW = 1; /* monattk.h */
+
+// C ref: polyself.c:1972-2140 mbodypart(struct monst *mon, int part)
+export function mbodypart(mon, part) {
+    if (part <= NO_PART) {
+        impossible("mbodypart: bad part %d", part);
+        return "mystery part";
+    }
+    const mptr = mon && mon.data;
+    if (!mptr) return "mystery part";
+
+    /* some special cases */
+    if (mptr.mlet === MBP_S_DOG || mptr.mlet === MBP_S_FELINE
+        || mptr.mlet === MBP_S_RODENT || mptr.pmidx === PM_OWLBEAR) {
+        switch (part) {
+        case HAND:
+            return "paw";
+        case HANDED:
+            return "pawed";
+        case FOOT:
+            return "rear paw";
+        case ARM:
+        case LEG:
+            return MBP_horse_parts[part]; /* "foreleg", "rear leg" */
+        default:
+            break; /* for other parts, use animal_parts[] below */
+        }
+    } else if (mptr.mlet === MBP_S_YETI) { /* excl. owlbear due to 'if' above */
+        /* opposable thumbs, hence "hands", "arms", "legs", &c */
+        return MBP_humanoid_parts[part]; /* yeti/sasquatch, monkey/ape */
+    }
+    if ((part === HAND || part === HANDED)
+        && (_humanoid(mptr) && attacktype(mptr, AT_CLAW)
+            && !MBP_NOT_CLAWS.has(mptr.mlet) && mptr.pmidx !== PM_STONE_GOLEM
+            && mptr.pmidx !== PM_INCUBUS /* &mons[PM_AMOROUS_DEMON] alias */))
+        return (part === HAND) ? "claw" : "clawed";
+    if ((mptr.pmidx === PM_MUMAK || mptr.pmidx === PM_MASTODON)
+        && part === NOSE)
+        return "trunk";
+    if (mptr.pmidx === PM_SHARK && part === HAIR)
+        return "skin"; /* sharks don't have scales */
+    if ((mptr.pmidx === PM_JELLYFISH || mptr.pmidx === PM_KRAKEN)
+        && (part === ARM || part === FINGER || part === HAND || part === FOOT
+            || part === TOE))
+        return "tentacle";
+    if (mptr.pmidx === PM_FLOATING_EYE && part === EYE)
+        return "cornea";
+    if (_humanoid(mptr) && (part === ARM || part === FINGER
+                             || part === FINGERTIP || part === HAND
+                             || part === HANDED))
+        return MBP_humanoid_parts[part];
+    if (mptr.mlet === MBP_S_COCKATRICE)
+        return (part === HAIR) ? MBP_snake_parts[part] : MBP_bird_parts[part];
+    if (mptr.pmidx === PM_RAVEN)
+        return MBP_bird_parts[part];
+    if (mptr.mlet === MBP_S_CENTAUR || mptr.mlet === MBP_S_UNICORN
+        || mptr.pmidx === PM_KI_RIN
+        || (mptr.pmidx === PM_ROTHE && part !== HAIR))
+        return MBP_horse_parts[part];
+    if (mptr.mlet === MBP_S_LIGHT) {
+        if (part === HANDED)
+            return "rayed";
+        else if (part === ARM || part === FINGER || part === FINGERTIP
+                 || part === HAND)
+            return "ray";
+        else
+            return "beam";
+    }
+    if (mptr.pmidx === PM_STALKER && part === HEAD)
+        return "head";
+    if (mptr.mlet === MBP_S_EEL && mptr.pmidx !== PM_JELLYFISH)
+        return MBP_fish_parts[part];
+    if (mptr.mlet === MBP_S_WORM)
+        return MBP_worm_parts[part];
+    if (mptr.mlet === MBP_S_SPIDER)
+        return MBP_spider_parts[part];
+    if (_slithy(mptr) || (mptr.mlet === MBP_S_DRAGON && part === HAIR))
+        return MBP_snake_parts[part];
+    if (mptr.mlet === MBP_S_EYE)
+        return MBP_sphere_parts[part];
+    if (mptr.mlet === MBP_S_JELLY || mptr.mlet === MBP_S_PUDDING
+        || mptr.mlet === MBP_S_BLOB || mptr.pmidx === PM_JELLYFISH)
+        return MBP_jelly_parts[part];
+    if (mptr.mlet === MBP_S_VORTEX || mptr.mlet === MBP_S_ELEMENTAL)
+        return MBP_vortex_parts[part];
+    if (mptr.mlet === MBP_S_FUNGUS)
+        return MBP_fungus_parts[part];
+    if (_humanoid(mptr))
+        return MBP_humanoid_parts[part];
+    return MBP_animal_parts[part];
+}
 
 /* C polyself.c:2142-2146 body_part(part) = mbodypart(&gy.youmonst, part). */
 export function body_part(part) {
-    return mbodypart_real(game.youmonst, part);
+    return mbodypart(game.youmonst, part);
 }
 
-export function skinback(val) {
+export async function skinback(silently) {
     const u = game.u || {};
     const skin = u.uskin;
     if (!skin)
         return;
-    if (!val)
-        pline('Your skin returns to its original form.');
-    /* C polyself.c:1942-1953: restore the embedded armor as uarm and clear
+    const old_light = arti_light_radius(skin);
+    if (!silently)
+        await pline('Your skin returns to its original form.');
+    /* C polyself.c:1953-1969: restore the embedded armor as uarm and clear
      * the temporary I_SPECIAL marker used while polymorphed. */
     u.uarm = skin;
     u.uskin = null;
     skin.owornmask = (skin.owornmask | 0) & ~I_SPECIAL;
+    if (artifact_light(skin))
+        await maybe_adjust_light(skin, old_light);
 }
 
 // C polyself.c:2159-2188 ugolemeffects(damtype, dam).  RNG-free.

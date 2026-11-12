@@ -4,11 +4,11 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline_flush_point, force_more, force_more_lone_frame, topl_park_cursor, _topline_more_pending, restore_occupation_topline, putmsghistory, restore_command_topline } from './display.js';
-import { yn_function_menu } from './cmd.js';
+import { flush_screen, pline_flush_point, force_more, force_more_lone_frame, topl_park_cursor, tty_getlin_recall, _topline_more_pending, restore_occupation_topline, putmsghistory, restore_command_topline } from './display.js';
+import { yn_function_menu, doprev_message } from './cmd.js';
 import { bot } from './botl.js';
 import { vision_recalc } from './vision.js';
-import { PARANOID_CONFIRM, BUFSZ, QBUFSZ, COLNO } from './const.js';
+import { PARANOID_CONFIRM, BUFSZ, QBUFSZ, COLNO, MAX_MSG_HISTORY } from './const.js';
 
 function mungspaces(s) {
     return String(s).trim().replace(/\s+/g, ' ');
@@ -49,6 +49,7 @@ async function read_getlin(prompt) {
     };
     try {
         await paint();
+        let doprev = false, prevIdx = 0;
         for (;;) {
             const key = await nhgetch();
             if (key === 27 || key === 3) {
@@ -58,6 +59,70 @@ async function read_getlin(prompt) {
                     continue;
                 }
                 return '\x1b';
+            }
+            if (key === 16) {
+                /* ^P — C getline.c:106-119: msg_window:single (or combination
+                 * behaving like single) recalls history onto the topline and
+                 * keeps reading.  "Need two initially": the first call
+                 * re-shows the live "query buffer" line (getline.c:80-82
+                 * rebuild gt.toplines before every read), the second the
+                 * newest data[] entry — and redotoplin's more() fires when
+                 * that line wraps and the topline is not SPECIAL_PROMPT
+                 * (topl.c:123-139), so a wrapped query pages "--More--" right
+                 * after the echoed buffer (df-x15c4d9378c step 75). */
+                const pw = (g.iflags?.prevmsg_window || 's')[0];
+                if (pw === 's' || (pw === 'c' && !doprev)) {
+                    const h = g._msg_history || [];
+                    /* C's read-loop echo goes through putsyms/addtopl and never
+                     * reaches remember_topl(); paint()'s message channel here
+                     * files "query[ buffer]" lines anyway, so drop that
+                     * trailing run before walking the ring. */
+                    let n = h.length;
+                    while (n > 0 && (h[n - 1] === prompt
+                                     || h[n - 1].startsWith(prompt + ' ')))
+                        n--;
+                    const hist = h.slice(0, n);
+                    const ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20),
+                                          MAX_MSG_HISTORY);
+                    const flr = Math.max(0, hist.length - ring + 1);
+                    const step = (i) => (i < 0 ? hist.length - 1
+                        : (i - 1 < flr ? -1 : i - 1));
+                    const recall = (i) => tty_getlin_recall(
+                        i < 0 ? `${prompt} ${buf}` : hist[i]);
+                    const sh = g._topl_suppress_history;
+                    g._topl_suppress_history = true;
+                    try {
+                        let morc = !doprev ? await recall(-1) : 0;
+                        if (hist.length) {
+                            prevIdx = doprev ? step(prevIdx) : hist.length - 1;
+                            while (morc === 16) {
+                                morc = await recall(prevIdx);
+                                prevIdx = step(prevIdx);
+                            }
+                            doprev = true;
+                            while (await recall(prevIdx) === 16)
+                                prevIdx = step(prevIdx);
+                        } else {
+                            doprev = true;
+                        }
+                    } finally {
+                        g._topl_suppress_history = sh;
+                    }
+                    continue;
+                }
+                /* getline.c:121-137 — msg_window:full/reverse (or combination
+                 * behaving full): ONE blocking history window, then the query
+                 * and buffer are re-added and the key falls through to normal
+                 * processing. */
+                await doprev_message(`${prompt} ${buf}`);
+                doprev = false;
+                await paint();
+            } else if (doprev) {
+                /* getline.c:134-142 — any other key after a recall re-issues
+                 * the query (clear_nhwindow + addtopl(query) + " " + buffer)
+                 * before the key itself is processed. */
+                doprev = false;
+                await paint();
             }
             if (key === 10 || key === 13)
                 return buf;

@@ -1,0 +1,806 @@
+{
+  "globals": [
+    "u",
+    "svc",
+    "svm",
+    "svl",
+    "gy",
+    "gv",
+    "gm",
+    "gn",
+    "gi",
+    "gp",
+    "gu",
+    "svd",
+    "flags",
+    "iflags",
+    "disp",
+    "mons",
+    "objects",
+    "genders",
+    "obj_descr",
+    "cg",
+    "ge",
+    "ga",
+    "go",
+    "gc",
+    "gf",
+    "svk"
+  ],
+  "equipment": [
+    "uwep",
+    "uarm",
+    "uarmg",
+    "uarmh",
+    "uarmf",
+    "uarmc",
+    "uarmu",
+    "ublindf",
+    "uamul",
+    "uswapwep",
+    "uball",
+    "uchain",
+    "uleft",
+    "uright",
+    "uquiver"
+  ],
+  "bits": {
+    "mon": {
+      "type": "struct monst",
+      "fields": [
+        "isminion",
+        "mconf"
+      ]
+    },
+    "you": {
+      "type": "struct you",
+      "fields": [
+        "mfemale",
+        "uedibility",
+        "uinvulnerable",
+        "usick_type",
+        "uswallow"
+      ]
+    },
+    "obj": {
+      "type": "struct obj",
+      "fields": [
+        "bknown",
+        "blessed",
+        "cknown",
+        "cursed",
+        "dknown",
+        "globby",
+        "in_use",
+        "known",
+        "no_charge",
+        "oeroded",
+        "oerodeproof",
+        "otrapped",
+        "rknown",
+        "unpaid"
+      ]
+    },
+    "cls": {
+      "type": "struct objclass",
+      "fields": [
+        "oc_charged",
+        "oc_material",
+        "oc_unique"
+      ]
+    },
+    "rm": {
+      "type": "struct rm",
+      "fields": [
+        "flags"
+      ]
+    },
+    "have": {
+      "type": "struct u_have",
+      "fields": [
+        "amulet"
+      ]
+    },
+    "victual": {
+      "type": "struct victual_info",
+      "fields": [
+        "canchoke",
+        "doreset",
+        "eating",
+        "fullwarn"
+      ]
+    },
+    "trap": {
+      "type": "struct trap",
+      "fields": [
+        "ttyp",
+        "tseen"
+      ]
+    }
+  },
+  "commonFields": [
+    "c_nothing_happens",
+    "c_nothing_seems_to_happen",
+    "c_Something",
+    "c_vision_clears",
+    "c_You_can_move_again",
+    "c_something",
+    "c_the_your",
+    "ynchars",
+    "ynqchars"
+  ],
+  "colorFields": [
+    "c_black",
+    "c_orange",
+    "c_light_blue",
+    "c_amber",
+    "c_red",
+    "c_green"
+  ],
+  "calls": {
+    "Mgender": [
+      "pointer"
+    ],
+    "Monnam": [
+      "pointer"
+    ],
+    "Resists_Elem": [
+      "pointer",
+      "int"
+    ],
+    "Ring_gone": [
+      "pointer"
+    ],
+    "Tobjnam": [
+      "pointer",
+      "text"
+    ],
+    "abs": [
+      "int"
+    ],
+    "acurr": [
+      "int"
+    ],
+    "acurrstr": [],
+    "addinv_nomerge": [
+      "pointer"
+    ],
+    "adjalign": [
+      "int"
+    ],
+    "adjattrib": [
+      "int",
+      "int",
+      "int"
+    ],
+    "alloc": [
+      "uint"
+    ],
+    "altar_wrath": [
+      "short",
+      "short"
+    ],
+    "an": [
+      "text"
+    ],
+    "ansimpleoname": [
+      "pointer"
+    ],
+    "attacktype": [
+      "pointer",
+      "int"
+    ],
+    "attacktype_fordmg": [
+      "pointer",
+      "int",
+      "int"
+    ],
+    "attrcurse": [],
+    "b_trapped": [
+      "text",
+      "int"
+    ],
+    "bcsign": [
+      "pointer"
+    ],
+    "body_part": [
+      "int"
+    ],
+    "bot": [],
+    "can_reach_floor": [
+      "byte"
+    ],
+    "canseemon": [
+      "pointer"
+    ],
+    "cantvomit": [
+      "pointer"
+    ],
+    "carrying": [
+      "int"
+    ],
+    "change_luck": [
+      "byte"
+    ],
+    "change_sex": [],
+    "check_capacity": [
+      "text"
+    ],
+    "corpse_xname": [
+      "pointer",
+      "text",
+      "uint"
+    ],
+    "costly_alteration": [
+      "pointer",
+      "int"
+    ],
+    "costly_spot": [
+      "short",
+      "short"
+    ],
+    "curs_on_u": [],
+    "debugcore": [
+      "text",
+      "byte"
+    ],
+    "defended": [
+      "pointer",
+      "int"
+    ],
+    "delayed_killer": [
+      "int",
+      "int",
+      "text"
+    ],
+    "deltrap": [
+      "pointer"
+    ],
+    "dismount_steed": [
+      "int"
+    ],
+    "dist2": [
+      "short",
+      "short",
+      "short",
+      "short"
+    ],
+    "dmgtype": [
+      "pointer",
+      "int"
+    ],
+    "doname": [
+      "pointer"
+    ],
+    "done": [
+      "int"
+    ],
+    "dopotion": [
+      "pointer"
+    ],
+    "dropx": [
+      "pointer"
+    ],
+    "dropy": [
+      "pointer"
+    ],
+    "dupstr": [
+      "text"
+    ],
+    "encumber_msg": [],
+    "end_running": [
+      "byte"
+    ],
+    "eos": [
+      "text"
+    ],
+    "exercise": [
+      "int",
+      "byte"
+    ],
+    "explode": [
+      "short",
+      "short",
+      "int",
+      "int",
+      "byte",
+      "int"
+    ],
+    "fall_asleep": [
+      "int",
+      "byte"
+    ],
+    "feel_cockatrice": [
+      "pointer",
+      "byte"
+    ],
+    "fingers_or_gloves": [
+      "byte"
+    ],
+    "float_up": [],
+    "fmt_ptr": [
+      "pointer"
+    ],
+    "freeinv": [
+      "pointer"
+    ],
+    "g_at": [
+      "short",
+      "short"
+    ],
+    "gainstr": [
+      "pointer",
+      "int",
+      "byte"
+    ],
+    "hcolor": [
+      "text"
+    ],
+    "heal_legs": [
+      "int"
+    ],
+    "incr_itimeout": [
+      "pointer",
+      "int"
+    ],
+    "inv_cnt": [
+      "byte"
+    ],
+    "is_flammable": [
+      "pointer"
+    ],
+    "is_ice": [
+      "short",
+      "short"
+    ],
+    "is_pool_or_lava": [
+      "short",
+      "short"
+    ],
+    "is_rottable": [
+      "pointer"
+    ],
+    "killer_xname": [
+      "pointer"
+    ],
+    "losehp": [
+      "int",
+      "text",
+      "byte"
+    ],
+    "make_blinded": [
+      "long",
+      "byte"
+    ],
+    "make_confused": [
+      "long",
+      "byte"
+    ],
+    "make_deaf": [
+      "long",
+      "byte"
+    ],
+    "make_glib": [
+      "int"
+    ],
+    "make_hallucinated": [
+      "long",
+      "byte",
+      "long"
+    ],
+    "make_sick": [
+      "long",
+      "text",
+      "byte",
+      "int"
+    ],
+    "make_slimed": [
+      "long",
+      "text"
+    ],
+    "make_stoned": [
+      "long",
+      "text",
+      "int",
+      "text"
+    ],
+    "make_stunned": [
+      "long",
+      "byte"
+    ],
+    "make_vomiting": [
+      "long",
+      "byte"
+    ],
+    "makeplural": [
+      "text"
+    ],
+    "melt_ice": [
+      "short",
+      "short",
+      "text"
+    ],
+    "mksobj": [
+      "int",
+      "byte",
+      "byte"
+    ],
+    "mon_nam": [
+      "pointer"
+    ],
+    "mondied": [
+      "pointer"
+    ],
+    "monflee": [
+      "pointer",
+      "int",
+      "byte",
+      "byte"
+    ],
+    "monstone": [
+      "pointer"
+    ],
+    "more_experienced": [
+      "int",
+      "int"
+    ],
+    "near_capacity": [],
+    "newexplevel": [],
+    "newsym": [
+      "short",
+      "short"
+    ],
+    "nomul": [
+      "int"
+    ],
+    "o_unleash": [
+      "pointer"
+    ],
+    "obj_extract_self": [
+      "pointer"
+    ],
+    "obj_here": [
+      "pointer",
+      "short",
+      "short"
+    ],
+    "obj_is_pname": [
+      "pointer"
+    ],
+    "obj_stop_timers": [
+      "pointer"
+    ],
+    "objdescr_is": [
+      "pointer",
+      "text"
+    ],
+    "observe_object": [
+      "pointer"
+    ],
+    "olfaction": [
+      "pointer"
+    ],
+    "on_level": [
+      "pointer",
+      "pointer"
+    ],
+    "otense": [
+      "pointer",
+      "text"
+    ],
+    "outrumor": [
+      "int",
+      "int"
+    ],
+    "paranoid_query": [
+      "byte",
+      "text"
+    ],
+    "peek_at_iced_corpse_age": [
+      "pointer"
+    ],
+    "pluslvl": [
+      "byte"
+    ],
+    "pm_to_cham": [
+      "int"
+    ],
+    "pmname": [
+      "pointer",
+      "int"
+    ],
+    "poison_strdmg": [
+      "int",
+      "int",
+      "text",
+      "byte"
+    ],
+    "poly_when_stoned": [
+      "pointer"
+    ],
+    "polymon": [
+      "int"
+    ],
+    "polyself": [
+      "int"
+    ],
+    "pronoun_gender": [
+      "pointer",
+      "uint"
+    ],
+    "rehumanize": [],
+    "remove_worn_item": [
+      "pointer",
+      "byte"
+    ],
+    "rescham": [],
+    "reset_utrap": [
+      "byte"
+    ],
+    "retouch_equipment": [
+      "int"
+    ],
+    "retouch_object": [
+      "pointer",
+      "byte"
+    ],
+    "revive_corpse": [
+      "pointer"
+    ],
+    "rndmonnam": [
+      "text"
+    ],
+    "rounddiv": [
+      "long",
+      "int"
+    ],
+    "s_suffix": [
+      "text"
+    ],
+    "sa_victual": [
+      "pointer"
+    ],
+    "same_race": [
+      "pointer",
+      "pointer"
+    ],
+    "see_monsters": [],
+    "self_invis_message": [],
+    "selftouch": [
+      "text"
+    ],
+    "sellobj_state": [
+      "int"
+    ],
+    "set_bknown": [
+      "pointer",
+      "uint"
+    ],
+    "set_itimeout": [
+      "pointer",
+      "long"
+    ],
+    "set_mimic_blocking": [],
+    "set_ulycn": [
+      "int"
+    ],
+    "setuhpmax": [
+      "int",
+      "byte"
+    ],
+    "sgn": [
+      "int"
+    ],
+    "splitobj": [
+      "pointer",
+      "long"
+    ],
+    "stackobj": [
+      "pointer"
+    ],
+    "still_chewing": [
+      "short",
+      "short"
+    ],
+    "stop_occupation": [],
+    "strcat": [
+      "text",
+      "text"
+    ],
+    "strcmp": [
+      "text",
+      "text"
+    ],
+    "strcpy": [
+      "text",
+      "text"
+    ],
+    "strlen": [
+      "text"
+    ],
+    "strncmpi": [
+      "text",
+      "text",
+      "int"
+    ],
+    "surface": [
+      "short",
+      "short"
+    ],
+    "t_at": [
+      "short",
+      "short"
+    ],
+    "the": [
+      "text"
+    ],
+    "the_unique_pm": [
+      "pointer"
+    ],
+    "tinnable": [
+      "pointer"
+    ],
+    "toggle_displacement": [
+      "pointer",
+      "long",
+      "byte"
+    ],
+    "touch_artifact": [
+      "pointer",
+      "pointer"
+    ],
+    "trycall": [
+      "pointer"
+    ],
+    "uasmon_maxStr": [],
+    "ubreatheu": [
+      "pointer"
+    ],
+    "unconscious": [],
+    "undiscovered_artifact": [
+      "short"
+    ],
+    "unmul": [
+      "text"
+    ],
+    "unpunish": [],
+    "uqwepgone": [],
+    "useup": [
+      "pointer"
+    ],
+    "useupall": [
+      "pointer"
+    ],
+    "useupf": [
+      "pointer",
+      "long"
+    ],
+    "uswapwepgone": [],
+    "uwepgone": [],
+    "vault_gd_watching": [
+      "uint"
+    ],
+    "weight": [
+      "pointer"
+    ],
+    "welded": [
+      "pointer"
+    ],
+    "were_beastie": [
+      "int"
+    ],
+    "wield_tool": [
+      "pointer",
+      "text"
+    ],
+    "will_feel_cockatrice": [
+      "pointer",
+      "byte"
+    ],
+    "xname": [
+      "pointer"
+    ],
+    "yn_function": [
+      "text",
+      "text",
+      "byte",
+      "byte"
+    ],
+    "yobjnam": [
+      "pointer",
+      "text"
+    ],
+    "you_unwere": [
+      "byte"
+    ]
+  },
+  "formatSites": [
+    {
+      "function": "edibility_prompts",
+      "line": 2675
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2679
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2686
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2690
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2694
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2698
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2701
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2703
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2707
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2717
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2722
+    },
+    {
+      "function": "edibility_prompts",
+      "line": 2727
+    }
+  ],
+  "callbacks": [
+    "eatmdone",
+    "eatfood",
+    "opentin",
+    "unfaint",
+    "Hear_again",
+    "Finish_digestion"
+  ],
+  "getobjCallbacks": [
+    "tinopen_ok",
+    "eat_ok",
+    "offer_ok",
+    "tin_ok"
+  ],
+  "shapes": [
+    "",
+    "i",
+    "l",
+    "p",
+    "ii",
+    "ll",
+    "pp",
+    "iii",
+    "ppp",
+    "ppppi"
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-eat-abi.py": "d7dabf605731d07136b26185abd52e06153d94b8ec648a29c8864e8dd2b19c14",
+    "nethack-c/wasm/tu-eat-support.inc": "472260b23fb3d1657f4f64a20e0819c9b02ffd1ecd620f3e290df8de7bf328a7",
+    "nethack-c/wasm/tu-libraries/eat.js": "5c49ab25287014c4225a34d132e3fb1464717af1ae0db9cc9eff13876318ddac",
+    "js/ported/eat-runtime.js": "c66d7256447d9adff8eb3b6287c3029b99509dad52b1717c38219a59a923f8b2",
+    "js/ported/eat.js": "2e15612554fdc5e2f9175a520dcfcee009a467a840389c2be344b6048de32376",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
+  },
+  "referenceHeaderSha256": {
+    ".cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470",
+    ".cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9"
+  }
+}

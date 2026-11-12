@@ -19,6 +19,7 @@ export function enableVersionInfo(environment,layouts){
   Snprintf:(out,size,format,...args)=>{args.pop();return environment.libc.snprintf(environment.address(out),Number(size),text(format),...args);},
  });
  for(const name of ['strcmp','strchr','strrchr'])local[name]=(...args)=>services[name](text(args[0]),...args.slice(1).map(v=>typeof v==='string'?text(v):v));
+ for(const direction of ['sfo','sfi'])for(const type of ['char','uchar','version_info'])local[(direction==='sfo'?'Sfo_':'Sfi_')+type]=(file,data,tag,...count)=>environment.resolve(direction+'_'+type)(environment.address(file),environment.address(data),text(tag),...count.map(transport.int));
  const state=createVersionState(local,L,version),context=createVersionEnvironment(local,L,state);
  environment.register('version',version,context,{prepareArgs:(name,args)=>{
   args=[...args];if(['version_string','getversionstring','status_version'].includes(name))args[1]=context.size_t(args[1]);

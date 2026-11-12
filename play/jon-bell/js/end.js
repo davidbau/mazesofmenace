@@ -92,7 +92,7 @@ import { stackobj } from './sp_lev.js';
 import { accessible } from './monmove.js';
 import { isok, OBJ_FREE } from './const.js';
 import { lift_covet_and_placebc } from './ball.js';
-import { oname, an, the_unique_obj, xname } from './objnam.js';
+import { oname, an, the_unique_obj, xname, thesimpleoname, doname_with_price } from './objnam.js';
 import { arti_cost, artiname } from './artifact.js';
 import { OC_NAME } from './oc_name_data.js';
 import { OC_COST } from './oc_cost_data.js';
@@ -130,7 +130,7 @@ import { yn_function } from './cmd.js'; // relocate-fns
 import { build_window_screen, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { flush_pending_messages, topl_force_break_now } from './display.js'; // relocate-fns
 import { the } from './objnam.js'; // relocate-fns
-import { Is_container, _Upstart, _box_xname, _item_doname, _sortloot, set_cursor } from './pickup_container.js'; // relocate-fns
+import { Is_container, _Upstart, _sortloot, set_cursor } from './pickup_container.js'; // relocate-fns
 export { yn_function } from './cmd.js'; // relocate-fns
 export { _yn_prompt }; // relocate-fns
 export { ynq };
@@ -1403,7 +1403,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
                 return '#';
             }
             if (choices.indexOf(ch) >= 0)
-                return _answered(ch);
+                return ch === '#' ? ch : _answered(ch);
             if (choices.indexOf(ch.toLowerCase()) >= 0)
                 return _answered(ch.toLowerCase());
             /* anything else: C rings the bell and re-loops, repainting the same
@@ -1492,12 +1492,16 @@ export async function done2() {
          * u.ucamefrom is assigned by maybe_do_tutorial on the way IN
          * (js/allmain.js:694 already does that), and schedule_goto only records
          * the deferred destination — allmain's moveloop runs deferred_goto()
-         * after rhack returns.  RNG-free in itself. */
+         * after rhack returns.  RNG-free in itself.
+         * u.ucamefrom is only written by maybe_do_tutorial (allmain.c:575) and
+         * the fuzzer's level_tele (teleport.c:1181); a hero who reached the
+         * tutorial by wizard ^V still holds C's zero-initialised {0,0}, whose
+         * ledger_no is 0, so goto_level runs tutorial(FALSE) and then
+         * done(ESCAPED) (do.c:1503-1519).  An unset JS field is that {0,0}. */
         if (abandon_tutorial) {
             const from = g.u?.ucamefrom;
-            if (from)
-                schedule_goto({ dnum: from.dnum | 0, dlevel: from.dlevel | 0 },
-                              UTOTYPE_ATSTAIRS_END, 'Resuming regular play.', null);
+            schedule_goto({ dnum: from?.dnum | 0, dlevel: from?.dlevel | 0 },
+                          UTOTYPE_ATSTAIRS_END, 'Resuming regular play.', null);
         }
         return ECMD_OK;
     }
@@ -2412,10 +2416,11 @@ async function really_done(how) {
     }
 }
 
-/* C save.c:1077 freedynamicdata — only the parts with state that outlives
- * a JS segment are modelled.  save.c:1136 wish_history_flush(): C's static
- * wish_history[] is emptied before exit, so a restored game starts with none. */
+/* C save.c:1077 freedynamicdata — release the saved role-option strings
+ * (save.c:1131) and process-local wish history (save.c:1136) before exit. */
 async function freedynamicdata() {
+    const { freeroleoptvals } = await import('./options.js');
+    freeroleoptvals(); // C save.c:1131, before wish_history_flush().
     const { wish_history_flush } = await import('./zap.js');
     wish_history_flush();
 }
@@ -2503,7 +2508,7 @@ async function _container_contents_one(box, identified, all_containers, reportem
                         obj.lknown = 1;
                     }
                 }
-                putstrLines.push('  ' + (await _item_doname(obj)));
+                putstrLines.push('  ' + (await doname_with_price(obj))); /* C end.c:1647 */
             }
         } else {
             putstrLines.push("  Schroedinger's cat!");
@@ -2575,7 +2580,10 @@ async function _container_contents_one(box, identified, all_containers, reportem
                 const raw = await nhgetch();
                 const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
                 /* C dmore(cw, quitchars) -> xwaitforspace(" \r\n\033"). */
-                if (k === 32 || k === 10 || k === 13 || k === 27) { esc = k === 27; break; }
+                if (k === 32 || k === 10 || k === 13 || k === 27) {
+                    if (k === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
+                    esc = k === 27; break;
+                }
             }
             if (esc) break;
         }
@@ -2598,7 +2606,7 @@ async function _container_contents_one(box, identified, all_containers, reportem
         /* C pickup.c:3139 pline1(emptymsg), built at pickup.c:3084 from
          * Ysimple_name2(container) — "The bag is empty.", article included.
          * The article was MISSING here, so this site said "Bag is empty." */
-        await pline(`${_Upstart(_the(_box_xname(box)))} is empty.`);
+        await pline(`${_Upstart(thesimpleoname(box))} is empty.`); /* C end.c:1663 */
         /* C end.c:1664: display_nhwindow(WIN_MESSAGE, FALSE) acknowledges
          * this message before use_container can report the empty box again. */
         topl_force_break_now();

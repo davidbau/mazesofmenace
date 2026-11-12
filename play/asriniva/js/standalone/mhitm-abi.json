@@ -1,0 +1,845 @@
+{
+  "layout": {
+    "pointerSize": 8,
+    "longSize": 8,
+    "intSize": 4,
+    "booleanSize": 1,
+    "monsterSize": 192,
+    "objectSize": 112,
+    "permonstSize": 96,
+    "objectClassSize": 72,
+    "attackSize": 4,
+    "mhitmSize": 20,
+    "rmSize": 8,
+    "propSize": 24,
+    "coordSize": 4,
+    "genderSize": 48,
+    "mon_nmon": 0,
+    "mon_nmon_size": 8,
+    "mon_data": 8,
+    "mon_data_size": 8,
+    "mon_minvent": 152,
+    "mon_minvent_size": 8,
+    "mon_mw": 160,
+    "mon_mw_size": 8,
+    "mon_mhp": 52,
+    "mon_mhp_size": 4,
+    "mon_mhpmax": 56,
+    "mon_mhpmax_size": 4,
+    "mon_mx": 28,
+    "mon_mx_size": 2,
+    "mon_my": 30,
+    "mon_my_size": 2,
+    "mon_movement": 24,
+    "mon_movement_size": 2,
+    "mon_mtame": 65,
+    "mon_mtame_size": 1,
+    "mon_mstrategy": 96,
+    "mon_mstrategy_size": 8,
+    "mon_mlstmv": 120,
+    "mon_mlstmv_size": 8,
+    "mon_m_lev": 26,
+    "mon_m_lev_size": 1,
+    "mon_m_id": 16,
+    "mon_m_id_size": 4,
+    "mon_weapon_check": 176,
+    "mon_weapon_check_size": 2,
+    "mon_mspec_used": 80,
+    "mon_mspec_used_size": 4,
+    "mon_meating": 180,
+    "mon_meating_size": 4,
+    "mon_cham": 22,
+    "mon_cham_size": 2,
+    "mon_m_ap_type": 64,
+    "mon_m_ap_type_size": 1,
+    "mon_mstate": 128,
+    "mon_mstate_size": 8,
+    "mon_misc_worn_check": 168,
+    "mon_misc_worn_check_size": 8,
+    "obj_nobj": 0,
+    "obj_nobj_size": 8,
+    "obj_otyp": 32,
+    "obj_otyp_size": 2,
+    "obj_oclass": 49,
+    "obj_oclass_size": 1,
+    "obj_oartifact": 51,
+    "obj_oartifact_size": 1,
+    "obj_quan": 40,
+    "obj_quan_size": 8,
+    "pm_mlet": 28,
+    "pm_mlet_size": 1,
+    "pm_msize": 67,
+    "pm_msize_size": 1,
+    "pm_mflags1": 72,
+    "pm_mflags1_size": 8,
+    "pm_mflags2": 80,
+    "pm_mflags2_size": 8,
+    "pm_mlevel": 29,
+    "pm_mlevel_size": 1,
+    "pm_geno": 34,
+    "pm_geno_size": 2,
+    "pm_pmidx": 24,
+    "pm_pmidx_size": 4,
+    "pm_mattk": 36,
+    "pm_mattk_size": 24,
+    "cls_oc_skill": 19,
+    "cls_oc_skill_size": 1,
+    "atk_aatyp": 0,
+    "atk_aatyp_size": 1,
+    "atk_adtyp": 1,
+    "atk_adtyp_size": 1,
+    "atk_damn": 2,
+    "atk_damn_size": 1,
+    "atk_damd": 3,
+    "atk_damd_size": 1,
+    "mhm_damage": 0,
+    "mhm_damage_size": 4,
+    "mhm_hitflags": 4,
+    "mhm_hitflags_size": 4,
+    "mhm_done": 8,
+    "mhm_done_size": 1,
+    "mhm_permdmg": 9,
+    "mhm_permdmg_size": 1,
+    "mhm_specialdmg": 12,
+    "mhm_specialdmg_size": 4,
+    "mhm_dieroll": 16,
+    "mhm_dieroll_size": 4,
+    "u_ux": 0,
+    "u_ux_size": 2,
+    "u_uy": 2,
+    "u_uy_size": 2,
+    "u_ulycn": 1836,
+    "u_ulycn_size": 4,
+    "u_umonnum": 1808,
+    "u_umonnum_size": 4,
+    "u_usteed": 2320,
+    "u_usteed_size": 8,
+    "u_ustuck": 2312,
+    "u_ustuck_size": 8,
+    "u_uprops": 112,
+    "u_uprops_size": 1656,
+    "prop_intrinsic": 16,
+    "prop_intrinsic_size": 8,
+    "prop_extrinsic": 0,
+    "prop_extrinsic_size": 8,
+    "prop_blocked": 8,
+    "prop_blocked_size": 8,
+    "rm_typ": 4,
+    "rm_typ_size": 1,
+    "coord_x": 0,
+    "coord_x_size": 2,
+    "coord_y": 2,
+    "coord_y_size": 2,
+    "gender_his": 24,
+    "gender_his_size": 8,
+    "far_noise": 97,
+    "far_noise_size": 1,
+    "moves": 8,
+    "moves_size": 8,
+    "noisetime": 40,
+    "noisetime_size": 8,
+    "notonhead": 62,
+    "notonhead_size": 1,
+    "vis": 80,
+    "vis_size": 1,
+    "vizArray": 120,
+    "vizArray_size": 8,
+    "bhitpos": 4768,
+    "bhitpos_size": 4,
+    "skipdrin": 928,
+    "skipdrin_size": 1,
+    "last_hider": 208,
+    "last_hider_size": 4,
+    "last_msg": 40,
+    "last_msg_size": 4,
+    "verbose": 48,
+    "verbose_size": 1,
+    "youmonst": 8,
+    "youmonst_size": 192,
+    "multi": 8,
+    "multi_size": 8,
+    "mswallower": 208,
+    "mswallower_size": 8,
+    "norevive": 230,
+    "norevive_size": 1,
+    "zombify": 0,
+    "zombify_size": 1,
+    "monsters": 28560,
+    "monsters_size": 13440,
+    "locations": 1680,
+    "locations_size": 13440,
+    "fmon": 42016,
+    "fmon_size": 8,
+    "ACID_RES": 7,
+    "AD_ACID": 8,
+    "AD_BLND": 11,
+    "AD_COLD": 3,
+    "AD_CORR": 42,
+    "AD_DGST": 26,
+    "AD_DRIN": 32,
+    "AD_ELEC": 6,
+    "AD_ENCH": 41,
+    "AD_FIRE": 2,
+    "AD_PHYS": 0,
+    "AD_PLYS": 14,
+    "AD_RBRE": 242,
+    "AD_RUST": 24,
+    "AD_SLEE": 4,
+    "AD_STCK": 19,
+    "AD_STON": 18,
+    "AD_STUN": 12,
+    "AD_WRAP": 28,
+    "ANTIMAGIC": 12,
+    "ARTICLE_A": 2,
+    "ARTICLE_NONE": 0,
+    "ARTICLE_THE": 1,
+    "ART_SNICKERSNEE": 19,
+    "ART_TROLLSBANE": 17,
+    "AT_BITE": 2,
+    "AT_BOOM": 14,
+    "AT_BREA": 12,
+    "AT_BUTT": 4,
+    "AT_CLAW": 1,
+    "AT_ENGL": 11,
+    "AT_EXPL": 13,
+    "AT_GAZE": 15,
+    "AT_HUGS": 7,
+    "AT_KICK": 3,
+    "AT_MAGC": 255,
+    "AT_NONE": 0,
+    "AT_SPIT": 10,
+    "AT_STNG": 6,
+    "AT_TENT": 16,
+    "AT_TUCH": 5,
+    "AT_WEAP": 254,
+    "BLINDED": 15,
+    "BUFSZ": 256,
+    "COLD_RES": 2,
+    "COLNO": 80,
+    "CONFLICT": 44,
+    "DAGGER": 34,
+    "DEAF": 16,
+    "EF_GREASE": 1,
+    "EF_VERBOSE": 4,
+    "ERODE_BURN": 0,
+    "ERODE_CORRODE": 3,
+    "ERODE_NONE": -1,
+    "ERODE_RUST": 1,
+    "FIRE_RES": 1,
+    "G_UNIQ": 4096,
+    "IN_SIGHT": 2,
+    "IRON": 11,
+    "IRONBARS": 22,
+    "LOW_PM": 0,
+    "M1_AMORPHOUS": "4",
+    "M1_NOEYES": "4096",
+    "M1_SEE_INVIS": "16777216",
+    "M1_TPORT": "33554432",
+    "M1_UNSOLID": "1048576",
+    "M1_WALLWALK": "8",
+    "M2_ELF": "16",
+    "M2_ORC": "128",
+    "METAL": 12,
+    "MM_IGNOREWATER": 8,
+    "MON_FLOOR": 0,
+    "MZ_HUGE": 4,
+    "M_AP_FURNITURE": 1,
+    "M_AP_MONSTER": 3,
+    "M_AP_NOTHING": 0,
+    "M_AP_OBJECT": 2,
+    "M_AP_TYPMASK": 7,
+    "M_ATTK_AGR_DIED": 4,
+    "M_ATTK_AGR_DONE": 8,
+    "M_ATTK_DEF_DIED": 2,
+    "M_ATTK_HIT": 1,
+    "M_ATTK_MISS": 0,
+    "NATTK": 6,
+    "NC_SHOW_MSG": 1,
+    "NEED_HTH_WEAPON": 3,
+    "NEED_WEAPON": 1,
+    "NON_PM": -1,
+    "NORMAL_SPEED": 12,
+    "NOTELL": 0,
+    "NO_NC_FLAGS": 0,
+    "NO_TRAP_FLAGS": 0,
+    "NUMMONS": 383,
+    "PASSES_WALLS": 53,
+    "PLNMSG_HIDE_UNDER": 10,
+    "PM_AIR_ELEMENTAL": 154,
+    "PM_ARCHON": 125,
+    "PM_BLACK_PUDDING": 209,
+    "PM_BROWN_PUDDING": 207,
+    "PM_CHICKATRICE": 9,
+    "PM_COCKATRICE": 10,
+    "PM_DEATH": 311,
+    "PM_FAMINE": 313,
+    "PM_FIRE_ELEMENTAL": 155,
+    "PM_FIRE_VORTEX": 111,
+    "PM_FLAMING_SPHERE": 30,
+    "PM_FLOATING_EYE": 28,
+    "PM_GREEN_SLIME": 208,
+    "PM_GRID_BUG": 116,
+    "PM_HUMAN": 260,
+    "PM_MEDUSA": 284,
+    "PM_NURSE": 279,
+    "PM_PESTILENCE": 312,
+    "PM_SALAMANDER": 329,
+    "PM_SHADE": 288,
+    "PM_STEAM_VORTEX": 110,
+    "PM_VAMPIRE": 226,
+    "PM_VAMPIRE_LEADER": 227,
+    "PM_VLAD_THE_IMPALER": 228,
+    "PM_WRAITH": 230,
+    "POLY_NOFLAGS": 0,
+    "POOL": 16,
+    "PRONOUN_HALLU": 2,
+    "P_LANCE": 19,
+    "P_POLEARMS": 16,
+    "RLOC_MSG": 2,
+    "ROOM": 25,
+    "ROWNO": 21,
+    "SHOCK_RES": 5,
+    "SILVER": 14,
+    "SILVER_SABER": 51,
+    "SLEEP_RES": 3,
+    "SPEAR": 27,
+    "STONE": 0,
+    "STONE_RES": 8,
+    "STRAT_WAITFORU": 536870912,
+    "STRAT_WAITMASK": 805306368,
+    "SUPPRESS_INVISIBLE": 2,
+    "SUPPRESS_IT": 1,
+    "SUPPRESS_NAME": 32,
+    "S_GHOST": 54,
+    "S_MIMIC": 13,
+    "S_TROLL": 46,
+    "S_VORTEX": 22,
+    "TELL": 1,
+    "TOOL_CLASS": 6,
+    "TREE": 13,
+    "Trap_Killed_Mon": 2,
+    "UNCHANGING": 63,
+    "WAND_CLASS": 11,
+    "WEAPON_CLASS": 2,
+    "W_ARMC": "2",
+    "W_ARMF": "32",
+    "W_ARMG": "16",
+    "W_ARMH": "4",
+    "XKILL_GIVEMSG": 0,
+    "XKILL_NOCORPSE": 2
+  },
+  "globals": [
+    "u",
+    "gf",
+    "svm",
+    "gn",
+    "gv",
+    "gb",
+    "gs",
+    "gl",
+    "iflags",
+    "flags",
+    "gy",
+    "gm",
+    "gz",
+    "mons",
+    "objects",
+    "svl",
+    "genders"
+  ],
+  "bits": [
+    "mcan",
+    "mconf",
+    "mundetected",
+    "msleeping",
+    "mcanmove",
+    "wormno",
+    "mcansee",
+    "minvis",
+    "mleashed",
+    "mstun",
+    "mfrozen",
+    "mtrapped"
+  ],
+  "calls": {
+    "Adjmonnam": {
+      "target": "Adjmonnam",
+      "prototype": "char *(struct monst *, const char *)"
+    },
+    "Monnam": {
+      "target": "Monnam",
+      "prototype": "char *(struct monst *)"
+    },
+    "a_monnam": {
+      "target": "a_monnam",
+      "prototype": "char *(struct monst *)"
+    },
+    "acid_damage": {
+      "target": "acid_damage",
+      "prototype": "void (struct obj *)"
+    },
+    "attacktype": {
+      "target": "attacktype",
+      "prototype": "boolean (struct permonst *, int)"
+    },
+    "breamm": {
+      "target": "breamm",
+      "prototype": "int (struct monst *, struct attack *, struct monst *)"
+    },
+    "canseemon": {
+      "target": "canseemon",
+      "prototype": "int (struct monst *)"
+    },
+    "clone_mon": {
+      "target": "clone_mon",
+      "prototype": "struct monst *(struct monst *, coordxy, coordxy)"
+    },
+    "closed_door": {
+      "target": "closed_door",
+      "prototype": "boolean (coordxy, coordxy)"
+    },
+    "could_seduce": {
+      "target": "could_seduce",
+      "prototype": "int (struct monst *, struct monst *, struct attack *)"
+    },
+    "defended": {
+      "target": "defended",
+      "prototype": "boolean (struct monst *, int)"
+    },
+    "dmgtype": {
+      "target": "dmgtype",
+      "prototype": "boolean (struct permonst *, int)"
+    },
+    "drain_item": {
+      "target": "drain_item",
+      "prototype": "boolean (struct obj *, boolean)"
+    },
+    "erode_armor": {
+      "target": "erode_armor",
+      "prototype": "void (struct monst *, int)"
+    },
+    "erode_obj": {
+      "target": "erode_obj",
+      "prototype": "int (struct obj *, const char *, int, int)"
+    },
+    "find_mac": {
+      "target": "find_mac",
+      "prototype": "int (struct monst *)"
+    },
+    "finish_meating": {
+      "target": "finish_meating",
+      "prototype": "void (struct monst *)"
+    },
+    "flush_screen": {
+      "target": "flush_screen",
+      "prototype": "void (int)"
+    },
+    "getmattk": {
+      "target": "getmattk",
+      "prototype": "struct attack *(struct monst *, struct monst *, int, int *, struct attack *)"
+    },
+    "golemeffects": {
+      "target": "golemeffects",
+      "prototype": "void (struct monst *, int, int)"
+    },
+    "goodpos": {
+      "target": "goodpos",
+      "prototype": "boolean (coordxy, coordxy, struct monst *, mmflags_nht)"
+    },
+    "grow_up": {
+      "target": "grow_up",
+      "prototype": "struct permonst *(struct monst *, struct monst *)"
+    },
+    "healmon": {
+      "target": "healmon",
+      "prototype": "int (struct monst *, int, int)"
+    },
+    "hitval": {
+      "target": "hitval",
+      "prototype": "int (struct obj *, struct monst *)"
+    },
+    "hliquid": {
+      "target": "hliquid",
+      "prototype": "const char *(const char *)"
+    },
+    "is_art": {
+      "target": "is_art",
+      "prototype": "boolean (struct obj *, int)"
+    },
+    "itsstuck": {
+      "target": "itsstuck",
+      "prototype": "boolean (struct monst *)"
+    },
+    "makeplural": {
+      "target": "makeplural",
+      "prototype": "char *(const char *)"
+    },
+    "map_invisible": {
+      "target": "map_invisible",
+      "prototype": "void (coordxy, coordxy)"
+    },
+    "mhitm_ad_blnd": {
+      "target": "mhitm_ad_blnd",
+      "prototype": "void (struct monst *, struct attack *, struct monst *, struct mhitm_data *)"
+    },
+    "mhitm_adtyping": {
+      "target": "mhitm_adtyping",
+      "prototype": "void (struct monst *, struct attack *, struct monst *, struct mhitm_data *)"
+    },
+    "mhitm_knockback": {
+      "target": "mhitm_knockback",
+      "prototype": "boolean (struct monst *, struct monst *, struct attack *, int *, boolean)"
+    },
+    "minliquid": {
+      "target": "minliquid",
+      "prototype": "int (struct monst *)"
+    },
+    "mintrap": {
+      "target": "mintrap",
+      "prototype": "int (struct monst *, unsigned int)"
+    },
+    "mon_explodes": {
+      "target": "mon_explodes",
+      "prototype": "void (struct monst *, struct attack *)"
+    },
+    "mon_givit": {
+      "target": "mon_givit",
+      "prototype": "void (struct monst *, struct permonst *)"
+    },
+    "mon_hates_silver": {
+      "target": "mon_hates_silver",
+      "prototype": "boolean (struct monst *)"
+    },
+    "mon_nam": {
+      "target": "mon_nam",
+      "prototype": "char *(struct monst *)"
+    },
+    "mon_nam_too": {
+      "target": "mon_nam_too",
+      "prototype": "char *(struct monst *, struct monst *)"
+    },
+    "mon_reflects": {
+      "target": "mon_reflects",
+      "prototype": "boolean (struct monst *, const char *)"
+    },
+    "mon_to_stone": {
+      "target": "mon_to_stone",
+      "prototype": "void (struct monst *)"
+    },
+    "mon_visible": {
+      "target": "mon_visible",
+      "prototype": "int (struct monst *)"
+    },
+    "mon_wield_item": {
+      "target": "mon_wield_item",
+      "prototype": "int (struct monst *)"
+    },
+    "mondead": {
+      "target": "mondead",
+      "prototype": "void (struct monst *)"
+    },
+    "monkilled": {
+      "target": "monkilled",
+      "prototype": "void (struct monst *, const char *, int)"
+    },
+    "monnear": {
+      "target": "monnear",
+      "prototype": "boolean (struct monst *, coordxy, coordxy)"
+    },
+    "monstone": {
+      "target": "monstone",
+      "prototype": "void (struct monst *)"
+    },
+    "mswings_verb": {
+      "target": "mswings_verb",
+      "prototype": "const char *(struct obj *, boolean)"
+    },
+    "mtrapped_in_pit": {
+      "target": "mtrapped_in_pit",
+      "prototype": "boolean (struct monst *)"
+    },
+    "newcham": {
+      "target": "newcham",
+      "prototype": "int (struct monst *, struct permonst *, unsigned int)"
+    },
+    "newsym": {
+      "target": "newsym",
+      "prototype": "void (coordxy, coordxy)"
+    },
+    "noname_monnam": {
+      "target": "noname_monnam",
+      "prototype": "char *(struct monst *, int)"
+    },
+    "place_monster": {
+      "target": "place_monster",
+      "prototype": "void (struct monst *, coordxy, coordxy)"
+    },
+    "place_worm_tail_randomly": {
+      "target": "place_worm_tail_randomly",
+      "prototype": "void (struct monst *, coordxy, coordxy)"
+    },
+    "pm_to_cham": {
+      "target": "pm_to_cham",
+      "prototype": "int (int)"
+    },
+    "poly_when_stoned": {
+      "target": "poly_when_stoned",
+      "prototype": "boolean (struct permonst *)"
+    },
+    "polyself": {
+      "target": "polyself",
+      "prototype": "void (int)"
+    },
+    "possibly_unwield": {
+      "target": "possibly_unwield",
+      "prototype": "void (struct monst *, boolean)"
+    },
+    "remove_worm": {
+      "target": "remove_worm",
+      "prototype": "void (struct monst *)"
+    },
+    "resist": {
+      "target": "resist",
+      "prototype": "int (struct monst *, char, int, int)"
+    },
+    "resist_conflict": {
+      "target": "resist_conflict",
+      "prototype": "boolean (struct monst *)"
+    },
+    "resists_blnd": {
+      "target": "resists_blnd",
+      "prototype": "boolean (struct monst *)"
+    },
+    "resists_magm": {
+      "target": "resists_magm",
+      "prototype": "boolean (struct monst *)"
+    },
+    "rloc": {
+      "target": "rloc",
+      "prototype": "boolean (struct monst *, unsigned int)"
+    },
+    "seemimic": {
+      "target": "seemimic",
+      "prototype": "void (struct monst *)"
+    },
+    "sensemon": {
+      "target": "sensemon",
+      "prototype": "int (struct monst *)"
+    },
+    "set_ustuck": {
+      "target": "set_ustuck",
+      "prototype": "void (struct monst *)"
+    },
+    "shade_miss": {
+      "target": "shade_miss",
+      "prototype": "boolean (struct monst *, struct monst *, struct obj *, boolean, boolean)"
+    },
+    "shieldeff": {
+      "target": "shieldeff",
+      "prototype": "void (coordxy, coordxy)"
+    },
+    "shieldeff_mon": {
+      "target": "shieldeff_mon",
+      "prototype": "void (struct monst *)"
+    },
+    "simpleonames": {
+      "target": "simpleonames",
+      "prototype": "char *(struct obj *)"
+    },
+    "snuff_lit": {
+      "target": "snuff_lit",
+      "prototype": "boolean (struct obj *)"
+    },
+    "some_mon_nam": {
+      "target": "some_mon_nam",
+      "prototype": "char *(struct monst *)"
+    },
+    "spitmm": {
+      "target": "spitmm",
+      "prototype": "int (struct monst *, struct attack *, struct monst *)"
+    },
+    "split_mon": {
+      "target": "split_mon",
+      "prototype": "struct monst *(struct monst *, struct monst *)"
+    },
+    "stagger": {
+      "target": "stagger",
+      "prototype": "const char *(const struct permonst *, const char *)"
+    },
+    "sticks": {
+      "target": "sticks",
+      "prototype": "boolean (struct permonst *)"
+    },
+    "t_at": {
+      "target": "t_at",
+      "prototype": "struct trap *(coordxy, coordxy)"
+    },
+    "tele": {
+      "target": "tele",
+      "prototype": "void (void)"
+    },
+    "tele_restrict": {
+      "target": "tele_restrict",
+      "prototype": "boolean (struct monst *)"
+    },
+    "thrwmm": {
+      "target": "thrwmm",
+      "prototype": "int (struct monst *, struct monst *)"
+    },
+    "unstuck": {
+      "target": "unstuck",
+      "prototype": "void (struct monst *)"
+    },
+    "update_monster_region": {
+      "target": "update_monster_region",
+      "prototype": "void (struct monst *)"
+    },
+    "which_armor": {
+      "target": "which_armor",
+      "prototype": "struct obj *(struct monst *, long)"
+    },
+    "x_monnam": {
+      "target": "x_monnam",
+      "prototype": "char *(struct monst *, int, const char *, int, boolean)"
+    },
+    "xkilled": {
+      "target": "xkilled",
+      "prototype": "void (struct monst *, int)"
+    },
+    "xname": {
+      "target": "xname",
+      "prototype": "char *(struct obj *)"
+    },
+    "you_unwere": {
+      "target": "you_unwere",
+      "prototype": "void (boolean)"
+    },
+    "you_were": {
+      "target": "you_were",
+      "prototype": "void (void)"
+    },
+    "zombie_form": {
+      "target": "zombie_form",
+      "prototype": "int (struct permonst *)"
+    },
+    "zombie_maker": {
+      "target": "zombie_maker",
+      "prototype": "boolean (struct monst *)"
+    },
+    "Resists_Elem": {
+      "target": "Resists_Elem",
+      "prototype": "boolean (struct monst *, int)"
+    },
+    "dmgtype_fromattack": {
+      "target": "dmgtype_fromattack",
+      "prototype": "struct attack *(struct permonst *, int, int)"
+    },
+    "pronoun_gender": {
+      "target": "pronoun_gender",
+      "prototype": "int (struct monst *, unsigned int)"
+    },
+    "unconscious": {
+      "target": "unconscious",
+      "prototype": "boolean (void)"
+    },
+    "is_fainted": {
+      "target": "is_fainted",
+      "prototype": "boolean (void)"
+    },
+    "dist2": {
+      "target": "dist2",
+      "prototype": "int (coordxy, coordxy, coordxy, coordxy)"
+    },
+    "distmin": {
+      "target": "distmin",
+      "prototype": "int (coordxy, coordxy, coordxy, coordxy)"
+    },
+    "strncmpi": {
+      "target": "strncmpi",
+      "prototype": "int (const char *, const char *, int)"
+    },
+    "strsubst": {
+      "target": "strsubst",
+      "prototype": "char *(char *, const char *, const char *)"
+    },
+    "strNsubst": {
+      "target": "strNsubst",
+      "prototype": "int (char *, const char *, const char *, int)"
+    },
+    "s_suffix": {
+      "target": "s_suffix",
+      "prototype": "char *(const char *)"
+    },
+    "Strcpy": {
+      "target": "strcpy",
+      "prototype": "char *(char *, const char *)"
+    },
+    "Strcat": {
+      "target": "strcat",
+      "prototype": "char *(char *, const char *)"
+    }
+  },
+  "public": {
+    "fightm": "int (struct monst *)",
+    "mdisplacem": "int (struct monst *, struct monst *, boolean)",
+    "mattackm": "int (struct monst *, struct monst *)",
+    "failed_grab": "boolean (struct monst *, struct monst *, struct attack *)",
+    "engulf_target": "boolean (struct monst *, struct monst *)",
+    "mon_poly": "int (struct monst *, struct monst *, int)",
+    "paralyze_monst": "void (struct monst *, int)",
+    "sleep_monst": "int (struct monst *, int, int)",
+    "slept_monst": "void (struct monst *)",
+    "rustm": "void (struct monst *, struct obj *)",
+    "xdrainenergym": "void (struct monst *, boolean)",
+    "attk_protection": "long (int)"
+  },
+  "formats": [
+    {
+      "function": "hitmm",
+      "line": 669
+    },
+    {
+      "function": "hitmm",
+      "line": 676
+    },
+    {
+      "function": "hitmm",
+      "line": 679
+    },
+    {
+      "function": "hitmm",
+      "line": 682
+    },
+    {
+      "function": "hitmm",
+      "line": 685
+    },
+    {
+      "function": "hitmm",
+      "line": 689
+    },
+    {
+      "function": "hitmm",
+      "line": 693
+    },
+    {
+      "function": "hitmm",
+      "line": 700
+    }
+  ],
+  "sourceSha256": {
+    "scripts/export-standalone-mhitm-abi.py": "ed53e3a40bc21b3b724f575d67343a4c7aeefb218a820986103db552690fd588",
+    "js/standalone/mhitm.js": "8d09eaa39d845472beb726e39b4ee9c6e29aa6215c8cf918f8d2d593ea595efd",
+    "js/ported/mhitm.js": "051eb508b998c581e54f877136384a6df4b95229701a2b00bed3eeee8d7c141d",
+    "js/ported/mhitm-runtime.js": "d3591549f23fa79053bfeb8bd2571f899ffce0d4689dcbd23c12cfe96c6b8dcf",
+    "nethack-c/wasm/tu-mhitm-support.inc": "a7c440247145802fb06c718a7985e4d412c37fa2ba916c08079332d9d8bbbcdc",
+    "nethack-c/wasm/tu-libraries/mhitm.js": "5683173f33a1b365149aa6675f55b6691691213d5f50590cd48a15161feb756d",
+    "scripts/tu-mhitm-layout.h": "e74e4e0b33fa567faa826fd2c849a52b28df418033db1667aed12324481ae913",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52"
+  },
+  "referenceSourceSha256": {
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/src/mhitm.c": "f3674e65aca558ae7461a05463ed003a9fd755d9078a9298639a4752f44b4e22"
+  }
+}

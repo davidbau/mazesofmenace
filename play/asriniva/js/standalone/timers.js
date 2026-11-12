@@ -3,13 +3,18 @@
 import * as timeout from '../ported/timeout.js';
 import {obj_to_any} from '../ported/hack.js';
 import {createRecordViews} from './record-views.js';
+import {extendTimeoutTransport} from './timeout-transport.js';
 export function enableTimers(environment,layouts) {
     const {services,transport,ctypes,memory,functions}=environment,views=createRecordViews(environment),L=layouts.timeout;
     if(ctypes.size('struct fe')!==L.timerSize)throw new Error('Timer record profile mismatch');
+    const forwards=new Map(),boundary=args=>args.map(v=>typeof v==='string'?services.literal(v):v?.address??v);
     const env=new Proxy(Object.create(services),{get(target,key,receiver){
-        if(Reflect.has(target,key))return Reflect.get(target,key,receiver);
-        if(typeof key!=='string')return undefined;
-        return (...args)=>environment.resolve(key)(...args);
+        if(Object.hasOwn(target,key))return Reflect.get(target,key,receiver);
+        const value=Reflect.has(target,key)?Reflect.get(target,key,receiver):undefined;
+        if(value!==undefined&&typeof value!=='function')return value;
+        if(typeof key!=='string')return value;
+        if(!forwards.has(key))forwards.set(key,(...args)=>(environment.hasFunction(key)?environment.resolve(key):typeof services[key]==='function'?services[key]:environment.resolve(key))(...boundary(args)));
+        return forwards.get(key);
     }});
     Object.defineProperties(env,Object.getOwnPropertyDescriptors(transport));
     const record=(type,p)=>views.record(type,p),bits=v=>BigInt.asUintN(64,BigInt(v?.address??v??0));
@@ -45,7 +50,8 @@ export function enableTimers(environment,layouts) {
     env.timeout_funcs=timeout.timeout_funcs.map(row=>({f:eventPointer(row.f),cleanup:row.cleanup?eventPointer(row.cleanup):0n,name:services.literal(row.name)}));
     if(env.timeout_funcs.length!==L.NUM_TIME_FUNCS)throw new Error('Timer callback table profile mismatch');
     env.callTimeout=(fn,arg,time)=>functions.indirect(fn,'vpj',environment.address(arg),BigInt(time));
-    const names=['run_timers','start_timer','stop_timer','peek_timer','obj_move_timers','obj_split_timers','obj_stop_timers','obj_has_timer','attach_egg_hatch_timeout','attach_fig_transform_timeout','kill_egg','hatch_egg','save_timers','restore_timers','relink_timers','obj_is_local'];
+    const extension=extendTimeoutTransport(environment,layouts,env,views);
+    const names=[...Object.keys(extension.abi.public),'cleanup_burn'].filter(name=>!environment.hasFunction(name));
     environment.register('timers',Object.fromEntries(names.map(name=>[name,timeout[name]])),env,{prepareArgs:(name,args)=>{
         if(name==='start_timer')args[3]=record('union any',args[3]);
         if(['stop_timer','peek_timer'].includes(name))args[1]=record('union any',args[1]);
@@ -53,8 +59,14 @@ export function enableTimers(environment,layouts) {
         if(['obj_move_timers','obj_split_timers'].includes(name)){args[0]=record('struct obj',args[0]);args[1]=record('struct obj',args[1]);}
         if(['obj_stop_timers','obj_has_timer','attach_egg_hatch_timeout','attach_fig_transform_timeout','kill_egg','obj_is_local'].includes(name))args[0]=record('struct obj',args[0]);
         if(['save_timers','restore_timers'].includes(name))args[0]=record('struct nh_file',args[0]);
+        if(name==='property_by_index')args[1]=env.intPointer(args[1]);
+        if(['begin_burn','end_burn'].includes(name)){args[0]=record('struct obj',args[0]);args[1]=transport.char(args[1]);}
+        if(['burn_object','cleanup_burn'].includes(name)){args[0]=record('union any',args[0]);args[1]=transport.long(args[1]);}
+        if(name==='fall_asleep'){args[0]=transport.int(args[0]);args[1]=transport.char(args[1]);}
+        if(name==='timer_stats'){args[0]=typeof args[0]==='string'?services.literal(args[0]):environment.address(args[0]);args[1]=environment.address(args[1]);args[2]=env.longPointer(args[2]);args[3]=env.longPointer(args[3]);}
+        if(['spot_stop_timers','spot_time_expires','spot_time_left'].includes(name))args=args.map(transport.short);
         return args;
     }});
     environment.register('object-anything',{obj_to_any},env,{prepareArgs:(_fn,args)=>[record('struct obj',args[0])]});
-    return {views,environment:env,events:timeout.timeout_funcs.map(({f,cleanup})=>({event:f,cleanup})),limitation:'Timer queue and attach operations; each elapsed event must have its real translated owner linked.'};
+    return {views,environment:env,events:timeout.timeout_funcs.map(({f,cleanup})=>({event:f,cleanup})),exports:names,limitation:'Original TIMEOUT entry transport on the established queue and callback IDs; unowned foreign event/death/weather branches require their actual owners and separate acceptance.'};
 }

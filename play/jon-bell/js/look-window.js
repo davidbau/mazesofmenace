@@ -97,7 +97,7 @@ export async function displayLookWindow(putstrLines) {
             } while (![32, 10, 13, 27].includes(key));
             if (key === 27) break;
         }
-        docrt_flags(0);
+        await docrt_flags(0);
         await flush_screen(1);
         return;
     }

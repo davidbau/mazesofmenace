@@ -23,7 +23,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
          await_topl_more_dismiss, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
-         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _hilite_status_wrap, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
 import { money_cnt } from './hack.js'; // relocate-fns
 export { ask_do_tutorial } from './options.js'; // relocate-fns
 export { money_cnt } from './hack.js'; // relocate-fns
@@ -352,6 +352,7 @@ export function _overlay_status_line(base, col, text) {
     // still leave the terminal in the reset state, or the menu footer written
     // after the clip (and every later blank cell) paints in reverse video.
     let sgrOpen = false;
+    let visAttr = 0;  // inverse(1)/underline(4): blanks under them are painted
     let decOpen = false;
     while (i < base.length && visCol < col) {
         const ch = base[i];
@@ -374,11 +375,27 @@ export function _overlay_status_line(base, col, text) {
                 // advance, but don't overshoot `col`
                 const room = col - visCol;
                 if (n <= room) { out += base.slice(i, j + 1); visCol += n; }
-                else { /* would overshoot — pad with spaces up to col below */ break; }
+                else {
+                    if (visAttr && room > 0) {
+                        out += room > 4 ? `\x1b[${room}C` : ' '.repeat(room);
+                        visCol += room;
+                    }
+                    /* would overshoot — pad with spaces up to col below */
+                    break;
+                }
             } else {
                 // SGR or other: emit as-is (no visible width)
                 out += base.slice(i, j + 1);
-                if (fin === 'm') sgrOpen = !/^(0)?$/.test(params);
+                if (fin === 'm') {
+                    sgrOpen = !/^(0)?$/.test(params);
+                    for (const p of (params || '0').split(';')) {
+                        if (p === '' || p === '0') visAttr = 0;
+                        else if (p === '7') visAttr |= 1;
+                        else if (p === '4') visAttr |= 4;
+                        else if (p === '27') visAttr &= ~1;
+                        else if (p === '24') visAttr &= ~4;
+                    }
+                }
             }
             i = j + 1;
             continue;
@@ -960,7 +977,7 @@ function _cp_rank_of(ulevel, roleName, female) {
     return rank_of(idx, ulevel, female);
 }
 /* C wintty.c:5216-5240: status keeps its field highlights under a menu. */
-function _statusLine1() { return botl_frozen_status_line(1) ?? _status_sgr(_hilite_status_wrap(_statusLine1Raw())); }
+function _statusLine1() { return botl_frozen_status_line(1) ?? _status_sgr(_statusLine1Raw()); }
 function _statusLine1Raw() {
     const g = game;
     const u = g.u;
@@ -1010,7 +1027,7 @@ function _statusLine1Raw() {
 // C ref: botl.c — status line 2 format.
 // Respects flags.showexp and flags.time options.
 // Note: uac passed as parameter to allow caller control (step 0 = pre-find_ac, step 1+ = current).
-function _statusLine2(uacOverride, pwOverride) { return botl_frozen_status_line(2) ?? _status_sgr(_hilite_status_wrap(_statusLine2Raw(uacOverride, pwOverride))); }
+function _statusLine2(uacOverride, pwOverride) { return botl_frozen_status_line(2) ?? _status_sgr(_statusLine2Raw(uacOverride, pwOverride)); }
 function _statusLine2Raw(uacOverride, pwOverride) {
     const g = game;
     const u = g.u;
@@ -1392,7 +1409,22 @@ export async function menu_search_getlin(frameRows) {
     const remember = (text) => {
         /* tty_getlin is not SUPPRESS_HISTORY: gt.toplines ("Search for: " + what
          * was typed) is pushed to the history ring by the next message. */
-        if (text.length > 0) hist().push(text);
+        /* C getline.c:213-226 leaves query+answer in gt.toplines; the next
+         * remember_topl() (topl.c:170-191) stores that line once. */
+        /* getline.c:81,213-220 leaves query+answer in gt.toplines; the next
+         * remember_topl() stores it once and clears it (topl.c:170-191). */
+        /* getline.c:63 custompline() left gt.toplines = "Search for: ..."; the
+         * ring walk of a later ^P starts there (topl.c:106-107), not blank. */
+        g._toplEmptyAfterSuppress = false;
+        if (text.length > 0) {
+            /* topl.c:170-190 remember_topl() stores query+answer once, then
+             * clears gt.toplines; a menu search is one history entry. */
+            hist().push(text);
+            /* getline.c:81,213-220 leaves query+answer in gt.toplines unless
+             * suppress_history is set; topl.c:106-107 recalls that line first. */
+            g._toplEmptyAfterSuppress = false;
+            g._prevmsg_next = null;
+        }
     };
     /* C ref: getline.c:63 custompline(..., "%s ", query) — the trailing space is
      * part of the prompt, and the cursor sits just past what has been typed. */

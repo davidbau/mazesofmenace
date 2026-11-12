@@ -33,7 +33,8 @@ import { obj_split_timers } from './timeout.js';
 import { artifact_light, obj_split_light_source } from './light.js';
 import { oid_price_adjustment, splitbill } from './shk.js';
 import { next_ident } from './mklev.js';
-import { OBJ_FREE, OBJ_LUAFREE } from './const.js';
+import { OBJ_FREE, OBJ_LUAFREE, OBJ_INVENT as _OBJ_INVENT_CA, CONTAINED_TOO, COST_UNCURS, COST_UNBLSS, FIG_TRANSFORM } from './const.js';
+function SetVoice(_mon, _a, _b, _c) { /* no sound driver in this port */ }
 const LARGEST_INT = 32767; /* C global.h:135 */
 const MONS_CWT = /** @type {number[]} */ (corpseData.cwt || []);
 /* C monst.h:285 ismnum(): bounded on both ends (const.js ismnum drops the upper bound). */
@@ -135,7 +136,6 @@ import { OBJ_MIGRATING } from './const.js'; // relocate-fns
 import { obfree } from './dokick.js'; // relocate-fns
 import { maybe_unhide_at } from './mon.js'; // relocate-fns
 import { remove_worn_item } from './steal.js'; // relocate-fns
-import { burn_carried } from './timeout.js'; // relocate-fns
 import { setmnotwielded } from './uhitm.js'; // relocate-fns
 
 // C mkobj.c:113: both gameplay callers overwrite the allocated monst before
@@ -455,7 +455,7 @@ export async function bless(otmp) {
     else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING)
         otmp.owt = weight(otmp);
     else if ((otmp.otyp | 0) === _BC_FIGURINE && otmp.timed)
-        stop_timer(6 /* FIG_TRANSFORM */, obj_to_any(otmp));
+        stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
     if (otmp.lamplit)
         await maybe_adjust_light(otmp, old_light);
 }
@@ -496,7 +496,7 @@ export async function uncurse(otmp) {
     else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING)
         otmp.owt = weight(otmp);
     else if ((otmp.otyp | 0) === _BC_FIGURINE && otmp.timed) {
-        stop_timer(6 /* FIG_TRANSFORM */, obj_to_any(otmp));
+        stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
     }
     if (otmp.lamplit)
         await maybe_adjust_light(otmp, old_light);
@@ -507,23 +507,23 @@ export async function curse(otmp) {
     if (!otmp)
         return;
     if ((otmp.oclass | 0) === _BC_COIN_CLASS)
-        return;                                       /* C:1787-1788 */
+        return;                                       /* C:1788-1789 */
     const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
-    const already_cursed = !!otmp.cursed;             /* C:1791 */
+    const already_cursed = !!otmp.cursed;             /* C:1792 */
     otmp.blessed = 0;
     otmp.cursed = 1;
-    /* C:1793-1795 — welded two-handed weapon interferes with some armor
+    /* C:1795-1797 — welded two-handed weapon interferes with some armor
      * removal. */
     if (otmp === game.u?.uwep && bimanual(game.u.uwep))
         reset_remarm();
     if (otmp === game.u?.uswapwep && game.u.twoweap)
         await drop_uswapwep();
-    if (_bc_carried(otmp) && confers_luck(otmp)) {    /* C:1801-1802 */
+    if (_bc_carried(otmp) && confers_luck(otmp)) {    /* C:1803-1804 */
         set_moreluck();
     } else if ((otmp.otyp | 0) === _BC_BAG_OF_HOLDING) {
         otmp.owt = weight(otmp);
     } else if ((otmp.otyp | 0) === _BC_FIGURINE) {
-        /* C:1805-1809 — a cursed figurine of a still-living species that is
+        /* C:1807-1810 — a cursed figurine of a still-living species that is
          * carried (by hero or monster) gets a transform timer. */
         if ((otmp.corpsenm | 0) >= 0 && otmp.corpsenm != null
             && !dead_species(otmp.corpsenm | 0, true)
@@ -603,10 +603,10 @@ export async function maybe_adjust_light(obj, old_range) {
     }
 }
 
-/* C mkobj.c:1501 — globs lose one weight unit every ~25 turns. */
+/* C mkobj.c:1672 shrinking_glob_gone — a glob has shrunk away to nothing. */
 export async function shrinking_glob_gone(obj) {
     const where = obj.where | 0;
-    if (where === OBJ_INVENT || burn_carried(obj)) {
+    if (where === OBJ_INVENT) {
         if (obj.owornmask) {
             await remove_worn_item(obj, false);
             await stop_occupation();
@@ -756,8 +756,9 @@ export async function costly_alteration(obj, alter_type) {
     }
 
     let ox = 0, oy = 0, objroom = 0;
-    if ((obj.where | 0) === 3 /* OBJ_INVENT, carried() */
-        || (obj.where | 0) === 0 /* OBJ_FREE */) {
+    let shkp = null;
+    if ((obj.where | 0) === _OBJ_INVENT_CA /* carried() */
+        || (obj.where | 0) === OBJ_FREE) {
         /* OBJ_FREE catches obj_no_longer_held()'s crysknife -> worm-tooth
            transformation; the item has left inventory but not necessarily
            landed yet, and 'unpaid' survives the move. */
@@ -765,7 +766,7 @@ export async function costly_alteration(obj, alter_type) {
             return;
     } else {
         const xp = {}, yp = {};
-        if (!get_obj_location(obj, xp, yp, 1 /* CONTAINED_TOO */)) {
+        if (!get_obj_location(obj, xp, yp, CONTAINED_TOO)) {
             xp.value = u.ux | 0;
             yp.value = u.uy | 0;
         }
@@ -777,6 +778,7 @@ export async function costly_alteration(obj, alter_type) {
         const shkpBox = { value: null };
         if (!(await billable(shkpBox, obj, objroom, false)))
             return;
+        shkp = shkpBox.value;
     }
 
     const quan = obj.quan ?? 1;
@@ -784,22 +786,26 @@ export async function costly_alteration(obj, alter_type) {
     const them = quan === 1 ? 'it' : 'them';
 
     /* learn_bknown = (alter_type == COST_UNCURS || alter_type == COST_UNBLSS) */
-    const learn_bknown = (alter_type === 4 || alter_type === 3);
+    const learn_bknown = (alter_type === COST_UNCURS || alter_type === COST_UNBLSS);
 
     switch (obj.where | 0) {
-    case 0: /* OBJ_FREE */
-    case 3: /* OBJ_INVENT */
+    case OBJ_FREE: /* obj_no_longer_held() */
+    case _OBJ_INVENT_CA:
         if (learn_bknown)
             set_bknown(obj, 1);
+        if (shkp)
+            SetVoice(shkp, 0, 80, 0);
         await verbalize(`You ${COSTLY_ALTERATION_VERBS[alter_type]} ${those} `
             + `${simpleonames(obj)}, you pay for ${them}!`);
         await bill_dummy_object(obj);
         break;
-    case 1:
+    case OBJ_FLOOR:
         if (learn_bknown)
             obj.bknown = 1;
         if (costly_spot(u.ux | 0, u.uy | 0)
             && objroom === (u.ushops ? u.ushops.charCodeAt(0) : 0)) {
+            if (shkp)
+                SetVoice(shkp, 0, 80, 0);
             await verbalize(`You ${COSTLY_ALTERATION_VERBS[alter_type]} ${those}, `
                 + `you pay for ${them}!`);
             await bill_dummy_object(obj);

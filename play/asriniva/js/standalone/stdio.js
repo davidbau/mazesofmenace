@@ -2,15 +2,16 @@
 // caller-supplied buffers, live in CMemory and survive memory growth.
 import {VFSError,O_WRONLY,O_CREAT,O_TRUNC} from '../services/c-vfs.js';
 import {address} from './memory-services.js';
+import {scanFormatted} from './scanf.js';
 export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),stdout,stderr}={}) {
     const files=new Map(),output=[[],[]];let inputOffset=0;
     const text=v=>typeof v==='string'?v:memory.readString(address(v));
     const fail=(error,value)=>{if(!(error instanceof VFSError))throw error;libc.errno=error.errno;return value;};
     const capture=(operation,value)=>{try{return operation();}catch(error){return fail(error,value);}};
     function stream(p){const f=files.get(address(p));if(!f)throw new VFSError('EBADF');return f;}
-    function allocate(fd,mode=0) {
+    function allocate(fd,mode=0,access='r+') {
         const p=memory.calloc(1,32);if(!p)throw new VFSError('ENOMEM');
-        files.set(p,{fd,eof:false,error:false,unget:[],mode,capacity:mode===2?0:1024,buffer:0,ownsBuffer:true,readPos:0,readEnd:0,writeEnd:0});return p;
+        files.set(p,{fd,eof:false,error:false,readable:access[0]==='r'||access.includes('+'),writable:access[0]!=='r'||access.includes('+'),unget:[],mode,capacity:mode===2?0:1024,buffer:0,ownsBuffer:true,readPos:0,readEnd:0,writeEnd:0});return p;
     }
     function buffer(f){if(!f.buffer){f.buffer=memory.malloc(f.capacity);if(!f.buffer)throw new VFSError('ENOMEM');}return f.buffer;}
     function read(fd,p,n) {
@@ -34,7 +35,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),stdou
         f.readEnd=f.readPos=0;f.unget=[];
     }
     function fileRead(f,p,n) {
-        p=address(p);n=Number(n);memory.bounds(p,n);flush(f);let done=0;
+        p=address(p);n=Number(n);memory.bounds(p,n);flush(f);if(!f.readable){f.error=true;return 0;}let done=0;
         while(done<n){
             if(f.unget.length){memory.HEAPU8[p+done++]=f.unget.pop();continue;}
             if(f.readPos<f.readEnd){const count=Math.min(n-done,f.readEnd-f.readPos);memory.memmove(p+done,f.buffer+f.readPos,count);f.readPos+=count;done+=count;continue;}
@@ -45,7 +46,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),stdou
         return done;
     }
     function fileWrite(f,p,n) {
-        p=address(p);n=Number(n);memory.bounds(p,n);discardInput(f);
+        p=address(p);n=Number(n);memory.bounds(p,n);if(!f.writable){f.error=true;return 0;}discardInput(f);
         // Configured musl __fwritex writes pending bytes and the entire input
         // directly when it exceeds available space; an exact fit stays pending.
         if(n>f.capacity-f.writeEnd){flush(f);return write(f.fd,p,n);}
@@ -59,7 +60,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),stdou
 
     function operation(p,fn,failure){let f;try{f=stream(p);return fn(f);}catch(error){if(f&&error instanceof VFSError)f.error=true;return fail(error,failure);}}
     const api={
-        stdin:allocate(0),stdout:allocate(1,1),stderr:allocate(2,2),
+        stdin:allocate(0,0,'r'),stdout:allocate(1,1,'w'),stderr:allocate(2,2,'w'),
         open:(p,flags,mode=0o666)=>capture(()=>filesystem.open(text(p),Number(flags),Number(mode)),-1),
         close:fd=>capture(()=>{fd=Number(fd);if(fd<3)throw new VFSError('ENOTSUP');filesystem.close(fd);return 0;},-1),
         read:(fd,p,n)=>capture(()=>read(fd,p,n),-1),write:(fd,p,n)=>capture(()=>write(fd,p,n),-1),
@@ -68,8 +69,8 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),stdou
         rename:(a,b)=>capture(()=>{filesystem.rename(text(a),text(b));return 0;},-1),
         mkdir:(p,mode)=>capture(()=>{filesystem.mkdir(text(p),Number(mode));return 0;},-1),
         chdir:p=>capture(()=>{filesystem.chdir(text(p));return 0;},-1),
-        fopen:(path,mode)=>capture(()=>{const fd=filesystem.open(text(path),text(mode));try{return allocate(fd);}catch(error){filesystem.close(fd);throw error;}},0),
-        fdopen:(fd,mode)=>capture(()=>{fd=Number(fd);if(fd>=3)filesystem.fstat(fd);else if(fd<0)throw new VFSError('EBADF');if(!/^[rwa]\+?b?$|^[rwa]b\+?$/.test(text(mode)))throw new VFSError('EINVAL');return allocate(fd);},0),
+        fopen:(path,mode)=>capture(()=>{const fd=filesystem.open(text(path),text(mode));try{return allocate(fd,0,text(mode));}catch(error){filesystem.close(fd);throw error;}},0),
+        fdopen:(fd,mode)=>capture(()=>{fd=Number(fd);if(fd>=3)filesystem.fstat(fd);else if(fd<0)throw new VFSError('EBADF');if(!/^[rwa]\+?b?$|^[rwa]b\+?$/.test(text(mode)))throw new VFSError('EINVAL');return allocate(fd,0,text(mode));},0),
         fclose:p=>operation(p,f=>{let result=0;try{flush(f);}catch(error){result=fail(error,-1);}try{if(f.fd>=3)filesystem.close(f.fd);}catch(error){result=fail(error,-1);}files.delete(address(p));if(f.ownsBuffer&&f.buffer)memory.free(f.buffer);memory.free(address(p));return result;},-1),
         fileno:p=>operation(p,f=>f.fd,-1),
         fflush:p=>p?operation(p,f=>{flush(f);discardInput(f);return 0;},-1):capture(()=>{let status=0;for(const [p,f]of files)if(f.writeEnd&&operation(p,()=>{flush(f);return 0;},-1)!==0)status=-1;return status;},-1),
@@ -95,13 +96,14 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),stdou
         fread:(p,size,count,file)=>operation(file,f=>{size=Number(size);count=Number(count);if(!size||!count)return 0;return Math.floor(fileRead(f,p,size*count)/size);},0),
         fwrite:(p,size,count,file)=>operation(file,f=>{size=Number(size);count=Number(count);if(!size||!count)return 0;return Math.floor(fileWrite(f,p,size*count)/size);},0),
         fgetc:p=>operation(p,f=>{const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{return fileRead(f,at,1)?memory.HEAPU8[at]:-1;}finally{memory.free(at);}},-1),
-        ungetc:(c,p)=>operation(p,f=>{if(Number(c)===-1||f.unget.length>=8+f.readPos)return -1;f.eof=false;f.unget.push(Number(c)&255);return Number(c)&255;},-1),
+        ungetc:(c,p)=>operation(p,f=>{if(Number(c)===-1)return -1;if(!f.readable){f.error=true;return -1;}if(f.unget.length>=8+f.readPos)return -1;f.eof=false;f.unget.push(Number(c)&255);return Number(c)&255;},-1),
         fputc:(c,p)=>operation(p,f=>{const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{memory.HEAPU8[at]=Number(c)&255;return fileWrite(f,at,1)===1?Number(c)&255:-1;}finally{memory.free(at);}},-1),
         feof:p=>operation(p,f=>Number(f.eof),0),ferror:p=>operation(p,f=>Number(f.error),0),clearerr:p=>operation(p,f=>{f.eof=f.error=false;},undefined),
         fseek:(p,n,whence)=>operation(p,f=>{flush(f);discardInput(f);filesystem.lseek(f.fd,Number(n),Number(whence));f.eof=false;return 0;},-1),
         ftell:p=>operation(p,f=>BigInt(filesystem.lseek(f.fd,0,1)-f.readEnd+f.readPos-f.unget.length+f.writeEnd),-1n),
         captured(fd){if(fd!==1&&fd!==2)throw new RangeError('Unknown output fd');const parts=output[fd-1],bytes=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){bytes.set(p,at);at+=p.length;}return bytes;},
     };
+    api.fscanf=(file,format,...outputs)=>operation(file,f=>{flush(f);if(!f.readable){f.error=true;return -1;}return scanFormatted(memory,libc,{get:()=>api.fgetc(file),unget:c=>api.ungetc(c,file)},text(format).split('\0')[0],outputs);},-1);
     api.getc=api.fgetc;api.putc=api.fputc;api.getchar=()=>api.fgetc(api.stdin);api.putchar=c=>api.fputc(c,api.stdout);
     api.creat=(path,mode)=>api.open(path,O_WRONLY|O_CREAT|O_TRUNC,mode);
     api.rewind=p=>{api.fseek(p,0,0);api.clearerr(p);};

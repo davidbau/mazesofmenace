@@ -35,7 +35,7 @@ import { hcolor, s_suffix } from './mhitm.js'; // relocate-fns
 import { place_object } from './mklev.js'; // relocate-fns
 import { curse as _mdw_curse } from './mkobj.js'; // relocate-fns
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
-import { breakarm as breakarm_real, num_horns, pronoun_gender } from './mondata.js'; // relocate-fns
+import { breakarm, num_horns, pronoun_gender } from './mondata.js'; // relocate-fns
 import { discover_object } from './o_init.js'; // relocate-fns
 import { an, cloak_simple_name, distant_name, doname, otense, simpleonames } from './objnam.js'; // relocate-fns
 import { You_hear, pline, pline_mon, impossible as trap_impossible } from './pline.js'; // relocate-fns
@@ -324,7 +324,7 @@ function WrappingAllowed(data) {
 }
 
 function _worn_cantweararm(data) {
-    return breakarm_real(data) || sliparm_real(data);
+    return breakarm(data) || sliparm_real(data);
 }
 
 /* C ref: worn.c:748 m_dowear — equip a monster with appropriate worn items. */
@@ -1260,7 +1260,6 @@ export async function mon_break_armor(mon, polyspot) {
        cloth/leather helmet C leaves on.  The real body is this file's own
        module-scope _mdw_is_flimsy (js/trap.js:2053), already C-faithful. */
     function is_flimsy(obj) { return _mdw_is_flimsy(obj); }
-    function breakarm(data) { return breakarm_real(data); }
     function sliparm(data) { return sliparm_real(data); }
     /* C worn.c:1032-1044.  Armor which survives a form change is removed
        from the monster inventory, put on the current square, and marked as

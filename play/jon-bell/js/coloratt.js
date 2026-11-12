@@ -390,8 +390,9 @@ export function menucolor_text(body, matchText = body) {
  * outside the SGR for the compositor's indent read (js/com_pager.js /^ +/). */
 export function menucolor_row(text) {
     const t = String(text ?? '');
-    const m = /^(.) ([-+#]) (.*)$/.exec(t);
-    if (m) return `${m[1]} ${m[2]} ${menucolor_text(m[3])}`;
+    if (t === '(end)') return t;
+    const m = /^(.) (\x01?[-+#*]) (.*)$/.exec(t);
+    if (m) return `${m[1]} ${m[2][0] === '\x01' ? menucolor_text(m[2].slice(1), m[3]) : m[2]} ${menucolor_text(m[3])}`;
     const pad = (/^ +/.exec(t) || [''])[0];
     return pad + menucolor_text(t.slice(pad.length));
 }

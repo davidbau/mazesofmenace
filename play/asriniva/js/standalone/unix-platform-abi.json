@@ -1,0 +1,3219 @@
+{
+  "ports": {
+    "unixunix": {
+      "schema": {
+        "schema": {
+          "flag": {
+            "ctype": "struct flag",
+            "fields": [
+              {
+                "name": "debug",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_flags": {
+            "ctype": "struct instance_flags",
+            "fields": [
+              {
+                "name": "window_inited",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_l": {
+            "ctype": "struct instance_globals_l",
+            "fields": [
+              {
+                "name": "locknum",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "lock",
+                "ctype": "char[46]",
+                "canonical": "char[46]",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_saved_h": {
+            "ctype": "struct instance_globals_saved_h",
+            "fields": [
+              {
+                "name": "hackpid",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_saved_p": {
+            "ctype": "struct instance_globals_saved_p",
+            "fields": [
+              {
+                "name": "plname",
+                "ctype": "char[32]",
+                "canonical": "char[32]",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "sinfo": {
+            "ctype": "struct sinfo",
+            "fields": [
+              {
+                "name": "preserve_locks",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "stat": {
+            "ctype": "struct stat",
+            "fields": [
+              {
+                "name": "st_dev",
+                "ctype": "dev_t",
+                "canonical": "unsigned int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_mode",
+                "ctype": "mode_t",
+                "canonical": "unsigned int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_nlink",
+                "ctype": "nlink_t",
+                "canonical": "unsigned long",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_uid",
+                "ctype": "uid_t",
+                "canonical": "unsigned int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_gid",
+                "ctype": "gid_t",
+                "canonical": "unsigned int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_rdev",
+                "ctype": "dev_t",
+                "canonical": "unsigned int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_size",
+                "ctype": "off_t",
+                "canonical": "long long",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_blksize",
+                "ctype": "blksize_t",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_blocks",
+                "ctype": "blkcnt_t",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_atim",
+                "ctype": "struct timespec",
+                "canonical": "struct timespec",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_mtim",
+                "ctype": "struct timespec",
+                "canonical": "struct timespec",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_ctim",
+                "ctype": "struct timespec",
+                "canonical": "struct timespec",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "st_ino",
+                "ctype": "ino_t",
+                "canonical": "unsigned long long",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "sysopt_s": {
+            "ctype": "struct sysopt_s",
+            "fields": [
+              {
+                "name": "shellers",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "timespec": {
+            "ctype": "struct timespec",
+            "fields": [
+              {
+                "name": "tv_sec",
+                "ctype": "time_t",
+                "canonical": "long long",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "tv_nsec",
+                "ctype": "long",
+                "canonical": "long",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "window_procs": {
+            "ctype": "struct window_procs",
+            "fields": [
+              {
+                "name": "name",
+                "ctype": "const char *",
+                "canonical": "char *",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_exit_nhwindows",
+                "ctype": "void (*)(const char *)",
+                "canonical": "void (*)( char *)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_suspend_nhwindows",
+                "ctype": "void (*)(const char *)",
+                "canonical": "void (*)( char *)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_resume_nhwindows",
+                "ctype": "void (*)(void)",
+                "canonical": "void (*)(void)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_wait_synch",
+                "ctype": "void (*)(void)",
+                "canonical": "void (*)(void)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_raw_print",
+                "ctype": "void (*)(const char *)",
+                "canonical": "void (*)( char *)",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          }
+        },
+        "globals": [
+          {
+            "name": "program_state",
+            "ctype": "struct sinfo",
+            "canonical": "struct sinfo"
+          },
+          {
+            "name": "gl",
+            "ctype": "struct instance_globals_l",
+            "canonical": "struct instance_globals_l"
+          },
+          {
+            "name": "windowprocs",
+            "ctype": "volatile struct window_procs",
+            "canonical": "struct window_procs"
+          },
+          {
+            "name": "svp",
+            "ctype": "struct instance_globals_saved_p",
+            "canonical": "struct instance_globals_saved_p"
+          },
+          {
+            "name": "iflags",
+            "ctype": "struct instance_flags",
+            "canonical": "struct instance_flags"
+          },
+          {
+            "name": "ynchars",
+            "ctype": "const char[]",
+            "canonical": "char[]"
+          },
+          {
+            "name": "stdout",
+            "ctype": "FILE *const",
+            "canonical": "struct _IO_FILE *"
+          },
+          {
+            "name": "svh",
+            "ctype": "struct instance_globals_saved_h",
+            "canonical": "struct instance_globals_saved_h"
+          },
+          {
+            "name": "sysopt",
+            "ctype": "struct sysopt_s",
+            "canonical": "struct sysopt_s"
+          },
+          {
+            "name": "flags",
+            "ctype": "struct flag",
+            "canonical": "struct flag"
+          }
+        ],
+        "enums": [],
+        "layoutKeys": [
+          "pointerSize",
+          "longSize",
+          "intSize",
+          "charSigned",
+          "littleEndian",
+          "size:struct flag",
+          "size:struct instance_flags",
+          "size:struct instance_globals_l",
+          "size:struct instance_globals_saved_h",
+          "size:struct instance_globals_saved_p",
+          "size:struct sinfo",
+          "size:struct stat",
+          "size:struct sysopt_s",
+          "size:struct timespec",
+          "size:struct window_procs"
+        ],
+        "sizes": [
+          "struct flag",
+          "struct instance_flags",
+          "struct instance_globals_l",
+          "struct instance_globals_saved_h",
+          "struct instance_globals_saved_p",
+          "struct sinfo",
+          "struct stat",
+          "struct sysopt_s",
+          "struct timespec",
+          "struct window_procs"
+        ],
+        "dependencies": {
+          "fstat": {
+            "type": "int (int, struct stat *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "struct stat *",
+                "canonical": "struct stat *"
+              }
+            ]
+          },
+          "time": {
+            "type": "time_t (time_t *)",
+            "ret": "long long",
+            "params": [
+              {
+                "name": "a0",
+                "type": "time_t *",
+                "canonical": "long long *"
+              }
+            ]
+          },
+          "read": {
+            "type": "ssize_t (int, void *, size_t)",
+            "ret": "long",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "void *",
+                "canonical": "void *"
+              },
+              {
+                "name": "a2",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              }
+            ]
+          },
+          "set_levelfile_name": {
+            "type": "void (char *, int)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "fqname": {
+            "type": "const char *(const char *, int, int)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a2",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "unlink": {
+            "type": "int (const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "strcmp": {
+            "type": "int (const char *, const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "isatty": {
+            "type": "int (int)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "getenv": {
+            "type": "char *(const char *)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "lock_file": {
+            "type": "boolean (const char *, int, int)",
+            "ret": "signed char",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a2",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "getuid": {
+            "type": "uid_t (void)",
+            "ret": "unsigned int",
+            "params": []
+          },
+          "__errno_location": {
+            "type": "int *(void)",
+            "ret": "int *",
+            "params": []
+          },
+          "perror": {
+            "type": "void (const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "unlock_file": {
+            "type": "void (const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "close": {
+            "type": "int (int)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "yn_function": {
+            "type": "char (const char *, const char *, char, boolean)",
+            "ret": "char",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a2",
+                "type": "char",
+                "canonical": "char"
+              },
+              {
+                "name": "a3",
+                "type": "boolean",
+                "canonical": "signed char"
+              }
+            ]
+          },
+          "fflush": {
+            "type": "int (FILE *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "FILE *",
+                "canonical": "struct _IO_FILE *"
+              }
+            ]
+          },
+          "getchar": {
+            "type": "int (void)",
+            "ret": "int",
+            "params": []
+          },
+          "putchar": {
+            "type": "int (int)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "creat": {
+            "type": "int (const char *, mode_t)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "mode_t",
+                "canonical": "unsigned int"
+              }
+            ]
+          },
+          "write": {
+            "type": "ssize_t (int, const void *, size_t)",
+            "ret": "long",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "const void *",
+                "canonical": "void *"
+              },
+              {
+                "name": "a2",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              }
+            ]
+          },
+          "lowc": {
+            "type": "char (char)",
+            "ret": "char",
+            "params": [
+              {
+                "name": "a0",
+                "type": "char",
+                "canonical": "char"
+              }
+            ]
+          },
+          "strchr": {
+            "type": "char *(const char *, int)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "delete_levelfile": {
+            "type": "void (int)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "nh_terminate": {
+            "type": "void (int) __attribute__((noreturn))",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "check_user_string": {
+            "type": "boolean (const char *)",
+            "ret": "signed char",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "exit": {
+            "type": "void (int) __attribute__((noreturn))",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "fork": {
+            "type": "pid_t (void)",
+            "ret": "int",
+            "params": []
+          },
+          "getgid": {
+            "type": "gid_t (void)",
+            "ret": "unsigned int",
+            "params": []
+          },
+          "setgid": {
+            "type": "int (gid_t)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "gid_t",
+                "canonical": "unsigned int"
+              }
+            ]
+          },
+          "setuid": {
+            "type": "int (uid_t)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "uid_t",
+                "canonical": "unsigned int"
+              }
+            ]
+          },
+          "chdir": {
+            "type": "int (const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "teleport_native_signal": {
+            "type": "void (*(int, void (*)(int)))(int)",
+            "ret": "void (*)(int)",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "void (*)(int)",
+                "canonical": "void (*)(int)"
+              }
+            ],
+            "wrapper": "teleport_unixunix_dep_signal"
+          },
+          "wait": {
+            "type": "pid_t (int *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int *",
+                "canonical": "int *"
+              }
+            ]
+          },
+          "stat": {
+            "type": "int (const char *restrict, struct stat *restrict)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *restrict",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "struct stat *restrict",
+                "canonical": "struct stat *"
+              }
+            ]
+          }
+        },
+        "variadics": [
+          {
+            "site": 0,
+            "function": "error",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 1,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 2,
+            "function": "sprintf",
+            "types": [
+              "char *",
+              "char *",
+              "unsigned int",
+              "char *"
+            ],
+            "prototype": "int (char *restrict, const char *restrict, ...)",
+            "owner": "getlock"
+          },
+          {
+            "site": 3,
+            "function": "open",
+            "types": [
+              "char *",
+              "int"
+            ],
+            "prototype": "int (const char *, int, ...)",
+            "owner": "getlock"
+          },
+          {
+            "site": 4,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 5,
+            "function": "error",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 6,
+            "function": "open",
+            "types": [
+              "char *",
+              "int"
+            ],
+            "prototype": "int (const char *, int, ...)",
+            "owner": "getlock"
+          },
+          {
+            "site": 7,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 8,
+            "function": "raw_printf",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "getlock"
+          },
+          {
+            "site": 9,
+            "function": "error",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 10,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 11,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 12,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 13,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "getlock"
+          },
+          {
+            "site": 14,
+            "function": "pline",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "ask_about_panic_save"
+          },
+          {
+            "site": 15,
+            "function": "pline",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "ask_about_panic_save"
+          },
+          {
+            "site": 16,
+            "function": "raw_printf",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "ask_about_panic_save"
+          },
+          {
+            "site": 17,
+            "function": "Norep",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "dosh"
+          },
+          {
+            "site": 18,
+            "function": "execl",
+            "types": [
+              "char *",
+              "char *",
+              "char *"
+            ],
+            "prototype": "int (const char *, const char *, ...)",
+            "owner": "dosh"
+          },
+          {
+            "site": 19,
+            "function": "execl",
+            "types": [
+              "char *",
+              "char *",
+              "char *"
+            ],
+            "prototype": "int (const char *, const char *, ...)",
+            "owner": "dosh"
+          },
+          {
+            "site": 20,
+            "function": "pline",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "child"
+          }
+        ],
+        "statics": [
+          {
+            "name": "buf",
+            "sourceName": "buf",
+            "owner": null,
+            "public": false,
+            "sourceType": "struct stat",
+            "type": "struct stat",
+            "size": "C.sizes[\"struct stat\"]",
+            "js": "0"
+          },
+          {
+            "name": "getlock.destroy_old_game_prompt",
+            "sourceName": "destroy_old_game_prompt",
+            "owner": "getlock",
+            "public": false,
+            "sourceType": "const char[72]",
+            "type": "char[72]",
+            "size": "(1*72)",
+            "js": "C.literal(\"There is already a game in progress under your name.  Destroy old game?\")"
+          },
+          {
+            "name": "ask_about_panic_save.Instead_prompt",
+            "sourceName": "Instead_prompt",
+            "owner": "ask_about_panic_save",
+            "public": false,
+            "sourceType": "const char[26]",
+            "type": "char[26]",
+            "size": "(1*26)",
+            "js": "C.literal(\"Start a new game instead?\")"
+          }
+        ],
+        "literals": [
+          "",
+          "\n%s [yn] ",
+          "%s",
+          "%s [yn] (n) ",
+          "%u%s",
+          "/bin/sh",
+          "Cannot open %s",
+          "Couldn't destroy old game.",
+          "Fork failed.  Try again.",
+          "HOME",
+          "It might be recoverable with demi-divine intervention.",
+          "NOMUX_MARKERS",
+          "SHELL",
+          "Start a new game instead?",
+          "There is already a game in progress under your name.  Destroy old game?",
+          "There is no regular save file but there is a panic one.",
+          "Too many hacks running now.",
+          "Unavailable command '!'.",
+          "You must play from a terminal.",
+          "cannot close lock (%s)",
+          "cannot creat lock file (%s).",
+          "cannot write lock (%s)",
+          "perm",
+          "sh",
+          "sh: cannot execute.",
+          "tty",
+          "yn\u001bq",
+          "ynq\n"
+        ],
+        "literalBytes": 542,
+        "callbackCalls": [
+          {
+            "site": 0,
+            "type": "void (*)(void)",
+            "types": [],
+            "ret": "void",
+            "owner": "getlock"
+          },
+          {
+            "site": 1,
+            "type": "void (*)(const char *)",
+            "types": [
+              "char *"
+            ],
+            "ret": "void",
+            "owner": "ask_about_panic_save"
+          },
+          {
+            "site": 2,
+            "type": "void (*)(const char *)",
+            "types": [
+              "char *"
+            ],
+            "ret": "void",
+            "owner": "dosh"
+          },
+          {
+            "site": 3,
+            "type": "void (*)(const char *)",
+            "types": [
+              "char *"
+            ],
+            "ret": "void",
+            "owner": "child"
+          },
+          {
+            "site": 4,
+            "type": "void (*)(const char *)",
+            "types": [
+              "char *"
+            ],
+            "ret": "void",
+            "owner": "child"
+          },
+          {
+            "site": 5,
+            "type": "void (*)(void)",
+            "types": [],
+            "ret": "void",
+            "owner": "child"
+          },
+          {
+            "site": 6,
+            "type": "void (*)(void)",
+            "types": [],
+            "ret": "void",
+            "owner": "child"
+          }
+        ],
+        "dynamicVariadics": [],
+        "nativeFunctionPointers": [
+          "done1"
+        ],
+        "ownedFunctionPointers": [],
+        "functionTypes": {
+          "veryold": "int (int)",
+          "eraseoldlocks": "int (void)",
+          "getlock": "void (void)",
+          "ask_about_panic_save": "void (void)",
+          "regularize": "void (char *)",
+          "dosh": "int (void)",
+          "child": "int (int)",
+          "file_exists": "boolean (const char *)"
+        }
+      },
+      "layout": [
+        8,
+        8,
+        4,
+        1,
+        1,
+        208,
+        424,
+        696,
+        4,
+        96,
+        120,
+        104,
+        184,
+        16,
+        416
+      ]
+    },
+    "unixmain": {
+      "schema": {
+        "names": [
+          "main",
+          "process_options",
+          "chdirx",
+          "whoami",
+          "sethanguphandler",
+          "authorize_wizard_mode",
+          "authorize_explore_mode",
+          "wd_message",
+          "append_slash",
+          "check_user_string",
+          "get_unix_pw",
+          "get_login_name",
+          "sys_random_seed",
+          "get_nhuuid",
+          "free_nhuuid"
+        ],
+        "private": [
+          "process_options",
+          "wd_message",
+          "get_unix_pw"
+        ],
+        "schema": {
+          "anonymous_14": {
+            "ctype": "__typeof__(((struct sigaction*)0)->__sa_handler)",
+            "fields": [
+              {
+                "name": "sa_handler",
+                "ctype": "void (*)(int)",
+                "canonical": "void (*)(int)",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "flag": {
+            "ctype": "struct flag",
+            "fields": [
+              {
+                "name": "debug",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "explore",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "initrole",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "initrace",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "randomall",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_flags": {
+            "ctype": "struct instance_flags",
+            "fields": [
+              {
+                "name": "defer_plname",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "deferred_X",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "news",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "renameinprogress",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "wiz_error_flag",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "explore_error_flag",
+                "ctype": "boolean",
+                "canonical": "signed char",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_e": {
+            "ctype": "struct instance_globals_e",
+            "fields": [
+              {
+                "name": "early_raw_messages",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_h": {
+            "ctype": "struct instance_globals_h",
+            "fields": [
+              {
+                "name": "hname",
+                "ctype": "const char *",
+                "canonical": "char *",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_l": {
+            "ctype": "struct instance_globals_l",
+            "fields": [
+              {
+                "name": "locknum",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "loglua",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_p": {
+            "ctype": "struct instance_globals_p",
+            "fields": [
+              {
+                "name": "plnamelen",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_s": {
+            "ctype": "struct instance_globals_s",
+            "fields": [
+              {
+                "name": "SAVEF",
+                "ctype": "char[54]",
+                "canonical": "char[54]",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_saved_h": {
+            "ctype": "struct instance_globals_saved_h",
+            "fields": [
+              {
+                "name": "hackpid",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_saved_n": {
+            "ctype": "struct instance_globals_saved_n",
+            "fields": [
+              {
+                "name": "nhuuid",
+                "ctype": "char[37]",
+                "canonical": "char[37]",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "instance_globals_saved_p": {
+            "ctype": "struct instance_globals_saved_p",
+            "fields": [
+              {
+                "name": "plname",
+                "ctype": "char[32]",
+                "canonical": "char[32]",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "passwd": {
+            "ctype": "struct passwd",
+            "fields": [
+              {
+                "name": "pw_name",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false
+              },
+              {
+                "name": "pw_passwd",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false
+              },
+              {
+                "name": "pw_uid",
+                "ctype": "uid_t",
+                "canonical": "unsigned int",
+                "bit": false
+              },
+              {
+                "name": "pw_gid",
+                "ctype": "gid_t",
+                "canonical": "unsigned int",
+                "bit": false
+              },
+              {
+                "name": "pw_gecos",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false
+              },
+              {
+                "name": "pw_dir",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false
+              },
+              {
+                "name": "pw_shell",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false
+              }
+            ]
+          },
+          "sigaction": {
+            "ctype": "struct sigaction",
+            "fields": [
+              {
+                "name": "__sa_handler",
+                "ctype": "union (unnamed union at /Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/signal.h:170:2)",
+                "canonical": "union sigaction::(unnamed at /Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/signal.h:170:2)",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "sinfo": {
+            "ctype": "struct sinfo",
+            "fields": [
+              {
+                "name": "preserve_locks",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "in_self_recover",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "early_options",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "sysopt_s": {
+            "ctype": "struct sysopt_s",
+            "fields": [
+              {
+                "name": "wizards",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "explorers",
+                "ctype": "char *",
+                "canonical": "char *",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "maxplayers",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "check_plname",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "window_procs": {
+            "ctype": "struct window_procs",
+            "fields": [
+              {
+                "name": "win_init_nhwindows",
+                "ctype": "void (*)(int *, char **)",
+                "canonical": "void (*)(int *, char **)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_player_selection",
+                "ctype": "void (*)(void)",
+                "canonical": "void (*)(void)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_display_file",
+                "ctype": "void (*)(const char *, boolean)",
+                "canonical": "void (*)( char *, boolean)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_mark_synch",
+                "ctype": "void (*)(void)",
+                "canonical": "void (*)(void)",
+                "bit": false,
+                "bitWidth": null
+              },
+              {
+                "name": "win_raw_print",
+                "ctype": "void (*)(const char *)",
+                "canonical": "void (*)( char *)",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          },
+          "you": {
+            "ctype": "struct you",
+            "fields": [
+              {
+                "name": "uhp",
+                "ctype": "int",
+                "canonical": "int",
+                "bit": false,
+                "bitWidth": null
+              }
+            ]
+          }
+        },
+        "globals": [
+          {
+            "name": "gh",
+            "ctype": "struct instance_globals_h",
+            "canonical": "struct instance_globals_h"
+          },
+          {
+            "name": "svh",
+            "ctype": "struct instance_globals_saved_h",
+            "canonical": "struct instance_globals_saved_h"
+          },
+          {
+            "name": "program_state",
+            "ctype": "struct sinfo",
+            "canonical": "struct sinfo"
+          },
+          {
+            "name": "ARGV0",
+            "ctype": "const char *",
+            "canonical": "char *"
+          },
+          {
+            "name": "u",
+            "ctype": "struct you",
+            "canonical": "struct you"
+          },
+          {
+            "name": "windowprocs",
+            "ctype": "volatile struct window_procs",
+            "canonical": "struct window_procs"
+          },
+          {
+            "name": "gp",
+            "ctype": "struct instance_globals_p",
+            "canonical": "struct instance_globals_p"
+          },
+          {
+            "name": "svp",
+            "ctype": "struct instance_globals_saved_p",
+            "canonical": "struct instance_globals_saved_p"
+          },
+          {
+            "name": "flags",
+            "ctype": "struct flag",
+            "canonical": "struct flag"
+          },
+          {
+            "name": "gl",
+            "ctype": "struct instance_globals_l",
+            "canonical": "struct instance_globals_l"
+          },
+          {
+            "name": "gs",
+            "ctype": "struct instance_globals_s",
+            "canonical": "struct instance_globals_s"
+          },
+          {
+            "name": "iflags",
+            "ctype": "struct instance_flags",
+            "canonical": "struct instance_flags"
+          },
+          {
+            "name": "ge",
+            "ctype": "struct instance_globals_e",
+            "canonical": "struct instance_globals_e"
+          },
+          {
+            "name": "ynchars",
+            "ctype": "const char[]",
+            "canonical": "char[]"
+          },
+          {
+            "name": "sysopt",
+            "ctype": "struct sysopt_s",
+            "canonical": "struct sysopt_s"
+          },
+          {
+            "name": "has_strong_rngseed",
+            "ctype": "boolean",
+            "canonical": "signed char"
+          },
+          {
+            "name": "svn",
+            "ctype": "struct instance_globals_saved_n",
+            "canonical": "struct instance_globals_saved_n"
+          }
+        ],
+        "enums": [
+          "PRIMARYSET",
+          "ROGUESET"
+        ],
+        "layoutKeys": [
+          "pointerSize",
+          "longSize",
+          "intSize",
+          "charSigned",
+          "littleEndian",
+          "size:__typeof__(((struct sigaction*)0)->__sa_handler)",
+          "size:struct flag",
+          "size:struct instance_flags",
+          "size:struct instance_globals_e",
+          "size:struct instance_globals_h",
+          "size:struct instance_globals_l",
+          "size:struct instance_globals_p",
+          "size:struct instance_globals_s",
+          "size:struct instance_globals_saved_h",
+          "size:struct instance_globals_saved_n",
+          "size:struct instance_globals_saved_p",
+          "size:struct passwd",
+          "size:struct sigaction",
+          "size:struct sinfo",
+          "size:struct sysopt_s",
+          "size:struct window_procs",
+          "size:struct you",
+          "PRIMARYSET",
+          "ROGUESET"
+        ],
+        "sizes": [
+          "__typeof__(((struct sigaction*)0)->__sa_handler)",
+          "struct flag",
+          "struct instance_flags",
+          "struct instance_globals_e",
+          "struct instance_globals_h",
+          "struct instance_globals_l",
+          "struct instance_globals_p",
+          "struct instance_globals_s",
+          "struct instance_globals_saved_h",
+          "struct instance_globals_saved_n",
+          "struct instance_globals_saved_p",
+          "struct passwd",
+          "struct sigaction",
+          "struct sinfo",
+          "struct sysopt_s",
+          "struct window_procs",
+          "struct you"
+        ],
+        "dependencies": {
+          "early_init": {
+            "type": "void (int, char **)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "char **",
+                "canonical": "char **"
+              }
+            ]
+          },
+          "rng_log_init": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "getpid": {
+            "type": "pid_t (void)",
+            "ret": "pid_t",
+            "params": []
+          },
+          "umask": {
+            "type": "mode_t (mode_t)",
+            "ret": "mode_t",
+            "params": [
+              {
+                "name": "a0",
+                "type": "mode_t",
+                "canonical": "unsigned int"
+              }
+            ]
+          },
+          "choose_windows": {
+            "type": "void (const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "nh_getenv": {
+            "type": "char *(const char *)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "early_options": {
+            "type": "void (int *, char ***, char **)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int *",
+                "canonical": "int *"
+              },
+              {
+                "name": "a1",
+                "type": "char ***",
+                "canonical": "char ***"
+              },
+              {
+                "name": "a2",
+                "type": "char **",
+                "canonical": "char **"
+              }
+            ]
+          },
+          "initoptions": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "panictrace_setsignals": {
+            "type": "void (boolean)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "boolean",
+                "canonical": "signed char"
+              }
+            ]
+          },
+          "hangup": {
+            "type": "void (int)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "getmailstatus": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "set_playmode": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "strlen": {
+            "type": "unsigned long (const char *)",
+            "ret": "unsigned long",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "plnamesuffix": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "teleport_native_signal": {
+            "type": "void (*(int, void (*)(int)))(int)",
+            "ret": "void (*)(int)",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "void (*)(int)",
+                "canonical": "void (*)(int)"
+              }
+            ]
+          },
+          "vision_init": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "init_sound_disp_gamewindows": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "getlock": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "restore_saved_game": {
+            "type": "NHFILE *(void)",
+            "ret": "NHFILE *",
+            "params": []
+          },
+          "fqname": {
+            "type": "const char *(const char *, int, int)",
+            "ret": "const char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a2",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "chmod": {
+            "type": "int (const char *, mode_t)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "mode_t",
+                "canonical": "unsigned int"
+              }
+            ]
+          },
+          "done1": {
+            "type": "void (int)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "dorecover": {
+            "type": "int (NHFILE *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "NHFILE *",
+                "canonical": "struct nh_file *"
+              }
+            ]
+          },
+          "yn_function": {
+            "type": "char (const char *, const char *, char, boolean)",
+            "ret": "char",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a2",
+                "type": "char",
+                "canonical": "char"
+              },
+              {
+                "name": "a3",
+                "type": "boolean",
+                "canonical": "signed char"
+              }
+            ]
+          },
+          "delete_savefile": {
+            "type": "int (void)",
+            "ret": "int",
+            "params": []
+          },
+          "nh_compress": {
+            "type": "void (const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "delete_levelfile": {
+            "type": "void (int)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "check_panic_save": {
+            "type": "int (void)",
+            "ret": "int",
+            "params": []
+          },
+          "ask_about_panic_save": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "newgame": {
+            "type": "void (void)",
+            "ret": "void",
+            "params": []
+          },
+          "moveloop": {
+            "type": "void (boolean)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "boolean",
+                "canonical": "signed char"
+              }
+            ]
+          },
+          "exit": {
+            "type": "void (int) __attribute__((noreturn))",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "config_error_init": {
+            "type": "void (boolean, const char *, boolean)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "boolean",
+                "canonical": "signed char"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a2",
+                "type": "boolean",
+                "canonical": "signed char"
+              }
+            ]
+          },
+          "strncmp": {
+            "type": "int (const char *, const char *, unsigned long)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a2",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              }
+            ]
+          },
+          "strncmpi": {
+            "type": "int (const char *, const char *, int)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a2",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "load_symset": {
+            "type": "int (const char *, int)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "switch_symbols": {
+            "type": "void (int)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "strcmp": {
+            "type": "int (const char *, const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "strncpy": {
+            "type": "char *(char *, const char *, unsigned long)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "char *restrict",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *restrict",
+                "canonical": "char *"
+              },
+              {
+                "name": "a2",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              }
+            ]
+          },
+          "str2role": {
+            "type": "int (const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "str2race": {
+            "type": "int (const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "atoi": {
+            "type": "int (const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "config_error_done": {
+            "type": "int (void)",
+            "ret": "int",
+            "params": []
+          },
+          "chdir": {
+            "type": "int (const char *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "perror": {
+            "type": "void (const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "check_recordfile": {
+            "type": "void (const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "getlogin": {
+            "type": "char *(void)",
+            "ret": "char *",
+            "params": []
+          },
+          "strchr": {
+            "type": "char *(const char *, int)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "memset": {
+            "type": "void *(void *, int, unsigned long)",
+            "ret": "void *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "void *",
+                "canonical": "void *"
+              },
+              {
+                "name": "a1",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a2",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              }
+            ]
+          },
+          "sigaction": {
+            "type": "int (int, const struct sigaction *restrict, struct sigaction *restrict)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              },
+              {
+                "name": "a1",
+                "type": "const struct sigaction *restrict",
+                "canonical": "struct sigaction *"
+              },
+              {
+                "name": "a2",
+                "type": "struct sigaction *restrict",
+                "canonical": "struct sigaction *"
+              }
+            ]
+          },
+          "build_english_list": {
+            "type": "char *(char *)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "free": {
+            "type": "void (void *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "void *",
+                "canonical": "void *"
+              }
+            ]
+          },
+          "eos": {
+            "type": "char *(char *)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "__isspace": {
+            "type": "int (int)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "getuid": {
+            "type": "uid_t (void)",
+            "ret": "uid_t",
+            "params": []
+          },
+          "getpwnam": {
+            "type": "struct passwd *(const char *)",
+            "ret": "struct passwd *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "getpwuid": {
+            "type": "struct passwd *(uid_t)",
+            "ret": "struct passwd *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "uid_t",
+                "canonical": "unsigned int"
+              }
+            ]
+          },
+          "strcpy": {
+            "type": "char *(char *, const char *)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "char *restrict",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *restrict",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "getenv": {
+            "type": "char *(const char *)",
+            "ret": "char *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "strtoul": {
+            "type": "unsigned long (const char *, char **, int)",
+            "ret": "unsigned long",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *restrict",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "char **restrict",
+                "canonical": "char **"
+              },
+              {
+                "name": "a2",
+                "type": "int",
+                "canonical": "int"
+              }
+            ]
+          },
+          "fopen": {
+            "type": "FILE *(const char *, const char *)",
+            "ret": "FILE *",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *restrict",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *restrict",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "fread": {
+            "type": "unsigned long (void *, unsigned long, unsigned long, FILE *)",
+            "ret": "unsigned long",
+            "params": [
+              {
+                "name": "a0",
+                "type": "void *restrict",
+                "canonical": "void *"
+              },
+              {
+                "name": "a1",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              },
+              {
+                "name": "a2",
+                "type": "size_t",
+                "canonical": "unsigned long"
+              },
+              {
+                "name": "a3",
+                "type": "FILE *restrict",
+                "canonical": "struct _IO_FILE *"
+              }
+            ]
+          },
+          "fclose": {
+            "type": "int (FILE *)",
+            "ret": "int",
+            "params": [
+              {
+                "name": "a0",
+                "type": "FILE *",
+                "canonical": "struct _IO_FILE *"
+              }
+            ]
+          },
+          "paniclog": {
+            "type": "void (const char *, const char *)",
+            "ret": "void",
+            "params": [
+              {
+                "name": "a0",
+                "type": "const char *",
+                "canonical": "char *"
+              },
+              {
+                "name": "a1",
+                "type": "const char *",
+                "canonical": "char *"
+              }
+            ]
+          },
+          "getnow": {
+            "type": "time_t (void)",
+            "ret": "time_t",
+            "params": []
+          }
+        },
+        "variadics": [
+          {
+            "site": 0,
+            "function": "pline",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "main"
+          },
+          {
+            "site": 1,
+            "function": "config_error_add",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "process_options"
+          },
+          {
+            "site": 2,
+            "function": "config_error_add",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "process_options"
+          },
+          {
+            "site": 3,
+            "function": "config_error_add",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "process_options"
+          },
+          {
+            "site": 4,
+            "function": "config_error_add",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "process_options"
+          },
+          {
+            "site": 5,
+            "function": "config_error_add",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "process_options"
+          },
+          {
+            "site": 6,
+            "function": "config_error_add",
+            "types": [
+              "char *",
+              "char *",
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "process_options"
+          },
+          {
+            "site": 7,
+            "function": "error",
+            "types": [
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...) __attribute__((noreturn))",
+            "owner": "chdirx"
+          },
+          {
+            "site": 8,
+            "function": "pline",
+            "types": [
+              "char *",
+              "char *",
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "wd_message"
+          },
+          {
+            "site": 9,
+            "function": "You",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "wd_message"
+          },
+          {
+            "site": 10,
+            "function": "pline",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "wd_message"
+          },
+          {
+            "site": 11,
+            "function": "You",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "wd_message"
+          },
+          {
+            "site": 12,
+            "function": "You",
+            "types": [
+              "char *"
+            ],
+            "prototype": "void (const char *, ...)",
+            "owner": "wd_message"
+          }
+        ],
+        "callbacks": [
+          {
+            "site": 0,
+            "type": "void (*)(int *, char **)",
+            "ret": "void",
+            "types": [
+              "int *",
+              "char **"
+            ]
+          },
+          {
+            "site": 1,
+            "type": "void (*)(const char *, boolean)",
+            "ret": "void",
+            "types": [
+              "const char *",
+              "boolean"
+            ]
+          },
+          {
+            "site": 2,
+            "type": "void (*)(const char *)",
+            "ret": "void",
+            "types": [
+              "const char *"
+            ]
+          },
+          {
+            "site": 3,
+            "type": "void (*)(void)",
+            "ret": "void",
+            "types": []
+          },
+          {
+            "site": 4,
+            "type": "void (*)(void)",
+            "ret": "void",
+            "types": []
+          }
+        ],
+        "statics": [
+          {
+            "name": "get_unix_pw.virtual_user",
+            "sourceName": "virtual_user",
+            "type": "struct passwd",
+            "size": "C.sizes[\"struct passwd\"]",
+            "js": "[C.literal(\"root\"),0,C.u32(0),C.u32(0),0,C.literal(\"/home/player\"),C.literal(\"/bin/sh\")]"
+          },
+          {
+            "name": "get_unix_pw.pw",
+            "sourceName": "pw",
+            "type": "struct passwd *",
+            "size": "8",
+            "js": "0"
+          },
+          {
+            "name": "get_login_name.buf",
+            "sourceName": "buf",
+            "type": "char[256]",
+            "size": "(1*256)",
+            "js": null
+          }
+        ],
+        "literals": [
+          "",
+          "\"",
+          "%s%s%s",
+          "-DECgraphics",
+          "-IBMgraphics",
+          "-debug",
+          "-loglua",
+          "-news",
+          "-no-",
+          "-no-news",
+          "/bin/sh",
+          "/dev/random",
+          "/home/player",
+          "/usr/games/lib/nethackdir",
+          "Cannot chdir to %s.",
+          "Character name expected after -u",
+          "DECGraphics",
+          "Do you want to keep the save file?",
+          "Entering explore/discovery mode instead.",
+          "Expected MAXPLAYERS, found \"",
+          "HACKDIR",
+          "IBMGraphics",
+          "LOGNAME",
+          "MAXPLAYERS are set in sysconf file",
+          "NETHACKDIR",
+          "NETHACK_SEED",
+          "Only user%s %s may access debug (wizard) mode.",
+          "Restoring save file...",
+          "RogueIBM",
+          "USER",
+          "Unknown option: %.60s",
+          "are in non-scoring explore/discovery mode.",
+          "cannot access debug (wizard) mode.",
+          "cannot access explore mode.",
+          "command line",
+          "falling back to weak seed",
+          "news",
+          "r",
+          "root",
+          "s",
+          "sys_random_seed",
+          "tty"
+        ],
+        "literalBytes": 672,
+        "functionAddresses": [
+          "done1",
+          "hangup"
+        ],
+        "functionTypes": {
+          "main": "int (int, char **)",
+          "process_options": "void (int, char **)",
+          "chdirx": "void (const char *, boolean)",
+          "whoami": "boolean (void)",
+          "sethanguphandler": "void (void (*)(int))",
+          "authorize_wizard_mode": "boolean (void)",
+          "authorize_explore_mode": "boolean (void)",
+          "wd_message": "void (void)",
+          "append_slash": "void (char *)",
+          "check_user_string": "boolean (const char *)",
+          "get_unix_pw": "struct passwd *(void)",
+          "get_login_name": "char *(void)",
+          "sys_random_seed": "unsigned long (void)",
+          "get_nhuuid": "void (void)",
+          "free_nhuuid": "void (void)"
+        },
+        "functionParameters": {
+          "main": [
+            {
+              "name": "argc",
+              "type": {
+                "qualType": "int"
+              }
+            },
+            {
+              "name": "argv",
+              "type": {
+                "qualType": "char **"
+              }
+            }
+          ],
+          "process_options": [
+            {
+              "name": "argc",
+              "type": {
+                "qualType": "int"
+              }
+            },
+            {
+              "name": "argv",
+              "type": {
+                "qualType": "char **"
+              }
+            }
+          ],
+          "chdirx": [
+            {
+              "name": "dir",
+              "type": {
+                "qualType": "const char *"
+              }
+            },
+            {
+              "name": "wr",
+              "type": {
+                "desugaredQualType": "signed char",
+                "qualType": "boolean",
+                "typeAliasDeclId": "0xc5ae92290"
+              }
+            }
+          ],
+          "whoami": [],
+          "sethanguphandler": [
+            {
+              "name": "handler",
+              "type": {
+                "qualType": "void (*)(int)"
+              }
+            }
+          ],
+          "authorize_wizard_mode": [],
+          "authorize_explore_mode": [],
+          "wd_message": [],
+          "append_slash": [
+            {
+              "name": "name",
+              "type": {
+                "qualType": "char *"
+              }
+            }
+          ],
+          "check_user_string": [
+            {
+              "name": "optstr",
+              "type": {
+                "qualType": "const char *"
+              }
+            }
+          ],
+          "get_unix_pw": [],
+          "get_login_name": [],
+          "sys_random_seed": [],
+          "get_nhuuid": [],
+          "free_nhuuid": []
+        }
+      },
+      "layout": [
+        8,
+        8,
+        4,
+        1,
+        1,
+        8,
+        208,
+        424,
+        40,
+        104,
+        696,
+        536,
+        1408,
+        4,
+        52,
+        96,
+        48,
+        152,
+        120,
+        184,
+        416,
+        2760,
+        0,
+        1
+      ]
+    }
+  },
+  "records": {
+    "stat": {
+      "size": 104,
+      "alignment": 8,
+      "fields": {
+        "st_dev": {
+          "offset": 0,
+          "ctype": "dev_t st_dev"
+        },
+        "st_mode": {
+          "offset": 4,
+          "ctype": "mode_t st_mode"
+        },
+        "st_nlink": {
+          "offset": 8,
+          "ctype": "nlink_t st_nlink"
+        },
+        "st_uid": {
+          "offset": 16,
+          "ctype": "uid_t st_uid"
+        },
+        "st_gid": {
+          "offset": 20,
+          "ctype": "gid_t st_gid"
+        },
+        "st_rdev": {
+          "offset": 24,
+          "ctype": "dev_t st_rdev"
+        },
+        "st_size": {
+          "offset": 32,
+          "ctype": "off_t st_size"
+        },
+        "st_blksize": {
+          "offset": 40,
+          "ctype": "blksize_t st_blksize"
+        },
+        "st_blocks": {
+          "offset": 44,
+          "ctype": "blkcnt_t st_blocks"
+        },
+        "st_atim": {
+          "offset": 48,
+          "ctype": "struct timespec st_atim"
+        },
+        "st_mtim": {
+          "offset": 64,
+          "ctype": "struct timespec st_mtim"
+        },
+        "st_ctim": {
+          "offset": 80,
+          "ctype": "struct timespec st_ctim"
+        },
+        "st_ino": {
+          "offset": 96,
+          "ctype": "ino_t st_ino"
+        }
+      }
+    },
+    "unix_platform_anonymous_14": {
+      "size": 8,
+      "alignment": 8,
+      "fields": {
+        "sa_handler": {
+          "offset": 0,
+          "ctype": "void (*)(int) sa_handler"
+        }
+      }
+    },
+    "passwd": {
+      "size": 48,
+      "alignment": 8,
+      "fields": {
+        "pw_name": {
+          "offset": 0,
+          "ctype": "char * pw_name"
+        },
+        "pw_passwd": {
+          "offset": 8,
+          "ctype": "char * pw_passwd"
+        },
+        "pw_uid": {
+          "offset": 16,
+          "ctype": "uid_t pw_uid"
+        },
+        "pw_gid": {
+          "offset": 20,
+          "ctype": "gid_t pw_gid"
+        },
+        "pw_gecos": {
+          "offset": 24,
+          "ctype": "char * pw_gecos"
+        },
+        "pw_dir": {
+          "offset": 32,
+          "ctype": "char * pw_dir"
+        },
+        "pw_shell": {
+          "offset": 40,
+          "ctype": "char * pw_shell"
+        }
+      }
+    }
+  },
+  "aliases": {
+    "__typeof__(((struct sigaction*)0)->__sa_handler)": "unix_platform_anonymous_14"
+  },
+  "errors": {
+    "0": "No error information",
+    "25": "Illegal byte sequence",
+    "18": "Domain error",
+    "68": "Result not representable",
+    "59": "Not a tty",
+    "2": "Permission denied",
+    "63": "Operation not permitted",
+    "44": "No such file or directory",
+    "71": "No such process",
+    "20": "File exists",
+    "61": "Value too large for data type",
+    "51": "No space left on device",
+    "48": "Out of memory",
+    "10": "Resource busy",
+    "27": "Interrupted system call",
+    "6": "Resource temporarily unavailable",
+    "70": "Invalid seek",
+    "75": "Cross-device link",
+    "69": "Read-only file system",
+    "55": "Directory not empty",
+    "15": "Connection reset by peer",
+    "73": "Operation timed out",
+    "14": "Connection refused",
+    "142": "Host is down",
+    "23": "Host is unreachable",
+    "3": "Address in use",
+    "64": "Broken pipe",
+    "29": "I/O error",
+    "60": "No such device or address",
+    "105": "Block device required",
+    "43": "No such device",
+    "54": "Not a directory",
+    "31": "Is a directory",
+    "74": "Text file busy",
+    "45": "Exec format error",
+    "28": "Invalid argument",
+    "1": "Argument list too long",
+    "32": "Symbolic link loop",
+    "37": "Filename too long",
+    "41": "Too many open files in system",
+    "33": "No file descriptors available",
+    "8": "Bad file descriptor",
+    "12": "No child process",
+    "21": "Bad address",
+    "22": "File too large",
+    "34": "Too many links",
+    "46": "No locks available",
+    "16": "Resource deadlock would occur",
+    "56": "State not recoverable",
+    "62": "Previous owner died",
+    "11": "Operation canceled",
+    "52": "Function not implemented",
+    "49": "No message of desired type",
+    "24": "Identifier removed",
+    "100": "Device not a stream",
+    "116": "No data available",
+    "117": "Device timeout",
+    "118": "Out of streams resources",
+    "47": "Link has been severed",
+    "65": "Protocol error",
+    "9": "Bad message",
+    "127": "File descriptor in bad state",
+    "57": "Not a socket",
+    "17": "Destination address required",
+    "35": "Message too large",
+    "67": "Protocol wrong type for socket",
+    "50": "Protocol not available",
+    "66": "Protocol not supported",
+    "137": "Socket type not supported",
+    "138": "Not supported",
+    "139": "Protocol family not supported",
+    "5": "Address family not supported by protocol",
+    "4": "Address not available",
+    "38": "Network is down",
+    "40": "Network unreachable",
+    "39": "Connection reset by network",
+    "13": "Connection aborted",
+    "42": "No buffer space available",
+    "30": "Socket is connected",
+    "53": "Socket not connected",
+    "140": "Cannot send after socket shutdown",
+    "7": "Operation already in progress",
+    "26": "Operation in progress",
+    "72": "Stale file handle",
+    "147": "Remote I/O error",
+    "19": "Quota exceeded",
+    "148": "No medium found",
+    "149": "Wrong medium type",
+    "36": "Multihop attempted",
+    "150": "Required key not available",
+    "151": "Key has expired",
+    "152": "Key has been revoked",
+    "153": "Key was rejected by service"
+  },
+  "fcntl": {
+    "F_GETFD": 1,
+    "F_SETFD": 2,
+    "F_GETLK": 5,
+    "F_SETLK": 6,
+    "F_SETLKW": 7,
+    "flock_type": 0
+  },
+  "errno": {
+    "ENOTTY": 59,
+    "EINVAL": 28,
+    "EBADF": 8
+  },
+  "earlyargSnprintfLine": 788,
+  "usageHelp": "usagehlp",
+  "sourceSha256": {
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/earlyarg-runtime.js": "8566b2a885b51e89e147f0e8fdc95e6b13f0edb487c2a0d64a878a43bbd7bc70",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/earlyarg.js": "510c678cafccf0694c3bf025de13ac7c36e5d0616370f5d9bfb3d0edb6950b5d",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/mail-runtime.js": "bb6e3d341c384ca1abdb97727b248755330f5d507c34a92efdb92e171d3ed997",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/mail.js": "7c2efb585a53964738e4f4fb84f7e66a69c9221f2017095835cdd39a157eb19a",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/unixmain-runtime.js": "ad26be79117ad1ea9c872eb693e50e39fc28c1164f8a5382e30b54c694f3a10e",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/unixmain.js": "b820cf47e52916feaa8cba5203714913fe9e6a4dee8a608b551b3311dd1b5e6a",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/unixunix-runtime.js": "257495f26b963a29c0afb58e02bb619d4b282cd594616e9e86ef6f93d4407c4c",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/ported/unixunix.js": "b5593bb9c6f29079b793466137a38a410c459f76339fc1bc1dec0b12473a1822",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/services/c-vfs.js": "d0dc38142c684306bb4752b3518020f3313f98c737e7b47e7f7faa7176143fe4",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/address-ports.js": "751adcee57a25babf8ea7f46d3e557408b1a12d50cd262207ac743c183bf56ff",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/c-types.js": "743dd9d8a93b8fa1e7d3299c4d48ba5c4c8927d85ebe419d222142009d51aa5f",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/records.json": "d29a68b050cdcbc3b5c1ad9f274a1f993352cfe1a0c334bf110c0d08a614ed52",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/stdio.js": "051933cd18aa7b40800ed1132724732a1ae1681c213b0a23d9cdb98f54e5b602",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/unix-platform-syscalls.js": "26d497a6aa7167f6b31760af8808e9c367f75009c3224cb0f126c78f2d234ec7",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/unix-platform.js": "822e43a714d53a0e4a40215961ff1c04a2418a2b5af01760037210fa27fdd58f",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/unix-terminal.js": "908b07e2d57459816fd96b3d9983c0efeaedddda9e503da88b3672960d626bcc",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/standalone/window-system.js": "b08609c44170d508bfdc72b86ea33755f1fa54eae59f41e93c5c15b31c7aecf6",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-earlyarg-support.inc": "9a9e1b73945137b129119a295556a6eb7ffd8d883aa6bc6b947d5d73a6dacb8d",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-fragments/unixmain-schema.json": "a96e2f7a0acb806e41e39f9c7d0ab9362a1c7835b208d0633ebc1426cd093f9e",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-fragments/unixmain-support.c": "cbbcd5a81606285701c8052b9a7e5ec5f74d87431732085c05f7c6f764be64bb",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-fragments/unixunix-schema.json": "15111f4430ff4653c6e49fa4640035b3c0e18e0cc87fc0dadf42425745a3b9de",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-fragments/unixunix-support.c": "f0e1e5a66b2b595d9dfebecda8a2a2986c7d83140651abd530b833c2c8b60f78",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-libraries/earlyarg.js": "f64862f328c5e2932f296ddb71b48932e58fe92b147b23e4469d77aae101b5f4",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-libraries/mail.js": "34da3a2d8df5f2426136e573427483c5eb24cfe383b1de52e4d066433d46fcb1",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-libraries/unixmain.js": "a40b8a9c57070da2b0268d4e51e7100ad056738e03f24dd056fd8856619ce2aa",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-libraries/unixunix.js": "a5c0636ee4476c0604ac862f0798dc9e13e97ae590c5463599272fc6f0816082",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/nethack-c/wasm/tu-mail-support.inc": "9ebdfdde292703fdc919da7c0f1f126e95bbb32160daf1817c7e76268694b20b",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/scripts/export-standalone-unix-platform-abi.py": "f9997f5309cb38b043c0ca62ba4444719b33254eee429bf4f7c935f0bbaaf7aa",
+    "/Users/arj/Desktop/nethack_comp/runtime-environment/scripts/write-tu-source-metadata.py": "d05e33ba5b44e6564e59f30dc2f9baaf7483d416e80917b41ce7c6c5b70f97d1",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/assert.h": "477f9fcf67e8eccb59dea935f0dc7abd40829f8d61a3e73e4151ff6a18ef25f9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/alltypes.h": "3ff1707efd8cba950d5604298884372be259d614600fa2dfc21d8a66010cc60c",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/errno.h": "be2a71d49f18d8d844260a048aa5c9133d23ee499cd3495054ce28251cb669af",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/fcntl.h": "3526dbb894665ab3b155a60d730c8527edce4fa597b3d5e51364a345d0cbdaeb",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/ioctl.h": "a1ef9fa70d6d1f14e1a370b21c428b27c5f89e88ebe7500174d60683b096219e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/ioctl_fix.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/limits.h": "b9358162a3bdf8a203cc3e24195fe3a0b3f27ec58669a596cbba96ba0c855e70",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/posix.h": "1518ec6b108557044f70590eeabfb55f419360d2bc93e503f7d24efaf0b8bded",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/resource.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/signal.h": "efc3603f0b1d17a4802c1b5ff7f38d763b85e40eb8bfc8d3eceb212a305abc55",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/stat.h": "ac9231d33af9e7036bf8d7bf5016d2f73a79e1f96d2b854a110909c2c618b403",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/stdint.h": "0211357ac8bc3e08fae6703be5502e3cd917b4c02d6b51ac5f22a2473b0a2b03",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/bits/termios.h": "9d2247d093e9ed7b6dd2c4305f500987d0bbb8a5b1c4df10d51154d2e41d133a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/ctype.h": "0bf45ee657538bf2033a9a17f286f5a4cbcba22a19667deb28d43ac8952c6d30",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/errno.h": "a461912e4058202de8ec414cbd67e04a84965bbff9aff61523bd3baf090b217d",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/fcntl.h": "80b575ae15a62020a8d223af333ddba14dccd720f7a045523d9ff655dee666f3",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/features.h": "078acf7161200b03710cdf93f039f6dbfed993ec619f16ea902a41871c228603",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/inttypes.h": "68064c64ec3303bd27ee6ff514b945bcf910b82c3d63c5ddd6c351a836d78543",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/limits.h": "54d66aac63111f27a6b6584ee91711ecdcfbb26b730ab0cf744d8a05503b27c7",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/pwd.h": "eb3f630e09e209770f6771488e8938c22067e13f6b97cea83898b3944a0f740f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/regex.h": "4acf94cf0e0f14b2eb50accac93fee886fcc4f821a9b7bb5347a5d035a027ad3",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/signal.h": "18a55cd40db16c4ee993521d53f288e1a4537b9ccb31ab43c35c9a1e2a24f947",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/stdarg.h": "20b903cf4ddd7e0244e0bee6e615e24e1921bab2f0986957fe4f7869c608890a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/stddef.h": "b1e3361a23c44b7d7e9b5911b5d87fe822f172192c2bae816f14e64431ff701b",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/stdint.h": "b6e77f1611e56cf499233172cab8bc09c0f7d937f3daa5ad552e1712fc6663e5",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/stdio.h": "14d89974ef0227b6ea8f000ef93a283efcdc8c852b511c00a9850b5b0a1689b9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/stdlib.h": "8f732c241f6d2f0a56dbaeb98ea044d5c2aec8e78fb5e734bb67c910cb954632",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/string.h": "75aabfb7b9dc14788dcb2a89bf21b371eeb2b29eb4af6b8374f1ffd682447ccf",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/strings.h": "b8fde0a141ac481de1f88abafbf5678ddfd8d89b309e3253adea1fa0ecb8d9e4",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/ioctl.h": "18cc2b9eee923943e198f03f77cae411bd8f34d9a3fc2202851a1e95dc73532e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/resource.h": "72450db0aa279bc66100654c177e1d16475a52cc32848156f1c6cff44a3fc836",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/select.h": "cda463ae12b5b189bea17a69b403d6f53949f013d926d92fb325be11f95db3ae",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/stat.h": "ff768c64a759db3d946703c019afc8f189c20f44fa87dfbc7fdc8e45306e1506",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/time.h": "2199cd4c44b3ebc8a18ca2ff146983e43b8747cc4ed2b4c2f71b583895b4e3cb",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/sys/wait.h": "acde94b89d03174f7ae945e3fe671f5fefc3beb815c99cbff0b596958377d36f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/termios.h": "09b969e2fc65d080cd77a889cc728fa464de38a1edabbed145d9cbf1d567da51",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/time.h": "57b4e7a312305ca8adf5822408a0fc6cf3ebafb278a2d96936f55a8d2af8e880",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/unistd.h": "7167ff608601a519c99c9beba65f956d4d4d6911def339513b1f235bbd5ee49f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/cache/sysroot/include/wasi/api.h": "5d877115f5a45c8765f4c31bf58499e2582446995feea4aaac00517ea881b940",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/src/lib/libsyscall.js": "91c17685e4d60e2cb8a8de8c2f6939aefadd668b97508b494165bb214809f835",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/emscripten_syscall_stubs.c": "36ed9a099697d4a53cde483241f11ec12c79b30be6e64b3a69f0cba3cc4884e6",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/errno/__strerror.h": "51d12862eda1600b2d89648f866b2fe0b0a3b24def3ccd91bef710bb12d25cbe",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/errno/strerror.c": "185d4d327444f5f684e32110962353a418d56b8ce6de540238c227f2c9d49771",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdio/perror.c": "68870526f79a3638463309891a006acf6e84303c615ed5eeca1b35179eaab096",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/getlogin.c": "00cab271e92ce886e5e74026af2ceb70bd6a7a8a33ea5e0cb262dcdf06240252",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/emscripten/system/lib/libc/musl/src/unistd/isatty.c": "6e888c0de2e0789f54c692b2bc98d4724adc56cbd69b3ebed794598d2bc45ee9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stdarg___gnuc_va_list.h": "feca975bfdfb254d17458a8e3d51f8ad6d9bdc9fd6287727f0f8b2fb81fcb0b0",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stdarg___va_copy.h": "f0a8d3c963338173f2d57b2cbc209dde38c90536107b15eb0cf78166d4caee1f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stdarg_header_macro.h": "7b3fbcc442af2508f36bb2dc98d9ad2b8a1f5c0f5333394fb2159c8bd5ecd5b8",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_arg.h": "274c75a1db86f649439aa3bcc1dead4170725e6f803925c3fc38a2e93307afdc",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_copy.h": "bb195f56cb08d4cee6a60bd9f62f34466e8ac4f89f6fed043b044cb2f7ead010",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stdarg_va_list.h": "81c3055f7033e26e7f53705653bc9d69b5202f25c2692e03b3a4f77ff44a7d76",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_header_macro.h": "4cf46e8fbb809df048eecbbd63686fa741da27afa8db4245bd1f61c1fb1611dc",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_max_align_t.h": "3c1e4de47f4f06b35e2c5890d670052e84f716760505ff51b022fc8b21a9400f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_null.h": "b1d71b08563ab3d2c22a1e4f8ddf4d9a1111c89e9404b859a45c307e8ebc6c69",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_offsetof.h": "e5f0f4ff8ff5fc6a1cc8b535f5065f1728eadd2bf1e1401f021f803ec7b4222f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_ptrdiff_t.h": "b4178a57f3711b7013cba747a72a2f178c29fa9364e77d75b2159754072ced43",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_size_t.h": "d86ddc0238da09b385846ebef814ffc50a44e40cf85d4e3793f485952b7e73ad",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/__stddef_wchar_t.h": "1900d4998aef3698b06399ed686db0c21e26509b08638a25734fb97ae89b1001",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/inttypes.h": "eb8a7b2e17d57e9321043282bf0267fedd2ca58aadb11b04929ddbf8100fc3bc",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/limits.h": "6b59cc1b6f86c901bf41ce942b8434530e852eb16e79e6e9287f89441f71efca",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/attrib.h": "f20418d80bc2983e3d9af6cc9a02d30f57aa6b54116691a8e4ebebd425de757d",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/botl.h": "c26c637bcb8b2615e82fbc0804175cd8c87f63a3caf35c742e0a6fa410a31009",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/color.h": "f7ab4cdf5113898bf58ba85217f5d693b8564c232ff706ee894fdf070a3a105b",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/config.h": "5585d9c88d7ea21a9a78b45616cc31ae4ea680cb7b34026f70f92b91288a499f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/config1.h": "b9e97cefc8fcfe4f36a1145ebfb655099f2afd2591227fa5f93b3f4dc0071042",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/context.h": "e1303b7309e556c65e41ec120b704079da6a0c9ef73a08745663f7b923ad7eef",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/coord.h": "f8788b777ea0fc8e4f5df40ce7b9add1a255c5846bdd1393518f7ea14ef6e3d2",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/cstd.h": "ef5e61d5eb7d1a5194c4a4544745a45893ccbea4c1cf083792235f562e173fc2",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/decl.h": "4782c5f522f6de63503cda131c0e2485aef31506d83dcfb32defeebf984fb470",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/defsym.h": "009ae2e8921fa4c376fe0ae3b4a42407421274fc15d1a8834c6ae519dad82f87",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/display.h": "36e9f838d3298d047e0605abcf2deb627eb79c18aa72f770d5289c34f3692b4c",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/dlb.h": "5fd4e1563e5836cb707b691fe2d197e8d1619fc1d1ab8d77c0002a443049f7e9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/dungeon.h": "e48eaafdb22fc82121de702086c40c3245d6aeb9fe5556712ee1e2f18744a308",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/engrave.h": "1c5617162ea649a0305df8d997b7a1075b35c9b3b97311cdfeebbd60bb9c482e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/extern.h": "385f7478000f79ff137f2b6be533eef7b518b47a00b0d8c7e35ea52c877dec2e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/flag.h": "bb28a3f835f3b38119f95311d76b535ef5053f3fffa42372d9f7b1c4c917806f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/fnamesiz.h": "bd41c47c66e4213835bc1f052d831f8643bc7e7cb9aae0effb27f41edf1b5c35",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/global.h": "8ff55a3c6ee5cc18d00f1982146080d81e9e3dc9e369ab1ffc79890c07b8a8d0",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/hack.h": "5743a1707ce05e7a9a90e61657fde0ac066d48591f5d4fe80b1bdf959d94bce9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/hacklib.h": "d9bf2b0ae2003c0611d2b9a351fdbbb30d58def2ecccc1235d4ed1e7b52e3c53",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/integer.h": "e88805c10f195e6de63b8c5cb46049f466ef040de9987a6ab61c36ef977f515a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/lint.h": "bb08d5658f43c87c2b5129a33cb4e3264693e68d3cd654c67a5ecd757c98adcc",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/mextra.h": "e78bdfa21d4fd7718f1a25ed8f1ef466c96c2bd49f2069af7d1ab346148a1229",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/mfndpos.h": "4711c0e5c67ae88a6a28c776bc542d0d06452d742456964b77913e896b5f56f5",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/mkroom.h": "7baf848feb30c94c196e6bee2ee7f0a83822ad92042dd855b74d212fde514f5a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/monattk.h": "00c2283c2687f2dd5fa8a3088623cd621822289018c0072db9cad5a2a94883ba",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/mondata.h": "6f1ca3db69a5cfbe425859fe1c7decfa1da1fdac45af9d8a84be5f0f8c9c21f2",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/monflag.h": "89e4ef1dc1cd46fa8d81ff833351934c666420abdf902286bdacdca0bb171d88",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/monst.h": "08e9e2251ac5c3beedb8700dd56287f9f397b506851ceb44a37e41b6d80067a6",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/monsters.h": "c63db922770c96a9956d221f364ba4368a9f81f81c8d64ed28251a0506d4a906",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/nhlua.h": "48553ca9ab16ac2928479cabdf51d7f090fc38e1641dd5d97d819f612c6d87d9",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/nhregex.h": "a2936fd291537090773d861c083c3574c7a0a798c688e87dedb4405f73de653f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/obj.h": "a4d1b994c5acd6fe04d411485d84491553d6df02dfbd7480181a15a7a05456e2",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/objclass.h": "101f92e0024e4404033845fb15171f8ed4b79374907a6a172b4eb7b026e1eb52",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/objects.h": "eb573ca76f7afe35d6420b958333fbb3c44911415df4e0034e6367456e2913cb",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/optlist.h": "23dafb109132dd63bbfe704b39fac8cccaaeee31a0dbd895c7ba928bd92af9b8",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/patchlevel.h": "4389b12b496c9611fb392ee509d0ebaad2f10449ff3ef697f1ad416a207b0a97",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/permonst.h": "bcdb24d041e3df909cf483efb576fa7fc5e18debf03d11e8e43c1aa87c655bf4",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/prop.h": "682e85c7ab20c1dc7b30115b2a3e850d564cc2ed341edfa782fec9d0dfea0761",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/quest.h": "87b6649d82b6fd4a24d004fcd48c1d9650345e719cf8dc196ae6c99b483e2a5a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/rect.h": "dee168e068baa3aa15748725752d07659f8cb4e471116f7fab4acf080dc69f90",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/region.h": "adc4682b6a15213f71f3bb534b8705c4385153ca9db7512c118474b0fb4f1191",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/rm.h": "da2ae88d704a358474c6986a3f4763e62053b96a6e60a475879029e658996af7",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/savefile.h": "6847e12dca1eb25b38baa69f6227554669f8a64f5966a1879a5cf2b23732749e",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/seffects.h": "f64099054ab366a1eaccd58901a98cef49a84c1f047c5923de20b4432654de02",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/selvar.h": "49b8be43b8bfd7b4f18cb59d1179e8ad28a708a06c0fbc985c65b365ab9a3acf",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/skills.h": "d67ac10770b8aff667c163e93020b8974e53f12eede903f10bf026d351b2c238",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/sndprocs.h": "4d105334e499c3fb4af00fcd1acf48802a8db5ccf799bd31bfafc2afaa286654",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/spell.h": "dc1e454c0214ea1cc20f4ea1e19cd4447a5ca9533610769fafe8cdd60206b37f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/stairs.h": "fe016a6ef8194099d504bbf48f58e1e3c6a923413a07c28377409cacc1e2b42b",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/sym.h": "cea14c200c9f1e90ebe890804b46af7005c889d90917cb0608ad6058614e3db4",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/sys.h": "e193f46309925a4b14394a503b3e9a7bc19e5745bb539137ca10ec0898e3951b",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/timeout.h": "5f76ff41cc5435cc8a3e30b28f51c6adbfe42e2bf4a0354ba0a9f850a5ce515a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/tradstdc.h": "a1246d1acdf317c36990946e1d8bde33f63e3ba779ed5696a4ee03c7ac4f4401",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/trap.h": "469afec3e29d7aec1aa8efd407ad23d24ef069010820082b5596537b9290eb6b",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/unixconf.h": "0cbf3370472b030e8583e922e05e8e055738896954cbbdc1e1e18d0938559723",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/vision.h": "415b7e5751194cb7de57c192103d396a2971400e603fd62bf56330304014ac13",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/warnings.h": "ccf0c3e66bb442b0d8c05844103065fccf3fa7a894bba007425258e1d089f981",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/weight.h": "ac168750ddcde6c592ccbeaaf44c59921cc1f73ed36d269f20364b0e08b91cd1",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/winprocs.h": "eebf4dbb4149d3a153a1dc815795baabe33a59d13362e00089d21ee9ce89983c",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/wintype.h": "e5bfd60534831210bdace1ba6eaef62f65d16dab8d8ac0fcddadebd000d53698",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/you.h": "d19cfa0233582f1ad550b9dfc788f26166f3ff21225e3d8a0cd43b6de2094289",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/include/youprop.h": "9c4e25bc385c405226085ae3526dc165bd9397ce922b8a18a46f67de21683a2f",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/lib/lua-5.4.8/src/lauxlib.h": "2d9e18e577a6062646268e7f7228264c28bd9b972c186e1af81b8357179c0ab4",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/lib/lua-5.4.8/src/lua.h": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/lib/lua-5.4.8/src/luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/lib/lua-5.4.8/src/lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/src/earlyarg.c": "9915366d2bdbfb1f045f9aca01660e17e99e65d8d0562357109e61e7b637daba",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/src/mail.c": "0d86390373abfbb64c21e69d5a2e0e917365c0039f9445848b87a5793d296d61",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/sys/unix/unixmain.c": "c029938f38987424493931fb7719abdb43a6deb82289a393c2bd94fa74c41bfa",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/.cache/wasm64-build/tree/sys/unix/unixunix.c": "42b526bbed87ae89acdd655cb08426bdf66d1b7d138d16be4e63b8592bab8ecd",
+    "/Users/arj/Desktop/nethack_comp/teleport-contest/nethack-c/wasm/native-terminal.h": "16eceb17caf6e70d0e8e6b36f23daebdb30f7ace18676d482c8376fccf6dceeb"
+  }
+}

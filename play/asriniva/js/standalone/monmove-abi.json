@@ -1,4 +1,22 @@
 {
+  "rngSites": [
+    [
+      "rn1",
+      156,
+      "m_break_boulder"
+    ],
+    [
+      "d",
+      1281,
+      "maybe_spin_web"
+    ]
+  ],
+  "assertion": {
+    "condition": "IndexOk(chi, mfp.info)",
+    "file": "monmove.c",
+    "line": 2005,
+    "function": "m_move"
+  },
   "schema": {
     "obj": [
       "struct obj",
@@ -427,10 +445,11 @@
     "dirs_ord"
   ],
   "sourceSha256": {
-    "scripts/export-standalone-monmove-abi.py": "f459c969a4423d5931cc3627a781f84517d857e057d5d728b226bcabc9502913",
+    "scripts/export-standalone-monmove-abi.py": "10752320a6a21c2acbc45b49fd4d319cdb139ebe8662f7a04618c6ee1359849d",
     "js/ported/monmove-runtime.js": "4248f7e934e189861ebf44fe565c1fff627470bfcfee9d73f3170ea0e7843001",
     "nethack-c/wasm/tu-monmove-support.inc": "7f2865bd51620be0b1c74a37589bfaa830eb94aea195f40ce722fafcc4c22a1b",
     "js/ported/monmove.js": "5de0a2637789797e687065ef7ebeccc336d80e3e2aa0292a55a626b83ed32f01",
-    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "js/standalone/monster-movement.js": "648be65e95404c81ce4bfb3723e3258188c31e373b72acbca7d8557304832ba8"
   }
 }

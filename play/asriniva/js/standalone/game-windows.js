@@ -2,12 +2,29 @@
 import {init_sound_disp_gamewindows} from '../ported/allmain.js';
 import {callSounds} from '../ported/sounds-runtime.js';
 import * as sounds from '../ported/sounds.js';
+import {createRecordViews} from './record-views.js';
 export function enableGameWindows(environment,layouts){
  const {services,memory,ctypes,functions}=environment;
- const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
+ const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;return(...args)=>(typeof value==='function'?value:environment.resolve(k))(...args.map(v=>v?.address??v));}});
  const roots=['u','svl','svr','svc','svq','gu','gy','gi','ga','gc','gn','gm','flags','iflags','mons','objects','genders','svd','svm','gv','soundprocs','sysopt'];
  const procs=environment.allocateGlobal('soundprocs',layouts.sounds.soundSize),nosound=environment.allocateGlobal('sounds.nosound_procs',layouts.sounds.soundSize);
  Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,global:i=>environment.requireGlobal(roots[i]),storage:i=>{if(i!==0)throw new Error('Unknown sound storage');return nosound;}});
+ const views=createRecordViews(environment),address=environment.address,field=(type,root,path)=>({type,at:environment.requireGlobal(root),path});
+ const packed={hero:[field('struct you','u','uswallow'),field('struct you','u','uinwater'),field('struct you','u','uroleplay.deaf')],
+  level:['nfountains','nsinks','has_court','has_swamp','has_vault','has_beehive','has_morgue','has_barracks','has_zoo','has_shop','has_temple'].map(k=>field('struct instance_globals_saved_l','svl','level.flags.'+k)),
+  context:[field('struct instance_globals_saved_c','svc','context.tribute.Deathnotice')]};
+ const bits=(type,names)=>names.map(path=>({type,path}));
+ const dynamic={monster:bits('struct monst',['female','isminion','ispriest','isshk','mcan','mcansee','mcanmove','mconf','mflee','mpeaceful','msleeping','mstun','mtrapped','mundetected']),object:bits('struct obj',['cursed','bknown']),trap:bits('struct trap',['tseen'])};
+ for(const[k,rows]of Object.entries({...packed,...dynamic})){
+  const get=(p,i)=>{const row=rows[i];if(!row)throw new Error('Unknown SOUNDS '+k+' bit '+i);let value=views.record(row.type,p??row.at);for(const part of row.path.split('.'))value=value[part];return value;};
+  const set=(p,i,value)=>{const row=rows[i];if(!row)throw new Error('Unknown SOUNDS '+k+' bit '+i);const parts=row.path.split('.');let record=views.record(row.type,p??row.at);for(const part of parts.slice(0,-1))record=record[part];return record[parts.at(-1)]=value;};
+  local[k+'Bit']=dynamic[k]?(p,i)=>get(address(p),i):i=>get(null,i);
+  local['set'+k[0].toUpperCase()+k.slice(1)+'Bit']=dynamic[k]?(p,i,v)=>set(address(p),i,v):(i,v)=>set(null,i,v);
+ }
+ local.terrainBit=(x,y,i)=>{if(i!==0)throw new Error('Unknown SOUNDS terrain bit');return views.record('struct instance_globals_saved_l',environment.requireGlobal('svl')).level.locations[x][y].roomno;};
+ local.equipment=i=>ctypes.load('struct obj *',environment.requireGlobal(['uwep','uarm','uarmc','uarmh','uarms','uarmg','uarmf','uarmu'][i]));
+ local.commonString=i=>{if(i!==0)throw new Error('Unknown SOUNDS common string');return ctypes.getField('struct c_common_strings',environment.requireGlobal('c_common_strings'),'c_nothing_happens','char *');};
+ local.rn2=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('sounds.c'),line,services.literal(caller));return environment.resolve('rn2')(n);};
  callSounds(local,layouts.sounds,'nosoundAddress');
  environment.register('sounds',Object.fromEntries(Object.entries(sounds).filter(([name,v])=>typeof v==='function'&&!environment.hasFunction(name)).map(([name])=>[name,(...args)=>callSounds(local,layouts.sounds,name,...args)])));
  const context=environment.state('game-startup-context');if(!context)throw new Error('Enable game startup before windows');

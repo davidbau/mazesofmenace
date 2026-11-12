@@ -932,7 +932,7 @@
   },
   "sourceSha256": {
     "scripts/export-standalone-turn-loop-abi.py": "8923810779508eca1d76aeaa37bed72999334c87f1db0a291e42a03fbd04e0c8",
-    "js/standalone/turn-loop.js": "c5ed39146e5a8444c07aff65dd91999a1d0997b5244a76167ed161047d7a36cb",
+    "js/standalone/turn-loop.js": "2d1e19a2675304fc7c8ce5364d13e58ec0cd8a21af87488ddf74171403a1aabe",
     "js/ported/allmain-runtime.js": "cfbf21ddaa36ce857da33310942c402e1fcadc41f9e5203d5bfe7e514a269f17",
     "nethack-c/wasm/tu-fragments/allmain-support.c": "943b1dc7e9d2431f93facc08e660d9f35f07284b4e00d75daafc18ff5e1d451f",
     "js/ported/allmain.js": "9ea50e3e567e113de8ad4e552551f68bb682cb3b6c429e0a4cd6adcc2a1f3289",
@@ -992,6 +992,7 @@
     ".cache/emsdk/upstream/lib/clang/21/include/stdarg.h": "ce6e43d79dc89b50208ecf259b1ffd519f5a78cd3a2c7fcaac6386f376b89fef",
     ".cache/emsdk/upstream/lib/clang/21/include/stddef.h": "b3e62a046ddf28d09eedebe6eb9461cb7060e47cad2c69964b222c4eea10347e",
     ".cache/emsdk/upstream/lib/clang/21/include/stdint.h": "f43783466c93f77a6464274ebf18f9e4cc46f0d90770ddee2993c6cf39f7514f",
+    ".cache/turn-loop-headers.c": "49c872b6b584751de65087ccf4ca95873d39cd90371f48a1ab3503118ca3cb85",
     ".cache/wasm64-build/tree/include/align.h": "963176a750f3e58ca29d4b5b13f2eaf51fefdbf66b7a1a681401092dd72f7cb2",
     ".cache/wasm64-build/tree/include/artifact.h": "9cc7056e7808ff2e28732c74d58ae47fe2513e4ccc5b5073b544f58a2495ccff",
     ".cache/wasm64-build/tree/include/artilist.h": "5375cf830dac26aefd5dbefe1ab5bd79a1f1988b770e7a4dee61b6453c1dd3d3",

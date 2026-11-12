@@ -30,7 +30,7 @@ export function enableLuaSandbox(environment,layouts){
  }
  Object.assign(local,{
   layout,global:i=>environment.requireGlobal(globals[i]),storage:i=>{if(!storage[i])throw new Error('Unknown NHLUA storage '+i);return storage[i];},functionPointer:pointer,
-  api:(site,...args)=>{const call=schema.callSites[site];if(!call?.name)throw new Error('Unknown NHLUA call '+site);return resolve(call.name)(...args);},
+  api:(site,...args)=>{const call=schema.callSites[site];if(!call?.name)throw new Error('Unknown NHLUA call '+site);return env.cast(call.return,resolve(call.name)(...args));},
   indirect:(site,p,...args)=>{const call=schema.callSites[site];if(!call?.indirect)throw new Error('Unknown NHLUA indirect call '+site);return functions.indirect(p,signature(call.return,call.args),...args);},
   setjmpBooleanScope:(buffer,continuation)=>{const result=functions.withJumpScope(scope=>{const at=environment.address(buffer),previous=jumps.get(at);jumps.set(at,scope);try{return {value:continuation(0)};}finally{if(previous)jumps.set(at,previous);else jumps.delete(at);}});return typeof result==='object'?result.value:continuation(1);},
   longjmp:(buffer,status)=>{const scope=jumps.get(environment.address(buffer));if(!scope)throw new Error('Expired NHLUA jump target');return functions.longjmp(scope,status);},
@@ -62,6 +62,8 @@ function enableLuaRegistrations(environment,layouts,lua){
   get_table_option:(L,key,def,array)=>environment.resolve('get_table_option')(L,text(key),text(def),array),
   nhl_add_table_entry_int:(L,key,value)=>environment.resolve('nhl_add_table_entry_int')(L,text(key),BigInt(value)),
  });
+ // Original Lua 5.4 lauxlib.h macro; the checked string remains VM-owned.
+ select.luaL_checkstring=(state,index)=>lua.api.luaL_checklstring(state,index,0);
  const selection=createNhlselEnvironment(select,L,nhlsel);
  environment.register('nhlsel',Object.fromEntries(Object.entries(nhlsel).filter(([,v])=>typeof v==='function').map(([name,fn])=>[name,(...args)=>{if(name==='l_selection_push_copy')args[1]=selection.selection(args[1]);const result=withCEnvironment(selection,fn,...args);return result?.address??result??0;}])));
  const object=shadow(['objects','mons','materialnm','def_oc_syms','hands_obj','fobj','svl']);Object.assign(object,lua.api);

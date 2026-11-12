@@ -12,5 +12,11 @@ export function enableFiles(environment,layouts){
  const basebuf=environment.requireGlobal('files.nh_basename.basebuf');
  const factory=services=>{const saved=environment.memory.readBytes(basebuf,80);try{return createFilesEnvironment(services);}finally{environment.memory.HEAPU8.set(saved,basebuf);}};
  const group=enableAddressPort(environment,'files',{only,definition:{schema:abi.schema,layout:abi.layout},adapter:[files,factory,'factory'],ctypes,backingAddresses:{'nh_basename.basebuf':basebuf}});
+ group.services.strlen=p=>environment.transport.ulong(environment.services.strlen(typeof p==='string'?environment.services.literal(p):environment.address(p)));
+ group.services.getuid=()=>environment.services.getuid();
+ group.services.getpid=()=>environment.services.getpid();
+ for(const name of ['yyyymmdd','hhmmss'])group.services[name]=date=>environment.calendar(name,environment.transport.long(date));
+ group.services.teleport_native_signal=(signal,handler)=>environment.services.signal(environment.transport.int(signal),handler);
+ group.services.teleport_compress_file=(filename,compressed,unpack)=>environment.services.compressFile(environment.address(filename),environment.address(compressed),environment.transport.int(unpack));
  return {...group,limitation:'Shared FILES transport connected; save/restore, compression and error lifecycle require original-C verification.'};
 }

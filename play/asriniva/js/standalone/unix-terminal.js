@@ -7,9 +7,10 @@ import * as ioctl from '../ported/ioctl.js';
 import {createUnixttyState,createUnixttyEnvironment} from '../ported/unixtty-runtime.js';
 import {createIoctlEnvironment} from '../ported/ioctl-runtime.js';
 import {VFSError} from '../services/c-vfs.js';
+import platformAbi from './unix-platform-abi.json' with {type:'json'};
 export function createTerminalDevices(environment,layouts){
  const {memory,filesystem,libc}=environment,at=environment.address;
- const error=name=>{libc.errno=new VFSError(name).errno;return -1;};
+ const error=name=>{const errno=platformAbi.errno[name];if(!Number.isInteger(errno))throw new Error('Unmeasured SDK terminal errno '+name);libc.errno=errno;return -1;};
  function tty(fd){fd=Number(fd);if(fd>=0&&fd<=2)return fd;try{filesystem.fstat(fd);}catch(e){if(!(e instanceof VFSError))throw e;libc.errno=e.errno;return -1;}return error('ENOTTY');}
  return {
   tcgetattr(fd,p){fd=tty(fd);if(fd<0)return -1;p=at(p);if(fd===2)return 0;memory.bounds(p,49);
@@ -42,6 +43,7 @@ export function enableUnixTerminal(environment,layouts){
   heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,initial:()=>initial,current:()=>current,
   scalar:i=>ctypes.load(scalarTypes[i],scalars[i]),setScalar:(i,v)=>ctypes.store(scalarTypes[i],scalars[i],v),
   iflag:i=>ctypes.getField('struct instance_flags',environment.requireGlobal('iflags'),flags[i],'boolean'),setIflag:(i,v)=>ctypes.setField('struct instance_flags',environment.requireGlobal('iflags'),flags[i],'boolean',v),
+  raw_print:line=>{const at=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),'win_raw_print').at;return environment.functions.indirect(memory.view.getBigUint64(at,true),'vp',typeof line==='string'?services.literal(line):environment.address(line));},
   wpId:()=>ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'wp_id','enum wp_ids'),
   ...native,
  });

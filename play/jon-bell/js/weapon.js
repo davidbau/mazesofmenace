@@ -348,11 +348,30 @@ async function enhance_menu(items, prompt, pickOne) {
     };
     let cur = await renderPage();
     if (overlayCol) enhance_overlay = { col: overlayCol, rows: overlayRows };
+    let counting = false, count = 0, resetCount = true, countState = null;
     for (;;) {
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
-        if (key === 27) /* ESC — cancel */
+        countState = [counting, count, resetCount];
+        if (resetCount) {
+            counting = false;
+            count = 0;
+        } else {
+            resetCount = true;
+        }
+        if (ch >= '0' && ch <= '9') {
+            count = Math.min(count * 10 + (key - 48), 0x7fffffff);
+            if (count !== 0) {
+                counting = true;
+                resetCount = false;
+            }
+            continue;
+        }
+        if (key === 27) { /* ESC — cancel, or just stop a count */
+            if (counting)
+                continue;
             return 0;
+        }
         if (key === 32 /* ' ' */ || ch === '>') {
             if (pageIdx < npages - 1) { pageIdx++; cur = await renderPage(); continue; }
             if (key === 32) return 0; /* ' ' finishes on the last page */
@@ -393,7 +412,10 @@ async function enhance_menu(items, prompt, pickOne) {
             if (idx >= 0)
                 return cur.page[idx].a_int;
         }
-        /* Unrecognised key: bell, no redraw, read again. */
+        /* Unrecognised key: bell, no redraw, read again.  C's xwaitforspace
+         * (wintty.c:1558) swallows it before the loop top, so the count state
+         * is untouched. */
+        [counting, count, resetCount] = countState;
     }
 }
 

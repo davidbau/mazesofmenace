@@ -2,9 +2,10 @@
 // Algorithms are in the standalone byte/string services, which know no Wasm.
 import { createTerminfo } from './terminfo.js';
 import { compressUnixZ, decompressUnixZ } from './unix-compress.js';
-import { compilePosixRegex, execPosixRegex, nativeRegexError, freePosixRegex } from './posix-regex.js';
+import { compilePosixRegex, execPosixRegex, nativeRegexError, posixRegexError, freePosixRegex } from './posix-regex.js';
 
-export function createWasmDependencyRuntime({ regex = false } = {}) {
+export function createWasmDependencyRuntime({ regex = false, regexDialect = 'native' } = {}) {
+    if (!['native', 'sdk'].includes(regexDialect)) throw new TypeError('Unknown regex dialect');
     const terminfo = createTerminfo();
     const capabilityPointers = new Map();
     const calls = { tgetent: 0, tgetflag: 0, tgetnum: 0, tgetstr: 0, tparm: 0, tgoto: 0, tputs: 0, compress: 0, decompress: 0 };
@@ -106,7 +107,7 @@ export function createWasmDependencyRuntime({ regex = false } = {}) {
             re = Number(re);
             if (regexHandles.has(re)) freePosixRegex(regexHandles.get(re));
             regexHandles.delete(re);
-            const compiled = compilePosixRegex(string(services, pattern), flags, true);
+            const compiled = compilePosixRegex(string(services, pattern), flags, regexDialect === 'native');
             if (!compiled.status) regexHandles.set(re, compiled.handle);
             return compiled.status;
         },
@@ -118,7 +119,7 @@ export function createWasmDependencyRuntime({ regex = false } = {}) {
         },
         regerror(services, code, re, destination, size) {
             requireRegex(); ++calls.regerror;
-            const message = nativeRegexError(code), required = message.length + 1;
+            const message = (regexDialect === 'native' ? nativeRegexError : posixRegexError)(code), required = message.length + 1;
             size = Number(size); destination = Number(destination);
             if (size > 0) writeString(services, destination, message.slice(0, size - 1));
             return required;

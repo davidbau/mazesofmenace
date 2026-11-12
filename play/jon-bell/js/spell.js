@@ -23,6 +23,7 @@ import { ACH_INVK } from './const.js';
 import { record_achievement } from './cmd.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_pager.js';
 import { pmatchi } from './strutil.js';
+import { menucolor_text } from './coloratt.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
     ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CQ_REPEAT } from './const.js';
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
@@ -597,11 +598,6 @@ function small_shield_weight() {
     return 30;
 }
 
-// ── exercise (A_WIS) RNG consumption ─────────────────────────────────────────
-function exercise_a_wis_true_rng() {
-    rn2(19); /* attrib.c:509 — rn2(19) for A_WIS exercise */
-}
-
 /* C spell.c:1181 — attempting a forgotten spell causes disorientation.
  * Keep the order of status updates and preserve existing timeout/flag bits. */
 function spell_backfire(spell) {
@@ -738,35 +734,6 @@ async function spelleffects_check(spellSlot, res, energy) {
         return true;
     }
     return false;                          /* cast proceeds */
-}
-
-// ── spelleffects_rng ─────────────────────────────────────────────────────────
-function spelleffects_rng(spellSlot) {
-    /* line 1399 — exercise(A_WIS, TRUE) after energy is subtracted */
-    exercise_a_wis_true_rng(); /* rn2(19) */
-
-    /* line 1401 — mksobj(spellid, FALSE, FALSE):
-     *   mkobj.c:1188 next_ident() → rnd(2)
-     *   init=FALSE means mksobj_init is NOT called (no blessorcurse etc.) */
-    rnd(2); /* mkobj.c:522 next_ident */
-
-    /* spell effect phase — determine RNG based on oc_dir */
-    const spellBook = (game.spl_book || [])[spellSlot];
-    if (!spellBook) return;
-
-    const otyp = spellBook.sp_id;
-    const idx  = otyp - SPBOOK_FIRST_OTYP;
-    const oc_dir = (idx >= 0 && idx < SPBOOK_OC_DIR.length)
-        ? SPBOOK_OC_DIR[idx] : NODIR;
-
-    /* weffects path: NODIR always calls weffects; IMMEDIATE spells that
-     * fire at a direction also reach weffects (see spell.c:1509-1512).
-     * weffects() starts with exercise(A_WIS, TRUE) at zap.c:3431 → rn2(19).
-     * seffects path: scroll-like spells (SPE_REMOVE_CURSE etc.) call
-     * seffects() which calls exercise(A_WIS, TRUE) at read.c:2200 → rn2(19).
-     * Both paths consume exactly one more rn2(19) before any other effect RNG.
-     */
-    exercise_a_wis_true_rng(); /* rn2(19) — weffects:3431 or seffects:2200 */
 }
 
 // ── age_spells ─────────────────────────────────────────────────────────────
@@ -1551,13 +1518,15 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
     /* Raw (printed-width) lines drive the window geometry; the display lines
      * add SGR attributes and collapse blank runs into ESC[NC.               */
     const rawLines = [prompt, '', headingRaw, ...items.map((it) => `${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`), '(end)'];
-    const windowLines = [
+    const buildWindowLines = () => [
         menu_heading_text(prompt),
         '',
         menu_heading_text(collapseGaps(headingRaw).replace(/\t/g, '\x1b[1C')),
-        ...items.map((it) => collapseGaps(`${it.accel} ${it.sel ? '*' : '-'} ${it.raw}`).replace(/\t/g, '\x1b[1C')),
+        /* windows.c:1803 add_menu() menucolors the raw row; tty colours from char 4 (wintty.c:1449-1456). */
+        ...items.map((it) => `${it.accel} ${it.sel ? '*' : '-'} ${menucolor_text(collapseGaps(it.raw).replace(/\t/g, '\x1b[1C'), it.raw)}`),
         '(end)',
     ];
+    const windowLines = buildWindowLines();
 
     /* C ref: wintty.c:1925-1928 — `!iflags.menu_overlay` drops the menu to
      * offx 0 on a cleared screen (wintty.c:1407), content at col 1, nothing of
@@ -1600,19 +1569,21 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
      * build a count, and ESC while counting only stops the count (counting
      * clears at the next loop turn); a key outside resp is re-read inside
      * xwaitforspace so a live count survives it. */
-    let counting = false, reset_count = true;
+    let counting = false, reset_count = true, count = 0;
     for (;;) {
-        if (reset_count) counting = false;
+        if (reset_count) { counting = false; count = 0; }
         else reset_count = true;
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
         if (key === 27 /* ESC — C ref: tty menu cancel */) {
+            g._ttyDismissMore = 1; /* getline.c:245-247 — xwaitforspace's ESC arm */
             if (!counting)
                 return { count: 0, picked: 0 };
             continue;
         }
         if (ch >= '0' && ch <= '9' && !items.some((it) => it.accel === ch)) {
-            if (ch !== '0' || counting) { counting = true; reset_count = false; }
+            count = count * 10 + (ch.charCodeAt(0) - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
             continue;
         }
         if (ch === ' ' || ch === '\n' || ch === '\r') {
@@ -1642,12 +1613,27 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             }
             continue;
         }
+        if (ch === '-' || ch === '\\') {
+            let changed = false;
+            for (const it of items)
+                if (it.sel) { it.sel = false; changed = true; }
+            if (changed) {
+                const wl = buildWindowLines();
+                g._screen_output = noOverlay
+                    ? wl.map((t) => (t === '' ? '' : ` ${t}`)).join('\n')
+                    : build_window_screen(wl, WIN_COL, uac);
+                if (disp) { disp.cursorCol = endCursorCol; disp.cursorRow = endRow; }
+            }
+            continue;
+        }
         const hit = how === 'PICK_NONE' ? undefined : items.find((it) => it.accel === ch);
         if (hit)
             /* PICK_ONE/PICK_NONE both terminate on an accelerator; PICK_NONE
              * has no accelerators registered, so `hit` is never set there. */
             // C wintty.c:1756 toggles the entry before finishing PICK_ONE.
-            return { count: hit.sel ? 0 : 1, picked: hit.a_int };
+            /* C wintty.c:1114 toggle_menu_curr: a counted pick of an already
+             * selected entry keeps it selected (only records the count). */
+            return { count: hit.sel && !(counting && count > 0) ? 0 : 1, picked: hit.a_int };
         if (how === 'PICK_NONE')
             /* C ref: a PICK_NONE picklist is display-only — any other key just
              * re-reads (the dismiss keys above already returned). */
@@ -2132,13 +2118,13 @@ export async function spelleffects(spell_otyp, atme, force) {
         break;
 
     case SPE_CURE_BLINDNESS:
-        healup(0, 0, false, true);           /* spell.c:1552 */
+        await healup(0, 0, false, true);           /* spell.c:1552 */
         break;
     case SPE_CURE_SICKNESS: {
         /* C ref: spell.c:1554-1568 */
         const was_sick = !!(u.uprops && u.uprops[SICK] && u.uprops[SICK].intrinsic);
         const was_slimed = !!(u.uprops && u.uprops[SLIMED] && u.uprops[SLIMED].intrinsic);
-        healup(0, 0, true, false);
+        await healup(0, 0, true, false);
         if (was_sick || !was_slimed)
             await pline(`You are ${was_sick ? 'no longer' : 'not'} ill.`);
         if (was_slimed)
@@ -2562,6 +2548,12 @@ export async function cast_protection() {
 async function study_book_already_known(spellName) {
     const g = game;
     const msg = `You know "${spellName}" quite well already.`;
+    /* C spell.c:566-571 -> cmd.c:5394-5465: query_menu asks with a
+     * PICK_ONE menu; let the shared y_n dispatcher drain the message. */
+    if (g.iflags?.query_menu && g.iflags?.window_inited) {
+        await pline(msg);
+        return (await yn_function('Refresh your memory anyway?', 'yn', 'n', true)) !== 'n';
+    }
     /* C spell.c:566 You() runs vpline's last_msg/prevmsg writes
      * (pline.c:281-282) before the following query pages this message. */
     if (!msgtype_suppressed(msg)) {
@@ -2668,6 +2660,7 @@ export async function study_book(spellbook) {
         spellbook.novelidx = spellbook.corpsenm = box.value;
         if (await read_tribute('books', tribtitle, 0, null, spellbook.o_id)) {
             _bump_literate(tribtitle);
+            await check_unpaid_usage(spellbook, false); /* spell.c:526 check_unpaid */
             _makeknown(booktype);
             const _u = g.u || (g.u = {});
             _u.uevent = _u.uevent || {};

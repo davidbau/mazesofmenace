@@ -8,6 +8,7 @@ import * as worn from '../ported/worn.js';
 import {createWornEnvironment} from '../ported/worn-runtime.js';
 import * as wield from '../ported/wield.js';
 import {createWieldEnvironment} from '../ported/wield-runtime.js';
+import {withCEnvironment} from '../ported/c-runtime.js';
 import * as armor from '../ported/do_wear.js';
 import {callDoWear} from '../ported/do_wear-runtime.js';
 import {attachEquipmentFormatting} from './equipment-format.js';
@@ -51,6 +52,15 @@ export function enableHeroEquipment(environment,layouts,hero){
  const owned=(namespace)=>Object.fromEntries(Object.entries(namespace).filter(([name,fn])=>typeof fn==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name)));
  environment.register('hero-weapons',Object.fromEntries(Object.keys(owned(weapon)).map(name=>[name,(...args)=>callWeapon(ws,W,name,...args)])));
  const wornEnv=createWornEnvironment(wn,layouts.worn,worn),wieldEnv=createWieldEnvironment(wd,layouts.wield,wield);
+ // The unchanged wield bridge indexes its two private getobj filters in this order.
+ // Re-enter this same context when INVENT calls the native-shaped selector token.
+ wd.callbackPointer=index=>{
+  const name=['ready_ok','wield_ok'][transport.int(index)];
+  if(!name)throw new Error('Unknown WIELD callback '+index);
+  return environment.functionPointer('wield::'+name,'ip',value=>transport.scoped(()=>withCEnvironment(wieldEnv,()=>transport.int(wield[name](wieldEnv.object(address(value)))))));
+ };
+ const getobj=(prompt,selector,flags)=>environment.resolve('getobj')(typeof prompt==='string'?services.literal(prompt):address(prompt),address(selector),transport.int(flags));
+ wd.getobj=getobj;
  const signatures=new Map();
  function signature(name){if(!signatures.has(name)){const match=publicFunctions.functions[name].match(/^(.*?)\((.*)\)$/);if(!match)throw new Error('Unknown equipment prototype '+name);signatures.set(name,{result:match[1].trim(),parameters:match[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')});}return signatures.get(name);}
  function boundaryValue(type,value){const canonical=ctypes.canonical(type);if(canonical==='void')return undefined;if(canonical.includes('*'))return typeof value==='string'?services.literal(value):address(value);return canonical==='long'?transport.long(value):canonical==='unsigned long'?transport.ulong(value):canonical==='signed char'||canonical==='char'?transport.char(value):canonical==='unsigned char'?transport.uchar(value):canonical==='unsigned int'?transport.uint(value):transport.int(value);}
@@ -67,6 +77,8 @@ export function enableHeroEquipment(environment,layouts,hero){
  const field=(k,i)=>{const row=armorAbi.schemas[schemas[k]],f=row?.fields[i];if(!f)throw new Error('Unknown DO_WEAR field');return{type:row.ctype,f};};
  const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.q||d.f?8:d.s?layouts.do_wear[d.s+'Size']:d.a.reduce((a,b)=>a*b,1)*width(d.e);
  Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,
+  getobj,
+  unmul:message=>environment.resolve('unmul')(typeof message==='string'?services.literal(message):address(message)),
   buffer:()=>offdelaybuf,
   callbackPointer:i=>{const name=armorAbi.callbacks[i],prototype=armorAbi.callbackTypes[name];if(!prototype)throw new Error('Unknown DO_WEAR callback '+i);const match=prototype.match(/^(.*?)\((.*)\)$/),types=[match[1],...match[2].split(',').filter(t=>t.trim()&&t.trim()!=='void')],signature=types.map(t=>{t=ctypes.canonical(t.trim());return t==='void'?'v':t.includes('*')?'p':t.includes('long')?'j':'i';}).join(''),privateName=typeof armor[name]==='function'&&!Object.hasOwn(publicFunctions.functions,name);return environment.functionPointer(privateName?'do_wear::'+name:name,signature,privateName?(...args)=>callDoWear(local,layouts.do_wear,name,...args):undefined);},
   rng:(kind,n,fn,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('do_wear.c'),line,typeof fn==='string'?services.literal(fn):address(fn));return services[kind?'rnd':'rn2'](transport.int(n));},

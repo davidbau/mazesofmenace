@@ -1,0 +1,756 @@
+{
+  "calls": {
+    "In_hell": {
+      "target": "In_hell",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "boolean (d_level *)"
+    },
+    "Is_botlevel": {
+      "target": "Is_botlevel",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "boolean (d_level *)"
+    },
+    "Is_branchlev": {
+      "target": "Is_branchlev",
+      "number": true,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "branch *(d_level *)"
+    },
+    "Is_special": {
+      "target": "Is_special",
+      "number": true,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "s_level *(d_level *)"
+    },
+    "Sfi_char": {
+      "target": "sfi_char",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "text",
+        "text",
+        "integer"
+      ],
+      "prototype": "void (NHFILE *, char *, const char *, int)"
+    },
+    "Sfo_char": {
+      "target": "sfo_char",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "text",
+        "text",
+        "integer"
+      ],
+      "prototype": "void (NHFILE *, char *, const char *, int)"
+    },
+    "Strcat": {
+      "target": "strcat",
+      "number": true,
+      "coercions": [
+        "text",
+        "text"
+      ],
+      "prototype": "char *(char *, const char *)"
+    },
+    "Strcpy": {
+      "target": "strcpy",
+      "number": true,
+      "coercions": [
+        "text",
+        "text"
+      ],
+      "prototype": "char *(char *, const char *)"
+    },
+    "add_to_container": {
+      "target": "add_to_container",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "pointer"
+      ],
+      "prototype": "struct obj *(struct obj *, struct obj *)"
+    },
+    "add_to_minv": {
+      "target": "add_to_minv",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "pointer"
+      ],
+      "prototype": "int (struct monst *, struct obj *)"
+    },
+    "alloc": {
+      "target": "alloc",
+      "number": true,
+      "coercions": [
+        "integer"
+      ],
+      "prototype": "long *(unsigned int)"
+    },
+    "artifact_exists": {
+      "target": "artifact_exists",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "text",
+        "byte",
+        "integer"
+      ],
+      "prototype": "void (struct obj *, const char *, boolean, unsigned int)"
+    },
+    "artifact_light": {
+      "target": "artifact_light",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "boolean (struct obj *)"
+    },
+    "assign_level": {
+      "target": "assign_level",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "pointer"
+      ],
+      "prototype": "void (d_level *, d_level *)"
+    },
+    "can_carry": {
+      "target": "can_carry",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "pointer"
+      ],
+      "prototype": "int (struct monst *, struct obj *)"
+    },
+    "cant_revive": {
+      "target": "cant_revive",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "byte",
+        "pointer"
+      ],
+      "prototype": "boolean (int *, boolean, struct obj *)"
+    },
+    "christen_monst": {
+      "target": "christen_monst",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "text"
+      ],
+      "prototype": "struct monst *(struct monst *, const char *)"
+    },
+    "clear_bypasses": {
+      "target": "clear_bypasses",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "close_nhfile": {
+      "target": "close_nhfile",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (NHFILE *)"
+    },
+    "commit_bonesfile": {
+      "target": "commit_bonesfile",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (d_level *)"
+    },
+    "compress_bonesfile": {
+      "target": "compress_bonesfile",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "create_bonesfile": {
+      "target": "create_bonesfile",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "pointer",
+        "text"
+      ],
+      "prototype": "NHFILE *(d_level *, char **, char *)"
+    },
+    "curse": {
+      "target": "curse",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct obj *)"
+    },
+    "dealloc_obj": {
+      "target": "dealloc_obj",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct obj *)"
+    },
+    "delete_bonesfile": {
+      "target": "delete_bonesfile",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "int (d_level *)"
+    },
+    "depth": {
+      "target": "depth",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "schar (d_level *)"
+    },
+    "dismount_steed": {
+      "target": "dismount_steed",
+      "number": false,
+      "coercions": [
+        "integer"
+      ],
+      "prototype": "void (int)"
+    },
+    "dmonsfree": {
+      "target": "dmonsfree",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "dunlevs_in_dungeon": {
+      "target": "dunlevs_in_dungeon",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "xint16 (d_level *)"
+    },
+    "end_burn": {
+      "target": "end_burn",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "byte"
+      ],
+      "prototype": "void (struct obj *, boolean)"
+    },
+    "enexto": {
+      "target": "enexto",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "coord",
+        "coord",
+        "pointer"
+      ],
+      "prototype": "boolean (coord *, coordxy, coordxy, struct permonst *)"
+    },
+    "exist_artifact": {
+      "target": "exist_artifact",
+      "number": false,
+      "coercions": [
+        "integer",
+        "text"
+      ],
+      "prototype": "boolean (int, const char *)"
+    },
+    "fix_shop_damage": {
+      "target": "fix_shop_damage",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "forget_engravings": {
+      "target": "forget_engravings",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "formatkiller": {
+      "target": "formatkiller",
+      "number": false,
+      "coercions": [
+        "text",
+        "integer",
+        "integer",
+        "byte"
+      ],
+      "prototype": "void (char *, unsigned int, int, boolean)"
+    },
+    "free": {
+      "target": "free",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (void *)"
+    },
+    "free_omonst": {
+      "target": "free_omonst",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct obj *)"
+    },
+    "free_oname": {
+      "target": "free_oname",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct obj *)"
+    },
+    "fruit_from_indx": {
+      "target": "fruit_from_indx",
+      "number": true,
+      "coercions": [
+        "integer"
+      ],
+      "prototype": "struct fruit *(int)"
+    },
+    "get_obj_location": {
+      "target": "get_obj_location",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "pointer",
+        "pointer",
+        "integer"
+      ],
+      "prototype": "boolean (struct obj *, coordxy *, coordxy *, int)"
+    },
+    "getlev": {
+      "target": "getlev",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "integer",
+        "byte"
+      ],
+      "prototype": "void (NHFILE *, int, xint8)"
+    },
+    "give_u_to_m_resistances": {
+      "target": "give_u_to_m_resistances",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct monst *)"
+    },
+    "in_rooms": {
+      "target": "in_rooms",
+      "number": true,
+      "coercions": [
+        "coord",
+        "coord",
+        "integer"
+      ],
+      "prototype": "char *(coordxy, coordxy, int)"
+    },
+    "inside_shop": {
+      "target": "inside_shop",
+      "number": false,
+      "coercions": [
+        "coord",
+        "coord"
+      ],
+      "prototype": "char (coordxy, coordxy)"
+    },
+    "is_quest_artifact": {
+      "target": "is_quest_artifact",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "boolean (struct obj *)"
+    },
+    "isok": {
+      "target": "isok",
+      "number": false,
+      "coercions": [
+        "coord",
+        "coord"
+      ],
+      "prototype": "int (coordxy, coordxy)"
+    },
+    "ledger_no": {
+      "target": "ledger_no",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "xint16 (d_level *)"
+    },
+    "m_carrying": {
+      "target": "m_carrying",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "integer"
+      ],
+      "prototype": "struct obj *(struct monst *, int)"
+    },
+    "m_dowear": {
+      "target": "m_dowear",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "byte"
+      ],
+      "prototype": "void (struct monst *, boolean)"
+    },
+    "makemon": {
+      "target": "makemon",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "coord",
+        "coord",
+        "integer"
+      ],
+      "prototype": "struct monst *(struct permonst *, coordxy, coordxy, mmflags_nht)"
+    },
+    "maxledgerno": {
+      "target": "maxledgerno",
+      "number": false,
+      "coercions": [],
+      "prototype": "xint16 (void)"
+    },
+    "memset": {
+      "target": "memset",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "integer",
+        "long"
+      ],
+      "prototype": "void *(void *, int, unsigned long)"
+    },
+    "mk_named_object": {
+      "target": "mk_named_object",
+      "number": true,
+      "coercions": [
+        "integer",
+        "pointer",
+        "coord",
+        "coord",
+        "text"
+      ],
+      "prototype": "struct obj *(int, struct permonst *, coordxy, coordxy, const char *)"
+    },
+    "mongets": {
+      "target": "mongets",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "integer"
+      ],
+      "prototype": "struct obj *(struct monst *, int)"
+    },
+    "mongone": {
+      "target": "mongone",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct monst *)"
+    },
+    "newmextra": {
+      "target": "newmextra",
+      "number": true,
+      "coercions": [],
+      "prototype": "struct mextra *(void)"
+    },
+    "newsym": {
+      "target": "newsym",
+      "number": false,
+      "coercions": [
+        "coord",
+        "coord"
+      ],
+      "prototype": "void (coordxy, coordxy)"
+    },
+    "obj_attach_mid": {
+      "target": "obj_attach_mid",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "integer"
+      ],
+      "prototype": "struct obj *(struct obj *, unsigned int)"
+    },
+    "obj_extract_self": {
+      "target": "obj_extract_self",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct obj *)"
+    },
+    "obj_is_burning": {
+      "target": "obj_is_burning",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "boolean (struct obj *)"
+    },
+    "obj_no_longer_held": {
+      "target": "obj_no_longer_held",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (struct obj *)"
+    },
+    "open_bonesfile": {
+      "target": "open_bonesfile",
+      "number": true,
+      "coercions": [
+        "pointer",
+        "pointer"
+      ],
+      "prototype": "NHFILE *(d_level *, char **)"
+    },
+    "paniclog": {
+      "target": "paniclog",
+      "number": false,
+      "coercions": [
+        "text",
+        "text"
+      ],
+      "prototype": "void (const char *, const char *)"
+    },
+    "place_object": {
+      "target": "place_object",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "coord",
+        "coord"
+      ],
+      "prototype": "void (struct obj *, coordxy, coordxy)"
+    },
+    "rloc_to": {
+      "target": "rloc_to",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "coord",
+        "coord"
+      ],
+      "prototype": "void (struct monst *, coordxy, coordxy)"
+    },
+    "safe_oname": {
+      "target": "safe_oname",
+      "number": true,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "const char *(struct obj *)"
+    },
+    "sanitize_engravings": {
+      "target": "sanitize_engravings",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "savefruitchn": {
+      "target": "savefruitchn",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (NHFILE *)"
+    },
+    "savelev": {
+      "target": "savelev",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "byte"
+      ],
+      "prototype": "void (NHFILE *, xint8)"
+    },
+    "set_corpsenm": {
+      "target": "set_corpsenm",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "integer"
+      ],
+      "prototype": "void (struct obj *, int)"
+    },
+    "store_version": {
+      "target": "store_version",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "void (NHFILE *)"
+    },
+    "strcmp": {
+      "target": "strcmp",
+      "number": false,
+      "coercions": [
+        "text",
+        "text"
+      ],
+      "prototype": "int (const char *, const char *)"
+    },
+    "strlen": {
+      "target": "strlen",
+      "number": true,
+      "coercions": [
+        "text"
+      ],
+      "prototype": "unsigned long (const char *)"
+    },
+    "strncmp": {
+      "target": "strncmp",
+      "number": false,
+      "coercions": [
+        "text",
+        "text",
+        "long"
+      ],
+      "prototype": "int (const char *, const char *, unsigned long)"
+    },
+    "tended_shop": {
+      "target": "tended_shop",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "boolean (struct mkroom *)"
+    },
+    "the": {
+      "target": "the",
+      "number": true,
+      "coercions": [
+        "text"
+      ],
+      "prototype": "char *(const char *)"
+    },
+    "trickery": {
+      "target": "trickery",
+      "number": false,
+      "coercions": [
+        "text"
+      ],
+      "prototype": "void (char *)"
+    },
+    "unleash_all": {
+      "target": "unleash_all",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "unpunish": {
+      "target": "unpunish",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "update_mlstmv": {
+      "target": "update_mlstmv",
+      "number": false,
+      "coercions": [],
+      "prototype": "void (void)"
+    },
+    "validate": {
+      "target": "validate",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "text",
+        "byte"
+      ],
+      "prototype": "int (NHFILE *, const char *, boolean)"
+    },
+    "weight": {
+      "target": "weight",
+      "number": false,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "int (struct obj *)"
+    },
+    "xname": {
+      "target": "xname",
+      "number": true,
+      "coercions": [
+        "pointer"
+      ],
+      "prototype": "char *(struct obj *)"
+    },
+    "yyyymmddhhmmss": {
+      "target": "yyyymmddhhmmss",
+      "number": true,
+      "coercions": [
+        "long"
+      ],
+      "prototype": "char *(time_t)"
+    },
+    "attacktype": {
+      "target": "attacktype",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "integer"
+      ],
+      "prototype": "boolean (struct permonst *, int)"
+    },
+    "on_level": {
+      "target": "on_level",
+      "number": false,
+      "coercions": [
+        "pointer",
+        "pointer"
+      ],
+      "prototype": "boolean (d_level *, d_level *)"
+    }
+  },
+  "public": {
+    "sanitize_name": "void (char *)",
+    "drop_upon_death": "void (struct monst *, struct obj *, coordxy, coordxy)",
+    "can_make_bones": "boolean (void)",
+    "savebones": "void (int, time_t, struct obj *)",
+    "getbones": "int (void)",
+    "bones_include_name": "boolean (const char *)",
+    "fix_ghostly_obj": "void (struct obj *)",
+    "newebones": "void (struct monst *)",
+    "free_ebones": "void (struct monst *)"
+  },
+  "sourceSha256": {
+    "scripts/export-standalone-bones-services-abi.py": "9cacdb33a4a836829932550b0da8724efee6381210337d500f0629dfe22a2893",
+    "nethack-c/wasm/tu-libraries/bones.js": "484b8b26ee4433ee5b4f599e82986c2975cac12a9cdb94ab0dcffbd64fe4cc39",
+    "js/ported/bones.js": "6f2e6c16c578701bc75cc8ac83e96c0e75e9a2266fa06818636647a6c7d5711a",
+    "js/ported/bones-runtime.js": "be0792e783b0ea9af1010525bc36a291f6bc6bb67140a1a32291f20b0a39be78",
+    "nethack-c/wasm/tu-fragments/bones-support.c": "cbb0e47e2e59ec2b1cc5572c64610bba26ddd0b9ff13b81cd4dafa9eb5dcdfa7",
+    "js/standalone/bones-services.js": "cbe83429fc1ee31b7951551b59a7b2e3e280c98daae767843690c22486befcaf",
+    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
+  }
+}

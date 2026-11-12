@@ -19,7 +19,7 @@ export async function getpos_refresh(hilitefunc, getvalid, sethilite) {
         getpos_hilite_state.current = getpos_hilite_state.default;
     }
 
-    docrt_flags(docrtRefresh);
+    await docrt_flags(docrtRefresh);
 
     if (hilitefunc && getpos_hilite_state.current === HiliteBackground)
         await sethilite(hilitefunc, getvalid);

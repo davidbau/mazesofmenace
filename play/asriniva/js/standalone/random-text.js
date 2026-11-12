@@ -1,5 +1,5 @@
 // Original random-text policy on shared stdio, canonical RNG and C strings.
-import {get_rnd_text,get_rnd_line,unpadline,getrumor} from '../ported/rumors.js';
+import {get_rnd_text,get_rnd_line,unpadline,getrumor,save_oracles,restore_oracles,free_CapMons} from '../ported/rumors.js';
 import {createRumorsState,createRumorsEnvironment} from '../ported/rumors-runtime.js';
 export function enableRandomText(environment,layouts){
  const {services,functions}=environment,text=p=>typeof p==='string'?services.literal(p):environment.address(p);
@@ -16,7 +16,8 @@ export function enableRandomText(environment,layouts){
  });
  const callers=['getrumor','outrumor','outoracle'];
  for(const kind of ['rn2','rnd'])local[kind]=(n,line,caller)=>{const name=callers[caller];if(!name)throw new Error('Unknown RUMORS RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('rumors.c'),line,services.literal(name));return services[kind](n);};
+ for(const direction of ['sfo','sfi'])for(const type of ['unsigned','ulong'])local[(direction==='sfo'?'Sfo_':'Sfi_')+type]=(file,data,tag)=>environment.resolve(direction+'_'+type)(environment.address(file),environment.address(data),text(tag));
  const state=createRumorsState(),context=createRumorsEnvironment(local,layouts.rumors,state);Object.setPrototypeOf(context,local);
- environment.register('random-text',{get_rnd_text,get_rnd_line,unpadline,getrumor},context);
+ environment.register('random-text',{get_rnd_text,get_rnd_line,unpadline,getrumor,save_oracles,restore_oracles,free_CapMons},context);
  return {context,state};
 }

@@ -2,13 +2,13 @@
 // C ref: allmain.c — newgame, moveloop, moveloop_core, stop_occupation().
 import { ceilingName, dungeonBuildsUp, dungeonDepth, initOverviewRecord, printLevelAnnotation, u_on_rndspot, In_hell } from './dungeon.js';
 import { noticeAllMonsters, withMonsterNoticesBlocked, applyHeroLiquidEffects, continueRun, nomul, overexertHeroHp, finishDestinationSpotEffects, stopRun, captureRunmodeDelay, isTeleportRunmode, nearCapacity, checkSpecialRoom, finishHeroHelplessness } from './hack.js';
-import { recorderLocalEpochSeconds, fixedCalendar, sessionIsNight } from './calendar.js';
+import { recorderLocalEpochSeconds, fixedCalendar, friday13th, sessionIsNight } from './calendar.js';
 import { pline, plineWithContinuation, publishHeardMessage, recordGameLogEvent } from './pline.js';
 import { cmdq_clear, currentMulti, heroHasInvoluntaryDelay, setMulti, continueCountedCommand, promptYesNo, rhack, dolookaround } from './cmd.js';
 import { getLine } from './windows.js';
 import { doStorms } from './timeout.js';
 import { rewindEngravingsForSave, engravingAt, wipeEngravingAt, readEngravingAt, wipeHeroEngraving } from './engrave.js';
-import { angerMonster, finishEnvironmentalMonsterDeath, finishMonsterHideUnder, finishMonsterKilled, finishMonsterLiquidDeath, mcalcmove, purgeDeadMonsters, restoreMonsterShape, seeNearbyMonsters, monsterDistressEvents, monstersInFmonOrder, moveMonsters, resolveMonsterLiquid, monsterCanCarryObject, monsterFliesOrFloats, wakeMonstersNearWithMessages, finishHeroLiquidMonsterDeath, finishHeroMonsterKill, runMonsterAction, } from './mon.js';
+import { angerMonster, finishEnvironmentalMonsterDeath, finishMonsterHideUnder, finishMonsterKilled, finishMonsterLiquidDeath, mcalcmove, purgeDeadMonsters, seeNearbyMonsters, monsterDistressEvents, monstersInFmonOrder, moveMonsters, resolveMonsterLiquid, monsterCanCarryObject, monsterFliesOrFloats, wakeMonstersNearWithMessages, finishHeroLiquidMonsterDeath, finishHeroMonsterKill, runMonsterAction, } from './mon.js';
 import { heroIsHallucinating, heroIsBlind, heroIsDeaf, syncBlindness } from './senses.js';
 import { learnWand, applyRayFloorFeatures, destroyColdInventory, destroyElectricInventory, destroyFireInventory, heroHasHalfSpellDamage } from './zap.js';
 import { flashBurn } from './zap.js';
@@ -39,7 +39,7 @@ import { monsterSubjectPronoun, monstersForgetHeroResistance, monstersObserveHer
 import { MONSTER_GENO, MONSTER_ATTACKS, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME, MONSTER_SOUND, MONSTER_SYMBOL } from './monster_data.js';
 import { monsterAtPosition } from './steed.js';
 import { finishHeroDeathAfterMonsterMessage, finishMonsterAttackDeath, waitForCurrentMonsterMore, finishHeroDeath, } from './end.js';
-import { restoreMonsterCover, finishInUseInventory } from './restore.js';
+import { getlev, finishInUseInventory } from './restore.js';
 import { releaseObjectLeash, checkHeroLeashes, heroNextToLeashedFollowers } from './apply.js';
 import { ACID_VENOM, BOULDER, CORPSE, LEASH, GOLD_PIECE, } from './object_data.js';
 import { heroIsUnaware } from './senses.js';
@@ -110,10 +110,8 @@ function putLine(col, row, text, attr = 0) {
 // creation story is laid out by the tty pager; role, rank, and god are live.
 async function showLegacy() {
     const game = requireInitializedGame();
-    // com_pager() creates a fresh Lua state, which loads nhlib.lua before
-    // quest.lua and consumes the alignment shuffle from CORE.
-    const questState = currentLuaLifecycle().createSpecialState(game);
-    await questState.destroy();
+    // The layout below supplies the legacy text; share the pager's Lua lifetime.
+    await currentLuaLifecycle().withQuestState(game, () => { });
     const d = requireGameDisplay(game);
     const alignment = game.initAlignment?.name;
     const god = (alignment ? game.urole.gods?.[alignment] : null) || 'your god';
@@ -218,7 +216,8 @@ async function applyCalendarMessages() {
     const game = requireInitializedGame();
     const calendar = fixedCalendar(game.datetime);
     game.flags.moonphase = calendar.moonphase;
-    game.flags.friday13 = calendar.friday13;
+    const friday = friday13th(game.datetime);
+    game.flags.friday13 = friday;
     // Native luck changes follow the message, including any input it needs.
     if (calendar.moonphase === 4) {
         await plineWithContinuation('You are lucky!  Full moon tonight.');
@@ -227,7 +226,7 @@ async function applyCalendarMessages() {
     else if (calendar.moonphase === 0) {
         await plineWithContinuation('Be careful!  New moon tonight.');
     }
-    if (calendar.friday13) {
+    if (friday) {
         await plineWithContinuation('Watch out!  Bad things can happen on Friday the 13th.');
         changeHeroLuck(-1);
     }
@@ -248,27 +247,12 @@ export async function restoregamePreamble() {
     game._moveloopStarted = false;
     // pickup.c's oldcap is process-local (decl.c), not restored save state.
     game._encumbranceLevel = 0;
-    // C getlev() closes dorecover() with a fixup pass over every monster on
-    // the restored current level. Ownership links survive the saved graph,
-    // but hiding cover must be rechecked before restoring each shape.
-    // Births append in the port, whereas C's fmon chain keeps the newest
-    // monster first. The pass runs where C runs it, before vision_reset()
-    // (restore.c:926) and with program_state.restoring still set, so plain
-    // sight sees nothing yet and the map stays unpainted behind any
-    // sensed-change message; only sensing can spot a revert here. getlev()
-    // holds in_getlev across the pass (restore.c:1064-1305), so a revert that
-    // asks for a vision recalculation cannot rebuild sight mid-pass.
     game.program_state.restoring = true;
-    game.program_state.in_getlev = true;
     game.vision_full_recalc = 0;
     try {
-        for (const monster of [...(game.level?.monsters ?? [])].reverse()) {
-            await restoreMonsterCover(monster, game);
-            await restoreMonsterShape(monster, game);
-            if (game.program_state.gameover)
-                return;
-        }
-        game.program_state.in_getlev = false;
+        await getlev({ kind: 'saved' });
+        if (game.program_state.gameover)
+            return;
         await finishInUseInventory(false);
         // C dorecover() rebuilds vision, then expires timers while map and
         // status output are still suppressed by program_state.restoring.

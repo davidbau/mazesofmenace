@@ -229,6 +229,10 @@ export function timebot() {
 export function experienceRankIndex(level) {
     return level <= 2 ? 0 : level <= 30 ? Math.trunc((level + 2) / 4) : 8;
 }
+// C botl.c:rank_to_xlev(). The low end of each rank's level range.
+export function rankToLevel(rank) {
+    return rank < 1 ? 1 : rank < 2 ? 3 : rank < 8 ? rank * 4 - 2 : 30;
+}
 // C include/you.h:Role_switch (gu.urole.mnum): the hero's role as a player
 // monster species number. C's roles store the PM_ species index directly;
 // this port's roles store a 0-based mnum, so the species number is
@@ -599,8 +603,7 @@ export class StatusHighlights {
         field.rule = null;
         field.expires = 0;
     }
-    // C botl.c:hilite_reset_needed(): a temporary highlight expires once its
-    // time has passed and the hero is not stalled in a multi-turn action.
+    // Re-arm changed fields and check pending expirations for the next status update.
     evaluateNextUnhilite(state) {
         this.moves = state.moves;
         let update = !!state.context.botl;
@@ -611,10 +614,20 @@ export class StatusHighlights {
                 field.changed = false;
                 update = true;
             }
-            else if (!state.multi && field.expires > 0 && field.expires < state.moves)
+            if (update)
+                continue;
+            if (field.expires > 0 && this.hiliteResetNeeded(field, state, field.expires + 1)
+                && field.expires < state.moves)
                 update = true;
         }
         return update;
+    }
+    // C botl.c:hilite_reset_needed(). A temporary highlight expires once
+    // its time has passed and the hero is not stalled in a multi-turn
+    // action.
+    hiliteResetNeeded(previous, state, time = this.moves ?? state.moves) {
+        return previous?.rule?.behavior === BL_TH_UPDOWN && !!previous.expires && !state.multi
+            && previous.expires < time;
     }
     // C botl.c:evaluate_and_notify_windowport(): the whole-field sweep; both
     // buffers swap first, and a changed gold encoding forces update_all from
@@ -644,7 +657,7 @@ export class StatusHighlights {
         this.enabled = !!state.iflags.hiliteDelta;
         this.updateField(state, BL_TIME, numberValue(state.moves));
     }
-    // botl.c exp_percent_changing(): hidden points can change the level's rule.
+    // C botl.c:exp_percent_changing(): hidden points can change the level's rule.
     experiencePercentChanging(state) {
         if (state.context.botl)
             return false;
@@ -683,7 +696,7 @@ export class StatusHighlights {
         const reset = this.resetPending || !previous
             || encodingChanged && AT_OR_AFTER_GOLD.has(field);
         let change = reset ? 0 : compare(previous.raw, current.raw);
-        const percentMatters = field === BL_HP || field === BL_ENE || field === BL_XP || field === BL_EXP;
+        const percentMatters = (STATUS_FIELDS.find(entry => entry.fld === field)?.idxmax ?? -1) >= 0;
         const calculatePercent = (percentMatters && rules.length > 0 && (change !== 0 || reset || field === BL_XP))
             || (field === BL_HP && state.flags.hitpointbar);
         // C keeps the cached percentage but passes zero to get_hilite() when
@@ -698,9 +711,8 @@ export class StatusHighlights {
             if (change === 1 && field === BL_XP && previous)
                 change = compare(previous.raw, current.raw);
         }
-        const expired = !!previous?.expires && !state.multi && previous.expires < (this.moves ?? state.moves);
-        // C hilite_reset_needed(): a temporary highlight whose time passed.
-        // botl.c:1584 re-sends a field only for gu.update_all, a value or
+        const expired = this.hiliteResetNeeded(previous, state);
+        // C botl.c:1584 re-sends a field only for gu.update_all, a value or
         // percentage change, or a temporary-hilite expiry. A rule list that
         // changed on its own never re-sends anything: the tty keeps the
         // buffered color of a removed rule until one of those rounds runs
@@ -864,9 +876,9 @@ function fieldValues(state, fields) {
     const values = new Map([
         [BL_TITLE, { ...textValue(title), text: title.slice(nameLength + 5) }],
         [BL_ALIGN, textValue(hero.ualign?.type === -1 ? 'Chaotic' : hero.ualign?.type === 0 ? 'Neutral' : 'Lawful')],
-        [BL_HP, numberValue(Math.min(hp, 9999), hp, percentage(hp, maximum))],
+        [BL_HP, numberValue(Math.min(hp, 9999), hp)],
         [BL_HPMAX, numberValue(Math.min(maximum, 9999), maximum)],
-        [BL_ENE, numberValue(Math.min(energy, 9999), energy, percentage(energy, energyMaximum))],
+        [BL_ENE, numberValue(Math.min(energy, 9999), energy)],
         [BL_ENEMAX, numberValue(Math.min(energyMaximum, 9999), energyMaximum)],
         [BL_AC, numberValue(hero.uac ?? 10)], [BL_TIME, numberValue(state.moves)],
         [BL_HUNGER, numberValue(hero.uhs ?? 0, hero.uhs ?? 0, 0, fields.hunger)],
@@ -874,15 +886,27 @@ function fieldValues(state, fields) {
         [BL_GOLD, numberValue(Math.min(gold, 999999), gold)],
         [BL_LEVELDESC, textValue(fields.location)], [BL_VERS, textValue(fields.version)],
     ]);
-    const experiencePercent = experiencePercentage(state);
-    values.set(BL_XP, numberValue(level, level, experiencePercent));
-    values.set(BL_EXP, numberValue(experience, experience, experiencePercent));
+    values.set(BL_XP, numberValue(level));
+    values.set(BL_EXP, numberValue(experience));
     values.set(BL_HD, numberValue(Upolyd(hero) ? MONSTER_LEVEL[hero.umonnum ?? -1] ?? 0 : 0));
     for (const [field, attribute] of [[BL_STR, A_STR], [BL_DX, A_DEX], [BL_CO, A_CON],
         [BL_IN, A_INT], [BL_WI, A_WIS], [BL_CH, A_CHA]])
         values.set(field, numberValue(currentAttribute(attribute, state)));
     for (const equipment of fields.equipment)
         values.set(equipment.field, textValue(equipment.text));
+    // eval_notify_windowport_field() selects the maximum from initblstats.
+    // percentage() uses unclipped values for HP and power only.
+    for (const { fld, idxmax } of STATUS_FIELDS) {
+        const current = values.get(fld), maximum = values.get(idxmax);
+        if (!current || idxmax < 0)
+            continue;
+        const useRaw = fld === BL_HP || fld === BL_ENE;
+        const value = useRaw ? current.raw : current.value;
+        const maxValue = useRaw ? maximum?.raw : maximum?.value;
+        const percent = idxmax === BL_EXP ? experiencePercentage(state)
+            : typeof value === 'number' && typeof maxValue === 'number' ? percentage(value, maxValue) : 0;
+        values.set(fld, { ...current, percent });
+    }
     if (!state.flags.time)
         values.delete(BL_TIME);
     if (!state.flags.showvers)

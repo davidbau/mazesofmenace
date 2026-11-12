@@ -1732,7 +1732,8 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 _dloc.doormask = _btrapped_now ? D_NODOOR_MV : D_ISOPEN_MV;
                 newsym(mtmp.mx | 0, mtmp.my | 0);
                 recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
-                vision_recalc(0);
+                // C UnblockDoor (monmove.c:1533): finish notices before feedback.
+                await vision_recalc(0);
                 const canseeit = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
                 if (_btrapped_now) {
                     if (await mb_trapped(mtmp, canseeit))
@@ -1761,7 +1762,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 _dloc.doormask = _btrapped_now ? D_NODOOR_MV : D_ISOPEN_MV;
                 newsym(mtmp.mx | 0, mtmp.my | 0);
                 recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
-                vision_recalc(0);
+                await vision_recalc(0);
                 /* C monmove.c:1535 UnblockDoor — canseeit = didseeit || cansee(). */
                 const _canseeit_d = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
                 /* C monmove.c:1576-1580 — a trapped door blows up INSTEAD of
@@ -1825,7 +1826,7 @@ async function postmov_door(mtmp, _didseeit_pm, _mf1_ct, can_tunnel_mv) {
                 _dloc.doormask = _maskd;
                 newsym(mtmp.mx | 0, mtmp.my | 0);
                 recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
-                vision_recalc(0);
+                await vision_recalc(0);
                 const _canseeit_d = _didseeit_pm
                     || !!cansee(mtmp.mx | 0, mtmp.my | 0);
                 if (_btrapped_now) {

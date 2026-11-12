@@ -10,7 +10,10 @@ export function enableStatus(environment,layouts){
  const ctypes=createCTypes(memory,{...records,records:{...records.records,...abi.records}},environment.bitfields);
  const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.q||d.f?8:d.s?L[d.s+'Size']:d.a.reduce((n,v)=>n*v,1)*width(d.e);
  for(const name of ['enc_stat','conditions','condtests','cond_idx','terrain_descr']){const row=abi.globals.find(g=>g.name===name);environment.allocateGlobal(name,width(row.d));}
- const local=new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
+ const local=new Proxy(Object.create(services),{get:(o,k,r)=>{
+  if(Reflect.has(o,k)){const value=Reflect.get(o,k,r);return typeof value==='function'&&!Object.hasOwn(o,k)?(...args)=>value(...args.map(v=>v?.address??v)):value;}
+  return typeof k==='string'?(...args)=>environment.resolve(k)(...args.map(v=>v?.address??v)):undefined;
+ }});
  const kinds=Object.keys(abi.schemas),scalar=d=>d.t?{i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'}[d.t]:'void *';
  const field=(kind,index)=>{const row=abi.schemas[kinds[kind]],f=row?.fields[index];if(!f)throw new Error('Unknown status field');return {type:row.ctype,f};};
  const cptr=v=>typeof v==='string'?services.literal(v):environment.address(v);

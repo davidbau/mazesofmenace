@@ -8,7 +8,7 @@ import { unpunish as unpunish_invent } from './read.js';
 import { canspotmon, flush_pending_messages, force_more, newsym, retouch_equipment, see_monsters, shieldeff as shieldeff_gz } from './display.js';
 import { You_feel, You_hear, livelog_printf, pline } from './pline.js';
 import { dropy, heal_legs } from './do.js';
-import { Amulet_off, You, bimanual, disintegrate_arm as disintegrate_arm_gz, encumber_msg, stuck_ring, xname, yname } from './do_wear.js';
+import { Amulet_off, You, bimanual, disintegrate_arm as disintegrate_arm_gz, encumber_msg, stuck_ring, unchanger, xname, yname } from './do_wear.js';
 import { losehp } from './hack.js';
 import { floorfood, init_uhunger } from './eat.js';
 import { feel_cockatrice } from './invent.js';
@@ -569,8 +569,11 @@ async function _bestow_artifact(max_giftvalue) {
         if (wizard()) {
             do_bestow = (await yn_function('Gift an artifact?', 'yn', 'n')) === 'y';
             /* topl.c:537-545 rewrites gt.toplines only; the answered prompt stays
-             * painted until parse()'s clear_nhwindow after the next command key. */
-            game._topl_sticky = 'Gift an artifact? [yn] (n)';
+             * painted until parse()'s clear_nhwindow after the next command key.
+             * Not under query_menu: the menu arm clears WIN_MESSAGE itself
+             * (cmd.c:5459), leaving the topline empty. */
+            if (!game.iflags?.query_menu)
+                game._topl_sticky = 'Gift an artifact? [yn] (n)';
         } else
             do_bestow = !rn2(6 + (2 * (u.ugifts | 0) * nartifacts));
     }
@@ -737,7 +740,7 @@ const RIN_LEVITATION = 183;
 
 const AMULET_OF_STRANGULATION = 203;
 
-const AMULET_OF_UNCHANGING_PRAY = 207;
+const AMULET_OF_UNCHANGING = 207;
 
 const HELM_OF_OPPOSITE_ALIGNMENT = 99; /* objects.h */
 const POTION_CLASS = 8; /* objclass.h */
@@ -945,8 +948,7 @@ function _worst_cursed_item() {
 
 /* C do_wear.c:2687 — the worn source of Unchanging, also used by prayer. */
 function _unchanger() {
-    const amulet = game.u.uamul;
-    return amulet?.otyp === AMULET_OF_UNCHANGING_PRAY ? amulet : null;
+    return unchanger();
 }
 
 /* C ref: pray.c:343-366 fix_curse_trouble(otmp, what). */
@@ -1201,7 +1203,12 @@ async function _fix_worst_trouble(trouble) {
     }
 }
 
-export function can_pray(praying) {
+/* C ref: pray.c:2123-2194 can_pray(boolean praying) — the single body.  Live:
+ * dopray() (C pray.c:2230) and enlightenment (C insight.c:1943) call it.
+ * pline() (js/pline.js) is async and can block in more(), so the two
+ * messages are awaited: C's pline returns only after the topline is
+ * settled, and dopray's wizard-mode force_more reads the result. */
+export async function can_pray(praying) {
     const g = game;
     const u = g.u || (g.u = {});
     const onAltar = _on_altar();
@@ -1216,14 +1223,14 @@ export function can_pray(praying) {
     if (_is_demon(g.youmonst && g.youmonst.data)
         && (g._p_aligntyp === A_LAWFUL || g._p_aligntyp !== A_NEUTRAL)) {
         if (praying)
-            pline('The very idea of praying to a '
+            await pline('The very idea of praying to a '
                 + (g._p_aligntyp ? 'lawful' : 'neutral')
                 + ' god is repugnant to you.');
         return false;
     }
 
     if (praying)
-        pline('You begin praying to ' + align_gname(g._p_aligntyp) + '.');
+        await pline('You begin praying to ' + align_gname(g._p_aligntyp) + '.');
 
     const record = (u.ualign?.record | 0);
     let alignment;
@@ -1254,9 +1261,8 @@ export function can_pray(praying) {
         && (g._p_aligntyp === A_LAWFUL
             || (g._p_aligntyp === A_NEUTRAL && !rn2(10))))
         g._p_type = -1;
-    /* Note: when !praying, the random factor for neutrals makes the return
-       value a non-deterministic approximation for enlightenment. This case
-       should be uncommon enough to live with... */
+    /* C pray.c:2166-2168 notes the rn2(10) above makes the !praying
+       (enlightenment) answer random for neutral undead; C accepts that. */
 
     return !praying ? (g._p_type === 3 && !Inhell()) : true;
 }
@@ -1290,7 +1296,7 @@ export async function dopray() {
     }
 
     /* C ref: pray.c:2230 — `if (!can_pray(TRUE)) return ECMD_OK;`. */
-    if (!can_pray(true)) {                   /* prints "You begin praying…" */
+    if (!(await can_pray(true))) {           /* prints "You begin praying…" */
         g.context.move = 0;                  /* ECMD_OK — no turn */
         return ECMD_OK; // C ref: pray.c:2231 `if (!can_pray(TRUE)) return ECMD_OK;`
     }
@@ -1497,11 +1503,6 @@ async function _gods_upset(gAlign) {
     await _angrygods(gAlign);
 }
 
-/* C mkobj.c:1746-1765 bless(), including light and timer updates. */
-async function _prayer_bless(obj) {
-    return await bless_obj(obj);
-}
-
 /* C pray.c:787-801 — a gift may be swallowed, unseen, or below levitation. */
 async function _at_your_feet(str) {
     const u = game.u;
@@ -1570,7 +1571,7 @@ async function _gcrownu() {
     if (MKOBJ_OC_CLASS[classGift] === OCLASS_SPBOOK) {
         obj = await _fl_mksobj(classGift, true, false);
         const bbuf = actualoname(obj);
-        await _prayer_bless(obj);
+        await bless_obj(obj);
         obj.bknown = 1;
         observe_object(obj);
         await _at_your_feet(upstart(ansimpleoname(obj)));
@@ -1639,7 +1640,7 @@ async function _gcrownu() {
         break;
     }
     if (ok_wep(obj)) {
-        await _prayer_bless(obj);
+        await bless_obj(obj);
         obj.oeroded = obj.oeroded2 = 0;
         obj.oerodeproof = true;
         obj.bknown = obj.rknown = 1;
@@ -1685,7 +1686,7 @@ async function _give_prayer_spell() {
     } else {
         observe_object(obj);
         if (obj.otyp === SPE_BLANK_PAPER || !rn2(100)) makeknown(obj.otyp);
-        await _prayer_bless(obj);
+        await bless_obj(obj);
         await _at_your_feet(upstart(ansimpleoname(obj)));
         place_object(obj, u.ux, u.uy);
         newsym(u.ux, u.uy);
@@ -2016,7 +2017,7 @@ async function _pleased(gAlign) {
                     } else {
                         await _You_feel(`the blessing of ${_align_gname(u.ualign.type)} over ${yname(wep)}.`);
                     }
-                    await _prayer_bless(wep);
+                    await bless_obj(wep);
                     wep.bknown = 1;
                     repair = '';
                 }

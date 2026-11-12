@@ -52,6 +52,7 @@ export function enableTurnLoop(environment,layouts,startup){
   throw new Error('Review changed ALLMAIN turn ABI');
  const {services,ctypes,memory,transport,functions}=environment,views=createRecordViews(environment);
  const text=value=>typeof value==='string'?services.literal(value):environment.address(value);
+ C.Role_if=role=>Number(views.record('struct instance_globals_u',environment.requireGlobal('gu')).urole.mnum===transport.int(role));
  const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
  // ALLMAIN fields remain the actual DECL/role/window globals. Installing views
  // adds no initialization and never copies an existing owner's field values.
