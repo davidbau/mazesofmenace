@@ -21,7 +21,7 @@ export function createRecordViews(environment,fieldAliases={}) {
         if(!hasRecord(type))return ctypes.load(type,p);
         return record(type,p);
     }
-    const records=createRecordStore({memory,address:environment.address,
+    const records=createRecordStore({memory,address:environment.address,reuseArguments:true,
         describe:type=>ctypes.record(type),
         createView:(definition,p)=>{
             const view={address:p};
@@ -41,5 +41,5 @@ export function createRecordViews(environment,fieldAliases={}) {
         },
     });
     const {record}=records;
-    return {record,value,array:(type,p,length)=>value(type+'['+length+']',p),advance:records.advance};
+    return {record,argument:records.argument,value,array:(type,p,length)=>value(type+'['+length+']',p),advance:records.advance};
 }

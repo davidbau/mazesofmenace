@@ -4,7 +4,7 @@
 // with JS values through clib.call().  The functions here are the ones the
 // residue does not have, or must not be used for:
 //
-//   qsort       musl's smoothsort in JS (host/qsort.js): comparators are JS functions
+//   qsort       macOS's qsort in JS (host/qsort.js): comparators are JS functions
 //   regerror    Darwin message texts (host/regerror.js); also as nhjs_regerror
 //   creat       open(path, O_CREAT|O_WRONLY|O_TRUNC, mode), as musl defines it
 //   getlogin    getenv("LOGNAME") (musl)

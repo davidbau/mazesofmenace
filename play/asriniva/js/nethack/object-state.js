@@ -34,7 +34,7 @@ export function enableObjectState(environment,layouts) {
         panic:(format,...args)=>{throw new CPanic(libc.format(format,...args));},
         impossible:(format,...args)=>environment.diagnostics.push(libc.format(format,...args)),
         raw_printf:(...args)=>environment.resolve('raw_printf')(...args),
-        wait_synch:()=>environment.resolve('wait_synch')(),
+        wait_synch:()=>environment.functions.indirect(environment.ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'win_wait_synch','void *'),'v'),
         Strlen:p=>memory.strlen(environment.address(p)),
     });
     for(const direction of ['sfo','sfi'])for(const kind of ['int','short','objclass','unsigned','char'])

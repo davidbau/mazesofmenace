@@ -1,5 +1,6 @@
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
+import {installDirectDisplayFields} from './display-direct.js';
 // Native memory views, header ABI and per-Module backing for DISPLAY JS bodies.
 import * as display from '../../ported/display.js';
 import {withCEnvironment} from '../../c-runtime/context.js';
@@ -12,6 +13,7 @@ export function createDisplayEnvironment(services){
  for(const[k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,charSigned:1,littleEndian:1}))if(layout[k]!==v)throw Error('Review DISPLAY ABI '+k);
  const ptr=v=>{if(typeof v==='number'&&Number.isSafeInteger(v))return v;const n=Number(v);if(!Number.isSafeInteger(n)||BigInt(n)!==BigInt(v))throw Error('DISPLAY pointer exceeds exact address range');return n;};
  const {env,types,memory,type,decode,kinds}=CAdapter.createScalarAdapter(services,layout,schema,ptr,{profile:"cached-fields",errors:["Review DISPLAY scalar ","Review DISPLAY cell ","Review DISPLAY field "],fieldMetadata});
+ installDirectDisplayFields(env,memory,ptr);
  env.global=name=>{const index=schema.globals.findIndex(g=>g.name===name);if(index<0)throw Error('Review DISPLAY global '+name);return env.cell(services.global(index),schema.globals[index].canonical);};
  env.staticAddress=name=>{const index=schema.statics.findIndex(s=>s.name===name);if(index<0)throw Error('Review DISPLAY static '+name);return ptr(services.storage(index));};
  env.local=(t,value)=>{const bytes=type(t)==='p'?8:+types[t].slice(1)/8;const cell=env.cell(services.stackAlloc(bytes),t);cell.value=value;return cell;};

@@ -40,7 +40,7 @@ export function createWinttyEnvironment(services,L,state){
         const a=arrayType(t);t=canonical(t);
         if(!raw(p))return 0;
         if(a)return address(p);
-        return schema.records[t]?record(p,t):raw(p)>BigInt(Number.MAX_SAFE_INTEGER)?raw(p):address(p);
+        return schema.records[t]?record(p,t):raw(p)>9007199254740991n?raw(p):address(p);
     }
     function read(p,t){
         t=canonical(t);const a=arrayType(t);
@@ -60,7 +60,7 @@ export function createWinttyEnvironment(services,L,state){
     function record(p,t){
         if(!raw(p))return 0;t=canonical(t);const at=raw(p),fields=schema.records[t];
         if(!fields)throw Error('WINTTY unreviewed native record '+t);
-        return new Proxy({address:at>BigInt(Number.MAX_SAFE_INTEGER)?at:Number(at),nativeType:t},{
+        return new Proxy({address:at>9007199254740991n?at:Number(at),nativeType:t},{
             get(o,f){if(f in o)return o[f];f=schema.fieldAliases[t]?.[f]??f;const d=fields[f];if(!d)return undefined;
                 if(d.bit)return services.getBit(o.address,bitIndices[t+'.'+f]);
                 return read(address(o.address)+Number(L['offset_'+key(t)+'_'+f]),d.type);},

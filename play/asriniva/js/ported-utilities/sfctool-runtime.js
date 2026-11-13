@@ -18,7 +18,9 @@ export function createSfctool(Module) {
     C.iflags={get initoptions_noterminate(){return dv().getInt8(globals[12]+L[24]);}};
     C.restoreinfo={get mread_flags(){return box(globals[13]+L[25],L[26]).value;},set mread_flags(n){box(globals[13]+L[25],L[26]).value=n;}};
     C.cscbuf=new Proxy({address:globals[14]},{get:(o,k)=>/^\d+$/.test(String(k))?Module.HEAPU8[o.address+Number(k)]:Reflect.get(o,k)});
-    for(const[name,key,size]of [['sfoprocs',15,L[27]],['sfiprocs',16,L[27]],['sfoflprocs',17,L[28]],['sfiflprocs',18,L[28]]])C[name]=new Proxy({},{get:(_,k)=>globals[key]+Number(k)*size,set(_,k,p){Module._utility_memcpy(BigInt(globals[key]+Number(k)*size),BigInt(raw(p)),BigInt(size));return true;}});
+    for(const[name,key,size]of [['sfoprocs',15,L[27]],['sfiprocs',16,L[27]],['sfoflprocs',17,L[28]],['sfiflprocs',18,L[28]]])C[name]=new Proxy({},{get:(_,k)=>globals[key]+Number(k)*size,set(_,k,p){const to=globals[key]+Number(k)*size,from=raw(p),heap=Module.HEAPU8;
+        if(Number.isSafeInteger(to)&&Number.isSafeInteger(from)&&Number.isSafeInteger(size)&&to>=0&&from>=0&&size>=0&&to+size<=heap.length&&from+size<=heap.length&&(to+size<=from||from+size<=to))heap.copyWithin(to,from,from+size);
+        else Module._utility_memcpy(BigInt(to),BigInt(from),BigInt(size));return true;}});
     for(const[name,key]of [['zerosfoprocs',19],['zerosfiprocs',20],['historical_sfo_procs',21],['historical_sfi_procs',22],['exportascii_sfo_procs',23],['exportascii_sfi_procs',24]])C[name]=globals[key];
     for(const[name,index]of [['READING',30],['WRITING',31],['NHF_SAVEFILE',32],['SAVEPREFIX',33],['O_RDONLY',34],['O_BINARY',35],['FCMASK',36],['UNCONVERTING',37],['CONVERTING',38],['SF_UPTODATE',39],['SF_CRITICAL_BYTE_COUNT_MISMATCH',40],['SF_OUTDATED',41],['SF_DM_IL32LLP64_ON_ILP32LL64',42],['VERSION_MAJOR',43],['VERSION_MINOR',44],['PATCHLEVEL',45],['EDITLEVEL',46],['set_in_sysconf',47]])C[name]=L[index];
     C.UNCONVERTED=0;C.CONVERTED=1;C.SYSCF_FILE='sysconf';C.RDBMODE='r';C.WRBMODE='w+';

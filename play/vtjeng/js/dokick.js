@@ -122,7 +122,7 @@ import { Is_botlevel, dunlev, dunlevs_in_dungeon, on_level, surface } from './du
 import { breaktest, breaks, hero_breaks, impact_disturbs_zombies, thitmonst, hurtle, digests } from './dothrow.js';
 import { game } from './gstate.js';
 import { sgn, upstart } from './hacklib.js';
-import { add_to_minv, currency, delobj, money_cnt, obj_extract_self, obfree, stackobj, useup, sobj_at } from './invent.js';
+import { add_to_minv, currency, delobj, money_cnt, obj_extract_self, obfree, stackobj, stackobjRuntime, useup, sobj_at } from './invent.js';
 import {
     in_town, inv_weight, losehp, near_capacity, overexertion, weight_cap,
 } from './hack.js';
@@ -1549,11 +1549,7 @@ export async function container_impact_dmg(obj, x, y, rawEnv = {}) {
 export async function impact_drop(missile, x, y, dlev, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     if (!state.level.objects[x]?.[y]) return;
-    const env = objectGenerationEnv({ ...rawEnv, state, hooks: {
-        recalcBlockPoint: (bx, by, objectEnv) =>
-            recalc_block_point(bx, by, objectEnv.state),
-        ...rawEnv.hooks,
-    } });
+    const env = objectGenerationEnv({ ...rawEnv, state });
     const random = rawEnv.random ?? coreRandom;
     const message = rawEnv.message ?? ttyPline;
     let toloc = down_gate(x, y, state);
@@ -1819,7 +1815,9 @@ export async function obj_delivery(near_hero, rawEnv = {}) {
                     continue;
                 }
             }
-            stackobj(otmp, env);
+            // A delivered glob can land on a glob; merged() then prints
+            // pudding_merge_message(), which the runtime form waits for.
+            await stackobjRuntime(otmp, env);
             if (!noscatter) {
                 await scatter(nx, ny, random.rnd(2), 0, otmp, state, env);
             } else {

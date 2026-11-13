@@ -30,7 +30,7 @@ function acquireHackEnvironment(services,layout) {
 export function createHackEnvironment(services,layout,namespace,servicePrototype=services) {
     for(const [k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,charSigned:1,littleEndian:1}))
         if(Number(layout[k])!==v)throw Error('Review changed HACK ABI: '+k);
-    const pointerValue=v=>{const r=BigInt.asUintN(64,BigInt(v?.address??v??0));return r<=BigInt(Number.MAX_SAFE_INTEGER)?Number(r):r;};
+    const pointerValue=v=>{const r=BigInt.asUintN(64,BigInt(v?.address??v??0));return r<=9007199254740991n?Number(r):r;};
     const addr=v=>Number(v?.address??v??0),raw=v=>BigInt.asUintN(64,BigInt(typeof v==='string'?services.literal(v):typeof v==='boolean'?Number(v):typeof v==='number'?Math.trunc(v):v?.address??v??0));
     let dataView;
     const memory=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;},cache=new Map(),names=Object.keys(schemas);

@@ -682,25 +682,23 @@ export function nomux_capture_write_input_boundary()
 
 export function nomux_clear_screen()
 {
-    
-    let r; let c;
-    for (r = C.int(0); r < 24; r++)
-        for (c = C.int(0); c < 80; c++) {
-            C.nomux_buf[r][c].ch = C.char(32);
-            C.nomux_buf[r][c].fg = C.uchar(7);
-            C.nomux_buf[r][c].attr = C.uchar(0); C.nomux_buf[r][c].decgfx = C.uchar(0);
-        }
+    const cells = C.nomuxScreenViews().bytes;
+    for (let at = 0; at < 24 * 80 * 4; at += 4) {
+        cells[at] = 32; cells[at + 1] = 7;
+        cells[at + 2] = 0; cells[at + 3] = 0;
+    }
 }
 
 export function nomux_clear_to_eol(row,col)
 {
     row=C.int(row);col=C.int(col);
     let c;
+    const cells = C.nomuxScreenViews().bytes;
     if (Number(Boolean(row < 0 || row >= 24))) return;
     for (c = C.int((col < 0 ? 0 : col)); c < 80; c++) {
-        C.nomux_buf[row][c].ch = C.char(32);
-        C.nomux_buf[row][c].fg = C.uchar(7);
-        C.nomux_buf[row][c].attr = C.uchar(0);
+        cells[(row * 80 + c) * 4 + 0] = 32;
+        cells[(row * 80 + c) * 4 + 1] = 7;
+        cells[(row * 80 + c) * 4 + 2] = 0;
         /* Reset decgfx too: cl_end's job is to wipe a region, and a
          * cleared cell shouldn't carry a graphics-mode flag from
          * whatever character occupied that position before. Without
@@ -710,7 +708,7 @@ export function nomux_clear_to_eol(row,col)
          * blank cell — visually identical to a regular space, but
          * not byte-equal across rebuilds or when comparing against
          * a JS port that clears decgfx on every overwrite. */
-        C.nomux_buf[row][c].decgfx = C.uchar(0);
+        cells[(row * 80 + c) * 4 + 3] = 0;
     }
 }
 
@@ -722,10 +720,12 @@ export function nomux_putch(ch)
     row = C.int(C.ttyDisplay.cury);
     col = C.int(C.ttyDisplay.curx);
     if (Number(Boolean(row >= 0 && row < 24 && col >= 0 && col < 80))) {
-        C.nomux_buf[row][col].ch = C.char(C.char( ch));
-        C.nomux_buf[row][col].fg = C.uchar(C.nomux_fg_cur);
-        C.nomux_buf[row][col].attr = C.uchar(C.nomux_attr_cur);
-        C.nomux_buf[row][col].decgfx = C.uchar(C.nomux_decgfx_cur);
+        const cells = C.nomuxScreenViews().bytes;
+        const at = (row * 80 + col) * 4;
+        cells[at] = ch;
+        cells[at + 1] = C.nomux_fg_cur;
+        cells[at + 2] = C.nomux_attr_cur;
+        cells[at + 3] = C.nomux_decgfx_cur;
     }
 }
 
@@ -785,6 +785,7 @@ export function nomux_capture_screen()
 {
     
     let p = C.charPointer(C.nomux_out);
+    let screen = C.nomuxScreenViews();
     let row; let col; let end; let cur_fg; let cur_attr;
     /* tmux capture-pane -e format:
      * - Color start: \033[97m (just the code, no 0; prefix)
@@ -794,19 +795,21 @@ export function nomux_capture_screen()
      * - Full reset: \033[0m only at end-of-line or when both attr+color reset
      * Incremental: only emit what changes between cells. */
     for (row = C.int(0); row < 24; row++) {
+        screen = C.nomuxScreenViews();
         cur_fg = C.int(7); cur_attr = C.int(0);
         end = C.int(79);
         while (Number(Boolean(end >= 0
-               && (C.nomux_buf[row][end].ch == 32 || C.nomux_buf[row][end].ch == 0)
-               && C.nomux_buf[row][end].attr == 0
-               && (C.nomux_buf[row][end].fg == 7 || C.nomux_buf[row][end].fg == 0))))
+               && (screen.signed[(row * 80 + end) * 4] == 32 || screen.signed[(row * 80 + end) * 4] == 0)
+               && screen.bytes[(row * 80 + end) * 4 + 2] == 0
+               && (screen.bytes[(row * 80 + end) * 4 + 1] == 7 || screen.bytes[(row * 80 + end) * 4 + 1] == 0))))
             end--;
         let in_dec = C.int(0);
         for (col = C.int(0); col <= end; col++) {
-            let c = C.nomux_buf[row][col];
-            let ch = C.char(c.ch ? c.ch : 32);
-            let fg = C.int(c.fg ? c.fg : 7);
-            let at = C.int(c.attr);
+            const cell = (row * 80 + col) * 4;
+            let ch = screen.signed[cell] || 32;
+            let fg = screen.bytes[cell + 1] || 7;
+            let at = screen.bytes[cell + 2];
+            const mayFormat = at != cur_attr || fg != cur_fg;
             /* Emit incremental SGR changes */
             if (at != cur_attr) {
                 /* Handle attr changes individually */
@@ -826,11 +829,14 @@ export function nomux_capture_screen()
                 }
                 cur_fg = C.int(fg);
             }
-            if (Number(Boolean(c.decgfx && !in_dec))) { C.HEAP8[C.charPointer(p++)] = C.char(14); in_dec = C.int(1); }
-            else if (Number(Boolean(!c.decgfx && in_dec))) { C.HEAP8[C.charPointer(p++)] = C.char(15); in_dec = C.int(0); }
-            C.HEAP8[C.charPointer(p++)] = C.char(ch);
+            // sprintf may call a provider which grows/replaces the heap.
+            if (mayFormat) screen = C.nomuxScreenViews();
+            const decgfx = screen.bytes[cell + 3];
+            if (Number(Boolean(decgfx && !in_dec))) { screen.heap8[p++] = 14; in_dec = C.int(1); }
+            else if (Number(Boolean(!decgfx && in_dec))) { screen.heap8[p++] = 15; in_dec = C.int(0); }
+            screen.heap8[p++] = ch;
         }
-        if (in_dec) { C.HEAP8[C.charPointer(p++)] = C.char(15); in_dec = C.int(0); }
+        if (in_dec) { screen.heap8[p++] = 15; in_dec = C.int(0); }
         /* End-of-line: reset to defaults — match tmux format */
         if (Number(Boolean(cur_attr && cur_fg != 7))) {
             p = C.charPointer(p) + Number(C.sprintf(p, "\u001b[0m"));  /* both attr+color: full reset */
@@ -840,9 +846,10 @@ export function nomux_capture_screen()
             p = C.charPointer(p) + Number(C.sprintf(p, "\u001b[39m")); /* color only: fg reset */
             cur_fg = C.int(7); cur_attr = C.int(0);
         }
-        if (row < 23) C.HEAP8[C.charPointer(p++)] = C.char(10);
+        screen = C.nomuxScreenViews();
+        if (row < 23) screen.heap8[p++] = 10;
     }
-    C.HEAP8[C.charPointer(p)] = C.char(0);
+    screen.heap8[p] = 0;
     return C.nomux_out;
 }
 
@@ -883,10 +890,12 @@ export function nomux_raw_putch(ch)
     if (ch < 32) return;
     if (Number(Boolean(C.nomux_raw_row >= 0 && C.nomux_raw_row < 24
         && C.nomux_raw_col >= 0 && C.nomux_raw_col < 80))) {
-        C.nomux_buf[C.nomux_raw_row][C.nomux_raw_col].ch = C.char(C.char( ch));
-        C.nomux_buf[C.nomux_raw_row][C.nomux_raw_col].fg = C.uchar(C.nomux_fg_cur);
-        C.nomux_buf[C.nomux_raw_row][C.nomux_raw_col].attr = C.uchar(C.nomux_attr_cur);
-        C.nomux_buf[C.nomux_raw_row][C.nomux_raw_col].decgfx = C.uchar(C.nomux_decgfx_cur);
+        const cells = C.nomuxScreenViews().bytes;
+        const at = (C.nomux_raw_row * 80 + C.nomux_raw_col) * 4;
+        cells[at] = ch;
+        cells[at + 1] = C.nomux_fg_cur;
+        cells[at + 2] = C.nomux_attr_cur;
+        cells[at + 3] = C.nomux_decgfx_cur;
     }
     C.nomux_raw_col++;
 }

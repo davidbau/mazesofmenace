@@ -20,7 +20,9 @@ export function createUtility(m){
  tilepixels:indexed(Number(m._tb_storage(1)),L.TILE_X*L.pixelSize,p=>indexed(p,L.pixelSize,pixel)),
  ColorMap:indexed(colorBase,L.MAXCOLORMAPSIZE,p=>indexed(p,1,at=>view().getUint8(at))),
  bytesLocal(n,zero=false){const p=m.stackAlloc(n);if(zero)m.HEAPU8.fill(0,p,p+n);return p;},storeByte:(p,n)=>{view().setUint8(ptr(p),n);return int(n)&255;},
- copyBmp:p=>m._memcpy(p64(p),BigInt(bmp),BigInt(L.bmpSize)),packtile:p=>ptr(p)+L.packtile,
+ copyBmp:p=>{const to=p64(p),from=BigInt(bmp),n=BigInt(L.bmpSize),heap=m.HEAPU8;
+  if(to>=0n&&from>=0n&&n>=0n&&to+n<=BigInt(heap.length)&&from+n<=BigInt(heap.length)&&(to+n<=from||from+n<=to)){heap.copyWithin(Number(to),bmp,bmp+L.bmpSize);return Number(to);}
+  return m._memcpy(to,from,n);},packtile:p=>ptr(p)+L.packtile,
  callLocal(fn,...args){const sp=m.stackSave();try{return fn(...args);}finally{m.stackRestore(sp);}},
  strlen:p=>m._strlen(BigInt(literal(p))),strcpy:(a,b)=>m._strcpy(p64(a),BigInt(literal(b))),Strcpy:(a,b)=>m._strcpy(p64(a),BigInt(literal(b))),Strcat:(a,b)=>m._strcat(p64(a),BigInt(literal(b))),strncmp:(a,b,n)=>m._strncmp(BigInt(literal(a)),BigInt(literal(b)),size(n)),
  malloc:n=>Number(m._malloc(size(n))),free:p=>m._free(p64(p)),fopen:(p,s)=>Number(m._tb_fopen(BigInt(literal(p)),BigInt(literal(s)))),fclose:p=>m._tb_fclose(p64(p)),fgets:(p,n,f)=>Number(m._tb_fgets(p64(p),n|0,p64(f))),fwrite:(p,n,s,f)=>m._tb_fwrite(p64(p),size(n),size(s),p64(f)),

@@ -83,7 +83,12 @@ import {
     luaL_checkoption,
     luaL_checkstring,
     luaL_typename,
+    nhl_call_field,
+    nhl_error,
     nhl_loadlua,
+    luaO_chunkid,
+    nhl_pcall_handle,
+    nhlL_newstate,
 } from './nhlua.js';
 import {
     create_maze,
@@ -179,7 +184,7 @@ import {
 } from './objects.js';
 import { goodpos } from './teleport.js';
 import { deltrap, maketrap, reset_utrap, t_at } from './trap.js';
-import { does_block, recalc_block_point, unblock_point } from './vision.js';
+import { does_block, unblock_point } from './vision.js';
 import { buried_ball_to_punishment } from './dig.js';
 import { mintrap } from './trap_effects.js';
 import { minliquid, seemimic } from './mon.js';
@@ -360,7 +365,7 @@ import { priestini } from './priest.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { note_unported } from './unported.js';
 import { impossible, impossible_printer } from './pline.js';
-import { finish_steps } from './source_steps.js';
+import { ImpossibleCall, finish_steps } from './source_steps.js';
 import { dungeon_at } from './dungeon_table.js';
 
 const XLIM = 4;
@@ -465,6 +470,7 @@ async function getbones() {
 
 // C ref: allmain.c l_nhcore_init()
 export function l_nhcore_init(state = game, random = rn2) {
+    nhlL_newstate(state);
     const align = [A_LAWFUL, A_NEUTRAL, A_CHAOTIC];
     shuffle_core_values(align, random);
     state.splev_align = align;
@@ -696,6 +702,7 @@ export function initialize_themeroom_branch(state = game, random = rn2) {
     state._luathemes_loaded ??= {};
     state.themeroom_align ??= {};
     if (!state._luathemes_loaded[dnum]) {
+        nhlL_newstate(state);
         const align = ['law', 'neutral', 'chaos'];
         shuffle_core_values(align, random);
         state.themeroom_align[dnum] = align;
@@ -753,11 +760,12 @@ async function makelevel(specialLevelLoader = null) {
         // special-level Lua state shuffles its private alignment table before
         // evaluating the level file. Do not mark the persistent themed-room
         // branch as loaded: that Lua state has a different lifetime.
+        const nud = nhlL_newstate(g);
         const align = ['law', 'neutral', 'chaos'];
         shuffle_core_values(align, rn2);
         g.specialLevelAlign = align;
         create_des_coder(g);
-        const specialLevelApi = createSpecialLevelApi(g);
+        const specialLevelApi = createSpecialLevelApi(g, { align, nud });
         await specialLevelLoader(specialLevelApi, g);
         await specialLevelApi.finish();
         await finishLevelGeneration();
@@ -1850,8 +1858,9 @@ function lvlfill_swamp(fg, bg, lit, frame, state) {
 }
 
 // C ref: sp_lev.c splev_initlev(). Dispatches a des.level_init() request to
-// the fill routine its style names.
-function splev_initlev(linit, frame, state) {
+// the fill routine its style names. A step generator (js/source_steps.js):
+// mkmap.c join_map() can print impossible() in the middle of the fill.
+function* splev_initlev_steps(linit, frame, state) {
     switch (linit.init_style) {
     default:
         throw new Error('Unrecognized level init style.');
@@ -1885,7 +1894,7 @@ function splev_initlev(linit, frame, state) {
         // C: the file-scope icedpools flag lspo_level_flags("icedpools")
         // sets; this port keeps it on the frame.
         linit.icedpools = frame.icedpools;
-        mkmap(linit, state);
+        yield* mkmap_steps(linit, state);
         break;
     case LVLINIT_SWAMP:
         if (linit.lit === BOOL_RANDOM)
@@ -2058,25 +2067,28 @@ export async function load_special(name, state, callerEnv = null) {
     // available to the caller's NULL-state finalizer even when the load
     // fails.
     create_des_coder(state);
-    const specialLevelApi = createSpecialLevelApi(state);
-    if (callerEnv) callerEnv.frame = specialLevelApi.frame;
     // C ref: nhlua.c load_lua(). nhl_init() loads nhlib.lua, which shuffles
     // the Lua state's private alignment table, before nhl_loadlua() opens
     // the file.
+    const nud = nhlL_newstate(state);
     const align = ['law', 'neutral', 'chaos'];
     shuffle_core_values(align, rn2);
-    const lua = { align };
+    const lua = { align, nud };
+    const specialLevelApi = createSpecialLevelApi(state, lua);
+    if (callerEnv) callerEnv.frame = specialLevelApi.frame;
     const loaded = await nhl_loadlua(lua, name, state);
     state.specialLevelAlign = lua.align;
-    if (!loaded) {
+    // A library file's top level leaves the coder as create_des_coder()
+    // made it, and load_special() post-processes the current level as it is.
+    // The port registers each level program under its name without ".lua";
+    // nhl_loadlua() runs it in a protected call, and a Lua error prints
+    // impossible() and fails the load.
+    if (!loaded || (loaded === 'level'
+        && await nhl_pcall_handle(lua, () => runLevelLoader(name, lua,
+            specialLevelApi, state), name, state))) {
         state.gc.coder = null; // C: give_up: Free(gc.coder)
         return false;
     }
-    // A library file's top level leaves the coder as create_des_coder()
-    // made it, and load_special() post-processes the current level as it is.
-    // The port registers each level program under its name without ".lua".
-    if (loaded === 'level')
-        await SPECIAL_LEVEL_LOADERS[name.slice(0, -'.lua'.length)](specialLevelApi, state);
 
     // Post-processing: finish() covers link_doors_rooms,
     // remove_boundary_syms, map_cleanup, wallification, flip_level_rnd,
@@ -2093,11 +2105,23 @@ export async function load_special(name, state, callerEnv = null) {
 // the first creates gc.coder, nothing post-processes the level, and the coder
 // stays for the next special-level load to reuse. `align` is the shuffled
 // nhlib.lua table of the Lua state nhl_init() made.
-export async function run_level_program(name, align, state) {
+export async function run_level_program(name, lua, state) {
     await ensureSpecialLevelLoaders();
-    state.specialLevelAlign = align;
+    state.specialLevelAlign = lua.align;
+    await runLevelLoader(name, lua, createSpecialLevelApi(state, lua), state);
+}
+
+// The level program `name` as nhl_loadlua()'s lua_pcall() runs its main
+// chunk, called from C (the bottom "[C]: in ?" of a traceback). The chunk
+// keeps no line numbers except where a loader records them.
+async function runLevelLoader(name, lua, specialLevelApi, state) {
+    lua.chunk = luaO_chunkid(`(${name})`);
+    lua.frames = [
+        { desc: '?' },
+        { lua: true, desc: 'main chunk', currentline: 0 },
+    ];
     await SPECIAL_LEVEL_LOADERS[name.slice(0, -'.lua'.length)](
-        createSpecialLevelApi(state), state);
+        specialLevelApi, state);
 }
 
 // C ref: mkmaze.c makemaz(). Selects the special level variant, loads
@@ -2807,7 +2831,10 @@ export function lspo_level_init(args, env) {
     if (init_lev.bg === INVALID_TYPE)
         init_lev.bg = (init_lev.init_style === LVLINIT_SWAMP) ? MOAT : STONE;
 
-    splev_initlev(init_lev, frame, state);
+    // Every des.level_init() caller awaits the result, so join_map()'s
+    // impossible() prints at C's point in the fill.
+    return finish_steps(splev_initlev_steps(init_lev, frame, state),
+        impossible_printer(state));
 }
 
 // C ref: sp_lev.c lspo_engraving(). Forms: engraving({ x, y, type, text })
@@ -3594,7 +3621,7 @@ export function lspo_door(args, env) {
         get_location_coord(c, ANY_LOC, coder.croom, SP_COORD_PACK(x, y),
                            { frame, state });
         if (!isok(c.x, c.y))
-            throw new Error('door coord not ok');
+            nhl_error(env.lua, 'door coord not ok');
         sel_set_door(c.x, c.y, typ, frame, state);
     }
 }
@@ -3867,7 +3894,7 @@ export function lspo_terrain(args, env) {
         get_location_coord(c, ANY_LOC, coder.croom, SP_COORD_PACK(x, y),
                            { frame, state });
         if (!isok(c.x, c.y))
-            throw new Error('terrain coord not ok');
+            nhl_error(env.lua, 'terrain coord not ok');
         sel_set_ter(
             c.x, c.y, tmpterrain.ter, tmpterrain.tlit, state, frame, random,
         );
@@ -4400,7 +4427,7 @@ export function lspo_drawbridge(args, env) {
     get_location_coord(c, DRY | WET | HOT, coder.croom, dcoord,
                        { frame, state });
     if (!isok(mx, my)) {
-        throw new Error('drawbridge coord not ok');
+        nhl_error(env.lua, 'drawbridge coord not ok');
     }
     if (db_open === -1)
         db_open = rn2(2) ? 0 : 1;
@@ -4443,7 +4470,7 @@ export async function lspo_mazewalk(args, env) {
     let { x, y } = c;
 
     if (!isok(x, y)) {
-        throw new Error('mazewalk coord not ok');
+        nhl_error(env.lua, 'mazewalk coord not ok');
     }
 
     if (ftyp < 1) {
@@ -4719,7 +4746,9 @@ async function finishFixupSpecial(state) {
 
 const SPECIAL_LEVEL_LUA_GLOBALS = Symbol('special-level Lua globals');
 
-function createSpecialLevelApi(state) {
+// `lua` is the level program's Lua state: nhlL_newstate()'s nud and, while
+// its main chunk runs, the Lua stack (js/nhlua.js luaFrames()).
+function createSpecialLevelApi(state, lua) {
     // sp_lev.c's file-scope state (sp_lev_frame()). SpLev_Map tracks which
     // cells lspo_map, lspo_door, lspo_stair, or lspo_drawbridge placed;
     // maze1xy avoids them when placing fill objects. The frame's
@@ -4733,11 +4762,17 @@ function createSpecialLevelApi(state) {
     const env = {
         state,
         random: coreRandom,
-        hooks: objectGenerationHooks(),
+        // A des.* call prints impossible() where C does: every caller of
+        // these functions awaits them (js/sp_lev_object.js returns the
+        // promise through create_object()).
+        hooks: objectGenerationHooks({
+            impossible: (message) => impossible(message, state),
+        }),
         frame,
         // gc.coder as it is now: each des.* call creates it first (below).
         get coder() { return state.gc?.coder ?? null; },
         spObjectContext,
+        lua,
     };
 
     const des = l_register_des({
@@ -5073,14 +5108,23 @@ function createSpecialLevelApi(state) {
     for (const [name, descriptor] of Object.entries(
         Object.getOwnPropertyDescriptors(des),
     )) {
-        if (typeof descriptor.value !== 'function'
-            || DES_WITHOUT_CODER.has(name)) continue;
+        if (typeof descriptor.value !== 'function') continue;
         const call = descriptor.value;
-        des[name] = function (...args) {
-            create_des_coder(state);
-            return call.apply(this, args);
-        };
+        // Each runs as a C function on the Lua stack, des.<name>.
+        des[name] = DES_WITHOUT_CODER.has(name)
+            ? function (...args) {
+                return nhl_call_field(lua, name, () => call.apply(this, args));
+            }
+            : function (...args) {
+                return nhl_call_field(lua, name, () => {
+                    create_des_coder(state);
+                    return call.apply(this, args);
+                });
+            };
     }
+    // The Lua state a loader's own Lua calls run in, such as nhlsel.js
+    // l_selection_iterate(); not a des.* field.
+    Object.defineProperty(des, 'luaEnv', { value: { lua, state } });
     return des;
 }
 
@@ -5417,7 +5461,9 @@ function mkmap_join_map_cleanup(state) {
 
 // C ref: mkmap.c join_map(). Flood-fill to find fg_typ regions, create
 // temporary rooms for them, then dig corridors to connect adjacent regions.
-function mkmap_join_map(bg_typ, fg_typ, state) {
+// A step generator: it yields the impossible() C prints when a region has no
+// square somexy() can pick.
+function* mkmap_join_map_steps(bg_typ, fg_typ, state) {
     // Find all regions via flood fill and create rooms for them.
     for (let x = 2; x <= WIDTH; x++) {
         for (let y = 1; y < HEIGHT; y++) {
@@ -5471,6 +5517,9 @@ function mkmap_join_map(bg_typ, fg_typ, state) {
         const sm = {};
         const em = {};
         if (!somexy(croom, sm, { state }) || !somexy(croom2, em, { state })) {
+            /* ack! -- the level is going to be busted */
+            /* arbitrarily pick centers of both rooms and hope for the best */
+            yield new ImpossibleCall('No start/end room loc in join_map.');
             sm.x = croom.lx + Math.trunc((croom.hx - croom.lx) / 2);
             sm.y = croom.ly + Math.trunc((croom.hy - croom.ly) / 2);
             em.x = croom2.lx + Math.trunc((croom2.hx - croom2.lx) / 2);
@@ -5519,7 +5568,8 @@ function mkmap_finish_map(fg_typ, bg_typ, lit, walled, icedpools, state) {
 
 // C ref: mkmap.c mkmap(). Top-level cave generator: fill, automata passes,
 // optional smoothing and joining, then finish with walls and lighting.
-function mkmap(init_lev, state) {
+// A step generator, for join_map()'s impossible().
+function* mkmap_steps(init_lev, state) {
     const bg_typ = init_lev.bg;
     const fg_typ = init_lev.fg;
     const smooth = init_lev.smoothed;
@@ -5543,7 +5593,7 @@ function mkmap(init_lev, state) {
             mkmap_pass_three(bg_typ, fg_typ, state);
 
     if (join)
-        mkmap_join_map(bg_typ, fg_typ, state);
+        yield* mkmap_join_map_steps(bg_typ, fg_typ, state);
 
     mkmap_finish_map(
         fg_typ, bg_typ, lit, walled,
@@ -8013,14 +8063,7 @@ export function wallification(x1, y1, x2, y2, state = game) {
 // C ref: sp_lev.c map_cleanup(). Liquid squares cannot retain boulders,
 // ordinary traps, or engravings after a special level has been loaded.
 export function map_cleanup(state = game) {
-    const objectEnv = objectGenerationEnv({
-        state,
-        hooks: {
-            recalcBlockPoint: (x, y, env) => {
-                recalc_block_point(x, y, env.state);
-            },
-        },
-    });
+    const objectEnv = objectGenerationEnv({ state });
 
     for (let x = 0; x < COLNO; ++x) {
         for (let y = 0; y < ROWNO; ++y) {

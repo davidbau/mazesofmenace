@@ -32,9 +32,34 @@ export function createDescriptorViewFactory({services,schemas,address,raw,cache,
 
 
 export function createPrototypeDescriptorFactory({address,cache,recordTypes,layout,errorPrefix},initializePrototype){
+ const numericIndex=/^\d+$/;
  let store;function view(name,value){return store.record(name,value);}
  store=createRecordStore({address,cache,cacheKey:(name,at)=>name+':'+at,describe:type=>({type}),checked:false,trackDefinitions:false,publish:'late',
-  createView({type:name},at){let type=recordTypes.get(name);if(!type){const prototype=initializePrototype(name,at);type={prototype,handler:{get(o,k){if(typeof k==='string'&&/^\d+$/.test(k))return view(name,o.address+Number(k)*Number(layout[name+'Size']));if(typeof k==='string'&&!Reflect.has(o,k))throw Error(errorPrefix+name+'.'+k);return Reflect.get(o,k);},set(o,k,v){if(!Reflect.has(o,k))throw Error(errorPrefix+name+'.'+String(k));return Reflect.set(o,k,v);}}};recordTypes.set(name,type);}return new Proxy(Object.assign(Object.create(type.prototype),{address:at,kind:name}),type.handler);},initialize(){}
+  createView({type:name},at){
+   let type=recordTypes.get(name);
+   if(!type){
+    const prototype=initializePrototype(name,at),inherited=Object.getPrototypeOf(prototype);
+    // Known C fields use ordinary prototype accessors. Only missing properties
+    // need interception: numeric keys are pointer indexing, other names retain
+    // the adapter's strict field diagnostic. Getters receive the live record.
+    Object.setPrototypeOf(prototype,new Proxy(inherited??Object.create(null),{
+     get(target,key,receiver){
+      if(typeof key==='string'&&numericIndex.test(key))return view(name,receiver.address+Number(key)*Number(layout[name+'Size']));
+      if(typeof key==='string'&&!Reflect.has(target,key))throw Error(errorPrefix+name+'.'+key);
+      return Reflect.get(target,key,receiver);
+     },
+     set(target,key,value,receiver){
+      if(!Reflect.has(target,key))throw Error(errorPrefix+name+'.'+String(key));
+      return Reflect.set(target,key,value,receiver);
+     }
+    }));
+    type={prototype};recordTypes.set(name,type);
+   }
+   return Object.create(type.prototype,{
+    address:{value:at,writable:true,enumerable:true,configurable:true},
+    kind:{value:name,writable:true,enumerable:true,configurable:true}
+   });
+  },initialize(){}
  });return view;
 }
 
@@ -69,8 +94,10 @@ export function createDescriptorMemory({services,layout,addr,raw,memory,cache,vi
   }else{
    key='array:'+keyOf(d)+':'+at;if(cache.has(key))return cache.get(key);child=childOf(d);stride=width(child);bytes=width(d);
   }
-  const target=arrays.primitiveAddress?{address:at,byteLength:bytes,length:d.a[0],descriptor:d,[Symbol.toPrimitive]:()=>at}:{address:at,byteLength:bytes,descriptor:d},children=arrays.cacheChildren&&(child.s||child.a)?new Map():null;
-  const result=createArrayView(target,{checked:false,allowLeadingZeroes:true,read:i=>{if(!children)return read(child,at+i*stride);if(!children.has(i))children.set(i,read(child,at+i*stride));return children.get(i);},write:(i,v)=>write(child,at+i*stride,v)});
+  const fixed=arrays.fixedProperties?.(d),cacheReads=Boolean(arrays.cacheChildren&&(child.s||child.a));
+  const target=arrays.primitiveAddress?{address:at,byteLength:bytes,length:d.a[0],descriptor:d,[Symbol.toPrimitive]:()=>at}:{address:at,byteLength:bytes,descriptor:d},children=cacheReads&&!fixed?new Map():null;
+  const result=createArrayView(target,{checked:false,allowLeadingZeroes:true,propertyCount:fixed?d.a[0]:undefined,cacheReads,
+   read:i=>{if(!children)return read(child,at+i*stride);if(!children.has(i))children.set(i,read(child,at+i*stride));return children.get(i);},write:(i,v)=>write(child,at+i*stride,v)});
   if(addresses)addresses.set(at,result);else cache.set(key,result);return result;
  }
  return{width,decode,read,write,array};

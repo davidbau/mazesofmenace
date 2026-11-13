@@ -127,7 +127,7 @@ export function enableMonsterCreation(environment,layouts,selection){
   shortRef:(o,k)=>Object.defineProperty({},'value',{get:()=>o[k],set:v=>{o[k]=transport.short(v);}}),
   attackBefore:(a,b)=>environment.address(a)<environment.address(b),attackNext:a=>views.advance(a,1),
  });
- environment.register('monster-data',{set_mon_data,mon_learns_traps,attacktype,attacktype_fordmg},biology,{prepareArgs:(fn,args)=>{args[0]=record(['attacktype','attacktype_fordmg'].includes(fn)?'struct permonst':'struct monst',args[0]);if(fn==='set_mon_data')args[1]=record('struct permonst',args[1]);return args;}});
+ environment.register('monster-data',{set_mon_data,mon_learns_traps,attacktype,attacktype_fordmg},biology,{prepareArgs:(fn,args)=>{args[0]=views.argument(['attacktype','attacktype_fordmg'].includes(fn)?'permonst':'monst',args[0]);if(fn==='set_mon_data')args[1]=views.argument('permonst',args[1]);return args;}});
  const mon=context(layouts.mon);Object.assign(mon,{
   ismnum:n=>Number(n>=L.LOW_PM&&n<L.NUMMONS),is_shapeshifter:env.is_shapeshifter,
   ptrOffset:(p,n)=>environment.address(p)+Number(n),copyStruct:env.copyRecord,monSize:ctypes.size('struct monst'),

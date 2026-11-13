@@ -48,7 +48,10 @@ export function createSfctoolHelpers(Module) {
         monsterSize:L[0],mextraSize:L[2],oextraSize:L[3],egdSize:L[4],epriSize:L[5],eshkSize:L[6],eminSize:L[7],edogSize:L[8],ebonesSize:L[9],NON_PM:L[10],BUFSZ:L[11],historical:L[12],exportascii:L[13],invalid:L[14],
         alloc:n=>Number(Module._utility_alloc(Number(n)>>>0)),
         free:p=>Module._utility_free(BigInt(raw(p))),
-        memset:(p,c,n)=>Module._utility_memset(BigInt(raw(p)),c,BigInt(n)),
+        memset:(p,c,n)=>{const at=BigInt(raw(p)),length=BigInt(n),heap=Module.HEAPU8;
+            if(typeof c==='number'&&at>=0n&&length>=0n&&at+length<=BigInt(heap.length)){heap.fill(c&255,Number(at),Number(at+length));return at;}
+            return Module._utility_memset(at,c,length);
+        },
         newmonst:()=>record(Module._utility_alloc(L[0]),'monst'),
         dupstr:p=>Number(Module._utility_dupstr(BigInt(raw(p)))),
         strchr:(p,c)=>Number(Module._utility_strchr(BigInt(raw(p)),typeof c==='string'?c.charCodeAt(0):c)),

@@ -153,7 +153,7 @@ import { is_ice,
 import { note_unported } from './unported.js';
 import { vault_gd_watching } from './vault.js';
 import { unpunish } from './read.js';
-import { livelog_printf, verbalize, youHear, youFeel } from './pline.js';
+import { impossible_printer, livelog_printf, verbalize, youHear, youFeel } from './pline.js';
 import {
     check_capacity, endRunning, inv_cnt, losehp, nomul, unmul, rounddiv, still_chewing, curs_on_u, You_can_move_again, } from './hack.js';
 import { dist2, lcase, s_suffix } from './hacklib.js';
@@ -3322,7 +3322,11 @@ export async function edibility_prompts(otmp, state = game, env = {}) {
     const cadaver = otmp.otyp === CORPSE;
     const material = objectType(otmp, state).oc_material;
     const mnum = otmp.corpsenm;
-    const foodsmell = Tobjnam(otmp, 'smell', state);
+    // For the iron-bars sentinel (decl.c hands_obj, class 0) xname_flags()
+    // calls impossible() here, as C's does.
+    const foodsmell = await Tobjnam(
+        otmp, 'smell', state, impossible_printer(state),
+    );
     const pronoun = otmp.quan === 1 ? 'it' : 'they';
     let rotted = 0;
     let stoneorslime = false;
@@ -3850,6 +3854,12 @@ async function eataccessory(otmp, state, env) {
 
     const message = env.message ?? ttyPline;
     const effect = () => accessory_has_effect(otmp, state, env);
+    // attrib.c adjattrib() prints through You_feel() and, for Strength and
+    // Constitution, ends with pickup.c encumber_msg().
+    const attribEnv = {
+        message,
+        encumberMessage: (target) => encumber_msg(target, { message }),
+    };
     switch (typ) {
     default:
         if (!type.oc_oprop) break;
@@ -3903,17 +3913,17 @@ async function eataccessory(otmp, state, env) {
         break;
     case RIN_ADORNMENT:
         await effect();
-        if (await adjattrib(A_CHA, otmp.spe, -1, state))
+        if (await adjattrib(A_CHA, otmp.spe, -1, state, attribEnv))
             discover_object(typ, true, true, true, state);
         break;
     case RIN_GAIN_STRENGTH:
         await effect();
-        if (await adjattrib(A_STR, otmp.spe, -1, state))
+        if (await adjattrib(A_STR, otmp.spe, -1, state, attribEnv))
             discover_object(typ, true, true, true, state);
         break;
     case RIN_GAIN_CONSTITUTION:
         await effect();
-        if (await adjattrib(A_CON, otmp.spe, -1, state))
+        if (await adjattrib(A_CON, otmp.spe, -1, state, attribEnv))
             discover_object(typ, true, true, true, state);
         break;
     case RIN_INCREASE_ACCURACY:

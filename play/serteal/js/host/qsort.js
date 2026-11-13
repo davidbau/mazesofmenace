@@ -1,162 +1,245 @@
-// host/qsort.js - musl's qsort(), in JS.
+// host/qsort.js - macOS's qsort(), in JS.
 //
-// The port's C library is musl, whose qsort is a smoothsort.  NetHack itself sorts
-// through nh_deterministic_qsort() (hacklib.c, recorder patch 002), which
-// breaks ties by original index so that every libc gives the same order
-// for a consistent comparator.  This port goes further and makes the same
-// comparator calls in the same order as musl, so even a comparator with
-// side effects or an inconsistent one behaves as with musl's qsort.
+// The reference recordings are made on macOS, whose C library sorts with
+// the FreeBSD qsort (Bentley & McIlroy's quicksort, with an insertion sort
+// for small or already partitioned arrays and heapsort when the recursion
+// depth runs out).  NetHack itself sorts through nh_deterministic_qsort()
+// (hacklib.c, recorder patch 002), which breaks ties by original index so
+// that every libc gives the same order for a consistent comparator.  This
+// port goes further and makes the same comparator calls, in the same order
+// and with the same arguments, as macOS's qsort, so even a comparator with
+// side effects (sortloot_cmp may discover objects) or an inconsistent one
+// behaves as on macOS.
 //
-// Smoothsort: Copyright (C) 2011 by Lynn Ochs, MIT licence; integrated in
-// musl by Rich Felker (src/stdlib/qsort.c).  Transcribed to JS over the
-// heap: `base` is an address, `cmp(a, b)` receives two element addresses
-// (C `const void *`) and returns an int.  size_t is 32 bits (wasm32).
+// Transcribed from Apple's Libc (apple-oss-distributions/Libc, tags
+// Libc-1439.141.1 to Libc-1752.120.2, i.e. macOS 11 to 26; both files are the
+// same in all of them): stdlib/FreeBSD/qsort.c and stdlib/FreeBSD/heapsort.c.
+// `base` is an address in the heap mem.HEAPU8 (re-read after every
+// comparison: the comparator may grow memory), `cmp(a, b)` receives two
+// element addresses (C `const void *`) and returns an int.  Swaps move whole
+// elements, so the C swap variants (by long, int or char) are all one copy
+// here; the call sequence depends only on element positions, not on the
+// element width.
+//
+// qsort.c:
+// Copyright (c) 1992, 1993
+//	The Regents of the University of California.  All rights reserved.
+//
+// heapsort.c:
+// Copyright (c) 1991, 1993
+//	The Regents of the University of California.  All rights reserved.
+// This code is derived from software contributed to Berkeley by
+// Ronnie Kon at Mindcraft Inc., Kevin Lew and Elmer Yglesias.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions
+// are met:
+// 1. Redistributions of source code must retain the above copyright
+//    notice, this list of conditions and the following disclaimer.
+// 2. Redistributions in binary form must reproduce the above copyright
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the distribution.
+// 3. Neither the name of the University nor the names of its contributors
+//    may be used to endorse or promote products derived from this software
+//    without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+// OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+// LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+// OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+// SUCH DAMAGE.
 
-const WORD = 32;
-const AR_LEN = 16 * 4;
-const AR_MASK = AR_LEN - 1;
+// fls(): index of the most significant set bit, counting from 1; 0 for 0
+const fls = (x) => 32 - Math.clz32(x);
 
-function ntz(x) {
-  return 31 - Math.clz32(x & -x);
-}
+/**
+ * qsort(base, nel, width, cmp) on the heap given by mem.HEAPU8.  heapsort()
+ * needs a temporary element in the heap (the comparator is passed its
+ * address): mem.fn.malloc / mem.fn.free provide it, as heapsort.c mallocs it.
+ */
+export function qsort(mem, base, nel, width, cmp) {
+  const es = width;
+  const tmp = new Uint8Array(es);
 
-// index of the first set bit above bit 0 of the 64-bit pair p (p[0] low)
-function pntz(p) {
-  if (p[0] !== 1) return ntz((p[0] - 1) >>> 0);
-  if (p[1]) return WORD + ntz(p[1]);
-  return 0;
-}
+  const swap = (a, b) => {
+    const H = mem.HEAPU8;
+    tmp.set(H.subarray(a, a + es));
+    H.copyWithin(a, b, b + es);
+    H.set(tmp, b);
+  };
+  // swap n bytes at a and b (n is a multiple of es), front to back: the two
+  // ranges can overlap (after the scan pointers met on one element)
+  const vecswap = (a, b, n) => {
+    for (let i = 0; i < n; i += es) swap(a + i, b + i);
+  };
+  const med3 = (a, b, c) =>
+    cmp(a, b) < 0
+      ? (cmp(b, c) < 0 ? b : (cmp(a, c) < 0 ? c : a))
+      : (cmp(b, c) > 0 ? b : (cmp(a, c) < 0 ? a : c));
 
-function shl(p, n) {
-  if (n >= WORD) {
-    n -= WORD;
-    p[1] = p[0];
-    p[0] = 0;
-    if (!n) return;
-  }
-  p[1] = ((p[1] << n) | (p[0] >>> (WORD - n))) >>> 0;
-  p[0] = (p[0] << n) >>> 0;
-}
+  // insertion sort; false if more than swapLimit swaps were needed (0: no limit)
+  const isort = (a, n, swapLimit) => {
+    let swapCnt = 0;
+    for (let pm = a + es; pm < a + n * es; pm += es) {
+      for (let pl = pm; pl > a && cmp(pl - es, pl) > 0; pl -= es) {
+        swap(pl, pl - es);
+        if (swapLimit && ++swapCnt > swapLimit) return false;
+      }
+    }
+    return true;
+  };
 
-function shr(p, n) {
-  if (n >= WORD) {
-    n -= WORD;
-    p[0] = p[1];
-    p[1] = 0;
-    if (!n) return;
-  }
-  p[0] = ((p[0] >>> n) | (p[1] << (WORD - n))) >>> 0;
-  p[1] = p[1] >>> n;
+  const sort = (a, n, depthLimit) => {
+    for (;;) {
+      let swapCnt = 0;
+      if (depthLimit-- <= 0) {
+        heapsort(mem, a, n, es, cmp);
+        return;
+      }
+      if (n <= 7) {
+        isort(a, n, 0);
+        return;
+      }
+
+      let pl = a;
+      let pm = a + (n >>> 1) * es;
+      let pn = a + (n - 1) * es;
+      if (n > 40) {
+        const d = (n >>> 3) * es;
+        pl = med3(pl, pl + d, pl + 2 * d);
+        pm = med3(pm - d, pm, pm + d);
+        pn = med3(pn - 2 * d, pn - d, pn);
+      }
+      pm = med3(pl, pm, pn);
+
+      swap(a, pm);
+      let pa = a + es, pb = pa;
+      let pc = a + (n - 1) * es, pd = pc;
+      let r;
+      for (;;) {
+        while (pb <= pc && (r = cmp(pb, a)) <= 0) {
+          if (r === 0) {
+            swapCnt = 1;
+            swap(pa, pb);
+            pa += es;
+          }
+          pb += es;
+        }
+        while (pb <= pc && (r = cmp(pc, a)) >= 0) {
+          if (r === 0) {
+            swapCnt = 1;
+            swap(pc, pd);
+            pd -= es;
+          }
+          pc -= es;
+        }
+        if (pb > pc) break;
+        swap(pb, pc);
+        swapCnt = 1;
+        pb += es;
+        pc -= es;
+      }
+
+      pn = a + n * es;
+      let d1 = Math.min(pa - a, pb - pa);
+      vecswap(a, pb - d1, d1);
+      d1 = Math.min(pd - pc, pn - pd - es);
+      vecswap(pb, pn - d1, d1);
+
+      // nothing moved: try an insertion sort, giving up after 1 + n/4 swaps
+      if (swapCnt === 0 && isort(a, n, 1 + (n >>> 2))) return;
+
+      d1 = pb - pa;
+      const d2 = pd - pc;
+      if (d1 <= d2) {
+        // recurse on the left partition, then iterate on the right one
+        if (d1 > es) sort(a, d1 / es, depthLimit);
+        if (d2 > es) {
+          a = pn - d2;
+          n = d2 / es;
+          continue;
+        }
+      } else {
+        // recurse on the right partition, then iterate on the left one
+        if (d2 > es) sort(pn - d2, d2 / es, depthLimit);
+        if (d1 > es) {
+          n = d1 / es;
+          continue;
+        }
+      }
+      return;
+    }
+  };
+
+  sort(base, nel, 2 * (fls(nel) - 1));
 }
 
 /**
- * qsort(base, nel, width, cmp) on the heap given by mem.HEAPU8 (re-read after
- * every comparison: the comparator may grow memory).
+ * heapsort(vbase, nmemb, size, compar) of heapsort.c (Floyd's variant: sift
+ * the hole down to a leaf, then the displaced element back up).
  */
-export function qsort(mem, base, nel, width, cmp) {
-  const size = width * nel;
-  if (!size) return;
-  const tmp = new Uint8Array(width);
-
-  // ar[0] <- ar[1] <- ... <- ar[n-1] <- old ar[0]
-  function cycle(ar, n) {
-    if (n < 2) return;
+export function heapsort(mem, vbase, nmemb, size, compar) {
+  if (nmemb <= 1) return 0;
+  const k = mem.fn.malloc(size);
+  const copy = (dst, src) => mem.HEAPU8.copyWithin(dst, src, src + size);
+  const tmp = new Uint8Array(size);
+  const swap = (a, b) => {
     const H = mem.HEAPU8;
-    tmp.set(H.subarray(ar[0], ar[0] + width));
-    for (let i = 0; i < n - 1; i++) H.copyWithin(ar[i], ar[i + 1], ar[i + 1] + width);
-    H.set(tmp, ar[n - 1]);
-  }
+    tmp.set(H.subarray(a, a + size));
+    H.copyWithin(a, b, b + size);
+    H.set(tmp, b);
+  };
+  // items are numbered from 1 to nmemb
+  const base = vbase - size;
 
-  function sift(head, pshift, lp) {
-    const ar = [head];
-    let i = 1;
-    while (pshift > 1) {
-      const rt = head - width;
-      const lf = head - width - lp[pshift - 2];
-      if (cmp(ar[0], lf) >= 0 && cmp(ar[0], rt) >= 0) break;
-      if (cmp(lf, rt) >= 0) {
-        ar[i++ & AR_MASK] = lf;
-        head = lf;
-        pshift -= 1;
-      } else {
-        ar[i++ & AR_MASK] = rt;
-        head = rt;
-        pshift -= 2;
+  const create = (initval, n) => {
+    for (let parI = initval, childI; (childI = parI * 2) <= n; parI = childI) {
+      let child = base + childI * size;
+      if (childI < n && compar(child, child + size) < 0) {
+        child += size;
+        ++childI;
       }
+      const par = base + parI * size;
+      if (compar(child, par) <= 0) break;
+      swap(par, child);
     }
-    cycle(ar, i & AR_MASK);
-  }
-
-  function trinkle(head, pp, pshift, trusty, lp) {
-    const p = [pp[0], pp[1]];
-    const ar = [head];
-    let i = 1;
-    while (p[0] !== 1 || p[1] !== 0) {
-      const stepson = head - lp[pshift];
-      if (cmp(stepson, ar[0]) <= 0) break;
-      if (!trusty && pshift > 1) {
-        const rt = head - width;
-        const lf = head - width - lp[pshift - 2];
-        if (cmp(rt, stepson) >= 0 || cmp(lf, stepson) >= 0) break;
+  };
+  const select = (n) => {
+    let parI = 1, childI;
+    for (; (childI = parI * 2) <= n; parI = childI) {
+      let child = base + childI * size;
+      if (childI < n && compar(child, child + size) < 0) {
+        child += size;
+        ++childI;
       }
-      ar[i++ & AR_MASK] = stepson;
-      head = stepson;
-      const trail = pntz(p);
-      shr(p, trail);
-      pshift += trail;
-      trusty = 0;
+      copy(base + parI * size, child);
     }
-    if (!trusty) {
-      cycle(ar, i & AR_MASK);
-      sift(head, pshift, lp);
-    }
-  }
-
-  const lp = [width, width];
-  for (let i = 2; (lp[i] = lp[i - 2] + lp[i - 1] + width) < size; i++);
-
-  let head = base;
-  const high = head + size - width;
-  const p = [1, 0];
-  let pshift = 1;
-
-  while (head < high) {
-    if ((p[0] & 3) === 3) {
-      sift(head, pshift, lp);
-      shr(p, 2);
-      pshift += 2;
-    } else {
-      if (lp[pshift - 1] >= high - head) trinkle(head, p, pshift, 0, lp);
-      else sift(head, pshift, lp);
-      if (pshift === 1) {
-        shl(p, 1);
-        pshift = 0;
-      } else {
-        shl(p, pshift - 1);
-        pshift = 1;
+    for (;;) {
+      childI = parI;
+      parI = Math.floor(childI / 2);
+      const child = base + childI * size;
+      const par = base + parI * size;
+      if (childI === 1 || compar(k, par) < 0) {
+        copy(child, k);
+        break;
       }
+      copy(child, par);
     }
-    p[0] = (p[0] | 1) >>> 0;
-    head += width;
-  }
+  };
 
-  trinkle(head, p, pshift, 0, lp);
-
-  while (pshift !== 1 || p[0] !== 1 || p[1] !== 0) {
-    if (pshift <= 1) {
-      const trail = pntz(p);
-      shr(p, trail);
-      pshift += trail;
-    } else {
-      shl(p, 2);
-      pshift -= 2;
-      p[0] = (p[0] ^ 7) >>> 0;
-      shr(p, 1);
-      trinkle(head - lp[pshift] - width, p, pshift + 1, 1, lp);
-      shl(p, 1);
-      p[0] = (p[0] | 1) >>> 0;
-      trinkle(head - width, p, pshift, 1, lp);
-    }
-    head -= width;
+  for (let l = Math.floor(nmemb / 2) + 1; --l; ) create(l, nmemb);
+  while (nmemb > 1) {
+    copy(k, base + nmemb * size);
+    copy(base + nmemb * size, base + size);
+    --nmemb;
+    select(nmemb);
   }
+  mem.fn.free(k);
+  return 0;
 }

@@ -1,0 +1,1052 @@
+[
+  {
+    "name": "display_read_permonst_mflags1",
+    "kind": "permonst",
+    "field": "mflags1",
+    "canonical": "unsigned long",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_data",
+    "kind": "monst",
+    "field": "data",
+    "canonical": "struct permonst *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_prop_intrinsic",
+    "kind": "prop",
+    "field": "intrinsic",
+    "canonical": "long",
+    "op": "read"
+  },
+  {
+    "name": "display_address_you_uprops",
+    "kind": "you",
+    "field": "uprops",
+    "canonical": "struct prop[69]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_prop_extrinsic",
+    "kind": "prop",
+    "field": "extrinsic",
+    "canonical": "long",
+    "op": "read"
+  },
+  {
+    "name": "display_read_prop_blocked",
+    "kind": "prop",
+    "field": "blocked",
+    "canonical": "long",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_mx",
+    "kind": "monst",
+    "field": "mx",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_my",
+    "kind": "monst",
+    "field": "my",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_ux",
+    "kind": "you",
+    "field": "ux",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_uy",
+    "kind": "you",
+    "field": "uy",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_unblind_telepat_range",
+    "kind": "you",
+    "field": "unblind_telepat_range",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_ustuck",
+    "kind": "you",
+    "field": "ustuck",
+    "canonical": "struct monst *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_warntype_info_obj",
+    "kind": "warntype_info",
+    "field": "obj",
+    "canonical": "unsigned long",
+    "op": "read"
+  },
+  {
+    "name": "display_address_context_info_warntype",
+    "kind": "context_info",
+    "field": "warntype",
+    "canonical": "struct warntype_info",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_saved_c_context",
+    "kind": "instance_globals_saved_c",
+    "field": "context",
+    "canonical": "struct context_info",
+    "op": "address"
+  },
+  {
+    "name": "display_read_permonst_mflags2",
+    "kind": "permonst",
+    "field": "mflags2",
+    "canonical": "unsigned long",
+    "op": "read"
+  },
+  {
+    "name": "display_read_warntype_info_polyd",
+    "kind": "warntype_info",
+    "field": "polyd",
+    "canonical": "unsigned long",
+    "op": "read"
+  },
+  {
+    "name": "display_read_warntype_info_species",
+    "kind": "warntype_info",
+    "field": "species",
+    "canonical": "struct permonst *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_m_lev",
+    "kind": "monst",
+    "field": "m_lev",
+    "canonical": "unsigned char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_context_info_warnlevel",
+    "kind": "context_info",
+    "field": "warnlevel",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_permonst_mflags3",
+    "kind": "permonst",
+    "field": "mflags3",
+    "canonical": "unsigned short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_v_viz_array",
+    "kind": "instance_globals_v",
+    "field": "viz_array",
+    "canonical": "unsigned char **",
+    "op": "read"
+  },
+  {
+    "name": "display_read_flag_safe_dog",
+    "kind": "flag",
+    "field": "safe_dog",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_address_dlevel_t_locations",
+    "kind": "dlevel_t",
+    "field": "locations",
+    "canonical": "struct rm[80][21]",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_saved_l_level",
+    "kind": "instance_globals_saved_l",
+    "field": "level",
+    "canonical": "dlevel_t",
+    "op": "address"
+  },
+  {
+    "name": "display_read_rm_typ",
+    "kind": "rm",
+    "field": "typ",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_address_you_uz",
+    "kind": "you",
+    "field": "uz",
+    "canonical": "struct d_level",
+    "op": "address"
+  },
+  {
+    "name": "display_read_d_level_dlevel",
+    "kind": "d_level",
+    "field": "dlevel",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_address_dgn_topology_d_knox_level",
+    "kind": "dgn_topology",
+    "field": "d_knox_level",
+    "canonical": "struct d_level",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_saved_d_dungeon_topology",
+    "kind": "instance_globals_saved_d",
+    "field": "dungeon_topology",
+    "canonical": "struct dgn_topology",
+    "op": "address"
+  },
+  {
+    "name": "display_read_d_level_dnum",
+    "kind": "d_level",
+    "field": "dnum",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_dgn_topology_d_sokoban_dnum",
+    "kind": "dgn_topology",
+    "field": "d_sokoban_dnum",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_flag_dark_room",
+    "kind": "flag",
+    "field": "dark_room",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_flags_wc_color",
+    "kind": "instance_flags",
+    "field": "wc_color",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_address_dgn_topology_d_rogue_level",
+    "kind": "dgn_topology",
+    "field": "d_rogue_level",
+    "canonical": "struct d_level",
+    "op": "address"
+  },
+  {
+    "name": "display_address_dlevel_t_flags",
+    "kind": "dlevel_t",
+    "field": "flags",
+    "canonical": "struct levelflags",
+    "op": "address"
+  },
+  {
+    "name": "display_read_rm_glyph",
+    "kind": "rm",
+    "field": "glyph",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_trap_tx",
+    "kind": "trap",
+    "field": "tx",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_trap_ty",
+    "kind": "trap",
+    "field": "ty",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_engr_engr_x",
+    "kind": "engr",
+    "field": "engr_x",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_engr_engr_y",
+    "kind": "engr",
+    "field": "engr_y",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_ox",
+    "kind": "obj",
+    "field": "ox",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_oy",
+    "kind": "obj",
+    "field": "oy",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_otyp",
+    "kind": "obj",
+    "field": "otyp",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_corpsenm",
+    "kind": "obj",
+    "field": "corpsenm",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_spe",
+    "kind": "obj",
+    "field": "spe",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_where",
+    "kind": "obj",
+    "field": "where",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_vptrs_v_nexthere",
+    "kind": "vptrs",
+    "field": "v_nexthere",
+    "canonical": "struct obj *",
+    "op": "read"
+  },
+  {
+    "name": "display_address_obj_v",
+    "kind": "obj",
+    "field": "v",
+    "canonical": "union vptrs",
+    "op": "address"
+  },
+  {
+    "name": "display_address_dlevel_t_objects",
+    "kind": "dlevel_t",
+    "field": "objects",
+    "canonical": "struct obj *[80][21]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_instance_globals_o_otg_otmp",
+    "kind": "instance_globals_o",
+    "field": "otg_otmp",
+    "canonical": "struct obj *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_o_otg_temp",
+    "kind": "instance_globals_o",
+    "field": "otg_temp",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_oclass",
+    "kind": "obj",
+    "field": "oclass",
+    "canonical": "char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_xray_range",
+    "kind": "you",
+    "field": "xray_range",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_rm_seenv",
+    "kind": "rm",
+    "field": "seenv",
+    "canonical": "unsigned char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_m_ap_type",
+    "kind": "monst",
+    "field": "m_ap_type",
+    "canonical": "unsigned char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_permonst_pmidx",
+    "kind": "permonst",
+    "field": "pmidx",
+    "canonical": "enum monnums",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_mappearance",
+    "kind": "monst",
+    "field": "mappearance",
+    "canonical": "unsigned int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_saved_l_lastseentyp",
+    "kind": "instance_globals_saved_l",
+    "field": "lastseentyp",
+    "canonical": "signed char[80][21]",
+    "op": "address"
+  },
+  {
+    "name": "display_address_const_globals_zeroobj",
+    "kind": "const_globals",
+    "field": "zeroobj",
+    "canonical": "struct obj",
+    "op": "address"
+  },
+  {
+    "name": "display_read_monst_mextra",
+    "kind": "monst",
+    "field": "mextra",
+    "canonical": "struct mextra *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_mextra_mcorpsenm",
+    "kind": "mextra",
+    "field": "mcorpsenm",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_mtame",
+    "kind": "monst",
+    "field": "mtame",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_i_in_mklev",
+    "kind": "instance_globals_i",
+    "field": "in_mklev",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_sinfo_saving",
+    "kind": "sinfo",
+    "field": "saving",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_sinfo_restoring",
+    "kind": "sinfo",
+    "field": "restoring",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_sinfo_done_hup",
+    "kind": "sinfo",
+    "field": "done_hup",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_dlevel_t_monsters",
+    "kind": "dlevel_t",
+    "field": "monsters",
+    "canonical": "struct monst *[80][21]",
+    "op": "address"
+  },
+  {
+    "name": "display_address_dgn_topology_d_water_level",
+    "kind": "dgn_topology",
+    "field": "d_water_level",
+    "canonical": "struct d_level",
+    "op": "address"
+  },
+  {
+    "name": "display_read_you_bc_felt",
+    "kind": "you",
+    "field": "bc_felt",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_usteed",
+    "kind": "you",
+    "field": "usteed",
+    "canonical": "struct monst *",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_y_youmonst",
+    "kind": "instance_globals_y",
+    "field": "youmonst",
+    "canonical": "struct monst",
+    "op": "address"
+  },
+  {
+    "name": "display_read_you_umonnum",
+    "kind": "you",
+    "field": "umonnum",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_you_umonster",
+    "kind": "you",
+    "field": "umonster",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_flag_showrace",
+    "kind": "flag",
+    "field": "showrace",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_Race_mnum",
+    "kind": "Race",
+    "field": "mnum",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_u_urace",
+    "kind": "instance_globals_u",
+    "field": "urace",
+    "canonical": "struct Race",
+    "op": "address"
+  },
+  {
+    "name": "display_read_flag_female",
+    "kind": "flag",
+    "field": "female",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_NhRegion_visible",
+    "kind": "NhRegion",
+    "field": "visible",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_flag_sparkle",
+    "kind": "flag",
+    "field": "sparkle",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_window_procs_win_delay_output",
+    "kind": "window_procs",
+    "field": "win_delay_output",
+    "canonical": "void (*)(void)",
+    "op": "read"
+  },
+  {
+    "name": "display_read_tmp_glyph_prev",
+    "kind": "tmp_glyph",
+    "field": "prev",
+    "canonical": "struct tmp_glyph *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_tmp_glyph_style",
+    "kind": "tmp_glyph",
+    "field": "style",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_tmp_glyph_sidx",
+    "kind": "tmp_glyph",
+    "field": "sidx",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_nhcoord_x",
+    "kind": "nhcoord",
+    "field": "x",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_address_tmp_glyph_saved",
+    "kind": "tmp_glyph",
+    "field": "saved",
+    "canonical": "struct nhcoord[160]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_nhcoord_y",
+    "kind": "nhcoord",
+    "field": "y",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_tmp_glyph_glyph",
+    "kind": "tmp_glyph",
+    "field": "glyph",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_d_defer_see_monsters",
+    "kind": "instance_globals_d",
+    "field": "defer_see_monsters",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_dlevel_t_monlist",
+    "kind": "dlevel_t",
+    "field": "monlist",
+    "canonical": "struct monst *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_nmon",
+    "kind": "monst",
+    "field": "nmon",
+    "canonical": "struct monst *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_mhp",
+    "kind": "monst",
+    "field": "mhp",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_monst_mstate",
+    "kind": "monst",
+    "field": "mstate",
+    "canonical": "long",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_w_warn_obj_cnt",
+    "kind": "instance_globals_w",
+    "field": "warn_obj_cnt",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_dlevel_t_objlist",
+    "kind": "dlevel_t",
+    "field": "objlist",
+    "canonical": "struct obj *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_obj_nobj",
+    "kind": "obj",
+    "field": "nobj",
+    "canonical": "struct obj *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_f_ftrap",
+    "kind": "instance_globals_f",
+    "field": "ftrap",
+    "canonical": "struct trap *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_trap_ntrap",
+    "kind": "trap",
+    "field": "ntrap",
+    "canonical": "struct trap *",
+    "op": "read"
+  },
+  {
+    "name": "display_read_glyphinfo_glyph",
+    "kind": "glyphinfo",
+    "field": "glyph",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_gbuf_entry_glyphinfo",
+    "kind": "gbuf_entry",
+    "field": "glyphinfo",
+    "canonical": "struct glyphinfo",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_g_gbuf",
+    "kind": "instance_globals_g",
+    "field": "gbuf",
+    "canonical": "gbuf_entry[21][80]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_sinfo_in_docrt",
+    "kind": "sinfo",
+    "field": "in_docrt",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_you_uz0",
+    "kind": "you",
+    "field": "uz0",
+    "canonical": "struct d_level",
+    "op": "address"
+  },
+  {
+    "name": "display_address_glyphinfo_glyph",
+    "kind": "glyphinfo",
+    "field": "glyph",
+    "canonical": "int",
+    "op": "address"
+  },
+  {
+    "name": "display_address_glyphinfo_framecolor",
+    "kind": "glyphinfo",
+    "field": "framecolor",
+    "canonical": "unsigned int",
+    "op": "address"
+  },
+  {
+    "name": "display_read_window_procs_win_print_glyph",
+    "kind": "window_procs",
+    "field": "win_print_glyph",
+    "canonical": "void (*)(winid, coordxy, coordxy, glyph_info *, glyph_info *)",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_s_showsyms",
+    "kind": "instance_globals_s",
+    "field": "showsyms",
+    "canonical": "unsigned char[196]",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_g_gbuf_start",
+    "kind": "instance_globals_g",
+    "field": "gbuf_start",
+    "canonical": "short[21]",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_g_gbuf_stop",
+    "kind": "instance_globals_g",
+    "field": "gbuf_stop",
+    "canonical": "short[21]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_accessibility_data_glyph_updates",
+    "kind": "accessibility_data",
+    "field": "glyph_updates",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_accessibility_data_mon_notices_blocked",
+    "kind": "accessibility_data",
+    "field": "mon_notices_blocked",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_sinfo_gameover",
+    "kind": "sinfo",
+    "field": "gameover",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_sinfo_in_getlev",
+    "kind": "sinfo",
+    "field": "in_getlev",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_sinfo_stopprint",
+    "kind": "sinfo",
+    "field": "stopprint",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_gbuf_entry_gnew",
+    "kind": "gbuf_entry",
+    "field": "gnew",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_accessibility_data_mon_notices",
+    "kind": "accessibility_data",
+    "field": "mon_notices",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_glyphinfo_ttychar",
+    "kind": "glyphinfo",
+    "field": "ttychar",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_glyph_map_entry_customcolor",
+    "kind": "glyph_map_entry",
+    "field": "customcolor",
+    "canonical": "unsigned int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_glyphinfo_gm",
+    "kind": "glyphinfo",
+    "field": "gm",
+    "canonical": "struct glyph_map_entry",
+    "op": "address"
+  },
+  {
+    "name": "display_read_glyph_map_entry_glyphflags",
+    "kind": "glyph_map_entry",
+    "field": "glyphflags",
+    "canonical": "unsigned int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_classic_representation_color",
+    "kind": "classic_representation",
+    "field": "color",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_glyph_map_entry_sym",
+    "kind": "glyph_map_entry",
+    "field": "sym",
+    "canonical": "struct classic_representation",
+    "op": "address"
+  },
+  {
+    "name": "display_read_glyph_map_entry_tileidx",
+    "kind": "glyph_map_entry",
+    "field": "tileidx",
+    "canonical": "short",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_flags_use_background_glyph",
+    "kind": "instance_flags",
+    "field": "use_background_glyph",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_accessibility_data_accessiblemsg",
+    "kind": "accessibility_data",
+    "field": "accessiblemsg",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_glyphinfo_framecolor",
+    "kind": "glyphinfo",
+    "field": "framecolor",
+    "canonical": "unsigned int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_window_procs_win_display_nhwindow",
+    "kind": "window_procs",
+    "field": "win_display_nhwindow",
+    "canonical": "void (*)(winid, boolean)",
+    "op": "read"
+  },
+  {
+    "name": "display_read_window_procs_win_clear_nhwindow",
+    "kind": "window_procs",
+    "field": "win_clear_nhwindow",
+    "canonical": "void (*)(winid)",
+    "op": "read"
+  },
+  {
+    "name": "display_read_display_hints_botl",
+    "kind": "display_hints",
+    "field": "botl",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_display_hints_botlx",
+    "kind": "display_hints",
+    "field": "botlx",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_display_hints_time_botl",
+    "kind": "display_hints",
+    "field": "time_botl",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_win_settings_map_frame_color",
+    "kind": "win_settings",
+    "field": "map_frame_color",
+    "canonical": "unsigned int",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_w_wsettings",
+    "kind": "instance_globals_w",
+    "field": "wsettings",
+    "canonical": "struct win_settings",
+    "op": "address"
+  },
+  {
+    "name": "display_read_window_procs_win_curs",
+    "kind": "window_procs",
+    "field": "win_curs",
+    "canonical": "void (*)(winid, int, int)",
+    "op": "read"
+  },
+  {
+    "name": "display_read_flag_lit_corridor",
+    "kind": "flag",
+    "field": "lit_corridor",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_flags_bgcolors",
+    "kind": "instance_flags",
+    "field": "bgcolors",
+    "canonical": "signed char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_c_currentgraphics",
+    "kind": "instance_globals_c",
+    "field": "currentgraphics",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_symsetentry_handling",
+    "kind": "symsetentry",
+    "field": "handling",
+    "canonical": "enum symset_handling_types",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_s_symset",
+    "kind": "instance_globals_s",
+    "field": "symset",
+    "canonical": "struct symsetentry[2]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_sysopt_s_accessibility",
+    "kind": "sysopt_s",
+    "field": "accessibility",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_g_glyphmap_perlevel_flags",
+    "kind": "instance_globals_g",
+    "field": "glyphmap_perlevel_flags",
+    "canonical": "long",
+    "op": "read"
+  },
+  {
+    "name": "display_address_instance_globals_o_ov_rogue_syms",
+    "kind": "instance_globals_o",
+    "field": "ov_rogue_syms",
+    "canonical": "unsigned char[196]",
+    "op": "address"
+  },
+  {
+    "name": "display_address_instance_globals_o_ov_primary_syms",
+    "kind": "instance_globals_o",
+    "field": "ov_primary_syms",
+    "canonical": "unsigned char[196]",
+    "op": "address"
+  },
+  {
+    "name": "display_read_permonst_mlet",
+    "kind": "permonst",
+    "field": "mlet",
+    "canonical": "char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_classic_representation_symidx",
+    "kind": "classic_representation",
+    "field": "symidx",
+    "canonical": "int",
+    "op": "read"
+  },
+  {
+    "name": "display_read_objclass_oc_color",
+    "kind": "objclass",
+    "field": "oc_color",
+    "canonical": "unsigned char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_objclass_oc_class",
+    "kind": "objclass",
+    "field": "oc_class",
+    "canonical": "char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_permonst_mcolor",
+    "kind": "permonst",
+    "field": "mcolor",
+    "canonical": "unsigned char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_symdef_color",
+    "kind": "symdef",
+    "field": "color",
+    "canonical": "unsigned char",
+    "op": "read"
+  },
+  {
+    "name": "display_read_instance_globals_saved_m_moves",
+    "kind": "instance_globals_saved_m",
+    "field": "moves",
+    "canonical": "long",
+    "op": "read"
+  }
+]

@@ -15,7 +15,7 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
     const addr=v=>Number(v?.address??v??0),raw=v=>BigInt.asUintN(64,BigInt(typeof v==='function'?functionPointer(v):typeof v==='string'?services.literal(v):typeof v==='boolean'?Number(v):typeof v==='number'?Math.trunc(v):v?.address??v??0));
     let dataView;
     const memory=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;},cache=new Map(),names=Object.keys(schemas);
-    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:false,rows:false,coerceRecordSize:true,directIntegerReads:true,voidPointer:pointerValue,arrays:{profile:'identity',get types(){return arrayTypes;},cacheChildren:true}});
+    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:false,rows:false,coerceRecordSize:true,directIntegerReads:true,voidPointer:pointerValue,arrays:{profile:'identity',get types(){return arrayTypes;},cacheChildren:true,fixedProperties:d=>d.e.s==='nomux_cell'}});
 
 
 
@@ -28,7 +28,8 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
                     // access still reads/writes live memory, including growth.
                     const offset=addr(services.address(ki,at,i))-addr(at);
                     if(!Number.isInteger(offset)||offset<0||offset+width(f.d)>Number(layout.nomux_cellSize))throw Error('Review changed TERMCAP cell offset '+f.name);
-                    Object.defineProperty(prototype,f.name,{get(){return read(f.d,addr(this.address)+offset);},set(v){write(f.d,addr(this.address)+offset,v);}});
+                    const load='get'+(f.d.t[0]==='i'?'Int':'Uint')+f.d.t.slice(1),store='setUint'+f.d.t.slice(1);
+                    Object.defineProperty(prototype,f.name,{get(){return memory()[load](addr(this.address)+offset,true);},set(v){memory()[store](addr(this.address)+offset,Number(v),true);}});
                 }else Object.defineProperty(prototype,f.name,{get(){return decode(f.d,services.read(ki,this.address,i));},set(v){services.write(ki,this.address,i,raw(v));}});
             }
 applyPrototypeAliases(name,prototype,'termcap');return prototype;});
@@ -42,6 +43,21 @@ applyPrototypeAliases(name,prototype,'termcap');return prototype;});
     for(const [name,value]of Object.entries(layout))if(name.startsWith('constwidth_')){const k=name.slice(11);env[k]=Number(value)===8?(Number(layout['constsigned_'+k])?BigInt.asIntN(64,BigInt(layout[k])):BigInt.asUintN(64,BigInt(layout[k]))):Number(layout['constsigned_'+k])?Number(BigInt.asIntN(32,BigInt(layout[k]))):Number(BigInt.asUintN(32,BigInt(layout[k])));}
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==Number(layout['width_'+name+'_'+f.name]))throw Error('Review changed TERMCAP field width: '+name+'.'+f.name);
     CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr);
+    // One live storage region, shared with every existing pointer/record view.
+    // Reacquire at routine boundaries and after callbacks which may grow memory.
+    const screenGlobal=globals.findIndex(g=>g.name==='nomux_buf');
+    const cellKind=names.indexOf('nomux_cell');
+    let screenViews;
+    env.nomuxScreenViews=()=>{
+        const at=addr(services.global(screenGlobal)),buffer=services.heap().buffer;
+        if(!screenViews||screenViews.bytes.buffer!==buffer||screenViews.address!==at){
+            if(Number(layout.nomux_cellSize)!==4)throw Error('Review changed NOMUX cell size');
+            for(let i=0;i<4;i++)if(addr(services.address(cellKind,at,i))-at!==i)
+                throw Error('Review changed NOMUX cell field offset '+i);
+            screenViews={address:at,bytes:new Uint8Array(buffer,at,24*80*4),signed:new Int8Array(buffer,at,24*80*4),heap8:new Int8Array(buffer)};
+        }
+        return screenViews;
+    };
     const expectedRecordSizes={"flag": 208, "tc_gbl_data": 24, "instance_globals_t": 456, "tc_lcl_data": 64, "symsetentry": 40, "instance_globals_s": 1408, "instance_globals_c": 584, "cmd": 80, "DisplayDesc": 60, "nomux_cell": 4, "instance_flags": 424, "ti_map_entry": 12};
     for(const[name,size]of Object.entries(expectedRecordSizes))if(Number(layout[name+'Size'])!==size)throw Error('TERMCAP native record size '+name);
     const functions=["term_startup", "term_shutdown", "tty_number_pad", "tty_decgraphics_termcap_fixup", "term_start_screen", "term_end_screen", "nocmov", "cmov", "xputc", "nomux_markers_enabled", "nomux_emit_marker", "nomux_capture_write_screen", "nomux_capture_write_input_boundary", "nomux_clear_screen", "nomux_clear_to_eol", "nomux_putch", "nomux_set_attr", "nomux_end_attr", "nomux_set_fg", "nomux_end_fg", "nomux_sgr_fg", "nomux_capture_screen", "nomux_enter_raw_mode", "nomux_raw_putch", "nomux_raw_emit", "nomux_raw_emit_eol", "nomux_get_cursor", "xputs", "cl_end", "term_clear_screen", "home", "standoutbeg", "standoutend", "backsp", "tty_nhbell", "graph_on", "graph_off", "tty_delay_output", "cl_eos", "init_hilite", "kill_hilite", "s_atr2str", "e_atr2str", "term_attr_fixup", "term_start_attr", "term_end_attr", "term_start_raw_bold", "term_end_raw_bold", "term_end_color", "term_start_color", "term_start_bgcolor", "term_curs_set", "emit24bit", "emit256", "term_start_extracolor", "term_end_extracolor"];

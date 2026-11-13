@@ -205,7 +205,7 @@ import {
     map_invisible,
     map_object,
     newsym,
-    back_to_glyph,
+    back_to_glyph_steps,
     unmap_invisible,
     unmap_object,
 } from './display.js';
@@ -516,7 +516,8 @@ import {
 import { tty_raw_print } from './tty_rawprint.js';
 import { init_objects, objdescr_is } from './o_init.js';
 import { note_unported } from './unported.js';
-import { impossible, livelog_printf, youFeel } from './pline.js';
+import { impossible, impossible_printer, livelog_printf, youFeel } from './pline.js';
+import { finish_steps } from './source_steps.js';
 import { makeplural } from './fruit.js';
 import { On_stairs } from './stairs.js';
 import { select_menu } from './windows.js';
@@ -1709,24 +1710,6 @@ function could_move_onto_boulder(sx, sy, dx, dy, state) {
     return !state.invent || inv_weight(state) <= WT_SQUEEZABLE_INV * -1;
 }
 
-// remove_object() reaches vision.c recalc_block_point() for a boulder through
-// the object lifecycle's hook table. explode.js scatter() substitutes a no-op
-// only when its caller's hooks lack this one, and a boulder pushed onto a
-// land mine reaches scatter() with these hooks, so the copy stays until that
-// no-op goes.
-function boulderVisionEnv(state) {
-    return {
-        state,
-        // The hook takes the lifecycle env as its third argument, not a
-        // state; passing recalc_block_point itself would hand vision_reset()
-        // an object with no `level` on it, which it answers by doing nothing.
-        hooks: {
-            recalcBlockPoint:
-                (x, y, env) => recalc_block_point(x, y, env.state),
-        },
-    };
-}
-
 // C ref: hack.c cannot_push_msg() (247-261). A failed mounted push names the
 // steed; an unmounted push names the hero. Blindness also reveals the boulder.
 async function cannot_push_msg(otmp, sx, sy, state, env) {
@@ -1970,10 +1953,10 @@ export async function still_chewing(x, y, state = game) {
 // is still one square back when the boulder leaves.
 export function movobj(obj, ox, oy, state = game) {
     /* optimize by leaving on the fobj chain? */
-    remove_object(obj, boulderVisionEnv(state));
+    remove_object(obj, { state });
     maybe_unhide_at(obj.ox, obj.oy, state);
     newsym(obj.ox, obj.oy);
-    place_object(obj, ox, oy, boulderVisionEnv(state));
+    place_object(obj, ox, oy, { state });
     newsym(ox, oy);
 }
 
@@ -2164,12 +2147,10 @@ async function moverock_core(sx, sy, state, env) {
     const u = state.u;
     const message = env.message ?? ttyPline;
     const random = env.random ?? coreRandom;
-    const baseObjectEnv = boulderVisionEnv(state);
     const objectEnv = {
-        ...baseObjectEnv,
         ...env,
         state,
-        hooks: { ...baseObjectEnv.hooks, ...env.hooks },
+        hooks: { ...env.hooks },
     };
     const redraw = env.newsym
         ?? ((x, y) => newsym(x, y, state));
@@ -2477,10 +2458,7 @@ async function moverock_core(sx, sy, state, env) {
             const helperEnv = {
                 ...effectEnv,
                 state,
-                hooks: {
-                    ...boulderVisionEnv(state).hooks,
-                    ...env.hooks,
-                },
+                hooks: { ...env.hooks },
             };
             if (await boulder_hits_pool(otmp, rx, ry, true, helperEnv))
                 continue;
@@ -2491,8 +2469,8 @@ async function moverock_core(sx, sy, state, env) {
          * when level is restored.
          */
         if (otmp !== state.level.objlist) {
-            remove_object(otmp, boulderVisionEnv(state));
-            place_object(otmp, otmp.ox, otmp.oy, boulderVisionEnv(state));
+            remove_object(otmp, { state });
+            place_object(otmp, otmp.ox, otmp.oy, { state });
         }
         await dopush(sx, sy, rx, ry, otmp, state, {
             ...effectEnv,
@@ -2588,7 +2566,9 @@ export async function test_move(
                     && In_sokoban(state.u?.uz, state)) {
                     await message('The Sokoban walls resist your ability.', state);
                 } else if (state.flags?.mention_walls) {
-                    const glyph = back_to_glyph(x, y, state);
+                    const glyph = await finish_steps(
+                        back_to_glyph_steps(x, y, state),
+                        impossible_printer(state));
                     const symbol = glyph_is_cmap(glyph)
                         ? glyph_to_cmap(glyph) : -1;
                     const description = symbol === S_stone
@@ -3855,7 +3835,9 @@ async function domove_fight_empty(x, y, state) {
         buf = location.seenv || IS_STWALL(location.typ)
             || location.typ === SDOOR || location.typ === SCORR
             ? the(CMAP_EXPLANATIONS[
-                glyph_to_cmap(back_to_glyph(x, y, state))
+                glyph_to_cmap(await finish_steps(
+                    back_to_glyph_steps(x, y, state),
+                    impossible_printer(state)))
             ], state)
             : 'an unknown obstacle';
     } else {

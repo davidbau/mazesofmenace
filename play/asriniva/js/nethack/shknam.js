@@ -32,7 +32,7 @@ export function enableShknam(environment,layouts){
  for(const[name,prototype]of Object.entries(abi.dependencies)){const match=prototype.match(/^(.+?)\s*\((.*)\)$/),types=match[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');local[name]=(...args)=>value(match[1],resolve(name)(...args.map((v,i)=>value(types[i],v))));}
  local.Strcpy=(out,input)=>services.strcpy(address(out),text(input));local.Sprintf=(out,format)=>services.sprintf(address(out),text(format));
  for(const name of ['panic','impossible','pline'])local[name]=(format,...args)=>resolve(name)(text(format),...args.map(v=>typeof v==='string'?text(v):v?.address??v));
- local.display_nhwindow=(win,blocking)=>resolve('win_display_nhwindow')(transport.int(win),transport.char(blocking));
+ local.display_nhwindow=(win,blocking)=>environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'win_display_nhwindow','void *'),'vii',transport.int(win),transport.char(blocking));
  local.assert=(ok,i)=>{if(!ok){const row=abi.assertions[i];if(!row)throw new Error('Unknown SHKNAM assertion '+i);return resolve('__assert_fail')(text(row.expression),text('shknam.c'),row.line,text('nameshk'));}};
  for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{const fn=abi.rngCallers[caller];if(!fn)throw new Error('Unknown SHKNAM RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('shknam.c'),transport.int(line),text(fn));return resolve(name)(transport.int(n));};
  const context=createShknamEnvironment(local,L,state),names=Object.keys(abi.public).filter(n=>!environment.hasFunction(n));

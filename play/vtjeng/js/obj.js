@@ -229,7 +229,7 @@ import { encumber_msg } from './pickup.js';
 // inventory. steal.js imports from this file; both sides use the other's
 // exports only inside function bodies.
 import { remove_worn_item } from './steal.js';
-import { block_point, cansee } from './vision.js';
+import { block_point, cansee, recalc_block_point } from './vision.js';
 // monster_object.js imports this file; both sides use the other's exports
 // only inside function bodies.
 import { monsterObject } from './monster_object.js';
@@ -569,6 +569,15 @@ export function newObject(overrides = {}) {
     return obj;
 }
 
+// C ref: decl.c hands_obj, `struct obj hands_obj = DUMMY;`. getobj() returns
+// its address when the player deliberately selects hands/self; callers
+// compare that identity. Its fields are C's zeros, and C code that reads them
+// anyway sees those values: eat.c edibility_prompts() names the iron-bars
+// sentinel floorfood() returns, which reaches objnam.c xname_flags()'s
+// impossible() for class 0. xname_flags() can also set its dknown or bknown,
+// as C does, so it is not frozen. js/invent.js re-exports it beside getobj().
+export const hands_obj = newObject();
+
 // C ref: mkobj.c init_dummyobj() (3346-3371), which fills in just enough of an
 // object for the obj.h predicates that take an object pointer. Its one ported
 // caller is apply.c use_stethoscope()'s M_AP_OBJECT arm, which needs to know
@@ -636,13 +645,6 @@ function objectEnv(env = {}) {
         hooks: env.hooks ?? {},
         random: sourceRandom({ ...env, state }),
     };
-}
-
-function requiredHook(env, name, obj) {
-    const hook = env.hooks?.[name];
-    if (typeof hook !== 'function')
-        throw new UnsupportedObjectOperationError(name, obj);
-    return hook;
 }
 
 // C ref: mkobj.c clear_splitobjs().
@@ -3003,8 +3005,14 @@ export function remove_object(obj, env = {}) {
     }
 
     const grid = floorObjectGrid(state);
+    // mkobj.c remove_object():2518 calls vision.c recalc_block_point() for a
+    // boulder leaving its square. A test may supply the hook to observe the
+    // call; game code relies on this default. The hook takes the lifecycle
+    // env, which has the state that recalc_block_point() needs.
     const recalcBlockPoint = obj.otyp === BOULDER
-        ? requiredHook(normalized, 'recalcBlockPoint', obj)
+        ? (normalized.hooks.recalcBlockPoint
+            ?? ((bx, by, removeEnv) =>
+                recalc_block_point(bx, by, removeEnv.state)))
         : null;
 
     // C ref: mkobj.c remove_object() calls extract_nexthere() then
