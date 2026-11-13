@@ -1125,18 +1125,18 @@ async function offer_corpse(otmp, highaltar, altaralign, state) {
         if (u.uluck < 0) u.uluck = 0;
         if (u.uluck !== originalLuck) {
             if (Blind(state.u)) {
+                // C ref: pray.c offer_corpse(): singular body_part(FOOT).
                 await ttyPline(
                     `You think ${something} brushed your `
-                        + `${makeplural(body_part(FOOT, state.youmonst))}.`,
+                        + `${body_part(FOOT, state.youmonst)}.`,
                     state,
                 );
             } else {
+                const feet = makeplural(body_part(FOOT, state.youmonst));
                 await ttyPline(
-                    `You ${Hallucination(state.u)
-                        ? 'see crabgrass' : 'glimpse a four-leaf clover'} at your `
-                        + `${makeplural(body_part(FOOT, state.youmonst))}`
-                        + `${Hallucination(state.u)
-                            ? '. A funny thing in a dungeon.' : '.'}`,
+                    Hallucination(state.u)
+                        ? `You see crabgrass at your ${feet}.  A funny thing in a dungeon.`
+                        : `You glimpse a four-leaf clover at your ${feet}.`,
                     state,
                 );
             }
@@ -1466,7 +1466,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
             doesBlock: (x, y, location) => does_block(x, y, location, state),
             unblockPoint: (x, y) => unblock_point(x, y, state),
             canSee: (x, y) => cansee(x, y, state),
-            newsym: (x, y) => newsym(x, y),
+            newsym,
             random: coreRandom,
         });
         break;
@@ -2502,9 +2502,8 @@ export async function pleased(g_align, state = game) {
                     weapon.oeroded2 = 0;
                     if (repair_buf)
                         await ttyPline(
-                            `${Yobjnam2(weapon, null, state)} ${otense(
-                                weapon, Blind(state.u) ? 'feel' : 'look', state,
-                            )} as good as new!`, state,
+                            `${Yobjnam2(weapon, Blind(state.u) ? 'feel' : 'look', state)}`
+                                + ' as good as new!', state,
                         );
                 }
                 update_inventory({ state });
@@ -2585,7 +2584,7 @@ export async function pleased(g_align, state = game) {
                         || u.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)) {
                     if (!Blind(state.u)) {
                         await ttyPline(
-                            `${Yobjnam2(object, null, state)} ${hcolor('amber', state)}.`,
+                            `${Yobjnam2(object, 'softly glow', state)} ${hcolor('amber', state)}.`,
                             state,
                         );
                         state.iflags.last_msg = PLNMSG_OBJ_GLOWS;

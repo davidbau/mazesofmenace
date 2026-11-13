@@ -7,12 +7,13 @@
 // animation frames per step, plus the RNG log, and keeps the bookkeeping
 // that interactive play rewinds (see host/snapshot.js).
 
-// The bytes the recorder writes for one UTF-16 unit of `moves`:
-// Buffer.from(unit, "utf8"), with CR turned into LF as a tty would.
-// A lone surrogate becomes U+FFFD.
+// The bytes the game reads for one UTF-16 unit of `moves`.  The reference
+// sessions were typed one byte per key: a unit below 0x100 is that byte
+// (Latin-1), with CR turned into LF as a tty would.  Anything above has no
+// single-byte form and is sent as UTF-8; a lone surrogate becomes U+FFFD.
 export function keyBytes(unit) {
   if (unit === 13) return [10];
-  if (unit < 0x80) return [unit];
+  if (unit < 0x100) return [unit];
   if (unit < 0x800) return [0xc0 | (unit >> 6), 0x80 | (unit & 0x3f)];
   if (unit >= 0xd800 && unit <= 0xdfff) return [0xef, 0xbf, 0xbd];
   return [0xe0 | (unit >> 12), 0x80 | ((unit >> 6) & 0x3f), 0x80 | (unit & 0x3f)];

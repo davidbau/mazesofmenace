@@ -28,7 +28,7 @@ import { isok } from './cmd_isok.js';
 import { on_level } from './dungeon.js';
 import { Monnam } from './do_name.js';
 import { losehp } from './hack.js';
-import { dist2 } from './hacklib.js';
+import { dist2, encodeUtf8ByteString } from './hacklib.js';
 import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
 import { youFeel, youSee } from './pline.js';
@@ -75,7 +75,7 @@ const REGION_OPERATIONS = {
     unblockPoint: (x, y, state) => unblock_point(x, y, state),
     doesBlock: (x, y, location, state) => does_block(x, y, location, state),
     canSee: (x, y, state) => cansee(x, y, state),
-    newsym: (x, y) => newsym(x, y),
+    newsym,
     message: (text, state) => ttyPline(text, state),
     safeTeleds: async (flags, state, env) => {
         const { safe_teleds } = await import('./teleport.js');
@@ -1206,7 +1206,7 @@ export function region_stats(headerFormat, state = game) {
     for (const region of regions) {
         size += region.rects.length * memoryLayout.NhRect;
         for (const message of [region.enter_msg, region.leave_msg])
-            if (message != null) size += new TextEncoder().encode(message).length + 1;
+            if (message != null) size += encodeUtf8ByteString(message).length + 1;
         size += region.max_monst * memoryLayout.unsigned;
     }
     return { header: headerFormat.replace('%ld', String(memoryLayout.NhRegion))

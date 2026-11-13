@@ -5,7 +5,8 @@ import * as monmove from '../ported/monmove.js';
 import {callMonmove} from './bindings/monmove.js';
 export function enableMonsterMovement(environment,layouts){
  const {services,memory,ctypes}=environment,L=layouts.monmove;
- const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;return(...args)=>(typeof value==='function'?value:environment.resolve(k))(...args.map(v=>v?.address??v));}});
+ const wrappers=new Map();
+ const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;const old=wrappers.get(k);if(old&&old.source===value)return old.call;const call=(...args)=>(typeof value==='function'?value:environment.resolve(k))(...args.map(v=>v?.address??v));wrappers.set(k,{source:value,call});return call;}});
  // Shadow DECL setters so the unchanged factory installs its native record views.
  for(const name of abi.globals)Object.defineProperty(local,name,{value:services[name],writable:true,configurable:true});
 
@@ -23,5 +24,5 @@ export function enableMonsterMovement(environment,layouts){
  for(const name of ['strlen','strcpy','strcat','strcmp','strchr','strncmpi'])local[name]=(...args)=>services[name](text(args[0]),...args.slice(1).map(v=>typeof v==='string'?text(v):v?.address??v));
  const names=Object.keys(monmove).filter(name=>typeof monmove[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  environment.register('monster-movement',Object.fromEntries(names.map(name=>[name,(...args)=>callMonmove(local,L,name,...args)])));
- return {services:local,storage,call:(name,...args)=>callMonmove(local,L,name,...args),limitation:'MONMOVE connection in progress; perception/movement and full-game behavior require C verification.'};
+ return {services:local,storage,call:(name,...args)=>callMonmove(local,L,name,...args),limitation:'Native per-game MONMOVE execution with transactional native fields and legacy service boundaries; strict public recordings and C world/RNG validation required for acceptance.'};
 }

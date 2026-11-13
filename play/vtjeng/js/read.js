@@ -147,6 +147,7 @@ import { makeplural } from './fruit.js';
 import {
     mungspaces,
     dist2,
+    encodeUtf8ByteString,
     s_suffix,
     strstri,
     upstart,
@@ -986,7 +987,7 @@ export async function seffect_scare_monster(sobj, state = game) {
                         doesBlock: (cx, cy, location) =>
                             does_block(cx, cy, location, state),
                         canSee: (cx, cy) => cansee(cx, cy, state),
-                        newsym: (cx, cy) => newsym(cx, cy, state),
+                        newsym,
                         message: ttyPline,
                     }),
             });
@@ -2100,7 +2101,7 @@ export async function litroom(on, object, state) {
     if (!Blind(state.u)) {
         await vision_recalc_async(2, {
             state,
-            redraw: (x, y) => newsym(x, y),
+            redraw: newsym,
         });
         // Put the ball and chain back.
         if (Punished(state) && !on) {
@@ -2118,7 +2119,7 @@ export async function litroom(on, object, state) {
         // chooses the monster's name for its damage message.
         await vision_recalc_async(0, {
             state,
-            redraw: (x, y) => newsym(x, y),
+            redraw: newsym,
         });
     }
     for (const monster of gremlins)
@@ -2538,7 +2539,7 @@ export async function do_stinking_cloud(sobj, mentionStinking, state = game) {
             random: coreRandom,
             blockPoint: (x, y) => block_point(x, y, state),
             canSee: (x, y) => cansee(x, y, state),
-            newsym: (x, y) => newsym(x, y, state),
+            newsym,
             message: ttyPline,
         },
     );
@@ -2728,7 +2729,9 @@ export async function do_class_genocide(state = game, env = {}) {
                 await ttyPline(`Eliminated ${count} monster${plur(count)}.`, state);
                 return;
             } else {
-                await ttyPline(`That ${buf.length === 1 ? 'symbol' : 'response'} does not represent any monster.`, state);
+                // strlen(buf) counts bytes: two keys forming one UTF-8
+                // character are a "response".
+                await ttyPline(`That ${encodeUtf8ByteString(buf).length === 1 ? 'symbol' : 'response'} does not represent any monster.`, state);
             }
             continue;
         }

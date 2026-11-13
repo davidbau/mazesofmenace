@@ -193,6 +193,7 @@ import {
     classify_terrain,
     docrt,
     feel_location,
+    feel_location_steps,
     flush_screen,
     glyph_at,
     glyph_is_cmap,
@@ -527,7 +528,6 @@ import {
     cansee,
     couldsee,
     recalc_block_point,
-    vision_recalc,
     vision_recalc_async,
 } from './vision.js';
 import { canspotmon, mon_visible, sensemon } from './display.js';
@@ -2153,7 +2153,7 @@ async function moverock_core(sx, sy, state, env) {
         hooks: { ...env.hooks },
     };
     const redraw = env.newsym
-        ?? ((x, y) => newsym(x, y, state));
+        ?? newsym;
     const effectEnv = {
         ...env,
         state,
@@ -2527,8 +2527,10 @@ export async function test_move(
     // branch, and the pass-wall and tunnelling forms deliberately fall through
     // instead of being treated as ordinary refusals.
     if (IS_OBSTRUCTED(location.typ) || location.typ === IRONBARS) {
-        if (Blind(state.u) && mode === DO_MOVE)
-            feel_location(x, y, state);
+        if (Blind(state.u) && mode === DO_MOVE) {
+            await finish_steps(feel_location_steps(x, y, state),
+                impossible_printer(state));
+        }
         if (passesWalls && may_passwall(x, y, state)) {
             // The source intentionally continues into the common checks.
         } else if (state.u?.uinwater) {
@@ -4836,7 +4838,7 @@ function domove_monster_trap_env(state, env = {}) {
         state,
         random,
         message,
-        redraw: env.redraw ?? ((tx, ty) => newsym(tx, ty, state)),
+        redraw: env.redraw ?? newsym,
         mInAir: env.mInAir ?? ((mon, st) => m_in_air(mon, st)),
         heroDeaf: env.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: env.youHear ?? ((line, st) => youHear(line, st)),
@@ -4854,7 +4856,7 @@ function domove_monster_trap_env(state, env = {}) {
                     random: relocationEnv.random ?? random,
                     message,
                     newsym: relocationEnv.newsym
-                        ?? ((tx, ty) => newsym(tx, ty, state)),
+                        ?? newsym,
                     onscary: relocationEnv.onscary
                         ?? ((tx, ty, target) => onscary(tx, ty, target, state)),
                     setApparxy: relocationEnv.setApparxy
@@ -4954,7 +4956,7 @@ export async function domove_swap_with_pet(
         if (unseen) {
             feeltrap(trap, {
                 state,
-                redraw: (tx, ty) => newsym(tx, ty, state),
+                redraw: newsym,
             });
             which = just_an(what);
         }
@@ -5182,11 +5184,7 @@ export async function pooleffects(newspot, state = game, rawEnv = {}) {
                 // requesting the later full recalculation. display.c's C
                 // docrt_flags() owns both phases; JS docrt() exposes them to
                 // callers so this submerged-to-air redraw follows that order.
-                await docrt({
-                    state,
-                    suspendVision: () => vision_recalc(2, { state }),
-                    restoreVision: () => vision_recalc(0, { state }),
-                });
+                await docrt();
                 state.vision_full_recalc = 1;
             }
         }
